@@ -262,6 +262,30 @@ func (e CreateGatewayRequestFunctionalityType) Valid() bool {
 	}
 }
 
+// Defines values for CreateGraphQLAPIRequestSchemaSource.
+const (
+	CreateGraphQLAPIRequestSchemaSourceFile          CreateGraphQLAPIRequestSchemaSource = "file"
+	CreateGraphQLAPIRequestSchemaSourceInline        CreateGraphQLAPIRequestSchemaSource = "inline"
+	CreateGraphQLAPIRequestSchemaSourceIntrospection CreateGraphQLAPIRequestSchemaSource = "introspection"
+	CreateGraphQLAPIRequestSchemaSourceUrl           CreateGraphQLAPIRequestSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the CreateGraphQLAPIRequestSchemaSource enum.
+func (e CreateGraphQLAPIRequestSchemaSource) Valid() bool {
+	switch e {
+	case CreateGraphQLAPIRequestSchemaSourceFile:
+		return true
+	case CreateGraphQLAPIRequestSchemaSourceInline:
+		return true
+	case CreateGraphQLAPIRequestSchemaSourceIntrospection:
+		return true
+	case CreateGraphQLAPIRequestSchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateRESTAPIRequestLifeCycleStatus.
 const (
 	CreateRESTAPIRequestLifeCycleStatusBLOCKED    CreateRESTAPIRequestLifeCycleStatus = "BLOCKED"
@@ -445,6 +469,72 @@ func (e GatewayResponseFunctionalityType) Valid() bool {
 	}
 }
 
+// Defines values for GraphQLAPISchemaSource.
+const (
+	GraphQLAPISchemaSourceFile          GraphQLAPISchemaSource = "file"
+	GraphQLAPISchemaSourceInline        GraphQLAPISchemaSource = "inline"
+	GraphQLAPISchemaSourceIntrospection GraphQLAPISchemaSource = "introspection"
+	GraphQLAPISchemaSourceUrl           GraphQLAPISchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLAPISchemaSource enum.
+func (e GraphQLAPISchemaSource) Valid() bool {
+	switch e {
+	case GraphQLAPISchemaSourceFile:
+		return true
+	case GraphQLAPISchemaSourceInline:
+		return true
+	case GraphQLAPISchemaSourceIntrospection:
+		return true
+	case GraphQLAPISchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GraphQLAPIDetailSchemaSource.
+const (
+	GraphQLAPIDetailSchemaSourceFile          GraphQLAPIDetailSchemaSource = "file"
+	GraphQLAPIDetailSchemaSourceInline        GraphQLAPIDetailSchemaSource = "inline"
+	GraphQLAPIDetailSchemaSourceIntrospection GraphQLAPIDetailSchemaSource = "introspection"
+	GraphQLAPIDetailSchemaSourceUrl           GraphQLAPIDetailSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLAPIDetailSchemaSource enum.
+func (e GraphQLAPIDetailSchemaSource) Valid() bool {
+	switch e {
+	case GraphQLAPIDetailSchemaSourceFile:
+		return true
+	case GraphQLAPIDetailSchemaSourceInline:
+		return true
+	case GraphQLAPIDetailSchemaSourceIntrospection:
+		return true
+	case GraphQLAPIDetailSchemaSourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GraphQLIntrospectionMode.
+const (
+	ENDPOINT GraphQLIntrospectionMode = "ENDPOINT"
+	SDL      GraphQLIntrospectionMode = "SDL"
+)
+
+// Valid indicates whether the value is a known member of the GraphQLIntrospectionMode enum.
+func (e GraphQLIntrospectionMode) Valid() bool {
+	switch e {
+	case ENDPOINT:
+		return true
+	case SDL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LLMAccessControlMode.
 const (
 	AllowAll LLMAccessControlMode = "allow_all"
@@ -592,6 +682,42 @@ func (e ManagedPublicAgentCardMode) Valid() bool {
 	}
 }
 
+// Defines values for MeterType.
+const (
+	MeterTypeRequestCount MeterType = "REQUEST_COUNT"
+	MeterTypeTokens       MeterType = "TOKENS"
+)
+
+// Valid indicates whether the value is a known member of the MeterType enum.
+func (e MeterType) Valid() bool {
+	switch e {
+	case MeterTypeRequestCount:
+		return true
+	case MeterTypeTokens:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MeterRequestType.
+const (
+	MeterRequestTypeRequestCount MeterRequestType = "REQUEST_COUNT"
+	MeterRequestTypeTokens       MeterRequestType = "TOKENS"
+)
+
+// Valid indicates whether the value is a known member of the MeterRequestType enum.
+func (e MeterRequestType) Valid() bool {
+	switch e {
+	case MeterRequestTypeRequestCount:
+		return true
+	case MeterRequestTypeTokens:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OperationPolicyPathMethods.
 const (
 	OperationPolicyPathMethodsAsterisk OperationPolicyPathMethods = "*"
@@ -688,6 +814,45 @@ const (
 func (e PassthroughPublicAgentCardMode) Valid() bool {
 	switch e {
 	case PassthroughPublicAgentCardModePassthrough:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PriceFilterOperator.
+const (
+	PriceFilterOperatorEquals             PriceFilterOperator = "EQUALS"
+	PriceFilterOperatorGreaterThan        PriceFilterOperator = "GREATER_THAN"
+	PriceFilterOperatorGreaterThanOrEqual PriceFilterOperator = "GREATER_THAN_OR_EQUAL"
+	PriceFilterOperatorIn                 PriceFilterOperator = "IN"
+	PriceFilterOperatorLessThan           PriceFilterOperator = "LESS_THAN"
+	PriceFilterOperatorLessThanOrEqual    PriceFilterOperator = "LESS_THAN_OR_EQUAL"
+	PriceFilterOperatorNotEquals          PriceFilterOperator = "NOT_EQUALS"
+	PriceFilterOperatorNotIn              PriceFilterOperator = "NOT_IN"
+	PriceFilterOperatorStartsWith         PriceFilterOperator = "STARTS_WITH"
+)
+
+// Valid indicates whether the value is a known member of the PriceFilterOperator enum.
+func (e PriceFilterOperator) Valid() bool {
+	switch e {
+	case PriceFilterOperatorEquals:
+		return true
+	case PriceFilterOperatorGreaterThan:
+		return true
+	case PriceFilterOperatorGreaterThanOrEqual:
+		return true
+	case PriceFilterOperatorIn:
+		return true
+	case PriceFilterOperatorLessThan:
+		return true
+	case PriceFilterOperatorLessThanOrEqual:
+		return true
+	case PriceFilterOperatorNotEquals:
+		return true
+	case PriceFilterOperatorNotIn:
+		return true
+	case PriceFilterOperatorStartsWith:
 		return true
 	default:
 		return false
@@ -1090,6 +1255,30 @@ func (e SubscriptionStatus) Valid() bool {
 	}
 }
 
+// Defines values for SubscriptionBillingStatus.
+const (
+	SubscriptionBillingStatusActive    SubscriptionBillingStatus = "ACTIVE"
+	SubscriptionBillingStatusCancelled SubscriptionBillingStatus = "CANCELLED"
+	SubscriptionBillingStatusPastDue   SubscriptionBillingStatus = "PAST_DUE"
+	SubscriptionBillingStatusUnpaid    SubscriptionBillingStatus = "UNPAID"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionBillingStatus enum.
+func (e SubscriptionBillingStatus) Valid() bool {
+	switch e {
+	case SubscriptionBillingStatusActive:
+		return true
+	case SubscriptionBillingStatusCancelled:
+		return true
+	case SubscriptionBillingStatusPastDue:
+		return true
+	case SubscriptionBillingStatusUnpaid:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubscriptionPlanStatus.
 const (
 	SubscriptionPlanStatusACTIVE   SubscriptionPlanStatus = "ACTIVE"
@@ -1147,6 +1336,99 @@ func (e SubscriptionPlanLimitTimeUnit) Valid() bool {
 	case MINUTE:
 		return true
 	case MONTH:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricePricingModel.
+const (
+	SubscriptionPlanPricePricingModelGraduated SubscriptionPlanPricePricingModel = "GRADUATED"
+	SubscriptionPlanPricePricingModelPerUnit   SubscriptionPlanPricePricingModel = "PER_UNIT"
+	SubscriptionPlanPricePricingModelVolume    SubscriptionPlanPricePricingModel = "VOLUME"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricePricingModel enum.
+func (e SubscriptionPlanPricePricingModel) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricePricingModelGraduated:
+		return true
+	case SubscriptionPlanPricePricingModelPerUnit:
+		return true
+	case SubscriptionPlanPricePricingModelVolume:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingBillingPeriod.
+const (
+	SubscriptionPlanPricingBillingPeriodMonth SubscriptionPlanPricingBillingPeriod = "MONTH"
+	SubscriptionPlanPricingBillingPeriodYear  SubscriptionPlanPricingBillingPeriod = "YEAR"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingBillingPeriod enum.
+func (e SubscriptionPlanPricingBillingPeriod) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingBillingPeriodMonth:
+		return true
+	case SubscriptionPlanPricingBillingPeriodYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingPricingType.
+const (
+	SubscriptionPlanPricingPricingTypeFlatRate   SubscriptionPlanPricingPricingType = "FLAT_RATE"
+	SubscriptionPlanPricingPricingTypeUsageBased SubscriptionPlanPricingPricingType = "USAGE_BASED"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingPricingType enum.
+func (e SubscriptionPlanPricingPricingType) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingPricingTypeFlatRate:
+		return true
+	case SubscriptionPlanPricingPricingTypeUsageBased:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingRequestBillingPeriod.
+const (
+	SubscriptionPlanPricingRequestBillingPeriodMonth SubscriptionPlanPricingRequestBillingPeriod = "MONTH"
+	SubscriptionPlanPricingRequestBillingPeriodYear  SubscriptionPlanPricingRequestBillingPeriod = "YEAR"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingRequestBillingPeriod enum.
+func (e SubscriptionPlanPricingRequestBillingPeriod) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingRequestBillingPeriodMonth:
+		return true
+	case SubscriptionPlanPricingRequestBillingPeriodYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanPricingRequestPricingType.
+const (
+	SubscriptionPlanPricingRequestPricingTypeFlatRate   SubscriptionPlanPricingRequestPricingType = "FLAT_RATE"
+	SubscriptionPlanPricingRequestPricingTypeUsageBased SubscriptionPlanPricingRequestPricingType = "USAGE_BASED"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanPricingRequestPricingType enum.
+func (e SubscriptionPlanPricingRequestPricingType) Valid() bool {
+	switch e {
+	case SubscriptionPlanPricingRequestPricingTypeFlatRate:
+		return true
+	case SubscriptionPlanPricingRequestPricingTypeUsageBased:
 		return true
 	default:
 		return false
@@ -1249,6 +1531,7 @@ func (e UpstreamAuthType) Valid() bool {
 // Defines values for UserAPIKeyItemArtifactType.
 const (
 	UserAPIKeyItemArtifactTypeAgentProxy  UserAPIKeyItemArtifactType = "AgentProxy"
+	UserAPIKeyItemArtifactTypeGraphQLApi  UserAPIKeyItemArtifactType = "GraphQLApi"
 	UserAPIKeyItemArtifactTypeLlmProvider UserAPIKeyItemArtifactType = "LlmProvider"
 	UserAPIKeyItemArtifactTypeLlmProxy    UserAPIKeyItemArtifactType = "LlmProxy"
 	UserAPIKeyItemArtifactTypeRestApi     UserAPIKeyItemArtifactType = "RestApi"
@@ -1258,6 +1541,8 @@ const (
 func (e UserAPIKeyItemArtifactType) Valid() bool {
 	switch e {
 	case UserAPIKeyItemArtifactTypeAgentProxy:
+		return true
+	case UserAPIKeyItemArtifactTypeGraphQLApi:
 		return true
 	case UserAPIKeyItemArtifactTypeLlmProvider:
 		return true
@@ -1285,6 +1570,30 @@ func (e UserAPIKeyItemStatus) Valid() bool {
 	case UserAPIKeyItemStatusExpired:
 		return true
 	case UserAPIKeyItemStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidateGraphQLSchemaRequestSchemaSource.
+const (
+	ValidateGraphQLSchemaRequestSchemaSourceFile          ValidateGraphQLSchemaRequestSchemaSource = "file"
+	ValidateGraphQLSchemaRequestSchemaSourceInline        ValidateGraphQLSchemaRequestSchemaSource = "inline"
+	ValidateGraphQLSchemaRequestSchemaSourceIntrospection ValidateGraphQLSchemaRequestSchemaSource = "introspection"
+	ValidateGraphQLSchemaRequestSchemaSourceUrl           ValidateGraphQLSchemaRequestSchemaSource = "url"
+)
+
+// Valid indicates whether the value is a known member of the ValidateGraphQLSchemaRequestSchemaSource enum.
+func (e ValidateGraphQLSchemaRequestSchemaSource) Valid() bool {
+	switch e {
+	case ValidateGraphQLSchemaRequestSchemaSourceFile:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceInline:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceIntrospection:
+		return true
+	case ValidateGraphQLSchemaRequestSchemaSourceUrl:
 		return true
 	default:
 		return false
@@ -1627,6 +1936,72 @@ func (e ListGatewaysParamsSortOrder) Valid() bool {
 	}
 }
 
+// Defines values for ListGraphQLAPIsParamsSortBy.
+const (
+	ListGraphQLAPIsParamsSortByCreatedAt ListGraphQLAPIsParamsSortBy = "createdAt"
+	ListGraphQLAPIsParamsSortByName      ListGraphQLAPIsParamsSortBy = "name"
+)
+
+// Valid indicates whether the value is a known member of the ListGraphQLAPIsParamsSortBy enum.
+func (e ListGraphQLAPIsParamsSortBy) Valid() bool {
+	switch e {
+	case ListGraphQLAPIsParamsSortByCreatedAt:
+		return true
+	case ListGraphQLAPIsParamsSortByName:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListGraphQLAPIsParamsSortOrder.
+const (
+	ListGraphQLAPIsParamsSortOrderAsc  ListGraphQLAPIsParamsSortOrder = "asc"
+	ListGraphQLAPIsParamsSortOrderDesc ListGraphQLAPIsParamsSortOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListGraphQLAPIsParamsSortOrder enum.
+func (e ListGraphQLAPIsParamsSortOrder) Valid() bool {
+	switch e {
+	case ListGraphQLAPIsParamsSortOrderAsc:
+		return true
+	case ListGraphQLAPIsParamsSortOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetGraphQLAPIDeploymentsParamsStatus.
+const (
+	GetGraphQLAPIDeploymentsParamsStatusARCHIVED    GetGraphQLAPIDeploymentsParamsStatus = "ARCHIVED"
+	GetGraphQLAPIDeploymentsParamsStatusDEPLOYED    GetGraphQLAPIDeploymentsParamsStatus = "DEPLOYED"
+	GetGraphQLAPIDeploymentsParamsStatusDEPLOYING   GetGraphQLAPIDeploymentsParamsStatus = "DEPLOYING"
+	GetGraphQLAPIDeploymentsParamsStatusFAILED      GetGraphQLAPIDeploymentsParamsStatus = "FAILED"
+	GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYED  GetGraphQLAPIDeploymentsParamsStatus = "UNDEPLOYED"
+	GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYING GetGraphQLAPIDeploymentsParamsStatus = "UNDEPLOYING"
+)
+
+// Valid indicates whether the value is a known member of the GetGraphQLAPIDeploymentsParamsStatus enum.
+func (e GetGraphQLAPIDeploymentsParamsStatus) Valid() bool {
+	switch e {
+	case GetGraphQLAPIDeploymentsParamsStatusARCHIVED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusDEPLOYED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusDEPLOYING:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusFAILED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYED:
+		return true
+	case GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYING:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
 	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
@@ -1720,6 +2095,7 @@ func (e GetMCPProxyDeploymentsParamsStatus) Valid() bool {
 // Defines values for ListUserAPIKeysParamsType.
 const (
 	ListUserAPIKeysParamsTypeAgentProxy  ListUserAPIKeysParamsType = "AgentProxy"
+	ListUserAPIKeysParamsTypeGraphQLApi  ListUserAPIKeysParamsType = "GraphQLApi"
 	ListUserAPIKeysParamsTypeLlmProvider ListUserAPIKeysParamsType = "LlmProvider"
 	ListUserAPIKeysParamsTypeLlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
 	ListUserAPIKeysParamsTypeRestApi     ListUserAPIKeysParamsType = "RestApi"
@@ -1729,6 +2105,8 @@ const (
 func (e ListUserAPIKeysParamsType) Valid() bool {
 	switch e {
 	case ListUserAPIKeysParamsTypeAgentProxy:
+		return true
+	case ListUserAPIKeysParamsTypeGraphQLApi:
 		return true
 	case ListUserAPIKeysParamsTypeLlmProvider:
 		return true
@@ -1837,6 +2215,24 @@ func (e GetDeploymentsParamsStatus) Valid() bool {
 	case GetDeploymentsParamsStatusUNDEPLOYED:
 		return true
 	case GetDeploymentsParamsStatusUNDEPLOYING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListSubscriptionPlansParamsStatus.
+const (
+	ListSubscriptionPlansParamsStatusACTIVE   ListSubscriptionPlansParamsStatus = "ACTIVE"
+	ListSubscriptionPlansParamsStatusINACTIVE ListSubscriptionPlansParamsStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the ListSubscriptionPlansParamsStatus enum.
+func (e ListSubscriptionPlansParamsStatus) Valid() bool {
+	switch e {
+	case ListSubscriptionPlansParamsStatusACTIVE:
+		return true
+	case ListSubscriptionPlansParamsStatusINACTIVE:
 		return true
 	default:
 		return false
@@ -2037,7 +2433,7 @@ type APIDocumentMetadata struct {
 	// Id URL-safe handle used in the `{docId}` path segment.
 	Id string `json:"id" yaml:"id"`
 
-	// Type Document type as stored. Fixed types (HOW_TO, SAMPLE_SDK, SUPPORT_FORUM, PUBLIC_FORUM) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
+	// Type Document type as stored. Fixed types (HowTo, Samples, SupportForum, PublicForum, Other) are returned as-is; custom OTHER types are returned as the bare custom name (e.g. FAQ).
 	Type      string     `json:"type" yaml:"type"`
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
@@ -2603,6 +2999,119 @@ type CreateGatewayRequest struct {
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
 type CreateGatewayRequestFunctionalityType string
 
+// CreateGraphQLAPIRequest defines model for CreateGraphQLAPIRequest.
+type CreateGraphQLAPIRequest struct {
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How `sdl` was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SchemaSource Declares how the schema is being supplied, so the server validates
+	// against stated intent instead of guessing it from which fields happen
+	// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+	// `file` requires the `sdlFile` multipart part (see
+	// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+	// literal `upstream.main.url` and derives the schema by querying it.
+	// Only the field matching the declared source may be present — a
+	// mismatch (wrong field populated, nothing populated, more than one
+	// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+	// fall-through to a different resolution path. Schema *resolution* is
+	// separate and best-effort: a failure to actually resolve (bad SDL,
+	// unreachable URL, introspection failing) never fails the request —
+	// see `sdl` below.
+	SchemaSource *CreateGraphQLAPIRequestSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+	// directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+	// (`url`), or derived from `upstream.main.url` (`introspection`). Always
+	// the *resolved* schema, never a document-supplied schema-location
+	// reference. Optional in practice: if resolution fails, the API is still
+	// created/updated and this is left empty (create) or unchanged from its
+	// previous value (update) rather than the request failing — see
+	// `schemaSource`.
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` when
+	// `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+	// document can be supplied by reference for other artifact kinds (see
+	// LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+	// `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+	// file, not a live introspection query against a GraphQL server, and is
+	// fetched through the same shared SSRF-guarded HTTP client every other
+	// operator/tenant-supplied fetch in this API uses, under the operator-
+	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+	// host is resolved and every candidate IP — including each redirect hop —
+	// is checked at dial time, refusing link-local/metadata/unspecified/
+	// multicast addresses while private and in-cluster addresses (a Kubernetes
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+	// or echoed back; only the fetched `sdl` text is persisted and returned.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+	// endpoint (no per-operation paths), so `upstream.main.url` is the single
+	// GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+	// the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `json:"version" yaml:"version"`
+}
+
+// CreateGraphQLAPIRequestSchemaSource Declares how the schema is being supplied, so the server validates
+// against stated intent instead of guessing it from which fields happen
+// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+// `file` requires the `sdlFile` multipart part (see
+// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+// literal `upstream.main.url` and derives the schema by querying it.
+// Only the field matching the declared source may be present — a
+// mismatch (wrong field populated, nothing populated, more than one
+// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+// fall-through to a different resolution path. Schema *resolution* is
+// separate and best-effort: a failure to actually resolve (bad SDL,
+// unreachable URL, introspection failing) never fails the request —
+// see `sdl` below.
+type CreateGraphQLAPIRequestSchemaSource string
+
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
 	// AllowedTargets Comma-separated list of gateways this key is valid for.
@@ -2781,12 +3290,15 @@ type CreateSubscriptionPlanRequest struct {
 	// ExpiryTime Optional plan expiry time (RFC3339)
 	ExpiryTime *time.Time `json:"expiryTime,omitempty" yaml:"expiryTime,omitempty"`
 
-	// Id Handle (URL-friendly slug) for the plan. Immutable after creation.
+	// Id Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters; a longer one is refused with 400 "id must be at most 40 characters".
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Limits Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored.
-	Limits *[]SubscriptionPlanLimit             `json:"limits,omitempty" yaml:"limits,omitempty"`
-	Status *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
+
+	// Pricing Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free.
+	Pricing *SubscriptionPlanPricingRequest      `json:"pricing,omitempty" yaml:"pricing,omitempty"`
+	Status  *CreateSubscriptionPlanRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // CreateSubscriptionPlanRequestStatus defines model for CreateSubscriptionPlanRequest.Status.
@@ -3150,6 +3662,259 @@ type GatewayTokenListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
+// GraphQLAPI defines model for GraphQLAPI.
+type GraphQLAPI struct {
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How `sdl` was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SchemaSource Declares how the schema is being supplied, so the server validates
+	// against stated intent instead of guessing it from which fields happen
+	// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+	// `file` requires the `sdlFile` multipart part (see
+	// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+	// literal `upstream.main.url` and derives the schema by querying it.
+	// Only the field matching the declared source may be present — a
+	// mismatch (wrong field populated, nothing populated, more than one
+	// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+	// fall-through to a different resolution path. Schema *resolution* is
+	// separate and best-effort: a failure to actually resolve (bad SDL,
+	// unreachable URL, introspection failing) never fails the request —
+	// see `sdl` below.
+	SchemaSource *GraphQLAPISchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+	// directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+	// (`url`), or derived from `upstream.main.url` (`introspection`). Always
+	// the *resolved* schema, never a document-supplied schema-location
+	// reference. Optional in practice: if resolution fails, the API is still
+	// created/updated and this is left empty (create) or unchanged from its
+	// previous value (update) rather than the request failing — see
+	// `schemaSource`.
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` when
+	// `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+	// document can be supplied by reference for other artifact kinds (see
+	// LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+	// `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+	// file, not a live introspection query against a GraphQL server, and is
+	// fetched through the same shared SSRF-guarded HTTP client every other
+	// operator/tenant-supplied fetch in this API uses, under the operator-
+	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+	// host is resolved and every candidate IP — including each redirect hop —
+	// is checked at dial time, refusing link-local/metadata/unspecified/
+	// multicast addresses while private and in-cluster addresses (a Kubernetes
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+	// or echoed back; only the fetched `sdl` text is persisted and returned.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+	// endpoint (no per-operation paths), so `upstream.main.url` is the single
+	// GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+	// the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `json:"version" yaml:"version"`
+}
+
+// GraphQLAPISchemaSource Declares how the schema is being supplied, so the server validates
+// against stated intent instead of guessing it from which fields happen
+// to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+// `file` requires the `sdlFile` multipart part (see
+// GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+// literal `upstream.main.url` and derives the schema by querying it.
+// Only the field matching the declared source may be present — a
+// mismatch (wrong field populated, nothing populated, more than one
+// populated) is a `400` (`VALIDATION_FAILED`), not a silent
+// fall-through to a different resolution path. Schema *resolution* is
+// separate and best-effort: a failure to actually resolve (bad SDL,
+// unreachable URL, introspection failing) never fails the request —
+// see `sdl` below.
+type GraphQLAPISchemaSource string
+
+// GraphQLAPIDetail defines model for GraphQLAPIDetail.
+type GraphQLAPIDetail struct {
+	// Context Base path for the single GraphQL endpoint. Optional: when omitted
+	// (or blank) on create/update, the server derives one from the API's
+	// handle and version (`/{handle}/{version}/graphql`) instead of
+	// rejecting the request. Suggested (not enforced) convention when
+	// supplied explicitly: end the path with `/graphql`, matching how
+	// most standalone GraphQL servers name their single endpoint — this
+	// is not validated.
+	Context     *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How the schema was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A GraphQL API has no per-operation list to add an
+	// explicit `OPTIONS` entry to the way a REST API does, so when a
+	// `cors` policy is attached, the gateway synthesizes an OPTIONS
+	// route for the same path itself, sharing this same policy chain —
+	// this is what lets `cors` (and every other policy in this list, in
+	// declared order) answer a browser's preflight request.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SchemaSource The exact source the current schema was declared with on the create or
+	// last successful update — a finer-grained sibling of `introspectionMode`,
+	// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+	// Resupply this value on a subsequent `PUT` that isn't meant to change the
+	// schema, together with material satisfying that same source (`sdl` for
+	// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+	// since `upstream.main.url` already suffices) — omitting it, or resupplying
+	// a source without its required field, is a structural `400`, not a no-op.
+	SchemaSource *GraphQLAPIDetailSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	UpdatedBy         *string    `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+	// endpoint (no per-operation paths), so `upstream.main.url` is the single
+	// GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+	// the endpoint introspected at creation time (see `introspectionMode` below).
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `json:"version" yaml:"version"`
+}
+
+// GraphQLAPIDetailSchemaSource The exact source the current schema was declared with on the create or
+// last successful update — a finer-grained sibling of `introspectionMode`,
+// which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+// Resupply this value on a subsequent `PUT` that isn't meant to change the
+// schema, together with material satisfying that same source (`sdl` for
+// `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+// since `upstream.main.url` already suffices) — omitting it, or resupplying
+// a source without its required field, is a structural `400`, not a no-op.
+type GraphQLAPIDetailSchemaSource string
+
+// GraphQLAPIListItem defines model for GraphQLAPIListItem.
+type GraphQLAPIListItem struct {
+	Context           string                    `json:"context" yaml:"context"`
+	CreatedAt         *time.Time                `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy         *string                   `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description       *string                   `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName       string                    `json:"displayName" yaml:"displayName"`
+	Id                *string                   `json:"id,omitempty" yaml:"id,omitempty"`
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+	Kind              *string                   `json:"kind,omitempty" yaml:"kind,omitempty"`
+	ProjectId         string                    `json:"projectId" yaml:"projectId"`
+	ReadOnly          *bool                     `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt         *time.Time                `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+	Version  string    `json:"version" yaml:"version"`
+}
+
+// GraphQLAPIListResponse defines model for GraphQLAPIListResponse.
+type GraphQLAPIListResponse struct {
+	Count      int                  `json:"count" yaml:"count"`
+	List       []GraphQLAPIListItem `json:"list" yaml:"list"`
+	Pagination Pagination           `json:"pagination" yaml:"pagination"`
+}
+
+// GraphQLAPIMultipartRequest defines model for GraphQLAPIMultipartRequest.
+type GraphQLAPIMultipartRequest struct {
+	// Metadata JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
+	// GraphQLAPI fields for update, including `schemaSource`. When
+	// `schemaSource` is `file`, the `sdlFile` part below is required and any
+	// `sdl`/`sdlUrl` in this metadata is a structural-validation error, not a
+	// silent override — every schema-source variant is expressed
+	// consistently through the `schemaSource` field rather than by which
+	// part happens to be present.
+	Metadata string `json:"metadata" yaml:"metadata"`
+
+	// SdlFile The GraphQL SDL document as a file upload (e.g. schema.graphql).
+	// Required when `schemaSource` is `file`; must be omitted otherwise.
+	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// GraphQLAPISDLResponse defines model for GraphQLAPISDLResponse.
+type GraphQLAPISDLResponse struct {
+	// Sdl The GraphQL schema in SDL form, resolved at create/update time (either
+	// supplied directly or derived via upstream introspection) — see
+	// `GET /graphql-apis/{graphqlApiId}` for the rest of the API's metadata.
+	Sdl string `json:"sdl" yaml:"sdl"`
+}
+
+// GraphQLIntrospectionMode defines model for GraphQLIntrospectionMode.
+type GraphQLIntrospectionMode string
+
+// GraphQLSdlValidationIssue defines model for GraphQLSdlValidationIssue.
+type GraphQLSdlValidationIssue struct {
+	// Column 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+	Column *int `json:"column,omitempty" yaml:"column,omitempty"`
+
+	// Line 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+	Line *int `json:"line,omitempty" yaml:"line,omitempty"`
+
+	// Message The parser's own error message for this issue.
+	Message string `json:"message" yaml:"message"`
+}
+
 // ImportOpenAPIRequest Multipart form for `POST /rest-apis/import-openapi`. Exactly one of
 // `file` or `url` must be provided; the backend rejects requests that
 // supply both or neither.
@@ -3494,7 +4259,7 @@ type LLMProviderTemplateResourceMappings struct {
 
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
-	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.
+	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target. Legacy shape: prefer `providers`, which expresses the same thing uniformly. Always populated on a read alongside `providers`.
 	AdditionalProviders *[]LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" yaml:"additionalProviders,omitempty"`
 
 	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
@@ -3521,6 +4286,9 @@ type LLMProxy struct {
 	// Id Unique handle for the proxy
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
+	// InboundTemplate Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.
+	InboundTemplate *string `json:"inboundTemplate,omitempty" yaml:"inboundTemplate,omitempty"`
+
 	// Openapi OpenAPI specification (JSON or YAML) for the proxy endpoint
 	Openapi *string `json:"openapi,omitempty" yaml:"openapi,omitempty"`
 
@@ -3532,8 +4300,15 @@ type LLMProxy struct {
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
-	ProjectId string           `json:"projectId" yaml:"projectId"`
-	Provider  LLMProxyProvider `json:"provider" yaml:"provider"`
+	ProjectId string `json:"projectId" yaml:"projectId"`
+
+	// Provider The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list.
+	Provider *LLMProxyProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
+
+	// Providers Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`, which supplies the proxy's provider identity and default upstream.
+	// On a request this is an alternative to the legacy `provider` plus `additionalProviders` pair, not an addition to it: when both are supplied `providers` wins and the legacy fields are ignored, so a client can write back a response it just read. Whichever shape arrives, only this one is stored.
+	// On a response both representations are always populated and always agree, so a client written against either contract works.
+	Providers *[]LLMProxyProviderEntry `json:"providers,omitempty" yaml:"providers,omitempty"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
@@ -3568,6 +4343,9 @@ type LLMProxyAPIKeyListResponse struct {
 type LLMProxyAdditionalProvider struct {
 	// As Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
 	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `json:"id" yaml:"id"`
@@ -3613,13 +4391,37 @@ type LLMProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
-// LLMProxyProvider defines model for LLMProxyProvider.
+// LLMProxyProvider The proxy's primary provider in the legacy shape. Equivalent to the entry carrying `isPrimary: true` in the canonical `providers` list.
 type LLMProxyProvider struct {
+	// As Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted. The same field as `alias` in the canonical shape.
+	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
 	// Id Unique id of a deployed llm provider
 	Id string `json:"id" yaml:"id"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
+}
+
+// LLMProxyProviderEntry One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported.
+type LLMProxyProviderEntry struct {
+	// Alias Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.
+	Alias *string `json:"alias,omitempty" yaml:"alias,omitempty"`
+
+	// Auth Authentication configuration for upstream endpoints
+	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `json:"id" yaml:"id"`
+
+	// IsPrimary Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true. Required on every entry, so a non-primary entry sends false explicitly rather than omitting it.
+	IsPrimary bool `json:"isPrimary" yaml:"isPrimary"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
 }
 
 // LLMProxyTransformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
@@ -3879,6 +4681,75 @@ type MappedAPIKeyListResponse struct {
 	Pagination Pagination     `json:"pagination" yaml:"pagination"`
 }
 
+// Meter defines model for Meter.
+type Meter struct {
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// FilterFields The fields this meter's prices can filter on, each with the event field it reads, as stored on the meter.
+	FilterFields *[]MeterFilterField `json:"filterFields,omitempty" yaml:"filterFields,omitempty"`
+	Id           *string             `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// PlanCount How many plans charge for this meter. While it is above 0, the meter cannot be updated or deleted.
+	PlanCount *int       `json:"planCount,omitempty" yaml:"planCount,omitempty"`
+	Type      *MeterType `json:"type,omitempty" yaml:"type,omitempty"`
+
+	// TypeKey The event field whose number a TOKENS meter adds up, as stored on the meter, such as `metadata.aiTokenUsage.promptTokens`; null for REQUEST_COUNT.
+	TypeKey   *string    `json:"typeKey,omitempty" yaml:"typeKey,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// MeterType defines model for Meter.Type.
+type MeterType string
+
+// MeterFilterField defines model for MeterFilterField.
+type MeterFilterField struct {
+	// EventKey The event field the property reads, such as `response.status`.
+	EventKey string `json:"eventKey" yaml:"eventKey"`
+
+	// Field The property's name, such as `Status code`.
+	Field string `json:"field" yaml:"field"`
+}
+
+// MeterFilterFieldRequest A property this meter's prices can filter on: a name the administrator gives it and the event field it reads. Any operator works on any property; the values a price gives must fit what the event field holds.
+type MeterFilterFieldRequest struct {
+	// EventKey The event field the property reads, as a full path in the Moesif event; 1 to 255 characters with no spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`, `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and `metadata.aiTokenUsage.promptTokens`, and Moesif adds `request.route`, the request path with its IDs as `:id`.
+	EventKey string `json:"eventKey" yaml:"eventKey"`
+
+	// Field The property's name, 1 to 40 characters, unique within the meter ignoring case, such as `Status code` or `Region`.
+	Field string `json:"field" yaml:"field"`
+}
+
+// MeterListResponse defines model for MeterListResponse.
+type MeterListResponse struct {
+	Count      int        `json:"count" yaml:"count"`
+	List       []Meter    `json:"list" yaml:"list"`
+	Pagination Pagination `json:"pagination" yaml:"pagination"`
+}
+
+// MeterRequest A meter to create or replace. A field not listed here is refused.
+type MeterRequest struct {
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Says what the meter counts, for example "Input tokens".
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// FilterFields The properties this meter's prices can filter on, at most 10, each named by the administrator and read from its own event field. Names and event keys are each unique within the meter. Optional; without them the meter's prices take no filters.
+	FilterFields *[]MeterFilterFieldRequest `json:"filterFields,omitempty" yaml:"filterFields,omitempty"`
+
+	// Id The meter's id; derived from displayName when omitted on create.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Type What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+	Type MeterRequestType `json:"type" yaml:"type"`
+
+	// TypeKey TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters with no spaces. Refused for a REQUEST_COUNT meter.
+	TypeKey *string `json:"typeKey,omitempty" yaml:"typeKey,omitempty"`
+}
+
+// MeterRequestType What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions: each plan price gives its own filters.
+type MeterRequestType string
+
 // OpenAPIContent defines model for OpenAPIContent.
 type OpenAPIContent struct {
 	// Content Raw spec content
@@ -4054,6 +4925,28 @@ type Policy struct {
 	Version string `json:"version" yaml:"version"`
 }
 
+// PriceFilter Narrows the requests a plan price counts, on one of its meter's properties. Any operator works on any property. EQUALS, NOT_EQUALS and STARTS_WITH take one text value; IN and NOT_IN one to 20; text values are matched exactly as written (case-sensitive). STARTS_WITH matches values that begin with the text, so `/orders` also matches `/orders-archive`. NOT_EQUALS and NOT_IN count the requests that have the property with another value: a request without it is not counted. GREATER_THAN (more than), GREATER_THAN_OR_EQUAL (at least), LESS_THAN (less than) and LESS_THAN_OR_EQUAL (at most) compare a number: exactly one whole number from 0 to 1000000000000. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons, which make a range (more than 100 and at most 500) and must be able to hold together. Values are not checked against what the property holds: they must fit its event field, numbers for a number field and the exact text for a text field.
+type PriceFilter struct {
+	// Field The name of one of the meter's properties, matched ignoring case.
+	Field    string              `json:"field" yaml:"field"`
+	Operator PriceFilterOperator `json:"operator" yaml:"operator"`
+
+	// Values The values to match; for a comparison, exactly one whole number written as a string, such as "333".
+	Values []string `json:"values" yaml:"values"`
+}
+
+// PriceFilterOperator defines model for PriceFilter.Operator.
+type PriceFilterOperator string
+
+// PriceTier defines model for PriceTier.
+type PriceTier struct {
+	FlatAmount *string `json:"flatAmount,omitempty" yaml:"flatAmount,omitempty"`
+	UnitAmount *string `json:"unitAmount,omitempty" yaml:"unitAmount,omitempty"`
+
+	// UpTo The last unit of the tier; null on the last tier.
+	UpTo *int64 `json:"upTo,omitempty" yaml:"upTo,omitempty"`
+}
+
 // Project defines model for Project.
 type Project struct {
 	// CreatedAt Timestamp when the project was created
@@ -4160,6 +5053,9 @@ type Publication struct {
 	DisplayName   *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	DocIds        *DocIdList `json:"docIds,omitempty" yaml:"docIds,omitempty"`
 
+	// Documents The selected documents, including deleted ones. Same documents as docIds.
+	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
+
 	// Endpoints Author-entered; not derived from the API.
 	Endpoints *struct {
 		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
@@ -4184,7 +5080,10 @@ type Publication struct {
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
 	Status              *PublicationStatus      `json:"status,omitempty" yaml:"status,omitempty"`
 	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
-	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	// SubscriptionPlans The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
 	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -4250,6 +5149,9 @@ type PublicationDraftDetails struct {
 	DisplayName     string                                  `json:"displayName" yaml:"displayName"`
 	DocIds          *DocIdList                              `json:"docIds,omitempty" yaml:"docIds,omitempty"`
 
+	// Documents The selected documents, including deleted ones. Same documents as docIds.
+	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
+
 	// Endpoints Author-entered; not derived from the API.
 	Endpoints *struct {
 		ProductionUrl *string `json:"productionUrl,omitempty" yaml:"productionUrl,omitempty"`
@@ -4273,7 +5175,10 @@ type PublicationDraftDetails struct {
 		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
 	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
-	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	// SubscriptionPlans The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
 	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -4316,6 +5221,21 @@ type PublicationDraftDetailsInput struct {
 
 // PublicationDraftDetailsInputAgentVisibility defines model for PublicationDraftDetailsInput.AgentVisibility.
 type PublicationDraftDetailsInputAgentVisibility string
+
+// PublicationSelection A subscription plan or document selected by a publication, as it was when last saved or published.
+type PublicationSelection struct {
+	// Deleted True when the plan or document no longer exists. The publication keeps the selection until the next publish.
+	Deleted bool `json:"deleted" yaml:"deleted"`
+
+	// DisplayName The name stored with the selection, so it can still be shown after the source is deleted.
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Edited True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it.
+	Edited bool `json:"edited" yaml:"edited"`
+
+	// Id The plan or document handle.
+	Id string `json:"id" yaml:"id"`
+}
 
 // PublicationSummaryItem defines model for PublicationSummaryItem.
 type PublicationSummaryItem struct {
@@ -4493,6 +5413,42 @@ type RESTAPIListResponse struct {
 	Count      int        `json:"count" yaml:"count"`
 	List       []RESTAPI  `json:"list" yaml:"list"`
 	Pagination Pagination `json:"pagination" yaml:"pagination"`
+}
+
+// RESTAPIVersion defines model for RESTAPIVersion.
+type RESTAPIVersion struct {
+	// Context Context path this version is served on
+	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
+
+	// CreatedAt Timestamp when this version was created
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Unique handle/identifier of the REST API resource holding this version. Use it to
+	// address the version through the other /rest-apis endpoints.
+	Id string `json:"id" yaml:"id"`
+
+	// LifeCycleStatus Current lifecycle status of this version
+	LifeCycleStatus *string `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+
+	// ProjectId Handle (URL-friendly slug) of the project this version belongs to
+	ProjectId string `json:"projectId" yaml:"projectId"`
+
+	// Version Version identifier
+	Version string `json:"version" yaml:"version"`
+}
+
+// RESTAPIVersionListResponse defines model for RESTAPIVersionListResponse.
+type RESTAPIVersionListResponse struct {
+	// Count Number of versions in this response
+	Count int `json:"count" yaml:"count"`
+
+	// DisplayName The display name the versions were looked up by
+	DisplayName string           `json:"displayName" yaml:"displayName"`
+	List        []RESTAPIVersion `json:"list" yaml:"list"`
+
+	// VersionsAvailable True when at least one REST API already uses this display name, meaning a create for
+	// this display name adds a version to an existing API rather than creating a new one.
+	VersionsAvailable bool `json:"versionsAvailable" yaml:"versionsAvailable"`
 }
 
 // RateLimitResetWindow defines model for RateLimitResetWindow.
@@ -4677,8 +5633,11 @@ type Subscription struct {
 	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 
 	// ArtifactId Handle (ID) of the subscribed artifact
-	ArtifactId *string    `json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
-	CreatedAt  *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	ArtifactId *string `json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
+
+	// Billing The billing of a paid subscription, as the API Portal reports it from the billing provider.
+	Billing   *SubscriptionBilling `json:"billing,omitempty" yaml:"billing,omitempty"`
+	CreatedAt *time.Time           `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
@@ -4716,6 +5675,21 @@ type SubscriptionKind string
 // SubscriptionStatus defines model for Subscription.Status.
 type SubscriptionStatus string
 
+// SubscriptionBilling The billing of a paid subscription, as the API Portal reports it from the billing provider.
+type SubscriptionBilling struct {
+	// CustomerId The billing provider's customer.
+	CustomerId *string `json:"customerId,omitempty" yaml:"customerId,omitempty"`
+
+	// Status Gateways refuse calls (403) while UNPAID or CANCELLED.
+	Status *SubscriptionBillingStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionId The billing provider's subscription.
+	SubscriptionId *string `json:"subscriptionId,omitempty" yaml:"subscriptionId,omitempty"`
+}
+
+// SubscriptionBillingStatus Gateways refuse calls (403) while UNPAID or CANCELLED.
+type SubscriptionBillingStatus string
+
 // SubscriptionListResponse defines model for SubscriptionListResponse.
 type SubscriptionListResponse struct {
 	// Count Number of subscriptions in current response
@@ -4746,12 +5720,18 @@ type SubscriptionPlan struct {
 	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
 
 	// OrganizationId Handle (URL-friendly slug) of the organization this plan belongs to
-	OrganizationId *string                 `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
-	Status         *SubscriptionPlanStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt      *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	OrganizationId *string `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
+
+	// Pricing The plan's pricing, present only on a paid plan. It is set when the plan is created (POST /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+	Pricing   *SubscriptionPlanPricing `json:"pricing,omitempty" yaml:"pricing,omitempty"`
+	Status    *SubscriptionPlanStatus  `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Usage What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot be updated.
+	Usage *SubscriptionPlanUsage `json:"usage,omitempty" yaml:"usage,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
@@ -4795,6 +5775,82 @@ type SubscriptionPlanListResponse struct {
 	// List List of subscription plans in current response
 	List       []SubscriptionPlan `json:"list" yaml:"list"`
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
+}
+
+// SubscriptionPlanPrice A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other models are not accepted. A plan may price one meter several times, but two prices on the same meter must not count the same request. A price has no name: it is shown as the meter's name followed by its filters.
+type SubscriptionPlanPrice struct {
+	// Filters Optional; each names one of the properties the meter lists in its filterFields. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons. Without filters the price counts every request the meter counts.
+	Filters *[]PriceFilter `json:"filters,omitempty" yaml:"filters,omitempty"`
+
+	// MeterId The `id` of the meter that counts the units, one of the organization's meters (GET /meters).
+	MeterId      string                            `json:"meterId" yaml:"meterId"`
+	PricingModel SubscriptionPlanPricePricingModel `json:"pricingModel" yaml:"pricingModel"`
+
+	// Tiers VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`.
+	Tiers *[]PriceTier `json:"tiers,omitempty" yaml:"tiers,omitempty"`
+
+	// UnitAmount PER_UNIT only. The price per `unitQuantity` units, as a decimal string.
+	UnitAmount *string `json:"unitAmount,omitempty" yaml:"unitAmount,omitempty"`
+
+	// UnitQuantity PER_UNIT only. How many units `unitAmount` is for (default 1).
+	UnitQuantity *int64 `json:"unitQuantity,omitempty" yaml:"unitQuantity,omitempty"`
+}
+
+// SubscriptionPlanPricePricingModel defines model for SubscriptionPlanPrice.PricingModel.
+type SubscriptionPlanPricePricingModel string
+
+// SubscriptionPlanPricing defines model for SubscriptionPlanPricing.
+type SubscriptionPlanPricing struct {
+	BillingPeriod      *SubscriptionPlanPricingBillingPeriod `json:"billingPeriod,omitempty" yaml:"billingPeriod,omitempty"`
+	Currency           *string                               `json:"currency,omitempty" yaml:"currency,omitempty"`
+	FlatAmount         *string                               `json:"flatAmount,omitempty" yaml:"flatAmount,omitempty"`
+	Prices             *[]SubscriptionPlanPrice              `json:"prices,omitempty" yaml:"prices,omitempty"`
+	PricingType        *SubscriptionPlanPricingPricingType   `json:"pricingType,omitempty" yaml:"pricingType,omitempty"`
+	SubscriptionPlanId *string                               `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
+	UpdatedAt          *time.Time                            `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// SubscriptionPlanPricingBillingPeriod defines model for SubscriptionPlanPricing.BillingPeriod.
+type SubscriptionPlanPricingBillingPeriod string
+
+// SubscriptionPlanPricingPricingType defines model for SubscriptionPlanPricing.PricingType.
+type SubscriptionPlanPricingPricingType string
+
+// SubscriptionPlanPricingRequest What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount` every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per period and has no flat amount. A plan created without pricing is free. Pricing can't be updated once the plan exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored.
+type SubscriptionPlanPricingRequest struct {
+	BillingPeriod SubscriptionPlanPricingRequestBillingPeriod `json:"billingPeriod" yaml:"billingPeriod"`
+	Currency      string                                      `json:"currency" yaml:"currency"`
+
+	// FlatAmount FLAT_RATE only. The amount charged every billing period, as a decimal string in the currency.
+	FlatAmount *string `json:"flatAmount,omitempty" yaml:"flatAmount,omitempty"`
+
+	// Prices USAGE_BASED only.
+	Prices      *[]SubscriptionPlanPrice                  `json:"prices,omitempty" yaml:"prices,omitempty"`
+	PricingType SubscriptionPlanPricingRequestPricingType `json:"pricingType" yaml:"pricingType"`
+}
+
+// SubscriptionPlanPricingRequestBillingPeriod defines model for SubscriptionPlanPricingRequest.BillingPeriod.
+type SubscriptionPlanPricingRequestBillingPeriod string
+
+// SubscriptionPlanPricingRequestPricingType defines model for SubscriptionPlanPricingRequest.PricingType.
+type SubscriptionPlanPricingRequestPricingType string
+
+// SubscriptionPlanUsage Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list.
+type SubscriptionPlanUsage struct {
+	// Drafts How many APIs offer the plan in a publication draft (each API once).
+	Drafts int `json:"drafts" yaml:"drafts"`
+
+	// InUse Whether anything counted below offers or uses the plan.
+	InUse bool `json:"inUse" yaml:"inUse"`
+
+	// Publications How many APIs offer the plan in a publication (each API once).
+	Publications int `json:"publications" yaml:"publications"`
+
+	// RestApis How many REST APIs list the plan in their configuration.
+	RestApis int `json:"restApis" yaml:"restApis"`
+
+	// Subscriptions How many subscriptions use the plan.
+	Subscriptions int `json:"subscriptions" yaml:"subscriptions"`
 }
 
 // TimeUnit Time unit for API key expiration duration
@@ -4996,6 +6052,69 @@ type UserAPIKeyListResponse struct {
 	Pagination Pagination       `json:"pagination" yaml:"pagination"`
 }
 
+// ValidateGraphQLSchemaMultipartRequest defines model for ValidateGraphQLSchemaMultipartRequest.
+type ValidateGraphQLSchemaMultipartRequest struct {
+	// Metadata JSON-encoded ValidateGraphQLSchemaRequest.
+	Metadata string `json:"metadata" yaml:"metadata"`
+
+	// SdlFile The GraphQL SDL document as a file upload. Required when
+	// `schemaSource` is `file`; must be omitted otherwise.
+	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequest defines model for ValidateGraphQLSchemaRequest.
+type ValidateGraphQLSchemaRequest struct {
+	// SchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+	// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+	// supplies the schema to resolve.
+	SchemaSource *ValidateGraphQLSchemaRequestSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form, when `schemaSource` is `inline` (or the uploaded file's content, when `file`).
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to fetch the SDL from, when `schemaSource` is `url`.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// Upstream Only relevant when `schemaSource` is `introspection` (explicit or
+	// inferred) — unlike `GraphQLAPI.upstream`, this is not required,
+	// since a validation request for `inline`/`url`/`file` has no use
+	// for it.
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+}
+
+// ValidateGraphQLSchemaRequestSchemaSource Same semantics as `GraphQLAPI.schemaSource` — declares which of
+// `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+// supplies the schema to resolve.
+type ValidateGraphQLSchemaRequestSchemaSource string
+
+// ValidateGraphQLSchemaResponse defines model for ValidateGraphQLSchemaResponse.
+type ValidateGraphQLSchemaResponse struct {
+	// IntrospectionMode Only set when `resolved` is `true`.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Message A generic explanation, set only when `resolved` is `false`. Never
+	// the specific parser/fetch/introspection failure reason — reuses
+	// the same sterile message `GraphQLAPISchemaResolveFailed` uses
+	// elsewhere (`error-handling.md`).
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+
+	// Resolved Whether the declared schemaSource actually resolved to a usable schema.
+	Resolved bool `json:"resolved" yaml:"resolved"`
+
+	// Sdl The resolved SDL text when `resolved` is `true`; empty otherwise.
+	Sdl string `json:"sdl" yaml:"sdl"`
+
+	// SdlErrors Set only when `resolved` is `false` and the failure was a parse
+	// error on SDL text the caller effectively authored: `schemaSource`
+	// `inline`/`file` always, and `url` once its fetch itself succeeded.
+	// Unlike `message`, these are safe to show verbatim — they describe
+	// the caller's own document, not a network outcome. Never set for a
+	// `url` fetch failure or an `introspection` failure, since revealing
+	// those could map internal topology (`error-handling.md`,
+	// `ssrf-prevention.md`).
+	SdlErrors *[]GraphQLSdlValidationIssue `json:"sdlErrors,omitempty" yaml:"sdlErrors,omitempty"`
+}
+
 // ValidateOpenAPIResponse defines model for ValidateOpenAPIResponse.
 type ValidateOpenAPIResponse struct {
 	// Content The exact bytes the validator ran against. Always echoed for file
@@ -5057,6 +6176,9 @@ type DeploymentId = openapi_types.UUID
 
 // DeploymentStatusQ defines model for deploymentStatus-Q.
 type DeploymentStatusQ string
+
+// DisplayNameQ defines model for displayName-Q.
+type DisplayNameQ = string
 
 // DocId defines model for docId.
 type DocId = string
@@ -5283,7 +6405,7 @@ type SaveApiPublicationDraftThumbnailMultipartBody struct {
 
 // ListApiPublicationsParams defines parameters for ListApiPublications.
 type ListApiPublicationsParams struct {
-	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
+	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
 	ApiType ApiTypeQ `form:"apiType" json:"apiType" yaml:"apiType"`
 
 	// ApiId The API's handle, unique per organization within its own type.
@@ -5438,6 +6560,81 @@ type ListGatewayTokensParams struct {
 	// Offset Zero-based index of the first item to return.
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
+
+// ListGraphQLAPIsParams defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParams struct {
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
+	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListGraphQLAPIsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListGraphQLAPIsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListGraphQLAPIsParamsSortBy defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParamsSortBy string
+
+// ListGraphQLAPIsParamsSortOrder defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParamsSortOrder string
+
+// GetGraphQLAPIBuildsParams defines parameters for GetGraphQLAPIBuilds.
+type GetGraphQLAPIBuildsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+}
+
+// GetGraphQLAPIDeploymentsParams defines parameters for GetGraphQLAPIDeployments.
+type GetGraphQLAPIDeploymentsParams struct {
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
+	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
+	Status *GetGraphQLAPIDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// GetGraphQLAPIDeploymentsParamsStatus defines parameters for GetGraphQLAPIDeployments.
+type GetGraphQLAPIDeploymentsParamsStatus string
+
+// RestoreGraphQLAPIDeploymentParams defines parameters for RestoreGraphQLAPIDeployment.
+type RestoreGraphQLAPIDeploymentParams struct {
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// UndeployGraphQLAPIDeploymentParams defines parameters for UndeployGraphQLAPIDeployment.
+type UndeployGraphQLAPIDeploymentParams struct {
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// GetGraphQLAPIGatewaysParams defines parameters for GetGraphQLAPIGateways.
+type GetGraphQLAPIGatewaysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// AddGatewaysToGraphQLAPIJSONBody defines parameters for AddGatewaysToGraphQLAPI.
+type AddGatewaysToGraphQLAPIJSONBody = []AddGatewayToRESTAPIRequest
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
@@ -5658,6 +6855,18 @@ type ListUserAPIKeysParams struct {
 // ListUserAPIKeysParamsType defines parameters for ListUserAPIKeys.
 type ListUserAPIKeysParamsType string
 
+// ListMetersParams defines parameters for ListMeters.
+type ListMetersParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
 	// Limit Maximum number of items to return per page.
@@ -5717,6 +6926,17 @@ type ListRESTAPIsParamsSortBy string
 
 // ListRESTAPIsParamsSortOrder defines parameters for ListRESTAPIs.
 type ListRESTAPIsParamsSortOrder string
+
+// ListRESTAPIVersionsParams defines parameters for ListRESTAPIVersions.
+type ListRESTAPIVersionsParams struct {
+	// DisplayName **Display name** shared by every version of a REST API. Matched exactly
+	// (case-sensitive) and scoped to the organization in the JWT token.
+	//
+	// Must hold at least one non-whitespace character; an empty or
+	// whitespace-only value is a 400. Surrounding whitespace is trimmed
+	// before the lookup, so it is accepted but not significant.
+	DisplayName DisplayNameQ `form:"displayName" json:"displayName" yaml:"displayName"`
+}
 
 // GetBuildsParams defines parameters for GetBuilds.
 type GetBuildsParams struct {
@@ -5788,7 +7008,13 @@ type ListSubscriptionPlansParams struct {
 
 	// Query Case-insensitive substring filter matched against the resource display name and id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+
+	// Status Only the plans with this status (ACTIVE, INACTIVE)
+	Status *ListSubscriptionPlansParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
 }
+
+// ListSubscriptionPlansParamsStatus defines parameters for ListSubscriptionPlans.
+type ListSubscriptionPlansParamsStatus string
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
 type ListSubscriptionsParams struct {
@@ -5889,6 +7115,30 @@ type CreateGatewayJSONRequestBody = CreateGatewayRequest
 // UpdateGatewayJSONRequestBody defines body for UpdateGateway for application/json ContentType.
 type UpdateGatewayJSONRequestBody = GatewayResponse
 
+// CreateGraphQLAPIMultipartRequestBody defines body for CreateGraphQLAPI for multipart/form-data ContentType.
+type CreateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// ValidateGraphQLSchemaMultipartRequestBody defines body for ValidateGraphQLSchema for multipart/form-data ContentType.
+type ValidateGraphQLSchemaMultipartRequestBody = ValidateGraphQLSchemaMultipartRequest
+
+// UpdateGraphQLAPIMultipartRequestBody defines body for UpdateGraphQLAPI for multipart/form-data ContentType.
+type UpdateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// CreateGraphQLAPIKeyJSONRequestBody defines body for CreateGraphQLAPIKey for application/json ContentType.
+type CreateGraphQLAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// UpdateGraphQLAPIKeyJSONRequestBody defines body for UpdateGraphQLAPIKey for application/json ContentType.
+type UpdateGraphQLAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// CreateGraphQLAPIBuildJSONRequestBody defines body for CreateGraphQLAPIBuild for application/json ContentType.
+type CreateGraphQLAPIBuildJSONRequestBody = BuildRequest
+
+// DeployGraphQLAPIJSONRequestBody defines body for DeployGraphQLAPI for application/json ContentType.
+type DeployGraphQLAPIJSONRequestBody = DeployRequest
+
+// AddGatewaysToGraphQLAPIJSONRequestBody defines body for AddGatewaysToGraphQLAPI for application/json ContentType.
+type AddGatewaysToGraphQLAPIJSONRequestBody = AddGatewaysToGraphQLAPIJSONBody
+
 // CreateLLMProviderTemplateJSONRequestBody defines body for CreateLLMProviderTemplate for application/json ContentType.
 type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
 
@@ -5945,6 +7195,12 @@ type CreateMCPProxyBuildJSONRequestBody = BuildRequest
 
 // DeployMCPProxyJSONRequestBody defines body for DeployMCPProxy for application/json ContentType.
 type DeployMCPProxyJSONRequestBody = DeployRequest
+
+// CreateMeterJSONRequestBody defines body for CreateMeter for application/json ContentType.
+type CreateMeterJSONRequestBody = MeterRequest
+
+// UpdateMeterJSONRequestBody defines body for UpdateMeter for application/json ContentType.
+type UpdateMeterJSONRequestBody = MeterRequest
 
 // RegisterOrganizationJSONRequestBody defines body for RegisterOrganization for application/json ContentType.
 type RegisterOrganizationJSONRequestBody = Organization

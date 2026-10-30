@@ -34,6 +34,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/api-platform/tests/framework/core/actor"
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
@@ -338,7 +339,8 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 		platformAPIDeleter(secondOrganization, "/api/v0.9/rest-apis"))
 	reg.RegisterDeleter(managementportal.KindSecondOrganizationGateway,
 		platformAPIDeleter(secondOrganization, "/api/v0.9/gateways"))
-	portalAuth := &apiPortalAuth{topo: topo, client: client, cookies: map[string]string{}}
+	portalClient := httpx.NewClient(httpx.Options{MaxRetries: 1, TLSClientConfig: shared.APIPortalClientTLS()})
+	portalAuth := &apiPortalAuth{topo: topo, client: portalClient, cookies: map[string]string{}}
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalAPI, portalAPIDeleter(portalAuth, "apis"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalMCP, portalAPIDeleter(portalAuth, "mcp-servers"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalApplication, portalAPIDeleter(portalAuth, "applications"))
@@ -347,6 +349,13 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalView, portalAPIDeleter(portalAuth, "views"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalLabel, portalAPIDeleter(portalAuth, "labels"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalWorkflow, portalAPIWorkflowDeleter(portalAuth))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalSubscriptionPlan, portalAPIDeleter(portalAuth, "subscription-plans"))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalMeter, portalAPIDeleter(portalAuth, "meters"))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalBilling, portalAPIPathDeleter(portalAuth,
+		func(string) string { return "/billing-configuration" }))
+	developerAuth := &apiPortalAuth{topo: topo, client: portalClient, cookies: map[string]string{}, user: actor.Developer()}
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalPaidSubscription, portalAPIPathDeleter(developerAuth,
+		func(id string) string { return "/subscriptions/" + url.PathEscape(id) + "?immediate=true" }))
 }
 
 func platformAPITLSConfig() *tls.Config {
@@ -453,10 +462,19 @@ type apiPortalAuth struct {
 	topo    *frameworkruntime.Topology
 	client  *httpx.Client
 	cookies map[string]string
+	// user signs in; the administrator when it is empty.
+	user actor.Credentials
+}
+
+func (a *apiPortalAuth) credentials() actor.Credentials {
+	if a.user.Username != "" {
+		return a.user
+	}
+	return a.topo.Admin
 }
 
 func (a *apiPortalAuth) baseURL() (string, error) {
-	return a.topo.URL("api-portal", "http")
+	return a.topo.URL("api-portal", "https")
 }
 
 func (a *apiPortalAuth) cookieHeader() string {
@@ -490,9 +508,10 @@ func (a *apiPortalAuth) authHeaders(ctx context.Context) (map[string]string, err
 			return nil, fmt.Errorf("loading API Portal login: %w", err)
 		}
 		a.rememberCookies(resp)
+		credentials := a.credentials()
 		form := url.Values{
-			"username": {a.topo.Admin.Username},
-			"password": {a.topo.Admin.Password},
+			"username": {credentials.Username},
+			"password": {credentials.Password},
 		}
 		resp, err = a.client.Do(ctx, httpx.Request{
 			Method: http.MethodPost, URL: loginURL,
@@ -544,6 +563,33 @@ func portalAPIDeleter(auth *apiPortalAuth, collection string) cleanup.Deleter {
 		resp, err := auth.client.Do(ctx, httpx.Request{
 			Method:  http.MethodDelete,
 			URL:     base + "/api-portal/api/v0.9/" + collection + "/" + url.PathEscape(res.ID),
+			Headers: headers,
+		}, 1, 0)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
+			return nil
+		}
+		return fmt.Errorf("cleanup: %s", resp.Describe())
+	}
+}
+
+// portalAPIPathDeleter returns a Deleter issuing DELETE on the path target gives for a resource,
+// under the API Portal's REST API. A 404 means the resource is already gone.
+func portalAPIPathDeleter(auth *apiPortalAuth, target func(id string) string) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
+		base, err := auth.baseURL()
+		if err != nil {
+			return err
+		}
+		headers, err := auth.authHeaders(ctx)
+		if err != nil {
+			return err
+		}
+		resp, err := auth.client.Do(ctx, httpx.Request{
+			Method:  http.MethodDelete,
+			URL:     base + "/api-portal/api/v0.9" + target(res.ID),
 			Headers: headers,
 		}, 1, 0)
 		if err != nil {

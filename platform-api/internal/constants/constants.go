@@ -81,6 +81,10 @@ const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 // artifact's kind column, this one is the lowercase-hyphenated URL segment.
 const PublicationAPITypeRestAPI = "rest-api"
 
+// PublicationAPITypeGraphQLAPI is PublicationAPITypeRestAPI's counterpart for
+// GraphQLApi: the URL segment its publication routes use.
+const PublicationAPITypeGraphQLAPI = "graphql-api"
+
 // Kinds of artifacts
 const (
 	RestApi             = "RestApi"
@@ -91,6 +95,11 @@ const (
 	LLMProxy            = "LlmProxy"
 	MCPProxy            = "Mcp"
 	AgentProxy          = "AgentProxy"
+	// GraphQLApi is a core artifact kind (like RestApi/LlmProvider/LlmProxy/Mcp) —
+	// always compiled in, pre-seeded in NewArtifactTableRegistry(), no build tag.
+	// This is a different axis from the APITypeGraphQL/APISubTypeGraphQL dev-portal
+	// content-type constants below — do not conflate the two.
+	GraphQLApi = "GraphQLApi"
 )
 
 // GatewayKindAgent is the gateway artifact kind an AgentProxy is deployed as.
@@ -146,6 +155,22 @@ const AdminRole = "admin"
 // internal UUID has no entry in user_idp_references — an anonymous write, or
 // a user whose mapping was removed.
 const DeletedUser = "deleted_user"
+
+// MigrationActorSub is the IdP subject (user_idp_references.idp_id) of the
+// synthetic user the v1→v2 migration client acts as: it seeds the row under
+// this subject and stamps that user as created_by / updated_by / performed_by
+// on every row it writes (organizations, gateways, artifacts, API keys,
+// deployments, deployment status, mappings, secrets), so audit fields render
+// it, the reverse migration maps it back to v1's empty creator, and
+// platform-api recognises a migrated row by a creator that resolves to it
+// (gatewaytranslator.KeyEventActor). Namespaced so no IdP can issue it as a
+// real subject.
+const MigrationActorSub = "system:platform-api-migration"
+
+// LegacyMigrationActorSub is the subject the migration client seeded before
+// MigrationActorSub was namespaced. Databases migrated with those builds carry
+// it, so code that recognises the migration actor accepts both.
+const LegacyMigrationActorSub = "platform-api-migration"
 
 // Deployment limit constants
 const (
@@ -281,6 +306,7 @@ var ValidArtifactKinds = map[string]bool{
 	LLMProxy:    true,
 	MCPProxy:    true,
 	AgentProxy:  true,
+	GraphQLApi:  true,
 }
 
 // Throttle limit unit constants

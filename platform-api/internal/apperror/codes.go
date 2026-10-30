@@ -223,6 +223,14 @@ const (
 	CodeWebBrokerAPIExists   = "WEBBROKER_API_EXISTS"
 )
 
+// GraphQL API domain codes (GraphQL is a core artifact kind, not a plugin).
+const (
+	CodeGraphQLAPINotFound                   = "GRAPHQL_API_NOT_FOUND"
+	CodeGraphQLAPIExists                     = "GRAPHQL_API_EXISTS"
+	CodeGraphQLAPISchemaResolveFailed        = "GRAPHQL_API_SCHEMA_RESOLVE_FAILED"
+	CodeGraphQLAPIDeploymentValidationFailed = "GRAPHQL_API_DEPLOYMENT_VALIDATION_FAILED"
+)
+
 // HMAC secret domain codes (WebSub subscriber callback signing secrets).
 // HMAC_SECRET_NOT_CONFIGURED is a 503 rather than a 500: the encryption key is
 // a deployment-time setting, so the condition is transient from the client's
@@ -255,4 +263,24 @@ const (
 	// CodeAPIPublicationDraftChanged: the draft was saved while a publish of it
 	// was in flight, so the copy sent to the portal is no longer the draft.
 	CodeAPIPublicationDraftChanged = "PUBLICATION_DRAFT_CHANGED"
+	// CodeAPIPublicationPlanPricingConflict: the API Portal already has a plan with
+	// a published plan's handle, priced differently. The portal cannot change a
+	// plan's pricing, so the plan is not published there.
+	CodeAPIPublicationPlanPricingConflict = "PUBLICATION_PLAN_PRICING_CONFLICT"
+	// CodeAPIPublicationMeterConflict: the API Portal already has a meter with the same id as one a
+	// published plan charges for, but with other settings. The plan is not published there.
+	CodeAPIPublicationMeterConflict = "PUBLICATION_METER_CONFLICT"
+
+	// Monetization: meters and plan pricing made in the Management Portal are kept here and reach an
+	// API Portal with the plans published there.
+	CodeMeterNotFound                   = "METER_NOT_FOUND"
+	CodeMeterExists                     = "METER_EXISTS"
+	CodeMeterInUse                      = "METER_IN_USE"
+	CodeSubscriptionPlanPricingNotFound = "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"
+	// CodeSubscriptionPlanPricingLocked: a request that would change a plan's pricing, which is set
+	// once.
+	CodeSubscriptionPlanPricingLocked = "SUBSCRIPTION_PLAN_PRICING_LOCKED"
+	// CodeSubscriptionPlanInUse: a plan to delete, or whose name or limit would change, is still
+	// offered or used here.
+	CodeSubscriptionPlanInUse = "SUBSCRIPTION_PLAN_IN_USE"
 )

@@ -139,7 +139,8 @@ type Block struct {
 	Parallel int `yaml:"parallel"`
 
 	// Components are the systems this block runs. A component may declare a database
-	// matrix, which expands the block into one variant per engine.
+	// matrix, which expands the block into one variant per engine. Two or more components
+	// may each declare one, expanding the block into their product instead.
 	Components []Component `yaml:"components"`
 
 	// Wiring configures components by name through their typed wiring specifications.
@@ -147,7 +148,16 @@ type Block struct {
 
 	// Runners are the feature groups to execute.
 	Runners []Runner `yaml:"runners"`
+
+	// RunnersFrom names a source that supplies the block's runners instead of Runners.
+	// The only supported source is RunnersFromPolicies: each policy in the block's
+	// platform-gateway addPoliciesFrom tree declares its own runners in
+	// <policy>/it/it.yaml.
+	RunnersFrom string `yaml:"runnersFrom"`
 }
+
+// RunnersFromPolicies takes a block's runners from the policy descriptors in its policy tree.
+const RunnersFromPolicies = "policies"
 
 // Component selects and configures one registered component for a block.
 type Component struct {
@@ -227,8 +237,7 @@ type DBSpec struct {
 	// Variant is the selected supported variant key for scalar values.
 	Variant string
 
-	// Matrix is the engine list, set by the mapping form. At most one component per block
-	// may set it — see expandMatrix.
+	// Matrix is the engine list, set by the mapping form. Two or more components may each set one.
 	Matrix []components.DBType
 
 	// Variants contains versioned variant keys from YAML matrix values.

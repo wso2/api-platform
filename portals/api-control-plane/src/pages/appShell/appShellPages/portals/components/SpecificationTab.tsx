@@ -16,13 +16,13 @@
  * under the License.
  */
 
-import { lazy, Suspense, useState } from 'react';
-import { Alert, Box, Button, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
-import { Pencil } from '@wso2/oxygen-ui-icons-react';
+import { lazy, Suspense } from 'react';
+import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../../apis/create/utils/specText';
+import type { DefinitionFormat } from '../utils/storedDefinition';
 
 /**
  * Same lazy split as `SpecSourceEditor`, and deliberately the same module:
@@ -39,7 +39,7 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel',
     defaultMessage: 'API definition ({format})',
     description:
-      'Accessible name for the editor holding the definition\u2019s own text. {format} is JSON or YAML.',
+      'Accessible name for the editor holding the definition\u2019s own text. {format} is JSON, YAML or GraphQL.',
   },
   editorLoading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading',
@@ -48,35 +48,40 @@ const messages = defineMessages({
   malformed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed',
     defaultMessage: 'This is not valid {format}: {detail}',
-    description: '{format} is JSON or YAML; {detail} is the parser’s own message naming the line.',
+    description:
+      '{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line.',
   },
   formatLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel',
     defaultMessage: 'Source format',
     description: 'Accessible name for the YAML / JSON toggle buttons.',
   },
-  edit: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit',
-    defaultMessage: 'Edit',
-  },
 });
 
 /** Format names are the same in every language. */
-const FORMAT_LABELS: Record<SpecFormat, string> = { json: 'JSON', yaml: 'YAML' };
+const FORMAT_LABELS: Record<DefinitionFormat, string> = {
+  graphql: 'GraphQL',
+  json: 'JSON',
+  yaml: 'YAML',
+};
 
 export type SpecificationTabProps = {
   disabled?: boolean;
-  /** The serialization the text is in, which is also the one it is parsed as on save. */
-  format: SpecFormat;
+  /**
+   * The serialization the text is in, which is also the one it is parsed as on
+   * save. A GraphQL SDL has only one, so it shows no JSON/YAML switch.
+   */
+  format: DefinitionFormat;
   /**
    * Every keystroke, or a format switch that re-prints the text, with the buffer's full text.
    * Never called when `readOnly`: the caller re-prints the text itself on `onFormatChange`.
    */
   onChange?: (text: string) => void;
-  onFormatChange: (format: SpecFormat) => void;
+  /** A JSON/YAML switch; never called for a GraphQL SDL, which has no other format. */
+  onFormatChange?: (format: SpecFormat) => void;
   /** The parser's own complaint, when the current buffer doesn't read in its format. */
   parseError?: string;
-  /** Shows the definition without an Edit button, for a version that can't be changed. */
+  /** Shows the definition without letting it be edited, for a version that can't be changed. */
   readOnly?: boolean;
   /** The definition's raw text, in `format`. */
   text: string;
@@ -85,10 +90,10 @@ export type SpecificationTabProps = {
 /**
  * "Specification" — the draft's OpenAPI definition (`.../draft/definition`).
  * The source panel of the API Definition page, reduced to what publishing needs:
- * a JSON/YAML switch, an Edit button and the editor. Opens read-only once there
- * is a definition to protect; import, download and the resources view stay with
- * the API Definition page, and the definition is saved with the rest of the
- * draft, so there is no Save here.
+ * a JSON/YAML switch and the editor. It is editable unless `readOnly`, since
+ * opening the draft is already the choice to edit; import, download and the
+ * resources view stay with the API Definition page, and the definition is saved
+ * with the rest of the draft, so there is no Save here.
  */
 export function SpecificationTab({
   disabled,
@@ -100,69 +105,49 @@ export function SpecificationTab({
   text,
 }: SpecificationTabProps) {
   const intl = useIntl();
-  const [isEditing, setIsEditing] = useState(false);
-
-  const hasText = text.trim() !== '';
-  // A definition that failed to parse sends the user back here to fix it, so
-  // it stays editable without another click.
-  const editable = !readOnly && (isEditing || !hasText || Boolean(parseError));
 
   const switchFormat = (next: SpecFormat) => {
-    if (next === format || disabled) return;
+    if (next === format || disabled || format === 'graphql') return;
     const parsed = parseSpecText(text, format);
     // A buffer that doesn't parse can't be re-printed; only the language
     // switches, and the error is reported when it is saved.
     if (parsed.status === 'parsed' && !readOnly) onChange?.(serializeSpec(parsed.spec, next));
-    onFormatChange(next);
-  };
-
-  // Pins `editable` open past the error clearing on this same keystroke.
-  const editText = (next: string) => {
-    setIsEditing(true);
-    onChange?.(next);
+    onFormatChange?.(next);
   };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <Stack
-        alignItems="center"
-        direction="row"
-        spacing={1}
-        sx={{
-          borderBottom: 1,
-          borderColor: 'divider',
-          flexShrink: 0,
-          justifyContent: 'flex-end',
-          px: 2,
-          py: 1,
-        }}
-      >
-        <ToggleButtonGroup
-          aria-label={intl.formatMessage(messages.formatLabel)}
-          color="primary"
-          disabled={disabled}
-          exclusive
-          onChange={(_event, next: SpecFormat | null) => {
-            if (next !== null) switchFormat(next);
+      {/* A GraphQL SDL has a single serialization, so there is nothing to switch between. */}
+      {format !== 'graphql' && (
+        <Stack
+          alignItems="center"
+          direction="row"
+          spacing={1}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            flexShrink: 0,
+            justifyContent: 'flex-end',
+            px: 2,
+            py: 1,
           }}
-          size="small"
-          value={format}
         >
-          <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
-          <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
-        </ToggleButtonGroup>
-        {!readOnly && !editable && (
-          <Button
+          <ToggleButtonGroup
+            aria-label={intl.formatMessage(messages.formatLabel)}
+            color="primary"
             disabled={disabled}
-            onClick={() => setIsEditing(true)}
+            exclusive
+            onChange={(_event, next: SpecFormat | null) => {
+              if (next !== null) switchFormat(next);
+            }}
             size="small"
-            startIcon={<Pencil size={16} />}
-            variant="outlined"
+            value={format}
           >
-            <FormattedMessage {...messages.edit} />
-          </Button>
-        )}
-      </Stack>
+            <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
+            <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
+          </ToggleButtonGroup>
+        </Stack>
+      )}
       {parseError && (
         <Alert severity="error" sx={{ borderRadius: 0, flexShrink: 0 }}>
           <FormattedMessage
@@ -176,8 +161,8 @@ export function SpecificationTab({
           <CodeEditor
             ariaLabel={intl.formatMessage(messages.editorLabel, { format: FORMAT_LABELS[format] })}
             language={format}
-            onChange={editText}
-            readOnly={disabled || !editable}
+            onChange={onChange}
+            readOnly={disabled || readOnly}
             value={text}
           />
         </Suspense>

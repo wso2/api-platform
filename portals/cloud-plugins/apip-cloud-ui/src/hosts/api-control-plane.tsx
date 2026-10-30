@@ -7,13 +7,14 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
+import { PageContent } from '@wso2/oxygen-ui';
 import {
   Activity,
   BarChart3,
   Gauge,
   Layers,
-  PanelTop,
-  ScrollText,
+  Logs,
+  PanelsTopLeft,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
 
@@ -30,15 +31,19 @@ import {
   ProjectPipelinesFeature,
 } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
+import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import {
   HEADER_ACTIONS_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
+  PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
+import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
+import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
 import { filterExtensionsForRuntime } from '../runtimeFlags';
@@ -57,6 +62,27 @@ export const cloudBrandLogo: BrandLogo = {
  * fresh array on every render would make that request repeat.
  */
 const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
+
+/**
+ * The API Deploy override. The built-in Deploy page sits inside `AppPage`, which
+ * supplies the page padding and breadcrumbs, so the scope picker shown before an
+ * API is in scope gets that same container here; without it the picker card
+ * renders flush against the shell. Once the API is in scope `DeployFeature`
+ * renders bare, since it brings its own `PageContent` and would be padded twice.
+ */
+function CloudDeployPage({ port }: { port: CloudHostPort }) {
+  const { isApiScope } = useConsoleScope();
+  const gate = (
+    <ScopeGate
+      prompt="Deployments are made for a single API."
+      requires="api"
+      to={routes.apiDeploy}
+    >
+      <DeployFeature port={port} />
+    </ScopeGate>
+  );
+  return isApiScope ? gate : <AppPage>{gate}</AppPage>;
+}
 
 /** Where the project/API notices send a reader for the organization's logs. */
 const observabilityLogsPath = (orgHandle: string) =>
@@ -90,6 +116,7 @@ const observabilityLogsPath = (orgHandle: string) =>
  * to the platform-api REST endpoints.
  *
  * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
+ * and the GraphQL API Deploy page via `page.graphqlApiDeploy` with the same feature,
  * the same way `gateways` does: the nav entry and route stay native, and only
  * what renders there changes. It is the one API-scoped feature here, so it needs
  * the API in scope, which the Port carries as `apiHandle`. Because the override
@@ -111,7 +138,7 @@ const observabilityLogsPath = (orgHandle: string) =>
  *
  * `observability` claims the built-in Observability item, which is per-API, and
  * stands in for it at organization level as a disclosure with two pages of its
- * own: Logs, which reads `/logs` (served by apip-bml), and a Metrics
+ * own: Logs, which reads `/logs` (served by apip-platform-api), and a Metrics
  * placeholder. Its `aliases` keep the old `/logs` URL alive as a redirect.
  *
  * Inside a project and inside an API there are no logs to show — a gateway's
@@ -122,6 +149,7 @@ const observabilityLogsPath = (orgHandle: string) =>
  * (Metrics, Alerts) in place and replaces only its Logs page, through
  * `PAGE_API_OBSERVABILITY_LOGS_SLOT`.
  */
+
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
     id: 'trial-status',
@@ -192,14 +220,21 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // Settings-tab pipeline, which only match `sidebar.*` / `settings.*.tabs`.
         order: 0,
         routePath: 'deploy',
-        render: (port) => (
-          <ScopeGate
-            prompt="Deployments are made for a single API."
-            requires="api"
-            to={routes.apiDeploy}
-          >
-            <DeployFeature port={port} />
-          </ScopeGate>
+        render: (port) => <CloudDeployPage port={port} />,
+        label: 'Deploy',
+        level: 'api',
+      },
+      {
+        // The same Deploy feature for a GraphQL API, so both kinds deploy through
+        // one page. Its route is reached only with the API in its URL, which is
+        // where the handle comes from — the Port's `apiHandle` is REST-only — so
+        // there is no scope to gate on. `routePath`/`level` are inert, as above.
+        id: 'graphql-api-deploy',
+        slot: PAGE_GRAPHQL_API_DEPLOY_SLOT,
+        order: 0,
+        routePath: 'deploy',
+        render: (port, artifactHandle) => (
+          <DeployFeature artifactHandle={artifactHandle} kind="GraphQLApi" port={port} />
         ),
         label: 'Deploy',
         level: 'api',
@@ -239,7 +274,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // here — every provisioned gateway lives in one shared project, and a
         // gateway's log line carries no API identity to attribute it by. That is
         // why the project entry below is a notice and not a second console; when
-        // RBAC lands, project scoping has to be a server-side filter in apip-bml.
+        // RBAC lands, project scoping has to be a server-side filter in apip-platform-api.
         level: 'organization',
         children: [
           {
@@ -250,7 +285,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             routePath: 'logs',
             render: (port) => <LogsFeature port={port} />,
             label: 'Logs',
-            icon: <ScrollText size={20} />,
+            icon: <Logs size={20} />,
           },
           {
             id: 'observability-metrics',
@@ -350,7 +385,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
         label: 'Portals',
-        icon: <PanelTop size={20} />,
+        icon: <PanelsTopLeft size={20} />,
         level: 'organization',
       },
     ],
@@ -382,12 +417,18 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             !typed.isApiScope
           );
         },
+        // `InsightsFeature` brings its own `PageContent` on AI Workspace (whose
+        // shell doesn't wrap the outlet either) but not here, so this slot's
+        // route supplies it — ACP's shell adds none, same as the `deploy`
+        // override above.
         render: (port) => (
-          <InsightsFeature
-            port={port}
-            forcedScopeLevel="organization"
-            embedProfile="api-control-plane"
-          />
+          <PageContent fullWidth>
+            <InsightsFeature
+              port={port}
+              forcedScopeLevel="organization"
+              embedProfile="api-control-plane"
+            />
+          </PageContent>
         ),
       },
       {
@@ -408,11 +449,13 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
           return Boolean(typed.isProjectScope) && !typed.isApiScope;
         },
         render: (port) => (
-          <InsightsFeature
-            port={port}
-            forcedScopeLevel="project"
-            embedProfile="api-control-plane"
-          />
+          <PageContent fullWidth>
+            <InsightsFeature
+              port={port}
+              forcedScopeLevel="project"
+              embedProfile="api-control-plane"
+            />
+          </PageContent>
         ),
       },
     ],

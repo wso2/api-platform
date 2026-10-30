@@ -20,12 +20,15 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
@@ -99,6 +102,47 @@ func createTestSchema(db *database.DB) error {
 	}
 
 	return nil
+}
+
+// schemaDB is a SQLite database opened through database.NewConnection, as the
+// server opens one (foreign keys on, UTC timestamps), with the real schema
+// applied through InitSchema.
+type schemaDB struct {
+	db *database.DB
+}
+
+func openSchemaDB(t *testing.T) *schemaDB {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := &config.Database{Driver: "sqlite3", Path: filepath.Join(t.TempDir(), "test.db")}
+	db, err := database.NewConnection(cfg, logger)
+	if err != nil {
+		t.Fatalf("open SQLite database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.InitSchema("../database/schema.sql", logger); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+	return &schemaDB{db: db}
+}
+
+// count returns the number of rows in table whose col equals val.
+func (s *schemaDB) count(t *testing.T, table, col, val string) int {
+	t.Helper()
+	var n int
+	q := s.db.Rebind(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s = ?", table, col))
+	if err := s.db.QueryRow(q, val).Scan(&n); err != nil {
+		t.Fatalf("count(%s) failed: %v", table, err)
+	}
+	return n
+}
+
+// exec runs a `?`-placeholder statement.
+func (s *schemaDB) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+	if _, err := s.db.Exec(s.db.Rebind(query), args...); err != nil {
+		t.Fatalf("exec failed: %v\nquery: %s", err, query)
+	}
 }
 
 // createTestAPI creates a test API in the database with specific UUIDs

@@ -45,6 +45,17 @@ data:
     shutdown_timeout = {{ $gc.server.shutdown_timeout | quote }}
     gateway_id = {{ $gc.server.gateway_id | quote }}
     skip_invalid_deployments_on_startup = {{ $gc.server.skip_invalid_deployments_on_startup }}
+    {{- $serverTls := default (dict) $gc.server.tls }}
+
+    [controller.server.tls]
+    enabled = {{ $serverTls.enabled | default false }}
+    port = {{ $serverTls.port | default 9093 }}
+    cert_path = {{ $serverTls.cert_path | default "" | quote }}
+    key_path = {{ $serverTls.key_path | default "" | quote }}
+    minimum_protocol_version = {{ $serverTls.minimum_protocol_version | default "TLS1_2" | quote }}
+    maximum_protocol_version = {{ $serverTls.maximum_protocol_version | default "TLS1_3" | quote }}
+    ciphers = {{ $serverTls.ciphers | default "" | quote }}
+    ecdh_curves = {{ $serverTls.ecdh_curves | default "X25519MLKEM768,X25519,P-256" | quote }}
 
     [controller.admin_server]
     enabled = {{ $gc.admin_server.enabled }}
@@ -236,6 +247,8 @@ data:
     minimum_protocol_version = {{ $router.downstream_tls.minimum_protocol_version | quote }}
     maximum_protocol_version = {{ $router.downstream_tls.maximum_protocol_version | quote }}
     ciphers = {{ $router.downstream_tls.ciphers | quote }}
+    mtls_requires_dedicated_hostname = {{ $router.downstream_tls.mtls_requires_dedicated_hostname | default false }}
+    client_certificate_request = {{ $router.downstream_tls.client_certificate_request | default "mtls_hostnames" | quote }}
 
     [router.upstream.tls]
     minimum_protocol_version = {{ $router.upstream.tls.minimum_protocol_version | quote }}
@@ -245,6 +258,7 @@ data:
     custom_certs_path = {{ $router.upstream.tls.custom_certs_path | quote }}
     verify_host_name = {{ $router.upstream.tls.verify_host_name }}
     disable_ssl_verification = {{ $router.upstream.tls.disable_ssl_verification }}
+    present_default_identity = {{ if hasKey $router.upstream.tls "present_default_identity" }}{{ $router.upstream.tls.present_default_identity }}{{ else }}true{{ end }}
 
     [router.upstream.timeouts]
     route_timeout_ms = {{ $router.upstream.timeouts.route_timeout_ms }}
@@ -263,6 +277,7 @@ data:
     server_header_value = {{ $router.http_listener.server_header_value | quote }}
     per_connection_buffer_limit_bytes = {{ $router.http_listener.per_connection_buffer_limit_bytes | int64 }}
     disable_path_normalization = {{ $router.http_listener.disable_path_normalization }}
+    return_request_id_in_response = {{ $router.http_listener.return_request_id_in_response }}
     path_with_escaped_slashes_action = {{ $router.http_listener.path_with_escaped_slashes_action | quote }}
 
     [router.http_listener.timeouts]
@@ -791,4 +806,11 @@ data:
     {{- if .Values.gateway.config.mcp }}
     [mcp]
     append_resource_path_to_backend = {{ .Values.gateway.config.mcp.append_resource_path_to_backend }}
+    {{- end }}
+
+    {{- with .Values.gateway.config.signing }}
+    [signing]
+    {{- if hasKey . "jwks_endpoint_enabled" }}
+    jwks_endpoint_enabled = {{ .jwks_endpoint_enabled }}
+    {{- end }}
     {{- end }}

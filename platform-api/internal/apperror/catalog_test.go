@@ -45,6 +45,8 @@ var messageArity = map[string]int{
 	CodeOf(MCPProxyDeploymentValidationFailed):    1,
 	CodeOf(AgentProxyUpstreamUnreachable):         1,
 	CodeOf(AgentProxyDeploymentValidationFailed):  1,
+	CodeOf(GraphQLAPIDeploymentValidationFailed):  1,
+	CodeOf(GraphQLAPIExists):                      1,
 	CodeOf(DeploymentNotActive):                   1,
 	CodeOf(DeploymentKindUnsupportedByGateway):    2,
 	CodeOf(BuildLimitReached):                     1,
@@ -55,7 +57,12 @@ var messageArity = map[string]int{
 	CodeOf(APIPublicationValidationFailed):        1,
 	CodeOf(APIPublicationPortalConflict):          1,
 	CodeOf(APIPublicationStateConflict):           1,
+	CodeOf(APIPublicationPlanPricingConflict):     1,
+	CodeOf(APIPublicationMeterConflict):           1,
 	CodeOf(PayloadTooLarge):                       1,
+	CodeOf(MeterExists):                           1,
+	CodeOf(MeterInUse):                            1,
+	CodeOf(SubscriptionPlanInUse):                 1,
 }
 
 // CodeOf makes the arity table read as a set of catalog references rather

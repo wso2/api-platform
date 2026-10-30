@@ -15,7 +15,7 @@
 # under the License.
 
 # Stage 1: Build
-FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 
@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o sample-service cmd/server/main.go
 
 # Stage 2: Runtime
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 
 COPY --from=builder /build/sample-service /sample-service
 

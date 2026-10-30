@@ -20,8 +20,11 @@ import { useMemo, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 
 import { ErrorState, LoadingState } from '@/components/StateViews';
-import type { SpecFormat } from '../../apis/create/utils/specText';
-import { reformatDefinition, type StoredDefinition } from '../utils/storedDefinition';
+import {
+  reformatDefinition,
+  type DefinitionFormat,
+  type StoredDefinition,
+} from '../utils/storedDefinition';
 import { SpecificationTab } from './SpecificationTab';
 
 const messages = defineMessages({
@@ -50,7 +53,7 @@ type PublishedSpecificationTabProps = {
  */
 export function PublishedSpecificationTab({ definition, failed, isLoading }: PublishedSpecificationTabProps) {
   const intl = useIntl();
-  const [chosenFormat, setChosenFormat] = useState<SpecFormat>();
+  const [chosenFormat, setChosenFormat] = useState<DefinitionFormat>();
   const format = chosenFormat ?? definition?.format ?? 'json';
   const text = useMemo(() => (definition ? reformatDefinition(definition, format) : ''), [definition, format]);
 

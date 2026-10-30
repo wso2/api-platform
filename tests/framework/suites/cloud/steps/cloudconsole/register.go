@@ -46,6 +46,7 @@ const (
 	keyProjectID        = "cloudProjectID"
 	keyGatewayID        = "cloudGatewayID"
 	keyGatewayEndpoint  = "cloudGatewayEndpoint"
+	keyGatewayEnv       = "cloudGatewayEnvironment"
 	keyAPIID            = "cloudAPIID"
 	keyDeploymentID     = "cloudDeploymentID"
 	keyEnvironmentName  = "cloudEnvironmentName"
@@ -132,7 +133,7 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 
 func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collection string, waitForNotFound bool) cleanup.Deleter {
 	return func(ctx context.Context, resource cleanup.Resource) error {
-		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPBML)
+		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 		if err != nil {
 			return err
 		}

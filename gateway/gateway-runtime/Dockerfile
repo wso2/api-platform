@@ -21,10 +21,10 @@
 
 # Envoy base image version — referenced by all stages that derive from envoyproxy/envoy.
 # Update here to bump Envoy across python-deps, debug, and production stages.
-ARG ENVOY_VERSION=v1.39.0
+ARG ENVOY_VERSION=v1.39.6
 
 # Stage 1: Builder Base
-FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -184,7 +184,7 @@ RUN if [ "$PYTHON_SDK_SOURCE" = "local" ]; then \
 RUN pip3 freeze --path /app/python-libs > /app/python-libs/requirements-lock.txt
 
 # Stage 3b: dlv installer (builds dlv for the debug stage)
-FROM golang:1.26.5-bookworm AS debug-dlv-builder
+FROM golang:1.26.10-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
@@ -237,7 +237,7 @@ ARG ENABLE_COVERAGE=false
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     tini \
     gettext-base \
     ca-certificates \
@@ -274,11 +274,13 @@ COPY --from=target LICENSE /app/LICENSE
 
 RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
+# Writable paths are owned by the root group with group perms matching the owner,
+# so OpenShift's arbitrary UID (always in GID 0) can write to them.
 RUN groupadd -r -g 10001 wso2 && \
     useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
     mkdir -p /home/wso2/conf/llm-pricing && \
-    chown -R wso2:wso2 /app /var/run/api-platform /coverage /home/wso2 && \
-    chmod -R 755 /app /var/run/api-platform /coverage /home/wso2
+    chown -R wso2:0 /app /var/run/api-platform /coverage /home/wso2 && \
+    chmod -R 775 /app /var/run/api-platform /coverage /home/wso2
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage

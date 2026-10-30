@@ -95,22 +95,30 @@ var (
 	portalApplicationKind           = cleanup.Kind{Name: "api-portal-application", Order: 30}
 	portalAPIKind                   = cleanup.Kind{Name: "api-portal-api", Order: 40}
 	portalSubscriptionPlanKind      = cleanup.Kind{Name: "api-portal-subscription-plan", Order: 50}
+	portalMeterKind                 = cleanup.Kind{Name: "api-portal-meter", Order: 55}
 	portalWebhookKind               = cleanup.Kind{Name: "api-portal-webhook-subscriber", Order: 60}
 )
 
 // Steps holds what every api-portal REST call needs.
 type Steps struct {
-	topo   *runtime.Topology
+	topo *runtime.Topology
+	// client calls api-portal, verifying its certificate.
 	client *httpx.Client
+	// controlPlane calls platform-api, verifying its certificate.
+	controlPlane *httpx.Client
 	// idp calls the testbench identity provider, verifying its certificate.
 	idp *httpx.Client
 }
 
 // Register binds the steps that drive api-portal's own REST API — subscription plans,
-// publishing an API, applications, subscriptions, and API keys. Requests go through the same
-// shared client every other suite request funnels through.
-func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.Client) {
-	s := &Steps{topo: topo, client: client}
+// publishing an API, applications, subscriptions, and API keys. Portal requests go through a
+// client that trusts the portal's certificate; the shared client every other suite request
+// funnels through trusts only the control plane's, and serves the calls made to platform-api.
+// It returns the function that removes a plan from the portal when the scenario ends, for the
+// control-plane steps that publish plans to it.
+func Register(sc *godog.ScenarioContext, topo *runtime.Topology, controlPlane *httpx.Client) func(ctx context.Context, handle string) error {
+	s := &Steps{topo: topo, controlPlane: controlPlane}
+	s.client = newPortalClient()
 	idp, idpErr := newIdentityProviderClient()
 	s.idp = idp
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
@@ -233,18 +241,18 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 		s.createMCPKey)
 	sc.Step(`^the subscription plan "([^"]*)" is synced to the API Portal$`, s.syncSubscriptionPlan)
 	sc.Step(`^the "([^"]*)" API is published to the API Portal offering plan "([^"]*)"$`, s.publishAPI)
+	registerPublication(sc, s)
 	sc.Step(`^an application subscribed to API "([^"]*)" plan "([^"]*)" is created in the API Portal, the token is stored as "([^"]*)" and the subscription is stored as "([^"]*)"$`,
 		s.subscribeToAPIAndStore)
 	sc.Step(`^an API key for API "([^"]*)" is generated in the API Portal, the value is stored as "([^"]*)" and the handle is stored as "([^"]*)"$`,
 		s.generateAPIKeyAndStore)
 	sc.Step(`^a Portal API key for API "([^"]*)" is generated, the value is stored as "([^"]*)" and the handle is stored as "([^"]*)"$`,
 		s.generatePortalAPIKeyAndStore)
-	sc.Step(`^a webhook subscriber targeting the control plane is registered in the API Portal$`,
+	sc.Step(`^a webhook subscriber targeting the control plane is registered in the API Portal(?: for events "([^"]*)")?$`,
 		s.registerWebhookSubscriber)
 
-	// Credential-lifecycle steps (see steps_devportal_lifecycle_test.go for the legacy reference
-	// these mirror): key expiry/revoke/regenerate and subscription plan-switch/token-regenerate/
-	// pause/resume/remove.
+	// Credential-lifecycle steps: key expiry/revoke/regenerate and subscription
+	// plan-switch/token-regenerate/pause/resume/remove.
 	sc.Step(`^the API key "([^"]*)" for API "([^"]*)" is regenerated with expiry "([^"]*)" in the API Portal and stored as "([^"]*)"$`,
 		s.regenerateKeyExpiryAndStore)
 	sc.Step(`^the API key "([^"]*)" for API "([^"]*)" is revoked in the API Portal$`, s.revokeAPIKey)
@@ -254,6 +262,8 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 	sc.Step(`^the subscription "([^"]*)" status is set to "([^"]*)" in the API Portal$`, s.setSubscriptionStatus)
 	sc.Step(`^the subscription "([^"]*)" is removed in the API Portal$`, s.removeSubscription)
 	s.registerMultiOrganizationSteps(sc)
+	s.registerBillingSteps(sc)
+	return s.trackPublishedPlan
 }
 
 const portalRESTDefinition = `{
@@ -2265,6 +2275,12 @@ func portalResourceKind(path string) cleanup.Kind {
 		return portalApplicationKind
 	case strings.HasPrefix(path, "/key-managers"):
 		return cleanup.Kind{Name: "api-portal-key-manager", Order: 35}
+	case strings.HasPrefix(path, "/subscription-plans"):
+		return portalSubscriptionPlanKind
+	case strings.HasPrefix(path, "/meters"):
+		return portalMeterKind
+	case strings.HasPrefix(path, "/webhook-subscribers"):
+		return portalWebhookKind
 	default:
 		return cleanup.Kind{Name: "api-portal-resource", Order: 40}
 	}
@@ -2374,13 +2390,13 @@ func (s *Steps) portalRequestURL(base, path string) string {
 	return base + apiPrefix + path
 }
 
-// portalBase resolves api-portal's HTTP base URL for this block.
+// portalBase resolves api-portal's HTTPS base URL for this block.
 func (s *Steps) portalBase() (string, error) {
 	return s.portalBaseNamed(portalService)
 }
 
 func (s *Steps) portalBaseNamed(portal string) (string, error) {
-	return s.topo.URL(strings.TrimSpace(portal), "http")
+	return s.topo.URL(strings.TrimSpace(portal), "https")
 }
 
 // devportalAPIHandle is api-portal's OWN identifier for a published API, distinct from
@@ -2468,9 +2484,11 @@ func (s *Steps) doJSON(ctx context.Context, base, token, method, path string, pa
 }
 
 type portalCleanupRequest struct {
-	method  string
-	path    string
-	role    string
+	method string
+	path   string
+	role   string
+	// target, when set, is the path a DELETE is sent to instead of path/<id>.
+	target  func(string) string
 	payload func(string) any
 }
 
@@ -2493,9 +2511,13 @@ func (s *Steps) registerPortalResource(ctx context.Context, kind cleanup.Kind, i
 		}
 		var response *httpx.Response
 		if request.method == http.MethodDelete {
+			target := request.path + "/" + resource.ID
+			if request.target != nil {
+				target = request.target(resource.ID)
+			}
 			response, err = s.client.Do(ctx, httpx.Request{
 				Method:  request.method,
-				URL:     base + apiPrefix + request.path + "/" + resource.ID,
+				URL:     base + apiPrefix + target,
 				Headers: map[string]string{"Authorization": "Bearer " + token},
 			}, 0, 0)
 		} else {
@@ -2647,7 +2669,7 @@ func (s *Steps) syncSubscriptionPlan(ctx context.Context, handle string) error {
 	if err != nil {
 		return err
 	}
-	refID, err := platformapisteps.SubscriptionPlanUUID(ctx, s.topo, s.client, resolvedHandle)
+	refID, err := platformapisteps.SubscriptionPlanUUID(ctx, s.topo, s.controlPlane, resolvedHandle)
 	if err != nil {
 		return fmt.Errorf("resolving platform-api subscription plan %q: %w", resolvedHandle, err)
 	}
@@ -2752,22 +2774,33 @@ func (s *Steps) subscribeToAPIAndStore(ctx context.Context, apiHandle, planHandl
 	if err != nil {
 		return err
 	}
-	base, token, err := s.authed(ctx)
+	subscriptionID, subscriptionToken, err := s.subscribeToArtifact(ctx, devportalAPIHandle(resolvedAPI), resolvedAPI+"-app", resolvedPlan)
 	if err != nil {
 		return err
 	}
+	if err := tcontext.Set(ctx, tokenStoreAs, subscriptionToken); err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, subscriptionStoreAs, subscriptionID)
+}
 
-	appHandle := resolvedAPI + "-app"
+// subscribeToArtifact creates an application and subscribes it to the portal artifact with the
+// plan, registers both for cleanup, and returns the subscription's id and token.
+func (s *Steps) subscribeToArtifact(ctx context.Context, artifactID, appHandle, planHandle string) (subscriptionID, subscriptionToken string, err error) {
+	base, token, err := s.authed(ctx)
+	if err != nil {
+		return "", "", err
+	}
 	if err := s.postJSON(ctx, base, token, "/applications", map[string]any{
 		"id":          appHandle,
 		"displayName": appHandle,
 		"description": "IT fixture application",
 	}, nil); err != nil {
-		return err
+		return "", "", err
 	}
 	if err := s.registerPortalResource(ctx, portalApplicationKind, appHandle, cleanup.ScenarioScope,
 		portalCleanupRequest{method: http.MethodDelete, path: "/applications"}); err != nil {
-		return err
+		return "", "", err
 	}
 
 	var created struct {
@@ -2775,22 +2808,19 @@ func (s *Steps) subscribeToAPIAndStore(ctx context.Context, apiHandle, planHandl
 		SubscriptionToken string `json:"subscriptionToken"`
 	}
 	if err := s.postJSON(ctx, base, token, "/subscriptions", map[string]any{
-		"artifactId":         devportalAPIHandle(resolvedAPI),
-		"subscriptionPlanId": resolvedPlan,
+		"artifactId":         artifactID,
+		"subscriptionPlanId": planHandle,
 	}, &created); err != nil {
-		return err
+		return "", "", err
 	}
 	if created.SubscriptionToken == "" || created.SubscriptionID == "" {
-		return fmt.Errorf("api-portal returned an incomplete subscription for API %q: %+v", resolvedAPI, created)
+		return "", "", fmt.Errorf("api-portal returned an incomplete subscription for %q: %+v", artifactID, created)
 	}
 	if err := s.registerPortalResource(ctx, portalSubscriptionKind, created.SubscriptionID, cleanup.ScenarioScope,
 		portalCleanupRequest{method: http.MethodDelete, path: "/subscriptions"}); err != nil {
-		return err
+		return "", "", err
 	}
-	if err := tcontext.Set(ctx, tokenStoreAs, created.SubscriptionToken); err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, subscriptionStoreAs, created.SubscriptionID)
+	return created.SubscriptionID, created.SubscriptionToken, nil
 }
 
 // generateAPIKeyAndStore generates an API key in the portal for an API and stores its plaintext
@@ -2805,44 +2835,55 @@ func (s *Steps) generateAPIKeyAndStore(ctx context.Context, apiHandle, valueStor
 	if err != nil {
 		return err
 	}
-	base, token, err := s.authed(ctx)
-	if err != nil {
-		return err
-	}
 	keyHandle, err := unique.Unique(ctx, "devportal-key")
 	if err != nil {
 		return err
+	}
+	value, storedHandle, err := s.generateKeyForArtifact(ctx, devportalAPIHandle(resolvedAPI), keyHandle)
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, valueStoreAs, value); err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, handleStoreAs, storedHandle)
+}
+
+// generateKeyForArtifact generates an API key with the given id for the portal artifact and
+// registers it to be revoked at the end of the scenario. It returns the key's value, shown only
+// once, and its handle.
+func (s *Steps) generateKeyForArtifact(ctx context.Context, artifactID, keyID string) (value, handle string, err error) {
+	base, token, err := s.authed(ctx)
+	if err != nil {
+		return "", "", err
 	}
 	var created struct {
 		Key string `json:"key"`
 		ID  string `json:"id"`
 	}
-	path := "/apis/" + devportalAPIHandle(resolvedAPI) + "/api-keys/generate"
-	if err := s.postJSON(ctx, base, token, path, map[string]any{
-		"id":          keyHandle,
+	keysPath := "/apis/" + url.PathEscape(artifactID) + "/api-keys"
+	if err := s.postJSON(ctx, base, token, keysPath+"/generate", map[string]any{
+		"id":          keyID,
 		"displayName": "IT fixture key",
 	}, &created); err != nil {
-		return err
+		return "", "", err
 	}
 	if created.Key == "" {
-		return fmt.Errorf("api-portal returned no API key for API %q", resolvedAPI)
+		return "", "", fmt.Errorf("api-portal returned no API key for %q", artifactID)
 	}
-	storedHandle := created.ID
-	if storedHandle == "" {
-		storedHandle = keyHandle
+	handle = created.ID
+	if handle == "" {
+		handle = keyID
 	}
-	if err := s.registerPortalResource(ctx, portalAPIKeyKind, storedHandle, cleanup.ScenarioScope,
+	if err := s.registerPortalResource(ctx, portalAPIKeyKind, handle, cleanup.ScenarioScope,
 		portalCleanupRequest{
 			method:  http.MethodPost,
-			path:    "/apis/" + devportalAPIHandle(resolvedAPI) + "/api-keys/revoke",
+			path:    keysPath + "/revoke",
 			payload: func(id string) any { return map[string]any{"keyId": id} },
 		}); err != nil {
-		return err
+		return "", "", err
 	}
-	if err := tcontext.Set(ctx, valueStoreAs, created.Key); err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, handleStoreAs, storedHandle)
+	return created.Key, handle, nil
 }
 
 // generatePortalAPIKeyAndStore generates a key for an API created directly in the
@@ -2937,12 +2978,16 @@ func (s *Steps) revokeAPIKey(ctx context.Context, keyHandle, apiHandle string) e
 	if err != nil {
 		return err
 	}
+	return s.revokeKeyOfArtifact(ctx, devportalAPIHandle(resolvedAPI), resolvedKey)
+}
+
+// revokeKeyOfArtifact revokes one API key of the portal artifact.
+func (s *Steps) revokeKeyOfArtifact(ctx context.Context, artifactID, keyHandle string) error {
 	base, token, err := s.authed(ctx)
 	if err != nil {
 		return err
 	}
-	path := "/apis/" + devportalAPIHandle(resolvedAPI) + "/api-keys/revoke"
-	return s.postJSON(ctx, base, token, path, map[string]any{"keyId": resolvedKey}, nil)
+	return s.postJSON(ctx, base, token, "/apis/"+url.PathEscape(artifactID)+"/api-keys/revoke", map[string]any{"keyId": keyHandle}, nil)
 }
 
 // switchSubscriptionPlan switches a live subscription to a different plan the API already
@@ -3091,7 +3136,20 @@ func (s *Steps) linkOrganizationToControlPlane(ctx context.Context) error {
 // runner shares the SAME fixed subscriber id, so a repeat registration must be idempotent: a
 // 409 Conflict from an earlier scenario's registration is resynced via PUT rather than treated
 // as fatal, matching the same subscriber events allowlist and secret on every call.
-func (s *Steps) registerWebhookSubscriber(ctx context.Context) error {
+//
+// events is a comma-separated list of event patterns; when empty, the subscriber receives the
+// API key and subscription events. A pattern ending in ".*" matches by prefix, so
+// "subscription.*" does not match the subscription_plan events.
+func (s *Steps) registerWebhookSubscriber(ctx context.Context, events string) error {
+	patterns := []string{"apikey.*", "subscription.*"}
+	if strings.TrimSpace(events) != "" {
+		patterns = nil
+		for _, pattern := range strings.Split(events, ",") {
+			if pattern = strings.TrimSpace(pattern); pattern != "" {
+				patterns = append(patterns, pattern)
+			}
+		}
+	}
 	if err := s.linkOrganizationToControlPlane(ctx); err != nil {
 		return err
 	}
@@ -3112,7 +3170,7 @@ func (s *Steps) registerWebhookSubscriber(ctx context.Context) error {
 		"displayName": "Platform API",
 		"targetUrl":   controlPlaneBase + "/api/internal/v0.9/webhook/events",
 		"secret":      webhookSecret(),
-		"events":      []string{"apikey.*", "subscription.*"},
+		"events":      patterns,
 		"enabled":     true,
 	}
 	resp, err := s.doJSON(ctx, base, token, http.MethodPost, "/webhook-subscribers", payload)

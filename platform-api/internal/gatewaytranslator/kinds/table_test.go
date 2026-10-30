@@ -63,6 +63,7 @@ func TestLookup_Miss(t *testing.T) {
 func TestAll_MinimumGatewayVersions(t *testing.T) {
 	assert.Equal(t, gwversion.MinAgentKindGatewayVersion, All[constants.GatewayKindAgent].MinGatewayVersion)
 	assert.Equal(t, gwversion.MinWebBrokerKindGatewayVersion, All[constants.WebBrokerApi].MinGatewayVersion)
+	assert.Equal(t, gwversion.MinGraphQLKindGatewayVersion, All[constants.GraphQLApi].MinGatewayVersion)
 	for _, kind := range []string{constants.RestApi, constants.MCPProxy, constants.LLMProvider, constants.LLMProxy, constants.WebSubApi} {
 		assert.Emptyf(t, All[kind].MinGatewayVersion, "%s exists on every gateway release", kind)
 	}

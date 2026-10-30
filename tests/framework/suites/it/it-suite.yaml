@@ -49,12 +49,24 @@ blocks:
       - name: rest-apis
         features:
           - features/apiportal/core/rest_apis.feature
+      - name: rest-api-versions
+        features:
+          - features/apiportal/core/rest_api_versions.feature
       - name: resources
         features:
           - features/apiportal/core/resources.feature
       - name: mcp-servers
         features:
           - features/apiportal/ai/mcp_servers.feature
+      - name: monetization-meters
+        features:
+          - features/apiportal/monetization/meters.feature
+      - name: monetization-priced-plans
+        features:
+          - features/apiportal/monetization/priced_plans.feature
+      - name: monetization-paid-plans-without-billing
+        features:
+          - features/apiportal/monetization/paid_plans_without_billing.feature
       - name: api-types
         features:
           - features/apiportal/core/api_types.feature
@@ -119,6 +131,9 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
+      - name: monetization-events
+        features:
+          - features/apiportal/monetization/events.feature
 
   - name: api-portal-auth-scope
     parallel: 1
@@ -216,17 +231,241 @@ blocks:
         features:
           - features/apiportal/organizations/foreign_org_login.feature
 
-  - name: gateway-core
-    parallel: 7
+  # Which hostnames the HTTPS listener asks for a client certificate. What it asks is state of
+  # the whole gateway, so runners take turns, and each block sets its own downstream_tls
+  # settings. The settings do not depend on the database, so only the default block repeats
+  # on every engine.
+  - name: gateway-mtls-hostnames
+    parallel: 1
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-event-hub.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
     runners:
+      - name: mtls-hostnames
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames.feature
+
+  - name: gateway-mtls-hostnames-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_required.feature
+
+  - name: gateway-mtls-hostnames-all-connections
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_all_connections.feature
+
+  - name: gateway-mtls-hostnames-all-connections-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames_all_connections_required.feature
+
+  # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
+  # asks for a certificate, which is state of the whole gateway, so runners take turns.
+  - name: gateway-mtls
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+
+  # The relayed client certificate header is believed from any connection here, a gateway-wide
+  # setting the other mutual TLS blocks must not see.
+  - name: gateway-mtls-trust-any
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-header-trust-any.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-header-bypass
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_bypass.feature
+
+  # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
+  # certificate gauges and its own JSON access log lines, so runners take turns.
+  - name: gateway-mtls-observability
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-observability.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_observability.feature
+
+  # Outbound mutual TLS adds gateway identities and trust certificates and never a client
+  # authority, so it has its own gateway and runs beside the inbound block.
+  - name: gateway-mtls-outbound
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-outbound.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+
+  # The mutual TLS scenarios on a gateway with two controllers sharing one PostgreSQL
+  # database. One serves the management API; the other alone feeds the runtime, so every
+  # certificate and API change reaches the runtime through the event path between them.
+  - name: gateway-mtls-ha
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-ha.toml
+        db: postgres
+      - name: testbench
+      - name: tls-backend
+    wiring:
+      platform-gateway:
+        controllers: 2
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_observability.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+
+  # The default client certificate to backends. The switch is gateway configuration (on by
+  # default; the off block sets it false) and the default identity is gateway-wide state, so
+  # each block runs its scenarios one at a time.
+  - name: gateway-mtls-default-identity-off
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-default-identity-off.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity_off.feature
+
+  - name: gateway-mtls-default-identity-on
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-default-identity.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-default-identity-on
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity.feature
+
+  - name: gateway-core
+    parallel: 7
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-signing.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    wiring:
+      platform-gateway:
+        signingKeys: true
+    runners:
+      - name: gateway-jwks
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks.feature
       - name: api-error-responses
         features:
           - features/gateway/core/api_error_responses.feature
+      - name: request-id-response
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_id_response.feature
       - name: health
         features:
           - features/gateway/core/health.feature
@@ -243,6 +482,28 @@ blocks:
       - name: api-keys
         features:
           - features/gateway/security/api_keys.feature
+      - name: subscription-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_management.feature
+      - name: subscription-plan-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_management.feature
+      # The ap CLI built from this checkout, driving the gateway through its management and
+      # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
+      - name: ap-cli-gateway
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/cli/gateway/management.feature
+          - features/cli/gateway/apply.feature
+          - features/cli/gateway/rest_api.feature
+          - features/cli/gateway/mcp.feature
+          - features/cli/gateway/image_build.feature
+      - name: ap-cli-subscription
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/cli/gateway/subscription.feature
       - name: api-with-policies
         features:
           - features/gateway/core/api_with_policies.feature
@@ -252,10 +513,6 @@ blocks:
       - name: lazy-resources-xds
         features:
           - features/gateway/core/lazy_resources_xds.feature
-      - name: dynamic-endpoint
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/dynamic_endpoint.feature
       - name: route-path-matching
         features:
           - features/gateway/routes/route_path_matching.feature
@@ -271,22 +528,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: host-rewrite
-        features:
-          - features/gateway/routes-policies/host_rewrite.feature
-      - name: redirect
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/redirect.feature
-      - name: request-rewrite
-        features:
-          - features/gateway/routes-policies/request_rewrite.feature
-      - name: cors
-        features:
-          - features/gateway/security-policies/cors.feature
-      - name: respond
-        features:
-          - features/gateway/routes-policies/respond.feature
       - name: sandbox-routing
         features:
           - features/gateway/routes/sandbox_routing.feature
@@ -298,58 +539,20 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/sandbox_upstream_url_validation.feature
-      - name: content-length-guardrail
-        features:
-          - features/gateway/guardrails-policies/content_length_guardrail.feature
-      - name: word-count-guardrail
-        features:
-          - features/gateway/guardrails-policies/word_count_guardrail.feature
-      - name: sentence-count-guardrail
-        features:
-          - features/gateway/guardrails-policies/sentence_count_guardrail.feature
-      - name: url-guardrail
-        features:
-          - features/gateway/guardrails-policies/url_guardrail.feature
-      - name: json-schema-guardrail
-        features:
-          - features/gateway/guardrails-policies/json_schema_guardrail.feature
       - name: cel-conditions
         features:
           - features/gateway/core/cel_conditions.feature
       - name: certificates
+        tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
+        features:
+          - features/gateway/security/certificates.feature
+      - name: certificates-1.2.0
+        tags: "gateway-version<=1.2.0;~@certificate-refusal-current"
         features:
           - features/gateway/security/certificates.feature
       - name: secrets
         features:
           - features/gateway/security/secrets.feature
-      - name: basic-ratelimit
-        features:
-          - features/gateway/ratelimit-policies/basic_ratelimit.feature
-      - name: ratelimit-headers
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_headers.feature
-      - name: ratelimit-cost-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_cost_extraction.feature
-      - name: ratelimit-key-extraction
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_key_extraction.feature
-      - name: ratelimit-multi-quota
-        features:
-          - features/gateway/ratelimit-policies/ratelimit_multi_quota.feature
-      - name: token-based-ratelimit
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit.feature
-      - name: token-based-ratelimit-provider-templates
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/token_based_ratelimit_provider_templates.feature
-      - name: llm-cost-based-ratelimit
-        # Excludes scenarios whose exact post-charge assertion is blocked by the
-        # gateway rejecting the non-billable readiness probe after exhaustion.
-        tags: "~@known-issue"
-        features:
-          - features/ai-workspace-gateway/ratelimit-policies/llm_cost_based_ratelimit.feature
       - name: llm-cost-calculation-providers
         tags: "gateway-version>=1.2.0"
         features:
@@ -375,37 +578,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_proxy_policy_validation.feature
-      - name: model-round-robin
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_round_robin.feature
-      - name: model-round-robin-multi-provider
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_round_robin_multi_provider.feature
-      - name: model-weighted-round-robin
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin.feature
-      - name: model-weighted-round-robin-multi-provider
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin_multi_provider.feature
       - name: llm-policy-path-specificity
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_policy_path_specificity.feature
-      - name: prompt-template
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_template.feature
-      - name: prompt-decorator
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
-      - name: prompt-compressor
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_compressor.feature
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
       - name: mcp-deploy
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
@@ -428,10 +604,18 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp/mcp_legacy_upstream_modern_client.feature
-      - name: oauth2-auth
+      - name: mcp-upstream-auth
         tags: "gateway-version>1.2.0"
         features:
-          - features/gateway/security-policies/oauth2_auth.feature
+          - features/ai-workspace-gateway/mcp/mcp_upstream_auth.feature
+      - name: graphql-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_deploy.feature
+      - name: graphql-api-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_api_keys.feature
       - name: policy-engine-admin
         features:
           - features/gateway/core/policy_engine_admin.feature
@@ -443,20 +627,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-
-  - name: legacy-aws-bedrock-guardrail
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/aws-bedrock-guardrail-legacy.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version<=1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
 
   - name: config-dump
     parallel: 1
@@ -505,18 +675,23 @@ blocks:
         features:
           - features/gateway/observability/metrics.feature
 
-  - name: gateway-logging
+  - name: gateway-request-id-disabled
     parallel: 1
     components:
       - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/logging.toml
+        overlay: tests/framework/core/catalog/overlays/request-id-response.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
     runners:
-      - name: log-message
+      - name: request-id-disabled
+        tags: "gateway-version>1.2.0"
         features:
-          - features/gateway/observability-policies/log_message.feature
+          - features/gateway/core/request_id_response_disabled.feature
+      - name: jwks-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks_disabled.feature
 
   - name: vhost-routing-single
     parallel: 1
@@ -547,44 +722,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/vhost_routing_multiple_production_hosts.feature
-
-  - name: azure-content-safety
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/azure-content-safety.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: azure-content-safety
-        features:
-          - features/gateway/guardrails-policies/azure_content_safety.feature
-
-  - name: semantic-ai
-    parallel: 2
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/semantic-ai.toml
-        dependsOn: [redis]
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: redis
-    runners:
-      - name: semantic-cache
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_cache.feature
-      - name: semantic-cache-isolation
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_cache_isolation.feature
-      - name: semantic-prompt-guard
-        features:
-          - features/gateway/guardrails-policies/semantic_prompt_guard.feature
-      - name: semantic-tool-filtering
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_tool_filtering.feature
 
   # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
   # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
@@ -619,49 +756,18 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/agent/agent_streaming.feature
-      # One runner per MCP policy, each file holding that policy's behaviour in both protocol
-      # eras. They are gated later than 1.2.0 because their 2026-07-28 scenarios need the
-      # operation resolver, which no released 1.2.0 carries - so this block's MCP policy
-      # coverage is source-build only, while mcp_policies.feature still runs on the release leg.
       - name: mcp-policies
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_policies.feature
-      - name: mcp-auth-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_auth.feature
-      - name: mcp-authz-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_authz.feature
-      - name: mcp-ratelimit-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_ratelimit.feature
-      - name: mcp-acl-list-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_acl_list.feature
-      - name: mcp-rewrite-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_rewrite.feature
-      - name: mcp-spec-validation-policy
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/ai-workspace-gateway/mcp-policies/mcp_spec_validation.feature
       - name: mcp-gateway-url-precedence
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp-policies/mcp_gateway_url_precedence.feature
-      - name: jwt-auth
+      - name: graphql-policies
+        tags: "gateway-version>1.2.0"
         features:
-          - features/gateway/security-policies/jwt_auth.feature
-      - name: jwt-auth-scope-claim-rules
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/security-policies/jwt_auth_scope_claim_rules.feature
+          - features/graphql_policies.feature
 
   - name: mcp-auth-gateway-host
     parallel: 1
@@ -700,9 +806,17 @@ blocks:
       - name: analytics-header-filter
         features:
           - features/gateway/observability-policies/analytics_header_filter.feature
+      - name: graphql-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/graphql_analytics.feature
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
+      - name: subscription-analytics-billing-customer
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/subscription_analytics_billing_customer.feature
       - name: mcp-analytics
         tags: "gateway-version>1.2.0"
         features:
@@ -729,9 +843,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
-      - name: interceptor-service
-        features:
-          - features/gateway/routes-policies/interceptor_service.feature
 
   - name: ai-workspace-cli
     components:
@@ -746,11 +857,12 @@ blocks:
         features:
           - features/ai-workspace-gateway/cli/ai_workspace_cli.feature
 
-  - name: platform-api-sqlite
+  - name: platform-api-core
     parallel: 2
     components:
       - name: platform-api
-        db: sqlite
+        db:
+          matrix: [sqlite, postgres, sqlserver]
         overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
@@ -770,158 +882,51 @@ blocks:
       - name: platform-api-deployment
         features:
           - features/management-portal/deployments/api_deployment.feature
+      - name: platform-api-build-deployment
+        features:
+          - features/management-portal/builds/build_deployment.feature
+      - name: platform-api-resource-search
+        features:
+          - features/management-portal/resources/resource_search.feature
+      - name: platform-api-artifact-management
+        features:
+          - features/management-portal/resources/artifact_management.feature
+      - name: platform-api-gateway-management
+        features:
+          - features/management-portal/resources/gateway_management.feature
+      - name: platform-api-subscription-management
+        features:
+          - features/management-portal/resources/subscription_management.feature
+      - name: platform-api-paid-subscription-access
+        features:
+          - features/management-portal/monetization/paid_subscription_access.feature
+        tags: "~@known-issue"
+      - name: platform-api-paid-subscription-suspension
+        features:
+          - features/management-portal/monetization/paid_subscription_suspension.feature
+        tags: "gateway-version>1.2.0;~@known-issue"
+      - name: platform-api-monetization-meters
+        features:
+          - features/management-portal/monetization/meters.feature
+      - name: platform-api-monetization-priced-plans
+        features:
+          - features/management-portal/monetization/priced_plans.feature
+      - name: platform-api-monetization-portal-events
+        features:
+          - features/management-portal/monetization/portal_events.feature
+      - name: platform-api-publication-drafts
+        features:
+          - features/management-portal/resources/publication_drafts.feature
+      - name: platform-api-builds
+        features:
+          - features/management-portal/builds/build_lifecycle.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
         tags: "~@known-issue"
-      - name: agent-proxy-management
+      - name: platform-api-mcp-server
         features:
-          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
-      - name: agent-proxy-cards
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-deployment
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-api-keys
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-import
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
-        tags: "gateway-version>1.2.0"
-      # Sheet AIW-LLM, AI Workspace provider creation through the control plane. Runs on
-      # every platform-api database: the generated provider ID is stored in a bounded column.
-      - name: aiw-llm-provider-create
-        features:
-          - features/ai-workspace/llm-providers/create.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-inspect
-        features:
-          - features/ai-workspace/llm-providers/inspect.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-configure
-        features:
-          - features/ai-workspace/llm-providers/configure.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-policies
-        features:
-          - features/ai-workspace/llm-providers/policies.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-templates
-        features:
-          - features/ai-workspace/llm-providers/templates.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-deploy
-        features:
-          - features/ai-workspace/llm-providers/deploy.feature
-        tags: "~@known-issue"
-
-  - name: platform-api-postgres
-    parallel: 2
-    components:
-      - name: platform-api
-        db: postgres
-        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
-      - name: platform-gateway
-        dependsOn: [platform-api]
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: a2a-trip-planner
-    runners:
-      - name: dp-to-cp
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/control-plane/dp_to_cp.feature
-      - name: platform-api-secret-deploy
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/management-portal/deployments/platform_api_secret_deploy.feature
-      - name: platform-api-deployment
-        features:
-          - features/management-portal/deployments/api_deployment.feature
-      - name: platform-api-secured-invocation
-        features:
-          - features/management-portal/subscriptions/secured_api_invocation.feature
-        tags: "~@known-issue"
-      - name: agent-proxy-management
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
-      - name: agent-proxy-cards
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-deployment
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-api-keys
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-import
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
-        tags: "gateway-version>1.2.0"
-      # Sheet AIW-LLM, AI Workspace provider creation through the control plane. Runs on
-      # every platform-api database: the generated provider ID is stored in a bounded column.
-      - name: aiw-llm-provider-create
-        features:
-          - features/ai-workspace/llm-providers/create.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-inspect
-        features:
-          - features/ai-workspace/llm-providers/inspect.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-configure
-        features:
-          - features/ai-workspace/llm-providers/configure.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-policies
-        features:
-          - features/ai-workspace/llm-providers/policies.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-templates
-        features:
-          - features/ai-workspace/llm-providers/templates.feature
-        tags: "~@known-issue"
-      - name: aiw-llm-provider-deploy
-        features:
-          - features/ai-workspace/llm-providers/deploy.feature
-        tags: "~@known-issue"
-
-  - name: platform-api-sqlserver
-    parallel: 2
-    components:
-      - name: platform-api
-        db: sqlserver
-        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
-      - name: platform-gateway
-        dependsOn: [platform-api]
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: a2a-trip-planner
-    runners:
-      - name: dp-to-cp
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/control-plane/dp_to_cp.feature
-      - name: platform-api-secret-deploy
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/management-portal/deployments/platform_api_secret_deploy.feature
-      - name: platform-api-deployment
-        features:
-          - features/management-portal/deployments/api_deployment.feature
-      - name: platform-api-secured-invocation
-        features:
-          - features/management-portal/subscriptions/secured_api_invocation.feature
-        tags: "~@known-issue"
+          - features/management-portal/resources/mcp_server.feature
       - name: agent-proxy-management
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_management.feature
@@ -1071,6 +1076,73 @@ blocks:
       - name: devportal-webhook
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
+      - name: devportal-monetization-webhook
+        features:
+          - features/apiportal/webhooks/monetization_webhook.feature
+
+  # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
+  # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
+  # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
+  # of the key platform-api publishes with. The portal stages its product role file, which grants
+  # the platform-api-system role the publishing calls are authorized as; the shared IT role files
+  # do not. The outage runner stops the portal, so runners must not overlap: keep parallel at 1.
+  - name: platform-api-gateway-api-portal
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: postgres
+      - name: testbench
+    runners:
+      - name: publication-lifecycle
+        features:
+          - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-monetization
+        features:
+          - features/apiportal/publishing/publication_monetization.feature
+      - name: publication-failures
+        features:
+          - features/apiportal/publishing/publication_failures.feature
+      - name: publication-content
+        # Excludes the scenarios for content that stays on the portal after it is unselected.
+        features:
+          - features/apiportal/publishing/publication_content.feature
+        tags: "~@known-issue"
+      - name: publication-outage
+        features:
+          - features/apiportal/publishing/publication_outage.feature
+
+  # Billing is set up once for a whole API Portal, so the runner that sets it up has a portal of its
+  # own: no other runner sees billing it leaves behind. It bills through the testbench's Stripe and
+  # Moesif services, which hold one account per block.
+  - name: api-portal-billing
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: testbench
+    runners:
+      - name: api-portal-billing
+        features:
+          - features/apiportal/monetization/billing_setup.feature
+          - features/apiportal/monetization/paid_checkout.feature
+          - features/apiportal/monetization/usage_billing.feature
 
   # Policy error compatibility: every migrated policy's main rejection, held to the error
   # response the policy returned before the change. The policies come from the adjacent
@@ -1124,26 +1196,3 @@ blocks:
         tags: "gateway-version>=1.1.0"
         features:
           - features/gateway/policy-errors/policy_errors_semantic_cache.feature
-
-  # This block is intended for gateway-controllers pull requests. Its policy source is
-  # an adjacent checkout, so callers must check out gateway-controllers next to this
-  # repository and select this block explicitly.
-  - name: gateway-controller-policies
-    parallel: 1
-    components:
-      - name: platform-gateway
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-        addPoliciesFrom: ../gateway-controllers/policies
-      - name: testbench
-    runners:
-      - name: time-based-model-routing
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/time_based_model_routing.feature
-      - name: pii-masking-regex
-        features:
-          - features/gateway/guardrails-policies/pii_masking_regex.feature
-      - name: regex-guardrail
-        features:
-          - features/gateway/guardrails-policies/regex_guardrail.feature

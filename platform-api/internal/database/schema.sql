@@ -433,6 +433,28 @@ CREATE TABLE IF NOT EXISTS agent_proxies (
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
 );
 
+-- GraphQL APIs table (core kind, same shape as rest_apis minus operations/channels)
+CREATE TABLE IF NOT EXISTS graphql_apis (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    project_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
+    configuration BLOB NOT NULL,       -- JSON: SDL + upstream + policies
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
 
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -510,6 +532,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid)
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_agent_proxies_project ON agent_proxies(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_graphql_apis_project ON graphql_apis(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_graphql_apis_org ON graphql_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);
@@ -659,3 +683,70 @@ CREATE TABLE IF NOT EXISTS api_documents (
 
 CREATE INDEX IF NOT EXISTS idx_api_documents_artifact ON api_documents(artifact_uuid, type);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_documents(artifact_uuid, handle);
+
+-- Meters (monetization): what a paid plan charges for. A meter made in the Management Portal is
+-- kept here and sent to an API Portal when a plan that charges for it is published there. A meter
+-- made in an API Portal is a copy, kept current by that portal's meter.* webhook events.
+--   - type REQUEST_COUNT counts API requests; type TOKENS adds up a number from the events of AI
+--     API requests, read at type_key (NULL for REQUEST_COUNT).
+--   - filter_fields lists the properties the meter's prices may filter on, each a name and the
+--     event field it reads (a JSON array of {field, event_key}; [] for none). A meter has no
+--     filters of its own: each price gives its own.
+--   - source_updated_at is when the meter last changed where it was made: the time of the request
+--     for a meter made here, the event's occurred_at for a copy. An older, late event is ignored.
+CREATE TABLE IF NOT EXISTS meters (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(20) NOT NULL,
+    type_key VARCHAR(255),
+    filter_fields BLOB NOT NULL,
+    source_updated_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
+-- Pricing of paid subscription plans (monetization); a plan without a row is free. A plan created
+-- through this REST API (the Management Portal) or in an API Portal (its subscription_plan.created
+-- webhook event) is stored with its pricing, in the same transaction, and the pricing never
+-- changes.
+-- prices is a JSON array, in order, that holds what the plan charges:
+--   - a flat rate plan: one entry, {pricing_model: FLAT, amount}, the amount charged every billing
+--     period;
+--   - a usage based plan: 1 to 20 usage prices. Each names its meter by handle, its filters
+--     ([{field, operator, values}], none to count every request of the meter) and one pricing
+--     model: PER_UNIT, VOLUME or GRADUATED.
+-- Amounts are decimal strings.
+-- created_at is when the pricing was set: the time of the request for a plan created through this
+-- REST API, the event's occurred_at for a plan created in an API Portal.
+CREATE TABLE IF NOT EXISTS subscription_plan_pricing (
+    subscription_plan_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    billing_period VARCHAR(20) NOT NULL,
+    prices BLOB NOT NULL,
+    created_at DATETIME NOT NULL,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_org ON subscription_plan_pricing(organization_uuid);
+
+-- Billing state of a paid subscription (monetization), from the API Portal, which sends it with
+-- subscription.created and every subscription.billing_updated event. A free subscription has no
+-- row. billing_updated_at is the occurred_at of the event last applied, so a late event is
+-- ignored.
+CREATE TABLE IF NOT EXISTS subscription_billing (
+    subscription_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    billing_status VARCHAR(20) NOT NULL,
+    billing_customer_id VARCHAR(255) NOT NULL,
+    billing_subscription_id VARCHAR(255) NOT NULL,
+    billing_updated_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_billing_org ON subscription_billing(organization_uuid);

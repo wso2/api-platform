@@ -1,0 +1,120 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+name: Tests Framework Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (MAJOR.MINOR.PATCH, e.g. 0.1.0).'
+        required: true
+        type: string
+
+env:
+  TESTBENCH_REPOSITORY: ghcr.io/wso2/api-platform/testbench
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      packages: write
+    defaults:
+      run:
+        working-directory: tests/framework
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Validate the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_VERSION#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Error: '$INPUT_VERSION' is not a MAJOR.MINOR.PATCH version"
+            exit 1
+          fi
+          if git rev-parse "tests/framework/v${VERSION}" >/dev/null 2>&1; then
+            echo "Error: tag tests/framework/v${VERSION} already exists"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: tests/framework/go.sum
+
+      - name: Generate the embedded snapshots
+        run: go run ./cmd/syncassets
+
+      # Skipped: it checks the gateway's own version files, which disagree on main.
+      - name: Run the framework unit tests
+        run: go test ./core/... ./cmd/... -count=1 -skip '^TestGatewayBuildYAMLAgreesWithVERSION$'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Build and push the testbench image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -f testbench/Dockerfile \
+            -t "${TESTBENCH_REPOSITORY}:${VERSION}" \
+            --push .
+
+      - name: Create and push the tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch --detach
+          git add -f snapshots
+          if [ "$(git ls-files -- snapshots | wc -l)" -lt 2 ]; then
+            echo "Error: the generated snapshots were not added to the release commit"
+            exit 1
+          fi
+          git commit -m "Tests framework ${VERSION}: embed the generated snapshots"
+          git tag -a "tests/framework/v${VERSION}" -m "Tests framework ${VERSION}"
+          git push origin "tests/framework/v${VERSION}"

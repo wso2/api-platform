@@ -18,7 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
-import { Gauge, Settings } from '@wso2/oxygen-ui-icons-react';
+import { Activity, Gauge, Settings } from '@wso2/oxygen-ui-icons-react';
 
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
 import {
@@ -38,9 +38,15 @@ const messages = defineMessages({
   },
   subscriptionPlansTab: {
     id: 'apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab',
-    defaultMessage: 'Subscription plans',
+    defaultMessage: 'Subscription Plans',
     description:
       'Label for the built-in organization-level Settings tab listing rate-limit tiers.',
+  },
+  metersTab: {
+    id: 'apiControlPlane.navigation.useSettingsTabs.metersTab',
+    defaultMessage: 'Meters',
+    description:
+      'Label for the built-in organization-level Settings tab listing the usage paid plans charge for.',
   },
 });
 
@@ -91,8 +97,8 @@ export const useSettingsTabs = (level: NavigationLevel): SettingsTab[] => {
         },
       ];
 
-  // Subscription plans are organization-scoped (platform-api has no
-  // project-level plan endpoint), so the tab only appears at that level.
+  // Subscription plans and meters are organization-scoped (platform-api has no
+  // project-level endpoint for either), so the tabs only appear at that level.
   if (level === 'organization') {
     builtInTabs.push({
       icon: <Gauge size={18} />,
@@ -100,6 +106,13 @@ export const useSettingsTabs = (level: NavigationLevel): SettingsTab[] => {
       label: intl.formatMessage(messages.subscriptionPlansTab),
       order: 1,
       path: 'subscription-plans',
+    });
+    builtInTabs.push({
+      icon: <Activity size={18} />,
+      id: 'meters',
+      label: intl.formatMessage(messages.metersTab),
+      order: 2,
+      path: 'meters',
     });
   }
 

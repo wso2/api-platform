@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/vault"
 )
@@ -322,8 +323,8 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 		Id:          strPointer("cp-proxy"),
 		DisplayName: "CP Proxy",
 		Version:     "v1.0",
-		ProjectId:   "default",                                // project handle (setupImportTest inserts handle "default")
-		Provider:    api.LLMProxyProvider{Id: providerHandle}, // references the DP provider
+		ProjectId:   "default",                                 // project handle (setupImportTest inserts handle "default")
+		Provider:    &api.LLMProxyProvider{Id: providerHandle}, // references the DP provider
 	})
 	if err != nil {
 		t.Fatalf("create CP proxy from DP provider: %v", err)
@@ -388,7 +389,7 @@ func TestLLMProxyCreate_DefaultsUpstreamAuthToNone(t *testing.T) {
 
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
 		Id: strPointer("cp-create-none-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
-		Provider: api.LLMProxyProvider{Id: providerHandle},
+		Provider: &api.LLMProxyProvider{Id: providerHandle},
 	})
 	if err != nil {
 		t.Fatalf("create proxy: %v", err)
@@ -398,8 +399,12 @@ func TestLLMProxyCreate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	if err != nil || stored == nil {
 		t.Fatalf("load stored proxy: %v", err)
 	}
-	if stored.Configuration.UpstreamAuth == nil || stored.Configuration.UpstreamAuth.Type != "none" {
-		t.Fatalf("expected stored proxy upstream auth type 'none' after create, got %+v", stored.Configuration.UpstreamAuth)
+	primary, err := model.PrimaryLLMProxyAttachment(stored.Configuration)
+	if err != nil {
+		t.Fatalf("normalise stored proxy: %v", err)
+	}
+	if primary.Auth == nil || primary.Auth.Type != "none" {
+		t.Fatalf("expected stored proxy upstream auth type 'none' after create, got %+v", primary.Auth)
 	}
 }
 
@@ -480,7 +485,7 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 		DisplayName: "CP None Proxy",
 		Version:     "v1.0",
 		ProjectId:   "default",
-		Provider: api.LLMProxyProvider{
+		Provider: &api.LLMProxyProvider{
 			Id:   providerHandle,
 			Auth: &api.UpstreamAuth{Type: &apiKey, Header: strPointer("X-API-Key"), Value: strPointer("sk-secret")},
 		},
@@ -494,7 +499,7 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 		DisplayName: "CP None Proxy",
 		Version:     "v1.0",
 		ProjectId:   "default",
-		Provider:    api.LLMProxyProvider{Id: providerHandle},
+		Provider:    &api.LLMProxyProvider{Id: providerHandle},
 	}); err != nil {
 		t.Fatalf("update proxy: %v", err)
 	}
@@ -503,8 +508,12 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 	if err != nil || stored == nil {
 		t.Fatalf("load stored proxy: %v", err)
 	}
-	if stored.Configuration.UpstreamAuth == nil || stored.Configuration.UpstreamAuth.Type != "none" {
-		t.Fatalf("expected stored proxy upstream auth type 'none' after update, got %+v", stored.Configuration.UpstreamAuth)
+	primary, err := model.PrimaryLLMProxyAttachment(stored.Configuration)
+	if err != nil {
+		t.Fatalf("normalise stored proxy: %v", err)
+	}
+	if primary.Auth == nil || primary.Auth.Type != "none" {
+		t.Fatalf("expected stored proxy upstream auth type 'none' after update, got %+v", primary.Auth)
 	}
 }
 
@@ -579,7 +588,7 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 	apiKey := api.UpstreamAuthType(api.ApiKey)
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
 		Id: strPointer("cp-switch-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
-		Provider: api.LLMProxyProvider{
+		Provider: &api.LLMProxyProvider{
 			Id:   providerHandle,
 			Auth: &api.UpstreamAuth{Type: &apiKey, Header: strPointer("X-API-Key"), Value: strPointer("sk-secret")},
 		},
@@ -591,7 +600,7 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 	other := api.UpstreamAuthType(api.Other)
 	if _, err := proxySvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProxy{
 		DisplayName: "X", Version: "v1.0", ProjectId: "default",
-		Provider: api.LLMProxyProvider{Id: providerHandle, Auth: &api.UpstreamAuth{Type: &other}},
+		Provider: &api.LLMProxyProvider{Id: providerHandle, Auth: &api.UpstreamAuth{Type: &other}},
 	}); err != nil {
 		t.Fatalf("update proxy: %v", err)
 	}
@@ -600,7 +609,11 @@ func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T)
 	if err != nil || stored == nil {
 		t.Fatalf("load stored proxy: %v", err)
 	}
-	auth := stored.Configuration.UpstreamAuth
+	primary, err := model.PrimaryLLMProxyAttachment(stored.Configuration)
+	if err != nil {
+		t.Fatalf("normalise stored proxy: %v", err)
+	}
+	auth := primary.Auth
 	if auth == nil || auth.Type != "other" {
 		t.Fatalf("expected stored proxy auth type 'other', got %+v", auth)
 	}

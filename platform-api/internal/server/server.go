@@ -38,6 +38,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
+	"github.com/wso2/api-platform/platform-api/internal/mcpserver"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
@@ -149,11 +150,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	deploymentRepo := repository.NewDeploymentRepo(db, artifactTableRegistry)
 	subscriptionRepo := repository.NewSubscriptionRepo(db)
 	subscriptionPlanRepo := repository.NewSubscriptionPlanRepo(db)
+	meterRepo := repository.NewMeterRepo(db)
+	subscriptionPlanPricingRepo := repository.NewSubscriptionPlanPricingRepo(db)
 	llmTemplateRepo := repository.NewLLMProviderTemplateRepo(db)
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
 	agentProxyRepo := repository.NewAgentProxyRepo(db)
+	graphqlAPIRepo := repository.NewGraphQLAPIRepo(db, artifactTableRegistry)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db, artifactTableRegistry)
@@ -276,8 +280,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiDocumentService := service.NewAPIDocumentService(documentRepo, artifactRepo, auditRepo, slogger)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+	subscriptionBillingRepo := repository.NewSubscriptionBillingRepo(db)
+	subscriptionService.SetBillingRepository(subscriptionBillingRepo)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+	subscriptionPlanService.SetPricingRepositories(meterRepo, subscriptionPlanPricingRepo)
+	monetizationService := service.NewMonetizationService(meterRepo, subscriptionPlanPricingRepo, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, graphqlAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
+	internalGatewayService.SetBillingRepository(subscriptionBillingRepo)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	// One definition per artifact kind, indexed by the kind the artifact row
 	// carries. Builds and deployments are shared across kinds; rendering is the
@@ -285,17 +294,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	artifactDefinitions := service.NewArtifactDefinitions(
 		service.NewRestAPIDefinition(apiRepo, apiUtil),
 		service.NewMCPProxyDefinition(mcpProxyRepo, &utils.MCPUtils{}),
-		service.NewLLMProxyDefinition(llmProxyRepo),
+		service.NewLLMProxyDefinition(llmProxyRepo, llmProviderRepo, llmTemplateRepo),
 		service.NewLLMProviderDefinition(llmProviderRepo, llmTemplateRepo),
 		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
+		service.NewGraphQLAPIDefinition(graphqlAPIRepo, projectRepo),
 	)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, cfg, slogger)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, identityService, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	graphqlAPIService := service.NewGraphQLAPIService(graphqlAPIRepo, projectRepo, auditRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, identityService, slogger)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
@@ -310,6 +321,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayEventsService,
 		artifactRepo,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -326,6 +338,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayEventsService,
 		artifactRepo,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -338,6 +351,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		apiKeyRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -349,6 +363,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		apiKeyRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		identityService,
+		cfg,
+		slogger,
+	)
+	graphqlAPIDeploymentService := service.NewGraphQLAPIDeploymentService(
+		graphqlAPIRepo,
+		deploymentRepo,
+		gatewayRepo,
+		orgRepo,
+		apiKeyRepo,
+		artifactRepo,
+		gatewayEventsService,
+		artifactDefinitions,
+		identityService,
 		cfg,
 		slogger,
 	)
@@ -360,6 +388,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		llmProxyDeploymentService,
 		llmProviderDeploymentService,
 		agentDeploymentService,
+		graphqlAPIDeploymentService,
 	)
 	artifactImportService := service.NewArtifactImportService(
 		apiRepo,
@@ -368,6 +397,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		llmProxyRepo,
 		mcpProxyRepo,
 		agentProxyRepo,
+		graphqlAPIRepo,
 		artifactRepo,
 		deploymentRepo,
 		gatewayRepo,
@@ -390,11 +420,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
-	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, slogger)
+	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, &cfg.APIPortalPublication, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
 	}
-	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, slogger)
+	monetizationAdminService := service.NewMonetizationAdminService(meterRepo, subscriptionPlanPricingRepo,
+		subscriptionPlanRepo, slogger)
+	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, cfg.PublicationArchiveMaxBytes, slogger)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
@@ -405,6 +437,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
+	subscriptionPlanHandler.SetPricingRepository(subscriptionPlanPricingRepo)
+	publicationService.SetPricingRepository(subscriptionPlanPricingRepo)
+	publicationService.SetMeterRepository(meterRepo)
+	monetizationHandler := handler.NewMonetizationHandler(monetizationAdminService, slogger)
 	publicationHandler := handler.NewPublicationHandler(publicationService, identityService, cfg.PublicationContentMaxBytes, cfg.PublicationThumbnailMaxBytes, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	apiPortalHandler := handler.NewAPIPortalHandler(apiPortalService, identityService, slogger)
@@ -423,16 +459,26 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	agentProxyDeploymentHandler := handler.NewAgentProxyDeploymentHandler(agentDeploymentService, identityService, slogger)
 	agentProxyAPIKeyHandler := handler.NewAgentProxyAPIKeyHandler(apiKeyService, agentProxyAPIKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	graphqlAPIHandler := handler.NewGraphQLAPIHandler(graphqlAPIService, identityService, slogger)
+	graphqlAPIKeyHandler := handler.NewGraphQLAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	graphqlAPIDeploymentHandler := handler.NewGraphQLAPIDeploymentHandler(graphqlAPIDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
 	llmProxyService.SetSecretService(secretService)
+	// A provider cannot be deleted while a proxy still references it in either
+	// role, and a proxy's inbound interface must resolve to a real template.
+	// Both need a repository the constructors don't take.
+	llmProviderService.SetProxyRepository(llmProxyRepo)
+	llmProxyService.SetTemplateRepository(llmTemplateRepo)
 	mcpProxyService.WithSecretService(secretService)
 	agentProxyService.WithSecretService(secretService)
 	apiService.SetSecretService(secretService)
 	// Gateways older than the secret-sync release receive artifacts with the
 	// placeholders already resolved; the internal fetch path needs the store for that.
 	internalGatewayService.SetSecretService(secretService)
+	graphqlAPIService.SetSecretService(secretService)
+	graphqlAPIService.SetMaxSDLFetchBytes(cfg.OpenAPISpecMaxFetchBytes)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
@@ -487,6 +533,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	gatewayHandler.RegisterRoutes(core)
 	subscriptionHandler.RegisterRoutes(core)
 	subscriptionPlanHandler.RegisterRoutes(core)
+	monetizationHandler.RegisterRoutes(core)
 	publicationHandler.RegisterRoutes(core)
 	wsHandler.RegisterRoutes(core)
 	internalGatewayHandler.RegisterRoutes(core)
@@ -503,6 +550,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	agentProxyHandler.RegisterRoutes(core)
 	agentProxyDeploymentHandler.RegisterRoutes(core)
 	agentProxyAPIKeyHandler.RegisterRoutes(core)
+	graphqlAPIHandler.RegisterRoutes(core)
+	graphqlAPIKeyHandler.RegisterRoutes(core)
+	graphqlAPIDeploymentHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.
@@ -537,10 +587,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		Gateways:   gatewayService,
 		Projects:   projectService,
 		APIPortals: apiPortalService,
+		// Read-only lookups, so a plugin can tell a brand-new API from another
+		// version of an existing one — which no route answers on its own.
+		APIs: apiService,
 		// Kind-routed, so a plugin names the artifact kind alongside the handle and
 		// reaches the same services the platform's own per-kind paths do.
-		Deployments:   deploymentsByKind,
+		Deployments:   service.PluginDeployments{DeploymentsByKind: deploymentsByKind, Projects: artifactRepo},
 		Organizations: orgService,
+		Identity:      identityService,
 		Config:        cfg,
 		Logger:        slogger,
 	}
@@ -599,6 +653,36 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// below, so the skip-path list is complete when the chain is assembled.
 	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, wiring.authSkipPaths...)
 
+	// The MCP server checks scopes per tool.
+	var mcpWrap func(http.Handler) http.Handler
+	if cfg.MCPServer.Enabled {
+		var mcpSkipPaths []string
+		mcpSkipPaths, mcpWrap, err = startMCPServer(slogger, mux, mcpserver.Deps{
+			Config:      cfg,
+			Scopes:      scopeRegistry,
+			Projects:    projectService,
+			APIs:        apiService,
+			Deployments: deploymentService,
+			Gateways:    gatewayService,
+			Identity:    identityService,
+			Logger:      slogger,
+			PluginTools: wiring.mcpTools,
+
+			LLMProviders:           llmProviderService,
+			LLMProviderDeployments: llmProviderDeploymentService,
+			LLMProxies:             llmProxyService,
+			LLMProxyDeployments:    llmProxyDeploymentService,
+			MCPProxies:             mcpProxyService,
+			MCPProxyDeployments:    mcpDeploymentService,
+			AgentProxies:           agentProxyService,
+			AgentProxyDeployments:  agentDeploymentService,
+		})
+		if err != nil {
+			return nil, err
+		}
+		cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, mcpSkipPaths...)
+	}
+
 	// Plugin-contributed middleware, spliced into the chain when it is built:
 	// preChain outermost (before CORS/auth), postChain innermost (after scope
 	// enforcement, before the mux).
@@ -624,6 +708,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			apiKeyService,
 			subscriptionService,
 			appService,
+			subscriptionPlanService,
+			monetizationService,
 			orgRepo,
 			slogger,
 		)
@@ -664,6 +750,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		AllowedHeaders:   []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 		AllowCredentials: true,
 	}))
+	if mcpWrap != nil {
+		chain = append(chain, mcpWrap) // before the sign-in, so its 403 and 401 header come first
+	}
 
 	if cfg.Auth.Mode == config.AuthModeFile {
 		slogger.Info("Auth mode: file (local users, RS256-signed JWT)")
@@ -716,11 +805,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		}
 	}
 
+	// /mcp has no single scope: its tools check theirs per call.
+	var scopeExtra []string
+	if cfg.MCPServer.Enabled {
+		scopeExtra = []string{"POST " + mcpserver.Path}
+	}
 	scopeEnforcer, err := middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
 		ValidationMode: cfg.Auth.Authorization.Mode,
 		Enabled:        cfg.Auth.Authorization.Enabled,
 		Routes:         mux,
 		SkipPaths:      cfg.Auth.SkipPaths,
+		ExemptRoutes:   scopeExtra,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build scope enforcer: %w", err)
@@ -1164,11 +1259,37 @@ func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationReposit
 // newPortalPublisher builds the real API Portal publisher. Each portal's
 // shared key is resolved per-call from its own api_portals row via
 // authRegistry — there is no server-wide key to read at startup.
-func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, slogger *slog.Logger) (service.PortalPublisher, error) {
-	retryClient, err := client.NewRetryableHTTPClient(3, 10*time.Second)
+func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config.APIPortalPublication, slogger *slog.Logger) (service.PortalPublisher, error) {
+	lightClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+		MaxRetries:     cfg.MaxRetries,
+		AttemptTimeout: cfg.RequestTimeout,
+		Backoff:        cfg.RetryBackoff,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build the API Portal HTTP client: %w", err)
 	}
-	slogger.Info("Initialized the real HTTP publisher for API Publication")
-	return service.NewHTTPPortalPublisher(authRegistry, retryClient), nil
+	listingClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+		MaxRetries:     cfg.MaxRetries,
+		AttemptTimeout: cfg.ListingRequestTimeout,
+		Backoff:        cfg.RetryBackoff,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal listing HTTP client: %w", err)
+	}
+	contentClient, err := client.NewRetryableHTTPClient(client.RetryConfig{
+		MaxRetries:     cfg.MaxRetries,
+		AttemptTimeout: cfg.ContentRequestTimeout,
+		Backoff:        cfg.RetryBackoff,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build the API Portal content HTTP client: %w", err)
+	}
+	slogger.Info("Initialized the real HTTP publisher for API Publication",
+		"requestTimeout", cfg.RequestTimeout,
+		"listingRequestTimeout", cfg.ListingRequestTimeout,
+		"contentRequestTimeout", cfg.ContentRequestTimeout,
+		"maxRetries", cfg.MaxRetries,
+		"retryBackoff", cfg.RetryBackoff,
+		"overallTimeout", cfg.OverallTimeout)
+	return service.NewHTTPPortalPublisher(authRegistry, lightClient, listingClient, contentClient, cfg.PlanListingBudget()), nil
 }

@@ -1,0 +1,7 @@
+[router.http_listener]
+return_request_id_in_response = false
+
+# The JWKS opt-out scenarios share this block: the gateway serves no /.well-known/jwks route
+# and the path is free for an API.
+[signing]
+jwks_endpoint_enabled = false

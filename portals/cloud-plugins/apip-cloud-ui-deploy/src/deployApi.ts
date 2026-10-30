@@ -24,19 +24,7 @@ import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type Stage
  * The artifact kinds this page can deploy, named as the platform names them. A
  * handle is unique only WITHIN a kind, so every call says which one it means.
  */
-export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider';
-
-/**
- * Each kind's own path on the platform API. The pipeline routes are shared, but a
- * few calls go straight to the artifact's own resource — deleting a build, reading
- * an API's backend URL — and those are split by kind.
- */
-const NATIVE_PATH: Record<ArtifactKind, string> = {
-  RestApi: 'rest-apis',
-  Mcp: 'mcp-proxies',
-  LlmProxy: 'llm-proxies',
-  LlmProvider: 'llm-providers',
-};
+export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider' | 'AgentProxy' | 'GraphQLApi';
 
 /**
  * The kinds of gateway each artifact kind runs on. A gateway's kind decides what
@@ -46,9 +34,11 @@ const NATIVE_PATH: Record<ArtifactKind, string> = {
  */
 export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
   RestApi: ['regular'],
+  GraphQLApi: ['regular'],
   Mcp: ['ai'],
   LlmProxy: ['ai'],
   LlmProvider: ['ai'],
+  AgentProxy: ['ai'],
 };
 
 /**
@@ -57,16 +47,20 @@ export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
  * Only a REST API is: it proxies a backend, and which backend can differ per
  * gateway. An MCP server or an LLM proxy carries its upstream in its own
  * definition — there is nothing per-deployment to ask for, and asking made the
- * form impossible to complete, since nothing could fill it in either.
+ * form impossible to complete, since nothing could fill it in either. A GraphQL
+ * API is deployed against the endpoint in its own definition too: the platform's
+ * deploy request carries no per-gateway endpoint for it.
  *
  * An unclassified kind is assumed not to take one: the worst case is a parameter
  * nobody sets, rather than a required field with no answer.
  */
 const KIND_TAKES_ENDPOINT: Record<ArtifactKind, boolean> = {
   RestApi: true,
+  GraphQLApi: false,
   Mcp: false,
   LlmProxy: false,
   LlmProvider: false,
+  AgentProxy: false,
 };
 
 export const takesEndpointUrl = (kind: ArtifactKind): boolean => KIND_TAKES_ENDPOINT[kind] ?? false;
@@ -85,6 +79,8 @@ type BuildDTO = {
  */
 type RestApiDTO = {
   upstream?: { main?: { url?: string } };
+  /** True when a gateway created the API; its deployments are then the gateway's to manage. */
+  readOnly?: boolean;
 };
 
 /**
@@ -143,32 +139,29 @@ export function createDeployClient(
      * Deletes one of the API's builds, which is how room is made once an API is at
      * its build limit and deploying is refused.
      *
-     * This goes straight to the API's own resource rather than through the project
-     * path: a build belongs to the API, not to a pipeline, and the platform already
-     * scopes the call to the caller's organization. Refused with 409 while a gateway
-     * is serving the build; undeploying releases it. Deployments that ran the build
-     * survive and stay redeployable from their own artifact, but stop reporting it,
-     * so they can no longer be promoted onward.
+     * Goes through the project path like the page's other calls, so preparing,
+     * listing, deploying and deleting are governed by the same deployment
+     * permissions. Refused with 409 while a gateway is serving the build;
+     * undeploying releases it. Deployments that ran the build survive and stay
+     * redeployable from their own artifact, but stop reporting it, so they can no
+     * longer be promoted onward.
      */
     async deleteBuild(buildId: string): Promise<void> {
-      await apiFetch(
-        'DELETE',
-        `/${NATIVE_PATH[kind]}/${encodeURIComponent(apiHandle)}/builds/${encodeURIComponent(buildId)}`
-      );
+      await apiFetch('DELETE', withKind(`${base}/builds/${encodeURIComponent(buildId)}`));
     },
 
     /**
-     * The backend URL the API is defined against, which the deploy and promote
-     * forms start from so a first deployment does not have to be typed out.
-     * Absent when the API declares its upstream by reference rather than by URL.
+     * What the page needs from the API itself: the backend URL the deploy and
+     * promote forms start from (absent when the upstream is declared by reference
+     * rather than by URL), and whether the API is read-only because a gateway
+     * created it.
      */
-    async readApiEndpointUrl(): Promise<string | undefined> {
-      // Only REST APIs declare a backend URL this form can start from; the other
-      // kinds either have none or shape it differently, so the field is simply left
-      // empty for them rather than guessed at.
-      if (kind !== 'RestApi') return undefined;
+    async readApi(): Promise<{ endpointUrl?: string; readOnly: boolean }> {
+      // Only REST APIs are read here; the other kinds either have no backend URL or
+      // shape it differently, so it is left empty for them rather than guessed at.
+      if (kind !== 'RestApi') return { readOnly: false };
       const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
-      return api?.upstream?.main?.url;
+      return { endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
     },
 
     /**

@@ -76,6 +76,7 @@ func NewDeploymentsByKind(
 	llmProxy *LLMProxyDeploymentService,
 	llmProvider *LLMProviderDeploymentService,
 	agent *AgentDeploymentService,
+	graphql *GraphQLAPIDeploymentService,
 ) DeploymentsByKind {
 	return DeploymentsByKind{
 		constants.RestApi:     restDeployments{rest},
@@ -83,6 +84,7 @@ func NewDeploymentsByKind(
 		constants.LLMProxy:    llmProxyDeployments{llmProxy},
 		constants.LLMProvider: llmProviderDeployments{llmProvider},
 		constants.AgentProxy:  agentDeployments{agent},
+		constants.GraphQLApi:  graphqlDeployments{graphql},
 	}
 }
 
@@ -204,6 +206,30 @@ func (a agentDeployments) ListDeployments(handle, gatewayID, status, orgID strin
 	return a.ListByHandle(handle, gatewayID, status, orgID)
 }
 
+// graphqlDeployments adapts the GraphQL API service, whose identifier IS the
+// handle and whose listing takes optional filters as pointers, same as LLM.
+type graphqlDeployments struct{ *GraphQLAPIDeploymentService }
+
+func (a graphqlDeployments) Deploy(handle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.DeployGraphQLAPI(handle, req, orgID, actor)
+}
+
+func (a graphqlDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID)
+}
+
+func (a graphqlDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID)
+}
+
+func (a graphqlDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
+	return a.GraphQLAPIDeploymentService.GetGraphQLAPIDeployment(handle, deploymentID, orgID)
+}
+
+func (a graphqlDeployments) ListDeployments(handle, gatewayID, status, orgID string) (*api.DeploymentListResponse, error) {
+	return a.GraphQLAPIDeploymentService.GetGraphQLAPIDeployments(handle, orgID, optionalFilter(gatewayID), optionalFilter(status))
+}
+
 // optionalFilter turns an empty filter into "not given", which is how the LLM
 // services spell an absent gateway or status.
 func optionalFilter(value string) *string {
@@ -301,4 +327,34 @@ func (d DeploymentsByKind) RestoreDeploymentByHandle(handle, kind, deploymentID,
 		return nil, err
 	}
 	return deployments.Restore(handle, deploymentID, gatewayHandle, orgID, actor)
+}
+
+// ArtifactProjects resolves the project an artifact belongs to. Satisfied by
+// repository.ArtifactRepo.
+type ArtifactProjects interface {
+	GetProjectHandle(kind, handle, orgUUID string) (projectHandle string, found bool, err error)
+}
+
+// PluginDeployments is the deployments capability handed to plugins: every
+// kind-routed operation, plus the project an artifact belongs to, which a plugin
+// that scopes deployments by project checks before acting on an artifact.
+type PluginDeployments struct {
+	DeploymentsByKind
+	Projects ArtifactProjects
+}
+
+// GetArtifactProjectByHandle returns the handle of the project an artifact of the
+// named kind belongs to, or an empty handle when it belongs to none.
+func (p PluginDeployments) GetArtifactProjectByHandle(handle, kind, orgID string) (string, error) {
+	if _, err := p.For(kind); err != nil {
+		return "", err
+	}
+	project, found, err := p.Projects.GetProjectHandle(kind, handle, orgID)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", apperror.ArtifactNotFound.New()
+	}
+	return project, nil
 }

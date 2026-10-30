@@ -73,3 +73,12 @@ func (e *externalPlugin) RouteOverrides() []pdk.RouteOverride {
 	}
 	return nil
 }
+
+// MCPTools forwards the optional pdk.MCPToolProvider. It returns nil when the
+// wrapped plugin does not implement the interface.
+func (e *externalPlugin) MCPTools() []pdk.MCPTool {
+	if tp, ok := e.p.(pdk.MCPToolProvider); ok {
+		return tp.MCPTools()
+	}
+	return nil
+}

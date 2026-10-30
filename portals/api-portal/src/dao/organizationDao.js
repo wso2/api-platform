@@ -101,7 +101,9 @@ const get = async (param, t) => {
 // auth middleware) — not for public REST lookups, which should use get()/handle instead.
 const getByUuid = async (uuid, t) => {
     const exec = t || db;
-    const organization = await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ? AND portal_id = ?`, [uuid, getPortalId()]);
+    const organization = normalizeOrgRow(
+        await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ? AND portal_id = ?`, [uuid, getPortalId()])
+    );
     if (!organization) {
         throw new NotFoundError('Organization not found');
     }
@@ -253,6 +255,18 @@ const deleteOrgDependents = async (orgUuid, t) => {
         );
     }
     await exec.execute('DELETE FROM events WHERE org_uuid = ?', [orgUuid]);
+
+    /*
+     * Billing data, deleted here in an order their foreign keys allow:
+     *   - subscription_billing, the billing state of paid subscriptions, before the subscriptions;
+     *   - billing_configurations, whose customers, checkouts and API plans go with it (cascade);
+     *   - subscription_plan_pricing;
+     *   - meters.
+     */
+    await exec.execute('DELETE FROM subscription_billing WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM billing_configurations WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM subscription_plan_pricing WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM meters WHERE org_uuid = ?', [orgUuid]);
 
     // Nullify nullable org_uuid references before deleting the org row.
     // The DB constraint is ON DELETE NO ACTION; application code owns the nullification.

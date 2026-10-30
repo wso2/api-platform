@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/apcli"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
 	"github.com/wso2/api-platform/tests/framework/suites/it/steps/platformapi"
 )
@@ -96,16 +97,15 @@ type Steps struct {
 	funnel      *httpx.Funnel
 	featureRoot string
 
-	cli        *cli
+	cli        *apcli.Session
 	token      string
-	last       cliResult
+	last       apcli.Result
 	registered map[string]bool
 }
 
 // Register binds the AI Workspace CLI steps.
 func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.Funnel, featureRoot string) {
 	s := &Steps{topo: topo, funnel: funnel, featureRoot: featureRoot, registered: map[string]bool{}}
-	sc.Step(`^the "ap" CLI is available$`, s.cliAvailable)
 	sc.Step(`^the CLI is configured for the AI Workspace as "([^"]*)"$`, s.configureWorkspace)
 	sc.Step(`^the "([^"]*)" project artifact is initialized$`, s.initArtifact)
 	sc.Step(`^I edit the "([^"]*)" artifact$`, s.editArtifact)
@@ -119,15 +119,15 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 
 // session returns the scenario's CLI session, failing with the build hint when the binary is
 // missing. A missing binary fails the scenario: a skipped test would leave the build green.
-func (s *Steps) session(ctx context.Context) (*cli, error) {
+func (s *Steps) session(ctx context.Context) (*apcli.Session, error) {
 	if s.cli != nil {
 		return s.cli, nil
 	}
-	bin, err := resolveBinary()
+	bin, err := apcli.ResolveBinary()
 	if err != nil {
 		return nil, err
 	}
-	c, err := newCLI(ctx, bin)
+	c, err := apcli.NewSession(ctx, bin)
 	if err != nil {
 		return nil, err
 	}
@@ -137,15 +137,15 @@ func (s *Steps) session(ctx context.Context) (*cli, error) {
 
 // execute runs one CLI command, publishing its result for the assertions that follow. The
 // previous result is cleared first so a failure to run cannot leave a stale one to assert on.
-func (s *Steps) execute(ctx context.Context, extraEnv []string, args ...string) (cliResult, error) {
-	s.last = cliResult{}
+func (s *Steps) execute(ctx context.Context, extraEnv []string, args ...string) (apcli.Result, error) {
+	s.last = apcli.Result{}
 	c, err := s.session(ctx)
 	if err != nil {
-		return cliResult{}, err
+		return apcli.Result{}, err
 	}
-	res, err := c.run(ctx, extraEnv, args...)
+	res, err := c.Run(ctx, extraEnv, args...)
 	if err != nil {
-		return cliResult{}, err
+		return apcli.Result{}, err
 	}
 	s.last = res
 	return res, nil
@@ -153,18 +153,6 @@ func (s *Steps) execute(ctx context.Context, extraEnv []string, args ...string) 
 
 func (s *Steps) authEnv() []string {
 	return []string{"WSO2AP_AIWORKSPACE_TOKEN=" + s.token}
-}
-
-// cliAvailable verifies the binary runs, as the legacy suite's smoke test did.
-func (s *Steps) cliAvailable(ctx context.Context) error {
-	res, err := s.execute(ctx, nil, "version")
-	if err != nil {
-		return err
-	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap version failed (exit %d):\n%s", res.exit, res.combined())
-	}
-	return nil
 }
 
 // configureWorkspace registers platform-api as the CLI's AI Workspace using oauth (bearer)
@@ -194,15 +182,15 @@ func (s *Steps) configureWorkspace(ctx context.Context, who string) error {
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap ai-workspace add failed (exit %d):\n%s", res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap ai-workspace add failed (exit %d):\n%s", res.Exit, res.Combined())
 	}
 	res, err = s.execute(ctx, nil, "ai-workspace", "use", "--display-name", workspaceName)
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap ai-workspace use failed (exit %d):\n%s", res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap ai-workspace use failed (exit %d):\n%s", res.Exit, res.Combined())
 	}
 	return nil
 }
@@ -222,8 +210,8 @@ func (s *Steps) initArtifact(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap project init (%s) failed (exit %d):\n%s", spec.initType, res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap project init (%s) failed (exit %d):\n%s", spec.initType, res.Exit, res.Combined())
 	}
 	return s.stage(ctx, spec, id, "create")
 }
@@ -246,7 +234,7 @@ func (s *Steps) stage(ctx context.Context, spec artifactSpec, id, variant string
 	if err != nil {
 		return err
 	}
-	projectDir := filepath.Join(c.workspace, id)
+	projectDir := filepath.Join(c.Workspace(), id)
 	files := []string{"metadata.yaml", "runtime.yaml"}
 	if variant == "create" {
 		files = append(files, "definition.yaml")
@@ -291,8 +279,8 @@ func (s *Steps) buildArtifact(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap ai-workspace build (%s) failed (exit %d):\n%s", key, res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap ai-workspace build (%s) failed (exit %d):\n%s", key, res.Exit, res.Combined())
 	}
 	return nil
 }
@@ -317,10 +305,10 @@ func (s *Steps) applyArtifact(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap ai-workspace apply (%s) failed (exit %d):\n%s", key, res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap ai-workspace apply (%s) failed (exit %d):\n%s", key, res.Exit, res.Combined())
 	}
-	if strings.Contains(res.combined(), createdMarker) && !s.registered[id] {
+	if strings.Contains(res.Combined(), createdMarker) && !s.registered[id] {
 		if err := platformapi.RegisterCreatedArtifact(ctx, s.topo, s.funnel, spec.artifactKind, id); err != nil {
 			return fmt.Errorf("registering cleanup for %s %q: %w", key, id, err)
 		}
@@ -349,11 +337,11 @@ func (s *Steps) artifactRetrievable(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap ai-workspace %s get (%s) failed (exit %d):\n%s", spec.group, key, res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap ai-workspace %s get (%s) failed (exit %d):\n%s", spec.group, key, res.Exit, res.Combined())
 	}
-	if !strings.Contains(res.combined(), id) {
-		return fmt.Errorf("get output for %q did not contain id %q:\n%s", key, id, res.combined())
+	if !strings.Contains(res.Combined(), id) {
+		return fmt.Errorf("get output for %q did not contain id %q:\n%s", key, id, res.Combined())
 	}
 	return nil
 }
@@ -377,11 +365,11 @@ func (s *Steps) artifactListed(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap ai-workspace %s list (%s) failed (exit %d):\n%s", spec.group, key, res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap ai-workspace %s list (%s) failed (exit %d):\n%s", spec.group, key, res.Exit, res.Combined())
 	}
-	if !strings.Contains(res.combined(), id) {
-		return fmt.Errorf("list output for %q did not contain id %q:\n%s", key, id, res.combined())
+	if !strings.Contains(res.Combined(), id) {
+		return fmt.Errorf("list output for %q did not contain id %q:\n%s", key, id, res.Combined())
 	}
 	return nil
 }
@@ -402,11 +390,11 @@ func (s *Steps) artifactAssociatedWithGateway(ctx context.Context, key, gateway 
 	if err != nil {
 		return err
 	}
-	if res.exit != 0 {
-		return fmt.Errorf("ap ai-workspace %s get (%s) failed (exit %d):\n%s", spec.group, key, res.exit, res.combined())
+	if res.Exit != 0 {
+		return fmt.Errorf("ap ai-workspace %s get (%s) failed (exit %d):\n%s", spec.group, key, res.Exit, res.Combined())
 	}
-	if !strings.Contains(res.combined(), gatewayID) {
-		return fmt.Errorf("get output for %q did not show associated gateway %q:\n%s", key, gatewayID, res.combined())
+	if !strings.Contains(res.Combined(), gatewayID) {
+		return fmt.Errorf("get output for %q did not show associated gateway %q:\n%s", key, gatewayID, res.Combined())
 	}
 	return nil
 }
@@ -425,10 +413,10 @@ func (s *Steps) artifact(ctx context.Context, key string) (artifactSpec, string,
 }
 
 // assertContainsAll requires a zero exit and every substring in the combined output.
-func assertContainsAll(res cliResult, substrs ...string) error {
-	out := res.combined()
-	if res.exit != 0 {
-		return fmt.Errorf("expected exit 0, got %d:\n%s", res.exit, out)
+func assertContainsAll(res apcli.Result, substrs ...string) error {
+	out := res.Combined()
+	if res.Exit != 0 {
+		return fmt.Errorf("expected exit 0, got %d:\n%s", res.Exit, out)
 	}
 	for _, want := range substrs {
 		if !strings.Contains(out, want) {

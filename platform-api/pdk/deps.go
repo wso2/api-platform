@@ -18,7 +18,9 @@
 package pdk
 
 import (
+	"context"
 	"log/slog"
+	"net/http"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
@@ -38,11 +40,13 @@ import (
 type Deps struct {
 	Gateways      Gateways
 	Projects      Projects
+	APIs          APIs
 	APIPortals    APIPortals
 	Deployments   Deployments
 	Organizations Organizations
+	Identity      Identity
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, LLM, MCP, …)
+	// (Subscriptions, Applications, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -68,9 +72,9 @@ type Gateways interface {
 }
 
 // Projects exposes create/read/delete access to the platform's projects, scoped
-// by organization. Every method mirrors an existing ProjectService method verbatim
-// and takes the organization id explicitly — handlers MUST pass the org resolved
-// from the request context, never one from request input (GO-AUTH-005).
+// by organization. Every method is a ProjectService method, or a thin wrapper over
+// one, and takes the organization id explicitly — handlers MUST pass the org
+// resolved from the request context, never one from request input (GO-AUTH-005).
 type Projects interface {
 	// CreateProject creates a project in an organization (Create).
 	CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error)
@@ -81,6 +85,45 @@ type Projects interface {
 
 	// DeleteProject removes a project within an organization (Delete).
 	DeleteProject(handle, orgID, actor string) error
+
+	// ListProjects returns one page of an organization's projects, newest first, with the total (Read).
+	ListProjects(organizationID string, limit, offset int) ([]api.Project, int, error)
+}
+
+// APIs exposes read-only lookups over the platform's REST APIs, scoped by
+// organization. Every method mirrors an existing APIService method verbatim and
+// takes the organization id explicitly — callers MUST pass the org resolved from
+// the request context, never one from request input (GO-AUTH-005). The parameter
+// order differs per method, inherited from those services; normalizing it would
+// cost the no-adapter assignment.
+type APIs interface {
+	// GetAPIVersions returns every REST API sharing displayName in an organization
+	// (Read). Org-wide, since (displayName, version) uniqueness is, so versions of
+	// one API may sit in different projects.
+	GetAPIVersions(orgUUID, displayName string) (*api.RESTAPIVersionListResponse, error)
+
+	// GetAPIByHandle returns a single REST API by its handle within an
+	// organization (Read).
+	GetAPIByHandle(handle, orgId string) (*api.RESTAPI, error)
+
+	// GetArtifactUUID resolves the internal artifact UUID for a REST API handle
+	// (Read). Every REST API route addresses an API by handle, so this is the only
+	// way a plugin reaches its UUID.
+	GetArtifactUUID(handle, orgUUID string) (string, error)
+}
+
+// Identity resolves the user behind a request in the form the platform keeps
+// in created_by / updated_by columns, so records a plugin writes name the same
+// user the platform's own handlers would.
+type Identity interface {
+	// InternalUserID returns the internal user id for the request's
+	// authenticated user.
+	InternalUserID(r *http.Request) (string, error)
+	// DisplayIdentity returns what the platform's own responses show for an
+	// internal user id read back from a created_by / updated_by column, so a
+	// plugin returning platform records reports the same user. An empty id is
+	// returned as is.
+	DisplayIdentity(internalUserID string) (string, error)
 }
 
 // APIPortals exposes CRUD on API Portal records, scoped by organization.
@@ -101,8 +144,19 @@ type APIPortals interface {
 	ListAPIPortalStatuses(orgID string) (map[string]string, error)
 	ListAPIPortalsByStatus(status string) ([]api.APIPortalIdentity, error)
 	UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error)
+	// UpdateAPIPortalStatus moves a pending portal to active or failed. An empty
+	// updatedBy keeps the row's updated_by, for transitions no user made.
 	UpdateAPIPortalStatus(handle, orgID, updatedBy, status string) error
+	// ReopenAPIPortal moves an active or failed portal back to pending for a
+	// change that runs in the background; api.ErrAPIPortalPending when one is
+	// already in progress.
+	ReopenAPIPortal(handle, orgID, updatedBy string) error
 	DeleteAPIPortal(handle, orgID, actor string) error
+	// AuthHeaderForPortal returns the "SharedKey <raw>" Authorization header for
+	// calling the portal's admin API. The shared key is stored encrypted and only
+	// core can decrypt it, so plugins that call the portal after Create (once its
+	// pod is up) get the header here instead of keeping the plaintext key.
+	AuthHeaderForPortal(ctx context.Context, handle, orgID string) (string, error)
 }
 
 // Organizations exposes read-only lookups over the platform's organizations.
@@ -135,12 +189,14 @@ const (
 	KindMCPProxy    = "Mcp"
 	KindLLMProxy    = "LlmProxy"
 	KindLLMProvider = "LlmProvider"
+	KindGraphQLAPI  = "GraphQLApi"
+	KindAgentProxy  = "AgentProxy"
 )
 
 type Deployments interface {
 	// Every operation names the artifact KIND alongside the handle — the same kinds
 	// the platform's own paths are split by ("RestApi", "Mcp", "LlmProxy",
-	// "LlmProvider"). Handles are unique only WITHIN a kind, so a handle alone could
+	// "LlmProvider", "GraphQLApi", "AgentProxy"). Handles are unique only WITHIN a kind, so a handle alone could
 	// reach an artifact the caller did not name; the kind settles it, and the
 	// platform checks that the artifact it resolves really is of that kind.
 
@@ -191,4 +247,10 @@ type Deployments interface {
 	// its gateway, serving the artifact it already holds rather than rendering or
 	// building anything new (Update). The deployment must not already be DEPLOYED.
 	RestoreDeploymentByHandle(handle, kind, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+
+	// GetArtifactProjectByHandle returns the handle of the project the artifact belongs
+	// to, or an empty handle when it belongs to none: an LLM provider never does, and an
+	// MCP proxy may not. A plugin that scopes deployments by project checks it before
+	// acting, so an artifact is never deployed through another project's pipeline.
+	GetArtifactProjectByHandle(handle, kind, orgID string) (string, error)
 }

@@ -65,6 +65,34 @@
       <i class="bi bi-receipt sidebar-icon"></i>
       <span class="nav-text">Subscriptions</span>
     </a>
+    {{#if billingEnabled}}
+    {{#unless (designMode)}}
+    {{#if (or @root.access.readInvoices @root.access.readUsage)}}
+    {{!-- Billing: the subscriber's Invoices (where payment methods are managed) and the Usage of
+          their paid plans, each shown only when the user may read it. The parent navigates to its
+          first child, as Keys does. --}}
+    <a href="{{baseUrl}}{{#if @root.access.readInvoices}}/billing/invoices{{else}}/usage{{/if}}" class="nav-link" id="billing">
+      <i class="bi bi-credit-card sidebar-icon"></i>
+      <span class="nav-text">Billing</span>
+      <i class="bi bi-chevron-right sidebar-chevron nav-text"></i>
+    </a>
+    <div class="submenu" id="billing-submenu">
+      {{#if @root.access.readInvoices}}
+      <a href="{{baseUrl}}/billing/invoices" class="nav-link submenu-link fw-light" id="billing-invoices">
+        <i class="bi bi-receipt-cutoff submenu-icon"></i>
+        <span class="nav-text">Invoices</span>
+      </a>
+      {{/if}}
+      {{#if @root.access.readUsage}}
+      <a href="{{baseUrl}}/usage" class="nav-link submenu-link fw-light" id="usage">
+        <i class="bi bi-bar-chart submenu-icon"></i>
+        <span class="nav-text">Usage</span>
+      </a>
+      {{/if}}
+    </div>
+    {{/if}}
+    {{/unless}}
+    {{/if}}
     {{!-- Keys: every credential a developer can hold for calling an API, whichever
           side issued it — API keys the portal mints itself, and OAuth2 keys created
           on an external identity server. The parent navigates to its first child;

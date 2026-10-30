@@ -138,4 +138,76 @@ describe('runtimeConfig', () => {
     expect(runtimeConfig.cloudProxyEnabled).toBe(true);
     expect(runtimeConfig.moesifAppUrl).toBe('https://www.moesif.com');
   });
+  describe('sanitizeHtmlDocsEnabled', () => {
+    it('defaults to on when unset', async () => {
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(true);
+    });
+
+    it.each(['false', 'FALSE', 'False', ' false ', 'fAlSe'])('turns off for %j in any letter case', async (value) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(false);
+    });
+
+    it('turns off for a boolean false', async () => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: false };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(false);
+    });
+
+    it.each(['true', 'TRUE', '', 'no', '0', 'off', 'flase'])('stays on for %j', async (value) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(true);
+    });
+
+    it('reads the build-time flag case-insensitively too', async () => {
+      vi.stubEnv('VITE_SANITIZE_HTML_DOCS_ENABLED', 'False');
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(false);
+    });
+
+    it('prefers the BFF runtime value over the build-time flag', async () => {
+      vi.stubEnv('VITE_SANITIZE_HTML_DOCS_ENABLED', 'false');
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: 'true' };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(true);
+    });
+  });
+
+  it('reads the sanitize allowlist additions the BFF emits as JSON strings', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      sanitizeHtmlDocsAdditionalAllowedAttributes: '{"video":["controls","poster"],"*":["hidden"]}',
+      sanitizeHtmlDocsAdditionalAllowedTags: '["video"]',
+    };
+    const runtimeConfig = await loadRuntimeConfig();
+    expect(runtimeConfig.sanitizeHtmlDocsAdditionalAllowedTags).toEqual(['video']);
+    expect(runtimeConfig.sanitizeHtmlDocsAdditionalAllowedAttributes).toEqual({
+      '*': ['hidden'],
+      video: ['controls', 'poster'],
+    });
+  });
+  describe('sanitizeHtmlDocsAdditionalAllowedTags', () => {
+    it.each([
+      ['a JSON array', '["video","iframe"]', ['video', 'iframe']],
+      ['a comma-separated list', 'video, iframe,,', ['video', 'iframe']],
+      ['a single tag', ' video ', ['video']],
+      ['broken JSON', '["video","iframe"', []],
+      ['a JSON array with a non-string', '["video",1]', []],
+      ['a blank value', '  ', []],
+    ])('reads %s', async (_label, value, expected) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsAdditionalAllowedTags: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsAdditionalAllowedTags).toEqual(expected);
+    });
+  });
+
+  describe('sanitizeHtmlDocsAdditionalAllowedAttributes', () => {
+    it.each([
+      ['string arrays', '{"video":["controls","poster"]}', { video: ['controls', 'poster'] }],
+      ['a single string', '{"div":"hidden"}', { div: ['hidden'] }],
+      ['a comma-separated string', '{"video":"controls, poster"}', { video: ['controls', 'poster'] }],
+      ['a blank string', '{"div":" ","img":["loading"]}', { img: ['loading'] }],
+      ['an entry of another shape', '{"div":1,"p":["hidden",2],"img":["loading"]}', { img: ['loading'] }],
+      ['a top-level array', '["src"]', {}],
+      ['broken JSON', '{"iframe":["src"]', {}],
+    ])('reads %s', async (_label, value, expected) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsAdditionalAllowedAttributes: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsAdditionalAllowedAttributes).toEqual(expected);
+    });
+  });
 });

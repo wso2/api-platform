@@ -23,6 +23,13 @@ import "time"
 // back by publishers (e.g. the Log publisher's masking and field-projection paths).
 // Both sides must use these constants so a rename stays in one place.
 const (
+	// PropKeyRequestHeaders / PropKeyResponseHeaders hold captured headers under
+	// EITHER of two shapes, and every reader must accept both (see
+	// internal/analytics/publishers/log.go's headersFromEventProperty):
+	//   - map[string]string: the correlation-store-hit path (internal/analytics/
+	//     correlation) -- already typed, no decoding needed.
+	//   - string: the metadata-decode fallback path (no store hit) -- a
+	//     JSON-encoded object, decoded via parseHeadersFromString.
 	PropKeyRequestHeaders  = "requestHeaders"
 	PropKeyResponseHeaders = "responseHeaders"
 	PropKeyRequestPayload  = "request_payload"
@@ -56,6 +63,11 @@ const (
 	// up here. Consumed by the stdout traffic-logging publisher's global
 	// "$ctx:metadata['<key>']" property (see internal/analytics/publishers/global_properties.go).
 	PropKeyMetadata = "x-wso2-metadata"
+
+	// PropKeyOperationPath carries the matched operation path template (e.g.
+	// "/basepath/auth/{channel}") as configured on the API, as opposed to the concrete
+	// request path. Consumed by the traffic-logging global "$ctx:request.pathTemplate" property.
+	PropKeyOperationPath = "x-wso2-operation-path"
 
 	// Fault metadata keys, written only on the fault path by the collector system policy's
 	// OnFault (gateway/system-policies/analytics — a separate Go module, hence the matching
@@ -116,9 +128,8 @@ type Event struct {
 // publisher, built from [traffic_logging] config (see
 // publishers.buildGlobalDirective). A nil flow means that flow was not configured.
 type TrafficLogDirective struct {
-	Request  *TrafficLogFlow   `json:"request,omitempty"`
-	Response *TrafficLogFlow   `json:"response,omitempty"`
-	Fields   *TrafficLogFields `json:"fields,omitempty"`
+	Request  *TrafficLogFlow `json:"request,omitempty"`
+	Response *TrafficLogFlow `json:"response,omitempty"`
 	// Properties holds the resolved global properties (context references already
 	// expanded at request time). The Log publisher emits them as a top-level
 	// "properties" object on the log line.

@@ -16,7 +16,7 @@ For end-user documentation, see [docs/gateway/](../docs/gateway/).
 ## Prerequisites
 
 - Docker + Docker Compose
-- Go 1.25.1+
+- Go 1.26.10+
 - Make
 
 ## Development
@@ -47,7 +47,7 @@ docker compose up
 terminal:
 
 ```bash
-curl http://localhost:9092/api/admin/v0.9/health
+curl http://localhost:9094/api/admin/v1/health
 ```
 
 On Windows, use the PowerShell counterpart (same flags and generated files; requires `openssl`

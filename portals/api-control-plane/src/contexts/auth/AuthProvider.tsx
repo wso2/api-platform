@@ -143,12 +143,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           credentials: 'same-origin',
           headers: mutatingHeaders,
         });
-        if (response.status === 200) {
-          const body = (await response.json()) as { logoutUrl?: string };
+        // Any 2xx ends the session server-side. The body is only read for the
+        // IDP end-session URL, which a file-based logout (204, no body) has not
+        // got — so a parse failure is expected there, not an error. Mirrors the
+        // AI Workspace BFF provider.
+        if (response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { logoutUrl?: string };
           logoutUrl = body.logoutUrl;
         }
       } catch {
         // Best-effort: proceed to clear local state and navigate away regardless.
+      }
+      // Leave for the IDP before touching local state. Flipping status to
+      // 'unauthenticated' re-renders the app, and a guard reacting to that sends
+      // the browser to /login, which preempts this navigation and tears down the
+      // in-flight end-session request — the IDP logs "context canceled" and the
+      // session it was asked to end survives.
+      if (logoutUrl) {
+        window.location.assign(logoutUrl);
+        return;
       }
       setUser(undefined);
       setStatus('unauthenticated');
@@ -156,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // normalized to '' or '/sub-path', see config/runtime.ts) as the router
       // basename — a bare "/login" would send the browser to the app's own
       // root path instead of {basePath}/login when that's set to a sub-path.
-      window.location.assign(logoutUrl || `${runtimeConfig.appBasePath}/login`);
+      window.location.assign(`${runtimeConfig.appBasePath}/login`);
     })();
   }, []);
 

@@ -42,7 +42,7 @@ func BuildSpec(version string) (builder.Spec, error) {
 			Context:    "portals/api-control-plane",
 		}},
 		Plan: func(repoRoot, v string, coverage builder.CoverageSpec) ([]builder.Command, error) {
-			args := []string{"docker", "buildx", "build", "--tag", "ghcr.io/wso2/api-platform/api-control-plane:" + v, "--load"}
+			args := []string{"docker", "buildx", "build", "--build-context", "httpkit=../../httpkit", "--tag", "ghcr.io/wso2/api-platform/api-control-plane:" + v, "--load"}
 			if coverage.Supported {
 				args = append(args, builder.CoverageBuildArgs(coverage)...)
 			}

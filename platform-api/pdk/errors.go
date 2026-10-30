@@ -40,3 +40,39 @@ var ErrBuildLimitReached = errors.New("build limit reached")
 func IsBuildLimitReached(err error) bool {
 	return errors.Is(err, ErrBuildLimitReached) || apperror.BuildLimitReached.Is(err)
 }
+
+// ClientError is the answer the platform gives a client for one of its own refusals: the HTTP
+// status, the error code and a message that is safe to show. A plugin that calls a capability
+// and gets such a refusal can return it to its caller unchanged, instead of reducing a
+// "not found" or a validation failure to a generic server error.
+//
+// Its own tests can return a *ClientError from a fake capability; AsClientError recognises it
+// the same way.
+type ClientError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *ClientError) Error() string {
+	// A nil *ClientError held in an error interface is not a nil error.
+	if e == nil {
+		return "<nil client error>"
+	}
+	return e.Code + ": " + e.Message
+}
+
+// AsClientError reports the platform's client answer for err, also when err was wrapped. ok is
+// false for errors the platform did not classify; their text may carry internal detail and is
+// not for clients.
+func AsClientError(err error) (ClientError, bool) {
+	var appErr *apperror.Error
+	if errors.As(err, &appErr) && appErr != nil {
+		return ClientError{Status: appErr.HTTPStatus, Code: appErr.Code, Message: appErr.Message}, true
+	}
+	var clientErr *ClientError
+	if errors.As(err, &clientErr) && clientErr != nil {
+		return *clientErr, true
+	}
+	return ClientError{}, false
+}

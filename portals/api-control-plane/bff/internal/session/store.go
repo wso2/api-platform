@@ -41,6 +41,9 @@ type User struct {
 	Role   string   `json:"role,omitempty"`
 	Scopes []string `json:"scopes"`
 	Org    *Org     `json:"org,omitempty"`
+	// Picture is the user's avatar URL, when the IDP supplies one; the SPA falls
+	// back to initials when it is empty.
+	Picture string `json:"picture,omitempty"`
 }
 
 // Org mirrors the SPA's org display shape.

@@ -126,13 +126,14 @@ func NewOIDC(
 	ctx context.Context,
 	client *http.Client,
 	issuer, clientID, clientSecret, redirectURL, postLogoutRedirectURL, scopes string,
+	requireHTTPS bool,
 	mapping session.ClaimMapping,
 	absTTL time.Duration,
 	txSealer *secure.Sealer,
 ) (*OIDC, error) {
 	discCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
 	defer cancel()
-	disco, err := fetchDiscovery(discCtx, noRedirectClient(client), issuer)
+	disco, err := fetchDiscovery(discCtx, noRedirectClient(client), issuer, requireHTTPS)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +172,7 @@ func (o *OIDC) SupportsRevocation() bool { return o.disco.RevocationEndpoint != 
 // IDP the user logged in to, without repeating discovery.
 func (o *OIDC) TokenEndpoint() string { return o.disco.TokenEndpoint }
 
-func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (discoveryDoc, error) {
+func fetchDiscovery(ctx context.Context, client *http.Client, issuer string, requireHTTPS bool) (discoveryDoc, error) {
 	u := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -195,13 +196,13 @@ func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (di
 
 	// Only the two endpoints this BFF posts credentials to. The authorization and
 	// end-session endpoints are browser redirects and carry nothing of ours.
-	if err := requireSecureEndpoint("token_endpoint", d.TokenEndpoint); err != nil {
+	if err := requireSecureEndpoint("token_endpoint", d.TokenEndpoint, requireHTTPS); err != nil {
 		return discoveryDoc{}, err
 	}
 	// Optional, so a bad one is dropped rather than failing startup: logout still
 	// works without it, and SupportsRevocation then reports the loss.
 	if d.RevocationEndpoint != "" {
-		if err := requireSecureEndpoint("revocation_endpoint", d.RevocationEndpoint); err != nil {
+		if err := requireSecureEndpoint("revocation_endpoint", d.RevocationEndpoint, requireHTTPS); err != nil {
 			slog.Warn("ignoring the issuer's revocation_endpoint", "err", err)
 			d.RevocationEndpoint = ""
 		}
@@ -211,9 +212,11 @@ func fetchDiscovery(ctx context.Context, client *http.Client, issuer string) (di
 
 // requireSecureEndpoint rejects an advertised endpoint this BFF would send the client
 // secret (and, for revocation, the refresh token) to in cleartext. Loopback is exempt:
-// the request never reaches a network there. Mirrors the check config.validate already
+// the request never reaches a network there. requireHTTPS = false ([auth.oidc]
+// require_https) lifts the plaintext check for a local setup; a malformed URL or one
+// carrying userinfo is still rejected. Mirrors the check config.validate already
 // applies to an explicitly configured token_endpoint.
-func requireSecureEndpoint(name, raw string) error {
+func requireSecureEndpoint(name, raw string, requireHTTPS bool) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return fmt.Errorf("oidc discovery returned an unusable %s", name)
@@ -221,9 +224,10 @@ func requireSecureEndpoint(name, raw string) error {
 	if u.User != nil {
 		return fmt.Errorf("oidc discovery returned a %s containing userinfo", name)
 	}
-	if u.Scheme == "http" && !config.IsLoopbackHost(u.Host) {
+	if requireHTTPS && u.Scheme == "http" && !config.IsLoopbackHost(u.Host) {
 		return fmt.Errorf("oidc discovery returned a plaintext %s: the client secret is sent "+
-			"in the request body, so it must be https://", name)
+			"in the request body, so it must be https:// (or set [auth.oidc] require_https = "+
+			"false for a local setup)", name)
 	}
 	return nil
 }
@@ -231,12 +235,13 @@ func requireSecureEndpoint(name, raw string) error {
 // AuthCodeURL creates a new login transaction and returns the IDP authorize URL.
 //
 // `extra` carries additional authorization-request parameters the caller wants the IDP
-// to see — `fidp` to name a federated provider, `login_hint` to prefill the account —
-// so a portal can put the provider choice on its OWN page and send the user straight
-// to Google or GitHub instead of through the IDP's chooser. The caller is responsible
-// for deciding which parameters are allowed (see the server's handleOIDCLogin): a
-// parameter set here CANNOT override the protocol ones below, which are written after
-// it precisely so that a stray `redirect_uri` or `scope` cannot widen the request.
+// to see — `fidp` to name a federated provider, `login_hint` (and, for WSO2 Identity
+// Server / Asgardeo, `username`) to prefill the account — so a portal can put the
+// provider choice on its OWN page and send the user straight to Google or GitHub
+// instead of through the IDP's chooser. The caller is responsible for deciding which
+// parameters are allowed (see the server's handleOIDCLogin): a parameter set here
+// CANNOT override the protocol ones below, which are written after it precisely so
+// that a stray `redirect_uri` or `scope` cannot widen the request.
 // plus the opaque tx id to store in the short-lived tx cookie.
 func (o *OIDC) AuthCodeURL(returnURL string, extra url.Values) (authURL, txID string, err error) {
 	state, err := randString(32)

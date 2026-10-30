@@ -62,6 +62,11 @@ func redactRequestDump(dump []byte) []byte {
 	return []byte(strings.Join(lines, "\r\n"))
 }
 
+// maxDumpedRequestBodyBytes caps the request bodies printed with the request dump;
+// larger ones (e.g. the multi-MiB bodies of request-body-size.feature) are dumped
+// with headers only.
+const maxDumpedRequestBodyBytes = 64 * 1024
+
 // redactSensitiveBodyFields masks secret-bearing JSON field values before a
 // response body is logged.
 func redactSensitiveBodyFields(body string) string {
@@ -101,6 +106,7 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I send a GET request to \"([^\"]*)\"$`, h.ISendGETRequest)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\"$`, h.ISendPOSTRequest)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\" with body:$`, h.ISendPOSTRequestWithBody)
+	ctx.Step(`^I send a POST request to \"([^\"]*)\" with a JSON body of (\d+) bytes$`, h.iSendPOSTRequestWithJSONBodyOfSize)
 	ctx.Step(`^I send a PUT request to \"([^\"]*)\" with body:$`, h.ISendPUTRequestWithBody)
 	ctx.Step(`^I send a DELETE request to \"([^\"]*)\"$`, h.ISendDELETERequest)
 	ctx.Step(`^I send a PATCH request to \"([^\"]*)\" with body:$`, h.ISendPATCHRequestWithBody)
@@ -321,6 +327,17 @@ func (h *HTTPSteps) ISendPOSTRequestWithBody(url string, body *godog.DocString) 
 	return h.sendRequest(http.MethodPost, url, []byte(body.Content))
 }
 
+// iSendPOSTRequestWithJSONBodyOfSize sends a POST request whose body is a JSON object
+// of exactly size bytes, for tests that need a body too large to write inline.
+func (h *HTTPSteps) iSendPOSTRequestWithJSONBodyOfSize(url string, size int) error {
+	const prefix, suffix = `{"data":"`, `"}`
+	padding := size - len(prefix) - len(suffix)
+	if padding < 0 {
+		return fmt.Errorf("JSON body size must be at least %d bytes, got %d", len(prefix)+len(suffix), size)
+	}
+	return h.sendRequest(http.MethodPost, url, []byte(prefix+strings.Repeat("a", padding)+suffix))
+}
+
 // ISendPUTRequestWithBody sends a PUT request with body
 func (h *HTTPSteps) ISendPUTRequestWithBody(url string, body *godog.DocString) error {
 	return h.sendRequest(http.MethodPut, url, []byte(body.Content))
@@ -456,7 +473,7 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 
 	h.lastRequest = req
 
-	reqDump, _ := httputil.DumpRequestOut(req, true)
+	reqDump, _ := httputil.DumpRequestOut(req, len(body) <= maxDumpedRequestBodyBytes)
 	fmt.Printf("REQUEST:\n%s\n", string(redactRequestDump(reqDump)))
 	log.Printf("DEBUG: Sending %s request to %s", method, url)
 
@@ -524,7 +541,7 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 
 	h.lastRequest = req
 
-	reqDump, _ := httputil.DumpRequestOut(req, true)
+	reqDump, _ := httputil.DumpRequestOut(req, len(body) <= maxDumpedRequestBodyBytes)
 	fmt.Printf("REQUEST:\n%s\n", string(redactRequestDump(reqDump)))
 	// Log the request for debugging
 	log.Printf("DEBUG: Sending %s request to %s", method, url)

@@ -9,6 +9,8 @@ Available command groups:
 - `ap gateway image` — build gateway images
 - `ap gateway rest-api` — manage REST APIs on a gateway
 - `ap gateway rest-api api-key` — manage API keys for a REST API
+- `ap gateway graphql-api` — manage GraphQL APIs on a gateway
+- `ap gateway graphql-api api-key` — manage API keys for a GraphQL API
 - `ap gateway mcp` — manage MCP proxies on a gateway
 - `ap gateway subscription-plan` — manage subscription plans on a gateway
 - `ap gateway subscription` — manage subscriptions on a gateway
@@ -58,7 +60,7 @@ Resolution semantics:
 
 ### `ap gateway apply`
 
-Creates or updates a gateway resource (REST API, MCP proxy, etc.) from a YAML or JSON file. The command reads `kind` and `metadata.name` from the file, checks whether the resource already exists, and then creates (`POST`) or updates (`PUT`) it.
+Creates or updates a gateway resource (REST API, GraphQL API, MCP proxy, LLM provider, LLM proxy) from a YAML or JSON file. The command reads `kind` and `metadata.name` from the file, checks whether the resource already exists, and then creates (`POST`) or updates (`PUT`) it.
 
 ```shell
 ap gateway apply --file <path> [--platform <platform>] [--gateway <display-name>]
@@ -74,9 +76,9 @@ ap gateway apply -f mcp-proxy.yaml --platform eu --gateway prod
 
 Notes:
 
-- Supported kinds: `RestApi` and `Mcp`.
+- Supported kinds: `RestApi`, `Mcp`, `LlmProvider`, `LlmProxy`, and `GraphQLApi`.
 - JSON input is converted to YAML before being sent.
-- Ready-to-use sample CRs live in [`gateway/examples`](../../../gateway/examples): [`sample-echo-api.yaml`](../../../gateway/examples/sample-echo-api.yaml) and [`petstore-api.yaml`](../../../gateway/examples/petstore-api.yaml) (`RestApi`), and [`mcp-proxy.yaml`](../../../gateway/examples/mcp-proxy.yaml) (`Mcp`).
+- Ready-to-use sample CRs live in [`gateway/examples`](../../../gateway/examples): [`sample-echo-api.yaml`](../../../gateway/examples/sample-echo-api.yaml) and [`petstore-api.yaml`](../../../gateway/examples/petstore-api.yaml) (`RestApi`), [`mcp-proxy.yaml`](../../../gateway/examples/mcp-proxy.yaml) (`Mcp`), and [`countries-graphql-api.yaml`](../../../gateway/examples/countries-graphql-api.yaml) and [`blog-graphql-api.yaml`](../../../gateway/examples/blog-graphql-api.yaml) (`GraphQLApi`).
 
 ## REST API Commands
 
@@ -236,6 +238,143 @@ Example:
 
 ```shell
 ap gateway rest-api api-key revoke --id reading-list-api-v1.0 --key-name my-production-key
+```
+
+## GraphQL API Commands
+
+These commands manage GraphQL APIs using the `/graphql-apis` management endpoints. To create or update a GraphQL API, use [`ap gateway apply`](#ap-gateway-apply) with a `kind: GraphQLApi` file.
+
+### `ap gateway graphql-api list`
+
+Lists GraphQL APIs deployed on the gateway.
+
+```shell
+ap gateway graphql-api list [--platform <platform>] [--gateway <display-name>]
+```
+
+Examples:
+
+```shell
+ap gateway graphql-api list
+ap gateway graphql-api list --platform eu --gateway prod
+```
+
+Behavior:
+
+- Prints a table with `ID`, `DISPLAY_NAME`, `VERSION`, `CONTEXT`, `STATE`, and `CREATED_AT`.
+
+### `ap gateway graphql-api get`
+
+Retrieves a single GraphQL API by ID, or by name and version.
+
+```shell
+ap gateway graphql-api get --id <id> [--format <json|yaml>] [--platform <platform>] [--gateway <display-name>]
+ap gateway graphql-api get --display-name <name> --version <version> [--format <json|yaml>] [--platform <platform>] [--gateway <display-name>]
+```
+
+Examples:
+
+```shell
+ap gateway graphql-api get --id countries-graphql-api --format yaml
+ap gateway graphql-api get --display-name "Countries GraphQL API" --version v1.0 --format json
+```
+
+Notes:
+
+- `--display-name` here is the **API** name (not the gateway). When using `--display-name`, `--version` is required.
+- `--format` defaults to `yaml`.
+
+### `ap gateway graphql-api delete`
+
+Deletes a GraphQL API by ID.
+
+```shell
+ap gateway graphql-api delete --id <id> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway graphql-api delete --id countries-graphql-api
+```
+
+## GraphQL API Key Commands
+
+These commands manage API keys for a GraphQL API using the `/graphql-apis/{id}/api-keys` endpoints. Unlike REST API keys, `create` and `update` take explicit flags rather than a `ApiKey` custom resource file.
+
+### `ap gateway graphql-api api-key create`
+
+Generates a new API key for a GraphQL API directly from flags — there is no CR file for this command. `--name` is optional (the server generates a unique name if omitted); `--expires-in-duration` and `--expires-in-unit` must be supplied together to set an expiry, or omitted together for a key that never expires. The plaintext key is returned once in the response.
+
+```shell
+ap gateway graphql-api api-key create --id <graphql-api-id> [--name <name>] [--expires-in-duration <n> --expires-in-unit <seconds|minutes|hours|days|weeks|months>] [--platform <platform>] [--gateway <display-name>]
+```
+
+Examples:
+
+```shell
+ap gateway graphql-api api-key create --id countries-graphql-api
+ap gateway graphql-api api-key create --id countries-graphql-api --name my-production-key --expires-in-duration 30 --expires-in-unit days
+```
+
+### `ap gateway graphql-api api-key list`
+
+Lists API keys for a GraphQL API.
+
+```shell
+ap gateway graphql-api api-key list --id <graphql-api-id> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway graphql-api api-key list --id countries-graphql-api
+```
+
+Behavior:
+
+- Prints a table with `NAME`, `DISPLAY_NAME`, `API_ID`, `STATUS`, `CREATED_AT`, and `EXPIRES_AT`. The plaintext key value is only returned by `create`/`regenerate`.
+
+### `ap gateway graphql-api api-key regenerate`
+
+Regenerates an API key value, replacing the previous one. The new plaintext key is returned once.
+
+```shell
+ap gateway graphql-api api-key regenerate --id <graphql-api-id> --key-name <name> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway graphql-api api-key regenerate --id countries-graphql-api --key-name my-production-key
+```
+
+### `ap gateway graphql-api api-key update`
+
+Replaces an existing API key's **secret value** with a custom plain-text value (minimum 36 characters) instead of an auto-generated one. It is hashed before storage; the plaintext is not echoed back. If `--api-key` is omitted, you are prompted for it securely instead of passing it on the command line.
+
+```shell
+ap gateway graphql-api api-key update --id <graphql-api-id> --key-name <name> [--api-key <36+ character value>] [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway graphql-api api-key update --id countries-graphql-api --key-name my-production-key
+```
+
+### `ap gateway graphql-api api-key revoke`
+
+Revokes an API key so it can no longer be used for authentication.
+
+```shell
+ap gateway graphql-api api-key revoke --id <graphql-api-id> --key-name <name> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway graphql-api api-key revoke --id countries-graphql-api --key-name my-production-key
 ```
 
 ## MCP Commands
@@ -431,6 +570,7 @@ kind: Subscription
 metadata:
   name: petstore-acme-bronze
 spec:
+  externalRefId: acme-petstore-sub-01   # optional
   apiId: petstore-api-v1.0
   subscriptionPlanId: bronze-1k-per-min
   status: ACTIVE
@@ -440,6 +580,7 @@ spec:
 Notes:
 
 - `spec.apiId` is required.
+- `spec.externalRefId` is optional. When set, the gateway uses it as the subscription ID instead of generating one, so you can `get`, `update` and `delete` the subscription by your own ID. It must be 1-64 characters of letters, digits, `.`, `_` or `-`, start with a letter or digit, and be unique on the gateway.
 - `spec.subscriptionToken` must be a plain string. Secret references (`valueFrom`) are an operator-only feature and are not resolved by the CLI.
 - Sample CR: [`gateway/examples/subscription.yaml`](../../../gateway/examples/subscription.yaml).
 
@@ -478,17 +619,31 @@ ap gateway subscription get --id sub-1
 
 ### `ap gateway subscription update`
 
-Updates a subscription's status.
+Updates a subscription in place. Only the fields you pass are changed.
 
 ```shell
-ap gateway subscription update --id <subscription-id> --status <ACTIVE|INACTIVE|REVOKED> [--platform <platform>] [--gateway <display-name>]
+ap gateway subscription update --id <subscription-id> \
+  [--status <ACTIVE|INACTIVE|REVOKED>] \
+  [--subscription-plan-id <plan-id> | --clear-subscription-plan] \
+  [--rotate-token | --subscription-token <token>] \
+  [--platform <platform>] [--gateway <display-name>]
 ```
 
-Example:
+Examples:
 
 ```shell
 ap gateway subscription update --id sub-1 --status REVOKED
+ap gateway subscription update --id sub-1 --subscription-plan-id gold-plan-id
+ap gateway subscription update --id sub-1 --clear-subscription-plan
+ap gateway subscription update --id sub-1 --rotate-token
 ```
+
+Notes:
+
+- Pass at least one of `--status`, `--subscription-plan-id`, `--clear-subscription-plan`, `--rotate-token` or `--subscription-token`.
+- The new plan must exist, be `ACTIVE` and be enabled for the subscribed API.
+- `--rotate-token` prompts for the new token with hidden input. `--subscription-token` takes it on the command line, where it can end up in shell history, so it isn't recommended. The previous token stops working as soon as the update succeeds, and the token is never returned.
+- The gateway rejects a token that another subscription on the same API already uses (`409`).
 
 ### `ap gateway subscription delete`
 

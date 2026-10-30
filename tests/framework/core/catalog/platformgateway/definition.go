@@ -19,7 +19,6 @@
 package platformgateway
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -59,12 +58,10 @@ func PlatformGateway() *components.Definition {
 			Services:       []string{svcController, svcRuntime},
 
 			StagedFiles: map[string]string{
-				"aesgcm-keys/default-aesgcm256-v1.bin": "gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin",
-				"listener-certs":                       "gateway/gateway-controller/listener-certs",
-				"certificates":                         "gateway/gateway-controller/certificates",
-				"llm-pricing/model_prices.json":        "gateway/configs/llm-pricing/model_prices.json",
+				"llm-pricing/model_prices.json": "gateway/configs/llm-pricing/model_prices.json",
 			},
-			Env: env,
+			GeneratedFiles: gatewayGeneratedFiles(),
+			Env:            env,
 
 			CoverageServices: []components.CoverageService{
 				{Name: svcRuntime, Types: []string{"go"}},
@@ -113,7 +110,8 @@ func PlatformGateway() *components.Definition {
 			Versioned:     gatewayConfigProfiles(),
 		},
 
-		Wiring: components.TypedWiring[PlatformGatewayWiring](),
+		Wiring:      components.TypedWiring[PlatformGatewayWiring](),
+		ApplyWiring: applyPlatformGatewayWiring,
 
 		Limits: components.ResourceLimits{CPUs: 2, MemoryMB: 3000},
 	}
@@ -146,19 +144,16 @@ type PlatformGatewayWiring struct {
 	ControlPlaneToken string `yaml:"controlPlaneToken"`
 	// LogLevel sets the gateway log level.
 	LogLevel string `yaml:"logLevel"`
+	// Controllers is 1 by default. 2 adds a controller that shares the first one's
+	// PostgreSQL database and alone feeds the runtime over xDS, so every change reaches the
+	// runtime through the event path between the controllers.
+	Controllers int `yaml:"controllers"`
+	// SigningKeys gives the runtime the fixed integration-test signing keys at
+	// /secrets/gateway-runtime/signing. The block's overlay configures them under [signing].
+	SigningKeys bool `yaml:"signingKeys"`
 	// SecondOrganizationReplicas lists the replicas, numbered from 1 as in platform-gateway#2,
 	// that register in the control plane's second organization instead of the default one.
 	SecondOrganizationReplicas []int `yaml:"secondOrganizationReplicas"`
-}
-
-// Validate rejects replica numbers that cannot name a replica.
-func (w *PlatformGatewayWiring) Validate() error {
-	for _, replica := range w.SecondOrganizationReplicas {
-		if replica < 1 {
-			return fmt.Errorf("secondOrganizationReplicas: replica %d must be 1 or more", replica)
-		}
-	}
-	return nil
 }
 
 // InSecondOrganization reports whether the gateway instance labelled dependent registers in
@@ -174,4 +169,21 @@ func (w *PlatformGatewayWiring) InSecondOrganization(dependent string) bool {
 		}
 	}
 	return false
+}
+
+// gatewayGeneratedFiles returns the key material every gateway stack mounts. It is generated
+// per process, never read from the repository: the listener certificate and key serve the
+// default HTTPS listener and are trusted as the controller's upstream certificate, and the AES
+// key encrypts stored secrets.
+func gatewayGeneratedFiles() map[string][]byte {
+	listener := shared.GatewayListenerTLS()
+	return map[string][]byte{
+		"listener-certs/default-listener.crt":  listener.CertPEM,
+		"listener-certs/default-listener.key":  listener.PrivateKeyPEM,
+		"certificates/default-listener.crt":    listener.CertPEM,
+		"aesgcm-keys/default-aesgcm256-v1.bin": shared.GatewayEncryptionKey(),
+		// The testbench Jev service's certificate, which the runtime trusts through
+		// SSL_CERT_DIR so a Jev policy can call the mock over HTTPS.
+		"testbench-ca/jev.pem": shared.JevTLS().CertPEM,
+	}
 }

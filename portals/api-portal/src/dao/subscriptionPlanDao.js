@@ -22,6 +22,7 @@ const db = require('../db/driver');
 const { groupBy } = require('../db/rows');
 const { ValidationError } = require('../utils/errors/customErrors');
 const { getPortalId } = require('../utils/orgContext');
+const planPricingDao = require('./planPricingDao');
 
 const SUBSCRIPTION_PLANS_TABLE = 'subscription_plans';
 const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'subscription_plan_limits';
@@ -35,7 +36,9 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
     handle: plan.handle,
     display_name: plan.displayName,
     description: plan.description,
-    ref_id: plan.refId ?? null,
+    // Platform API resolves subscription_plan.ref_id in webhook events as the
+    // plan handle, so a new plan defaults to it; updates keep the stored value.
+    ref_id: plan.refId ?? plan.handle ?? null,
   };
 };
 
@@ -100,7 +103,14 @@ const attachLimits = async (plans, t) => {
   return plans;
 };
 
-/** Fetches a single plan (scoped to its organization and portal) with `.limits` attached. */
+/** Attaches `.limits` and `.pricing` (null for a free plan) to each plan row. */
+const attachDetails = async (plans, t) => {
+  await attachLimits(plans, t);
+  await planPricingDao.attachPricing(plans, t);
+  return plans;
+};
+
+/** Fetches a single plan (scoped to its organization and portal) with `.limits` and `.pricing` attached. */
 const findPlanByUuid = async (orgId, planId, t) => {
   const exec = t || db;
   const plan = await exec.queryOne(
@@ -108,7 +118,7 @@ const findPlanByUuid = async (orgId, planId, t) => {
     [planId, orgId, getPortalId()]
   );
   if (!plan) return null;
-  await attachLimits([plan], t);
+  await attachDetails([plan], t);
   return plan;
 };
 
@@ -151,7 +161,7 @@ const createMany = async (orgId, plans, createdBy, t) => {
     `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid IN (${placeholders}) AND org_uuid = ? AND portal_id = ?`,
     [...uuids, orgId, portalId]
   );
-  await attachLimits(rows, t);
+  await attachDetails(rows, t);
   return rows;
 };
 
@@ -174,9 +184,11 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   // when the caller explicitly supplied it.
   const setCols = ['handle = ?', 'display_name = ?', 'description = ?'];
   const params = [row.handle, row.display_name, row.description];
-  if (Object.prototype.hasOwnProperty.call(plan, 'refId')) {
+  // undefined counts as absent: the YAML mapper sets refId from spec.refId even
+  // when the document has none.
+  if (plan.refId !== undefined) {
     setCols.push('ref_id = ?');
-    params.push(row.ref_id);
+    params.push(plan.refId ?? null);
   }
   setCols.push('updated_by = ?', 'updated_at = ?');
   params.push(updatedBy, updatedAt);
@@ -195,21 +207,48 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   return findPlanByUuid(orgId, planId, t);
 };
 
+/**
+ * Deletes the plan unless subscriptions use it. Resolves to `{ deleted, subscriptionCount }`:
+ * `deleted` is 1 when the plan was deleted, and 0 when it was not found or has subscriptions;
+ * `subscriptionCount` is how many subscriptions it has. Run it inside a transaction: on PostgreSQL
+ * and SQL Server the plan row is locked before the count, so no subscription can be added before
+ * the delete. SQLite runs one write transaction at a time, so it needs no lock.
+ */
 const deletePlan = async (orgId, planName, t) => {
   const exec = t || db;
-  // Nullify nullable plan_uuid references before deleting the subscription_plan row.
-  // The DB constraint is ON DELETE NO ACTION; application code owns the nullification.
-  await exec.execute(
-    `UPDATE subscriptions SET plan_uuid = NULL WHERE plan_uuid IN (
-       SELECT uuid FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?
-     )`,
+  const dialect = db.getDialect();
+  const lockHint = dialect === 'mssql' ? ' WITH (UPDLOCK, ROWLOCK)' : '';
+  const forUpdate = dialect === 'postgres' ? ' FOR UPDATE' : '';
+  const plan = await exec.queryOne(
+    `SELECT uuid FROM ${SUBSCRIPTION_PLANS_TABLE}${lockHint} WHERE handle = ? AND org_uuid = ? AND portal_id = ?${forUpdate}`,
     [planName, orgId, getPortalId()]
   );
+  if (!plan) return { deleted: 0, subscriptionCount: 0 };
+
+  const { n } = await exec.queryOne(
+    'SELECT COUNT(*) AS n FROM subscriptions WHERE plan_uuid = ? AND org_uuid = ? AND portal_id = ?',
+    [plan.uuid, orgId, getPortalId()]
+  );
+  const subscriptionCount = Number(n);
+  if (subscriptionCount > 0) return { deleted: 0, subscriptionCount };
+
   const { rowCount } = await exec.execute(
-    `DELETE FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
-    [planName, orgId, getPortalId()]
+    `DELETE FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+    [plan.uuid, orgId, getPortalId()]
   );
-  return rowCount;
+  return { deleted: rowCount, subscriptionCount: 0 };
+};
+
+/**
+ * Records the Platform API handle a plan is known by. Only used for a plan created in this
+ * portal, whose ref_id is empty until the plan is sent to the Platform API.
+ */
+const setRefId = async (orgId, planId, refId, t) => {
+  const exec = t || db;
+  await exec.execute(
+    `UPDATE ${SUBSCRIPTION_PLANS_TABLE} SET ref_id = ? WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+    [refId, planId, orgId, getPortalId()]
+  );
 };
 
 const getByName = async (orgId, planName, t) => {
@@ -219,7 +258,7 @@ const getByName = async (orgId, planName, t) => {
     [planName, orgId, getPortalId()]
   );
   if (!plan) return null;
-  await attachLimits([plan], t);
+  await attachDetails([plan], t);
   return plan;
 };
 
@@ -229,6 +268,65 @@ const getByName = async (orgId, planName, t) => {
  * where: {uuid: apiId}}, ...PLAN_INCLUDE]` shape. Intentionally not scoped by
  * org_uuid — the original Sequelize query wasn't either.
  */
+/** How many APIs offer the plan. */
+const countApis = async (orgId, planUuid, t) => {
+  const exec = t || db;
+  const { n } = await exec.queryOne(
+    `SELECT COUNT(*) AS n FROM ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} m
+     JOIN ${SUBSCRIPTION_PLANS_TABLE} sp ON sp.uuid = m.plan_uuid AND sp.portal_id = m.portal_id
+     WHERE m.plan_uuid = ? AND sp.org_uuid = ? AND m.portal_id = ?`,
+    [planUuid, orgId, getPortalId()]
+  );
+  return Number(n);
+};
+
+/** How many subscriptions the plan has. */
+const countSubscriptions = async (orgId, planUuid) => {
+  const { n } = await db.queryOne(
+    'SELECT COUNT(*) AS n FROM subscriptions WHERE plan_uuid = ? AND org_uuid = ? AND portal_id = ?',
+    [planUuid, orgId, getPortalId()]
+  );
+  return Number(n);
+};
+
+/** How many subscriptions each of the organization's plans has, as a Map of plan uuid to count; plans with none are left out. */
+const countSubscriptionsByPlan = async (orgId) => {
+  const rows = await db.query(
+    'SELECT plan_uuid, COUNT(*) AS n FROM subscriptions WHERE plan_uuid IS NOT NULL AND org_uuid = ? AND portal_id = ? GROUP BY plan_uuid',
+    [orgId, getPortalId()]
+  );
+  return new Map(rows.map((row) => [row.plan_uuid, Number(row.n)]));
+};
+
+/**
+ * How many subscriptions each of the plans has to the API, as a Map of plan uuid to count (a plan
+ * with none is absent). Given a transaction `t`, on PostgreSQL and SQL Server the plan rows are
+ * locked before the count, as in deletePlan, so no subscription to these plans can be added until
+ * the transaction ends.
+ */
+const countApiSubscriptions = async (orgId, apiId, planUuids, t) => {
+  const counts = new Map();
+  if (planUuids.length === 0) return counts;
+  const exec = t || db;
+  const marks = planUuids.map(() => '?').join(', ');
+  if (t) {
+    const dialect = db.getDialect();
+    const lockHint = dialect === 'mssql' ? ' WITH (UPDLOCK, ROWLOCK)' : '';
+    const forUpdate = dialect === 'postgres' ? ' FOR UPDATE' : '';
+    await exec.query(
+      `SELECT uuid FROM ${SUBSCRIPTION_PLANS_TABLE}${lockHint} WHERE uuid IN (${marks}) AND org_uuid = ? AND portal_id = ?${forUpdate}`,
+      [...planUuids, orgId, getPortalId()]
+    );
+  }
+  const rows = await exec.query(
+    `SELECT plan_uuid, COUNT(*) AS n FROM subscriptions
+     WHERE api_uuid = ? AND plan_uuid IN (${marks}) AND org_uuid = ? AND portal_id = ? GROUP BY plan_uuid`,
+    [apiId, ...planUuids, orgId, getPortalId()]
+  );
+  for (const row of rows) counts.set(row.plan_uuid, Number(row.n));
+  return counts;
+};
+
 const listByApi = async (apiId, t) => {
   const exec = t || db;
   const plans = await exec.query(
@@ -237,7 +335,7 @@ const listByApi = async (apiId, t) => {
      WHERE m.api_uuid = ? AND m.portal_id = ?`,
     [apiId, getPortalId()]
   );
-  await attachLimits(plans, t);
+  await attachDetails(plans, t);
   return plans;
 };
 
@@ -247,7 +345,7 @@ const list = async (orgId, t) => {
     `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ? AND portal_id = ? ORDER BY handle`,
     [orgId, getPortalId()]
   );
-  await attachLimits(plans, t);
+  await attachDetails(plans, t);
   return plans;
 };
 
@@ -284,7 +382,13 @@ module.exports = {
     update,
     delete: deletePlan,
     getByName,
+    getByUuid: findPlanByUuid,
+    setRefId,
     listByApi,
+    countSubscriptions,
+    countApis,
+    countApiSubscriptions,
+    countSubscriptionsByPlan,
     list,
     createApiMapping,
     updateApiMapping,

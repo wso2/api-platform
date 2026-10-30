@@ -38,7 +38,7 @@ End-to-end integration tests for the API Gateway, validating API deployment, rou
 
 ## Prerequisites
 
-- Go 1.25.1 or later
+- Go 1.26.10 or later
 - Docker and Docker Compose
 - Built `gateway-controller:coverage` image
 

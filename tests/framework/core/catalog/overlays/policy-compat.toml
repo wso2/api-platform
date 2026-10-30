@@ -1,9 +1,6 @@
 # Configuration for the policy-compat blocks: the union of what the compat features need,
 # because a component takes a single overlay. Top-level keys first (guardrail and AI
 # services), then the jwt-auth, mcp-auth and opaque-token-auth tables.
-#
-# Deliberately absent: any [policy_configurations.backendjwt_v1] section. The backend-jwt
-# scenario relies on the gateway having no signing key.
 
 # semantic-prompt-guard: embedding keys only (no vector-db keys, so no redis component).
 embedding_provider = "OPENAI"

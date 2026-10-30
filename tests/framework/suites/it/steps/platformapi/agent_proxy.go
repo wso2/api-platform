@@ -165,20 +165,25 @@ func actorBearer(ctx context.Context, base, who string) (string, error) {
 	return bearer, nil
 }
 
-// controlPlaneCall is one publisher-API request made through the funnel.
+// controlPlaneCall is one publisher-API request made through the funnel. headers are extra
+// request headers, their values expanded. bearer, when set, replaces the actor's login token;
+// an empty one sends no Authorization header.
 type controlPlaneCall struct {
-	method string
-	path   string
-	who    string
-	header string
-	value  string
-	body   []byte
+	method  string
+	path    string
+	who     string
+	headers map[string]string
+	bearer  *string
+	body    []byte
 }
 
 func (s *Steps) sendControlPlaneStep(
 	ctx context.Context, method, path, who, header, value string, body *godog.DocString,
 ) error {
-	call := controlPlaneCall{method: method, path: path, who: who, header: header, value: value}
+	call := controlPlaneCall{method: method, path: path, who: who}
+	if strings.TrimSpace(header) != "" {
+		call.headers = map[string]string{header: value}
+	}
 	if body != nil {
 		content, err := stepscommon.Expand(ctx, body.Content)
 		if err != nil {
@@ -208,20 +213,13 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 	if err != nil {
 		return nil, err
 	}
-	bearer, err := actorBearer(ctx, base, call.who)
+	token, err := s.callToken(ctx, base, call)
 	if err != nil {
 		return nil, err
 	}
-	headers := map[string]string{"Authorization": "Bearer " + bearer}
-	if call.body != nil {
-		headers["Content-Type"] = "application/json"
-	}
-	if name := strings.TrimSpace(call.header); name != "" {
-		value, expandErr := stepscommon.Expand(ctx, call.value)
-		if expandErr != nil {
-			return nil, expandErr
-		}
-		headers[name] = value
+	headers, err := callHeaders(ctx, call, token)
+	if err != nil {
+		return nil, err
 	}
 	resp, err := s.funnel.Send(ctx, httpx.Request{
 		Method: method, URL: base + apiBase + path, Headers: headers, Body: call.body,
@@ -229,24 +227,50 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
-	if err := s.trackAgentProxyResource(ctx, method, call.body, resp); err != nil {
+	if err := s.trackControlPlaneResource(ctx, method, call.body, resp); err != nil {
 		return resp, err
 	}
 	return resp, nil
 }
 
-// trackAgentProxyResource registers what a successful create produced and deregisters what a
+// callToken is the bearer token a request carries: the call's own when it sets one, otherwise a
+// fresh login as the actor.
+func (s *Steps) callToken(ctx context.Context, base string, call controlPlaneCall) (string, error) {
+	if call.bearer != nil {
+		return *call.bearer, nil
+	}
+	return actorBearer(ctx, base, call.who)
+}
+
+// callHeaders builds a request's headers. An empty token sends no Authorization header.
+func callHeaders(ctx context.Context, call controlPlaneCall, token string) (map[string]string, error) {
+	headers := map[string]string{}
+	if token != "" {
+		headers["Authorization"] = "Bearer " + token
+	}
+	if call.body != nil {
+		headers["Content-Type"] = "application/json"
+	}
+	for name, raw := range call.headers {
+		value, err := stepscommon.Expand(ctx, raw)
+		if err != nil {
+			return nil, err
+		}
+		headers[strings.TrimSpace(name)] = value
+	}
+	return headers, nil
+}
+
+// trackControlPlaneResource registers what a successful create produced and deregisters what a
 // successful delete removed, so cleanup follows the product's own answer rather than the
 // scenario's expectation of it.
-func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
-	if tracked, err := s.trackLLMResource(ctx, method, resp); tracked || err != nil {
-		return err
-	}
+func (s *Steps) trackControlPlaneResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
 	switch {
 	case method == http.MethodPost && resp.StatusCode == http.StatusCreated:
-		match := agentProxyLocationPattern.FindStringSubmatch(locationPath(resp.Headers.Get("Location")))
+		location := locationPath(resp.Headers.Get("Location"))
+		match := agentProxyLocationPattern.FindStringSubmatch(location)
 		if match == nil {
-			return nil
+			return s.trackCreatedPlatformResource(ctx, location, body)
 		}
 		handle, sub, id := match[1], match[2], match[3]
 		switch sub {
@@ -270,51 +294,12 @@ func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body
 			}, s.registerAgentAPIKeyDeleter)
 		}
 	case method == http.MethodDelete && resp.StatusCode == http.StatusNoContent:
-		return deregisterDeleted(ctx, resp.URL)
+		if err := deregisterDeleted(ctx, resp.URL); err != nil {
+			return err
+		}
+		return deregisterDeletedPlatformResource(ctx, resp.URL)
 	}
 	return nil
-}
-
-// llmLocationPattern matches an LLM provider or proxy itself, not its sub-resources.
-var llmLocationPattern = regexp.MustCompile(`/(llm-providers|llm-proxies)/([^/?#]+)$`)
-
-// llmCollectionKinds maps an LLM collection to the cleanup kind that deletes its resources.
-var llmCollectionKinds = map[string]cleanup.Kind{
-	"llm-providers": platformProviderKind,
-	"llm-proxies":   platformProxyKind,
-}
-
-// trackLLMResource registers an LLM provider or proxy the funnel created, deleting it on the
-// spot when registration fails, and deregisters one the scenario deleted. It reports whether
-// the response concerned an LLM provider or proxy at all.
-func (s *Steps) trackLLMResource(ctx context.Context, method string, resp *httpx.Response) (bool, error) {
-	switch {
-	case method == http.MethodPost && resp.StatusCode == http.StatusCreated:
-		match := llmLocationPattern.FindStringSubmatch(locationPath(resp.Headers.Get("Location")))
-		if match == nil {
-			return false, nil
-		}
-		collection, handle := match[1], match[2]
-		if err := s.registerPlatformResource(ctx, llmCollectionKinds[collection], handle, "/"+collection); err != nil {
-			if delErr := s.deletePlatformResource(ctx, "/"+collection, handle); delErr != nil {
-				return true, fmt.Errorf("registering %s %q for cleanup: %w; compensating delete failed: %v", collection, handle, err, delErr)
-			}
-			return true, fmt.Errorf("registering %s %q for cleanup: %w", collection, handle, err)
-		}
-		return true, nil
-	case method == http.MethodDelete && resp.StatusCode == http.StatusNoContent:
-		match := llmLocationPattern.FindStringSubmatch(locationPath(resp.URL))
-		if match == nil {
-			return false, nil
-		}
-		reg, err := cleanup.Of(ctx)
-		if err != nil {
-			return true, err
-		}
-		reg.Deregister(llmCollectionKinds[match[1]], match[2])
-		return true, nil
-	}
-	return false, nil
 }
 
 // registerTracked registers a created resource for cleanup, deleting it on the spot when the

@@ -67,6 +67,61 @@ export default ({ mode }: { mode: string }) => {
       outDir: 'build',
       sourcemap: false,
     },
+    // Vite's default IIFE worker format can't bundle a worker that itself
+    // code-splits into multiple chunks — `monaco-graphql`'s worker (pulled
+    // in transitively by `graphiql`'s Vite worker setup, `?worker`-imported
+    // from `@graphiql/react/setup-workers/vite`) does. ES module workers
+    // support code-splitting, so this is required for that worker.
+    //
+    // `worker.format` has no per-import override in Vite, so this also
+    // applies to the pre-existing `monaco-editor` workers in
+    // `SpecCodeEditor.tsx` (the REST/WebSocket OpenAPI editor) — not a
+    // deliberate choice, just a consequence of the setting being global.
+    // Module workers need Firefox 114+/Safari 15+/Chrome 80+/Edge 80+; this
+    // repo has no `.browserslistrc` and no `build.target`, so the *actual*
+    // enforced floor is Vite's own esbuild default (`es2020`/firefox78/
+    // safari14/chrome87/edge88), which predates that — i.e. nothing here
+    // guarantees the browsers this app is built for can load either editor's
+    // workers. Known, accepted gap for now, not a verified support
+    // guarantee: pin `build.target` to a module-worker-safe floor (and
+    // update this comment) if/when this app adopts an explicit
+    // browser-support policy.
+    worker: {
+      format: 'es',
+    },
+    optimizeDeps: {
+      // `dev`-only: the dependency pre-bundling scan is a raw esbuild pass
+      // without Vite's own plugin pipeline, so it can't resolve the `?worker`
+      // suffix inside `graphiql`'s bundled worker-setup module and crashes
+      // the dev server on startup. Excluding just the two worker-setup
+      // specifiers (not all of `graphiql`/`@graphiql/react`) stops the
+      // scanner from parsing into that one file, while still letting it
+      // crawl the rest of `@graphiql/react` normally — excluding the whole
+      // package here previously also stopped Vite from discovering and
+      // pre-bundling its CJS `react-compiler-runtime` dependency, which then
+      // reached the browser unconverted (no named exports) and broke the
+      // console with "does not provide an export named 'c'". `npm run build`
+      // already works without any of this, since Rollup (not esbuild) drives
+      // that path.
+      exclude: ['graphiql/setup-workers/vite', '@graphiql/react/setup-workers/vite'],
+      // `react-compiler-runtime` is only reached deep inside `@graphiql/
+      // react`'s components, which the dependency scanner never crawls into
+      // (that route is lazy-loaded, and the two `exclude` entries above stop
+      // the scanner from following into `@graphiql/react` for the worker
+      // files) — so without `include`, Vite never optimizes it at all and
+      // serves the raw CJS file byte-for-byte, which has no `export`
+      // statements. `include` forces it into the optimizer; `needsInterop`
+      // is required alongside it because the package's own shipped bundle
+      // sets its exports via a dynamic `__export(index_exports, {...})`
+      // helper that esbuild's static named-export detection can't see
+      // through on its own, which otherwise collapses the optimized output
+      // to a single `export default` — breaking every `import { c } from
+      // 'react-compiler-runtime'` inside `@graphiql/react`'s own ESM source
+      // ("does not provide an export named 'c'"). Together they make Vite
+      // actually `require()` it in Node and re-export every real key.
+      include: ['react-compiler-runtime'],
+      needsInterop: ['react-compiler-runtime'],
+    },
     server: {
       host: 'localhost',
       hmr: mode === 'test' ? false : undefined,

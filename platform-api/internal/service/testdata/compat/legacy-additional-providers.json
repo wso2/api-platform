@@ -1,0 +1,30 @@
+{
+  "id": "compat-additional",
+  "displayName": "Compat Additional Providers",
+  "description": "A multi-provider proxy in the legacy shape, with a transformer on an additional provider.",
+  "version": "v1.0",
+  "projectId": "project-1",
+  "context": "/multi",
+  "vhost": "api.example.com",
+  "provider": {
+    "id": "openai-provider",
+    "auth": {
+      "type": "api-key",
+      "header": "Authorization",
+      "value": "{{ secret \"openai-loopback\" }}"
+    }
+  },
+  "additionalProviders": [
+    {
+      "id": "anthropic-provider",
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v0",
+        "params": { "model": "claude-sonnet-4-5" }
+      }
+    },
+    {
+      "id": "gemini-provider"
+    }
+  ]
+}

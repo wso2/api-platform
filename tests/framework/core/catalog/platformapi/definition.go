@@ -58,7 +58,10 @@ const platformAPIBootAttempts = 3
 
 // PlatformAPI returns the Platform API component definition.
 func PlatformAPI() *components.Definition {
-	generated := shared.ControlPlaneCrypto()
+	generated := map[string][]byte{"certs/api-portal-ca.pem": shared.APIPortalTLS().CertPEM}
+	for name, content := range shared.ControlPlaneCrypto() {
+		generated[name] = content
+	}
 	env := map[string]string{EnvImagePlatformAPI: shared.Image(EnvImagePlatformAPI, shared.PlatformAPIImage()).Ref}
 	for key, value := range adminEnvironment() {
 		env[key] = value

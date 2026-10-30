@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 )
 
 // ArtifactTableEntry describes a kind-specific child table that backs artifact rows.
@@ -34,6 +36,9 @@ type ArtifactTableEntry struct {
 	// KindKeys are the acceptable kind strings for Exists() lookup (typically the
 	// HTTP handle form "websub-api" and the Go constant form "WebSubApi").
 	KindKeys []string
+	// HasProject marks a table whose rows carry a project_uuid column, so an artifact
+	// of the kind can belong to a project.
+	HasProject bool
 }
 
 // ArtifactTableRegistry maintains the set of kind-specific tables that back artifact rows.
@@ -48,9 +53,10 @@ type ArtifactTableRegistry struct {
 func NewArtifactTableRegistry() *ArtifactTableRegistry {
 	r := &ArtifactTableRegistry{}
 	r.Register(ArtifactTableEntry{
-		Table:     "rest_apis",
-		KindAlias: "RestApi",
-		KindKeys:  []string{"rest-api", "RestApi"},
+		Table:      "rest_apis",
+		KindAlias:  "RestApi",
+		KindKeys:   []string{"rest-api", "RestApi"},
+		HasProject: true,
 	})
 	r.Register(ArtifactTableEntry{
 		Table:     "llm_providers",
@@ -58,19 +64,28 @@ func NewArtifactTableRegistry() *ArtifactTableRegistry {
 		KindKeys:  []string{"llm-provider", "LlmProvider"},
 	})
 	r.Register(ArtifactTableEntry{
-		Table:     "llm_proxies",
-		KindAlias: "LlmProxy",
-		KindKeys:  []string{"llm-proxy", "LlmProxy"},
+		Table:      "llm_proxies",
+		KindAlias:  "LlmProxy",
+		KindKeys:   []string{"llm-proxy", "LlmProxy"},
+		HasProject: true,
 	})
 	r.Register(ArtifactTableEntry{
-		Table:     "mcp_proxies",
-		KindAlias: "Mcp",
-		KindKeys:  []string{"mcp-proxy", "MCPProxy", "Mcp"},
+		Table:      "mcp_proxies",
+		KindAlias:  "Mcp",
+		KindKeys:   []string{"mcp-proxy", "MCPProxy", "Mcp"},
+		HasProject: true,
 	})
 	r.Register(ArtifactTableEntry{
-		Table:     "agent_proxies",
-		KindAlias: "AgentProxy",
-		KindKeys:  []string{"agent-proxy", "AgentProxy"},
+		Table:      "agent_proxies",
+		KindAlias:  "AgentProxy",
+		KindKeys:   []string{"agent-proxy", "AgentProxy"},
+		HasProject: true,
+	})
+	r.Register(ArtifactTableEntry{
+		Table:      "graphql_apis",
+		KindAlias:  constants.GraphQLApi,
+		KindKeys:   []string{"graphql-api", constants.GraphQLApi},
+		HasProject: true,
 	})
 	return r
 }

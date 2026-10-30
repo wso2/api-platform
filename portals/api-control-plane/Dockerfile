@@ -19,7 +19,10 @@
 ###########################
 # Stage 1 — SPA build     #
 ###########################
-FROM node:24-alpine AS web
+# Pinned to the build host: the output is static assets, identical for every
+# target platform, so emulating node per-platform costs minutes and buys
+# nothing.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web
 WORKDIR /app
 
 # Separate dependency install for better layer caching.
@@ -32,23 +35,43 @@ RUN VITE_APP_BASE_PATH=/ npm run build
 ###########################
 # Stage 2 — BFF build     #
 ###########################
-FROM golang:1.26-alpine AS bff
+# Cross-compilation is used instead of emulation. The toolchain runs natively on
+# the build host, while GOARCH specifies the target architecture. Building an
+# amd64 binary under QEMU on an arm64 host is substantially slower and may cause
+# the Go garbage collector to fail with "marked free object in span". Because
+# CGO is disabled, cross-compilation introduces no additional runtime
+# dependencies. This approach is consistent with the platform-api and gateway
+# images.
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS bff
+ARG TARGETOS
+ARG TARGETARCH
 # Off by default; the test framework turns it on to collect BFF coverage.
 ARG ENABLE_COVERAGE=false
 ARG COVERAGE_PACKAGES=""
-WORKDIR /src
+
+# The BFF depends on the shared httpkit module (guarded HTTP client, netguard)
+# via a relative replace directive, so the module tree is reproduced under /src
+# and httpkit is supplied as a named build context:
+#   docker buildx build --build-context httpkit=../../httpkit ...
+# WORKDIR therefore mirrors the repository layout, so the ../../../httpkit in
+# bff/go.mod resolves to /src/httpkit. The workspace is disabled so the image
+# builds from these copies alone.
+WORKDIR /src/portals/api-control-plane/bff
 
 # go.mod/go.sum first for better layer caching.
+COPY --from=httpkit go.mod go.sum /src/httpkit/
 COPY bff/go.mod bff/go.sum ./
 ENV CGO_ENABLED=0 GOWORK=off
 RUN go mod download
 
+COPY --from=httpkit . /src/httpkit
 COPY bff/ ./
 RUN COVER_FLAGS=""; \
     if [ "$ENABLE_COVERAGE" = "true" ]; then \
         COVER_FLAGS="-cover -covermode=atomic"; \
         if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
     fi; \
+    GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build $COVER_FLAGS -trimpath -ldflags "-s -w" -o /bff .
 
 ###########################

@@ -31,6 +31,16 @@ import (
 // the same constant handler.restAPITypeValue is defined from.
 const restAPITypeValue = constants.PublicationAPITypeRestAPI
 
+// publicationDefinitionField names the definition in a validation error's field list, so a
+// client can tell a definition problem from one in the other content sent with a publish.
+const publicationDefinitionField = "definition"
+
+// definitionInvalid is a publish validation failure about the definition itself.
+func definitionInvalid(message string) *apperror.Error {
+	return apperror.APIPublicationValidationFailed.New(message).WithFieldErrors(
+		[]apperror.FieldError{{Field: publicationDefinitionField, Message: message}})
+}
+
 // definitionValidator checks a definition body for one apiType. Receives the
 // raw, untrimmed data exactly as validateDefinitionContent was called with;
 // deciding what counts as empty (and whether that's acceptable) is each
@@ -42,7 +52,8 @@ type definitionValidator func(contentType string, data []byte) error
 // map to enable publishing it without changing any caller of
 // validateDefinitionContent.
 var definitionValidators = map[string]definitionValidator{
-	restAPITypeValue: validateRestAPIDefinition,
+	restAPITypeValue:                       validateRestAPIDefinition,
+	constants.PublicationAPITypeGraphQLAPI: validateGraphQLAPIDefinition,
 }
 
 // validateDefinitionContent validates a definition before publish. An
@@ -54,7 +65,7 @@ func validateDefinitionContent(apiType string, definition *model.PublicationCont
 		return apperror.APIPublicationTypeUnsupported.New()
 	}
 	if definition == nil {
-		return apperror.APIPublicationValidationFailed.New("A definition is required to publish this API")
+		return definitionInvalid("A definition is required to publish this API")
 	}
 	return v(definition.ContentType, definition.Content)
 }
@@ -65,12 +76,12 @@ func validateDefinitionContent(apiType string, definition *model.PublicationCont
 // spec, it's empty"), so no separate empty-check is needed here.
 func validateRestAPIDefinition(contentType string, data []byte) error {
 	if contentType != "application/json" && contentType != "application/yaml" {
-		return apperror.APIPublicationValidationFailed.New(
+		return definitionInvalid(
 			"A REST API definition must be application/json or application/yaml")
 	}
 	sd, err := utils.LoadSpecDocument([]byte(strings.TrimSpace(string(data)))) // same function the Develop tab's validator uses
 	if err != nil {
-		return apperror.APIPublicationValidationFailed.New(
+		return definitionInvalid(
 			"The definition could not be parsed as an OpenAPI 3.x document.").WithLogMessage(err.Error())
 	}
 	result := utils.ValidateSpec(sd) // same function the Develop tab's validator uses
@@ -84,5 +95,25 @@ func validateRestAPIDefinition(contentType string, data []byte) error {
 			msg += fmt.Sprintf(" (and %d more)", len(result.Errors)-1)
 		}
 	}
-	return apperror.APIPublicationValidationFailed.New(msg)
+	return definitionInvalid(msg)
+}
+
+// validateGraphQLAPIDefinition rejects a GraphQL definition that is not a
+// valid SDL document defining a Query type — the same check the API's own
+// create/update and the validate-schema endpoint apply (validateGraphQLSDL).
+func validateGraphQLAPIDefinition(contentType string, data []byte) error {
+	if contentType != "application/graphql" {
+		return definitionInvalid(
+			"A GraphQL API definition must be application/graphql")
+	}
+	issues := validateGraphQLSDL(string(data))
+	if len(issues) == 0 {
+		return nil
+	}
+	first := issues[0]
+	msg := "The definition is not a valid GraphQL SDL document: " + first.Message
+	if first.Line != nil && first.Column != nil {
+		msg += fmt.Sprintf(" (line %d, column %d)", *first.Line, *first.Column)
+	}
+	return definitionInvalid(msg)
 }

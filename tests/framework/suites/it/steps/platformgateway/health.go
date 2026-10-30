@@ -139,6 +139,7 @@ func (s *Steps) policyEngineHealth(ctx context.Context) error {
 }
 
 func (s *Steps) stopService(ctx context.Context, service string) error {
+	markGatewayChanged(ctx)
 	stack, resolved, err := s.topo.ServiceControl(service)
 	if err != nil {
 		return err
@@ -150,6 +151,7 @@ func (s *Steps) stopService(ctx context.Context, service string) error {
 }
 
 func (s *Steps) startService(ctx context.Context, service string) error {
+	markGatewayChanged(ctx)
 	stack, resolved, err := s.topo.ServiceControl(service)
 	if err != nil {
 		return err
@@ -161,6 +163,7 @@ func (s *Steps) startService(ctx context.Context, service string) error {
 }
 
 func (s *Steps) restartService(ctx context.Context, service string) error {
+	markGatewayChanged(ctx)
 	stack, resolved, err := s.topo.ServiceControl(service)
 	if err != nil {
 		return err

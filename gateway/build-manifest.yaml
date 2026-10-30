@@ -1,7 +1,7 @@
 version: v1
 policies:
     - name: advanced-ratelimit
-      version: v1.2.0
+      version: v1.3.1
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
     - name: analytics-header-filter
       version: v1.0.1
@@ -13,7 +13,7 @@ policies:
       version: v0.10.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-authentication@v0
     - name: aws-bedrock-guardrail
-      version: v1.2.0
+      version: v1.3.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
     - name: azure-content-safety-content-moderation
       version: v1.0.2
@@ -22,13 +22,13 @@ policies:
       version: v1.0.0
       gomodule: github.com/wso2/gateway-controllers/policies/azure-llm-cost@v1
     - name: backend-jwt
-      version: v1.0.1
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt@v1
     - name: basic-auth
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1
     - name: basic-ratelimit
-      version: v1.1.1
+      version: v1.1.2
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v1
     - name: content-length-guardrail
       version: v1.0.1
@@ -61,7 +61,7 @@ policies:
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
     - name: llm-cost-based-ratelimit
-      version: v1.1.1
+      version: v1.1.2
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
     - name: llm-header-router
       version: v0.9.1
@@ -79,7 +79,7 @@ policies:
       version: v1.3.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
     - name: mcp-ratelimit
-      version: v1.2.0
+      version: v1.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
     - name: mcp-rewrite
       version: v1.1.0
@@ -93,12 +93,18 @@ policies:
     - name: model-weighted-round-robin
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
+    - name: mtls-auth
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/mtls-auth@v0
     - name: nvidia-nemoguard-content-safety
       version: v0.9.0
       pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/nvidia-nemoguard-content-safety/v0.9.0#subdirectory=policies/nvidia-nemoguard-content-safety
     - name: oauth2-generator
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/oauth2-generator@v0
+    - name: oauth2-token-exchange
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/oauth2-token-exchange@v0
     - name: opaque-token-auth
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
@@ -109,7 +115,7 @@ policies:
       version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-azure-openai-transformer@v0
     - name: openai-to-bedrock-transformer
-      version: v0.9.2
+      version: v0.9.3
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: openai-to-gemini-transformer
       version: v0.9.2
@@ -145,7 +151,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/respond@v1
     - name: semantic-cache
-      version: v1.2.0
+      version: v1.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-cache@v1
     - name: semantic-prompt-guard
       version: v1.0.1
@@ -163,7 +169,7 @@ policies:
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
     - name: token-based-ratelimit
-      version: v1.1.1
+      version: v1.1.2
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
     - name: typesafe-jev-content-safety
       version: v0.8.0

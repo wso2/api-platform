@@ -159,7 +159,7 @@
     var sel = el('km-type');
     if (!host || !sel) return;
     var opt = sel.options[sel.selectedIndex];
-    var grants = [];
+    var grants;
     try { grants = JSON.parse((opt && opt.getAttribute('data-grants')) || '[]') || []; } catch (e) { grants = []; }
     var chosen = {};
     (keep || []).forEach(function (g) { chosen[g] = true; });
@@ -305,6 +305,7 @@
       if (!v('km-client-id')) return { error: 'Client ID is required to let the portal create applications.' };
       auth.clientId = v('km-client-id');
       if (v('km-client-secret')) auth.clientSecret = v('km-client-secret');
+      if (scopeChips) scopeChips.commit(); // a scope typed but not yet entered is kept
       var scopes = scopeChips ? scopeChips.get() : [];
       if (scopes.length) auth.scopes = scopes;
       if (v('km-resource')) auth.resource = v('km-resource');

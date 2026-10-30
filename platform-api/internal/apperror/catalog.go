@@ -251,6 +251,21 @@ var (
 	WebBrokerAPIExists   = def(CodeWebBrokerAPIExists, http.StatusConflict, "A WebBroker API with this ID already exists.")
 )
 
+// GraphQL API entries (GraphQL is a core artifact kind, not a plugin).
+// GraphQLAPISchemaResolveFailed is the generic 422 for both "introspection
+// against upstream.main.url failed" and
+// "the supplied SDL could not be parsed" — the message never echoes the resolved
+// IP, the parser's internal error text, or which specific reason applied
+// (error-handling.md / ssrf-prevention.md).
+var (
+	GraphQLAPINotFound = def(CodeGraphQLAPINotFound, http.StatusNotFound, "The specified GraphQL API could not be found.")
+	// GraphQLAPIExists covers two distinct conflicts (handle, name+version) —
+	// the call site supplies which one, as for RESTAPIExists.
+	GraphQLAPIExists                     = def(CodeGraphQLAPIExists, http.StatusConflict, "%s")
+	GraphQLAPISchemaResolveFailed        = def(CodeGraphQLAPISchemaResolveFailed, http.StatusUnprocessableEntity, "The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.")
+	GraphQLAPIDeploymentValidationFailed = def(CodeGraphQLAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
+)
+
 // HMAC secret entries. The 32-character minimum is a fixed, publicly
 // documented rule, so stating it in the client message reveals nothing the
 // API contract does not already.
@@ -296,10 +311,42 @@ var (
 	// the next publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
 		"The draft changed while publishing. Review it and publish again.")
+	// APIPublicationPlanPricingConflict: the API Portal has a plan with this handle
+	// whose pricing differs, for example one left there by an earlier publish of a
+	// since-deleted plan. %s is the plan handle.
+	APIPublicationPlanPricingConflict = def(CodeAPIPublicationPlanPricingConflict, http.StatusConflict,
+		"The API Portal already has a plan %s with different pricing. Create a plan with a different handle and offer that instead.")
+	// APIPublicationMeterConflict: the API Portal has a meter with the same id as one a published
+	// plan charges for, but with other settings (made there, or left by an earlier publish of a meter
+	// changed since). Nothing is written. %s is the meter id.
+	APIPublicationMeterConflict = def(CodeAPIPublicationMeterConflict, http.StatusConflict,
+		"The API Portal already has a meter %s with different settings. Create a meter with a different id, price a new plan with it and offer that plan instead.")
 )
 
 // API document entries.
 var (
 	APIDocumentNameExists = def(CodeAPIDocumentNameExists, http.StatusConflict,
 		"A document with this name already exists for this API.")
+)
+
+// Monetization entries. Meters and plan pricing made in the Management Portal are kept here and
+// reach an API Portal with the plans published there; those made in an API Portal are copies kept
+// current by its webhook events.
+var (
+	MeterNotFound = def(CodeMeterNotFound, http.StatusNotFound, "The specified meter could not be found.")
+	// MeterExists refuses a meter whose id the organization already has; %s is the id. It uses the
+	// API Portal's words for the same refusal.
+	MeterExists = def(CodeMeterExists, http.StatusConflict, `A meter with id "%s" already exists in this organization.`)
+	// MeterInUse refuses changing or deleting a meter that a plan's pricing here uses. %s is the
+	// message, which counts the plans that price the meter, in the API Portal's words.
+	MeterInUse                      = def(CodeMeterInUse, http.StatusConflict, "%s")
+	SubscriptionPlanPricingNotFound = def(CodeSubscriptionPlanPricingNotFound, http.StatusNotFound,
+		"This subscription plan has no pricing.")
+	// SubscriptionPlanPricingLocked refuses pricing for a plan that already exists, in a plan update
+	// or an API Portal plan event that would change it: pricing is set once and never changes.
+	SubscriptionPlanPricingLocked = def(CodeSubscriptionPlanPricingLocked, http.StatusConflict,
+		"Pricing can't be updated once a plan is created. Create a new plan with the new pricing.")
+	// SubscriptionPlanInUse refuses deleting a plan, or changing its name or limit, while something
+	// here offers or uses it. %s is the message, which names the plan and counts what uses it.
+	SubscriptionPlanInUse = def(CodeSubscriptionPlanInUse, http.StatusConflict, "%s")
 )

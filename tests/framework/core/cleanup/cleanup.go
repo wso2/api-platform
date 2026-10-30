@@ -62,15 +62,20 @@ var (
 	KindMCPProxy = Kind{Name: "mcp-proxy", Order: 52}
 	// gateway-controller's own Agent resource (the "/agents" collection). It deletes before the
 	// control plane's imported AgentProxy copy, which platform-api only lets go once the
-	// gateway has reported the Agent undeployed.
-	KindAgent     = Kind{Name: "agent", Order: 52}
-	KindMCPServer = Kind{Name: "mcp-server", Order: 55}
+	// gateway has reported the Agent undeployed. Like an API it can name certificates, so it
+	// also deletes before them.
+	KindAgent      = Kind{Name: "agent", Order: 52}
+	KindGraphQLAPI = Kind{Name: "graphql-api", Order: 53}
+	KindMCPServer  = Kind{Name: "mcp-server", Order: 55}
 	// An Agent proxy can hold its upstream credential as a {{ secret "handle" }}
 	// placeholder, so it deletes before KindSecret.
-	KindAgentProxy  = Kind{Name: "agent-proxy", Order: 56}
-	KindPolicy      = Kind{Name: "policy", Order: 60}
-	KindSharedScope = Kind{Name: "shared-scope", Order: 70}
-	KindCertificate = Kind{Name: "certificate", Order: 80}
+	KindAgentProxy = Kind{Name: "agent-proxy", Order: 56}
+	// A gateway subscription plan is referenced by its subscriptions and, by name, by the APIs
+	// that enable it, so it deletes after both.
+	KindSubscriptionPlan = Kind{Name: "subscription-plan", Order: 57}
+	KindPolicy           = Kind{Name: "policy", Order: 60}
+	KindSharedScope      = Kind{Name: "shared-scope", Order: 70}
+	KindCertificate      = Kind{Name: "certificate", Order: 80}
 	// LLMProxy and LLMProvider both delete before Secret: either can hold a credential as a
 	// {{ secret "handle" }} placeholder, and platform-api refuses to delete a secret still
 	// referenced by one (409 SECRET_IN_USE). LLMProxy also deletes before LLMProvider, since

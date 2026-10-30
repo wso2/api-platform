@@ -18,14 +18,14 @@
 
 import { useMemo } from 'react';
 import yaml from 'js-yaml';
-import { Box, Card, Divider, Typography } from '@wso2/oxygen-ui';
+import { Box, Card, Divider, Skeleton, Stack, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { ApiError } from '@/api/core/errors';
 import type { RestApi } from '@/api/resources/restApis';
 import { useRestApiOpenApi } from '@/api/resources/restApis';
 import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
-import { ErrorState, LoadingState } from '@/components/StateViews';
+import { ErrorState } from '@/components/StateViews';
 import { ResourcePreviewPlaceholder } from '../components/ResourcePreviewPlaceholder';
 
 const messages = defineMessages({
@@ -83,15 +83,11 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
     [openApiQuery.data?.content],
   );
 
-  if (openApiQuery.isPending) {
-    return <LoadingState label={intl.formatMessage(messages.loading)} />;
-  }
-
   if (openApiError && openApiError.status !== 404) {
     return <ErrorState title={intl.formatMessage(messages.loadError)} />;
   }
 
-  if (!spec) {
+  if (!openApiQuery.isPending && !spec) {
     return (
       <ResourcePreviewPlaceholder
         description={intl.formatMessage(messages.emptyDescription)}
@@ -115,16 +111,46 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
         </Box>
         <Divider />
         <Box sx={{ maxHeight: { md: 720, xs: 420 }, overflowY: 'auto', px: 2, py: 1 }}>
-          <SwaggerSpecViewer
-            disableTryOutBtn
-            displayRequestDuration={false}
-            enableResourceSearch
-            hideAuthorizeButton
-            hideInfoSection
-            hideServers
-            hideTagHeaders
-            spec={spec}
-          />
+          {openApiQuery.isPending ? (
+            <Stack
+              aria-busy="true"
+              aria-label={intl.formatMessage(messages.loading)}
+              role="status"
+              spacing={2}
+              sx={{ py: 1 }}
+            >
+              <Stack direction="row" spacing={2} sx={{ px: 1 }}>
+                <Skeleton variant="rounded" height={40} sx={{ flex: 1 }} />
+                <Skeleton variant="rounded" height={40} sx={{ width: 180, maxWidth: '35%' }} />
+              </Stack>
+              {Array.from({ length: 8 }, (_, index) => (
+                <Stack
+                  key={index}
+                  direction="row"
+                  alignItems="center"
+                  spacing={1.5}
+                  sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 0.75 }}
+                >
+                  <Skeleton variant="rounded" width={80} height={32} sx={{ flexShrink: 0 }} />
+                  <Skeleton variant="text" width={index % 2 ? '28%' : '18%'} height={28} />
+                  <Skeleton variant="text" sx={{ flex: 1, maxWidth: '35%' }} />
+                  <Box sx={{ flex: 1 }} />
+                  <Skeleton variant="circular" width={20} height={20} />
+                </Stack>
+              ))}
+            </Stack>
+          ) : spec ? (
+            <SwaggerSpecViewer
+              disableTryOutBtn
+              displayRequestDuration={false}
+              enableResourceSearch
+              hideAuthorizeButton
+              hideInfoSection
+              hideServers
+              hideTagHeaders
+              spec={spec}
+            />
+          ) : null}
         </Box>
       </Card>
     </Box>

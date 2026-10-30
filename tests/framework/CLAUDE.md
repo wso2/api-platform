@@ -176,6 +176,38 @@ Before adding a helper, step, or dependency:
   version information. A new supported version must include its contract
   behavior before it is added to suite configuration.
 
+## Module Consumption and Embedded Assets
+
+The framework is imported as a Go module by projects that have no api-platform checkout, so
+every repository file the engine reads at run time must be available without one.
+
+- Read a repository-relative file through `core/assets` (`assets.Resolve`), never with
+  `filepath.Join(repoRoot, ...)` and `os.ReadFile`. It prefers the workspace copy and falls back
+  to the embedded copy.
+- A file under `tests/framework` that the engine reads (compose files, version profiles,
+  overlays) must be listed in the `go:embed` directive of `assets.go`.
+- A file outside the module (database schemas, data files) needs an entry in
+  `assets.SnapshotSources`. Its embedded copy is generated, never committed: the release workflow
+  runs `go run ./cmd/syncassets` and commits `snapshots/` on the release tag only. Run
+  `make snapshots` to use the module through a `replace` before a release.
+- Never snapshot key material, certificates or secrets. Generate them per process in
+  `core/catalog/shared` (as `GatewayListenerTLS` and `GatewayEncryptionKey` do) and mount them
+  through `GeneratedFiles` or a content-backed `FileMount`; the repository ignores `*.key` and a
+  secret scanner would flag an embedded copy.
+- Do not add `runtime.Caller` or checkout-relative lookups to code a released-gateway run reaches.
+  Such code works in the checkout and fails for every consumer.
+- Keep the public API of `core/suiterun` and the packages a consumer imports stable; the module
+  is versioned and consumers pin it.
+- The canonical resource templates in `suites/it/resources/templates` are embedded, and
+  `stepscommon.ResourceTemplatePath` falls back to them when the suite root does not hold the
+  named `resources/templates/<kind>.yaml`. A project supplies only the templates that differ; a
+  file it supplies replaces the framework's file of the same name, with no merging. Changing a
+  canonical template is a change to the module's public surface.
+- A consumer registers the gateway cleanup deleters with `platformgateway.RegisterDeleters` in
+  `suiterun.Options.CleanupDeleters` instead of writing its own; it deletes through the
+  controller's management API and, on releases with the snapshot race, waits for the controller
+  to apply each deletion. Add a resource kind to the deleters here, not in a consumer.
+
 ## Components and Runtime
 
 - Keep component definitions declarative and independent of runtime orchestration.

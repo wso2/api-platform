@@ -25,19 +25,18 @@ import { Link } from 'react-router-dom';
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
 import devportalLogoUrl from '@/assets/icons/devportal-logo.png';
 import { useFormatters } from '@/i18n/useFormatters';
-import { routes } from '@/routes/paths';
 import { hairline } from '@/theme/receipes';
 import { buildViewInPortalUrl, isListedOnPortal, publicationStatusMeta } from '../utils/publicationDisplay';
 
 const messages = defineMessages({
   goToPublish: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish',
-    defaultMessage: 'Go to publish',
+    defaultMessage: 'Go to Publish',
     description: 'Card action opening the publish flow for this API on this portal.',
   },
   viewInPortal: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal',
-    defaultMessage: 'View in portal',
+    defaultMessage: 'View in Portal',
     description: 'Link opening this API\'s own page on the portal, in a new tab.',
   },
   statusLabel: {
@@ -50,8 +49,9 @@ const messages = defineMessages({
 type PortalPublicationCardProps = {
   apiHandle: string;
   orgHandle: string;
-  projectHandle: string;
   publication: PublicationSummaryItem;
+  /** This API's publish page for a portal; the API kind decides where that lives. */
+  publishPath: (apiPortalId: string) => string;
 };
 
 const AVATAR_SIZE = 72;
@@ -108,9 +108,14 @@ function DetailRow({ children, label }: { children: ReactNode; label: ReactNode 
 /**
  * One API Portal, annotated with this API's own publication state: its status,
  * when it last changed, and whether a draft is waiting. The card itself is not
- * clickable; "Go to publish" opens the flow.
+ * clickable; "Go to Publish" opens the flow.
  */
-export function PortalPublicationCard({ apiHandle, orgHandle, projectHandle, publication }: PortalPublicationCardProps) {
+export function PortalPublicationCard({
+  apiHandle,
+  orgHandle,
+  publication,
+  publishPath,
+}: PortalPublicationCardProps) {
   const intl = useIntl();
   const { relativeTime } = useFormatters();
   const nameId = useId();
@@ -123,9 +128,7 @@ export function PortalPublicationCard({ apiHandle, orgHandle, projectHandle, pub
       : undefined;
 
   // Without an id there is no publish flow to open.
-  const publishHref = publication.apiPortalId
-    ? routes.apiPortalPublish(orgHandle, projectHandle, apiHandle, publication.apiPortalId)
-    : undefined;
+  const publishHref = publication.apiPortalId ? publishPath(publication.apiPortalId) : undefined;
 
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }} variant="outlined">

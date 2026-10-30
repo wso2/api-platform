@@ -48,6 +48,15 @@ function isSharedKeyRequest(req) {
     return parsed !== null && parsed.scheme === SHARED_KEY_SCHEME;
 }
 
+/**
+ * Whether the request is a verified call from the Platform API (shared-key auth). The portal sends
+ * the Platform API no plan or meter event for a change it made itself: the Platform API already
+ * has it.
+ */
+function madeByPlatformApi(req) {
+    return req?.auth?.mode === SHARED_KEY_AUTH_MODE;
+}
+
 function hexToBuffer(hex) {
     if (typeof hex !== 'string' || hex.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hex)) {
         return null;
@@ -71,7 +80,8 @@ function verifyHash(rawToken, configuredHashHex) {
 /**
  * Returns the fixed req.auth for a verified shared-key call.
  * preauthorized=false so the per-operation scope check still runs, limiting the mechanism
- * to the five dp:*:manage scopes the role grants.
+ * to the dp:*:manage scopes the platform-api-system role grants (see
+ * role-to-scope-mapping.yaml).
  */
 function synthesiseSharedKeyPrincipal() {
     const scopes = roleScopeMap.expandRoles([SHARED_KEY_ROLE]);
@@ -107,6 +117,7 @@ module.exports = {
     SHARED_KEY_ROLE,
     SHARED_KEY_SCHEME,
     isSharedKeyRequest,
+    madeByPlatformApi,
     parseAuthorizationScheme,
     tryAuthenticate,
     verifyHash,

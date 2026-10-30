@@ -49,6 +49,11 @@ func (l *errorList) err() error {
 	return errors.Join(l.errs...)
 }
 
+// maxPartitionKeyLen must match testbench.maxPartitionKeyLen (testbench/partition.go): the
+// testbench service rejects a longer block key with a 400 deep inside a scenario, so this
+// catches it at suite load instead.
+const maxPartitionKeyLen = 64
+
 // Validate checks a resolved suite without accessing the filesystem or runtime.
 func Validate(r *Resolved, registry *components.Registry) error {
 	var errs errorList
@@ -68,6 +73,7 @@ func Validate(r *Resolved, registry *components.Registry) error {
 	seenBlock := map[string]bool{}
 	partitionOwner := map[string]string{}
 	featureOwners := map[string]map[string]featureOwner{}
+	policyRunnerBlocks := map[string]string{}
 
 	for i := range r.Blocks {
 		b := &r.Blocks[i]
@@ -82,23 +88,39 @@ func Validate(r *Resolved, registry *components.Registry) error {
 		seenBlock[b.Name] = true
 
 		key := b.PartitionKey()
-		if key == "" {
+		switch {
+		case key == "":
 			errs.addf("topology: block %q has no usable partition key: a block name needs at "+
 				"least one letter or digit", b.Name)
-		} else if owner, taken := partitionOwner[key]; taken {
-			errs.addf("topology: blocks %q and %q both resolve to partition key %q; they would "+
-				"share one bucket in every partitioned testbench service", owner, b.Name, key)
-		} else {
-			partitionOwner[key] = b.Name
+		case len(key) > maxPartitionKeyLen:
+			errs.addf("topology: block %q resolves to partition key %q (%d characters); testbench "+
+				"services reject a key over %d characters, so shorten the block name or, for a "+
+				"multi-axis block, its component or db.matrix variant names", b.Name, key, len(key), maxPartitionKeyLen)
+		default:
+			if owner, taken := partitionOwner[key]; taken {
+				errs.addf("topology: blocks %q and %q both resolve to partition key %q; they would "+
+					"share one bucket in every partitioned testbench service", owner, b.Name, key)
+			} else {
+				partitionOwner[key] = b.Name
+			}
 		}
 
 		errs.add(validateBlockComponents(b))
 		errs.add(validateBlockRunners(b, featureOwners))
+		if b.RunnersFrom != "" {
+			source := platformGatewayPolicySource(b)
+			if owner, taken := policyRunnerBlocks[source]; taken && owner != b.Source {
+				errs.addf("topology: blocks %q and %q both take runners from policy tree %q; each policy "+
+					"would run in both", owner, b.Source, source)
+			}
+			policyRunnerBlocks[source] = b.Source
+		}
 	}
 
 	for feature, owners := range featureOwners {
 		for _, group := range featureOwnersByPolicySource(owners) {
-			if len(group) > 1 && !allowDatabaseVariantFeatureOwners(group) && !allowGatewayVersionSeparatedFeatureOwners(group) {
+			if len(group) > 1 && !allowDatabaseVariantFeatureOwners(group) && !allowGatewayVersionSeparatedFeatureOwners(group) &&
+				!allowTopologyVariantFeatureOwners(group) {
 				names := make([]string, 0, len(group))
 				for owner := range group {
 					names = append(names, owner)
@@ -118,6 +140,8 @@ type featureOwner struct {
 	constraint *gatewayVersionConstraint
 	// Every matrix variant of the source block, not just the last one resolved.
 	databases map[components.DBType]bool
+	// topologies holds the topologySignature of every variant of the source block.
+	topologies map[string]bool
 	// policySource is the policy tree the block's platform gateway is built with, or empty
 	// for the policies bundled with the gateway.
 	policySource string
@@ -193,8 +217,8 @@ func platformAPIDatabase(b *ResolvedBlock) components.DBType {
 
 // allowDatabaseVariantFeatureOwners permits a feature to be intentionally repeated by
 // same-named runners whose blocks exercise distinct platform-api database variants. Matrix
-// expansion already collapses variants within one source block; this exception covers separate
-// blocks used when two components must vary together, since a block supports only one matrix.
+// expansion already collapses same-block variants; this exception covers separate blocks
+// kept apart for other reasons that still vary the same component's engine.
 func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
 	if len(owners) < 2 {
 		return false
@@ -218,6 +242,58 @@ func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
 		}
 	}
 	return true
+}
+
+// allowTopologyVariantFeatureOwners permits a feature to be intentionally repeated by
+// same-named runners whose blocks run different topologies, such as a one- and a
+// two-controller gateway. Blocks that differ only in overlays, versions or engines run the
+// same topology and stay refused.
+func allowTopologyVariantFeatureOwners(owners map[string]featureOwner) bool {
+	if len(owners) < 2 {
+		return false
+	}
+	var runnerName string
+	seen := map[string]bool{}
+	for _, owner := range owners {
+		if runnerName == "" {
+			runnerName = owner.runner
+		} else if runnerName != owner.runner {
+			return false
+		}
+		if len(owner.topologies) != 1 {
+			return false
+		}
+		for signature := range owner.topologies {
+			if seen[signature] {
+				return false
+			}
+			seen[signature] = true
+		}
+	}
+	return true
+}
+
+// topologySignature names what a block runs: each component and the compose services
+// behind it, in order.
+func topologySignature(b *ResolvedBlock) string {
+	parts := make([]string, 0, len(b.Components))
+	for _, c := range b.Components {
+		if c.Def == nil {
+			continue
+		}
+		part := c.Def.Name
+		if c.Def.Compose != nil {
+			services := append([]string(nil), c.Def.Compose.Services...)
+			sort.Strings(services)
+			part += "[" + strings.Join(services, ",") + "]"
+		}
+		if c.Replicas > 1 {
+			part += fmt.Sprintf("x%d", c.Replicas)
+		}
+		parts = append(parts, part)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, " ")
 }
 
 func validateBlockComponents(b *ResolvedBlock) error {
@@ -284,6 +360,9 @@ func validateBlockComponents(b *ResolvedBlock) error {
 func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]featureOwner) error {
 	var errs errorList
 
+	if b.RunnersFrom != "" {
+		return validateRunnersFrom(b)
+	}
 	if len(b.Runners) == 0 {
 		errs.addf("block %q: declares no runners, so its topology would boot and do nothing", b.Name)
 	}
@@ -334,7 +413,7 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 			entry, ok := featureOwners[f][owner]
 			if !ok {
 				entry = featureOwner{
-					runner: run.Name, databases: map[components.DBType]bool{},
+					runner: run.Name, databases: map[components.DBType]bool{}, topologies: map[string]bool{},
 					policySource: platformGatewayPolicySource(b),
 				}
 				if run.GatewayVersion != nil {
@@ -343,10 +422,28 @@ func validateBlockRunners(b *ResolvedBlock, featureOwners map[string]map[string]
 				}
 			}
 			entry.databases[platformAPIDatabase(b)] = true
+			entry.topologies[topologySignature(b)] = true
 			featureOwners[f][owner] = entry
 		}
 	}
 
+	return errs.err()
+}
+
+// validateRunnersFrom checks a block whose runners come from a policy tree. Its runners are
+// resolved at selection time, so only the declaration is checked here.
+func validateRunnersFrom(b *ResolvedBlock) error {
+	var errs errorList
+	if b.RunnersFrom != RunnersFromPolicies {
+		errs.addf("block %q: unsupported runnersFrom %q (supported: %s)", b.Name, b.RunnersFrom, RunnersFromPolicies)
+	}
+	if len(b.Runners) > 0 {
+		errs.addf("block %q: runnersFrom cannot be combined with runners", b.Name)
+	}
+	if platformGatewayPolicySource(b) == "" {
+		errs.addf("block %q: runnersFrom %s requires a platform-gateway component with addPoliciesFrom",
+			b.Name, b.RunnersFrom)
+	}
 	return errs.err()
 }
 

@@ -16,14 +16,20 @@
  * under the License.
  */
 
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 import type { PlatformRole } from '../auth/permissions';
+import { isScopeBlockedByReadOnly } from '../auth/permissions';
+import { useResourceLimits } from '../hooks/useResourceLimits';
 
 /** Optional hints forwarded to the IDP on an OIDC login. */
 export type LoginOptions = {
   /** Federated identity provider id, e.g. `google`. */
   fidp?: string;
-  /** Account to prefill at the provider, typically an email address. */
+  /**
+   * Account to prefill at the provider, typically an email address. Forwarded as
+   * `login_hint` (the OIDC name) and as `username` (the name WSO2 Identity Server /
+   * Asgardeo federated authenticators read it under) — see `oidcLoginUrl`.
+   */
   loginHint?: string;
 };
 
@@ -74,9 +80,9 @@ export interface AppAuthContextType {
    * Starts a login. In OIDC mode this is a full-page redirect through the BFF.
    *
    * `fidp` names a federated identity provider and `loginHint` an account; both are
-   * forwarded to the IDP (allowlisted by the BFF) so a login page can offer its own
-   * provider buttons and skip the IDP's chooser. Omit them for the default flow,
-   * where the IDP asks.
+   * forwarded to the IDP (allowlisted by the BFF; the hint under both `login_hint`
+   * and `username`) so a login page can offer its own provider buttons and skip the
+   * IDP's chooser. Omit them for the default flow, where the IDP asks.
    */
   login: (options?: LoginOptions) => Promise<void>;
   logout: () => Promise<void>;
@@ -94,6 +100,45 @@ export const AppAuthContext = createContext<AppAuthContextType>({
   logout: async () => {},
 });
 
-export function useAppAuth(): AppAuthContextType {
+/**
+ * The signed-in user's session WITHOUT the read-only overlay — the scopes the
+ * user actually holds.
+ *
+ * For deciding what someone may SEE, never what they may do: which navigation
+ * entries exist, which variant of a page renders, which empty-state text to
+ * show. A read-only organization still reads everything it owns, so those
+ * decisions must not change when it goes read-only — only the write controls
+ * do. Everything else uses `useAppAuth`.
+ */
+export function useAppAuthScopes(): AppAuthContextType {
   return useContext(AppAuthContext);
+}
+
+/**
+ * The signed-in user's session, with the organization's read-only state already
+ * applied to `hasPermission`.
+ *
+ * A read-only organization may not add to or change its workspace, so a scope
+ * that would permit one answers `false` here however the user's role is set up.
+ * Doing it in one place is what makes every control in the portal that is
+ * already gated on such a scope honour read-only, instead of ~120 call sites
+ * each having to ask about it. Read and DELETE scopes are untouched: a
+ * read-only organization still sees everything it owns, and deleting is how it
+ * gets back under its limits — see `isScopeBlockedByReadOnly`.
+ *
+ * Outside `ResourceLimitsProvider` (the login and registration pages) there is
+ * no read-only verdict and this is exactly the context value.
+ */
+export function useAppAuth(): AppAuthContextType {
+  const auth = useContext(AppAuthContext);
+  const { readOnly } = useResourceLimits();
+
+  return useMemo(() => {
+    if (!readOnly) return auth;
+    return {
+      ...auth,
+      hasPermission: (scope: string) =>
+        !isScopeBlockedByReadOnly(scope) && auth.hasPermission(scope),
+    };
+  }, [auth, readOnly]);
 }

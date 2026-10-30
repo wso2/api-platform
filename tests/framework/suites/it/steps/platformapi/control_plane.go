@@ -62,14 +62,18 @@ type Steps struct {
 	funnel      *httpx.Funnel
 	client      *httpx.Client
 	featureRoot string
+	// trackPortalPlan registers a plan to be removed from the API Portal when the scenario ends.
+	trackPortalPlan func(ctx context.Context, handle string) error
 }
 
 // Register binds the control-plane steps. Requests go through the suite's shared funnel: steps
 // whose response an assertion reads publish through it, and intermediate lookups use its
 // underlying client rather than a step-owned http.Client. featureRoot resolves canonical
-// resource templates.
-func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.Funnel, featureRoot string) {
-	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client(), featureRoot: featureRoot}
+// resource templates. trackPortalPlan removes a plan from the API Portal when the scenario ends;
+// the portal steps provide it.
+func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.Funnel, featureRoot string,
+	trackPortalPlan func(ctx context.Context, handle string) error) {
+	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client(), featureRoot: featureRoot, trackPortalPlan: trackPortalPlan}
 	sc.Step(`^the control plane should receive the "([^"]*)" artifact "([^"]*)"$`, s.shouldReceive)
 	sc.Step(`^the control plane should not receive the "([^"]*)" artifact "([^"]*)"$`, s.shouldNotReceive)
 	sc.Step(`^the control plane copy of the "([^"]*)" artifact "([^"]*)" configuration should contain "([^"]*)"$`,
@@ -87,6 +91,10 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 	sc.Step(`^platform-api reports the subscription for API "([^"]*)" using plan "([^"]*)"$`, s.subscriptionPlanMatches)
 	RegisterDeploy(sc, s)
 	RegisterAgentProxy(sc, s)
+	RegisterAPIVersions(sc, s)
+	RegisterPublication(sc, s)
+	RegisterPortalEvents(sc, s)
+	RegisterMCPServer(sc, s)
 }
 
 // baseURL resolves the control plane's HTTPS base URL for this block.

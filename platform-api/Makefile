@@ -54,12 +54,6 @@ ifeq ($(origin VERSION),environment)
 CLOUD_IMAGE_TAG := $(VERSION)
 endif
 
-# Integration test configuration
-IT_PROJECT ?= platform-api-it
-MSSQL_PASSWORD ?= Strong!Passw0rd
-# On Apple Silicon, override with: MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest
-MSSQL_IMAGE ?= mcr.microsoft.com/mssql/server:2022-latest
-
 # Doc generation
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
@@ -68,7 +62,7 @@ DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/platform-api
 # Pinned so every developer and CI run generates byte-identical models.
 OAPI_CODEGEN_VERSION := v2.8.0
 
-.PHONY: help build cloud-build test push build-and-push-multiarch cloud-build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
+.PHONY: help build cloud-build test push build-and-push-multiarch cloud-build-and-push-multiarch generate generate-apidocs setup-local-dev run-local
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
@@ -89,44 +83,6 @@ run-local: ## Run Platform API standalone via `go run` against config/config.loc
 test: ## Run tests with coverage report
 	@echo "Running tests..."
 	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
-
-it: it-sqlite ## Run cross-database integration tests on SQLite (alias of it-sqlite)
-
-it-sqlite: ## Run cross-database integration tests on SQLite
-	@echo "Running integration tests on SQLite..."
-	@IT_DB=sqlite go test -tags integration -count=1 -v ./internal/integration/...
-
-it-postgres: ## Run cross-database integration tests on PostgreSQL (spins up a container)
-	@echo "Starting PostgreSQL for integration tests..."
-	@docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml up -d --wait
-	@IT_DB=postgres IT_DB_HOST=localhost IT_DB_PORT=55432 IT_DB_USER=postgres \
-		IT_DB_PASSWORD=postgres IT_DB_NAME=platform_api_it \
-		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
-		docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml down -v >/dev/null 2>&1; \
-		exit $$rc
-
-it-sqlserver: ## Run cross-database integration tests on SQL Server (spins up a container)
-	@echo "Starting SQL Server ($(MSSQL_IMAGE)) for integration tests..."
-	@MSSQL_IMAGE=$(MSSQL_IMAGE) MSSQL_PASSWORD='$(MSSQL_PASSWORD)' \
-		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml up -d
-	@IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=14333 IT_DB_USER=sa \
-		IT_DB_PASSWORD='$(MSSQL_PASSWORD)' IT_DB_NAME=platform_api_it \
-		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
-		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml down -v >/dev/null 2>&1; \
-		exit $$rc
-
-it-all-dbs: ## Run integration tests across SQLite, PostgreSQL and SQL Server
-	@$(MAKE) it-sqlite
-	@$(MAKE) it-postgres
-	@$(MAKE) it-sqlserver
-
-e2e: ## Run the combined platform-api + gateway Cucumber e2e (E2E_DB=postgres|sqlite|sqlserver)
-	@cd ../tests/integration-e2e && E2E_DB=$${E2E_DB:-postgres} go test -run TestFeatures -count=1 -v -timeout 25m ./...
-
-e2e-all-dbs: ## Run the combined Cucumber e2e across all three databases
-	@cd ../tests/integration-e2e && E2E_DB=sqlite go test -run TestFeatures -count=1 -v -timeout 25m ./...
-	@cd ../tests/integration-e2e && E2E_DB=postgres go test -run TestFeatures -count=1 -v -timeout 25m ./...
-	@cd ../tests/integration-e2e && E2E_DB=sqlserver go test -run TestFeatures -count=1 -v -timeout 25m ./...
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."

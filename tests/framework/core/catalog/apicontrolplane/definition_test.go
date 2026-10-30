@@ -59,6 +59,7 @@ func TestAPIControlPlaneBuildSpec(t *testing.T) {
 	require.Len(t, commands, 1)
 	require.Equal(t, "/repo/portals/api-control-plane", commands[0].Directory)
 	require.Contains(t, commands[0].Args, "ENABLE_COVERAGE=true")
+	require.Contains(t, commands[0].Args, "httpkit=../../httpkit", "the BFF builds against the shared httpkit module")
 	require.Contains(t, commands[0].Args, "COVERAGE_PACKAGES=api-control-plane-bff/...")
 
 	commands, err = spec.Plan("/repo", "1.2.3", builder.CoverageSpec{})

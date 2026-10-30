@@ -345,7 +345,8 @@ paths:
       description: |
         Retrieves all REST APIs belonging to an organization.
         Requires the projectId query parameter to filter APIs by project.
-        Provide name and version together to check uniqueness (empty result = name/version combination is available).
+        To discover the versions of an API, or to check whether a version is available, use
+        GET /rest-apis/versions instead.
         Access is validated against the organization in the JWT token.
       operationId: ListRESTAPIs
       security:
@@ -502,6 +503,53 @@ paths:
           $ref: '#/components/responses/Conflict'
         '413':
           $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/versions:
+    get:
+      summary: List the versions of a REST API
+      description: |
+        Returns every version of a REST API that shares the given displayName within the
+        organization resolved from the JWT token.
+
+        Versions of a single API are grouped by displayName: each version is a distinct REST API
+        resource with its own id (handle), and they share a displayName while differing by version.
+
+        Use this before creating a REST API to tell the two cases apart: versionsAvailable true
+        means the displayName is already in use, so the create is a new version of an existing API;
+        false means it is a brand-new API. The returned list gives the versions already taken.
+
+        The lookup is organization-scoped and deliberately takes no project filter: uniqueness of
+        (displayName, version) is enforced across the whole organization, so narrowing by project
+        could report a displayName as free when a create for it would be rejected. Each returned
+        version still carries the projectId it lives in.
+
+        An empty result is a 200 with versionsAvailable false, not a 404.
+      operationId: ListRESTAPIVersions
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/displayName-Q'
+      responses:
+        '200':
+          description: Versions retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIVersionListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1385,8 +1433,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  # --- API Publication: rollup across portals ---------------------------------
-
   /api-publications:
     get:
       summary: List API publications across API Portals
@@ -1823,7 +1869,6 @@ paths:
       operationId: publishRestApiToApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:publish
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1872,7 +1917,6 @@ paths:
       operationId: unpublishRestApiFromApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:unpublish
             - ap:api_portal:rest_api:manage
       tags:
         - API Publications
@@ -1902,8 +1946,125 @@ paths:
       operationId: deprecateRestApiOnApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:deprecate
             - ap:api_portal:rest_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing deprecated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/publish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Publish GraphQL API to API Portal
+      description: |
+        Publishes the current draft. Takes no request body: details, plans, documents, definition,
+        landing page and thumbnail all come from the draft alone — publish never reads the API's
+        own content or the current publication to fill a gap. Requires a draft to exist.
+
+        The content is pushed to the API Portal before anything is written locally, so a failed
+        call leaves the draft intact and can simply be repeated.
+
+        Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+      operationId: publishGraphQLApiToApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '201':
+          description: Listing created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Publication'
+        '400':
+          $ref: '#/components/responses/PublicationPublishBadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/unpublish:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Unpublish GraphQL API from API Portal
+      description: |
+        Removes the listing from the API Portal, along with its subscriptions and API keys, then
+        writes locally: if no draft exists, the publication is demoted into the draft in place; if
+        one exists, the publication is deleted and the existing draft is kept. A draft always
+        survives. Valid only when currently published or deprecated.
+      operationId: unpublishGraphQLApiFromApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:manage
+      tags:
+        - API Publications
+      responses:
+        '204':
+          description: Listing removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/PublicationConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/PortalUnavailable'
+
+  /api-portals/{apiPortalId}/apis/graphql-api/{apiId}/deprecate:
+    parameters:
+      - $ref: '#/components/parameters/apiPortalId'
+      - $ref: '#/components/parameters/apiHandle'
+    post:
+      summary: Deprecate GraphQL API on API Portal
+      description: Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+      operationId: deprecateGraphQLApiOnApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:graphql_api:manage
       tags:
         - API Publications
       responses:
@@ -2220,6 +2381,1084 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis:
+    get:
+      summary: Get all GraphQL APIs for an organization
+      description: |
+        Retrieves all GraphQL APIs belonging to an organization. Requires the
+        projectId query parameter to filter APIs by project. Access is validated
+        against the organization in the JWT token.
+      operationId: ListGraphQLAPIs
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:read
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: GraphQL APIs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPIListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create a new GraphQL API
+      description: |
+        Creates a new GraphQL API in the platform. `schemaSource` declares how the
+        schema is supplied: `inline` (the `sdl` field), `url` (fetched from
+        `sdlUrl`), `file` (the `sdlFile` multipart part), or `introspection` (the
+        default — `upstream.main.url` must expose standard GraphQL introspection).
+        Only the field matching the declared source may be present — a request
+        that supplies a field not matching the declared `schemaSource` (or more
+        than one schema field at once), omits the field/part its declared source
+        requires, or declares `introspection` against an `upstream.main.ref`
+        instead of a literal `url`, is a request-shape problem and is rejected
+        with `400` (`VALIDATION_FAILED`) describing exactly what's inconsistent.
+        Once the request shape itself is valid, schema resolution is best-effort:
+        if the declared source can't actually be resolved (unreachable URL,
+        invalid SDL, introspection failing/disabled), the API is still created
+        with an empty schema rather than failing — fetch it later via
+        `GET /graphql-apis/{graphqlApiId}/sdl` once it can be resolved. The API is
+        associated with a project, which must belong to the organization
+        specified in the JWT token.
+      operationId: CreateGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:create
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      requestBody:
+        description: |
+          GraphQL API object that needs to be added, as `multipart/form-data` — see
+          GraphQLAPIMultipartRequest. This is the only accepted content type, even
+          when `schemaSource` is `inline`, `url`, or `introspection` and no file is
+          being uploaded, so that every schema-source variant is expressed the
+          same way.
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GraphQLAPIMultipartRequest'
+        required: true
+      responses:
+        '201':
+          description: GraphQL API created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}:
+    get:
+      summary: Get GraphQL API by ID
+      description: |
+        Retrieves the GraphQL API's metadata and configuration. The `sdl` field
+        is deliberately omitted from this response — it can be large, and most
+        callers only need the metadata — fetch it separately via
+        `GET /graphql-apis/{graphqlApiId}/sdl`.
+      operationId: GetGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:read
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      responses:
+        '200':
+          description: GraphQL API retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPIDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update GraphQL API
+      description: |
+        Updates an existing GraphQL API's details. `schemaSource` behaves as on
+        create (see `POST /graphql-apis`), including the same `400`
+        (`VALIDATION_FAILED`) response for a request shape that's inconsistent
+        with the declared `schemaSource` — re-supply `sdl`/`sdlUrl`/`sdlFile`, or
+        leave it as `introspection` to re-query `upstream.main.url` and pick up a
+        changed backend schema. If resolution fails (the source can't actually be
+        resolved right now), the previously-stored schema is left unchanged rather
+        than being cleared.
+      operationId: UpdateGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:update
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        required: true
+        description: |
+          As `multipart/form-data` only — see GraphQLAPIMultipartRequest and the
+          note on `POST /graphql-apis`.
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GraphQLAPIMultipartRequest'
+      responses:
+        '200':
+          description: GraphQL API updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete GraphQL API
+      operationId: DeleteGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:delete
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      responses:
+        '204':
+          description: GraphQL API deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/sdl:
+    get:
+      summary: Get the SDL for a GraphQL API
+      description: |
+        Retrieves the GraphQL API's resolved schema in SDL form — the same text
+        `GET /graphql-apis/{graphqlApiId}` would have returned in its `sdl` field
+        before that field was split out into this dedicated endpoint (large, and
+        rarely needed alongside the rest of the metadata).
+      operationId: GetGraphQLAPISDL
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:read
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      responses:
+        '200':
+          description: SDL retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPISDLResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/validate-schema:
+    post:
+      summary: Dry-run GraphQL schema resolution
+      description: |
+        Attempts to resolve a schema exactly as `POST`/`PUT /graphql-apis`
+        would — the same `schemaSource`-driven structural validation, the
+        same best-effort resolution (§5.2) — without persisting anything. A
+        request-shape mismatch (`schemaSource` inconsistent with the fields
+        supplied) is a `400` (`VALIDATION_FAILED`), same as create/update. An
+        actual resolution failure (bad SDL, an unreachable `sdlUrl`, a failed
+        introspection query) is **not** an error here either — the response
+        reports `resolved: false` so the caller can decide what to do, rather
+        than having to create a real API just to find out.
+      operationId: ValidateGraphQLSchema
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:create
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      requestBody:
+        description: |
+          As `multipart/form-data` only, following the same convention as
+          `POST /graphql-apis` — see `GraphQLAPIMultipartRequest`.
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateGraphQLSchemaMultipartRequest'
+      responses:
+        '200':
+          description: Schema resolution attempted — see `resolved` for the outcome.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateGraphQLSchemaResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/gateways:
+    get:
+      summary: Get gateways for GraphQL API
+      description: |
+        Retrieves all gateways associated with the specified API, including deployment details.
+        Returns gateway information along with association timestamps and deployment status.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIGateways
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:gateway:read
+            - ap:graphql_api:gateway:manage
+            - ap:graphql_api:manage
+            - ap:gateway:read
+            - ap:gateway:manage
+      tags:
+        - GraphQL APIs
+        - Gateways
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: List of gateways associated with the API, including deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIGatewayListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Add gateways for GraphQL API
+      description: |
+        Associates gateways to the specified API. If gateways are already associated,
+        updates the association timestamp. Returns all gateways associated with the API
+        including deployment details. Access is validated against the organization
+        in the JWT token.
+      operationId: AddGatewaysToGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:gateway:create
+            - ap:graphql_api:gateway:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+        - Gateways
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        description: List of gateways to associate with the API
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/AddGatewayToRESTAPIRequest'
+      responses:
+        '200':
+          description: List of all gateways associated with the API, including deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIGatewayListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/api-keys:
+    post:
+      summary: Create API key
+      description: |
+        Creates a new API key for the specified GraphQL API. The API key will be hashed before
+        storage and broadcasted to all gateways where the API is deployed. This endpoint
+        allows external platforms to inject API keys to hybrid gateways.
+      operationId: CreateGraphQLAPIKey
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:api_key:create
+            - ap:graphql_api:api_key:manage
+            - ap:graphql_api:manage
+            - ap:api_key:all:manage
+      tags:
+        - GraphQL APIs
+        - API Keys
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        description: API key creation request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
+      responses:
+        '201':
+          description: API key created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/api-keys/{apiKeyId}:
+    put:
+      summary: Update API key
+      description: |
+        Updates an existing API key for the specified GraphQL API. The new API key value will
+        be hashed before storage and broadcasted to all gateways where the API is deployed.
+        This endpoint allows external platforms to rotate API keys on hybrid gateways.
+      operationId: UpdateGraphQLAPIKey
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:api_key:update
+            - ap:graphql_api:api_key:manage
+            - ap:graphql_api:manage
+            - ap:api_key:all:manage
+      tags:
+        - GraphQL APIs
+        - API Keys
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: apiKeyId
+          in: path
+          required: true
+          description: The unique name/identifier of the API key
+          schema:
+            type: string
+          example: "my-api-key"
+      requestBody:
+        description: API key update request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAPIKeyRequest'
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Revoke API key
+      description: |
+        Revokes an API key for the specified GraphQL API. The revocation will be broadcasted
+        to all gateways where the API is deployed. This endpoint allows external platforms
+        to revoke API keys on hybrid gateways.
+      operationId: RevokeGraphQLAPIKey
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:api_key:delete
+            - ap:graphql_api:api_key:manage
+            - ap:graphql_api:manage
+            - ap:api_key:all:manage
+      tags:
+        - GraphQL APIs
+        - API Keys
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: apiKeyId
+          in: path
+          required: true
+          description: The unique name/identifier of the API key to revoke
+          schema:
+            type: string
+          example: "my-api-key"
+      responses:
+        '204':
+          description: API key revoked successfully (no content)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments:
+    post:
+      summary: Create and deploy a new deployment
+      description: |
+        Creates an immutable deployment artifact for a GraphQL API and deploys it to a specified gateway.
+        Each deployment targets a single gateway. The graphqlApiId parameter is the API handle (identifier),
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+        Access is validated against the organization in the JWT token.
+      operationId: DeployGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:create
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '201':
+          description: GraphQL API deployed successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get deployments for a GraphQL API
+      description: |
+        Retrieves all deployment artifacts for a specific API. The graphqlApiId parameter is the API handle (identifier),
+        not the UUID. Supports filtering by gateway handle and deployment status.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIDeployments
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:read
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/gatewayId-Q'
+        - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: Deployments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments/{deploymentId}:
+    get:
+      summary: Get deployment by ID
+      description: |
+        Retrieves metadata for a specific deployment artifact including status, gateway association,
+        and timestamps. Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:read
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete deployment
+      description: |
+        Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:delete
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '204':
+          description: Deployment deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/DeploymentActiveConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments/{deploymentId}/undeploy:
+    post:
+      summary: Undeploy deployment from gateway
+      description: |
+        Undeploys an active deployment, stopping the API from being served on the specified gateway.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+
+        The gatewayId query parameter is validated against deployment's bound gateway to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: UndeployGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:undeploy
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentUndeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments/{deploymentId}/restore:
+    post:
+      summary: Restore a previous deployment
+      description: |
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+        The target deployment must not already be in DEPLOYED status.
+
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: RestoreGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:restore
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/builds:
+    post:
+      summary: Prepare a build of a GraphQL API
+      description: |
+        Renders the GraphQL API's current definition into an immutable snapshot and stores it,
+        without deploying it anywhere.
+
+        Preparing and deploying are separate steps so that what reaches a gateway is a
+        snapshot taken at a known moment: a deploy that names a build cannot silently
+        pick up edits made to the API since, and the same build can be deployed to any
+        number of gateways, and promoted onward, without being re-rendered.
+
+        The artifact is stored at the platform's own data version; it is translated to
+        the target gateway's version when it is deployed.
+
+        A GraphQL API keeps at most `deployments.max_builds_per_api` builds. Preparing another
+        first removes the oldest builds no current deployment is using; if every one is
+        in use, the request is refused with a `409` and a build has to be deleted to
+        make room.
+
+        Access is validated against the organization in the JWT token.
+      operationId: CreateGraphQLAPIBuild
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:create
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildRequest'
+      responses:
+        '201':
+          description: Build prepared successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get builds for a GraphQL API
+      description: |
+        Lists the GraphQL API's builds, newest first. The rendered artifact itself is not
+        included; a listing is for choosing which build to deploy.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIBuilds
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:read
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+        - $ref: '#/components/parameters/limit-Q'
+      responses:
+        '200':
+          description: Builds retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/builds/{buildId}:
+    get:
+      summary: Get build by ID
+      description: |
+        Retrieves metadata for a single build.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIBuild
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:read
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '200':
+          description: Build metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete a build
+      description: |
+        Deletes one of the GraphQL API's builds, freeing a slot when the API is at its build
+        limit.
+
+        Refused with a conflict while a gateway is serving the build — that is, while
+        any `DEPLOYED`, `DEPLOYING` or `UNDEPLOYING` deployment runs it. Undeploy it
+        first.
+
+        Undeployed, failed and superseded deployments release the build. They keep the
+        artifact they were created with, so they can still be redeployed, but they stop
+        reporting a `buildId` and can no longer be promoted to a later environment.
+
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteGraphQLAPIBuild
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:build:delete
+            - ap:graphql_api:build:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the GraphQL API
+        - name: buildId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the build
+      responses:
+        '204':
+          description: Build deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -6797,7 +8036,11 @@ paths:
   /subscription-plans:
     post:
       summary: Create subscription plan
-      description: Creates an organization-scoped subscription plan.
+      description: >-
+        Creates an organization-scoped subscription plan. A paid plan is created with its `pricing`, checked against
+        the API Portal's rules and the organization's meters and stored with the plan; a plan created without it is
+        free. Pricing is set only here: it cannot be updated once the plan exists. Returns `400` for pricing that breaks
+        the rules or names an unknown meter.
       operationId: CreateSubscriptionPlan
       security:
         - OAuth2Security:
@@ -6829,6 +8072,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -6845,6 +8090,13 @@ paths:
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
         - $ref: '#/components/parameters/query-Q'
+        - name: status
+          in: query
+          required: false
+          description: Only the plans with this status (ACTIVE, INACTIVE)
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
       responses:
         '200':
           description: List of subscription plans
@@ -6889,6 +8141,13 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     put:
       summary: Update subscription plan
+      description: >-
+        Updates the plan's name, limits, status and expiry. The name and the request limit can change only while
+        nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use. To
+        change its name or limit, create a new plan." The plan's `usage` (GET
+        /subscription-plans/{subscriptionPlanId}) counts what uses it. Status and expiry can always change.
+        Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body
+        that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
       operationId: UpdateSubscriptionPlan
       security:
         - OAuth2Security:
@@ -6930,6 +8189,10 @@ paths:
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete subscription plan
+      description: >-
+        Deletes the plan with its pricing, only while nothing uses it: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such
+        as "The plan Gold is in use and can't be deleted." The plan's `usage` (GET
+        /subscription-plans/{subscriptionPlanId}) counts what uses it.
       operationId: DeleteSubscriptionPlan
       security:
         - OAuth2Security:
@@ -6953,6 +8216,221 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscription-plans/{subscriptionPlanId}/pricing:
+    parameters:
+      - name: subscriptionPlanId
+        in: path
+        required: true
+        description: The plan's id (handle), as returned in `id` by GET /subscription-plans.
+        schema:
+          type: string
+          maxLength: 50
+    get:
+      summary: Get the pricing of a subscription plan
+      description: >-
+        Returns the pricing of a paid plan; a free plan has none (404). A plan's pricing is set when the plan is
+        created, here or in an API Portal (and copied here from its webhook event), and does not change.
+      operationId: GetSubscriptionPlanPricing
+      security:
+        - OAuth2Security:
+            - ap:subscription_plan:pricing:read
+            - ap:subscription_plan:read
+            - ap:subscription_plan:manage
+      tags:
+        - SubscriptionPlans
+      responses:
+        '200':
+          description: The plan's pricing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlanPricing'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /meters:
+    get:
+      summary: List meters
+      description: >-
+        Lists the organization's meters, ordered by id. A meter defines what a paid plan charges for: the requests the
+        gateway allows, or their tokens. Each plan price narrows it with its own filters. A meter made here is kept
+        here and reaches an API Portal only when a plan that charges for it is published there; a meter made in an API
+        Portal is a copy, kept current through that portal's webhook events. Each meter says how many plans charge for
+        it (`planCount`).
+      operationId: ListMeters
+      security:
+        - OAuth2Security:
+            - ap:meter:read
+            - ap:meter:manage
+      tags:
+        - Meters
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: The meters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create a meter
+      description: >-
+        Creates a meter here. It is checked with the API Portal's rules, and refused with the portal's messages. The
+        id is the one given, or is derived from the display name. The meter is returned as GET /meters/{meterId}
+        gives it. It reaches an API Portal when a plan that
+        charges for it is first published there; until then, no API Portal is needed. A body that is not a JSON object
+        is refused (400), and so is an id the organization already has (409 METER_EXISTS).
+      operationId: CreateMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:create
+            - ap:meter:manage
+      tags:
+        - Meters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterRequest'
+      responses:
+        '201':
+          description: The meter, as stored
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /meters/{meterId}:
+    parameters:
+      - name: meterId
+        in: path
+        required: true
+        description: The meter's id (handle), as returned in `id` by GET /meters or POST /meters.
+        schema:
+          type: string
+          maxLength: 40
+    get:
+      summary: Get a meter
+      description: >-
+        Returns one meter. `planCount` says how many plans price it; while any does, the meter cannot be updated or
+        deleted.
+      operationId: GetMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:read
+            - ap:meter:manage
+      tags:
+        - Meters
+      responses:
+        '200':
+          description: The meter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meter'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update a meter
+      description: >-
+        Replaces the meter's settings, checked as on create; the meter is returned as GET /meters/{meterId} gives
+        it. A meter that a plan prices cannot be updated at all, its name, description and event keys included (409
+        METER_IN_USE). The change is not sent to API Portals; an API Portal that has the meter keeps its copy, and a
+        later publish of a plan charging for it there is refused while the two differ (409
+        PUBLICATION_METER_CONFLICT).
+      operationId: UpdateMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:update
+            - ap:meter:manage
+      tags:
+        - Meters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterRequest'
+      responses:
+        '200':
+          description: The meter, as stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete a meter
+      description: >-
+        Deletes the meter here; refused while a plan charges for it (409 METER_IN_USE). The delete is not sent to API
+        Portals, which keep their copies, as for subscription plans.
+      operationId: DeleteMeter
+      security:
+        - OAuth2Security:
+            - ap:meter:delete
+            - ap:meter:manage
+      tags:
+        - Meters
+      responses:
+        '204':
+          description: Meter deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -7376,7 +8854,7 @@ paths:
             type: array
             items:
               type: string
-              enum: [RestApi, LlmProvider, LlmProxy, AgentProxy]
+              enum: [RestApi, LlmProvider, LlmProxy, AgentProxy, GraphQLApi]
           style: form
           explode: false
           example: LlmProxy,LlmProvider
@@ -7674,10 +9152,8 @@ components:
             ap:api_portal:manage: Full access to API Portals
             ap:api_portal:publication:read: Read an API's live listing on one portal
             ap:api_portal:read: Read API Portals
-            ap:api_portal:rest_api:deprecate: Close a REST API's live listing to new subscriptions
+            ap:api_portal:graphql_api:manage: Publish, unpublish and deprecate a GraphQL API on a portal
             ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
-            ap:api_portal:rest_api:publish: Publish, or re-publish, a REST API's current draft to a portal
-            ap:api_portal:rest_api:unpublish: Remove a REST API's live listing from a portal
             ap:api_portal:update: Update an API Portal
             ap:api_publication:read: Read an API's publication status across every portal
             ap:application:api_key:create: Create an application API key
@@ -7708,6 +9184,28 @@ components:
             ap:gateway_custom_policy:delete: Delete a gateway custom policy
             ap:gateway_custom_policy:manage: Full access to gateway custom policies
             ap:gateway_custom_policy:read: Read gateway custom policies
+            ap:graphql_api:api_key:create: Create an API key for a GraphQL API
+            ap:graphql_api:api_key:delete: Delete an API key of a GraphQL API
+            ap:graphql_api:api_key:manage: Full access to a GraphQL API's API keys
+            ap:graphql_api:api_key:update: Update an API key of a GraphQL API
+            ap:graphql_api:build:create: Prepare a build of a GraphQL API
+            ap:graphql_api:build:delete: Delete a build of a GraphQL API
+            ap:graphql_api:build:manage: Full access to a GraphQL API's builds
+            ap:graphql_api:build:read: Read builds of a GraphQL API
+            ap:graphql_api:create: Create a GraphQL API
+            ap:graphql_api:delete: Delete a GraphQL API
+            ap:graphql_api:deployment:create: Deploy a GraphQL API
+            ap:graphql_api:deployment:delete: Delete a GraphQL API deployment
+            ap:graphql_api:deployment:manage: Full access to GraphQL API deployments
+            ap:graphql_api:deployment:read: Read GraphQL API deployments
+            ap:graphql_api:deployment:restore: Restore a GraphQL API deployment
+            ap:graphql_api:deployment:undeploy: Undeploy a GraphQL API deployment
+            ap:graphql_api:gateway:create: Add gateways to a GraphQL API
+            ap:graphql_api:gateway:manage: Full access to a GraphQL API's gateways
+            ap:graphql_api:gateway:read: Read a GraphQL API's gateways
+            ap:graphql_api:manage: Full access to GraphQL APIs
+            ap:graphql_api:read: Read GraphQL APIs
+            ap:graphql_api:update: Update a GraphQL API
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
@@ -7806,11 +9304,17 @@ components:
             ap:subscription:manage: Full access to subscriptions
             ap:subscription:read: Read subscriptions
             ap:subscription:update: Update a subscription
+            ap:meter:create: Create a meter
+            ap:meter:delete: Delete a meter
+            ap:meter:manage: Full access to meters
+            ap:meter:read: Read meters
+            ap:meter:update: Update a meter
             ap:subscription_plan:create: Create a subscription plan
             ap:subscription_plan:delete: Delete a subscription plan
             ap:subscription_plan:manage: Full access to subscription plans
             ap:subscription_plan:read: Read subscription plans
             ap:subscription_plan:update: Update a subscription plan
+            ap:subscription_plan:pricing:read: Read the pricing of a subscription plan
             ap:thumbnail:manage: Create, update, and delete an API's thumbnail
             ap:thumbnail:read: Read an API's thumbnail
   schemas:
@@ -7881,7 +9385,7 @@ components:
               example: wso2-openai-provider
             artifactType:
               type: string
-              enum: [RestApi, LlmProvider, LlmProxy, AgentProxy]
+              enum: [RestApi, LlmProvider, LlmProxy, AgentProxy, GraphQLApi]
               description: Type of the artifact this key belongs to
 
     UserAPIKeyListResponse:
@@ -9092,6 +10596,67 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    RESTAPIVersionListResponse:
+      type: object
+      required:
+        - displayName
+        - versionsAvailable
+        - count
+        - list
+      properties:
+        displayName:
+          type: string
+          description: The display name the versions were looked up by
+          example: "reading-list-api"
+        versionsAvailable:
+          type: boolean
+          description: |
+            True when at least one REST API already uses this display name, meaning a create for
+            this display name adds a version to an existing API rather than creating a new one.
+          example: true
+        count:
+          type: integer
+          description: Number of versions in this response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/RESTAPIVersion'
+
+    RESTAPIVersion:
+      type: object
+      required:
+        - id
+        - version
+        - projectId
+      properties:
+        id:
+          type: string
+          description: |
+            Unique handle/identifier of the REST API resource holding this version. Use it to
+            address the version through the other /rest-apis endpoints.
+          example: "69942b1952c01e01cb249a9b"
+        version:
+          type: string
+          description: Version identifier
+          example: "v1.0"
+        projectId:
+          type: string
+          description: Handle (URL-friendly slug) of the project this version belongs to
+          example: "default-project"
+        context:
+          type: string
+          description: Context path this version is served on
+          example: "/default-project/reading-list-api/v1.0"
+        lifeCycleStatus:
+          type: string
+          description: Current lifecycle status of this version
+          example: "PUBLISHED"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when this version was created
+
     TokenRotationResponse:
       type: object
       properties:
@@ -9405,6 +10970,556 @@ components:
           format: binary
           description: JPEG or PNG image bytes. Max size is deployment-configured.
 
+    GraphQLIntrospectionMode:
+      type: string
+      enum: [SDL, ENDPOINT]
+      example: ENDPOINT
+
+    GraphQLAPI:
+      title: GraphQL API object
+      required:
+        - displayName
+        - version
+        - projectId
+        - upstream
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+          minLength: 3
+          maxLength: 40
+          example: countries-graphql-api
+        displayName:
+          description: Human-readable name for the API
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Countries GraphQL API
+        description:
+          maxLength: 32766
+          type: string
+          example: Public GraphQL API for querying country/region reference data
+        context:
+          maxLength: 232
+          type: string
+          description: |
+            Base path for the single GraphQL endpoint. Optional: when omitted
+            (or blank) on create/update, the server derives one from the API's
+            handle and version (`/{handle}/{version}/graphql`) instead of
+            rejecting the request. Suggested (not enforced) convention when
+            supplied explicitly: end the path with `/graphql`, matching how
+            most standalone GraphQL servers name their single endpoint — this
+            is not validated.
+          example: /countries/graphql
+        version:
+          maxLength: 30
+          minLength: 1
+          type: string
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          example: v1.0
+        createdBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          example: "john.doe"
+        updatedBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          description: Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+          example: "john.doe"
+        projectId:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          example: default-project
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+          description: |
+            Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+            endpoint (no per-operation paths), so `upstream.main.url` is the single
+            GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+            the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
+        kind:
+          type: string
+          description: Kind of the API based on its communication protocol or architectural style
+          example: GraphQLApi
+          default: GraphQLApi
+        schemaSource:
+          type: string
+          enum: [inline, url, file, introspection]
+          default: introspection
+          description: |
+            Declares how the schema is being supplied, so the server validates
+            against stated intent instead of guessing it from which fields happen
+            to be populated. `inline` requires `sdl`; `url` requires `sdlUrl`;
+            `file` requires the `sdlFile` multipart part (see
+            GraphQLAPIMultipartRequest); `introspection` (the default) requires a
+            literal `upstream.main.url` and derives the schema by querying it.
+            Only the field matching the declared source may be present — a
+            mismatch (wrong field populated, nothing populated, more than one
+            populated) is a `400` (`VALIDATION_FAILED`), not a silent
+            fall-through to a different resolution path. Schema *resolution* is
+            separate and best-effort: a failure to actually resolve (bad SDL,
+            unreachable URL, introspection failing) never fails the request —
+            see `sdl` below.
+          example: introspection
+        sdl:
+          type: string
+          description: |
+            The GraphQL schema in SDL form — resolved per `schemaSource`, from a
+            directly-supplied document (`inline`/`file`), fetched from `sdlUrl`
+            (`url`), or derived from `upstream.main.url` (`introspection`). Always
+            the *resolved* schema, never a document-supplied schema-location
+            reference. Optional in practice: if resolution fails, the API is still
+            created/updated and this is left empty (create) or unchanged from its
+            previous value (update) rather than the request failing — see
+            `schemaSource`.
+          example: |
+            type Query {
+              countries: [Country]
+              country(code: ID!): Country
+            }
+            type Country {
+              code: String
+              name: String
+              capital: String
+            }
+        sdlUrl:
+          type: string
+          format: uri
+          writeOnly: true
+          description: |
+            A URL to a raw SDL document to fetch and use as `sdl` when
+            `schemaSource` is `url` — the write-side counterpart to how an OpenAPI
+            document can be supplied by reference for other artifact kinds (see
+            LlmProviderTemplate's `metadata.openapiSpecUrl`). Distinct from
+            `upstream.main.url`: this is a plain HTTP(S) GET of a static schema
+            file, not a live introspection query against a GraphQL server, and is
+            fetched through the same shared SSRF-guarded HTTP client every other
+            operator/tenant-supplied fetch in this API uses, under the operator-
+            configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+            host is resolved and every candidate IP — including each redirect hop —
+            is checked at dial time, refusing link-local/metadata/unspecified/
+            multicast addresses while private and in-cluster addresses (a Kubernetes
+            ClusterIP, a service-DNS name, localhost) remain reachable. Never stored
+            or echoed back; only the fetched `sdl` text is persisted and returned.
+          example: https://raw.githubusercontent.com/example/countries-api/main/schema.graphql
+        introspectionMode:
+          allOf:
+            - $ref: '#/components/schemas/GraphQLIntrospectionMode'
+          readOnly: true
+          description: |
+            How `sdl` was obtained. SDL = supplied directly in the create/update
+            request. ENDPOINT = derived by introspecting `upstream.main.url` at
+            creation time. Informational only — storage and downstream behavior are
+            identical either way.
+          example: ENDPOINT
+        policies:
+          type: array
+          description: |
+            List of policies to be applied on the API. Reused unmodified from
+            REST APIs. A GraphQL API has no per-operation list to add an
+            explicit `OPTIONS` entry to the way a REST API does, so when a
+            `cors` policy is attached, the gateway synthesizes an OPTIONS
+            route for the same path itself, sharing this same policy chain —
+            this is what lets `cors` (and every other policy in this list, in
+            declared order) answer a browser's preflight request.
+          items:
+            $ref: '#/components/schemas/Policy'
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names enabled for this API.
+          items:
+            type: string
+          example: [Gold, Silver]
+
+    # GraphQLAPI minus sdl/sdlUrl — the shape returned by GET
+    # /graphql-apis/{graphqlApiId}. Duplicated rather than composed via allOf
+    # (OpenAPI has no "subtract a property" mechanism) so GraphQLAPI itself stays
+    # unchanged for Create/Update, which still echo the resolved sdl back.
+    GraphQLAPIDetail:
+      title: GraphQL API detail (without sdl)
+      required:
+        - displayName
+        - version
+        - projectId
+        - upstream
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique handle/identifier for the API.
+          minLength: 3
+          maxLength: 40
+          example: countries-graphql-api
+        displayName:
+          description: Human-readable name for the API
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Countries GraphQL API
+        description:
+          maxLength: 32766
+          type: string
+          example: Public GraphQL API for querying country/region reference data
+        context:
+          maxLength: 232
+          type: string
+          description: |
+            Base path for the single GraphQL endpoint. Optional: when omitted
+            (or blank) on create/update, the server derives one from the API's
+            handle and version (`/{handle}/{version}/graphql`) instead of
+            rejecting the request. Suggested (not enforced) convention when
+            supplied explicitly: end the path with `/graphql`, matching how
+            most standalone GraphQL servers name their single endpoint — this
+            is not validated.
+          example: /countries/graphql
+        version:
+          maxLength: 30
+          minLength: 1
+          type: string
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          example: v1.0
+        createdBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          example: "john.doe"
+        updatedBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          example: "john.doe"
+        projectId:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          example: default-project
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+          description: |
+            Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+            endpoint (no per-operation paths), so `upstream.main.url` is the single
+            GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+            the endpoint introspected at creation time (see `introspectionMode` below).
+        kind:
+          type: string
+          description: Kind of the API based on its communication protocol or architectural style
+          example: GraphQLApi
+          default: GraphQLApi
+        introspectionMode:
+          allOf:
+            - $ref: '#/components/schemas/GraphQLIntrospectionMode'
+          readOnly: true
+          description: |
+            How the schema was obtained. SDL = supplied directly in the create/update
+            request. ENDPOINT = derived by introspecting `upstream.main.url` at
+            creation time. Informational only — storage and downstream behavior are
+            identical either way.
+          example: ENDPOINT
+        schemaSource:
+          type: string
+          readOnly: true
+          enum: [inline, url, file, introspection]
+          description: |
+            The exact source the current schema was declared with on the create or
+            last successful update — a finer-grained sibling of `introspectionMode`,
+            which only distinguishes the two-bucket SDL/ENDPOINT storage outcome.
+            Resupply this value on a subsequent `PUT` that isn't meant to change the
+            schema, together with material satisfying that same source (`sdl` for
+            `inline`/`file`, `sdlUrl` for `url`, nothing extra for `introspection`
+            since `upstream.main.url` already suffices) — omitting it, or resupplying
+            a source without its required field, is a structural `400`, not a no-op.
+          example: introspection
+        policies:
+          type: array
+          description: |
+            List of policies to be applied on the API. Reused unmodified from
+            REST APIs. A GraphQL API has no per-operation list to add an
+            explicit `OPTIONS` entry to the way a REST API does, so when a
+            `cors` policy is attached, the gateway synthesizes an OPTIONS
+            route for the same path itself, sharing this same policy chain —
+            this is what lets `cors` (and every other policy in this list, in
+            declared order) answer a browser's preflight request.
+          items:
+            $ref: '#/components/schemas/Policy'
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names enabled for this API.
+          items:
+            type: string
+          example: [Gold, Silver]
+
+    GraphQLAPISDLResponse:
+      title: GraphQL API SDL
+      type: object
+      required:
+        - sdl
+      properties:
+        sdl:
+          type: string
+          description: |
+            The GraphQL schema in SDL form, resolved at create/update time (either
+            supplied directly or derived via upstream introspection) — see
+            `GET /graphql-apis/{graphqlApiId}` for the rest of the API's metadata.
+          example: |
+            type Query {
+              countries: [Country]
+              country(code: ID!): Country
+            }
+            type Country {
+              code: String
+              name: String
+              capital: String
+            }
+
+    CreateGraphQLAPIRequest:
+      allOf:
+        - $ref: '#/components/schemas/GraphQLAPI'
+        - type: object
+          required:
+            - displayName
+            - version
+            - projectId
+            - upstream
+
+    GraphQLAPIMultipartRequest:
+      title: GraphQL API object with SDL file upload
+      type: object
+      required:
+        - metadata
+      properties:
+        metadata:
+          type: string
+          description: |
+            JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
+            GraphQLAPI fields for update, including `schemaSource`. When
+            `schemaSource` is `file`, the `sdlFile` part below is required and any
+            `sdl`/`sdlUrl` in this metadata is a structural-validation error, not a
+            silent override — every schema-source variant is expressed
+            consistently through the `schemaSource` field rather than by which
+            part happens to be present.
+          example: |
+            {"displayName":"Countries GraphQL API","context":"/countries","version":"v1.0","projectId":"default-project","schemaSource":"introspection","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
+        sdlFile:
+          type: string
+          format: binary
+          description: |
+            The GraphQL SDL document as a file upload (e.g. schema.graphql).
+            Required when `schemaSource` is `file`; must be omitted otherwise.
+
+    GraphQLAPIListItem:
+      title: GraphQL API list item
+      type: object
+      required:
+        - displayName
+        - context
+        - version
+        - projectId
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 40
+          example: countries-graphql-api
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Countries GraphQL API
+        description:
+          maxLength: 32766
+          type: string
+        context:
+          type: string
+          example: /countries/graphql
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          example: default-project
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+        introspectionMode:
+          $ref: '#/components/schemas/GraphQLIntrospectionMode'
+        kind:
+          type: string
+          example: GraphQLApi
+          default: GraphQLApi
+        readOnly:
+          type: boolean
+          example: false
+        createdBy:
+          type: string
+          readOnly: true
+          example: "john.doe"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+    GraphQLAPIListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 1
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQLAPIListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ValidateGraphQLSchemaRequest:
+      title: GraphQL schema validation request
+      type: object
+      properties:
+        schemaSource:
+          type: string
+          enum: [inline, url, file, introspection]
+          default: introspection
+          description: |
+            Same semantics as `GraphQLAPI.schemaSource` — declares which of
+            `sdl`/`sdlUrl`/the `sdlFile` multipart part/`upstream.main.url`
+            supplies the schema to resolve.
+          example: introspection
+        sdl:
+          type: string
+          description: The GraphQL schema in SDL form, when `schemaSource` is `inline` (or the uploaded file's content, when `file`).
+        sdlUrl:
+          type: string
+          format: uri
+          writeOnly: true
+          description: A URL to fetch the SDL from, when `schemaSource` is `url`.
+        upstream:
+          $ref: '#/components/schemas/Upstream'
+          description: |
+            Only relevant when `schemaSource` is `introspection` (explicit or
+            inferred) — unlike `GraphQLAPI.upstream`, this is not required,
+            since a validation request for `inline`/`url`/`file` has no use
+            for it.
+
+    ValidateGraphQLSchemaMultipartRequest:
+      title: GraphQL schema validation request with SDL file upload
+      type: object
+      required:
+        - metadata
+      properties:
+        metadata:
+          type: string
+          description: JSON-encoded ValidateGraphQLSchemaRequest.
+          example: |
+            {"schemaSource":"introspection","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
+        sdlFile:
+          type: string
+          format: binary
+          description: |
+            The GraphQL SDL document as a file upload. Required when
+            `schemaSource` is `file`; must be omitted otherwise.
+
+    ValidateGraphQLSchemaResponse:
+      title: GraphQL schema validation result
+      type: object
+      required:
+        - resolved
+        - sdl
+      properties:
+        resolved:
+          type: boolean
+          description: Whether the declared schemaSource actually resolved to a usable schema.
+          example: true
+        sdl:
+          type: string
+          description: The resolved SDL text when `resolved` is `true`; empty otherwise.
+        introspectionMode:
+          $ref: '#/components/schemas/GraphQLIntrospectionMode'
+          description: Only set when `resolved` is `true`.
+        message:
+          type: string
+          description: |
+            A generic explanation, set only when `resolved` is `false`. Never
+            the specific parser/fetch/introspection failure reason — reuses
+            the same sterile message `GraphQLAPISchemaResolveFailed` uses
+            elsewhere (`error-handling.md`).
+          example: The provided endpoint could not be used to derive a GraphQL schema, or the supplied SDL could not be parsed.
+        sdlErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQLSdlValidationIssue'
+          description: |
+            Set only when `resolved` is `false` and the failure was a parse
+            error on SDL text the caller effectively authored: `schemaSource`
+            `inline`/`file` always, and `url` once its fetch itself succeeded.
+            Unlike `message`, these are safe to show verbatim — they describe
+            the caller's own document, not a network outcome. Never set for a
+            `url` fetch failure or an `introspection` failure, since revealing
+            those could map internal topology (`error-handling.md`,
+            `ssrf-prevention.md`).
+
+    GraphQLSdlValidationIssue:
+      title: GraphQL SDL validation issue
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The parser's own error message for this issue.
+          example: "Unexpected Name \"this\""
+        line:
+          type: integer
+          description: 1-based line number in the submitted SDL, when the parser could anchor the issue to one.
+          example: 3
+        column:
+          type: integer
+          description: 1-based column number in the submitted SDL, when the parser could anchor the issue to one.
+          example: 12
+
     TimeUnit:
       type: string
       description: Time unit for API key expiration duration
@@ -9611,7 +11726,9 @@ components:
       properties:
         id:
           type: string
-          description: Handle (URL-friendly slug) for the plan. Immutable after creation.
+          description: >-
+            Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters;
+            a longer one is refused with 400 "id must be at most 40 characters".
           minLength: 3
           maxLength: 40
           example: "gold"
@@ -9638,6 +11755,12 @@ components:
           type: string
           enum: [ACTIVE, INACTIVE]
           default: ACTIVE
+        pricing:
+          description: >-
+            Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is
+            created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free.
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlanPricingRequest'
 
     SubscriptionPlan:
       type: object
@@ -9694,7 +11817,339 @@ components:
         updatedAt:
           type: string
           format: date-time
+        pricing:
+          readOnly: true
+          description: >-
+            The plan's pricing, present only on a paid plan. It is set when the plan is created (POST
+            /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a
+            paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries
+            it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlanPricing'
+        usage:
+          readOnly: true
+          description: >-
+            What offers or uses the plan. Only present in the detail response (GET
+            /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and
+            its name and limit cannot be updated.
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlanUsage'
 
+    SubscriptionPlanUsage:
+      type: object
+      description: >-
+        Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a
+        response or message can list.
+      required: [inUse, restApis, drafts, publications, subscriptions]
+      properties:
+        inUse:
+          type: boolean
+          description: Whether anything counted below offers or uses the plan.
+        restApis:
+          type: integer
+          description: How many REST APIs list the plan in their configuration.
+        drafts:
+          type: integer
+          description: How many APIs offer the plan in a publication draft (each API once).
+        publications:
+          type: integer
+          description: How many APIs offer the plan in a publication (each API once).
+        subscriptions:
+          type: integer
+          description: How many subscriptions use the plan.
+
+    MeterRequest:
+      type: object
+      required: [displayName, type]
+      additionalProperties: false
+      description: >-
+        A meter to create or replace. A field not listed here is refused.
+      properties:
+        id:
+          type: string
+          maxLength: 40
+          description: The meter's id; derived from displayName when omitted on create.
+        displayName:
+          type: string
+          maxLength: 255
+          description: Says what the meter counts, for example "Input tokens".
+        description:
+          type: string
+          maxLength: 1023
+        type:
+          type: string
+          enum: [REQUEST_COUNT, TOKENS]
+          x-enum-varnames: [MeterRequestTypeRequestCount, MeterRequestTypeTokens]
+          description: >-
+            What is counted: requests (REQUEST_COUNT), each counting one, or the tokens of AI API requests
+            (TOKENS), adding up the number in the event field `typeKey` names. A meter has no conditions:
+            each plan price gives its own filters.
+        typeKey:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: >-
+            TOKENS only, and required there: the event field whose number the meter adds up, as a full path in the
+            gateway's analytics event, such as `metadata.aiTokenUsage.promptTokens` (our gateway also sends
+            `metadata.aiTokenUsage.completionTokens` and `metadata.aiTokenUsage.totalTokens`). 1 to 255 characters
+            with no spaces. Refused for a REQUEST_COUNT meter.
+          example: metadata.aiTokenUsage.promptTokens
+        filterFields:
+          type: array
+          maxItems: 10
+          description: >-
+            The properties this meter's prices can filter on, at most 10, each named by the administrator and read
+            from its own event field. Names and event keys are each unique within the meter. Optional; without them
+            the meter's prices take no filters.
+          items:
+            $ref: '#/components/schemas/MeterFilterFieldRequest'
+    MeterFilterFieldRequest:
+      type: object
+      required: [field, eventKey]
+      additionalProperties: false
+      description: >-
+        A property this meter's prices can filter on: a name the administrator gives it and the event field it
+        reads. Any operator works on any property; the values a price gives must fit what the event field holds.
+      properties:
+        field:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: >-
+            The property's name, 1 to 40 characters, unique within the meter ignoring case, such as `Status code`
+            or `Region`.
+          example: Status code
+        eventKey:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: >-
+            The event field the property reads, as a full path in the Moesif event; 1 to 255 characters with no
+            spaces, unique within the meter. Our gateway sends, among others, `response.status`, `request.verb`,
+            `metadata.apiType`, `metadata.mcpAnalytics.jsonRpcMethod`, `metadata.mcpAnalytics.capabilityName` and
+            `metadata.aiTokenUsage.promptTokens`, and Moesif adds `request.route`, the request path with its IDs as
+            `:id`.
+          example: response.status
+    Meter:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [REQUEST_COUNT, TOKENS]
+          x-enum-varnames: [MeterTypeRequestCount, MeterTypeTokens]
+        typeKey:
+          type: string
+          nullable: true
+          description: >-
+            The event field whose number a TOKENS meter adds up, as stored on the meter, such as
+            `metadata.aiTokenUsage.promptTokens`; null for REQUEST_COUNT.
+        filterFields:
+          type: array
+          description: The fields this meter's prices can filter on, each with the event field it reads, as stored on the meter.
+          items:
+            $ref: '#/components/schemas/MeterFilterField'
+        updatedAt:
+          type: string
+          format: date-time
+        planCount:
+          type: integer
+          description: >-
+            How many plans charge for this meter. While it is above 0, the meter cannot be updated or deleted.
+    MeterFilterField:
+      type: object
+      required: [field, eventKey]
+      properties:
+        field:
+          type: string
+          description: The property's name, such as `Status code`.
+        eventKey:
+          type: string
+          description: The event field the property reads, such as `response.status`.
+    MeterListResponse:
+      type: object
+      required: [count, list, pagination]
+      properties:
+        count:
+          type: integer
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Meter'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PriceTier:
+      type: object
+      additionalProperties: false
+      properties:
+        upTo:
+          type: integer
+          format: int64
+          nullable: true
+          description: The last unit of the tier; null on the last tier.
+        unitAmount:
+          type: string
+          nullable: true
+        flatAmount:
+          type: string
+          nullable: true
+    PriceFilter:
+      type: object
+      additionalProperties: false
+      required: [field, operator, values]
+      description: >-
+        Narrows the requests a plan price counts, on one of its meter's properties. Any operator works on any
+        property. EQUALS, NOT_EQUALS and STARTS_WITH take one text value; IN and NOT_IN one to 20; text values are
+        matched exactly as written (case-sensitive). STARTS_WITH matches values that begin with the text, so
+        `/orders` also matches `/orders-archive`. NOT_EQUALS and NOT_IN count the requests that have the property
+        with another value: a request without it is not counted. GREATER_THAN (more than), GREATER_THAN_OR_EQUAL
+        (at least), LESS_THAN (less than) and LESS_THAN_OR_EQUAL (at most) compare a number: exactly one whole
+        number from 0 to 1000000000000. On one property a price has either one EQUALS, NOT_EQUALS, IN, NOT_IN or
+        STARTS_WITH filter, or one or two comparisons, which make a range (more than 100 and at most 500) and must be
+        able to hold together. Values are not checked against what the property holds: they must fit its event
+        field, numbers for a number field and the exact text for a text field.
+      properties:
+        field:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: The name of one of the meter's properties, matched ignoring case.
+          example: Status code
+        operator:
+          type: string
+          enum: [EQUALS, NOT_EQUALS, IN, NOT_IN, STARTS_WITH, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL]
+          x-enum-varnames: [PriceFilterOperatorEquals, PriceFilterOperatorNotEquals, PriceFilterOperatorIn, PriceFilterOperatorNotIn, PriceFilterOperatorStartsWith, PriceFilterOperatorGreaterThan, PriceFilterOperatorGreaterThanOrEqual, PriceFilterOperatorLessThan, PriceFilterOperatorLessThanOrEqual]
+        values:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: The values to match; for a comparison, exactly one whole number written as a string, such as "333".
+          items:
+            type: string
+            maxLength: 255
+    SubscriptionPlanPrice:
+      type: object
+      additionalProperties: false
+      required: [meterId, pricingModel]
+      description: >-
+        A usage price of a paid plan: what the meter `meterId` counts, narrowed by the price's `filters`, charged in
+        one pricing model. PER_UNIT charges `unitAmount` per `unitQuantity` units; VOLUME prices all the units at
+        the tier their total falls in; GRADUATED prices the units in each tier at that tier's price. Fields of other
+        models are not accepted. A plan may price one meter several times, but two prices on the same meter must
+        not count the same request. A price has no name: it is shown as the meter's name followed by its filters.
+      properties:
+        meterId:
+          type: string
+          maxLength: 40
+          description: The `id` of the meter that counts the units, one of the organization's meters (GET /meters).
+        filters:
+          type: array
+          maxItems: 20
+          description: >-
+            Optional; each names one of the properties the meter lists in its filterFields. On one property a price
+            has either one EQUALS, NOT_EQUALS, IN, NOT_IN or STARTS_WITH filter, or one or two comparisons.
+            Without filters the price counts every request the meter counts.
+          items:
+            $ref: '#/components/schemas/PriceFilter'
+        pricingModel:
+          type: string
+          enum: [PER_UNIT, VOLUME, GRADUATED]
+          x-enum-varnames: [SubscriptionPlanPricePricingModelPerUnit, SubscriptionPlanPricePricingModelVolume, SubscriptionPlanPricePricingModelGraduated]
+        unitAmount:
+          type: string
+          nullable: true
+          description: PER_UNIT only. The price per `unitQuantity` units, as a decimal string.
+        unitQuantity:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+          description: PER_UNIT only. How many units `unitAmount` is for (default 1).
+        tiers:
+          type: array
+          nullable: true
+          maxItems: 10
+          description: VOLUME and GRADUATED only. In ascending order; the last tier has no `upTo`.
+          items:
+            $ref: '#/components/schemas/PriceTier'
+    SubscriptionPlanPricingRequest:
+      type: object
+      description: >-
+        What a paid subscription plan costs, given when the plan is created. A FLAT_RATE plan charges `flatAmount`
+        every billing period and has no prices. A USAGE_BASED plan charges its `prices` (1 to 20) on one invoice per
+        period and has no flat amount. A plan created without pricing is free. Pricing can't be updated once the plan
+        exists, so a field the pricing, a price, a filter or a tier does not take is refused rather than ignored.
+      additionalProperties: false
+      required: [pricingType, currency, billingPeriod]
+      properties:
+        pricingType:
+          type: string
+          enum: [FLAT_RATE, USAGE_BASED]
+          x-enum-varnames: [SubscriptionPlanPricingRequestPricingTypeFlatRate, SubscriptionPlanPricingRequestPricingTypeUsageBased]
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        billingPeriod:
+          type: string
+          enum: [MONTH, YEAR]
+          x-enum-varnames: [SubscriptionPlanPricingRequestBillingPeriodMonth, SubscriptionPlanPricingRequestBillingPeriodYear]
+        flatAmount:
+          type: string
+          nullable: true
+          description: FLAT_RATE only. The amount charged every billing period, as a decimal string in the currency.
+        prices:
+          type: array
+          maxItems: 20
+          description: USAGE_BASED only.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanPrice'
+    SubscriptionPlanPricing:
+      type: object
+      properties:
+        subscriptionPlanId:
+          type: string
+        pricingType:
+          type: string
+          enum: [FLAT_RATE, USAGE_BASED]
+          x-enum-varnames: [SubscriptionPlanPricingPricingTypeFlatRate, SubscriptionPlanPricingPricingTypeUsageBased]
+        currency:
+          type: string
+        billingPeriod:
+          type: string
+          enum: [MONTH, YEAR]
+          x-enum-varnames: [SubscriptionPlanPricingBillingPeriodMonth, SubscriptionPlanPricingBillingPeriodYear]
+        flatAmount:
+          type: string
+          nullable: true
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanPrice'
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionBilling:
+      type: object
+      readOnly: true
+      description: The billing of a paid subscription, as the API Portal reports it from the billing provider.
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, PAST_DUE, UNPAID, CANCELLED]
+          x-enum-varnames: [SubscriptionBillingStatusActive, SubscriptionBillingStatusPastDue, SubscriptionBillingStatusUnpaid, SubscriptionBillingStatusCancelled]
+          description: Gateways refuse calls (403) while UNPAID or CANCELLED.
+        customerId:
+          type: string
+          description: The billing provider's customer.
+        subscriptionId:
+          type: string
+          description: The billing provider's subscription.
     SubscriptionPlanListResponse:
       type: object
       required:
@@ -9792,6 +12247,8 @@ components:
         status:
           type: string
           enum: [ACTIVE, INACTIVE, REVOKED]
+        billing:
+          $ref: '#/components/schemas/SubscriptionBilling'
         createdBy:
           type: string
           readOnly: true
@@ -11179,7 +13636,6 @@ components:
         - displayName
         - version
         - projectId
-        - provider
       properties:
         id:
           type: string
@@ -11253,8 +13709,38 @@ components:
             selectable upstreams. Policies route requests to any of these by
             setting the upstream name. The primary `provider` field above
             remains the default upstream and the FK target.
+            Legacy shape: prefer `providers`, which expresses the same thing
+            uniformly. Always populated on a read alongside `providers`.
           items:
             $ref: '#/components/schemas/LLMProxyAdditionalProvider'
+        providers:
+          type: array
+          minItems: 1
+          description: >
+            Canonical list of providers attached to this proxy. Each entry is
+            uniform and exactly one carries `isPrimary: true`, which supplies the
+            proxy's provider identity and default upstream.
+
+            On a request this is an alternative to the legacy `provider` plus
+            `additionalProviders` pair, not an addition to it: when both are
+            supplied `providers` wins and the legacy fields are ignored, so a
+            client can write back a response it just read. Whichever shape
+            arrives, only this one is stored.
+
+            On a response both representations are always populated and always
+            agree, so a client written against either contract works.
+          items:
+            $ref: '#/components/schemas/LLMProxyProviderEntry'
+        inboundTemplate:
+          type: string
+          description: >
+            Handle of the provider template describing the wire format this proxy
+            accepts from clients. Drives the extraction fields (model and token
+            locations) merged into every attached policy. When omitted, the primary
+            provider's own template is used, preserving existing behaviour.
+          minLength: 1
+          maxLength: 253
+          example: openai
         openapi:
           type: string
           description: OpenAPI specification (JSON or YAML) for the proxy endpoint
@@ -11389,6 +13875,9 @@ components:
       type: object
       required:
         - id
+      description: >
+        The proxy's primary provider in the legacy shape. Equivalent to the entry
+        carrying `isPrimary: true` in the canonical `providers` list.
       properties:
         id:
           type: string
@@ -11396,8 +13885,20 @@ components:
           minLength: 1
           maxLength: 40
           example: wso2-openai-provider
+        as:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique across the primary and all additional providers. Defaults to
+            `id` when omitted. The same field as `alias` in the canonical shape.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: openai-upstream
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
 
     LLMProxyAdditionalProvider:
       type: object
@@ -11420,6 +13921,46 @@ components:
           minLength: 1
           maxLength: 100
           example: anthropic-upstream
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
+
+    LLMProxyProviderEntry:
+      type: object
+      required:
+        - id
+        - isPrimary
+      description: >
+        One provider attached to this proxy in the canonical `providers` list.
+        Every entry is uniform: exactly one carries `isPrimary: true` and becomes
+        the proxy's provider identity and default upstream; the rest are
+        selectable upstreams. Equivalent to the legacy `provider` plus
+        `additionalProviders` shape, which remains supported.
+      properties:
+        id:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: anthropic-provider
+        alias:
+          type: string
+          description: >
+            Logical LLM Provider name used by policies to select this provider. Must
+            be unique within the proxy. Defaults to `id` when omitted. The same field
+            as `as` in the legacy shape.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: anthropic-upstream
+        isPrimary:
+          type: boolean
+          description: >
+            Marks this entry as the proxy's primary provider. Exactly one entry in
+            the list must set it to true. Required on every entry, so a non-primary
+            entry sends false explicitly rather than omitting it.
+          example: true
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
         transformer:
           $ref: '#/components/schemas/LLMProxyTransformer'
 
@@ -12149,6 +14690,24 @@ components:
         type: string
         description: Document handle from GET /apis/{apiType}/{apiId}/docs, not the database UUID.
 
+    PublicationSelection:
+      type: object
+      description: A subscription plan or document selected by a publication, as it was when last saved or published.
+      required: [id, displayName, deleted, edited]
+      properties:
+        id:
+          type: string
+          description: The plan or document handle.
+        displayName:
+          type: string
+          description: The name stored with the selection, so it can still be shown after the source is deleted.
+        deleted:
+          type: boolean
+          description: True when the plan or document no longer exists. The publication keeps the selection until the next publish.
+        edited:
+          type: boolean
+          description: True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it.
+
     PublicationDraftDetailsInput:
       allOf:
         - $ref: '#/components/schemas/PublicationDetailsCore'
@@ -12176,6 +14735,18 @@ components:
               type: boolean
               readOnly: true
               description: Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name.
+            subscriptionPlans:
+              type: array
+              readOnly: true
+              description: The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
+            documents:
+              type: array
+              readOnly: true
+              description: The selected documents, including deleted ones. Same documents as docIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
 
     Publication:
       allOf:
@@ -12203,6 +14774,18 @@ components:
               type: boolean
               readOnly: true
               description: Whether this publication stores a landing page.
+            subscriptionPlans:
+              type: array
+              readOnly: true
+              description: The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
+            documents:
+              type: array
+              readOnly: true
+              description: The selected documents, including deleted ones. Same documents as docIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
 
     PublicationSummaryItem:
       type: object
@@ -13179,7 +15762,7 @@ components:
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
     PublicationBadRequest:
-      description: The payload failed validation — a plan handle or document handle absent from the organization, or content over the configured size ceiling.
+      description: The payload failed validation — a plan handle or document handle absent from the organization, a plan that is not active, or content over the configured size ceiling.
       content:
         application/json:
           schema:
@@ -13194,8 +15777,9 @@ components:
     PublicationPublishBadRequest:
       description: >-
         Either this API type has no projection onto the API Portal's own API types, so no listing can be
-        created for it, or the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
-        one point definition validity is enforced; the draft itself may hold anything.
+        created for it, the draft's stored definition is not a valid OpenAPI 3.x document — publish is the
+        one point definition validity is enforced; the draft itself may hold anything — or a selected
+        subscription plan is no longer active.
       content:
         application/json:
           schema:
@@ -13216,17 +15800,22 @@ components:
     PublicationConflict:
       description: >-
         Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid
-        for the publication's current status (unpublish needs a published or deprecated listing,
-        deprecate a published one), PUBLICATION_DRAFT_CHANGED when the draft was saved while a
-        publish of it was in flight (the API Portal may already hold the earlier copy while the
-        local listing is unchanged; review the draft and publish again to bring them in line),
-        or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the
-        change — another API already holds this handle or display name and version, or the listing
-        still has subscriptions or active API keys and so cannot be removed. A portal conflict does
-        not clear on retry: the operator renames, removes the consumers, or deprecates instead. A
-        state conflict clears once the publication is in a status that allows the action. No local
-        state was changed by any of these; only a draft-changed conflict can leave the API Portal
-        ahead of it until the next publish.
+        for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved
+        while a publish of it was in flight (the API Portal may hold the earlier copy; review the
+        draft and publish again), PUBLICATION_PLAN_PRICING_CONFLICT when the API Portal already
+        has a plan with the handle of an offered plan but different pricing (a portal cannot change
+        a plan's pricing; offer a plan with another handle), PUBLICATION_METER_CONFLICT when it
+        already has a meter with the same id as one an offered plan charges for, but with other
+        settings (price a new plan with a meter of another id), or PUBLICATION_PORTAL_CONFLICT when
+        the API Portal refused the change: the handle or display name and version is taken, the
+        listing still has subscriptions or active API keys, a plan the publish removes from the API
+        still has subscriptions to it there, or a subscription plan could not be created or
+        updated. A portal conflict does not clear on retry (rename, remove the
+        consumers, or deprecate instead), except a plan conflict from a concurrent publish, which
+        usually does. No local state was changed by any of these. Before the API is pushed, the
+        API Portal's copy of each offered plan is created, after the meters its prices charge for,
+        or, when its name or limit differs, updated. When the push then fails, the plans and
+        meters this publish created are removed again; the name and limit updates stay.
       content:
         application/json:
           schema:
@@ -13444,6 +16033,25 @@ components:
         type: string
         example: "default-project"
 
+    displayName-Q:
+      name: displayName
+      in: query
+      required: true
+      description: |
+        **Display name** shared by every version of a REST API. Matched exactly
+        (case-sensitive) and scoped to the organization in the JWT token.
+
+        Must hold at least one non-whitespace character; an empty or
+        whitespace-only value is a 400. Surrounding whitespace is trimmed
+        before the lookup, so it is accepted but not significant.
+      schema:
+        type: string
+        minLength: 1
+        # Unanchored, so leading/trailing whitespace stays legal (it is trimmed
+        # server-side) while a wholly blank value is rejected.
+        pattern: '\S'
+        example: "reading-list-api"
+
     gatewayId-Q:
       name: gatewayId
       in: query
@@ -13570,7 +16178,7 @@ components:
       required: true
       description: >-
         The API's type, required alongside apiId because a handle is unique only within its own
-        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime,
         so a type contributed by a plugin is accepted only on a build that includes it. An
         unrecognised value returns 404.
       schema:
@@ -13613,7 +16221,7 @@ components:
       required: true
       description: >-
         The API's type, required alongside apiId because a handle is unique only within its own
-        type. Known values: rest-api, websub-api, webbroker-api. Values are resolved at runtime,
+        type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime,
         so a type contributed by a plugin is accepted only on a build that includes it. An
         unrecognised value returns 404.
       schema:
@@ -13741,6 +16349,14 @@ tags:
     description: Publishing, unpublishing and deprecating an API on an API Portal, and the per-portal draft and live listing that feed those actions
   - name: API Portals
     description: API Portal registration and management
+  - name: GraphQL APIs
+    description: GraphQL API management operations
+  - name: GraphQL API Deployments
+    description: GraphQL API deployment artifact management and lifecycle operations
+  - name: API Portal
+    description: API portal publishing and unpublishing operations
+  - name: DevPortals
+    description: DevPortal management operations
   - name: Gateways
     description: Gateway registration and management operations
   - name: Gateway Tokens
@@ -13758,7 +16374,7 @@ tags:
   - name: LLM Proxy Deployments
     description: LLM proxy deployment operations
   - name: API Keys
-    description: API key management operations for REST APIs and LLM Providers
+    description: API key management operations for REST APIs, LLM Providers, and GraphQL APIs
   - name: MCP Proxies
     description: MCP proxy management operations
   - name: MCP Proxy Deployments
@@ -13773,6 +16389,8 @@ tags:
     description: Deployment operations for various artifact types
   - name: SubscriptionPlans
     description: Subscription plan management operations — rate-limit tiers that subscriptions are created against
+  - name: Meters
+    description: What paid subscription plans charge for. Kept here and sent to an API Portal with the plans published there, as subscription plans are.
   - name: Subscriptions
     description: Subscription management operations linking applications to APIs under a subscription plan
   - name: Secrets

@@ -17,17 +17,16 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Card, PageTitle, Stack } from '@wso2/oxygen-ui';
-import { Rocket } from '@wso2/oxygen-ui-icons-react';
+import { Card, PageTitle, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
+import { LucideBookOpenCheck, Rocket, SquareTerminal } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { parseSpecContent, useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
 import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
-import { isTestKeyExpired, testKeyRemainingMs } from './utils/testApiKey';
+import { isTestKeyExpired, KEY_COUNTDOWN_TICK_MS, testKeyRemainingMs } from './utils/testApiKey';
 import { useTestApiKey } from './utils/useTestApiKey';
-import type { Gateway } from '@/api/resources/gateways';
 import { isApiError } from '@/api/core/errors';
 import { AppPage } from '@/components/AppPage';
 import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDesignerCanvasIllustration';
@@ -37,16 +36,17 @@ import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useNow } from '@/hooks/useNow';
 import { ScopeGate } from '@/scope/ScopeGate';
-import { buildInvokeUrl } from '../apis/overview/InvokeUrlPanel';
-import { gatewayEndpoint } from '../gateways/utils/gatewayDisplay';
-import { MOCK_ENVIRONMENTS } from '../gateways/utils/gatewayEnvironments';
+import { buildInvokeUrl, gatewayEndpoint } from '../gateways/utils/gatewayDisplay';
 import { CurlBuilder } from './curl/CurlBuilder';
+import { useTestCallMode } from './utils/callMode';
 import { deployedGateways as deployedGatewaysOf } from './utils/deployedGateways';
 import { apiKeyAuthOf } from './utils/apiKeyAuth';
+import { gatewayOptionLabel } from './utils/gatewayOptionLabel';
 import { GatewaySection } from './components/GatewaySection';
 import { buildConsoleRequest, firstOperationOf } from './utils/operationRequest';
 import { TestKeySection } from './components/TestKeySection';
 import { emptyRequest, withTarget, type ConsoleRequest, type KeyValueRow } from './utils/types';
+import TestConsoleSpecViewer from './console/TestConsoleSpecViewer';
 
 const messages = defineMessages({
   apiNotFound: {
@@ -122,17 +122,7 @@ const messages = defineMessages({
   },
 });
 
-/** Refresh the test key countdown every 30 seconds. */
-const KEY_COUNTDOWN_TICK_MS = 30_000;
-
-/** Gateway label as "Name — Environment", matching the Invoke URL panel. */
-const gatewayOptionLabel = (gateway: Gateway): string => {
-  const name = gateway.displayName || gateway.id || '';
-  const environment = MOCK_ENVIRONMENTS.find(
-    (candidate) => candidate.id === gateway.properties?.environment,
-  )?.name;
-  return environment ? `${name} — ${environment}` : name;
-};
+type ConsoleView = 'console' | 'curl';
 
 export function TestPage() {
   const intl = useIntl();
@@ -182,6 +172,14 @@ function TestConsole() {
 
   /** Mint only when a required key has a gateway to use. */
   const testApiKey = useTestApiKey(restApiId, needsApiKey && deploymentReady);
+
+  const [view, setView] = useState<ConsoleView>('console');
+
+  /**
+   * How the Console view sends a request. Persisted, because it tracks which
+   * gateways the user's browser can reach rather than anything about this API.
+   */
+  const [callMode, setCallMode] = useTestCallMode();
 
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
   const [request, setRequest] = useState<ConsoleRequest | undefined>(undefined);
@@ -308,6 +306,11 @@ function TestConsole() {
     [headerName],
   );
 
+  /** Live sync from the Console view's try-out form. */
+  const handleConsoleRequestChange = useCallback((next: ConsoleRequest) => {
+    setRequest(next);
+  }, []);
+
   // Wait for deployment and API state to avoid a console flash without an endpoint.
   if (apiQuery.isPending || deploymentUnknown) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
@@ -376,8 +379,39 @@ function TestConsole() {
       <PageTitle>
         {heading}
         <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subtitleCurlView} />
+          {view === 'console' ? (
+            <FormattedMessage {...messages.subtitleConsoleView} />
+          ) : (
+            <FormattedMessage {...messages.subtitleCurlView} />
+          )}
         </PageTitle.SubHeader>
+        <PageTitle.Actions>
+          <ToggleButtonGroup
+            aria-label={intl.formatMessage(messages.viewLabel)}
+            exclusive
+            onChange={(_event, next) => next && setView(next as ConsoleView)}
+            size="medium"
+            value={view}
+            color="primary"
+          >
+            <ToggleButton value="console">
+              <Stack alignItems="center" direction="row" spacing={1}>
+                <LucideBookOpenCheck size={16} />
+                <span>
+                  <FormattedMessage {...messages.consoleView} />
+                </span>
+              </Stack>
+            </ToggleButton>
+            <ToggleButton value="curl">
+              <Stack alignItems="center" direction="row" spacing={1}>
+                <SquareTerminal size={16} />
+                <span>
+                  <FormattedMessage {...messages.curlView} />
+                </span>
+              </Stack>
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </PageTitle.Actions>
       </PageTitle>
 
       <Stack spacing={2}>
@@ -405,6 +439,24 @@ function TestConsole() {
 
         {!spec ? (
           <ErrorState title={intl.formatMessage(messages.definitionUnavailable)} />
+        ) : view === 'console' ? (
+          <Card sx={{ p: 2 }} variant="outlined">
+            <TestConsoleSpecViewer
+              baseUrl={baseUrl}
+              callMode={callMode}
+              extraHeaders={extraHeaders}
+              extraQueryParams={extraQueryParams}
+              // The BFF resolves the target from these three values; see
+              // console/utils/proxyTransport.
+              gatewayId={selectedGateway?.id ?? ''}
+              onCallModeChange={setCallMode}
+              onRequestChange={handleConsoleRequestChange}
+              orgHandle={params.orgHandle ?? ''}
+              restApiId={restApiId ?? ''}
+              secretHeaderName={headerName}
+              spec={spec}
+            />
+          </Card>
         ) : (
           <CurlBuilder
             onChange={handleBuilderChange}

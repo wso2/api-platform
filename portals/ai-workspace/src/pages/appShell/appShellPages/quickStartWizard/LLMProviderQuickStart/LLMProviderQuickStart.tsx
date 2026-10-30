@@ -329,7 +329,7 @@ export default function LLMProviderQuickStart({
       return;
     }
 
-    const gatewayId = createdGateway?.id ?? preferredGatewayId;
+    const gatewayId = preferredGatewayId ?? createdGateway?.id ?? null;
     let providerId = createdProviderId;
     const isNewProvider = !providerId;
 
@@ -393,7 +393,7 @@ export default function LLMProviderQuickStart({
   };
 
   const handleRedeploy = async () => {
-    const gatewayId = createdGateway?.id ?? preferredGatewayId;
+    const gatewayId = preferredGatewayId ?? createdGateway?.id ?? null;
     if (!createdProviderId || !gatewayId) {
       return;
     }

@@ -580,6 +580,24 @@ func TestInstanceURLs(t *testing.T) {
 		require.Equal(t, "http://gateway-runtime:8080", got)
 	})
 
+	t.Run("InternalURLAs puts another name in place of the alias", func(t *testing.T) {
+		got, err := inst.InternalURLAs("gateway-runtime.block-network", "admin")
+		require.NoError(t, err)
+		require.Equal(t, "http://gateway-runtime.block-network:9002/api/admin", got)
+	})
+
+	t.Run("InternalURLAs needs a host", func(t *testing.T) {
+		for _, host := range []string{"", "  "} {
+			_, err := inst.InternalURLAs(host, "http")
+			require.ErrorContains(t, err, "needs a host")
+		}
+	})
+
+	t.Run("InternalURLAs reports an unknown endpoint", func(t *testing.T) {
+		_, err := inst.InternalURLAs("gateway-runtime.block-network", "nope")
+		require.ErrorContains(t, err, `no endpoint "nope"`)
+	})
+
 	t.Run("distinct listeners get distinct URLs", func(t *testing.T) {
 		dataPlane, err := inst.URL("http")
 		require.NoError(t, err)
@@ -622,6 +640,8 @@ func TestExternalInstanceURLs(t *testing.T) {
 	_, err = inst.MappedPort("api")
 	require.ErrorContains(t, err, "no mapped container port")
 	_, err = inst.InternalURL("api")
+	require.ErrorContains(t, err, "no internal network URL")
+	_, err = inst.InternalURLAs("external.block-network", "api")
 	require.ErrorContains(t, err, "no internal network URL")
 	_, err = inst.URL("missing")
 	require.ErrorContains(t, err, "available: api, auth")
@@ -1289,6 +1309,7 @@ func TestComposeHelpers(t *testing.T) {
 				StagedFiles:      map[string]string{"a": "b"},
 				GeneratedFiles:   map[string][]byte{"existing": []byte("value")},
 				Env:              map[string]string{"A": "B"},
+				ProjectEnv:       map[string]string{"PEM": "line one\nline two"},
 				CoverageServices: []CoverageService{{Name: "gateway", Types: []string{"go"}}},
 				BootAttempts:     3,
 			},
@@ -1297,6 +1318,9 @@ func TestComposeHelpers(t *testing.T) {
 		require.Equal(t, map[string]string{"a": "b"}, updated.StagedFiles)
 		require.Equal(t, map[string][]byte{"existing": []byte("value"), "generated": []byte("content")}, updated.GeneratedFiles)
 		require.Equal(t, map[string]string{"A": "B"}, updated.Env)
+		require.Equal(t, map[string]string{"PEM": "line one\nline two"}, updated.ProjectEnv)
+		updated.ProjectEnv["PEM"] = "changed"
+		require.Equal(t, "line one\nline two", definition.Compose.ProjectEnv["PEM"])
 		require.Equal(t, []CoverageService{{Name: "gateway", Types: []string{"go"}}}, updated.CoverageServices)
 		require.Equal(t, 3, updated.BootAttempts)
 		require.NotSame(t, definition.Compose, updated)
@@ -1408,8 +1432,17 @@ func TestConfigAndFileValidation(t *testing.T) {
 		require.ErrorContains(t, err, "no baseConfigPath")
 		require.ErrorContains(t, err, "unsupported config format")
 		require.ErrorContains(t, err, "must be absolute")
-		require.ErrorContains(t, err, "no hostPath")
+		require.ErrorContains(t, err, "neither a hostPath nor content")
 		require.ErrorContains(t, err, "two file mounts target")
+	})
+
+	t.Run("a file mount carries either a host path or generated content, never both", func(t *testing.T) {
+		d := controllerLike()
+		d.Files = []FileMount{{Content: []byte("key"), ContainerPath: "/etc/app/key"}}
+		require.NoError(t, d.Validate())
+
+		d.Files = []FileMount{{HostPath: "key", Content: []byte("key"), ContainerPath: "/etc/app/key"}}
+		require.ErrorContains(t, d.Validate(), "both a hostPath and content")
 	})
 
 	t.Run("invalid versioned profiles are rejected", func(t *testing.T) {

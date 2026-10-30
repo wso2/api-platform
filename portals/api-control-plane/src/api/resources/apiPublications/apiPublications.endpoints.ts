@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { http, type RequestOptions, type TextResponse } from '../../core/http';
+import { http, TextBody, type BlobResponse, type RequestOptions, type TextResponse } from '../../core/http';
 import type { QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
@@ -61,11 +61,43 @@ const PUBLICATIONS_BASE = '/api-publications';
 const portalApiPath = (apiPortalId: string, apiType: string, apiId: string, suffix = ''): string =>
   `/api-portals/${encodeURIComponent(apiPortalId)}/apis/${encodeURIComponent(apiType)}/${encodeURIComponent(apiId)}${suffix}`;
 
-/** The only API type the publish, unpublish and deprecate actions support today. */
+/** A REST API's `{apiType}` path segment. */
 export const REST_API_TYPE = 'rest-api';
 
-const restApiPortalActionPath = (apiPortalId: string, apiId: string, action: string): string =>
-  portalApiPath(apiPortalId, REST_API_TYPE, apiId, `/${action}`);
+/** A GraphQL API's `{apiType}` path segment on the type-keyed `/apis/{apiType}/{apiId}/…` endpoints. */
+export const GRAPHQL_API_TYPE = 'graphql-api';
+
+/** The API types the publish, unpublish and deprecate actions support. */
+export type PublishableApiType = typeof REST_API_TYPE | typeof GRAPHQL_API_TYPE;
+
+/**
+ * Each publishable type's own operations: the actions live on a literal
+ * per-type path, each with its own scopes in the spec.
+ */
+const PORTAL_ACTION_OPERATIONS: Record<
+  PublishableApiType,
+  Record<'deprecate' | 'publish' | 'unpublish', string>
+> = {
+  [REST_API_TYPE]: {
+    deprecate: 'deprecateRestApiOnApiPortal',
+    publish: 'publishRestApiToApiPortal',
+    unpublish: 'unpublishRestApiFromApiPortal',
+  },
+  [GRAPHQL_API_TYPE]: {
+    deprecate: 'deprecateGraphQLApiOnApiPortal',
+    publish: 'publishGraphQLApiToApiPortal',
+    unpublish: 'unpublishGraphQLApiFromApiPortal',
+  },
+};
+
+/**
+ * A definition as saved: a REST API's parsed OpenAPI document (sent as JSON),
+ * or a GraphQL API's SDL, sent as-is as `application/graphql`.
+ */
+export type DraftDefinitionBody = DraftDefinitionDocument | { sdl: string };
+
+const isSdlBody = (body: DraftDefinitionBody): body is { sdl: string } =>
+  typeof (body as { sdl?: unknown }).sdl === 'string' && Object.keys(body).length === 1;
 
 export const listApiPublications = async (
   query: ListApiPublicationsQuery,
@@ -115,13 +147,14 @@ export const saveApiPublicationDraftDefinition = async (
   apiPortalId: string,
   apiType: string,
   apiId: string,
-  body: DraftDefinitionDocument,
+  body: DraftDefinitionBody,
   options?: RequestOptions,
 ): Promise<void> =>
-  http.put<void>(portalApiPath(apiPortalId, apiType, apiId, '/draft/definition'), body, {
-    ...options,
-    operationName: 'saveApiPublicationDraftDefinition',
-  });
+  http.put<void>(
+    portalApiPath(apiPortalId, apiType, apiId, '/draft/definition'),
+    isSdlBody(body) ? new TextBody(body.sdl, 'application/graphql') : body,
+    { ...options, operationName: 'saveApiPublicationDraftDefinition' },
+  );
 
 /** The published definition — the fallback tier once no draft definition exists. */
 export const getApiPublicationDefinition = async (
@@ -133,6 +166,84 @@ export const getApiPublicationDefinition = async (
   http.getText(portalApiPath(apiPortalId, apiType, apiId, '/publication/definition'), {
     ...options,
     operationName: 'getApiPublicationDefinition',
+  });
+
+/** The draft's thumbnail; 404s when it has none (`hasThumbnail`). */
+export const getApiPublicationDraftThumbnail = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<BlobResponse | null> =>
+  http.getBlob(portalApiPath(apiPortalId, apiType, apiId, '/draft/thumbnail'), {
+    ...options,
+    operationName: 'getApiPublicationDraftThumbnail',
+  });
+
+/** Creates or replaces the draft's thumbnail, as a multipart `file`. */
+export const saveApiPublicationDraftThumbnail = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  file: Blob,
+  options?: RequestOptions,
+): Promise<void> => {
+  const form = new FormData();
+  form.append('file', file);
+  await http.put<void>(portalApiPath(apiPortalId, apiType, apiId, '/draft/thumbnail'), form, {
+    ...options,
+    operationName: 'saveApiPublicationDraftThumbnail',
+  });
+};
+
+/** The published thumbnail; 404s when it has none (`hasThumbnail`). */
+export const getApiPublicationThumbnail = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<BlobResponse | null> =>
+  http.getBlob(portalApiPath(apiPortalId, apiType, apiId, '/publication/thumbnail'), {
+    ...options,
+    operationName: 'getApiPublicationThumbnail',
+  });
+
+/** The draft's landing page as Markdown; 404s when it has none (`hasLandingPage`). */
+export const getApiPublicationDraftLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<TextResponse> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/draft/landing-page'), {
+    ...options,
+    operationName: 'getApiPublicationDraftLandingPage',
+  });
+
+/** Creates or replaces the draft's landing page as `text/markdown`. */
+export const saveApiPublicationDraftLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  markdown: string,
+  options?: RequestOptions,
+): Promise<void> =>
+  http.put<void>(
+    portalApiPath(apiPortalId, apiType, apiId, '/draft/landing-page'),
+    new TextBody(markdown, 'text/markdown'),
+    { ...options, operationName: 'saveApiPublicationDraftLandingPage' },
+  );
+
+/** The published landing page as Markdown; 404s when it has none (`hasLandingPage`). */
+export const getApiPublicationLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<TextResponse> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/publication/landing-page'), {
+    ...options,
+    operationName: 'getApiPublicationLandingPage',
   });
 
 export const getApiPublication = async (
@@ -147,34 +258,37 @@ export const getApiPublication = async (
   });
 
 /** Publishes (or republishes) the current draft. The request has no body; the server publishes what the draft already holds. */
-export const publishRestApiToApiPortal = async (
+export const publishApiToApiPortal = async (
   apiPortalId: string,
+  apiType: PublishableApiType,
   apiId: string,
   options?: RequestOptions,
 ): Promise<Publication> =>
-  http.post<Publication>(restApiPortalActionPath(apiPortalId, apiId, 'publish'), undefined, {
+  http.post<Publication>(portalApiPath(apiPortalId, apiType, apiId, '/publish'), undefined, {
     ...options,
-    operationName: 'publishRestApiToApiPortal',
+    operationName: PORTAL_ACTION_OPERATIONS[apiType].publish,
   });
 
 /** Removes the live listing. Valid only when currently published or deprecated. */
-export const unpublishRestApiFromApiPortal = async (
+export const unpublishApiFromApiPortal = async (
   apiPortalId: string,
+  apiType: PublishableApiType,
   apiId: string,
   options?: RequestOptions,
 ): Promise<void> =>
-  http.post<void>(restApiPortalActionPath(apiPortalId, apiId, 'unpublish'), undefined, {
+  http.post<void>(portalApiPath(apiPortalId, apiType, apiId, '/unpublish'), undefined, {
     ...options,
-    operationName: 'unpublishRestApiFromApiPortal',
+    operationName: PORTAL_ACTION_OPERATIONS[apiType].unpublish,
   });
 
 /** Marks the live listing deprecated — still visible on the portal, flagged as deprecated. Valid only when currently published. */
-export const deprecateRestApiOnApiPortal = async (
+export const deprecateApiOnApiPortal = async (
   apiPortalId: string,
+  apiType: PublishableApiType,
   apiId: string,
   options?: RequestOptions,
 ): Promise<Publication> =>
-  http.post<Publication>(restApiPortalActionPath(apiPortalId, apiId, 'deprecate'), undefined, {
+  http.post<Publication>(portalApiPath(apiPortalId, apiType, apiId, '/deprecate'), undefined, {
     ...options,
-    operationName: 'deprecateRestApiOnApiPortal',
+    operationName: PORTAL_ACTION_OPERATIONS[apiType].deprecate,
   });

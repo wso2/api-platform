@@ -33,8 +33,10 @@ import {
 import { Pencil, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import { useMetersById } from '@/api/resources/meters';
 import {
   useDeleteSubscriptionPlan,
+  useSubscriptionPlan,
   useSubscriptionPlans,
   useUpdateSubscriptionPlan,
   type SubscriptionPlan,
@@ -45,6 +47,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Can } from '@/permissions';
 import { SubscriptionPlanFormDialog } from './components/SubscriptionPlanFormDialog';
+import { pricingSummary, summaryMeterIds } from './components/pricingFormat';
 
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20];
 const SEARCH_DEBOUNCE_MS = 300;
@@ -66,6 +69,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.name',
     defaultMessage: 'Name',
   },
+  columnPricing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.pricing',
+    defaultMessage: 'Pricing',
+  },
   columnStatus: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.status',
     defaultMessage: 'Status',
@@ -82,6 +89,17 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.delete',
     defaultMessage: 'Delete {name}',
     description: 'Accessible name of the per-row delete icon button; {name} is the plan.',
+  },
+  deleteBlockedMessage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.blockedMessage',
+    defaultMessage: '"{name}" is in use and can\'t be deleted.',
+    description: 'Shown in the delete dialog, with Delete disabled, for a plan in use.',
+  },
+  deleteChecking: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.checking',
+    defaultMessage: 'Checking whether "{name}" is in use…',
+    description:
+      "Shown in the delete dialog while the plan's usage is read; Delete is disabled meanwhile.",
   },
   deleteConfirmAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmAction',
@@ -185,7 +203,7 @@ const messages = defineMessages({
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title',
-    defaultMessage: 'Subscription plans',
+    defaultMessage: 'Subscription Plans',
   },
   unlimitedChip: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip',
@@ -229,6 +247,11 @@ export function SubscriptionPlansSettingsPage() {
     offset: page * rowsPerPage,
     query: debouncedSearch || undefined,
   });
+  // The unit a per-unit price counts (call or token) comes from its meter: only the page's are
+  // read.
+  const { meters } = useMetersById(
+    (plansQuery.data?.list ?? []).flatMap((plan) => summaryMeterIds(plan.pricing)),
+  );
   const updateMutation = useUpdateSubscriptionPlan();
   const deleteMutation = useDeleteSubscriptionPlan();
   const limitChipLabels = useLimitChipLabels();
@@ -276,6 +299,11 @@ export function SubscriptionPlansSettingsPage() {
       },
     );
   };
+
+  // A plan in use can't be deleted: the dialog says so instead of asking to confirm.
+  const deleteUsageQuery = useSubscriptionPlan(deleteTarget?.id);
+  const checkingUsage = deleteTarget !== null && deleteUsageQuery.isPending;
+  const deleteBlocked = deleteUsageQuery.data?.usage?.inUse === true;
 
   const confirmDelete = () => {
     if (!deleteTarget?.id) return;
@@ -355,6 +383,9 @@ export function SubscriptionPlansSettingsPage() {
                       <ListingTable.Cell>
                         <FormattedMessage {...messages.columnLimits} />
                       </ListingTable.Cell>
+                      <ListingTable.Cell>
+                        <FormattedMessage {...messages.columnPricing} />
+                      </ListingTable.Cell>
                       <ListingTable.Cell align="center" sx={{ width: 96 }}>
                         <FormattedMessage {...messages.columnStatus} />
                       </ListingTable.Cell>
@@ -388,6 +419,14 @@ export function SubscriptionPlansSettingsPage() {
                               />
                             ))}
                           </Stack>
+                        </ListingTable.Cell>
+                        <ListingTable.Cell>
+                          <Typography
+                            color={plan.pricing ? 'text.primary' : 'text.secondary'}
+                            variant="body2"
+                          >
+                            {pricingSummary(intl, plan.pricing, meters)}
+                          </Typography>
                         </ListingTable.Cell>
                         <ListingTable.Cell align="center">
                           <Can do="UpdateSubscriptionPlan" denied="disable">
@@ -487,14 +526,24 @@ export function SubscriptionPlansSettingsPage() {
       />
 
       <ConfirmDialog
+        confirmDisabled={checkingUsage || deleteBlocked}
         confirmInputLabel={intl.formatMessage(messages.deleteConfirmInputLabel)}
         confirmLabel={intl.formatMessage(messages.deleteConfirmAction)}
-        confirmPhrase={deleteTarget?.displayName ?? ''}
+        confirmPhrase={
+          checkingUsage || deleteBlocked ? undefined : (deleteTarget?.displayName ?? '')
+        }
         destructive
         loading={deleteMutation.isPending}
         message={
           deleteTarget
-            ? intl.formatMessage(messages.deleteMessage, { name: deleteTarget.displayName })
+            ? intl.formatMessage(
+                checkingUsage
+                  ? messages.deleteChecking
+                  : deleteBlocked
+                    ? messages.deleteBlockedMessage
+                    : messages.deleteMessage,
+                { name: deleteTarget.displayName },
+              )
             : ''
         }
         onCancel={() => setDeleteTarget(null)}

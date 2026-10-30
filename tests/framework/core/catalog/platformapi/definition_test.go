@@ -81,3 +81,12 @@ func TestMintSecondOrganizationToken(t *testing.T) {
 	_, err = mintSecondOrganizationToken("not-a-token", now)
 	require.ErrorContains(t, err, "reading the administrator token")
 }
+
+func TestPlatformAPIMountsThePortalCertificateWithoutChangingTheSharedCryptoMaterial(t *testing.T) {
+	definition := PlatformAPI()
+
+	require.Equal(t, shared.APIPortalTLS().CertPEM, definition.Compose.GeneratedFiles["certs/api-portal-ca.pem"])
+	require.Equal(t, shared.ControlPlaneCrypto()["certs/cert.pem"], definition.Compose.GeneratedFiles["certs/cert.pem"])
+	require.NotContains(t, shared.ControlPlaneCrypto(), "certs/api-portal-ca.pem",
+		"the control plane's shared material must not gain the portal certificate")
+}

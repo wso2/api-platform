@@ -32,6 +32,10 @@ const db = require('../db/driver');
 const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
+const billingVisibility = require('../services/billing/billingVisibility');
+const { currentRequest } = require('./requestContext');
+const { pageAccess } = require('./pageAccess');
+const billingConfigurationDao = require('../dao/billingConfigurationDao');
 const filePrefix = '/src/defaultContent/';
 
 // Function to load and convert markdown file to HTML
@@ -219,6 +223,28 @@ async function resolveAiEnabled(orgId, viewName) {
     }
 }
 
+/**
+ * Whether the organization sells paid plans, that is, has a billing configuration. The sidebar shows
+ * the Billing pages (Invoices and Usage) only then.
+ */
+async function resolveBillingEnabled(orgId) {
+    if (!orgId) return false;
+    try {
+        return Boolean(await billingConfigurationDao.get(orgId));
+    } catch (err) {
+        logger.warn('Could not resolve whether billing is enabled; hiding billing pages', { orgId, error: err.message });
+        return false;
+    }
+}
+
+/**
+ * What the user of the page being rendered may do (utils/pageAccess), so that the page shows only
+ * the account actions the REST API will allow. Nothing for a page rendered outside a request.
+ */
+async function resolvePageAccess() {
+    return pageAccess(currentRequest());
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
@@ -284,7 +310,9 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
     const slots = {};
     const flags = artifactFlags();
     const aiEnabled = await resolveAiEnabled(orgId, viewName);
-    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
+    const billingEnabled = await resolveBillingEnabled(orgId);
+    const access = await resolvePageAccess();
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, billingEnabled, access, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -341,7 +369,9 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     const slots = {};
     const flags = artifactFlags();
     const aiEnabled = await resolveAiEnabled(orgId, viewName);
-    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
+    const billingEnabled = await resolveBillingEnabled(orgId);
+    const access = await resolvePageAccess();
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, billingEnabled, access, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -402,17 +432,20 @@ async function renderMarkdownTemplateFromAPI(templateContent, orgId, filePath, v
     return Handlebars.compile(pageSource)(templateContent);
 }
 
-async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
+/** orgId, when given, decides whether the sidebar shows the subscriber's Billing pages. */
+async function renderGivenTemplate(templatePage, layoutPage, templateContent, orgId) {
 
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
     const slots = {};
     const flags = artifactFlags();
-    // No org/view is threaded through here (applications, settings, api-workflows), so
+    // No view is threaded through here (applications, settings, api-workflows), so
     // the per-view AI toggle can't be resolved. Default to enabled rather than leaving
     // it undefined, which would silently hide AI affordances on those pages — none of
     // them gate on it today, and a falsy default would make that a trap later.
-    const enrichedContent = { ...flags, aiEnabled: true, ...templateContent, slots };
+    const billingEnabled = await resolveBillingEnabled(orgId);
+    const access = await resolvePageAccess();
+    const enrichedContent = { ...flags, aiEnabled: true, ...templateContent, billingEnabled, access, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -485,7 +518,7 @@ function handleError(res, error) {
             errors: [],
         });
     } else if (error instanceof CustomError) {
-        const code = HTTP_CODE_TO_CATALOG[error.statusCode] || 'INTERNAL_SERVER_ERROR';
+        const code = error.catalogCode || HTTP_CODE_TO_CATALOG[error.statusCode] || 'INTERNAL_SERVER_ERROR';
         return res.status(error.statusCode).json({
             status: 'error',
             code,
@@ -1231,13 +1264,13 @@ function validateScripts(strContent) {
 // false positives. NOTE: `lookup` is deliberately excluded — the default theme uses it benignly
 // as {{#with (lookup limits 0)}}; its dangerous form ({{lookup this "csrfToken"}}) is instead
 // caught by the whole-context-argument rule below.
-const DISALLOWED_TEMPLATE_HELPERS = new Set(['json', 'getvalue', 'jsonsafesubscriptions']);
+const DISALLOWED_TEMPLATE_HELPERS = new Set(['json', 'scriptjson', 'getvalue', 'jsonsafesubscriptions']);
 // Helpers that serialise or dynamically index whatever they're handed. Passing the WHOLE render
 // context to one of these dumps everything (incl. csrfToken) or bypasses the path denylist —
 // e.g. {{{jsonBeautify this}}}, {{lookup this "csrfToken"}}. The default theme only ever passes
 // a narrowed value (this.inputSchema, lookup limits 0), so scoping the whole-context check to
 // these helpers avoids flagging benign loop-item calls like {{stripMdExtension this}}.
-const CONTEXT_SENSITIVE_HELPERS = new Set(['json', 'jsonbeautify', 'jsonattr', 'jsonsafesubscriptions', 'getvalue', 'lookup']);
+const CONTEXT_SENSITIVE_HELPERS = new Set(['json', 'scriptjson', 'jsonbeautify', 'jsonattr', 'jsonsafesubscriptions', 'getvalue', 'lookup']);
 // Context keys a theme must never echo. csrfToken is only ever injected into forms server-side;
 // a template that references it is attempting to steal it. (profile / @root are intentionally
 // NOT here — the default theme legitimately renders {{profile.firstName}}, {{@root.baseUrl}}, etc.)
@@ -1329,7 +1362,7 @@ function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
         const images = element.apiImageMetadata;
-        let apiImageUrl = '';
+        let apiImageUrl;
         for (const key in images) {
             apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
             // orgId is appended so the (public) image endpoint can resolve the view for
@@ -1340,49 +1373,45 @@ function appendAPIImageURL(subList, req, orgId) {
     });
 }
 
-async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
+/**
+ * The plans an API offers, with their details, for its pages. A paid plan is left out unless
+ * the API can sell it now (see services/billing/billingVisibility.js).
+ *
+ * @param {string} orgId
+ * @param {Array<{id: string}>} subscriptionPlans  the API's plans, by handle
+ * @param {string} [apiUuid]  the API; without it no paid plan is offered
+ */
+async function appendSubscriptionPlanDetails(orgId, subscriptionPlans, apiUuid) {
     const enrichedPlans = [];
     if (subscriptionPlans) {
+        let sellable;
         for (const plan of subscriptionPlans) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.id);
-            if (!subscriptionPlan) {
+            const planRow = await subscriptionPlanDao.getByName(orgId, plan.id);
+            if (!planRow) {
                 logger.warn('Subscription plan not found, skipping', {
                     orgId,
                     id: plan.id
                 });
                 continue;
             }
+            const subscriptionPlan = new subscriptionPlanDTO(planRow);
+            if (subscriptionPlan.paid) {
+                // Loaded once, and only when the API offers a paid plan.
+                sellable = sellable || await billingVisibility.sellablePlanUuids(orgId, apiUuid);
+                if (!sellable.has(planRow.uuid)) continue;
+            }
             enrichedPlans.push({
                 id: subscriptionPlan.id,
                 displayName: subscriptionPlan.displayName,
                 description: subscriptionPlan.description,
                 limits: subscriptionPlan.limits || [],
+                paid: subscriptionPlan.paid,
+                pricing: subscriptionPlan.pricing,
             });
         }
     }
     return enrichedPlans;
 }
-
-const loadSubscriptionPlan = async (orgId, planName) => {
-
-    try {
-        const planData = await subscriptionPlanDao.getByName(orgId, planName);
-        if (planData) {
-            return new subscriptionPlanDTO(planData);
-        } else {
-            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
-        }
-    } catch (error) {
-        logger.error("Error occurred while loading subscription plans", {
-            orgId: orgId,
-            planName: planName,
-            error: error.message,
-            stack: error.stack
-        });
-        return null;
-    }
-}
-
 
 async function listFiles(path) {
 
@@ -1454,6 +1483,11 @@ function resolveApiType(apiType) {
         );
     }
     return constants.API_TYPE[keyword];
+}
+
+/** The path segment of an artifact's page in a view: "mcp" for an MCP server, "api" for any API. */
+function artifactPageSection(apiType) {
+    return apiType === constants.API_TYPE.MCP ? 'mcp' : 'api';
 }
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {
@@ -1579,6 +1613,7 @@ module.exports = {
     isImageFile,
     normalizeStringArray,
     resolveApiType,
+    artifactPageSection,
     toPaginatedList,
     resolveActor,
     filePrefix,

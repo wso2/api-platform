@@ -49,7 +49,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.10'
           cache-dependency-path: '**/go.sum'
 
       - name: Ensure C compiler is available
@@ -125,7 +125,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.10'
           cache-dependency-path: '**/go.sum'
 
       - name: Ensure C compiler is available
@@ -158,12 +158,12 @@ jobs:
         env:
           IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
           IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/it/logs-out
-        # The gateway-controller policy and policy-compat blocks require a sibling
-        # gateway-controllers checkout and are exercised by that repository's workflow.
+        # The policy-compat blocks require a sibling gateway-controllers checkout and are
+        # exercised by that repository's workflow.
         run: |
           go test -v ./suites/it -count=1 -timeout=60m -logs \
             ${{ matrix.suite_flags }} \
-            -skip-blocks=gateway-controller-policies,policy-compat,policy-compat-semantic-ai
+            -skip-blocks=policy-compat,policy-compat-semantic-ai
 
       # Per sheet ID results for this gateway leg; the legs map onto the scenario sheet's
       # "Result: Latest / 1.2.0 / 1.1.0" columns.

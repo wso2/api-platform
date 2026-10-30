@@ -34,7 +34,7 @@ const messages = defineMessages({
   },
   failedTitle: {
     id: 'api.create.ApiCreationProgress.failed.title',
-    defaultMessage: 'We could not create this API proxy',
+    defaultMessage: 'We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}',
   },
   percent: {
     id: 'api.create.ApiCreationProgress.progress.value',
@@ -43,7 +43,7 @@ const messages = defineMessages({
   },
   progressLabel: {
     id: 'api.create.ApiCreationProgress.progress.label',
-    defaultMessage: 'API proxy creation progress',
+    defaultMessage: '{kind, select, graphql {GraphQL API} other {API proxy}} creation progress',
     description: 'Accessible name for the circular progress indicator.',
   },
   retry: {
@@ -52,12 +52,12 @@ const messages = defineMessages({
   },
   stageCreating: {
     id: 'api.create.ApiCreationProgress.stage.creating',
-    defaultMessage: 'Creating API Proxy',
+    defaultMessage: 'Creating {kind, select, graphql {GraphQL API} other {API Proxy}}',
     description: 'Status shown while the platform is creating the API proxy.',
   },
   stageDone: {
     id: 'api.create.ApiCreationProgress.stage.done',
-    defaultMessage: 'API Proxy created. Taking you there…',
+    defaultMessage: '{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…',
   },
   stageFinalizing: {
     id: 'api.create.ApiCreationProgress.stage.finalizing',
@@ -69,11 +69,11 @@ const messages = defineMessages({
   },
   title: {
     id: 'api.create.ApiCreationProgress.title',
-    defaultMessage: 'We are in the process of creating your API Proxy',
+    defaultMessage: 'We are in the process of creating your {kind, select, graphql {GraphQL API} other {API Proxy}}',
   },
   titleWithName: {
     id: 'api.create.ApiCreationProgress.titleWithName',
-    defaultMessage: 'We are in the process of creating your {name} API Proxy',
+    defaultMessage: 'We are in the process of creating your {name} {kind, select, graphql {GraphQL API} other {API Proxy}}',
     description: '{name} is the display name the user gave the API. Never translated.',
   },
 });
@@ -95,6 +95,8 @@ export type ApiCreationProgressProps = {
   /** Re-issues the same create request. */
   onRetry: () => void;
   status: ApiCreationProgressStatus;
+  /** What is being created, named in the screen's copy. Defaults to REST's API proxy. */
+  apiKind?: 'graphql' | 'rest';
 };
 
 /**
@@ -316,6 +318,7 @@ const ApiProxyAssemblyArt = () => {
  * the mutation and decides where "created" leads, so this stays a display.
  */
 export const ApiCreationProgress = ({
+  apiKind = 'rest',
   displayName,
   onBack,
   onComplete,
@@ -362,7 +365,7 @@ export const ApiCreationProgress = ({
         <Typography sx={{ fontWeight: 700 }} variant="h2">
           <FormattedMessage
             {...(displayName ? messages.titleWithName : messages.title)}
-            values={displayName ? { name: displayName } : undefined}
+            values={displayName ? { kind: apiKind, name: displayName } : { kind: apiKind }}
           />
         </Typography>
       </Stack>
@@ -373,7 +376,7 @@ export const ApiCreationProgress = ({
         <Stack spacing={2} sx={{ maxWidth: 'sm', width: '100%' }}>
           <ErrorState
             message={intl.formatMessage(messages.failedBody)}
-            title={intl.formatMessage(messages.failedTitle)}
+            title={intl.formatMessage(messages.failedTitle, { kind: apiKind })}
           />
           <Stack direction="row" spacing={1} sx={{ justifyContent: 'center' }}>
             <Button onClick={onBack} variant="outlined">
@@ -396,7 +399,7 @@ export const ApiCreationProgress = ({
               variant="determinate"
             />
             <CircularProgress
-              aria-label={intl.formatMessage(messages.progressLabel)}
+              aria-label={intl.formatMessage(messages.progressLabel, { kind: apiKind })}
               size={RING_SIZE}
               sx={{ color: 'primary.main', left: 0, position: 'absolute' }}
               thickness={RING_THICKNESS}
@@ -426,6 +429,7 @@ export const ApiCreationProgress = ({
           >
             <FormattedMessage
               {...(status === 'created' ? messages.stageDone : stageFor(percent))}
+              values={{ kind: apiKind }}
             />
           </Typography>
         </Stack>

@@ -67,6 +67,17 @@ const (
 
 	// MinAgentKindGatewayVersion: no LTS release has the Agent artifact kind.
 	MinAgentKindGatewayVersion = NoLTSRelease
+
+	// MinGraphQLKindGatewayVersion: no LTS release has the GraphQLApi artifact
+	// kind.
+	MinGraphQLKindGatewayVersion = NoLTSRelease
+
+	// MinTrustedKeyEventsGatewayVersion is the first release whose controller
+	// applies an apikey.revoked / apikey.updated event on the control plane's
+	// authority alone (TrustedOrigin). Older releases re-check ownership on the
+	// event: its user id must equal the created_by they stored from the
+	// apikey.created event, or the event is dropped.
+	MinTrustedKeyEventsGatewayVersion = "1.2.0"
 )
 
 // AtLeast reports whether a gateway that reported rawVersion has the
@@ -107,6 +118,12 @@ func SupportsSecretSync(rawVersion string) bool {
 // the artifact. It is the delivery-time counterpart of SupportsSecretSync.
 func RequiresInlineSecrets(rawVersion string) bool {
 	return !SupportsSecretSync(rawVersion)
+}
+
+// RechecksKeyEventOwnership reports whether the gateway only applies an API
+// key revoke/update event whose user id equals the key's stored creator.
+func RechecksKeyEventOwnership(rawVersion string) bool {
+	return Below(rawVersion, MinTrustedKeyEventsGatewayVersion)
 }
 
 // Gateways names the gateways below min for a warning, e.g. "gateways below

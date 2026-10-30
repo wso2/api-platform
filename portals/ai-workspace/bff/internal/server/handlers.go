@@ -199,9 +199,12 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 // This exists so a portal can put the identity-provider choice on its own page — a
 // "Continue with Google" button links to <base>/api/auth/login?fidp=google, and the
 // user lands on Google rather than on the IDP's provider chooser. login_hint does the
-// same for an account, prefilling the address on an enterprise sign-in.
+// same for an account, prefilling the address on an enterprise sign-in, and username
+// carries that same address for WSO2 Identity Server / Asgardeo, whose federated
+// authenticators (the EnterpriseIDP connection that picks an organization's IDP by the
+// address's domain) read it under that name rather than login_hint.
 //
-// Strictly two names, never the caller's whole query string. Everything else in the
+// Strictly three names, never the caller's whole query string. Everything else in the
 // authorization request is the BFF's to decide, and forwarding freely would let a
 // crafted link alter it — a wider scope, a different redirect_uri, prompt=none to
 // probe for an existing session. AuthCodeURL writes the protocol parameters after
@@ -214,7 +217,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 func forwardableAuthParams(q url.Values) url.Values {
 	const maxParamLen = 256
 	out := url.Values{}
-	for _, name := range []string{"fidp", "login_hint"} {
+	for _, name := range []string{"fidp", "login_hint", "username"} {
 		value := strings.TrimSpace(q.Get(name))
 		if value == "" || len(value) > maxParamLen || !isSafeAuthParamValue(value) {
 			continue
@@ -333,20 +336,25 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	s.serveProxy(s.proxy, w, r)
 }
 
-// handleMoesifProxy (<base>/proxy/moesif/*) — same session cookie injection as
-// handleProxy, but against the optional Moesif analytics upstream.
+// handleMoesifProxy (<base>/proxy/{cloud,moesif}/*) — same session cookie
+// injection as handleProxy, but against the optional Moesif analytics upstream.
+// hop is the prefix this registration answers on, which is what the proxy built
+// for it strips before forwarding.
 //
 // Answers 503 rather than 404 when moesif_url is unset: the route exists, the
 // upstream behind it does not, and a deployment that has simply not configured
 // analytics is a different thing from a bad path. Insights degrades on this
 // without breaking the rest of the console.
-func (s *Server) handleMoesifProxy(w http.ResponseWriter, r *http.Request) {
-	if s.moesifProxy == nil {
-		writeErrorJSON(w, http.StatusServiceUnavailable, "MOESIF_NOT_CONFIGURED",
-			"Moesif analytics upstream is not configured (set control_plane.moesif_url)")
-		return
+func (s *Server) handleMoesifProxy(hop string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rp := s.moesifProxies[hop]
+		if rp == nil {
+			writeErrorJSON(w, http.StatusServiceUnavailable, "MOESIF_NOT_CONFIGURED",
+				"Moesif analytics upstream is not configured (set control_plane.moesif_url)")
+			return
+		}
+		s.serveProxy(rp, w, r)
 	}
-	s.serveProxy(s.moesifProxy, w, r)
 }
 
 func (s *Server) handleBillingProxy(w http.ResponseWriter, r *http.Request) {

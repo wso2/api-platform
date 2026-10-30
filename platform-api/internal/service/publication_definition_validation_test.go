@@ -18,10 +18,12 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -77,15 +79,82 @@ func TestValidateDefinitionContent_UnregisteredApiTypeIsRejected(t *testing.T) {
 		definition *model.PublicationContent
 	}{
 		{"nil definition", nil},
-		{"empty body", contentOf("application/graphql", "")},
-		{"non-empty body", contentOf("application/graphql", "type Query { hello: String }")},
+		{"empty body", contentOf("application/json", "")},
+		{"non-empty body", contentOf("application/json", "{}")},
 		{"content valid for a registered type", contentOf("application/json", validRESTDefinitionSpec)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateDefinitionContent("graphql-api", tt.definition)
+			err := validateDefinitionContent("websub-api", tt.definition)
 			if !apperror.APIPublicationTypeUnsupported.Is(err) {
 				t.Fatalf("got %v, want an APIPublicationTypeUnsupported rejection", err)
+			}
+		})
+	}
+}
+
+// TestValidateDefinitionContent_NamesTheDefinitionField checks that every way a definition can
+// fail publish validation reports "definition" as the field, so a client can tell it from a
+// problem in the other content sent with a publish.
+func TestValidateDefinitionContent_NamesTheDefinitionField(t *testing.T) {
+	tests := []struct {
+		name       string
+		apiType    string
+		definition *model.PublicationContent
+	}{
+		{"rest, none saved", restAPITypeValue, nil},
+		{"rest, empty", restAPITypeValue, contentOf("application/json", "{}")},
+		{"rest, unparseable", restAPITypeValue, contentOf("application/json", "{not json")},
+		{"rest, not OpenAPI", restAPITypeValue, contentOf("application/json", `{"openapi":"3.0.0"}`)},
+		{"rest, wrong content type", restAPITypeValue, contentOf("application/xml", validRESTDefinitionSpec)},
+		{"graphql, wrong content type", constants.PublicationAPITypeGraphQLAPI, contentOf("application/json", "type Query { hello: String }")},
+		{"graphql, malformed", constants.PublicationAPITypeGraphQLAPI, contentOf("application/graphql", "type Query { hello: }")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDefinitionContent(tt.apiType, tt.definition)
+
+			var appErr *apperror.Error
+			if !errors.As(err, &appErr) || !apperror.APIPublicationValidationFailed.Is(err) {
+				t.Fatalf("got %v, want a publication validation failure", err)
+			}
+			want := []apperror.FieldError{{Field: "definition", Message: appErr.Message}}
+			if len(appErr.FieldErrors) != 1 || appErr.FieldErrors[0] != want[0] {
+				t.Fatalf("got field errors %v, want %v", appErr.FieldErrors, want)
+			}
+		})
+	}
+}
+
+// TestValidateDefinitionContent_GraphQLAPI checks the graphql-api validator:
+// only an application/graphql SDL defining a Query type can be published.
+func TestValidateDefinitionContent_GraphQLAPI(t *testing.T) {
+	tests := []struct {
+		name       string
+		definition *model.PublicationContent
+		wantErr    string
+	}{
+		{"valid SDL", contentOf("application/graphql", "type Query { hello: String }"), ""},
+		{"nil definition", nil, "definition is required"},
+		{"wrong content type", contentOf("application/json", "type Query { hello: String }"), "must be application/graphql"},
+		{"empty SDL", contentOf("application/graphql", "  "), "SDL must not be empty"},
+		{"malformed SDL", contentOf("application/graphql", "type Query { hello: }"), "not a valid GraphQL SDL document"},
+		{"no Query type", contentOf("application/graphql", "type Book { title: String }"), "must define a Query type"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDefinitionContent(constants.PublicationAPITypeGraphQLAPI, tt.definition)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("got %v, want no error", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("got %v, want an error containing %q", err, tt.wantErr)
+			}
+			if apperror.APIPublicationTypeUnsupported.Is(err) {
+				t.Fatalf("got %v, want graphql-api to be a supported publication type", err)
 			}
 		})
 	}

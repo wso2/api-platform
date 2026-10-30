@@ -129,7 +129,7 @@ function assertDialable(rawUrl, fieldPath, policy) {
             ? 'http and https are permitted'
             : 'only https is permitted; set allow_http_endpoints = true on this ' +
               'key manager to allow http';
-        throw new Error(`${fieldPath}: ${err.message} (${remedy})`);
+        throw new Error(`${fieldPath}: ${err.message} (${remedy})`, { cause: err });
     }
     // Only IP literals can be judged here: assertAllowedHost is a no-op for a
     // hostname, since Node resolves those at connection time. A hostname that
@@ -150,7 +150,8 @@ function assertDialable(rawUrl, fieldPath, policy) {
             : 'Link-local and cloud-metadata addresses are never permitted, ' +
               'whatever this key manager is configured with.';
         throw new Error(
-            `${fieldPath}: ${err.message} — "${hostname}" is in a blocked address range. ${remedy}`
+            `${fieldPath}: ${err.message} — "${hostname}" is in a blocked address range. ${remedy}`,
+            { cause: err }
         );
     }
 }
@@ -166,15 +167,16 @@ function stripBrackets(hostname) {
  * Address/scheme/TLS policy comes from the key manager's own entry; the
  * time and byte bounds come from the global [api_portal.key_manager_client]
  * section, since those are deployment-wide resource limits rather than
- * statements about one host.
+ * statements about one host. A caller that is not a key manager (the billing
+ * providers) passes its own bounds as `limits`, in the same shape.
  *
- * @param {ClientPolicy & { clientCert?: object }} [policy]
+ * @param {ClientPolicy & { clientCert?: object, limits?: object }} [policy]
  * @returns {import('axios').AxiosInstance}
  */
 function buildClient(policy = {}) {
     const { insecureSkipVerify, allowPrivate } = resolvePolicy(policy);
     const clientCert = policy.clientCert || null;
-    const cfg = clientConfig();
+    const cfg = policy.limits || clientConfig();
     const lookup = createGuardedLookup({ allowPrivate });
     // Same cipher/curve/version tuning as every other outbound client in this
     // portal; rejectUnauthorized and the guarded lookup are specific to this

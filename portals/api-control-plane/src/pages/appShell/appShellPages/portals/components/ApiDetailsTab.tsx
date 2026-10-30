@@ -16,10 +16,38 @@
  * under the License.
  */
 
-import { Box, Form, FormControl, FormHelperText, FormLabel, Grid, OutlinedInput } from '@wso2/oxygen-ui';
+import {
+  alpha,
+  Autocomplete,
+  Avatar,
+  Box,
+  Chip,
+  Divider,
+  Form,
+  FormControl,
+  FormHelperText,
+  FormLabel,
+  Grid,
+  IconButton,
+  InputAdornment,
+  OutlinedInput,
+  Stack,
+  Switch,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { Boxes, Camera, ChevronDown, Info, List, SquarePen, X } from '@wso2/oxygen-ui-icons-react';
+import { useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
-import type { DraftFormField, DraftFormValues, FormFieldErrors } from '../utils/publicationForm';
+import { apiInitials } from '../../apis/utils/restApiDisplay';
+import type {
+  DraftFormField,
+  DraftFormValues,
+  FormFieldErrors,
+  GatewayUrlOption,
+} from '../utils/publicationForm';
 
 const messages = defineMessages({
   nameLabel: {
@@ -46,7 +74,41 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel',
     defaultMessage: 'Sandbox URL',
   },
+  clearUrl: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.clearUrl',
+    defaultMessage: 'Clear',
+  },
+  showGatewayUrls: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.showGatewayUrls',
+    defaultMessage: 'Show gateway URLs',
+  },
+  enterCustomUrl: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.enterCustomUrl',
+    defaultMessage: 'Enter a custom URL',
+  },
+  chooseGatewayUrl: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.chooseGatewayUrl',
+    defaultMessage: 'Choose from gateway URLs',
+  },
+  agentVisibilityTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityTitle',
+    defaultMessage: 'Make this API discoverable by AI agents',
+  },
+  changeThumbnail: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.changeThumbnail',
+    defaultMessage: 'Change thumbnail',
+  },
+  agentVisibilityDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityDescription',
+    defaultMessage: 'Let agents in the API Portal discover and invoke this API on behalf of users.',
+  },
 });
+
+const THUMBNAIL_WIDTH = 72;
+/** Stands in for the Name field's height when the thumbnail sits on a row of its own. */
+const THUMBNAIL_MIN_HEIGHT = 64;
+const THUMBNAIL_FONT_SIZE = 28;
+const THUMBNAIL_ICON_SIZE = 24;
 
 export type ApiDetailsTabProps = {
   disabled?: boolean;
@@ -55,8 +117,26 @@ export type ApiDetailsTabProps = {
   readOnly?: boolean;
   onBlurField?: (field: DraftFormField) => void;
   onChange?: (values: DraftFormValues) => void;
+  /** Called with the image picked as the new thumbnail; without it the thumbnail is read-only. */
+  onThumbnailPick?: (file: File) => void;
+  /** URLs the Production URL can be picked from; any other URL can still be typed. */
+  productionUrlOptions?: GatewayUrlOption[];
+  /** The thumbnail to show; the API name's monogram stands in without one. */
+  thumbnailUrl?: string;
   values: DraftFormValues;
 };
+
+/** One line of helper text (MUI's caption size and line height) plus the gap above it. */
+const ERROR_LINE_HEIGHT = 'calc(1.66 * 0.75rem + 3px)';
+
+/** A field's validation message. Its line is always reserved, so a message appearing never moves what is below. */
+function FieldError({ error, id }: { error?: MessageDescriptor; id: string }) {
+  return (
+    <FormHelperText id={`${id}-error`} sx={{ minHeight: '1.66em' }}>
+      {error && <FormattedMessage {...error} />}
+    </FormHelperText>
+  );
+}
 
 type DetailFieldProps = {
   disabled?: boolean;
@@ -86,22 +166,233 @@ function DetailField({ disabled, error, field, id, label, onBlur, onChange, read
         readOnly={readOnly}
         value={value}
       />
-      <FormHelperText id={`${id}-error`}>{error && <FormattedMessage {...error} />}</FormHelperText>
+      <FieldError error={error} id={id} />
     </FormControl>
   );
 }
 
+type UrlFieldProps = Omit<DetailFieldProps, 'required'> & {
+  /** URLs to pick from; any other URL can still be typed, and the field cleared. */
+  options?: GatewayUrlOption[];
+};
+
 /**
- * "API Details": name, version, description and the two endpoint URLs in a
- * single card. The thumbnail control and the document picker are left out of
- * this release.
+ * A URL field: typed or cleared, and picked from `options` when there are any.
+ * The toggle switches between picking a gateway URL and typing one; without
+ * options (the Sandbox URL, for now) there is nothing to pick, so it changes
+ * only the icon, keeping both URL fields alike.
+ */
+function UrlField({
+  disabled,
+  error,
+  field,
+  id,
+  label,
+  onBlur,
+  onChange,
+  options = [],
+  readOnly,
+  value,
+}: UrlFieldProps) {
+  const intl = useIntl();
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState(false);
+  const gatewayNames = new Map(options.map((option) => [option.url, option.gatewayName]));
+  const hasOptions = options.length > 0;
+  const pickable = hasOptions && !custom;
+  const editable = !disabled && !readOnly;
+  // Keeps focus in the input while a button inside it is pressed.
+  const keepFocus = (event: MouseEvent) => event.preventDefault();
+
+  const toggleLabel = intl.formatMessage(custom ? messages.chooseGatewayUrl : messages.enterCustomUrl);
+
+  return (
+    <FormControl disabled={disabled} error={Boolean(error)} fullWidth>
+      <FormLabel htmlFor={id}>
+        <FormattedMessage {...label} />
+      </FormLabel>
+      <Autocomplete
+        disableClearable
+        disabled={disabled}
+        filterOptions={(urls) => urls}
+        forcePopupIcon={false}
+        freeSolo
+        inputValue={value}
+        onClose={() => setOpen(false)}
+        onInputChange={(_event, next) => onChange(field, next)}
+        onOpen={() => editable && setOpen(true)}
+        open={open && pickable}
+        options={options.map((option) => option.url)}
+        readOnly={readOnly}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            error={Boolean(error)}
+            inputProps={{ ...params.inputProps, 'aria-describedby': `${id}-error`, id }}
+            InputProps={{
+              ...params.InputProps,
+              endAdornment: editable && (
+                <InputAdornment position="end">
+                  {value !== '' && (
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.clearUrl)}
+                      data-clear
+                      onClick={() => onChange(field, '')}
+                      onMouseDown={keepFocus}
+                      size="small"
+                    >
+                      <X size={18} />
+                    </IconButton>
+                  )}
+                  {pickable && (
+                    <IconButton
+                      aria-label={intl.formatMessage(messages.showGatewayUrls)}
+                      onClick={() => setOpen((current) => !current)}
+                      onMouseDown={keepFocus}
+                      size="small"
+                    >
+                      <ChevronDown size={18} />
+                    </IconButton>
+                  )}
+                  <Divider flexItem orientation="vertical" sx={{ mx: 0.5 }} />
+                  <IconButton
+                    aria-label={toggleLabel}
+                    onClick={() => {
+                      setCustom((current) => !current);
+                      setOpen(false);
+                    }}
+                    onMouseDown={keepFocus}
+                    size="small"
+                    title={toggleLabel}
+                  >
+                    {custom ? <List size={16} /> : <SquarePen size={16} />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            onBlur={() => onBlur?.(field)}
+            size="medium"
+          />
+        )}
+        renderOption={({ key, ...props }, url) => (
+          <Box component="li" key={key} {...props}>
+            <Stack alignItems="center" direction="row" spacing={1.5} sx={{ minWidth: 0, width: '100%' }}>
+              <Typography sx={{ flex: 1, fontFamily: 'monospace', minWidth: 0, overflowWrap: 'anywhere' }} variant="body2">
+                {url}
+              </Typography>
+              <Chip label={gatewayNames.get(url)} size="small" variant="outlined" />
+            </Stack>
+          </Box>
+        )}
+        // The clear button shows only while the field is hovered or focused, so an idle field is just its value and two icons.
+        sx={{ '&:not(:hover, :focus-within) [data-clear]': { visibility: 'hidden' } }}
+        value={value}
+      />
+      <FieldError error={error} id={id} />
+    </FormControl>
+  );
+}
+
+type ThumbnailProps = {
+  disabled?: boolean;
+  displayName: string;
+  onPick?: (file: File) => void;
+  url?: string;
+};
+
+/** The API's portal thumbnail, drawn like the API Overview's avatar; the name's monogram stands in without an image. With `onPick`, hover or focus offers a picker. */
+function Thumbnail({ disabled, displayName, onPick, url }: ThumbnailProps) {
+  const intl = useIntl();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const editable = Boolean(onPick) && !disabled;
+
+  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Cleared so choosing the same file again still fires a change.
+    event.target.value = '';
+    if (file) onPick?.(file);
+  };
+
+  return (
+    <Box
+      sx={{
+        // Fills the row's height, label to input, less the reserved error line under the input.
+        alignSelf: 'stretch',
+        display: 'flex',
+        mb: ERROR_LINE_HEIGHT,
+        minHeight: THUMBNAIL_MIN_HEIGHT,
+        position: 'relative',
+        width: THUMBNAIL_WIDTH,
+        '&:hover .thumbnail-overlay, &:focus-within .thumbnail-overlay': { opacity: 1 },
+      }}
+    >
+      <Avatar
+        alt={displayName}
+        imgProps={{ style: { objectFit: 'contain' } }}
+        src={url}
+        sx={{
+          bgcolor: url ? 'background.paper' : 'primary.light',
+          color: 'primary.contrastText',
+          fontSize: THUMBNAIL_FONT_SIZE,
+          height: 'auto',
+          width: '100%',
+        }}
+        variant="rounded"
+      >
+        {apiInitials(displayName) || <Boxes size={THUMBNAIL_ICON_SIZE} />}
+      </Avatar>
+      {editable && (
+        <>
+          <Box
+            className="thumbnail-overlay"
+            sx={(theme) => ({
+              alignItems: 'center',
+              bgcolor: alpha(theme.palette.common.black, 0.5),
+              borderRadius: 1,
+              display: 'flex',
+              inset: 0,
+              justifyContent: 'center',
+              opacity: 0,
+              position: 'absolute',
+              transition: 'opacity 150ms ease',
+            })}
+          >
+            <IconButton
+              aria-label={intl.formatMessage(messages.changeThumbnail)}
+              onClick={() => inputRef.current?.click()}
+              size="small"
+              sx={{ color: 'common.white' }}
+            >
+              <Camera size={THUMBNAIL_ICON_SIZE} />
+            </IconButton>
+          </Box>
+          <Box
+            accept="image/png,image/jpeg"
+            component="input"
+            onChange={handleFile}
+            ref={inputRef}
+            sx={{ display: 'none' }}
+            type="file"
+          />
+        </>
+      )}
+    </Box>
+  );
+}
+
+/**
+ * "API Details": thumbnail, name, version, description, the two endpoint URLs
+ * and agent visibility in a single card.
  */
 export function ApiDetailsTab({
   disabled,
   errors = {},
   onBlurField,
   onChange,
+  onThumbnailPick,
+  productionUrlOptions = [],
   readOnly,
+  thumbnailUrl,
   values,
 }: ApiDetailsTabProps) {
   const intl = useIntl();
@@ -123,9 +414,18 @@ export function ApiDetailsTab({
 
   return (
     <Box component="section" sx={{ p: 3 }}>
-      <Form.Stack spacing={2}>
+      {/* The rows above and below a field's reserved error line need only a small gap of their own. */}
+      <Form.Stack spacing={1}>
         <Grid container spacing={2}>
-          <Grid size={{ md: 9, xs: 12 }}>
+          <Grid size={{ md: 'auto', xs: 12 }} sx={{ display: 'flex' }}>
+            <Thumbnail
+              disabled={disabled}
+              displayName={values.displayName}
+              onPick={readOnly ? undefined : onThumbnailPick}
+              url={thumbnailUrl}
+            />
+          </Grid>
+          <Grid size={{ md: 'grow', xs: 12 }}>
             <DetailField {...fieldProps('displayName', 'publicationDisplayName', messages.nameLabel)} required />
           </Grid>
           <Grid size={{ md: 3, xs: 12 }}>
@@ -133,7 +433,7 @@ export function ApiDetailsTab({
           </Grid>
         </Grid>
 
-        <FormControl disabled={disabled} fullWidth>
+        <FormControl disabled={disabled} fullWidth sx={{ pb: 1 }}>
           <FormLabel htmlFor="publicationDescription">{intl.formatMessage(messages.descriptionLabel)}</FormLabel>
           <OutlinedInput
             id="publicationDescription"
@@ -148,12 +448,32 @@ export function ApiDetailsTab({
 
         <Grid container spacing={2}>
           <Grid size={{ md: 6, xs: 12 }}>
-            <DetailField {...fieldProps('productionUrl', 'publicationProductionUrl', messages.productionUrlLabel)} />
+            <UrlField
+              {...fieldProps('productionUrl', 'publicationProductionUrl', messages.productionUrlLabel)}
+              options={productionUrlOptions}
+            />
           </Grid>
           <Grid size={{ md: 6, xs: 12 }}>
-            <DetailField {...fieldProps('sandboxUrl', 'publicationSandboxUrl', messages.sandboxUrlLabel)} />
+            <UrlField {...fieldProps('sandboxUrl', 'publicationSandboxUrl', messages.sandboxUrlLabel)} />
           </Grid>
         </Grid>
+
+        <Stack alignItems="center" direction="row" spacing={1}>
+          <Typography color={disabled || readOnly ? 'text.disabled' : 'text.primary'} component="label" htmlFor="publicationAgentVisibility">
+            <FormattedMessage {...messages.agentVisibilityTitle} />
+          </Typography>
+          <Tooltip title={intl.formatMessage(messages.agentVisibilityDescription)}>
+            <Box sx={{ color: 'text.secondary', display: 'flex' }}>
+              <Info size={16} />
+            </Box>
+          </Tooltip>
+          <Switch
+            checked={values.agentVisibility === 'VISIBLE'}
+            disabled={disabled || readOnly}
+            id="publicationAgentVisibility"
+            onChange={(event) => setField('agentVisibility', event.target.checked ? 'VISIBLE' : 'HIDDEN')}
+          />
+        </Stack>
       </Form.Stack>
     </Box>
   );

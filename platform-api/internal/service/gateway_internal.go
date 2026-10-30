@@ -41,6 +41,7 @@ type GatewayInternalAPIService struct {
 	proxyRepo            repository.LLMProxyRepository
 	mcpProxyRepo         repository.MCPProxyRepository
 	agentProxyRepo       repository.AgentProxyRepository
+	graphqlAPIRepo       repository.GraphQLAPIRepository
 	websubAPIRepo        repository.WebSubAPIRepository
 	webbrokerAPIRepo     repository.WebBrokerAPIRepository
 	deploymentRepo       repository.DeploymentRepository
@@ -54,6 +55,7 @@ type GatewayInternalAPIService struct {
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	billingRepo          repository.SubscriptionBillingRepository
 }
 
 // NewGatewayInternalAPIService creates a new gateway internal API service.
@@ -63,6 +65,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
 	agentProxyRepo repository.AgentProxyRepository,
+	graphqlAPIRepo repository.GraphQLAPIRepository,
 	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, secretRepo repository.SecretRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
@@ -74,6 +77,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
 		agentProxyRepo:       agentProxyRepo,
+		graphqlAPIRepo:       graphqlAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -288,9 +292,21 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 		}
 	}
 
+	billing := map[string]*model.SubscriptionBilling{}
+	if s.billingRepo != nil {
+		ids := make([]string, len(subs))
+		for i, sub := range subs {
+			ids[i] = sub.UUID
+		}
+		if billing, err = s.billingRepo.GetMany(ids, orgID); err != nil {
+			return nil, fmt.Errorf("failed to read subscription billing for API %s: %w", apiID, err)
+		}
+	}
+
 	items := make([]dto.GatewaySubscriptionInfo, len(subs))
 	for i, sub := range subs {
-		items[i] = dto.GatewaySubscriptionInfo{
+		updatedAt := sub.UpdatedAt
+		item := dto.GatewaySubscriptionInfo{
 			ID:                 sub.UUID,
 			APIID:              sub.ArtifactUUID,
 			ApplicationID:      sub.ApplicationID,
@@ -298,9 +314,19 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 			SubscriptionPlanID: sub.SubscriptionPlanID,
 			Status:             string(sub.Status),
 			CreatedAt:          sub.CreatedAt,
-			UpdatedAt:          sub.UpdatedAt,
-			Etag:               utils.GenerateDeterministicUUIDv7(sub.UUID, sub.UpdatedAt),
 		}
+		if b := billing[sub.UUID]; b != nil {
+			item.BillingCustomerID = b.CustomerID
+			item.BillingSubscriptionID = b.SubscriptionID
+			item.Status = model.GatewayStatus(sub.Status, b)
+			// A billing change can change the enforced status, so the gateway's etag must move too.
+			if b.UpdatedAt.After(updatedAt) {
+				updatedAt = b.UpdatedAt
+			}
+		}
+		item.UpdatedAt = updatedAt
+		item.Etag = utils.GenerateDeterministicUUIDv7(sub.UUID, updatedAt)
+		items[i] = item
 	}
 	return items, nil
 }
@@ -315,7 +341,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 	const pageSize = 1000
 	var plans []*model.SubscriptionPlan
 	for offset := 0; ; offset += pageSize {
-		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, repository.ListOptions{Limit: pageSize, Offset: offset})
+		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, repository.ListOptions{Limit: pageSize, Offset: offset}, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to list subscription plans for org %s: %w", orgID, err)
 		}
@@ -405,6 +431,31 @@ func (s *GatewayInternalAPIService) GetActiveAgentDeploymentByGateway(agentID, o
 	return map[string]string{
 		agentID: string(content),
 	}, nil
+}
+
+// GetActiveGraphQLAPIDeploymentByGateway retrieves the currently deployed GraphQL API artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveGraphQLAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	graphqlAPI, err := s.graphqlAPIRepo.GetByUUID(apiID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
+	}
+	if graphqlAPI == nil {
+		return nil, apperror.GraphQLAPINotFound.New()
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(graphqlAPI.ID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, apperror.DeploymentNotActive.New("GraphQL API")
+	}
+
+	apiYaml := string(deployment.Content)
+	apiYamlMap := map[string]string{
+		apiID: apiYaml,
+	}
+	return apiYamlMap, nil
 }
 
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
@@ -598,4 +649,9 @@ func (s *GatewayInternalAPIService) CheckArtifactsExist(orgID string, artifactID
 		return nil, nil
 	}
 	return s.artifactRepo.ExistsByUUIDs(artifactIDs, orgID)
+}
+
+// SetBillingRepository adds paid subscriptions' billing state to the subscriptions gateways pull.
+func (s *GatewayInternalAPIService) SetBillingRepository(repo repository.SubscriptionBillingRepository) {
+	s.billingRepo = repo
 }

@@ -234,14 +234,23 @@ func (i *Instance) EndpointNames() []string {
 
 // InternalURL returns the network URL for an endpoint.
 func (i *Instance) InternalURL(endpoint string) (string, error) {
+	return i.InternalURLAs(i.alias, endpoint)
+}
+
+// InternalURLAs returns the network URL for an endpoint under host, another name the container
+// answers to on its network.
+func (i *Instance) InternalURLAs(host, endpoint string) (string, error) {
 	if i != nil && i.def != nil && i.def.IsExternal() {
 		return "", fmt.Errorf("%s: external endpoint %q has no internal network URL", i.Label(), endpoint)
+	}
+	if strings.TrimSpace(host) == "" {
+		return "", fmt.Errorf("%s: an internal URL for endpoint %q needs a host", i.Label(), endpoint)
 	}
 	e, ok := i.def.Endpoint(endpoint)
 	if !ok {
 		return "", i.unknownEndpoint(endpoint)
 	}
-	return buildURL(e.Scheme, i.alias, e.Port, e.PathPrefix), nil
+	return buildURL(e.Scheme, host, e.Port, e.PathPrefix), nil
 }
 
 func (i *Instance) unknownEndpoint(name string) error {
