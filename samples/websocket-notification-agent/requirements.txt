@@ -2,3 +2,4 @@ google-genai
 httpx2
 mcp>=2.2.0
 websockets
+certifi>=2026.10.19

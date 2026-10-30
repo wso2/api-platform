@@ -7451,6 +7451,17 @@ export interface components {
         };
         SubscriptionPlanIdList: string[];
         DocIdList: string[];
+        /** @description A subscription plan or document selected by a publication, as it was when last saved or published. */
+        PublicationSelection: {
+            /** @description The plan or document handle. */
+            id: string;
+            /** @description The name stored with the selection, so it can still be shown after the source is deleted. */
+            displayName: string;
+            /** @description True when the plan or document no longer exists. The publication keeps the selection until the next publish. */
+            deleted: boolean;
+            /** @description True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it. */
+            edited: boolean;
+        };
         PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
             subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
             docIds?: components["schemas"]["DocIdList"];
@@ -7460,6 +7471,10 @@ export interface components {
             readonly hasThumbnail?: boolean;
             /** @description Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name. */
             readonly hasLandingPage?: boolean;
+            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
+            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         Publication: components["schemas"]["PublicationDetailsCore"] & components["schemas"]["PublicationAuditFields"] & {
             /** @description The API Portal's handle. */
@@ -7473,6 +7488,10 @@ export interface components {
             readonly hasThumbnail?: boolean;
             /** @description Whether this publication stores a landing page. */
             readonly hasLandingPage?: boolean;
+            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
+            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         PublicationSummaryItem: {
             /** @description The API Portal's handle. */

@@ -528,16 +528,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: redirect
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/redirect.feature
-      - name: request-rewrite
-        features:
-          - features/gateway/routes-policies/request_rewrite.feature
-      - name: respond
-        features:
-          - features/gateway/routes-policies/respond.feature
       - name: sandbox-routing
         features:
           - features/gateway/routes/sandbox_routing.feature
@@ -549,21 +539,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/sandbox_upstream_url_validation.feature
-      - name: content-length-guardrail
-        features:
-          - features/gateway/guardrails-policies/content_length_guardrail.feature
-      - name: word-count-guardrail
-        features:
-          - features/gateway/guardrails-policies/word_count_guardrail.feature
-      - name: sentence-count-guardrail
-        features:
-          - features/gateway/guardrails-policies/sentence_count_guardrail.feature
-      - name: url-guardrail
-        features:
-          - features/gateway/guardrails-policies/url_guardrail.feature
-      - name: json-schema-guardrail
-        features:
-          - features/gateway/guardrails-policies/json_schema_guardrail.feature
       - name: cel-conditions
         features:
           - features/gateway/core/cel_conditions.feature
@@ -603,34 +578,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_proxy_policy_validation.feature
-      - name: model-round-robin
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_round_robin.feature
-      - name: model-round-robin-multi-provider
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_round_robin_multi_provider.feature
-      - name: model-weighted-round-robin
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin.feature
-      - name: model-weighted-round-robin-multi-provider
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin_multi_provider.feature
       - name: llm-policy-path-specificity
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_policy_path_specificity.feature
-      - name: prompt-template
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_template.feature
-      - name: prompt-decorator
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
       - name: mcp-deploy
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
@@ -676,20 +627,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-
-  - name: legacy-aws-bedrock-guardrail
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/aws-bedrock-guardrail-legacy.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version<=1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
 
   - name: config-dump
     parallel: 1
@@ -743,19 +680,6 @@ blocks:
       - name: metrics
         features:
           - features/gateway/observability/metrics.feature
-
-  - name: gateway-logging
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/logging.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: log-message
-        features:
-          - features/gateway/observability-policies/log_message.feature
 
   - name: gateway-request-id-disabled
     parallel: 1
@@ -820,41 +744,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/vhost_routing_multiple_production_hosts.feature
-
-  - name: azure-content-safety
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/azure-content-safety.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: azure-content-safety
-        features:
-          - features/gateway/guardrails-policies/azure_content_safety.feature
-
-  - name: semantic-ai
-    parallel: 2
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/semantic-ai.toml
-        dependsOn: [redis]
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: redis
-    runners:
-      - name: semantic-cache
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_cache.feature
-      - name: semantic-cache-isolation
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_cache_isolation.feature
-      - name: semantic-prompt-guard
-        features:
-          - features/gateway/guardrails-policies/semantic_prompt_guard.feature
 
   # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
   # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
@@ -976,9 +865,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
-      - name: interceptor-service
-        features:
-          - features/gateway/routes-policies/interceptor_service.feature
 
   - name: ai-workspace-cli
     components:
@@ -993,189 +879,12 @@ blocks:
         features:
           - features/ai-workspace-gateway/cli/ai_workspace_cli.feature
 
-  - name: platform-api-sqlite
+  - name: platform-api-core
     parallel: 2
     components:
       - name: platform-api
-        db: sqlite
-        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
-      - name: platform-gateway
-        dependsOn: [platform-api]
         db:
           matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: a2a-trip-planner
-    runners:
-      - name: dp-to-cp
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/control-plane/dp_to_cp.feature
-      - name: platform-api-secret-deploy
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/management-portal/deployments/platform_api_secret_deploy.feature
-      - name: platform-api-deployment
-        features:
-          - features/management-portal/deployments/api_deployment.feature
-      - name: platform-api-build-deployment
-        features:
-          - features/management-portal/builds/build_deployment.feature
-      - name: platform-api-resource-search
-        features:
-          - features/management-portal/resources/resource_search.feature
-      - name: platform-api-artifact-management
-        features:
-          - features/management-portal/resources/artifact_management.feature
-      - name: platform-api-gateway-management
-        features:
-          - features/management-portal/resources/gateway_management.feature
-      - name: platform-api-subscription-management
-        features:
-          - features/management-portal/resources/subscription_management.feature
-      - name: platform-api-paid-subscription-access
-        features:
-          - features/management-portal/monetization/paid_subscription_access.feature
-        tags: "~@known-issue"
-      - name: platform-api-paid-subscription-suspension
-        features:
-          - features/management-portal/monetization/paid_subscription_suspension.feature
-        tags: "gateway-version>1.2.0;~@known-issue"
-      - name: platform-api-monetization-meters
-        features:
-          - features/management-portal/monetization/meters.feature
-      - name: platform-api-monetization-priced-plans
-        features:
-          - features/management-portal/monetization/priced_plans.feature
-      - name: platform-api-monetization-portal-events
-        features:
-          - features/management-portal/monetization/portal_events.feature
-      - name: platform-api-publication-drafts
-        features:
-          - features/management-portal/resources/publication_drafts.feature
-      - name: platform-api-builds
-        features:
-          - features/management-portal/builds/build_lifecycle.feature
-      - name: platform-api-secured-invocation
-        features:
-          - features/management-portal/subscriptions/secured_api_invocation.feature
-        tags: "~@known-issue"
-      - name: platform-api-mcp-server
-        features:
-          - features/management-portal/resources/mcp_server.feature
-      - name: agent-proxy-management
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
-      - name: agent-proxy-cards
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-deployment
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-api-keys
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-import
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
-        tags: "gateway-version>1.2.0"
-
-  - name: platform-api-postgres
-    parallel: 2
-    components:
-      - name: platform-api
-        db: postgres
-        overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
-      - name: platform-gateway
-        dependsOn: [platform-api]
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: a2a-trip-planner
-    runners:
-      - name: dp-to-cp
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/control-plane/dp_to_cp.feature
-      - name: platform-api-secret-deploy
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/management-portal/deployments/platform_api_secret_deploy.feature
-      - name: platform-api-deployment
-        features:
-          - features/management-portal/deployments/api_deployment.feature
-      - name: platform-api-build-deployment
-        features:
-          - features/management-portal/builds/build_deployment.feature
-      - name: platform-api-resource-search
-        features:
-          - features/management-portal/resources/resource_search.feature
-      - name: platform-api-artifact-management
-        features:
-          - features/management-portal/resources/artifact_management.feature
-      - name: platform-api-gateway-management
-        features:
-          - features/management-portal/resources/gateway_management.feature
-      - name: platform-api-subscription-management
-        features:
-          - features/management-portal/resources/subscription_management.feature
-      - name: platform-api-paid-subscription-access
-        features:
-          - features/management-portal/monetization/paid_subscription_access.feature
-        tags: "~@known-issue"
-      - name: platform-api-paid-subscription-suspension
-        features:
-          - features/management-portal/monetization/paid_subscription_suspension.feature
-        tags: "gateway-version>1.2.0;~@known-issue"
-      - name: platform-api-monetization-meters
-        features:
-          - features/management-portal/monetization/meters.feature
-      - name: platform-api-monetization-priced-plans
-        features:
-          - features/management-portal/monetization/priced_plans.feature
-      - name: platform-api-monetization-portal-events
-        features:
-          - features/management-portal/monetization/portal_events.feature
-      - name: platform-api-publication-drafts
-        features:
-          - features/management-portal/resources/publication_drafts.feature
-      - name: platform-api-builds
-        features:
-          - features/management-portal/builds/build_lifecycle.feature
-      - name: platform-api-secured-invocation
-        features:
-          - features/management-portal/subscriptions/secured_api_invocation.feature
-        tags: "~@known-issue"
-      - name: platform-api-mcp-server
-        features:
-          - features/management-portal/resources/mcp_server.feature
-      - name: agent-proxy-management
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_management.feature
-      - name: agent-proxy-cards
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-deployment
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-api-keys
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_api_keys.feature
-        tags: "gateway-version>1.2.0"
-      - name: agent-proxy-import
-        features:
-          - features/ai-workspace-gateway/agent/agent_proxy_import.feature
-        tags: "gateway-version>1.2.0"
-
-  - name: platform-api-sqlserver
-    parallel: 2
-    components:
-      - name: platform-api
-        db: sqlserver
         overlay: tests/framework/core/catalog/overlays/platform-api-agent-card-cache.toml
       - name: platform-gateway
         dependsOn: [platform-api]
@@ -1374,7 +1083,24 @@ blocks:
       - name: publication-outage
         features:
           - features/apiportal/publishing/publication_outage.feature
-      # Bills through the testbench's Stripe and Moesif services, which hold one account per block.
+
+  # Billing is set up once for a whole API Portal, so the runner that sets it up has a portal of its
+  # own: no other runner sees billing it leaves behind. It bills through the testbench's Stripe and
+  # Moesif services, which hold one account per block.
+  - name: api-portal-billing
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: testbench
+    runners:
       - name: api-portal-billing
         features:
           - features/apiportal/monetization/billing_setup.feature

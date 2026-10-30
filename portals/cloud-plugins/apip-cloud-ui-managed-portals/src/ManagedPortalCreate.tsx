@@ -13,6 +13,7 @@ import {
   Button,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   FormLabel,
   Grid,
   MenuItem,
@@ -20,6 +21,7 @@ import {
   PageTitle,
   Select,
   Stack,
+  Switch,
   TextField,
   Tooltip,
 } from '@wso2/oxygen-ui';
@@ -27,6 +29,7 @@ import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 
 import { useManagedPortalList, useOrgEnvironments } from './hooks';
 import { portalHandleFromName, validatePortalName } from './utils/name';
+import { SELF_SIGNUP_HINT } from './utils/selfSignup';
 
 export type ManagedPortalCreateProps = {
   onCancel: () => void;
@@ -47,6 +50,7 @@ export default function ManagedPortalCreate({ onCancel, onCreated }: ManagedPort
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loginEnvironment, setLoginEnvironment] = useState('');
+  const [selfSignup, setSelfSignup] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   // Once the env list arrives, preselect the first production env (isProduction=true);
@@ -84,6 +88,7 @@ export default function ManagedPortalCreate({ onCancel, onCreated }: ManagedPort
         // Only send loginEnvironment when the picker was shown AND the user picked something;
         // otherwise let the server pick its default (single-env orgs, or env-load failure).
         ...(showEnvPicker && loginEnvironment ? { loginEnvironment } : {}),
+        selfSignup,
       });
       onCreated();
     } catch {
@@ -163,6 +168,22 @@ export default function ManagedPortalCreate({ onCancel, onCreated }: ManagedPort
               </FormControl>
             </Grid>
           ) : null}
+          <Grid size={{ xs: 12 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={selfSignup}
+                  onChange={(event) => setSelfSignup(event.target.checked)}
+                  disabled={submitting}
+                />
+              }
+              label={
+                <Tooltip title={SELF_SIGNUP_HINT} arrow placement="top-start">
+                  <span>Allow self sign-up</span>
+                </Tooltip>
+              }
+            />
+          </Grid>
         </Grid>
 
         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>

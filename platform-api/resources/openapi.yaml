@@ -14690,6 +14690,24 @@ components:
         type: string
         description: Document handle from GET /apis/{apiType}/{apiId}/docs, not the database UUID.
 
+    PublicationSelection:
+      type: object
+      description: A subscription plan or document selected by a publication, as it was when last saved or published.
+      required: [id, displayName, deleted, edited]
+      properties:
+        id:
+          type: string
+          description: The plan or document handle.
+        displayName:
+          type: string
+          description: The name stored with the selection, so it can still be shown after the source is deleted.
+        deleted:
+          type: boolean
+          description: True when the plan or document no longer exists. The publication keeps the selection until the next publish.
+        edited:
+          type: boolean
+          description: True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it.
+
     PublicationDraftDetailsInput:
       allOf:
         - $ref: '#/components/schemas/PublicationDetailsCore'
@@ -14717,6 +14735,18 @@ components:
               type: boolean
               readOnly: true
               description: Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name.
+            subscriptionPlans:
+              type: array
+              readOnly: true
+              description: The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
+            documents:
+              type: array
+              readOnly: true
+              description: The selected documents, including deleted ones. Same documents as docIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
 
     Publication:
       allOf:
@@ -14744,6 +14774,18 @@ components:
               type: boolean
               readOnly: true
               description: Whether this publication stores a landing page.
+            subscriptionPlans:
+              type: array
+              readOnly: true
+              description: The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
+            documents:
+              type: array
+              readOnly: true
+              description: The selected documents, including deleted ones. Same documents as docIds.
+              items:
+                $ref: '#/components/schemas/PublicationSelection'
 
     PublicationSummaryItem:
       type: object

@@ -49,6 +49,11 @@ func (l *errorList) err() error {
 	return errors.Join(l.errs...)
 }
 
+// maxPartitionKeyLen must match testbench.maxPartitionKeyLen (testbench/partition.go): the
+// testbench service rejects a longer block key with a 400 deep inside a scenario, so this
+// catches it at suite load instead.
+const maxPartitionKeyLen = 64
+
 // Validate checks a resolved suite without accessing the filesystem or runtime.
 func Validate(r *Resolved, registry *components.Registry) error {
 	var errs errorList
@@ -83,14 +88,21 @@ func Validate(r *Resolved, registry *components.Registry) error {
 		seenBlock[b.Name] = true
 
 		key := b.PartitionKey()
-		if key == "" {
+		switch {
+		case key == "":
 			errs.addf("topology: block %q has no usable partition key: a block name needs at "+
 				"least one letter or digit", b.Name)
-		} else if owner, taken := partitionOwner[key]; taken {
-			errs.addf("topology: blocks %q and %q both resolve to partition key %q; they would "+
-				"share one bucket in every partitioned testbench service", owner, b.Name, key)
-		} else {
-			partitionOwner[key] = b.Name
+		case len(key) > maxPartitionKeyLen:
+			errs.addf("topology: block %q resolves to partition key %q (%d characters); testbench "+
+				"services reject a key over %d characters, so shorten the block name or, for a "+
+				"multi-axis block, its component or db.matrix variant names", b.Name, key, len(key), maxPartitionKeyLen)
+		default:
+			if owner, taken := partitionOwner[key]; taken {
+				errs.addf("topology: blocks %q and %q both resolve to partition key %q; they would "+
+					"share one bucket in every partitioned testbench service", owner, b.Name, key)
+			} else {
+				partitionOwner[key] = b.Name
+			}
 		}
 
 		errs.add(validateBlockComponents(b))
@@ -205,8 +217,8 @@ func platformAPIDatabase(b *ResolvedBlock) components.DBType {
 
 // allowDatabaseVariantFeatureOwners permits a feature to be intentionally repeated by
 // same-named runners whose blocks exercise distinct platform-api database variants. Matrix
-// expansion already collapses variants within one source block; this exception covers separate
-// blocks used when two components must vary together, since a block supports only one matrix.
+// expansion already collapses same-block variants; this exception covers separate blocks
+// kept apart for other reasons that still vary the same component's engine.
 func allowDatabaseVariantFeatureOwners(owners map[string]featureOwner) bool {
 	if len(owners) < 2 {
 		return false

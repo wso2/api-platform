@@ -154,6 +154,9 @@ export const routes = {
   organizations: '/organizations',
   organizationHome: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/home`,
   projects: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/projects`,
+  // `new` sits where a project handle would; `RESERVED_HANDLE_SEGMENTS` keeps it from
+  // being read back as a project.
+  newProject: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/projects/new`,
   gateways: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/gateways`,
   newGateway: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/gateways/new`,
   gateway: (orgHandle = ':orgHandle', gatewayId = ':gatewayId') =>

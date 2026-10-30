@@ -38,7 +38,7 @@ import { toGraphQLListableApi, toRestListableApi, type ListableApi } from './api
 import { ApiGridView } from './ApiGridView';
 import { ApiListView } from './ApiListView';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { MonitorIllustration } from '@/components/illustrations/MonitorIllustration';
+import { ImportApiIllustration } from '@/components/illustrations/ImportApiIllustration';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -248,7 +248,7 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
           actionIcon={<Plus />}
           actionLabel={intl.formatMessage(messages.emptyAction)}
           description={intl.formatMessage(messages.emptyDescription)}
-          illustration={<MonitorIllustration />}
+          illustration={<ImportApiIllustration />}
           onAction={createApi}
           title={intl.formatMessage(messages.emptyTitle)}
           operationId="CreateRESTAPI"

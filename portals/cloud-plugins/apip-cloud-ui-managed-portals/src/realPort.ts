@@ -141,6 +141,7 @@ type WirePortal = {
   description?: string | null;
   url?: string;
   loginEnvironment?: string;
+  selfSignup?: boolean;
   status?: string;
   updatedAt?: string;
 };
@@ -173,6 +174,7 @@ function fromWire(w: WirePortal): ManagedPortal {
     description: w.description ?? undefined,
     url: w.url,
     loginEnvironment: w.loginEnvironment,
+    selfSignup: w.selfSignup,
     status: normalizeStatus(w.status),
     updatedAt: w.updatedAt,
   };
@@ -223,6 +225,7 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
           name: input.name,
           description: input.description,
           loginEnvironment: input.loginEnvironment,
+          selfSignup: input.selfSignup,
         });
         return fromWire(body);
       } catch (err) {
@@ -237,6 +240,7 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
         name: input.name,
         description: input.description,
         loginEnvironment: input.loginEnvironment,
+        selfSignup: input.selfSignup,
       });
       return fromWire(body);
     },
