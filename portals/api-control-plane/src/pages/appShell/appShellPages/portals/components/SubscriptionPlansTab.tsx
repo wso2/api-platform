@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, Button, Typography } from '@wso2/oxygen-ui';
+import { Box, Button } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useMetersById } from '@/api/resources/meters';
@@ -24,8 +24,9 @@ import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { pricingSummary, summaryMeterIds } from '../../settings/components/pricingFormat';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
-import type { DeletedPlan, DraftFormValues } from '../utils/publicationForm';
+import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
+import { SelectionSummary } from './SelectionSummary';
 
 const messages = defineMessages({
   loading: {
@@ -58,16 +59,6 @@ const messages = defineMessages({
     defaultMessage: '{count, plural, one {<n>#</n> plan published} other {<n>#</n> plans published}}',
     description: '<n> wraps the number, which is styled.',
   },
-  inactiveSelectedSummary: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.inactiveSelectedSummary',
-    defaultMessage: '{count, plural, one {# inactive plan selected} other {# inactive plans selected}}',
-    description: 'Warning next to the selection summary: selected plans that are no longer active.',
-  },
-  deletedSelectedSummary: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.deletedSelectedSummary',
-    defaultMessage: '{count, plural, one {# deleted plan selected} other {# deleted plans selected}}',
-    description: 'Warning next to the selection summary: selected plans whose subscription plan no longer exists.',
-  },
   selectAll: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll',
     defaultMessage: 'Select all',
@@ -79,13 +70,13 @@ const messages = defineMessages({
 });
 
 export type SubscriptionPlansTabProps = {
-  /** Selected plans whose subscription plan was deleted. They show as "Deleted" cards and count as published. */
-  deletedPlans?: readonly DeletedPlan[];
+  /** Published view only: plans the listing holds whose subscription plan was deleted. They show struck through and count as published. */
+  deletedPlans?: readonly DeletedSelection[];
   disabled?: boolean;
-  /** Clears a deleted plan from the selection; it is dropped from the draft when the draft is saved. */
-  onClearDeleted?: (planId: string) => void;
-  /** Ids of selected plans changed in Settings since the selection was last saved or published; their cards carry an "Edited" tag. */
+  /** Ids of selected plans changed in Settings since the listing was published; the published view tags them "Edited". */
   editedPlanIds?: readonly string[];
+  /** The names stored at the last publish, by id. The published view shows these rather than the plan's current name. */
+  storedNames?: Readonly<Record<string, string>>;
   /** Shows the live selection without letting it be changed; `onChange` is then never called. */
   readOnly?: boolean;
   onChange?: (values: DraftFormValues) => void;
@@ -101,24 +92,19 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  * "Subscription Plans": which of the organization's plans this API offers on the
  * portal. A plan's active/inactive status is set in Settings, not here.
  *
- * Status limits what can be *chosen*, never what is shown of the selection: the
- * draft offers the active plans, and an inactive one only while it is already
- * selected, so it can be cleared (after which it drops out). The published view
- * lists exactly the plans the live listing holds.
- *
- * Cards are ordered deleted plans first (they are gone from Settings and only
- * linger until the next save or publish), then inactive plans (they need
- * clearing), then the saved selection, then the rest; each group keeps the
- * server's order.
+ * The draft offers the active plans only. An inactive or deleted plan never shows there, with no
+ * chip or warning: the page drops it from the selection, so the next save or publish leaves it out.
+ * The published view lists exactly the plans the live listing holds, under the names stored at the
+ * last publish, with deleted plans struck through and inactive or edited ones tagged by an outlined chip.
  */
 export function SubscriptionPlansTab({
   deletedPlans = [],
   disabled,
   editedPlanIds = [],
   onChange,
-  onClearDeleted,
   readOnly,
   savedPlanIds,
+  storedNames,
   values,
 }: SubscriptionPlansTabProps) {
   const intl = useIntl();
@@ -129,14 +115,16 @@ export function SubscriptionPlansTab({
   const savedSet = new Set(savedPlanIds ?? selectedIds);
   const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
   const activePlans = allPlans.filter((plan) => plan.status === 'ACTIVE');
-  const inactiveSelectedPlans = allPlans.filter((plan) => plan.status !== 'ACTIVE' && selectedSet.has(plan.id));
-  // An inactive plan is offered only while it is selected, so it can still be cleared.
+  const shownDeleted = readOnly ? deletedPlans : [];
   const rank = (plan: DisplayablePlan) => {
+    if (!readOnly) return savedSet.has(plan.id) ? 0 : 1;
     if (plan.status !== 'ACTIVE') return 0;
-    return savedSet.has(plan.id) ? 1 : 2;
+    return editedSet.has(plan.id) ? 1 : 2;
   };
-  const offeredPlans = [...activePlans, ...inactiveSelectedPlans].sort((a, b) => rank(a) - rank(b));
-  const shownPlans = readOnly ? offeredPlans.filter((plan) => selectedSet.has(plan.id)) : offeredPlans;
+  // The published view lists whatever the listing holds, active or not; the draft offers the active plans.
+  const shownPlans = (readOnly ? allPlans.filter((plan) => selectedSet.has(plan.id)) : [...activePlans]).sort(
+    (a, b) => rank(a) - rank(b),
+  );
   // The unit a per-unit price counts (call or token) comes from its meter.
   const { meters } = useMetersById(shownPlans.flatMap((plan) => summaryMeterIds(plan.pricing)));
 
@@ -146,7 +134,7 @@ export function SubscriptionPlansTab({
   if (plansQuery.error) {
     return <ErrorState message={intl.formatMessage(messages.error)} />;
   }
-  if (shownPlans.length === 0 && deletedPlans.length === 0) {
+  if (shownPlans.length === 0 && shownDeleted.length === 0) {
     return (
       <Box component="section" sx={{ p: 3 }}>
         <EmptyState
@@ -164,68 +152,20 @@ export function SubscriptionPlansTab({
     onChange?.({ ...values, subscriptionPlanIds: nextIds });
   };
 
-  const toggle = (planId: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(planId)) next.delete(planId);
-    else next.add(planId);
-    commitSelection(Array.from(next));
-  };
+  const toggle = (planId: string) => commitSelection(toggleSelection(selectedIds, planId));
 
-  // Select all keeps an already-selected inactive plan; Clear all clears everything.
-  const toggleAll = () =>
-    commitSelection(allActiveSelected ? [] : [...activePlans, ...inactiveSelectedPlans].map((plan) => plan.id));
-
-  const countStyle = {
-    color: readOnly ? 'success.main' : 'primary.main',
-    fontSize: 20,
-    fontWeight: 500,
-  } as const;
+  const toggleAll = () => commitSelection(allActiveSelected ? [] : activePlans.map((plan) => plan.id));
 
   return (
     <Box component="section" sx={{ containerType: 'inline-size', display: 'flex', flexDirection: 'column', gap: 2.5, p: 3 }}>
       <Box sx={{ alignItems: 'center', display: 'flex', gap: 2, justifyContent: 'space-between', minHeight: 32 }}>
-        <Box sx={{ alignItems: 'baseline', display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-          <Typography color="text.secondary" variant="body2">
-            {readOnly ? (
-              <FormattedMessage
-                {...messages.publishedSummary}
-                values={{
-                  count: shownPlans.length + deletedPlans.length,
-                  n: (chunks) => (
-                    <Typography component="span" sx={countStyle}>
-                      {chunks}
-                    </Typography>
-                  ),
-                }}
-              />
-            ) : (
-              <FormattedMessage
-                {...messages.selectedSummary}
-                values={{
-                  count: (
-                    <Typography component="span" sx={countStyle}>
-                      {selectedActiveCount}
-                    </Typography>
-                  ),
-                  total: activePlans.length,
-                }}
-              />
-            )}
-          </Typography>
-          {!readOnly && deletedPlans.length > 0 && (
-            <Typography color="error.main" variant="body2">
-              <FormattedMessage {...messages.deletedSelectedSummary} values={{ count: deletedPlans.length }} />
-            </Typography>
-          )}
-          {!readOnly && inactiveSelectedPlans.length > 0 && (
-            <Typography color="warning.main" variant="body2">
-              <FormattedMessage
-                {...messages.inactiveSelectedSummary}
-                values={{ count: inactiveSelectedPlans.length }}
-              />
-            </Typography>
-          )}
-        </Box>
+        <SelectionSummary
+          count={readOnly ? shownPlans.length + shownDeleted.length : selectedActiveCount}
+          published={messages.publishedSummary}
+          readOnly={readOnly}
+          selected={messages.selectedSummary}
+          total={activePlans.length}
+        />
         {!readOnly && (
           <Button disabled={disabled || activePlans.length === 0} onClick={toggleAll} size="small" variant="text">
             <FormattedMessage {...(allActiveSelected ? messages.clearAll : messages.selectAll)} />
@@ -245,21 +185,13 @@ export function SubscriptionPlansTab({
           '@container (max-width: 519px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
         }}
       >
-        {deletedPlans.map((plan) => (
-          <PlanCard
-            deleted
-            disabled={disabled}
-            displayName={plan.displayName}
-            key={plan.id}
-            onToggle={() => onClearDeleted?.(plan.id)}
-            readOnly={readOnly}
-            selected
-          />
+        {shownDeleted.map((plan) => (
+          <PlanCard deleted displayName={plan.displayName} key={plan.id} readOnly selected />
         ))}
         {shownPlans.map((plan) => (
           <PlanCard
             disabled={disabled}
-            displayName={plan.displayName}
+            displayName={(readOnly && storedNames?.[plan.id]) || plan.displayName}
             edited={editedSet.has(plan.id)}
             inactive={plan.status !== 'ACTIVE'}
             key={plan.id}
