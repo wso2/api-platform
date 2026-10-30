@@ -208,7 +208,7 @@ func (u *Steps) clearsProviderSearch(ctx context.Context) error {
 }
 
 // providerOverviewShows checks the overview header against a table of field and expected
-// text. Fields: name, template, version, description, creator.
+// text. Fields: name, template, version, description.
 func (u *Steps) providerOverviewShows(ctx context.Context, table *godog.Table) error {
 	page, err := u.page(ctx)
 	if err != nil {
@@ -226,8 +226,6 @@ func (u *Steps) providerOverviewShows(ctx context.Context, table *godog.Table) e
 			target = page.GetByRole("heading", playwright.PageGetByRoleOptions{Name: providerListName(want), Exact: playwright.Bool(true)})
 		case "template", "version", "description":
 			target = page.GetByText(want, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}).First()
-		case "creator":
-			target = page.GetByText("Created by: "+want, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)})
 		default:
 			return fmt.Errorf("unknown provider overview field %q", field)
 		}

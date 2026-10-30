@@ -109,6 +109,7 @@ scenarios:
   - id: AIW-PRV-008
     title: Open the provider overview tab.
     priority: P2
+    sheetUpdate: "Expected: the overview shows the provider's name, template, version, description and context. (Decided 2026-10-30: the AI Workspace overview no longer shows the creator; the API still returns createdBy, checked at the IT layer.)"
     ui:
       status: automated
       refs:

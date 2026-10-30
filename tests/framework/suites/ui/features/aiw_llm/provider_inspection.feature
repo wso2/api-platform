@@ -40,7 +40,6 @@ Feature: Finding and inspecting LLM providers in the AI Workspace
       | template    | Azure OpenAI                                     |
       | version     | v1.0                                             |
       | description | UI suite provider from the mock-backed template. |
-      | creator     | admin                                            |
     And the provider overview shows the context derived from its ID
     And the page never shows the credential "sk-aiw-prv-008-ui"
     When the user opens the provider's Connection tab
