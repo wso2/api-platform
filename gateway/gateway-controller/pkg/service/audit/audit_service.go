@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,9 +76,13 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 	if s == nil || !s.enabled {
 		return
 	}
+	// The correlation ID comes from the client; the column holds 64 (NVARCHAR(64) on SQL Server).
+	if len(correlationID) > 64 {
+		correlationID = strings.ToValidUTF8(correlationID[:64], "")
+	}
 	id := uuid.New().String()
 	// Microseconds: the finest precision every supported database stores, so
-	// the row and the stdout line hold the same time.
+	// the row and the output line hold the same time.
 	performedAt := time.Now().UTC().Truncate(time.Microsecond)
 
 	if err := s.store.SaveAudit(id, performedAt, action, resourceUUID, resourceType, performedBy, correlationID); err != nil {
