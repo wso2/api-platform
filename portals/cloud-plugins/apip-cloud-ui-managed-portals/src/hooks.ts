@@ -150,10 +150,13 @@ export function useManagedPortalList() {
       try {
         const portal = await port.create(input);
         host.notify(`Portal "${portal.name}" created`, 'success');
-        await refetch();
+        // Before the refetch, not after: neither call depends on the new list,
+        // and awaiting a full list request first leaves the host's quota and
+        // cached counts stale for its whole duration.
         host.resourceLimits?.refresh(); // a create consumes quota
         // The host caches portal counts and cannot see this write.
         host.resources?.invalidate('apiPortals');
+        await refetch();
         return portal;
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to create portal'), 'error');
@@ -183,9 +186,10 @@ export function useManagedPortalList() {
       try {
         await port.remove(id);
         host.notify('Portal deleted', 'success');
-        await refetch();
+        // Before the refetch, for the same reason as in `create`.
         host.resourceLimits?.refresh(); // a delete frees quota
         host.resources?.invalidate('apiPortals');
+        await refetch();
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to delete portal'), 'error');
         throw err;

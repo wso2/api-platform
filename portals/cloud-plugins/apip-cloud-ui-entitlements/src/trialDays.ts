@@ -43,9 +43,15 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * server's `days_remaining`.
  *
  * `days_remaining` is a snapshot taken when the response was built, so a tab
- * left open overnight keeps rendering yesterday's number. The end date is
- * absolute, so recomputing from it stays correct for as long as the tab lives
- * without costing a single extra request.
+ * left open overnight keeps rendering yesterday's number even after a re-read.
+ * The end date is absolute, so every recomputation is current without costing
+ * a single extra request.
+ *
+ * It is recomputed only when the badge re-renders, though — nothing here ticks
+ * — so an idle tab shows the figure from its last render until something
+ * re-renders it, in practice the entitlement re-read on focus or the gate's
+ * backstop interval. Add a timer if the number ever has to roll over on its
+ * own.
  *
  * Returns a fractional value: the badge rounds up for display but uses the
  * exact figure for its status thresholds and progress ring. `null` means the

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMemo, useState, type FC, type ReactNode } from 'react';
+import { cloneElement, useMemo, useState, type FC, type ReactElement, type ReactNode } from 'react';
 import {
   Avatar,
   Box,
@@ -72,6 +72,31 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
   return (
     <Tooltip title={limits?.limitMessage?.('gateways') ?? ''}>
       <span style={{ display: 'inline-flex' }}>{button}</span>
+    </Tooltip>
+  );
+};
+
+/**
+ * Wraps a control that writes to an existing gateway, disabling it with the
+ * host's explanation while the organization is read-only.
+ *
+ * Deliberately not `canCreate('gateways')`: that answers whether there is room
+ * for one MORE gateway, which says nothing about editing one that already
+ * exists — a full quota must still leave its gateways configurable. The span
+ * is required for the same reason as above: a disabled MUI control sets
+ * `pointer-events: none`, so a Tooltip on it never fires.
+ */
+const WhenWritable: FC<{
+  port: AIWorkspaceHostPort;
+  children: ReactElement<{ disabled?: boolean }>;
+}> = ({ port, children }) => {
+  const limits = port.resourceLimits;
+  if (!limits?.readOnly) return children;
+  return (
+    <Tooltip title={limits.readOnlyMessage ?? ''}>
+      <span style={{ display: 'inline-flex' }}>
+        {cloneElement(children, { disabled: true })}
+      </span>
     </Tooltip>
   );
 };
@@ -396,23 +421,27 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
   const renderActions = (gateway: Gateway) => (
     <>
-      <IconButton
-        size="small"
-        onClick={() => onEditClick(gateway.id)}
-        disabled={gateway.status === 'deleting'}
-        aria-label={`Edit ${gateway.name}`}
-      >
-        <Edit size={16} />
-      </IconButton>
-      {gateway.hosting === 'managed' ? (
+      <WhenWritable port={port}>
         <IconButton
           size="small"
-          onClick={() => setSettingsGateway(gateway)}
+          onClick={() => onEditClick(gateway.id)}
           disabled={gateway.status === 'deleting'}
-          aria-label={`Configure ${gateway.name}`}
+          aria-label={`Edit ${gateway.name}`}
         >
-          <Settings size={16} />
+          <Edit size={16} />
         </IconButton>
+      </WhenWritable>
+      {gateway.hosting === 'managed' ? (
+        <WhenWritable port={port}>
+          <IconButton
+            size="small"
+            onClick={() => setSettingsGateway(gateway)}
+            disabled={gateway.status === 'deleting'}
+            aria-label={`Configure ${gateway.name}`}
+          >
+            <Settings size={16} />
+          </IconButton>
+        </WhenWritable>
       ) : null}
       <IconButton
         size="small"

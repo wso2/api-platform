@@ -244,9 +244,16 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
   return (
     <>
       {isFirstRun ? (
+        /*
+          Same `restApis` verdict as the populated list's create button below:
+          an empty project says nothing about the organization's quota, which
+          is counted across every project, so a capped organization reaches
+          its first-run prompt here with no room to act on it.
+        */
         <EmptyState
           actionIcon={<Plus />}
           actionLabel={intl.formatMessage(messages.emptyAction)}
+          component="restApis"
           description={intl.formatMessage(messages.emptyDescription)}
           illustration={<ImportApiIllustration />}
           onAction={createApi}

@@ -105,6 +105,13 @@ export default function ManagedPortalsList({
   onCreate,
   onEdit,
 }: ManagedPortalsListProps) {
+  const { host } = usePortalFeature();
+  // Whether the organization may write at all. Deliberately not
+  // `canCreate("portals")`: that answers whether there is room for one MORE
+  // portal, which says nothing about editing one that already exists — a full
+  // quota must still leave its portals editable. `false` when the host
+  // supplies no entitlements.
+  const readOnly = host.resourceLimits?.readOnly ?? false;
   const { portals, isLoading, error, refetch, remove } = useManagedPortalList();
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -359,7 +366,9 @@ export default function ManagedPortalsList({
                                   ? "Editing is available once provisioning completes."
                                   : status === "failed"
                                     ? "Editing is disabled while the portal is in a failed state. Delete and re-create."
-                                    : "Edit portal"
+                                    : readOnly
+                                      ? (host.resourceLimits?.readOnlyMessage ?? "")
+                                      : "Edit portal"
                               }
                               arrow
                             >
@@ -368,7 +377,7 @@ export default function ManagedPortalsList({
                                   size="small"
                                   aria-label={`Edit ${portal.name}`}
                                   onClick={() => onEdit(portal)}
-                                  disabled={status !== "active"}
+                                  disabled={status !== "active" || readOnly}
                                 >
                                   <Pencil size={16} />
                                 </IconButton>

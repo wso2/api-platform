@@ -90,5 +90,18 @@ export type AIWorkspaceHostPort = {
     refresh: () => void;
     canCreate?: (component: 'gateways') => boolean;
     limitMessage?: (component: 'gateways') => string;
+    /**
+     * The organization may not write at all — a different question from
+     * whether it has room for one more gateway, and the one that governs
+     * editing an existing one. `canCreate` already answers `false` while this
+     * holds, so the create button needs nothing extra; an update has no count
+     * to consult and so must read this directly.
+     *
+     * Optional, and `false` when absent: a host with no entitlement supplier
+     * omits it and every control stays enabled exactly as before.
+     */
+    readOnly?: boolean;
+    /** Why the organization is read-only; the host supplies the wording. */
+    readOnlyMessage?: string;
   };
 };
