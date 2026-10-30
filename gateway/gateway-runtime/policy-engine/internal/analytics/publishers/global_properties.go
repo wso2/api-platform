@@ -83,8 +83,8 @@ type globalPropertyEvaluator struct {
 	// emitted requestHeaders/responseHeaders map already redacts.
 	maskedHeaders map[string]bool
 	// excludedRequestHeaders/excludedResponseHeaders hold lower-cased header names
-	// removed from request.header/response.header. Set only for json_fields, from
-	// the "requestHeaders.<name>"/"responseHeaders.<name>" entries of exclude_fields.
+	// removed from request.header/response.header, from the header entries of
+	// exclude_fields.
 	excludedRequestHeaders  map[string]bool
 	excludedResponseHeaders map[string]bool
 	// truncateBody, when set, declares request.body/response.body and cuts each
@@ -190,8 +190,8 @@ func (e *globalPropertyEvaluator) excludedVariablesIn(refs map[string]bool) []st
 	return out
 }
 
-// evaluatorOption configures a globalPropertyEvaluator beyond what properties needs.
-// Only json_fields uses them.
+// evaluatorOption configures a globalPropertyEvaluator beyond its expressions and
+// masked headers.
 type evaluatorOption func(*globalPropertyEvaluator)
 
 // withExcludedHeaders removes the given lower-cased header names from
@@ -428,7 +428,7 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // parse+lowercase+mask work (and the json.Unmarshal calls for auth.property/metadata) is
 // itself skipped whenever the corresponding variable isn't referenced by any configured
 // expression, which is the whole point of this function taking referenced at all.
-// Header names in excludedRequestHeaders/excludedResponseHeaders are dropped (json_fields only).
+// Header names in excludedRequestHeaders/excludedResponseHeaders are dropped.
 func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders, excludedRequestHeaders, excludedResponseHeaders map[string]bool) map[string]interface{} {
 	ctx := make(map[string]interface{}, len(referenced))
 	for _, v := range globalPropertyVariables {

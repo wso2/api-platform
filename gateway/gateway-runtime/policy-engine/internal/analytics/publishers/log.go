@@ -92,12 +92,13 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 	}
 
 	l := &Log{
-		maskedHeaders:    masked,
-		maxPayloadSize:   logCfg.MaxPayloadSize,
-		globalDir:        buildGlobalDirective(*logCfg),
-		globalProperties: newGlobalPropertyEvaluator(effectiveProperties(logCfg), masked),
-		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
+		maskedHeaders:  masked,
+		maxPayloadSize: logCfg.MaxPayloadSize,
+		globalDir:      buildGlobalDirective(*logCfg),
+		exclusions:     compileFieldExclusions(logCfg.ExcludeFields),
 	}
+	l.globalProperties = newGlobalPropertyEvaluator(effectiveProperties(logCfg), masked,
+		withExcludedHeaders(l.exclusions.excludedRequestHeaders(), l.exclusions.excludedResponseHeaders()))
 	if len(logCfg.JSONFields) > 0 {
 		l.jsonFields = newGlobalPropertyEvaluator(logCfg.JSONFields, masked,
 			withSection(jsonFieldsSection),

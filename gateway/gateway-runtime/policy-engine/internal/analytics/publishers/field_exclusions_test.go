@@ -111,6 +111,15 @@ func TestCompileFieldExclusions_SortsCtxEntries(t *testing.T) {
 	assert.Nil(t, fe.residualFields(), "$ctx: entries are not JSON paths")
 }
 
+func TestCompileFieldExclusions_CtxHeaderEntriesMatchHeaderEntries(t *testing.T) {
+	logs := captureLogs(t)
+
+	fe := compileFieldExclusions([]string{"$ctx:request.header.Authorization", "$ctx:response.header.set-cookie"})
+
+	assert.Equal(t, compileFieldExclusions([]string{"requestHeaders.authorization", "responseHeaders.set-cookie"}), fe)
+	assert.NotContains(t, logs.String(), "unknown $ctx variable")
+}
+
 func TestCompileFieldExclusions_WarnsOnUnknownCtxVariable(t *testing.T) {
 	logs := captureLogs(t)
 

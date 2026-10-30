@@ -1072,6 +1072,9 @@ exclude_fields = []
 # variable (logged once at startup), and "$ctx:auth.property.<key>" or
 # "$ctx:metadata.<key>" removes just that key from the map. Properties are excluded
 # by name instead, e.g. "properties.<key>".
+# Headers are the exception: "$ctx:request.header.<name>" is the same entry as
+# "requestHeaders.<name>" (and "$ctx:response.header.<name>" as
+# "responseHeaders.<name>"), so either spelling hides the header everywhere.
 # exclude_fields = ["$ctx:error.policy", "$ctx:auth.property.email"]
 
 # -----------------------------------------------------------------------------
@@ -1275,8 +1278,9 @@ insecure_skip_verify = false
 # microsecond precision) or latencies.durationMs / 1000.0 (seconds). Write 1000.0, not
 # 1000: CEL won't mix decimal and whole numbers.
 # request.header/response.header are masked with the same masked_headers list
-# above, so a property expression cannot re-expose a header (e.g.
-# request.header['authorization']) that masked_headers already redacts.
+# above, and headers removed by exclude_fields ("requestHeaders.<name>") are
+# missing from them, so a property expression cannot re-expose a header (e.g.
+# request.header['authorization']) that masked_headers or exclude_fields hides.
 #
 # auth.* is also available — subject, type, issuer, credential_id, token_id,
 # audience (list), scopes (list), property['<claim>'] (map), authenticated,

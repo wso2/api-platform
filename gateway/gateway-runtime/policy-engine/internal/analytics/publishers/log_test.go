@@ -973,21 +973,6 @@ func TestLog_Publish_JSONFieldsExcludesHeaders(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"content-type": "application/json"}, line["respHdrs"])
 }
 
-func TestLog_Publish_PropertiesHeadersUnchangedByExcludeFields(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Enabled:       true,
-		ExcludeFields: []string{"requestHeaders.x-foo"},
-		Properties:    map[string]string{"foo": "$ctx:request.header['x-foo']"},
-	})
-	event := createBaseEvent()
-	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
-
-	l.Publish(event)
-
-	props, _ := decodeLine(t, read())["properties"].(map[string]interface{})
-	assert.Equal(t, "bar", props["foo"])
-}
-
 // Naming a body in json_fields is the opt-in, so the request_body/response_body
 // toggles are left off here; max_payload_size still caps each body.
 func TestLog_Publish_JSONFieldsWritesBodiesCappedByMaxPayloadSize(t *testing.T) {

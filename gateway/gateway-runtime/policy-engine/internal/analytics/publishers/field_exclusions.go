@@ -39,8 +39,9 @@ type fieldExclusions struct {
 	// topLevel holds excluded top-level JSON keys of TrafficLogEvent.
 	topLevel map[string]bool
 	// requestHeaders/responseHeaders hold lower-cased header names excluded via
-	// "requestHeaders.<name>"/"responseHeaders.<name>". Header names are matched
-	// case-insensitively, as the JSON projection does (see isHeaderField).
+	// "requestHeaders.<name>"/"responseHeaders.<name>" or their "$ctx:" spelling
+	// "$ctx:request.header.<name>"/"$ctx:response.header.<name>". Header names are
+	// matched case-insensitively, as the JSON projection does (see isHeaderField).
 	requestHeaders  map[string]bool
 	responseHeaders map[string]bool
 	// variables holds "$ctx:<variable>" entries. json_fields drops every expression
@@ -120,10 +121,20 @@ func compileFieldExclusions(exclude []string) *fieldExclusions {
 	return fe
 }
 
-// addCtxExclusion records a "$ctx:" exclude_fields entry: a key of a keyed map
-// variable, or else a whole variable. An unknown variable is logged, since a typo
-// would otherwise leave the data it meant to hide in the log.
+// addCtxExclusion records a "$ctx:" exclude_fields entry: a header, a key of a
+// keyed map variable, or else a whole variable. An unknown variable is logged,
+// since a typo would otherwise leave the data it meant to hide in the log.
 func (fe *fieldExclusions) addCtxExclusion(path string) {
+	headerSets := map[string]map[string]bool{
+		"request.header":  fe.requestHeaders,
+		"response.header": fe.responseHeaders,
+	}
+	for headerVar, names := range headerSets {
+		if name, ok := strings.CutPrefix(path, headerVar+"."); ok && name != "" {
+			names[strings.ToLower(name)] = true
+			return
+		}
+	}
 	for _, mapVar := range keyedMapVariables {
 		if key, ok := strings.CutPrefix(path, mapVar+"."); ok && key != "" {
 			if fe.mapKeys[mapVar] == nil {
