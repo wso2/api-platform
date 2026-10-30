@@ -57,7 +57,7 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &recordingAuditTable{err: tc.err}
 			var out bytes.Buffer
-			s := &AuditService{repo: db, out: slog.NewJSONHandler(&out, nil), logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+			s := &AuditService{repo: db, out: slog.NewJSONHandler(&out, nil)}
 
 			err := s.Record("CREATE", "res-1", "rest_api", "org-1", "user-1")
 			if !errors.Is(err, tc.err) {
@@ -99,10 +99,7 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 
 func TestAuditServiceNoOutput(t *testing.T) {
 	db := &recordingAuditTable{}
-	s, err := NewAuditService(db, config.Audit{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := NewAuditService(db, config.Audit{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	if err := s.Record("DELETE", "res-1", "project", "org-1", "user-1"); err != nil {
 		t.Fatalf("Record error = %v", err)

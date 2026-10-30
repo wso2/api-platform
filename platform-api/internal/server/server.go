@@ -77,6 +77,11 @@ type Server struct {
 // are not covered by config-load validation. All checks are unconditional:
 // there is no relaxed/demo mode.
 func validateServerConfig(cfg *config.Server) error {
+	switch cfg.Audit.Output {
+	case "", "stdout", "file":
+	default:
+		return fmt.Errorf("audit.output must be \"stdout\" or \"file\"; got %q", cfg.Audit.Output)
+	}
 	if slices.Contains(cfg.Listeners.CORS.AllowedOrigins, "*") {
 		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
@@ -255,10 +260,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiUtil := &utils.APIUtil{}
 
 	// Initialize services
-	auditService, err := service.NewAuditService(auditRepo, cfg.Audit, slogger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize audit service: %w", err)
-	}
+	auditService := service.NewAuditService(auditRepo, cfg.Audit, slogger)
 	identityService := service.NewIdentityService(userIdentityMappingRepo)
 	orgService := service.NewOrganizationService(
 		orgRepo,

@@ -83,8 +83,7 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 	createTestSecret(t, secretSvc, mcpSecretITOrgUUID, "mcp-it-secret-b", "sk-mcp-real-token-B")
 
 	mcpRepo := repository.NewMCPProxyRepo(db)
-	auditSvc, _ := NewAuditService(repository.NewAuditRepo(db), config.Audit{}, slog.Default())
-	mcpSvc := NewMCPProxyService(mcpRepo, nil, nil, nil, nil, slog.Default(), auditSvc, &config.Server{}, identity)
+	mcpSvc := NewMCPProxyService(mcpRepo, nil, nil, nil, nil, slog.Default(), NewAuditService(repository.NewAuditRepo(db), config.Audit{}, slog.Default()), &config.Server{}, identity)
 	mcpSvc.WithSecretService(secretSvc)
 
 	createReq := &api.MCPProxy{
