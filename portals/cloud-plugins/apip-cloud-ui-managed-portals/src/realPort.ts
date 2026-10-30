@@ -154,7 +154,7 @@ type WirePortalList = { count?: number; list?: WirePortal[] };
  * button (see fallback in ManagedPortalsList).
  */
 function normalizeStatus(raw?: string): ManagedPortalStatus | undefined {
-  if (raw === 'pending' || raw === 'active' || raw === 'failed') return raw;
+  if (raw === 'pending' || raw === 'active' || raw === 'failed' || raw === 'deleting') return raw;
   return undefined;
 }
 
@@ -245,7 +245,9 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       return fromWire(body);
     },
     async remove(id: string) {
-      await request<void>(base, orgHandle, 'DELETE', url(id));
+      // 204: deleted. 202: the cloud's orchestrator tears it down; the body says deleting.
+      const accepted = await request<{ status?: string } | undefined>(base, orgHandle, 'DELETE', url(id));
+      return { pending: accepted?.status === 'deleting' };
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
       // Sibling endpoint reached via the same BFF proxy and org-id header as the portal calls.
