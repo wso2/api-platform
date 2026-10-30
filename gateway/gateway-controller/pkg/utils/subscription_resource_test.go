@@ -116,7 +116,7 @@ func TestSubscriptionResourceServiceSaveSubscription_PublishesAfterDBWrite(t *te
 		Status:            models.SubscriptionStatusActive,
 	}
 
-	err := service.SaveSubscription(sub, "corr-sub-create", newSubscriptionResourceTestLogger())
+	err := service.SaveSubscription(sub, "corr-sub-create", "", newSubscriptionResourceTestLogger())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"save_subscription", "publish_event"}, calls)

@@ -20,6 +20,7 @@ package utils
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -222,6 +223,10 @@ func (m *testMockDB) GetDB() *sql.DB { return nil }
 func (m *testMockDB) Close() error   { return nil }
 
 // Secret management methods
+
+func (m *testMockDB) SaveAudit(string, time.Time, string, string, string, string, string) error {
+	return nil
+}
 
 func (m *testMockDB) SaveSecret(secret *models.Secret) error   { return nil }
 func (m *testMockDB) GetSecrets() ([]models.SecretMeta, error) { return nil, nil }

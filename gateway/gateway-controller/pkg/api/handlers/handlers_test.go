@@ -4344,3 +4344,7 @@ func TestOpenAPI_WarningCodeEnum_CoversEveryEmittedCode(t *testing.T) {
 		}
 	}
 }
+
+func (m *MockStorage) SaveAudit(string, time.Time, string, string, string, string, string) error {
+	return nil
+}

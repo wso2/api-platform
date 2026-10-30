@@ -30,6 +30,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	"github.com/wso2/api-platform/common/redact"
@@ -46,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -95,12 +97,23 @@ type APIServer struct {
 	// defaultIdentityMu serialises the role: default check with the save,
 	// so one replica never stores two default identities.
 	defaultIdentityMu sync.Mutex
+
+	auditService *audit.AuditService
 }
 
 // SetEncryptionManager wires the encryption provider manager used to
 // encrypt a gateway identity's private key before it is persisted.
 func (s *APIServer) SetEncryptionManager(mgr *encryption.ProviderManager) {
 	s.encryptionManager = mgr
+}
+
+func (s *APIServer) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
+	s.deploymentService.SetAuditService(auditService)
+	s.apiKeyService.SetAuditService(auditService)
+	s.mcpDeploymentService.SetAuditService(auditService)
+	s.llmDeploymentService.SetAuditService(auditService)
+	s.getSubscriptionResourceService().SetAuditService(auditService)
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -608,6 +621,11 @@ func (s *APIServer) getPolicyChainVersionString() string {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func actorFromRequest(r *http.Request) string {
+	user, _ := authenticators.GetAuthContext(r)
+	return user.UserID
+}
 
 // extractAuthenticatedUser extracts and validates the authenticated user from the request context.
 // Returns the AuthContext object and handles error responses automatically.

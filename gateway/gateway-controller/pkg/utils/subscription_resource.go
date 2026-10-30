@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -41,6 +42,11 @@ type SubscriptionResourceService struct {
 	snapshotUpdater SubscriptionSnapshotUpdater
 	eventHub        eventhub.EventHub
 	gatewayID       string
+	auditService    *audit.AuditService
+}
+
+func (s *SubscriptionResourceService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 // NewSubscriptionResourceService creates a new service for subscription-related resources.
@@ -64,10 +70,14 @@ func NewSubscriptionResourceService(
 }
 
 // SaveSubscription stores a new subscription and publishes a replica-sync event after the DB write succeeds.
-func (s *SubscriptionResourceService) SaveSubscription(sub *models.Subscription, correlationID string, logger *slog.Logger) error {
-	return s.persistAndSync(eventhub.EventTypeSubscription, "CREATE", sub.ID, true, correlationID, logger, func() error {
+func (s *SubscriptionResourceService) SaveSubscription(sub *models.Subscription, correlationID, actor string, logger *slog.Logger) error {
+	if err := s.persistAndSync(eventhub.EventTypeSubscription, "CREATE", sub.ID, true, correlationID, logger, func() error {
 		return s.requireDB().SaveSubscription(sub)
-	})
+	}); err != nil {
+		return err
+	}
+	s.auditService.Record("CREATE", sub.ID, "subscription", actor, correlationID)
+	return nil
 }
 
 // UpsertSubscription stores or updates a subscription and publishes the supplied action.
@@ -97,24 +107,36 @@ func (s *SubscriptionResourceService) UpsertSubscription(sub *models.Subscriptio
 }
 
 // UpdateSubscription updates an existing subscription and publishes a replica-sync event after the DB write succeeds.
-func (s *SubscriptionResourceService) UpdateSubscription(sub *models.Subscription, correlationID string, logger *slog.Logger) error {
-	return s.persistAndSync(eventhub.EventTypeSubscription, "UPDATE", sub.ID, true, correlationID, logger, func() error {
+func (s *SubscriptionResourceService) UpdateSubscription(sub *models.Subscription, correlationID, actor string, logger *slog.Logger) error {
+	if err := s.persistAndSync(eventhub.EventTypeSubscription, "UPDATE", sub.ID, true, correlationID, logger, func() error {
 		return s.requireDB().UpdateSubscription(sub)
-	})
+	}); err != nil {
+		return err
+	}
+	s.auditService.Record("UPDATE", sub.ID, "subscription", actor, correlationID)
+	return nil
 }
 
 // DeleteSubscription removes a subscription and publishes a replica-sync event after the DB write succeeds.
-func (s *SubscriptionResourceService) DeleteSubscription(id, correlationID string, logger *slog.Logger) error {
-	return s.persistAndSync(eventhub.EventTypeSubscription, "DELETE", id, true, correlationID, logger, func() error {
+func (s *SubscriptionResourceService) DeleteSubscription(id, correlationID, actor string, logger *slog.Logger) error {
+	if err := s.persistAndSync(eventhub.EventTypeSubscription, "DELETE", id, true, correlationID, logger, func() error {
 		return s.requireDB().DeleteSubscription(id, "")
-	})
+	}); err != nil {
+		return err
+	}
+	s.auditService.Record("DELETE", id, "subscription", actor, correlationID)
+	return nil
 }
 
 // SaveSubscriptionPlan stores a new subscription plan and publishes a replica-sync event after the DB write succeeds.
-func (s *SubscriptionResourceService) SaveSubscriptionPlan(plan *models.SubscriptionPlan, correlationID string, logger *slog.Logger) error {
-	return s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "CREATE", plan.ID, true, correlationID, logger, func() error {
+func (s *SubscriptionResourceService) SaveSubscriptionPlan(plan *models.SubscriptionPlan, correlationID, actor string, logger *slog.Logger) error {
+	if err := s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "CREATE", plan.ID, true, correlationID, logger, func() error {
 		return s.requireDB().SaveSubscriptionPlan(plan)
-	})
+	}); err != nil {
+		return err
+	}
+	s.auditService.Record("CREATE", plan.ID, "subscription_plan", actor, correlationID)
+	return nil
 }
 
 // UpsertSubscriptionPlan stores or updates a subscription plan and publishes the supplied action.
@@ -137,17 +159,25 @@ func (s *SubscriptionResourceService) UpsertSubscriptionPlan(plan *models.Subscr
 }
 
 // UpdateSubscriptionPlan updates an existing subscription plan and publishes a replica-sync event after the DB write succeeds.
-func (s *SubscriptionResourceService) UpdateSubscriptionPlan(plan *models.SubscriptionPlan, correlationID string, logger *slog.Logger) error {
-	return s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "UPDATE", plan.ID, true, correlationID, logger, func() error {
+func (s *SubscriptionResourceService) UpdateSubscriptionPlan(plan *models.SubscriptionPlan, correlationID, actor string, logger *slog.Logger) error {
+	if err := s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "UPDATE", plan.ID, true, correlationID, logger, func() error {
 		return s.requireDB().UpdateSubscriptionPlan(plan)
-	})
+	}); err != nil {
+		return err
+	}
+	s.auditService.Record("UPDATE", plan.ID, "subscription_plan", actor, correlationID)
+	return nil
 }
 
 // DeleteSubscriptionPlan removes a subscription plan and publishes a replica-sync event after the DB write succeeds.
-func (s *SubscriptionResourceService) DeleteSubscriptionPlan(id, correlationID string, logger *slog.Logger) error {
-	return s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "DELETE", id, true, correlationID, logger, func() error {
+func (s *SubscriptionResourceService) DeleteSubscriptionPlan(id, correlationID, actor string, logger *slog.Logger) error {
+	if err := s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "DELETE", id, true, correlationID, logger, func() error {
 		return s.requireDB().DeleteSubscriptionPlan(id, "")
-	})
+	}); err != nil {
+		return err
+	}
+	s.auditService.Record("DELETE", id, "subscription_plan", actor, correlationID)
+	return nil
 }
 
 // ReplaceApplicationAPIKeyMappings persists canonical application metadata and publishes a replica-sync event.

@@ -33,6 +33,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -85,6 +86,11 @@ type AgentService struct {
 	// deploymentPushEnabled is false, nothing is pushed.
 	controlPlaneClient    utils.ArtifactPusher
 	deploymentPushEnabled bool
+	auditService          *audit.AuditService
+}
+
+func (s *AgentService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 // SetControlPlanePusher wires the DP->CP push dependency. It is called on the
@@ -152,6 +158,7 @@ type CreateParams struct {
 	// stale one. Defaults to now.
 	DeployedAt *time.Time
 	Logger     *slog.Logger
+	Actor      string
 }
 
 // Create deploys a new Agent configuration.
@@ -241,6 +248,7 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 		action = "UPDATE"
 	}
 	s.publishEvent(action, artifactID, params.CorrelationID, log)
+	s.auditService.Record(action, artifactID, "agent", params.Actor, params.CorrelationID)
 
 	s.pushDeployedArtifact(storedCfg, params.CorrelationID, log)
 
@@ -345,6 +353,7 @@ type UpdateParams struct {
 	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Update modifies an existing Agent configuration.
@@ -403,6 +412,7 @@ func (s *AgentService) Update(params UpdateParams) (*UpdateResult, error) {
 	}
 
 	s.publishEvent("UPDATE", existing.UUID, params.CorrelationID, log)
+	s.auditService.Record("UPDATE", existing.UUID, "agent", params.Actor, params.CorrelationID)
 	s.pushDeployedArtifact(existing, params.CorrelationID, log)
 
 	log.Info("Agent configuration updated",
@@ -494,6 +504,7 @@ type DeleteParams struct {
 	Handle        string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Delete removes an Agent configuration.
@@ -523,6 +534,7 @@ func (s *AgentService) Delete(params DeleteParams) (*DeleteResult, error) {
 	}
 
 	s.publishEvent("DELETE", cfg.UUID, params.CorrelationID, log)
+	s.auditService.Record("DELETE", cfg.UUID, "agent", params.Actor, params.CorrelationID)
 	s.pushArtifactUndeploy(cfg, log)
 
 	log.Info("Agent configuration deleted",
