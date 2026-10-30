@@ -41,6 +41,7 @@ import {
 import type { AIWorkspaceHostPort } from "../../../../ai-workspace/src/hostPort";
 import {
   CONTROLPLANE_HOST,
+  DEFAULT_CONTROLPLANE_HOST,
   PLATFORM_GATEWAY_VERSIONS,
 } from "../../../../ai-workspace/src/config.env";
 import {
@@ -181,7 +182,10 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
               port={{
                 ...port,
                 gatewayVersions: AI_GATEWAY_VERSIONS,
-                controlPlaneHost: CONTROLPLANE_HOST,
+                // Only an address the deployment set: the local-Docker default is no address for a
+                // gateway running anywhere else, so the setup commands show a placeholder instead.
+                controlPlaneHost:
+                  CONTROLPLANE_HOST === DEFAULT_CONTROLPLANE_HOST ? undefined : CONTROLPLANE_HOST,
               }}
             />
           ),

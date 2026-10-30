@@ -252,17 +252,22 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         // A gateway torn down in the background stays listed as deleting, and the
         // status poll drops it once it is gone.
         const target = gateways.find((candidate) => candidate.id === id);
+        let deletionPending = false;
         if (target?.hosting === 'self-hosted') {
           await selfHostedClient.deleteGateway(id);
           notify(`Gateway "${name}" deleted.`, 'success');
         } else {
           const { pending } = await client.deleteGateway(id);
+          deletionPending = pending;
           if (pending) {
             notify(`Gateway "${name}" is being deleted.`, 'info');
           } else {
             notify(`Gateway "${name}" deleted.`, 'success');
           }
         }
+        // Drop the row now: if the reload of its kind fails, that kind keeps what was last loaded,
+        // and the deleted gateway would otherwise stay listed.
+        if (!deletionPending) setGateways((previous) => previous.filter((gateway) => gateway.id !== id));
         await load();
       } catch (deleteError) {
         notify(
@@ -374,6 +379,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         setView('edit');
       }}
       onViewClick={(gatewayId) => {
+        // The token belongs to the gateway just registered, not to whichever one is opened next.
+        setSetupToken(null);
         setViewingGatewayId(gatewayId);
         setView('view');
       }}

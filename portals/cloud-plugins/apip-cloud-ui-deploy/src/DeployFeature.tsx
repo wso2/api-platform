@@ -138,19 +138,28 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const load = useCallback(
     async (options: { quiet?: boolean } = {}) => {
       if (!client) return;
+      // `DeployFeature` stays mounted when the route moves to another artifact, so a read
+      // that was started for the last one can resolve after the next is showing. It must
+      // not write its pipeline, builds or error over the new artifact's.
+      const scope = scopeRef.current;
+      const isStale = () => scopeRef.current !== scope;
       if (!options.quiet) setLoading(true);
       try {
-        const [stages, prepared] = await Promise.all([
-          client.listEnvironments(),
-          client.listBuilds(),
-        ]);
-        setEnvironments(stages);
-        setBuilds(prepared);
+        // The two reads are independent: the environments (and the gateways in them) are
+        // what the setup drawer and the poll depend on, so they are kept even when the
+        // builds read fails. The failure itself is still reported below.
+        const [stages, prepared] = await Promise.allSettled([client.listEnvironments(), client.listBuilds()]);
+        if (isStale()) return;
+        if (stages.status === 'rejected') throw stages.reason;
+        setEnvironments(stages.value);
+        if (prepared.status === 'rejected') throw prepared.reason;
+        setBuilds(prepared.value);
         setError(null);
       } catch (loadError) {
+        if (isStale()) return;
         setError(errorMessage(loadError, 'Unable to load the deployment pipeline.'));
       } finally {
-        if (!options.quiet) setLoading(false);
+        if (!options.quiet && !isStale()) setLoading(false);
       }
     },
     [client]
