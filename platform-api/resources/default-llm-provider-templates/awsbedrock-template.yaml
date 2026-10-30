@@ -37,6 +37,7 @@ spec:
       valuePrefix: "Bearer "
     logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/awsbedrock/icon.png
     openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/awsbedrock/openapi.yaml
+    deploymentType: managed
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens

@@ -30,6 +30,7 @@ spec:
       header: x-api-key
     logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/anthropic/icon.png
     openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/anthropic/openapi.yaml
+    deploymentType: managed
   promptTokens:
     location: payload
     identifier: $.usage.input_tokens

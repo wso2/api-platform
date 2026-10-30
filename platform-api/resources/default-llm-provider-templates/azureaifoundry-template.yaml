@@ -29,6 +29,7 @@ spec:
       header: api-key
     logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/azureai-foundry/icon.png
     openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/azureai-foundry/openapi.yaml
+    deploymentType: managed
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens
