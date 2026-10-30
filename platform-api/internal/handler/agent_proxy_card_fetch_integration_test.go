@@ -131,7 +131,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
-	secretSvc := service.NewSecretService(repository.NewSecretRepo(db), v, identity)
+	secretSvc := service.NewSecretService(repository.NewSecretRepo(db), v, identity, nil)
 
 	hub := newFaultyEventHub(t, sqlDB)
 	gatewayEvents := service.NewGatewayEventsService(hub, identity, slog.Default())
@@ -162,6 +162,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		identity,
 		cfg,
 		slog.New(slog.NewJSONHandler(deployLogs, nil)),
+		nil,
 	)
 
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)

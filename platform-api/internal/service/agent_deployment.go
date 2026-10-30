@@ -52,16 +52,18 @@ type AgentDeploymentService struct {
 	cfg                  *config.Server
 	// builds is the shared build store every artifact kind uses; a deploy from
 	// `current` renders through it so the snapshot commits with the deployment.
-	builds  *BuildService
-	slogger *slog.Logger
+	builds       *BuildService
+	slogger      *slog.Logger
+	auditService *AuditService
 }
 
 // NewAgentDeploymentService creates a new AgentDeploymentService.
 func NewAgentDeploymentService(agentRepo repository.AgentProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, artifactRepo repository.ArtifactRepository,
 	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
-	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *AgentDeploymentService {
+	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger, auditService *AuditService) *AgentDeploymentService {
 	return &AgentDeploymentService{
+		auditService:         auditService,
 		agentRepo:            agentRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
@@ -277,6 +279,10 @@ func (s *AgentDeploymentService) DeployByHandle(handle string, req *api.DeployRe
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gateway.ID, createdBy)
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("DEPLOY", deploymentID, "deployment", orgUUID, createdBy)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -319,7 +325,7 @@ func (s *AgentDeploymentService) translateForGateway(gatewayKind string, definit
 
 // UndeployByHandle begins undeploying a deployment from its bound gateway. The
 // gatewayHandle must name that gateway; the returned deployment is UNDEPLOYING.
-func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.resolveAgentProxy(handle, orgUUID)
 	if err != nil {
 		return nil, err
@@ -373,6 +379,10 @@ func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayH
 		}
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("UNDEPLOY", deploymentID, "deployment", orgUUID, actor)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -392,7 +402,7 @@ func (s *AgentDeploymentService) UndeployByHandle(handle, deploymentID, gatewayH
 // The stored snapshot is shipped as it is — never re-rendered or re-translated —
 // so a restore puts back exactly what was deployed. The returned deployment is
 // DEPLOYING.
-func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHandle, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHandle, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.resolveAgentProxy(handle, orgUUID)
 	if err != nil {
 		return nil, err
@@ -461,6 +471,10 @@ func (s *AgentDeploymentService) RestoreByHandle(handle, deploymentID, gatewayHa
 		}
 
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, target.GatewayID, "")
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("RESTORE", deploymentID, "deployment", orgUUID, actor)
 	}
 
 	resp, err := toAPIDeploymentResponse(

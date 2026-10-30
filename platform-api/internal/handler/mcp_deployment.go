@@ -137,7 +137,8 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(w http.ResponseWr
 		return apperror.ValidationFailed.New("MCP proxy ID is required")
 	}
 
-	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to undeploy MCP proxy %s deployment %s on gateway %s", proxyId, deploymentId, gatewayId))
@@ -169,7 +170,8 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(w http.ResponseWri
 		return apperror.ValidationFailed.New("MCP proxy ID is required")
 	}
 
-	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
+	actor, _ := h.identity.InternalUserID(r)
+	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
 		return serviceError(err, fmt.Sprintf("failed to restore MCP proxy %s deployment %s on gateway %s", proxyId, deploymentId, gatewayId))

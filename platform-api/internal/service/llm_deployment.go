@@ -66,6 +66,7 @@ type LLMProviderDeploymentService struct {
 	secretService *SecretService
 	cfg           *config.Server
 	slogger       *slog.Logger
+	auditService  *AuditService
 }
 
 // LLMProxyDeploymentService handles business logic for LLM proxy deployment operations
@@ -81,6 +82,7 @@ type LLMProxyDeploymentService struct {
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	auditService         *AuditService
 }
 
 // NewLLMProviderDeploymentService creates a new LLM provider deployment service
@@ -97,8 +99,10 @@ func NewLLMProviderDeploymentService(
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	auditService *AuditService,
 ) *LLMProviderDeploymentService {
 	return &LLMProviderDeploymentService{
+		auditService:         auditService,
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		providerRepo:         providerRepo,
 		templateRepo:         templateRepo,
@@ -132,8 +136,10 @@ func NewLLMProxyDeploymentService(
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	auditService *AuditService,
 ) *LLMProxyDeploymentService {
 	return &LLMProxyDeploymentService{
+		auditService:         auditService,
 		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		proxyRepo:            proxyRepo,
 		deploymentRepo:       deploymentRepo,
@@ -448,6 +454,10 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("DEPLOY", deploymentID, "deployment", orgUUID, createdBy)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -464,7 +474,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 }
 
 // RestoreLLMProviderDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
-func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -545,6 +555,10 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("RESTORE", deploymentID, "deployment", orgUUID, actor)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
@@ -561,7 +575,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 }
 
 // UndeployLLMProviderDeployment undeploys an active deployment
-func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	provider, err := s.providerRepo.GetByID(providerID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -630,6 +644,10 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		if err := s.gatewayEventsService.BroadcastLLMProviderUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider undeployment event", "error", err)
 		}
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("UNDEPLOY", deploymentID, "deployment", orgUUID, actor)
 	}
 
 	resp, err := toAPIDeploymentResponse(
@@ -1825,6 +1843,10 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("DEPLOY", deploymentID, "deployment", orgUUID, createdBy)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -1841,7 +1863,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 }
 
 // RestoreLLMProxyDeployment restores a previous deployment (ARCHIVED or UNDEPLOYED)
-func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -1922,6 +1944,10 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("RESTORE", deploymentID, "deployment", orgUUID, actor)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
@@ -1938,7 +1964,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 }
 
 // UndeployLLMProxyDeployment undeploys an active deployment
-func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	proxy, err := s.proxyRepo.GetByID(proxyID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -2007,6 +2033,10 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		if err := s.gatewayEventsService.BroadcastLLMProxyUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy undeployment event", "error", err)
 		}
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("UNDEPLOY", deploymentID, "deployment", orgUUID, actor)
 	}
 
 	resp, err := toAPIDeploymentResponse(

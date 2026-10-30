@@ -60,6 +60,7 @@ type GraphQLAPIDeploymentService struct {
 	builds               *BuildService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	auditService         *AuditService
 }
 
 // NewGraphQLAPIDeploymentService creates a new GraphQL API deployment service.
@@ -75,8 +76,10 @@ func NewGraphQLAPIDeploymentService(
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	auditService *AuditService,
 ) *GraphQLAPIDeploymentService {
 	return &GraphQLAPIDeploymentService{
+		auditService:         auditService,
 		graphqlRepo:          graphqlRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
@@ -372,6 +375,10 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiModel.ID, gatewayID, createdBy)
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("DEPLOY", deploymentID, "deployment", orgUUID, createdBy)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -389,7 +396,7 @@ func (s *GraphQLAPIDeploymentService) DeployGraphQLAPI(apiID string, req *api.De
 
 // RestoreGraphQLAPIDeployment restores a previous deployment (ARCHIVED or
 // UNDEPLOYED). Mirrors LLMProviderDeploymentService.RestoreLLMProviderDeployment.
-func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiModel, err := s.graphqlRepo.GetByHandle(apiID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -461,6 +468,10 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploym
 		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiModel.ID, targetDeployment.GatewayID, "")
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("RESTORE", deploymentID, "deployment", orgUUID, actor)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		targetDeployment.DeploymentID,
@@ -478,7 +489,7 @@ func (s *GraphQLAPIDeploymentService) RestoreGraphQLAPIDeployment(apiID, deploym
 
 // UndeployGraphQLAPIDeployment undeploys an active deployment. Mirrors
 // LLMProviderDeploymentService.UndeployLLMProviderDeployment.
-func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(apiID, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(apiID, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiModel, err := s.graphqlRepo.GetByHandle(apiID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -539,6 +550,10 @@ func (s *GraphQLAPIDeploymentService) UndeployGraphQLAPIDeployment(apiID, deploy
 		if err := s.gatewayEventsService.BroadcastGraphQLAPIUndeploymentEvent(deployment.GatewayID, undeploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast GraphQL API undeployment event", "error", err)
 		}
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("UNDEPLOY", deploymentID, "deployment", orgUUID, actor)
 	}
 
 	resp, err := toAPIDeploymentResponse(

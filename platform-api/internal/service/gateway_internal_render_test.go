@@ -99,7 +99,7 @@ func setupRenderITEnv(t *testing.T) *renderITEnv {
 	require.NoError(t, err)
 	identity := NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	secretRepo := repository.NewSecretRepo(db)
-	secretSvc := NewSecretService(secretRepo, v, identity)
+	secretSvc := NewSecretService(secretRepo, v, identity, nil)
 	createTestSecret(t, secretSvc, renderITOrg, renderITSecret, renderITPlaintext)
 
 	deploymentRepo := repository.NewDeploymentRepo(db, repository.NewArtifactTableRegistry())

@@ -88,7 +88,7 @@ func setupAPISecretTestEnv(t *testing.T) (*APIService, *SecretService, func()) {
 
 	identity := NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	secretRepo := repository.NewSecretRepo(db)
-	secretSvc := NewSecretService(secretRepo, v, identity)
+	secretSvc := NewSecretService(secretRepo, v, identity, nil)
 
 	apiRepo := repository.NewAPIRepo(db)
 	projectRepo := repository.NewProjectRepo(db)

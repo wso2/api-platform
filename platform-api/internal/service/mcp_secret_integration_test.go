@@ -77,7 +77,7 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 	}
 	identity := NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	secretRepo := repository.NewSecretRepo(db)
-	secretSvc := NewSecretService(secretRepo, v, identity)
+	secretSvc := NewSecretService(secretRepo, v, identity, nil)
 
 	createTestSecret(t, secretSvc, mcpSecretITOrgUUID, "mcp-it-secret-a", "sk-mcp-real-token-A")
 	createTestSecret(t, secretSvc, mcpSecretITOrgUUID, "mcp-it-secret-b", "sk-mcp-real-token-B")

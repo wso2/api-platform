@@ -325,9 +325,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
+		auditService,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger, auditService)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger, auditService)
 	agentProxyAPIKeyService := service.NewAgentProxyAPIKeyService(agentProxyRepo, apiKeyRepo, identityService)
 	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
@@ -342,6 +343,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
+		auditService,
 	)
 	mcpDeploymentService := service.NewMCPDeploymentService(
 		mcpProxyRepo,
@@ -355,6 +357,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
+		auditService,
 	)
 	agentDeploymentService := service.NewAgentDeploymentService(
 		agentProxyRepo,
@@ -367,6 +370,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
+		auditService,
 	)
 	graphqlAPIDeploymentService := service.NewGraphQLAPIDeploymentService(
 		graphqlAPIRepo,
@@ -380,6 +384,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
+		auditService,
 	)
 	// One place that knows which service serves which artifact kind, so plugins and
 	// the per-kind paths reach the same code.
@@ -418,7 +423,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if vaultErr != nil {
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
-	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
+	secretService := service.NewSecretService(secretRepo, secretVault, identityService, auditService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditService, secretVault, apiPortalAuthRegistry, identityService, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, &cfg.APIPortalPublication, slogger)
@@ -576,6 +581,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		GatewayEventsService:  gatewayEventsService,
 		APIKeyService:         apiKeyService,
 		IdentityService:       identityService,
+		AuditService:          auditService,
 		DBEncryptionKey:       dbEncryptionKey,
 	}
 

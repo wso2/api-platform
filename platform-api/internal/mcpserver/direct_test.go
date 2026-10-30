@@ -199,13 +199,13 @@ func newRealDirect(t *testing.T) realDirect {
 		Gateways:    service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, events, logger, false, false, auditRepo, identity),
 
 		LLMProviders:           providers,
-		LLMProviderDeployments: service.NewLLMProviderDeploymentService(providerRepo, templateRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger),
+		LLMProviderDeployments: service.NewLLMProviderDeploymentService(providerRepo, templateRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger, nil),
 		LLMProxies:             proxies,
-		LLMProxyDeployments:    service.NewLLMProxyDeploymentService(proxyRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger),
+		LLMProxyDeployments:    service.NewLLMProxyDeploymentService(proxyRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger, nil),
 		MCPProxies:             service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, auditRepo, cfg, identity),
-		MCPProxyDeployments:    service.NewMCPDeploymentService(mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger),
+		MCPProxyDeployments:    service.NewMCPDeploymentService(mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger, nil),
 		AgentProxies:           service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, events, logger, auditRepo, cfg, identity),
-		AgentProxyDeployments:  service.NewAgentDeploymentService(agentProxyRepo, deploymentRepo, gatewayRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger),
+		AgentProxyDeployments:  service.NewAgentDeploymentService(agentProxyRepo, deploymentRepo, gatewayRepo, artifactRepo, apiKeyRepo, events, definitions, identity, cfg, logger, nil),
 	})
 	require.NoError(t, err)
 
