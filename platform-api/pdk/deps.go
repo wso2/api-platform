@@ -69,6 +69,17 @@ type Gateways interface {
 
 	// DeleteGateway removes a gateway within an organization (Delete).
 	DeleteGateway(gatewayID, orgID, deletedBy string) error
+
+	// RotateToken issues a new registration token for a gateway, returning the
+	// plain token once; only its hash is stored. A gateway holds at most two
+	// active tokens.
+	RotateToken(gatewayID, orgID, createdBy string) (*api.TokenRotationResponse, error)
+
+	// ListTokens returns a page of a gateway's active tokens (no token values).
+	ListTokens(gatewayID, orgID string, limit, offset int) (*api.GatewayTokenListResponse, error)
+
+	// RevokeToken revokes one of a gateway's tokens.
+	RevokeToken(gatewayID, tokenID, orgID, revokedBy string) error
 }
 
 // Projects exposes create/read/delete access to the platform's projects, scoped
