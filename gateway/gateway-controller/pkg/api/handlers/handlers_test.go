@@ -916,6 +916,8 @@ type MockControlPlaneClient struct {
 	mu            sync.Mutex
 	pushedIDs     []string
 	pushedConfigs []models.StoredConfig
+	// syncedKeyArtifacts lists the artifact UUIDs passed to SyncAPIKeysForArtifact.
+	syncedKeyArtifacts []string
 }
 
 func (m *MockControlPlaneClient) Connect() error {
@@ -1124,6 +1126,15 @@ func (m *MockControlPlaneClient) SubmitAPIMSyncAndWait(task func()) {
 func (m *MockControlPlaneClient) SubmitArtifactPush(task func()) {
 	if task != nil {
 		go task()
+	}
+}
+
+// SyncAPIKeysForArtifact records the artifact whose keys were requested.
+func (m *MockControlPlaneClient) SyncAPIKeysForArtifact(cfg *models.StoredConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if cfg != nil {
+		m.syncedKeyArtifacts = append(m.syncedKeyArtifacts, cfg.UUID)
 	}
 }
 
