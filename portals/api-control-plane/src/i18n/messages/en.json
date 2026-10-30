@@ -794,6 +794,15 @@
   "apiControlPlane.components.ErrorFallback.stale.title": {
     "defaultMessage": "A newer version of the console is available"
   },
+  "apiControlPlane.components.ImportApiIllustration.backendUrl": {
+    "defaultMessage": "Backend URL"
+  },
+  "apiControlPlane.components.ImportApiIllustration.endpoints": {
+    "defaultMessage": "Discovered endpoints"
+  },
+  "apiControlPlane.components.ImportApiIllustration.ready": {
+    "defaultMessage": "API ready"
+  },
   "apiControlPlane.components.StateViews.forbiddenDescription": {
     "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
     "description": "Explanation under the forbidden heading. Names who can fix it, and deliberately not which scope is missing — that is meaningless to the reader and tells a probing caller what to look for."
@@ -874,6 +883,10 @@
   "apiControlPlane.navigation.usePageTitle.newApi": {
     "defaultMessage": "Create API",
     "description": "Browser tab title for the API creation wizard."
+  },
+  "apiControlPlane.navigation.usePageTitle.newProject": {
+    "defaultMessage": "Create project",
+    "description": "Browser tab title for the project creation page."
   },
   "apiControlPlane.navigation.usePageTitle.settings": {
     "defaultMessage": "Settings",
@@ -2456,7 +2469,7 @@
     "defaultMessage": "Design and build APIs inside projects, run them on gateways, and publish them to developer portals for your consumers."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle": {
-    "defaultMessage": "Welcome to {organizationName}",
+    "defaultMessage": "Hello, {organizationName}",
     "description": "{organizationName} is the display name of the organization. Never translated."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteAriaLabel": {
@@ -2527,16 +2540,10 @@
     "defaultMessage": "Choose a project"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd": {
-    "defaultMessage": "New project"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmpty": {
-    "defaultMessage": "No projects match your search."
+    "defaultMessage": "Create Project"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsNone": {
     "defaultMessage": "No projects yet."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsSearch": {
-    "defaultMessage": "Search projects"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsTitle": {
     "defaultMessage": "Projects"
@@ -2914,6 +2921,62 @@
     "defaultMessage": "tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
     "description": "Token-count limit unit. {amount} and {timeUnit} describe the window."
   },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.back": {
+    "defaultMessage": "Back to Projects"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.create": {
+    "defaultMessage": "Create"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.creating": {
+    "defaultMessage": "Creating…",
+    "description": "Label on the submit button while the project is being created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.description.label": {
+    "defaultMessage": "Description",
+    "description": "Label for the project description field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.description.placeholder": {
+    "defaultMessage": "What is this project for?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.id.edit": {
+    "defaultMessage": "Edit project ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.id.error.length": {
+    "defaultMessage": "Project ID must be {min}–{max} characters."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.id.label": {
+    "defaultMessage": "Project ID",
+    "description": "Label for the project handle field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.error.required": {
+    "defaultMessage": "Enter a project name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.error.tooLong": {
+    "defaultMessage": "Name must be {max} characters or fewer."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.label": {
+    "defaultMessage": "Name",
+    "description": "Label for the project name field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.placeholder": {
+    "defaultMessage": "e.g. Customer Support Platform"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.notification.createFailed": {
+    "defaultMessage": "Failed to create project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.notification.created": {
+    "defaultMessage": "Project created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.optional": {
+    "defaultMessage": "(optional)",
+    "description": "Suffix after a field label marking the field as not required."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.title": {
+    "defaultMessage": "Create a project"
+  },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
     "description": "Accessible label for the delete button on a project row."
@@ -2939,45 +3002,6 @@
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.updatedColumn": {
     "defaultMessage": "Updated",
     "description": "Column header over the last-updated timestamp."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.cancel": {
-    "defaultMessage": "Cancel"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.create": {
-    "defaultMessage": "Create"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.creating": {
-    "defaultMessage": "Creating…",
-    "description": "Label on the submit button while the project is being created."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.description.label": {
-    "defaultMessage": "Description",
-    "description": "Label for the project description field. A noun, not a command."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.description.placeholder": {
-    "defaultMessage": "What this project is for (optional)"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.error.tooLong": {
-    "defaultMessage": "Name must be {max} characters or fewer."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.helper": {
-    "defaultMessage": "A unique name for the project within this organization."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.label": {
-    "defaultMessage": "Name",
-    "description": "Label for the project name field. A noun, not a command."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.placeholder": {
-    "defaultMessage": "e.g. Retail APIs"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.notification.createFailed": {
-    "defaultMessage": "Failed to create project"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.notification.created": {
-    "defaultMessage": "Project created"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.title": {
-    "defaultMessage": "Create project"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.created": {
     "defaultMessage": "<muted>Created</muted> {date}"

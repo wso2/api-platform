@@ -78,6 +78,11 @@ const GatewayDetailPage = lazy(() =>
     default: m.GatewayDetailPage,
   })),
 );
+const ProjectCreatePage = lazy(() =>
+  import('../pages/appShell/appShellPages/projects').then((m) => ({
+    default: m.ProjectCreatePage,
+  })),
+);
 const ProjectHomePage = lazy(() =>
   import('../pages/appShell/appShellPages/projects').then((m) => ({
     default: m.ProjectHomePage,
@@ -482,6 +487,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
           <Route path={routes.organizationHome()} element={<OrganizationHomePage />} />
           <Route path={routes.projects()} element={<ProjectListPage />} />
+          <Route path={routes.newProject()} element={<ProjectCreatePage />} />
           <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />
           {/*
             Project and API overview take a single fully-scoped path each: they
