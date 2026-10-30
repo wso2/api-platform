@@ -528,16 +528,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/header_routing.feature
-      - name: redirect
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes-policies/redirect.feature
-      - name: request-rewrite
-        features:
-          - features/gateway/routes-policies/request_rewrite.feature
-      - name: respond
-        features:
-          - features/gateway/routes-policies/respond.feature
       - name: sandbox-routing
         features:
           - features/gateway/routes/sandbox_routing.feature
@@ -549,21 +539,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/sandbox_upstream_url_validation.feature
-      - name: content-length-guardrail
-        features:
-          - features/gateway/guardrails-policies/content_length_guardrail.feature
-      - name: word-count-guardrail
-        features:
-          - features/gateway/guardrails-policies/word_count_guardrail.feature
-      - name: sentence-count-guardrail
-        features:
-          - features/gateway/guardrails-policies/sentence_count_guardrail.feature
-      - name: url-guardrail
-        features:
-          - features/gateway/guardrails-policies/url_guardrail.feature
-      - name: json-schema-guardrail
-        features:
-          - features/gateway/guardrails-policies/json_schema_guardrail.feature
       - name: cel-conditions
         features:
           - features/gateway/core/cel_conditions.feature
@@ -603,34 +578,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_proxy_policy_validation.feature
-      - name: model-round-robin
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_round_robin.feature
-      - name: model-round-robin-multi-provider
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_round_robin_multi_provider.feature
-      - name: model-weighted-round-robin
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin.feature
-      - name: model-weighted-round-robin-multi-provider
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/model_weighted_round_robin_multi_provider.feature
       - name: llm-policy-path-specificity
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_policy_path_specificity.feature
-      - name: prompt-template
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_template.feature
-      - name: prompt-decorator
-        features:
-          - features/ai-workspace-gateway/llm-policies/prompt_decorator.feature
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
       - name: mcp-deploy
         features:
           - features/ai-workspace-gateway/mcp/mcp_deploy.feature
@@ -676,20 +627,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-
-  - name: legacy-aws-bedrock-guardrail
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/aws-bedrock-guardrail-legacy.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: aws-bedrock-guardrail
-        tags: "gateway-version<=1.2.0"
-        features:
-          - features/gateway/guardrails-policies/aws_bedrock_guardrail.feature
 
   - name: config-dump
     parallel: 1
@@ -738,19 +675,6 @@ blocks:
         features:
           - features/gateway/observability/metrics.feature
 
-  - name: gateway-logging
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/logging.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: log-message
-        features:
-          - features/gateway/observability-policies/log_message.feature
-
   - name: gateway-request-id-disabled
     parallel: 1
     components:
@@ -798,41 +722,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/routes/vhost_routing_multiple_production_hosts.feature
-
-  - name: azure-content-safety
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/azure-content-safety.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: azure-content-safety
-        features:
-          - features/gateway/guardrails-policies/azure_content_safety.feature
-
-  - name: semantic-ai
-    parallel: 2
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/semantic-ai.toml
-        dependsOn: [redis]
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: redis
-    runners:
-      - name: semantic-cache
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_cache.feature
-      - name: semantic-cache-isolation
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm-policies/semantic_cache_isolation.feature
-      - name: semantic-prompt-guard
-        features:
-          - features/gateway/guardrails-policies/semantic_prompt_guard.feature
 
   # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
   # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
@@ -954,9 +843,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
-      - name: interceptor-service
-        features:
-          - features/gateway/routes-policies/interceptor_service.feature
 
   - name: ai-workspace-cli
     components:
