@@ -31,6 +31,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	controlplane "github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -262,17 +263,7 @@ func deregisterDeletedPlatformResource(ctx context.Context, rawURL string) error
 }
 
 func isLastProjectValidation(resp *httpx.Response) bool {
-	if resp == nil || resp.StatusCode != http.StatusBadRequest {
-		return false
-	}
-	var body struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(resp.Body, &body); err != nil {
-		return false
-	}
-	return body.Code == "VALIDATION_FAILED" && body.Message == "Organization must have at least one project"
+	return resp != nil && controlplane.IsLastProjectRetention(resp.StatusCode, resp.Body)
 }
 
 func (s *Steps) registerPlatformDeployment(ctx context.Context, collection, handle, deploymentID, gatewayID string) error {

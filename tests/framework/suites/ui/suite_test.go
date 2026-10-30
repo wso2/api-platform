@@ -451,6 +451,9 @@ func platformAPIDeleter(auth *platformAPIAuth, collection string) cleanup.Delete
 		if resp.StatusCode == http.StatusNotFound || resp.Succeeded() {
 			return nil
 		}
+		if res.Kind.Name == cleanup.KindProject.Name && platformapi.IsLastProjectRetention(resp.StatusCode, resp.Body) {
+			return nil
+		}
 		return fmt.Errorf("cleanup: %s", resp.Describe())
 	}
 }

@@ -19,6 +19,7 @@
 package platformapi
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -89,4 +90,14 @@ func TestPlatformAPIMountsThePortalCertificateWithoutChangingTheSharedCryptoMate
 	require.Equal(t, shared.ControlPlaneCrypto()["certs/cert.pem"], definition.Compose.GeneratedFiles["certs/cert.pem"])
 	require.NotContains(t, shared.ControlPlaneCrypto(), "certs/api-portal-ca.pem",
 		"the control plane's shared material must not gain the portal certificate")
+}
+
+func TestIsLastProjectRetention(t *testing.T) {
+	refusal := []byte(`{"status":"error","code":"VALIDATION_FAILED","message":"Organization must have at least one project"}`)
+	require.True(t, IsLastProjectRetention(http.StatusBadRequest, refusal))
+	require.False(t, IsLastProjectRetention(http.StatusConflict, refusal), "only the 400 refusal")
+	require.False(t, IsLastProjectRetention(http.StatusBadRequest,
+		[]byte(`{"code":"VALIDATION_FAILED","message":"Invalid project id"}`)), "another validation failure is a real error")
+	require.False(t, IsLastProjectRetention(http.StatusBadRequest, []byte(`not json`)))
+	require.False(t, IsLastProjectRetention(http.StatusBadRequest, nil))
 }
