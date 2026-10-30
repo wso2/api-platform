@@ -35,9 +35,15 @@ Feature: Load spreading and failover on the same operation
   the next one in the chain did.
 
   A dead target is produced by pointing a provider's upstream at a host that
-  does not resolve. That is a transport failure — deterministic, and independent
-  of the request — unlike a forced status code, which would apply identically to
-  every attempt and so could never demonstrate a rescue.
+  RESOLVES but refuses the connection. That distinction is load-bearing. An
+  unresolvable hostname yields Envoy's local `no_healthy_upstream` reply, which
+  is NOT retriable — the request fails with one attempt and no failover occurs,
+  which is a documented limitation rather than a bug (see poc-results.md). A
+  refused connection yields `connect-failure`, which is retriable, and so is the
+  only transport failure that can demonstrate a rescue at all.
+
+  A forced status code would not do either: it would apply identically to every
+  attempt, so the fallback would fail the same way as the primary.
 
   Background:
     Given the gateway services are running
@@ -63,7 +69,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-dead-ctx
         upstream:
-          url: http://rl-nonexistent-host:9080/dead-upstream
+          url: http://sample-backend:9998
         accessControl:
           mode: allow_all
       """
@@ -197,7 +203,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-susp-dead-ctx
         upstream:
-          url: http://rl-suspend-nonexistent:9080/dead-upstream
+          url: http://sample-backend:9998
         accessControl:
           mode: allow_all
       """
@@ -260,7 +266,7 @@ Feature: Load spreading and failover on the same operation
                 methods: [POST]
                 params:
                   suspendDuration: 300
-                  consecutiveFailures: 1
+                  suspendAfterFailures: 1
                   targets:
                     - model: gpt-4o
       """
@@ -336,7 +342,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-na-dead-ctx
         upstream:
-          url: http://rl-nonadopting-nonexistent:9080/dead-upstream
+          url: http://sample-backend:9998
         accessControl:
           mode: allow_all
       """
@@ -446,7 +452,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-solo-dead-ctx
         upstream:
-          url: http://rl-solo-nonexistent:9080/dead-upstream
+          url: http://sample-backend:9998
         accessControl:
           mode: allow_all
       """

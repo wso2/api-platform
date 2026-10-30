@@ -1185,3 +1185,82 @@ upstream:upstream_LlmProxy_01a18663…_anthropic
 | `x-canon-upstream-policy` | `ran` | the author's `policies` on the canonical entry ran |
 
 All four pieces the defect silently dropped are present on the failover attempt.
+
+---
+
+## Layered routing and failover, end to end (2026-10-30)
+
+First runtime proof that a ranking published by one policy module is consumed
+by another. Everything before this was unit-tested on each side of the module
+boundary separately.
+
+### Setup
+
+`model-round-robin` v1.2.0 rotating two targets, `model-failover` attached with
+**no fallbacks of its own** — so the only depth available is the ranking
+round-robin published. The dead target is a resolvable host with a closed port
+(`connect-failure`, retriable); see the correction below for why.
+
+### Result
+
+```
+ranking key present   go_type=[]map[string]string   decoded=2
+published failover chain   members=2
+```
+
+The pinned carrier crosses the module boundary and decodes. Attempt counts:
+
+| Request | Rotation leads with | HTTP | attempt-count |
+|---|---|---|---|
+| 1 | `gpt-4o` (dead) | 200 | **2** |
+| 2 | `claude@alive` | 200 | **1** |
+| 3 | `gpt-4o` (dead) | 200 | **2** |
+| 4 | `claude@alive` | 200 | **1** |
+
+**2, 1, 2, 1.** The alternation is the proof that round-robin advances once per
+CLIENT request, not once per attempt — had the cursor moved on the retry in
+request 1, request 2 would also have taken two attempts and the pattern would
+read 2, 2, 2, 2.
+
+### Suspension skip
+
+Same fixture with `suspendDuration: 300`, `suspendAfterFailures: 1`:
+
+| Request | Rotation leads with | attempt-count | |
+|---|---|---|---|
+| 1 | `gpt-4o` | **2** | fails, rescued — and is suspended |
+| 2 | `claude@alive` | **1** | |
+| 3 | `gpt-4o` **again** | **1** | round-robin still nominates it; failover skips it |
+
+Request 3 is the discriminator. Round-robin never learned the target was
+suspended — it is not told, by design — and nominated it anyway. A count of 2
+would mean the suspension was ignored and the dead target attempted. A count of
+1 proves both that the suspension is honoured and that **a skip costs no
+attempt**: had skips consumed budget, a chain of mostly-suspended targets would
+exhaust itself stepping over dead entries before reaching a live one.
+
+### Two corrections this run forced
+
+- **The test used an un-rescuable failure mode.** The dead target was on an
+  unresolvable hostname, copied from `failover-core.feature`. That yields
+  Envoy's local `no_healthy_upstream`, which is NOT retriable — this document
+  already recorded that, and the test contradicted it. Every request failed
+  with one attempt and no failover. Switched to a resolvable host with a closed
+  port. **`failover-core.feature` has the same flaw** and has never run in the
+  default suite.
+- **Wrong parameter name.** The fixture used `consecutiveFailures`; the policy
+  schema declares `suspendAfterFailures`. Rejected at deploy with
+  `Additional property consecutiveFailures is not allowed`.
+
+### What actually caused the hour of misdiagnosis
+
+The first run showed `members=1` with round-robin visibly publishing a correct
+two-element ranking, which read as a defect in the consumer. It was not. The
+deployed image had been built from `gateway/dev-policies/model-failover`, a
+manual copy that had never received the T066b decode fix — it still asserted
+`raw.([]Target)`, failed for `[]map[string]string`, and fell through to the
+single-selection path.
+
+The copy is what the image compiles, not the source repo, and nothing warned
+that the two had diverged. `gateway/sync-dev-policies.sh` now mirrors each dev
+policy and `--check` reports drift without writing.
