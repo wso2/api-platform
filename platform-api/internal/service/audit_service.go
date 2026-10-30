@@ -18,37 +18,52 @@
 package service
 
 import (
+	"context"
 	"log/slog"
 	"os"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
-type AuditService struct {
-	repo   repository.AuditRepository
-	stdout *slog.Logger
+type auditTable interface {
+	Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
-func NewAuditService(repo repository.AuditRepository, cfg config.Audit) *AuditService {
+type AuditService struct {
+	repo   auditTable
+	stdout slog.Handler
+}
+
+func NewAuditService(repo auditTable, cfg config.Audit) *AuditService {
 	s := &AuditService{repo: repo}
 	if cfg.Stdout {
-		s.stdout = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		s.stdout = slog.NewJSONHandler(os.Stdout, nil)
 	}
 	return s
 }
 
 func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
-	err := s.repo.Record(action, resourceUUID, resourceType, orgUUID, performedBy)
+	id := uuid.New().String()
+	// Microseconds: the finest precision every supported database stores, so
+	// the row and the stdout line hold the same time.
+	performedAt := time.Now().UTC().Truncate(time.Microsecond)
+
+	err := s.repo.Record(id, performedAt, action, resourceUUID, resourceType, orgUUID, performedBy)
 	if s.stdout != nil {
-		s.stdout.Info("audit",
-			"logType", "audit",
-			"action", action,
-			"resourceType", resourceType,
-			"resourceId", resourceUUID,
-			"organizationId", orgUUID,
-			"performedBy", performedBy,
+		line := slog.NewRecord(performedAt, slog.LevelInfo, "audit", 0)
+		line.AddAttrs(
+			slog.String("logType", "audit"),
+			slog.String("id", id),
+			slog.String("action", action),
+			slog.String("resourceType", resourceType),
+			slog.String("resourceId", resourceUUID),
+			slog.String("organizationId", orgUUID),
+			slog.String("performedBy", performedBy),
 		)
+		_ = s.stdout.Handle(context.Background(), line)
 	}
 	return err
 }

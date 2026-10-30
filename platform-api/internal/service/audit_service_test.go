@@ -23,9 +23,26 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
 )
+
+type auditRow struct {
+	id                                                       string
+	performedAt                                              time.Time
+	action, resourceUUID, resourceType, orgUUID, performedBy string
+}
+
+type recordingAuditTable struct {
+	rows []auditRow
+	err  error
+}
+
+func (t *recordingAuditTable) Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error {
+	t.rows = append(t.rows, auditRow{id, performedAt, action, resourceUUID, resourceType, orgUUID, performedBy})
+	return t.err
+}
 
 func TestAuditServiceRecordsToDBAndStdout(t *testing.T) {
 	insertErr := errors.New("insert failed")
@@ -37,18 +54,24 @@ func TestAuditServiceRecordsToDBAndStdout(t *testing.T) {
 		{"insert fails", insertErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			db := &recordingAuditRepo{err: tc.err}
+			db := &recordingAuditTable{err: tc.err}
 			var out bytes.Buffer
-			s := &AuditService{repo: db, stdout: slog.New(slog.NewJSONHandler(&out, nil))}
+			s := &AuditService{repo: db, stdout: slog.NewJSONHandler(&out, nil)}
 
 			err := s.Record("CREATE", "res-1", "rest_api", "org-1", "user-1")
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("Record error = %v, want %v", err, tc.err)
 			}
 
-			want := auditCall{"CREATE", "res-1", "rest_api", "org-1", "user-1"}
-			if len(db.calls) != 1 || db.calls[0] != want {
-				t.Fatalf("db calls = %+v, want [%+v]", db.calls, want)
+			if len(db.rows) != 1 {
+				t.Fatalf("db rows = %d, want 1", len(db.rows))
+			}
+			row := db.rows[0]
+			if row.id == "" || row.performedAt.IsZero() || row.performedAt.Location() != time.UTC {
+				t.Fatalf("row id = %q, performedAt = %v; want an id and a UTC time", row.id, row.performedAt)
+			}
+			if want := (auditRow{row.id, row.performedAt, "CREATE", "res-1", "rest_api", "org-1", "user-1"}); row != want {
+				t.Fatalf("db row = %+v, want %+v", row, want)
 			}
 
 			var line map[string]any
@@ -56,6 +79,8 @@ func TestAuditServiceRecordsToDBAndStdout(t *testing.T) {
 				t.Fatalf("stdout line is not one JSON object: %v: %q", err, out.String())
 			}
 			for key, value := range map[string]string{
+				"time":           row.performedAt.Format(time.RFC3339Nano),
+				"id":             row.id,
 				"logType":        "audit",
 				"action":         "CREATE",
 				"resourceType":   "rest_api",
@@ -67,24 +92,21 @@ func TestAuditServiceRecordsToDBAndStdout(t *testing.T) {
 					t.Errorf("%s = %v, want %q", key, line[key], value)
 				}
 			}
-			if _, ok := line["time"]; !ok {
-				t.Error("line has no time")
-			}
 		})
 	}
 }
 
 func TestAuditServiceStdoutOff(t *testing.T) {
-	db := &recordingAuditRepo{}
+	db := &recordingAuditTable{}
 	s := NewAuditService(db, config.Audit{})
 
 	if err := s.Record("DELETE", "res-1", "project", "org-1", "user-1"); err != nil {
 		t.Fatalf("Record error = %v", err)
 	}
-	if len(db.calls) != 1 {
-		t.Fatalf("db calls = %d, want 1", len(db.calls))
+	if len(db.rows) != 1 {
+		t.Fatalf("db rows = %d, want 1", len(db.rows))
 	}
 	if s.stdout != nil {
-		t.Fatal("stdout logger built although audit.stdout is off")
+		t.Fatal("stdout handler built although audit.stdout is off")
 	}
 }
