@@ -635,6 +635,10 @@ func TestPlatformGatewayWiringPlacesReplicasInTheSecondOrganization(t *testing.T
 
 	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{0}}).Validate(), "replica 0")
 	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{-1}}).Validate(), "replica -1")
+
+	require.NoError(t, wiring.ValidateReplicas(2))
+	require.ErrorContains(t, wiring.ValidateReplicas(1), "replica 2 exceeds the block's 1 replica(s)")
+	require.NoError(t, (&PlatformGatewayWiring{}).ValidateReplicas(1), "no list names no replica")
 }
 
 func TestStagePolicyWorkspaceExcludesIntegrationTests(t *testing.T) {

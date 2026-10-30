@@ -19,6 +19,7 @@
 package platformgateway
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -169,6 +170,17 @@ func (w *PlatformGatewayWiring) InSecondOrganization(dependent string) bool {
 		}
 	}
 	return false
+}
+
+// ValidateReplicas rejects a second-organization replica the block does not run, which would
+// otherwise leave the second organization without its gateway.
+func (w *PlatformGatewayWiring) ValidateReplicas(replicas int) error {
+	for _, replica := range w.SecondOrganizationReplicas {
+		if replica > replicas {
+			return fmt.Errorf("secondOrganizationReplicas: replica %d exceeds the block's %d replica(s)", replica, replicas)
+		}
+	}
+	return nil
 }
 
 // gatewayGeneratedFiles returns the key material every gateway stack mounts. It is generated

@@ -234,6 +234,16 @@ func TestEmbeddedTreeCarriesTheCatalogFilesTheGatewayReads(t *testing.T) {
 	}
 }
 
+func TestEmbeddedTreeCarriesTheManagementPortalCatalogFiles(t *testing.T) {
+	store := newStore(framework.Assets)
+	for _, name := range []string{
+		"tests/framework/core/catalog/apicontrolplane/docker-compose.yaml",
+		"tests/framework/core/catalog/overlays/api-control-plane-cp-trust.toml",
+	} {
+		require.True(t, store.has(name), "no embedded copy of %s", name)
+	}
+}
+
 // TestSnapshotSourcesExistInTheRepository fails when a file listed in SnapshotSources was
 // renamed or removed, which would otherwise surface only when the release generates the
 // snapshots. It only runs inside an api-platform checkout.
