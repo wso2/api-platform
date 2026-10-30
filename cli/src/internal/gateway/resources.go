@@ -26,11 +26,12 @@ import (
 
 // ResourceKind represents the type of gateway resource
 const (
-	ResourceKindRestAPI     = "RestApi"
-	ResourceKindMCP         = "Mcp"
-	ResourceKindLLMProvider = "LlmProvider"
-	ResourceKindLLMProxy    = "LlmProxy"
-	ResourceKindGraphQLAPI  = "GraphQLApi"
+	ResourceKindRestAPI      = "RestApi"
+	ResourceKindMCP          = "Mcp"
+	ResourceKindLLMProvider  = "LlmProvider"
+	ResourceKindLLMProxy     = "LlmProxy"
+	ResourceKindGraphQLAPI   = "GraphQLApi"
+	ResourceKindWebSocketAPI = "WebSocketApi"
 )
 
 // Resource represents a parsed gateway resource
@@ -127,6 +128,21 @@ func (h *GraphQLAPIHandler) UpdateEndpoint(handle string) string {
 	return fmt.Sprintf(utils.GatewayGraphQLAPIByIDPath, handle)
 }
 
+// WebSocketAPIHandler handles WebSocketApi kind resources
+type WebSocketAPIHandler struct{}
+
+func (h *WebSocketAPIHandler) GetEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayWebSocketAPIByIDPath, handle)
+}
+
+func (h *WebSocketAPIHandler) CreateEndpoint() string {
+	return utils.GatewayWebSocketAPIsPath
+}
+
+func (h *WebSocketAPIHandler) UpdateEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayWebSocketAPIByIDPath, handle)
+}
+
 // GetResourceHandler returns the appropriate handler for a resource kind
 func GetResourceHandler(kind string) ResourceHandler {
 	switch kind {
@@ -140,6 +156,8 @@ func GetResourceHandler(kind string) ResourceHandler {
 		return &LLMProxyHandler{}
 	case ResourceKindGraphQLAPI:
 		return &GraphQLAPIHandler{}
+	case ResourceKindWebSocketAPI:
+		return &WebSocketAPIHandler{}
 	default:
 		return nil
 	}

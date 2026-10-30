@@ -53,6 +53,13 @@ func SetGatewayJWKSPathReserved(reserved bool) {
 	gatewayJWKSPathReserved.Store(reserved)
 }
 
+// ValidateNotReservedGatewayPath is validateNotReservedGatewayPath for
+// validators outside this package (the WebSocketApi validator in pkg/utils), so
+// every kind enforces the same reservation.
+func ValidateNotReservedGatewayPath(field, resourcePath string) []ValidationError {
+	return validateNotReservedGatewayPath(field, resourcePath)
+}
+
 // validateNotReservedGatewayPath rejects a resource path (or path prefix, such
 // as an LLMProvider/LLMProxy context with no per-operation path list of its own)
 // that collides with a route the gateway adds to every virtual host regardless

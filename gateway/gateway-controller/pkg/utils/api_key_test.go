@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -1153,4 +1154,68 @@ func TestGetArtifactConfigByID_CPArtifactIDFallback(t *testing.T) {
 	if got, err := service.getArtifactConfigByID("totally-unknown"); err == nil || got != nil {
 		t.Errorf("getArtifactConfigByID(unknown) = (%v, %v), want (nil, error)", got, err)
 	}
+}
+
+// A REST API create that reuses a live key's name must be rejected: the
+// name-keyed upsert would overwrite that key's row while the runtime kept
+// honoring the original key, out of reach of a later revoke.
+func TestCreateAPIKey_DuplicateNameRules(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	user := &commonmodels.AuthContext{UserID: "creator-user", Roles: []string{"developer"}}
+	seed := func(t *testing.T, status models.APIKeyStatus) (*APIKeyService, storage.Storage, *models.StoredConfig, *models.APIKey) {
+		t.Helper()
+		db := newTestSQLiteStorage(t, logger)
+		cfg := newTestStoredRESTConfig("dup-name-"+string(status), "orders-api")
+		require.NoError(t, db.SaveConfig(cfg))
+		key := newTestStoredAPIKey(cfg.UUID, "shared-name", "creator-user", "local")
+		key.Status = status
+		require.NoError(t, db.SaveAPIKey(key))
+		return newTestAPIKeyService(storage.NewConfigStore(), db, nil, newTestAPIKeyConfig()), db, cfg, key
+	}
+	create := func(svc *APIKeyService, handle string, uuid *string) error {
+		name := "shared-name"
+		_, err := svc.CreateAPIKey(APIKeyCreationParams{
+			Handle: handle, Request: api.APIKeyCreationRequest{Name: &name},
+			User: user, CorrelationID: "corr-dup", Logger: logger, UUID: uuid,
+		})
+		return err
+	}
+
+	t.Run("live key name is a conflict and the key is untouched", func(t *testing.T) {
+		svc, db, cfg, key := seed(t, models.APIKeyStatusActive)
+		err := create(svc, cfg.Handle, nil)
+		require.Error(t, err)
+		assert.True(t, storage.IsConflictError(err), "got %v", err)
+		stored, err := db.GetAPIKeysByAPIAndName(cfg.UUID, "shared-name")
+		require.NoError(t, err)
+		assert.Equal(t, key.UUID, stored.UUID)
+		assert.Equal(t, key.APIKey, stored.APIKey, "the original key's hash must survive")
+	})
+
+	t.Run("revoked key name may be reused", func(t *testing.T) {
+		svc, _, cfg, _ := seed(t, models.APIKeyStatusRevoked)
+		assert.NoError(t, create(svc, cfg.Handle, nil))
+	})
+
+	t.Run("platform event replay keeps upsert semantics", func(t *testing.T) {
+		svc, _, cfg, _ := seed(t, models.APIKeyStatusActive)
+		eventUUID := "event-key-uuid"
+		assert.False(t, storage.IsConflictError(create(svc, cfg.Handle, &eventUUID)))
+	})
+}
+
+func TestCreateAPIKey_InvalidNameIsBadRequest(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("invalid-name", "orders-api")
+	require.NoError(t, db.SaveConfig(cfg))
+	svc := newTestAPIKeyService(storage.NewConfigStore(), db, nil, newTestAPIKeyConfig())
+
+	name := "k1"
+	_, err := svc.CreateAPIKey(APIKeyCreationParams{
+		Handle: cfg.Handle, Request: api.APIKeyCreationRequest{Name: &name},
+		User: &commonmodels.AuthContext{UserID: "creator-user"}, CorrelationID: "corr-bad-name", Logger: logger,
+	})
+	require.Error(t, err)
+	assert.True(t, IsAPIKeyBadRequest(err), "a too-short name is client input, got %v", err)
 }

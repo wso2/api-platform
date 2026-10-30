@@ -125,6 +125,19 @@ Base URLs:
 - [Update a secret](secrets-management.md#update-a-secret)
 - [Delete a secret](secrets-management.md#delete-a-secret)
 
+### [WebSocket API Management](websocket-api-management.md)
+
+- [Create a new WebSocketApi](websocket-api-management.md#create-a-new-websocketapi)
+- [List all WebSocketApis](websocket-api-management.md#list-all-websocketapis)
+- [Get WebSocketApi by id](websocket-api-management.md#get-websocketapi-by-id)
+- [Update an existing WebSocketApi](websocket-api-management.md#update-an-existing-websocketapi)
+- [Delete a WebSocketApi](websocket-api-management.md#delete-a-websocketapi)
+- [Create a new API key for a WebSocket API](websocket-api-management.md#create-a-new-api-key-for-a-websocket-api)
+- [Get the list of API keys for a WebSocket API](websocket-api-management.md#get-the-list-of-api-keys-for-a-websocket-api)
+- [Regenerate API key for a WebSocket API](websocket-api-management.md#regenerate-api-key-for-a-websocket-api)
+- [Update an API key with a new regenerated value](websocket-api-management.md#update-an-api-key-with-a-new-regenerated-value)
+- [Revoke an API key](websocket-api-management.md#revoke-an-api-key)
+
 ### [Schemas](schemas.md)
 
 - [ResourceStatus](schemas.md#resourcestatus)
@@ -136,6 +149,12 @@ Base URLs:
 - [GraphQLAPIConfigData](schemas.md#graphqlapiconfigdata)
 - [GraphQLAPIRequest](schemas.md#graphqlapirequest)
 - [GraphQLAPI](schemas.md#graphqlapi)
+- [WebSocketChannel](schemas.md#websocketchannel)
+- [WebSocketUpstreamConnection](schemas.md#websocketupstreamconnection)
+- [WebSocketUpstreamDefinition](schemas.md#websocketupstreamdefinition)
+- [WebSocketAPIConfigData](schemas.md#websocketapiconfigdata)
+- [WebSocketAPIRequest](schemas.md#websocketapirequest)
+- [WebSocketAPI](schemas.md#websocketapi)
 - [UpstreamDefinition](schemas.md#upstreamdefinition)
 - [UpstreamTimeout](schemas.md#upstreamtimeout)
 - [Resilience](schemas.md#resilience)

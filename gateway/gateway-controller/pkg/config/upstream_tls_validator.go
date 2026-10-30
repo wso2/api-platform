@@ -146,19 +146,48 @@ func (v *UpstreamTLSValidator) ValidateRestAPI(apiConfig *api.RestAPI) []Validat
 	if apiConfig.Spec.Upstream.Sandbox != nil {
 		errs = append(errs, v.validateInlineUpstreamTLS("spec.upstream.sandbox", apiConfig.Spec.Upstream.Sandbox.Tls)...)
 	}
-	return append(errs, v.validateUpstreamDefinitionsTLS(apiConfig.Spec.UpstreamDefinitions)...)
+	return append(errs, v.validateUpstreamDefinitionsTLS(apiConfig.Spec.UpstreamDefinitions, "https")...)
 }
 
 // ValidateAgent reports every deploy-blocking problem with the tls blocks on
 // an Agent, which shares the upstreamDefinitions shape with a REST API.
 func (v *UpstreamTLSValidator) ValidateAgent(agentConfig *api.AgentConfiguration) []ValidationError {
 	errs := v.validateInlineUpstreamTLS("spec.upstream", agentConfig.Spec.Upstream.Tls)
-	return append(errs, v.validateUpstreamDefinitionsTLS(agentConfig.Spec.UpstreamDefinitions)...)
+	return append(errs, v.validateUpstreamDefinitionsTLS(agentConfig.Spec.UpstreamDefinitions, "https")...)
+}
+
+// ValidateWebSocketAPI reports every deploy-blocking problem with the tls blocks
+// on a WebSocketApi's upstream definitions, which carry the same tls shape as a
+// REST API's. A tls block on an inline upstream is rejected by the WebSocketApi
+// validator itself, alongside its ws/wss scheme rules.
+func (v *UpstreamTLSValidator) ValidateWebSocketAPI(apiConfig *api.WebSocketAPI) []ValidationError {
+	return v.validateUpstreamDefinitionsTLS(WebSocketUpstreamDefinitionsAsREST(apiConfig.Spec.UpstreamDefinitions), "wss")
+}
+
+// WebSocketUpstreamDefinitionsAsREST returns a WebSocketApi's upstream
+// definitions in the RestApi shape — the same fields without the WebSocket-only
+// connection block — so the shared upstream helpers serve both kinds.
+func WebSocketUpstreamDefinitionsAsREST(defs *[]api.WebSocketUpstreamDefinition) *[]api.UpstreamDefinition {
+	if defs == nil {
+		return nil
+	}
+	out := make([]api.UpstreamDefinition, 0, len(*defs))
+	for _, def := range *defs {
+		out = append(out, api.UpstreamDefinition{
+			Name:      def.Name,
+			BasePath:  def.BasePath,
+			Timeout:   def.Timeout,
+			Tls:       def.Tls,
+			Upstreams: def.Upstreams,
+		})
+	}
+	return &out
 }
 
 // validateUpstreamDefinitionsTLS reports every deploy-blocking problem with
-// the tls blocks on defs.
-func (v *UpstreamTLSValidator) validateUpstreamDefinitionsTLS(defs *[]api.UpstreamDefinition) []ValidationError {
+// the tls blocks on defs. secureScheme is the scheme every target of a
+// definition with tls must use: https for HTTP kinds, wss for a WebSocketApi.
+func (v *UpstreamTLSValidator) validateUpstreamDefinitionsTLS(defs *[]api.UpstreamDefinition, secureScheme string) []ValidationError {
 	var errs []ValidationError
 	if defs == nil {
 		return errs
@@ -239,11 +268,13 @@ func (v *UpstreamTLSValidator) validateUpstreamDefinitionsTLS(defs *[]api.Upstre
 			}
 		}
 
+		plainScheme := strings.TrimSuffix(secureScheme, "s")
 		for u, up := range def.Upstreams {
-			if !strings.HasPrefix(strings.ToLower(up.Url), "https://") {
+			if !strings.HasPrefix(strings.ToLower(up.Url), secureScheme+"://") {
 				errs = append(errs, ValidationError{
-					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", d, u),
-					Message: "tls is configured but this target is http://; every target of a definition with tls must be https://",
+					Field: fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", d, u),
+					Message: fmt.Sprintf("tls is configured but this target is %s://; every target of a definition with tls must be %s://",
+						plainScheme, secureScheme),
 				})
 			}
 		}

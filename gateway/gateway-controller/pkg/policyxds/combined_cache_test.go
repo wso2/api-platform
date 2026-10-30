@@ -1005,3 +1005,55 @@ func (m *mockResponseWithVersionError) GetReturnedResources() map[string]string 
 func (m *mockResponseWithVersionError) GetContext() context.Context {
 	return context.Background()
 }
+
+// A response must reach a slow reader rather than being dropped: each xDS watch
+// answers once and the client only re-watches after ACKing, so a dropped
+// response froze that resource type until the stream reconnected.
+func TestCombinedCache_HandleCombinedResponses_SlowReaderStillReceives(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cc := NewCombinedCache(newMockCache(), newMockCache(), newMockCache(), newMockCache(), nil, nil, nil, logger).(*CombinedCache)
+
+	policyResponseChan := make(chan cache.Response, 1)
+	mainResponseChan := make(chan cache.Response) // unbuffered: the send blocks until read
+	done := make(chan struct{})
+	exited := make(chan struct{})
+
+	// Register the watcher the handler serves: after each delivery the handler
+	// exits if its watcher is gone, and an unregistered one would leave it before
+	// the v2 send below, so the cancellation would never meet an active send.
+	cc.mu.Lock()
+	cc.watchers[1] = &combinedWatcher{id: 1, done: done}
+	cc.mu.Unlock()
+
+	go func() {
+		cc.handleCombinedResponses(1, policyResponseChan, make(chan cache.Response), make(chan cache.Response),
+			make(chan cache.Response), nil, nil, nil, mainResponseChan, done)
+		close(exited)
+	}()
+
+	policyResponseChan <- &mockResponse{version: "v1"}
+	time.Sleep(300 * time.Millisecond) // well past the old 100ms drop window
+
+	select {
+	case resp := <-mainResponseChan:
+		version, _ := resp.GetVersion()
+		assert.Equal(t, "v1", version)
+	case <-time.After(time.Second):
+		t.Fatal("policy response was dropped instead of delivered to a slow reader")
+	}
+
+	// A send still blocked when the watch is cancelled must not leak the goroutine.
+	policyResponseChan <- &mockResponse{version: "v2"}
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-exited:
+		t.Fatal("handler exited before the watch was cancelled; the v2 send was never blocked")
+	default:
+	}
+	close(done)
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not exit after the watch was cancelled")
+	}
+}

@@ -52,6 +52,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/websocket"
 )
 
 func main() {
@@ -133,6 +134,7 @@ func services() ([]testbench.Service, error) {
 		mcpscripted.New(),
 		stripeSvc,
 		moesifSvc,
+		websocket.New(),
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))

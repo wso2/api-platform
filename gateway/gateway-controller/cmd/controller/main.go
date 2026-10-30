@@ -426,7 +426,8 @@ func main() {
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
 	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer)
+	websocketTransformer := transform.NewWebSocketAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer, websocketTransformer)
 
 	// Wire the transformer into the Envoy xDS translator so Envoy routes are built from the
 	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
@@ -634,6 +635,7 @@ func main() {
 	// (see graphql_deployment.go's KindConfigValidator registration model), so it is
 	// wired via a package-level setter instead of a constructor argument.
 	utils.SetGraphQLPolicyValidator(policyValidator)
+	utils.ConfigureWebSocketAPIValidation(cfg.Router.WebSocket, cfg.Router.VHosts, policyValidator, upstreamTLSValidator)
 
 	// Build the single shared outbound *http.Client used by every control-plane /
 	// platform-API / on-prem-APIM call this process makes. Built once, here, and injected
@@ -1071,11 +1073,16 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /agents/{id}":    {"admin", "developer"},
 		"DELETE /agents/{id}": {"admin", "developer"},
 
-		"POST /graphql-apis":        {"admin", "developer"},
-		"GET /graphql-apis":         {"admin", "developer"},
-		"GET /graphql-apis/{id}":    {"admin", "developer"},
-		"PUT /graphql-apis/{id}":    {"admin", "developer"},
-		"DELETE /graphql-apis/{id}": {"admin", "developer"},
+		"POST /graphql-apis":          {"admin", "developer"},
+		"GET /graphql-apis":           {"admin", "developer"},
+		"GET /graphql-apis/{id}":      {"admin", "developer"},
+		"PUT /graphql-apis/{id}":      {"admin", "developer"},
+		"DELETE /graphql-apis/{id}":   {"admin", "developer"},
+		"POST /websocket-apis":        {"admin", "developer"},
+		"GET /websocket-apis":         {"admin", "developer"},
+		"GET /websocket-apis/{id}":    {"admin", "developer"},
+		"PUT /websocket-apis/{id}":    {"admin", "developer"},
+		"DELETE /websocket-apis/{id}": {"admin", "developer"},
 
 		"POST /llm-provider-templates":        {"admin"},
 		"GET /llm-provider-templates":         {"admin"},
@@ -1101,11 +1108,16 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
 		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
-		"POST /graphql-apis/{id}/api-keys":                         {"admin", "consumer"},
-		"GET /graphql-apis/{id}/api-keys":                          {"admin", "consumer"},
-		"PUT /graphql-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
-		"POST /graphql-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
-		"DELETE /graphql-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
+		"POST /graphql-apis/{id}/api-keys":                           {"admin", "consumer"},
+		"GET /graphql-apis/{id}/api-keys":                            {"admin", "consumer"},
+		"PUT /graphql-apis/{id}/api-keys/{apiKeyName}":               {"admin", "consumer"},
+		"POST /graphql-apis/{id}/api-keys/{apiKeyName}/regenerate":   {"admin", "consumer"},
+		"DELETE /graphql-apis/{id}/api-keys/{apiKeyName}":            {"admin", "consumer"},
+		"POST /websocket-apis/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /websocket-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /websocket-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /websocket-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /websocket-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
 		"POST /llm-providers/{id}/api-keys":                         {"admin", "consumer"},
 		"GET /llm-providers/{id}/api-keys":                          {"admin", "consumer"},

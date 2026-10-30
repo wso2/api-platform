@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
@@ -35,35 +34,35 @@ import (
 // and webhook secret caches to provide a unified xDS cache interface.
 // It implements cache.Cache interface by delegating to underlying caches.
 type CombinedCache struct {
-	policyCache          cache.Cache
-	apiKeyCache          cache.Cache
-	lazyResourceCache    cache.Cache
-	subscriptionCache    cache.Cache
-	routeConfigCache     cache.Cache
-	eventChannelCache    cache.Cache
-	webhookSecretCache   cache.Cache
-	logger               *slog.Logger
-	mu                   sync.RWMutex
-	watchers             map[int64]*combinedWatcher
-	watcherID            int64
+	policyCache        cache.Cache
+	apiKeyCache        cache.Cache
+	lazyResourceCache  cache.Cache
+	subscriptionCache  cache.Cache
+	routeConfigCache   cache.Cache
+	eventChannelCache  cache.Cache
+	webhookSecretCache cache.Cache
+	logger             *slog.Logger
+	mu                 sync.RWMutex
+	watchers           map[int64]*combinedWatcher
+	watcherID          int64
 }
 
 // combinedWatcher manages watchers for policy, API key, lazy resource, subscription, route config,
 // event channel, and webhook secret caches.
 type combinedWatcher struct {
-	id                    int64
-	request               *cache.Request
-	subscription          cache.Subscription
-	responseChan          chan cache.Response
-	policyCancel          func()
-	apiKeyCancel          func()
-	lazyResourceCancel    func()
-	subscriptionCancel    func()
-	routeConfigCancel     func()
-	eventChannelCancel    func()
-	webhookSecretCancel   func()
-	combinedCache         *CombinedCache
-	done                  chan struct{} // done channel to signal goroutine cancellation
+	id                  int64
+	request             *cache.Request
+	subscription        cache.Subscription
+	responseChan        chan cache.Response
+	policyCancel        func()
+	apiKeyCancel        func()
+	lazyResourceCancel  func()
+	subscriptionCancel  func()
+	routeConfigCancel   func()
+	eventChannelCancel  func()
+	webhookSecretCancel func()
+	combinedCache       *CombinedCache
+	done                chan struct{} // done channel to signal goroutine cancellation
 }
 
 // NewCombinedCache creates a new combined cache that merges policy, API key, lazy resource,
@@ -116,14 +115,14 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, subscription cache.S
 		slog.String("node_id", request.Node.GetId()))
 
 	var (
-		policyResponseChan          chan cache.Response
-		apiKeyResponseChan          chan cache.Response
-		lazyResourceResponseChan    chan cache.Response
-		subscriptionResponseChan    chan cache.Response
-		routeConfigResponseChan     chan cache.Response
-		eventChannelResponseChan    chan cache.Response
-		webhookSecretResponseChan   chan cache.Response
-		err                         error
+		policyResponseChan        chan cache.Response
+		apiKeyResponseChan        chan cache.Response
+		lazyResourceResponseChan  chan cache.Response
+		subscriptionResponseChan  chan cache.Response
+		routeConfigResponseChan   chan cache.Response
+		eventChannelResponseChan  chan cache.Response
+		webhookSecretResponseChan chan cache.Response
+		err                       error
 	)
 
 	switch request.TypeUrl {
@@ -203,7 +202,12 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, subscription cache.S
 }
 
 // handleCombinedResponses multiplexes responses from all caches
-// This prevents recursion and handles response deduplication
+// This prevents recursion and handles response deduplication.
+//
+// A response is never dropped: each xDS watch answers exactly once and the
+// client only opens the next watch after ACKing that answer, so a dropped
+// response would leave its resource type frozen until the stream reconnects.
+// The send therefore blocks until the server takes it or the watch is cancelled.
 func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan, lazyResourceResponseChan, subscriptionResponseChan, routeConfigResponseChan, eventChannelResponseChan, webhookSecretResponseChan chan cache.Response,
 	mainResponseChan chan cache.Response, done chan struct{}) {
 	defer func() {
@@ -246,11 +250,8 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 				select {
 				case mainResponseChan <- response:
-					// Successfully sent
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending policy response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
+				case <-done:
+					return
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate policy response",
@@ -286,11 +287,8 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 				select {
 				case mainResponseChan <- response:
-					// Successfully sent
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending API key response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
+				case <-done:
+					return
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate API key response",
@@ -326,11 +324,8 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 				select {
 				case mainResponseChan <- response:
-					// Successfully sent
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending lazy resource response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
+				case <-done:
+					return
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate lazy resource response",
@@ -363,10 +358,8 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 				select {
 				case mainResponseChan <- response:
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending subscription response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
+				case <-done:
+					return
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate subscription response",
@@ -399,10 +392,8 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 				select {
 				case mainResponseChan <- response:
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending route config response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
+				case <-done:
+					return
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate route config response",
@@ -435,10 +426,8 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 				select {
 				case mainResponseChan <- response:
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending event channel response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
+				case <-done:
+					return
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate event channel response",
@@ -471,10 +460,8 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 				select {
 				case mainResponseChan <- response:
-				case <-time.After(100 * time.Millisecond):
-					c.logger.Warn("Timeout sending webhook secret response, client may be slow",
-						slog.Int64("watcher_id", watcherID),
-						slog.String("version", version))
+				case <-done:
+					return
 				}
 			} else {
 				c.logger.Debug("Skipping duplicate webhook secret response",
