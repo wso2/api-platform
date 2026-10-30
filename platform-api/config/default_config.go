@@ -31,6 +31,9 @@ func defaultConfig() *Server {
 			Level:  "info",
 			Format: "text",
 		},
+		Audit: Audit{
+			Output: "none",
+		},
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",

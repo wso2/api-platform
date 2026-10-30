@@ -21,6 +21,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,31 +29,49 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
+const auditLogFile = "./data/logs/audit.log"
+
 type auditTable interface {
 	Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
 type AuditService struct {
-	repo   auditTable
-	stdout slog.Handler
+	repo auditTable
+	out  slog.Handler
 }
 
-func NewAuditService(repo auditTable, cfg config.Audit) *AuditService {
+func NewAuditService(repo auditTable, cfg config.Audit, slogger *slog.Logger) *AuditService {
 	s := &AuditService{repo: repo}
-	if cfg.Stdout {
-		s.stdout = slog.NewJSONHandler(os.Stdout, nil)
+	switch cfg.Output {
+	case "stdout":
+		s.out = slog.NewJSONHandler(os.Stdout, nil)
+	case "file":
+		f, err := openAuditLogFile()
+		if err != nil {
+			slogger.Warn("Audit log file not opened; audit records go to the audit table only",
+				"path", auditLogFile, "error", err)
+			break
+		}
+		s.out = slog.NewJSONHandler(f, nil)
 	}
 	return s
+}
+
+func openAuditLogFile() (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(auditLogFile), 0o750); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(auditLogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 }
 
 func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
 	id := uuid.New().String()
 	// Microseconds: the finest precision every supported database stores, so
-	// the row and the stdout line hold the same time.
+	// the row and the output line hold the same time.
 	performedAt := time.Now().UTC().Truncate(time.Microsecond)
 
 	err := s.repo.Record(id, performedAt, action, resourceUUID, resourceType, orgUUID, performedBy)
-	if s.stdout != nil {
+	if s.out != nil {
 		line := slog.NewRecord(performedAt, slog.LevelInfo, "audit", 0)
 		line.AddAttrs(
 			slog.String("logType", "audit"),
@@ -63,7 +82,7 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 			slog.String("organizationId", orgUUID),
 			slog.String("performedBy", performedBy),
 		)
-		_ = s.stdout.Handle(context.Background(), line)
+		_ = s.out.Handle(context.Background(), line)
 	}
 	return err
 }

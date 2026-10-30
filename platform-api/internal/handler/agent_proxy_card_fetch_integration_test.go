@@ -171,7 +171,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		repository.NewArtifactRepo(db, registry),
 		apiKeyRepo,
 		gatewayEvents,
-		service.NewAuditService(repository.NewAuditRepo(db), config.Audit{}), // real rows, so key-deletion auditing is observable
+		service.NewAuditService(repository.NewAuditRepo(db), config.Audit{}, slog.Default()), // real rows, so key-deletion auditing is observable
 		nil, // defaults to [sha256]
 		slog.Default(),
 	)

@@ -93,7 +93,7 @@ type Logging struct {
 
 // Audit holds audit-log configuration.
 type Audit struct {
-	Stdout bool `koanf:"stdout"`
+	Output string `koanf:"output"`
 }
 
 // Server holds the configuration parameters for the application.
