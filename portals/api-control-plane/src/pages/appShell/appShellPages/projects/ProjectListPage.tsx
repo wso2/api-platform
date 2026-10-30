@@ -39,7 +39,6 @@ import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { NewProjectDialog } from './components/NewProjectDialog';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { ProjectFolderIllustration } from '@/components/illustrations/ProjectFolderIllustration';
 import { Can } from '@/permissions/Can';
@@ -135,7 +134,6 @@ function ProjectListPageContent() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
-  const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Project | null>(null);
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
@@ -220,7 +218,7 @@ function ProjectListPageContent() {
           <PageTitle.Actions>
             <Can do="CreateProject" denied="hide">
               <Button
-                onClick={() => setCreateOpen(true)}
+                onClick={() => navigate(routes.newProject(orgHandle))}
                 startIcon={<Plus />}
                 sx={{ borderRadius: 5 }}
                 variant="contained"
@@ -235,7 +233,7 @@ function ProjectListPageContent() {
       {isFirstRun ? (
         <EmptyState
           actionLabel={intl.formatMessage(messages.emptyAction)}
-          onAction={() => setCreateOpen(true)}
+          onAction={() => navigate(routes.newProject(orgHandle))}
           title={intl.formatMessage(messages.emptyTitle)}
           description={intl.formatMessage(messages.emptyDescription)}
           actionIcon={<Plus />}
@@ -299,12 +297,6 @@ function ProjectListPageContent() {
           )}
         </Stack>
       )}
-
-      <NewProjectDialog
-        onClose={() => setCreateOpen(false)}
-        open={createOpen}
-        orgHandle={orgHandle}
-      />
 
       <ConfirmDialog
         confirmInputLabel={intl.formatMessage(messages.deleteConfirmInputLabel, {
