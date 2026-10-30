@@ -18,9 +18,11 @@
 package publishers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -895,4 +897,246 @@ func TestLog_Publish_DoesNotMutateSharedError(t *testing.T) {
 
 	assert.Equal(t, "Valid credentials required", event.Error.Summary,
 		"exclusion is a projection of the emitted JSON, never an edit to the shared event")
+}
+
+func TestLog_Publish_JSONFieldsDefinesWholeLine(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		Properties:    map[string]string{"ignored": "yes"},
+		ExcludeFields: []string{"api"},
+		JSONFields: map[string]string{
+			"meth":   "$ctx:request.method",
+			"respCd": "$ctx:response.status",
+			"api":    "$ctx:api.name + '/' + api.version",
+			"env":    "prod",
+		},
+	})
+
+	l.Publish(createBaseEvent())
+
+	assert.Equal(t, map[string]interface{}{
+		"meth":   "GET",
+		"respCd": float64(200),
+		"api":    "test-api/v1.0",
+		"env":    "prod",
+	}, decodeLine(t, read()))
+}
+
+// Every entry dropped at startup still writes an object, not "null".
+func TestLog_Publish_JSONFieldsAllDroppedWritesEmptyObject(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"$ctx:error.policy"},
+		JSONFields: map[string]string{
+			"bad":    "$ctx:latencies.totaltime",
+			"denied": "$ctx:error.policy",
+		},
+	})
+
+	l.Publish(createBaseEvent())
+
+	assert.Equal(t, "{}", strings.TrimSpace(read()))
+}
+
+func TestLog_Publish_JSONFieldsMasksHeaders(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		MaskedHeaders: []string{"authorization"},
+		JSONFields:    map[string]string{"auth": "$ctx:request.header['authorization']"},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"authorization":"Bearer secret"}`
+
+	l.Publish(event)
+
+	assert.Equal(t, maskedHeaderValue, decodeLine(t, read())["auth"])
+}
+
+func TestLog_Publish_JSONFieldsExcludesHeaders(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		MaskedHeaders: []string{"x-api-key"},
+		ExcludeFields: []string{"requestHeaders.Authorization", "responseHeaders.set-cookie"},
+		JSONFields: map[string]string{
+			"reqHdrs":  "$ctx:request.header",
+			"respHdrs": "$ctx:response.header",
+		},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"authorization":"Bearer secret","x-api-key":"key","x-foo":"bar"}`
+	event.Properties["responseHeaders"] = `{"set-cookie":"s=1","content-type":"application/json"}`
+
+	l.Publish(event)
+
+	line := decodeLine(t, read())
+	assert.Equal(t, map[string]interface{}{"x-api-key": maskedHeaderValue, "x-foo": "bar"}, line["reqHdrs"])
+	assert.Equal(t, map[string]interface{}{"content-type": "application/json"}, line["respHdrs"])
+}
+
+// Naming a body in json_fields is the opt-in, so the request_body/response_body
+// toggles are left off here; max_payload_size still caps each body.
+func TestLog_Publish_JSONFieldsWritesBodiesCappedByMaxPayloadSize(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:        true,
+		MaxPayloadSize: 5,
+		JSONFields: map[string]string{
+			"reqBody":  "$ctx:request.body",
+			"respBody": "$ctx:response.body",
+		},
+	})
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyRequestPayload] = `{"q":"hi"}`
+	event.Properties[dto.PropKeyResponsePayload] = "ok"
+
+	l.Publish(event)
+
+	line := decodeLine(t, read())
+	assert.Equal(t, `{"q":`, line["reqBody"])
+	assert.Equal(t, "ok", line["respBody"])
+}
+
+func TestLog_Publish_JSONFieldsBodyEmptyWhenNotCaptured(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:    true,
+		JSONFields: map[string]string{"reqBody": "$ctx:request.body"},
+	})
+
+	l.Publish(createBaseEvent())
+
+	assert.Equal(t, "", decodeLine(t, read())["reqBody"])
+}
+
+// A "$ctx:" exclude_fields entry wins over json_fields: every field that uses the
+// excluded variable is dropped, with a warning at startup.
+func TestLog_Publish_JSONFieldsOmitFieldsUsingExcludedVariable(t *testing.T) {
+	logs := captureLogs(t)
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"$ctx:error.policy"},
+		JSONFields: map[string]string{
+			"status": "$ctx:response.status",
+			"denied": "$ctx:error.policy",
+			"reason": "$ctx:error.policy + '/' + error.source",
+		},
+	})
+	event := createBaseEvent()
+	event.Error = &dto.Error{Policy: "api-key-auth", Source: "gateway"}
+
+	l.Publish(event)
+
+	assert.Equal(t, map[string]interface{}{"status": float64(200)}, decodeLine(t, read()))
+	assert.Contains(t, logs.String(), "traffic_logging.json_fields: expression uses a variable excluded by exclude_fields")
+	assert.Contains(t, logs.String(), "field=denied")
+	assert.Contains(t, logs.String(), "field=reason")
+}
+
+// "$ctx:" entries apply to json_fields only; properties are excluded by name
+// ("properties.<key>"), as before.
+func TestLog_Publish_PropertiesIgnoreCtxExclusions(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"$ctx:error.policy", "properties.env"},
+		Properties:    map[string]string{"denied": "$ctx:error.policy", "env": "prod"},
+	})
+	event := createBaseEvent()
+	event.Error = &dto.Error{Policy: "api-key-auth"}
+
+	l.Publish(event)
+
+	assert.Equal(t, map[string]interface{}{"denied": "api-key-auth"}, decodeLine(t, read())["properties"])
+}
+
+// "$ctx:auth.property.<key>" and "$ctx:metadata.<key>" remove one key from the map,
+// the way "requestHeaders.<name>" removes one header.
+func TestLog_Publish_JSONFieldsExcludedMapKeysRemoved(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"$ctx:auth.property.email", "$ctx:metadata.wso2.fault.policy"},
+		JSONFields: map[string]string{
+			"claims": "$ctx:auth.property",
+			"mail":   "$ctx:auth.property['email']",
+			"meta":   "$ctx:metadata",
+		},
+	})
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyAuthProperties] = `{"sub":"user1","email":"jdoe@example.com"}`
+	event.Properties[dto.PropKeyMetadata] = `{"wso2.fault.policy":"api-key-auth","provider_name":"p1"}`
+
+	l.Publish(event)
+
+	line := decodeLine(t, read())
+	assert.Equal(t, map[string]interface{}{"sub": "user1"}, line["claims"])
+	assert.NotContains(t, line, "mail")
+	assert.Equal(t, map[string]interface{}{"provider_name": "p1"}, line["meta"])
+}
+
+// With no claims on the request, the shared empty zero value is used and must not change.
+func TestLog_Publish_JSONFieldsExcludedMapKeysWithoutClaims(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:       true,
+		ExcludeFields: []string{"$ctx:auth.property.email"},
+		JSONFields:    map[string]string{"claims": "$ctx:auth.property"},
+	})
+
+	l.Publish(createBaseEvent())
+
+	assert.Equal(t, map[string]interface{}{}, decodeLine(t, read())["claims"])
+}
+
+// captureLogs sends the default slog logger's output to a buffer for the rest of the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+func TestNewLog_JSONFieldsIgnoresProperties(t *testing.T) {
+	logs := captureLogs(t)
+
+	l, err := NewLog(&config.TrafficLoggingConfig{
+		JSONFields: map[string]string{"env": "prod"},
+		Properties: map[string]string{"bad": "$ctx:latencies.totaltime"},
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, logs.String(), "traffic_logging.properties is ignored because traffic_logging.json_fields is set")
+	assert.NotContains(t, logs.String(), "failed to compile", "ignored properties are not compiled")
+	assert.Nil(t, l.globalProperties.resolve(createBaseEvent()))
+}
+
+func TestNewLog_PropertiesWithoutJSONFieldsNoWarning(t *testing.T) {
+	logs := captureLogs(t)
+
+	l, err := NewLog(&config.TrafficLoggingConfig{Properties: map[string]string{"env": "prod"}})
+
+	require.NoError(t, err)
+	assert.NotContains(t, logs.String(), "is ignored")
+	assert.Equal(t, map[string]interface{}{"env": "prod"}, l.globalProperties.resolve(createBaseEvent()))
+}
+
+func TestNewLog_InvalidExpressionLogsItsSection(t *testing.T) {
+	const invalid = "$ctx:latencies.totaltime"
+	tests := []struct {
+		name string
+		cfg  config.TrafficLoggingConfig
+		want string
+	}{
+		{"properties", config.TrafficLoggingConfig{Properties: map[string]string{"d": invalid}},
+			"traffic_logging.properties: failed to compile expression; property will be omitted"},
+		{"json_fields", config.TrafficLoggingConfig{JSONFields: map[string]string{"d": invalid}},
+			"traffic_logging.json_fields: failed to compile expression; field will be omitted"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+
+			_, err := NewLog(&tt.cfg)
+
+			require.NoError(t, err)
+			assert.Contains(t, logs.String(), tt.want)
+		})
+	}
 }

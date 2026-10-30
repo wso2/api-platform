@@ -417,6 +417,9 @@ type TrafficLoggingConfig struct {
 	// generically for any authenticated request; other values are emitted as
 	// literal strings.
 	Properties map[string]string `koanf:"properties"`
+	// JSONFields, when set, replaces the default line: each key becomes a top-level
+	// field, and each value is a literal or a "$ctx:" expression, as in Properties.
+	JSONFields map[string]string `koanf:"json_fields"`
 }
 
 // TrafficLogFileConfig configures the "file" traffic-log sink
@@ -2103,6 +2106,9 @@ func (c *Config) validateTrafficLoggingConfig() error {
 	if !tl.Enabled {
 		if len(tl.Properties) > 0 {
 			slog.Warn("traffic_logging.properties is set but traffic_logging.enabled is false; it has no effect")
+		}
+		if len(tl.JSONFields) > 0 {
+			slog.Warn("traffic_logging.json_fields is set but traffic_logging.enabled is false; it has no effect")
 		}
 		return nil
 	}

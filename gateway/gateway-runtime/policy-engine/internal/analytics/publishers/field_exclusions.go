@@ -18,6 +18,7 @@
 package publishers
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -38,14 +39,26 @@ type fieldExclusions struct {
 	// topLevel holds excluded top-level JSON keys of TrafficLogEvent.
 	topLevel map[string]bool
 	// requestHeaders/responseHeaders hold lower-cased header names excluded via
-	// "requestHeaders.<name>"/"responseHeaders.<name>". Header names are matched
-	// case-insensitively, as the JSON projection does (see isHeaderField).
+	// "requestHeaders.<name>"/"responseHeaders.<name>" or their "$ctx:" spelling
+	// "$ctx:request.header.<name>"/"$ctx:response.header.<name>". Header names are
+	// matched case-insensitively, as the JSON projection does (see isHeaderField).
 	requestHeaders  map[string]bool
 	responseHeaders map[string]bool
+	// variables holds "$ctx:<variable>" entries. json_fields drops every expression
+	// that uses one of these variables.
+	variables map[string]bool
+	// mapKeys holds "$ctx:<map variable>.<key>" entries, keyed by map variable
+	// (see keyedMapVariables). The key is removed from that map before any
+	// json_fields expression reads it.
+	mapKeys map[string]map[string]bool
 	// residual holds the exclusions only the JSON projection can apply. Nil when
 	// there are none.
 	residual *dto.TrafficLogFields
 }
+
+// keyedMapVariables are the "$ctx:" map variables whose individual keys an
+// exclude_fields entry can remove, e.g. "$ctx:auth.property.email".
+var keyedMapVariables = []string{"auth.property", "metadata"}
 
 // trafficLogFieldClearers maps each top-level JSON key of TrafficLogEvent to the
 // function that clears it. It is the only list of those keys: compileFieldExclusions
@@ -83,11 +96,15 @@ func compileFieldExclusions(exclude []string) *fieldExclusions {
 		topLevel:        map[string]bool{},
 		requestHeaders:  map[string]bool{},
 		responseHeaders: map[string]bool{},
+		variables:       map[string]bool{},
+		mapKeys:         map[string]map[string]bool{},
 	}
 	var residual []string
 	for _, name := range exclude {
 		parts := strings.Split(name, ".")
 		switch {
+		case strings.HasPrefix(name, globalPropertyCtxPrefix):
+			fe.addCtxExclusion(strings.TrimPrefix(name, globalPropertyCtxPrefix))
 		case len(parts) == 1 && trafficLogFieldClearers[name] != nil:
 			fe.topLevel[name] = true
 		case len(parts) == 2 && parts[0] == "requestHeaders":
@@ -102,6 +119,36 @@ func compileFieldExclusions(exclude []string) *fieldExclusions {
 		fe.residual = &dto.TrafficLogFields{Exclude: residual}
 	}
 	return fe
+}
+
+// addCtxExclusion records a "$ctx:" exclude_fields entry: a header, a key of a
+// keyed map variable, or else a whole variable. An unknown variable is logged,
+// since a typo would otherwise leave the data it meant to hide in the log.
+func (fe *fieldExclusions) addCtxExclusion(path string) {
+	headerSets := map[string]map[string]bool{
+		"request.header":  fe.requestHeaders,
+		"response.header": fe.responseHeaders,
+	}
+	for headerVar, names := range headerSets {
+		if name, ok := strings.CutPrefix(path, headerVar+"."); ok && name != "" {
+			names[strings.ToLower(name)] = true
+			return
+		}
+	}
+	for _, mapVar := range keyedMapVariables {
+		if key, ok := strings.CutPrefix(path, mapVar+"."); ok && key != "" {
+			if fe.mapKeys[mapVar] == nil {
+				fe.mapKeys[mapVar] = map[string]bool{}
+			}
+			fe.mapKeys[mapVar][key] = true
+			return
+		}
+	}
+	if !isDeclaredVariable(path) {
+		slog.Warn("traffic_logging.exclude_fields: unknown $ctx variable; the entry has no effect",
+			"entry", globalPropertyCtxPrefix+path)
+	}
+	fe.variables[path] = true
 }
 
 // applyToStruct clears the excluded top-level fields of tl. Header sub-key
@@ -131,6 +178,23 @@ func (fe *fieldExclusions) excludedResponseHeaders() map[string]bool {
 		return nil
 	}
 	return fe.responseHeaders
+}
+
+// excludedVariables returns the "$ctx:" variables to exclude, or nil when there are none.
+func (fe *fieldExclusions) excludedVariables() map[string]bool {
+	if fe == nil || len(fe.variables) == 0 {
+		return nil
+	}
+	return fe.variables
+}
+
+// excludedMapKeys returns the keys to remove from each keyed map variable, or nil
+// when there are none.
+func (fe *fieldExclusions) excludedMapKeys() map[string]map[string]bool {
+	if fe == nil || len(fe.mapKeys) == 0 {
+		return nil
+	}
+	return fe.mapKeys
 }
 
 // residualFields returns the exclusions that still need the JSON projection, or
