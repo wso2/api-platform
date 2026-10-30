@@ -40,6 +40,7 @@ import {
   collection,
   failure,
   noContent,
+  publicationSelections,
   recorder,
   resource,
   type PublicationDraftDetailsFixture,
@@ -397,8 +398,8 @@ describe('PortalPublishPage', () => {
 
   it('Documentation tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
     servePublicationState({
-      draft: aPublicationDraftDetails({ docIds: [] }),
-      publication: aPublication({ docIds: ['guide'] }),
+      draft: aPublicationDraftDetails({ documents: publicationSelections() }),
+      publication: aPublication({ documents: publicationSelections({ displayName: 'Getting started', id: 'guide' }) }),
     });
     server.use(
       collection(DOCS_PATH, [
@@ -439,8 +440,8 @@ describe('PortalPublishPage', () => {
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: [] }),
-      publication: aPublication({ subscriptionPlanIds: ['bronze'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections() }),
+      publication: aPublication({ subscriptionPlans: publicationSelections({ displayName: 'Bronze', id: 'bronze' }) }),
     });
     server.use(collection('/subscription-plans', [bronze, gold]));
     const draftRequests = recorder();
@@ -474,7 +475,7 @@ describe('PortalPublishPage', () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     const silver = aSubscriptionPlan({ displayName: 'Silver', id: 'silver' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['bronze', 'gold'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('bronze', 'gold') }),
       plans: [bronze, gold, silver],
     });
 
@@ -504,7 +505,7 @@ describe('PortalPublishPage', () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'retired'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold', 'retired') }),
       plans: [gold, retired],
     });
     const draftRequests = recorder();
@@ -538,7 +539,7 @@ describe('PortalPublishPage', () => {
   it('drops a selected plan that no longer exists, without a warning, and does not send it', async () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'deleted'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold', 'deleted') }),
       plans: [gold],
     });
     const draftRequests = recorder();
@@ -564,7 +565,6 @@ describe('PortalPublishPage', () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     servePublicationState({
       draft: aPublicationDraftDetails({
-        subscriptionPlanIds: ['gold', 'old'],
         subscriptionPlans: [
           { displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' },
           { displayName: 'Platinum', id: 'old', sourceStatus: 'DELETED' },
@@ -596,7 +596,6 @@ describe('PortalPublishPage', () => {
   it('leaves a deleted document out of the draft and saves without it, with nothing to clear first', async () => {
     servePublicationState({
       draft: aPublicationDraftDetails({
-        docIds: ['guide', 'gone'],
         documents: [
           { displayName: 'Getting started', id: 'guide', sourceStatus: 'UNCHANGED' },
           { displayName: 'Old guide', id: 'gone', sourceStatus: 'DELETED' },
@@ -628,7 +627,7 @@ describe('PortalPublishPage', () => {
   });
 
   it('drops a selected document that no longer exists, without a warning, and does not send it', async () => {
-    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['guide', 'deleted'] }) });
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('guide', 'deleted') }) });
     server.use(
       collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
     );
@@ -652,7 +651,7 @@ describe('PortalPublishPage', () => {
   });
 
   it('keeps a selected document it cannot check because the document list was cut short', async () => {
-    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['doc-0', 'beyond'] }) });
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('doc-0', 'beyond') }) });
     server.use(
       mswHttp.get(apiUrl(DOCS_PATH), ({ request }) => {
         const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
@@ -686,7 +685,7 @@ describe('PortalPublishPage', () => {
   });
 
   it('keeps a selected document that an older cached document list predates, once the list is read again', async () => {
-    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['guide', 'added'] }) });
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('guide', 'added') }) });
     server.use(
       collection(DOCS_PATH, [
         { contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' },
@@ -726,7 +725,7 @@ describe('PortalPublishPage', () => {
   });
 
   it("sends the draft's selected documents with every save, so saving other fields keeps them", async () => {
-    servePublicationState({ draft: aPublicationDraftDetails({ docIds: ['guide'] }) });
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('guide') }) });
     const draftRequests = recorder();
     server.use(
       collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
@@ -889,7 +888,7 @@ describe('PortalPublishPage', () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'retired'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold', 'retired') }),
       plans: [bronze, gold, retired],
     });
 
@@ -914,7 +913,7 @@ describe('PortalPublishPage', () => {
     const silver = aSubscriptionPlan({ displayName: 'Silver', id: 'silver', status: 'ACTIVE' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
     servePublicationState({
-      publication: aPublication({ subscriptionPlanIds: ['gold', 'retired'] }),
+      publication: aPublication({ subscriptionPlans: publicationSelections({ displayName: 'Gold', id: 'gold' }, { displayName: 'Retired', id: 'retired' }) }),
       plans: [gold, silver, retired],
     });
 

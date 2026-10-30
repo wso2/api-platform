@@ -23,6 +23,7 @@ import {
   aPublication,
   aPublicationDraftDetails,
   aRestApi,
+  publicationSelections,
   type PublicationSelectionFixture,
 } from '@/test/msw';
 import {
@@ -80,12 +81,12 @@ describe('resolveDraftFormValues', () => {
   });
 
   it('reads the selected documents from the draft, then the publication', () => {
-    const draft = aPublicationDraftDetails({ docIds: ['guide'] });
-    const publication = aPublication({ docIds: ['faq'] });
+    const draft = aPublicationDraftDetails({ documents: publicationSelections('guide') });
+    const publication = aPublication({ documents: publicationSelections('faq') });
 
     expect(resolveDraftFormValues(draft, publication, api).docIds).toEqual(['guide']);
     expect(resolveDraftFormValues(undefined, publication, api).docIds).toEqual(['faq']);
-    expect(resolveDraftFormValues(aPublicationDraftDetails({ docIds: undefined }), undefined, api).docIds).toEqual([]);
+    expect(resolveDraftFormValues(aPublicationDraftDetails({ documents: undefined }), undefined, api).docIds).toEqual([]);
   });
 
   it('defaults the Production URL to the given gateway URL', () => {
@@ -116,21 +117,15 @@ describe('deleted plans', () => {
   ];
 
   it('leaves a deleted plan out of the form, whichever tier it is read from', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
-    const publication = aPublication({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
+    const draft = aPublicationDraftDetails({ subscriptionPlans: selections });
+    const publication = aPublication({ subscriptionPlans: selections });
 
     expect(resolveDraftFormValues(draft, undefined, undefined).subscriptionPlanIds).toEqual(['gold']);
     expect(resolveDraftFormValues(undefined, publication, undefined).subscriptionPlanIds).toEqual(['gold']);
   });
 
-  it('reads the plan ids as they are when the server sends no plan details', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: undefined });
-
-    expect(resolveDraftFormValues(draft, undefined, undefined).subscriptionPlanIds).toEqual(['gold', 'platinum']);
-  });
-
   it('lists the deleted plans with their stored names', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
+    const draft = aPublicationDraftDetails({ subscriptionPlans: selections });
 
     expect(deletedPlansOf(draft)).toEqual([{ displayName: 'Platinum', id: 'platinum' }]);
     expect(deletedPlansOf(undefined)).toEqual([]);
@@ -160,17 +155,11 @@ describe('deleted and edited documents', () => {
   ];
 
   it('leaves a deleted document out of the form, whichever tier it is read from', () => {
-    const draft = aPublicationDraftDetails({ docIds: ['guide', 'gone', 'faq'], documents: selections });
-    const publication = aPublication({ docIds: ['guide', 'gone', 'faq'], documents: selections });
+    const draft = aPublicationDraftDetails({ documents: selections });
+    const publication = aPublication({ documents: selections });
 
     expect(resolveDraftFormValues(draft, undefined, undefined).docIds).toEqual(['guide', 'faq']);
     expect(resolveDraftFormValues(undefined, publication, undefined).docIds).toEqual(['guide', 'faq']);
-  });
-
-  it('reads the document ids as they are when the server sends no document details', () => {
-    const draft = aPublicationDraftDetails({ docIds: ['guide', 'gone'], documents: undefined });
-
-    expect(resolveDraftFormValues(draft, undefined, undefined).docIds).toEqual(['guide', 'gone']);
   });
 
   it('lists deleted documents with their stored names and the edited ones, leaving out deleted', () => {

@@ -671,24 +671,20 @@ func sourceStatus(sel model.PublicationSelection) api.PublicationSelectionSource
 // draftModelToResponse converts the internal model into the generated
 // response shape.
 func draftModelToResponse(pub *model.Publication) api.PublicationDraftDetails {
-	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
-	docIds := api.DocIdList(pub.DocIds)
 	plans := selectionsToResponse(pub.SubscriptionPlans)
 	docs := selectionsToResponse(pub.Documents)
 	resp := api.PublicationDraftDetails{
-		DisplayName:         pub.DisplayName,
-		Version:             pub.Version,
-		Description:         stringPtrIfSet(pub.Description),
-		Endpoints:           endpointsToResponse(pub),
-		Owners:              ownersToResponse(pub),
-		SubscriptionPlanIds: &planIds,
-		DocIds:              &docIds,
-		SubscriptionPlans:   &plans,
-		Documents:           &docs,
-		HasThumbnail:        &pub.HasThumbnail,
-		HasLandingPage:      &pub.HasLandingPage,
-		CreatedBy:           stringPtrIfSet(pub.CreatedBy),
-		UpdatedBy:           stringPtrIfSet(pub.UpdatedBy),
+		DisplayName:       pub.DisplayName,
+		Version:           pub.Version,
+		Description:       stringPtrIfSet(pub.Description),
+		Endpoints:         endpointsToResponse(pub),
+		Owners:            ownersToResponse(pub),
+		SubscriptionPlans: &plans,
+		Documents:         &docs,
+		HasThumbnail:      &pub.HasThumbnail,
+		HasLandingPage:    &pub.HasLandingPage,
+		CreatedBy:         stringPtrIfSet(pub.CreatedBy),
+		UpdatedBy:         stringPtrIfSet(pub.UpdatedBy),
 	}
 	if pub.AgentVisibility != "" {
 		av := api.PublicationDraftDetailsAgentVisibility(pub.AgentVisibility)
@@ -734,26 +730,22 @@ func publicationSummariesToResponse(items []*model.PublicationSummary) []api.Pub
 // plus apiPortalId/apiPortalName/status, which only ever apply to a live
 // listing.
 func publicationModelToResponse(pub *model.Publication) api.Publication {
-	planIds := api.SubscriptionPlanIdList(pub.SubscriptionPlanIds)
-	docIds := api.DocIdList(pub.DocIds)
 	plans := selectionsToResponse(pub.SubscriptionPlans)
 	docs := selectionsToResponse(pub.Documents)
 	resp := api.Publication{
-		DisplayName:         &pub.DisplayName,
-		Version:             &pub.Version,
-		ApiPortalId:         stringPtrIfSet(pub.APIPortalHandle),
-		ApiPortalName:       stringPtrIfSet(pub.APIPortalName),
-		Description:         stringPtrIfSet(pub.Description),
-		Endpoints:           endpointsToResponse(pub),
-		Owners:              ownersToResponse(pub),
-		SubscriptionPlanIds: &planIds,
-		DocIds:              &docIds,
-		SubscriptionPlans:   &plans,
-		Documents:           &docs,
-		HasThumbnail:        &pub.HasThumbnail,
-		HasLandingPage:      &pub.HasLandingPage,
-		CreatedBy:           stringPtrIfSet(pub.CreatedBy),
-		UpdatedBy:           stringPtrIfSet(pub.UpdatedBy),
+		DisplayName:       &pub.DisplayName,
+		Version:           &pub.Version,
+		ApiPortalId:       stringPtrIfSet(pub.APIPortalHandle),
+		ApiPortalName:     stringPtrIfSet(pub.APIPortalName),
+		Description:       stringPtrIfSet(pub.Description),
+		Endpoints:         endpointsToResponse(pub),
+		Owners:            ownersToResponse(pub),
+		SubscriptionPlans: &plans,
+		Documents:         &docs,
+		HasThumbnail:      &pub.HasThumbnail,
+		HasLandingPage:    &pub.HasLandingPage,
+		CreatedBy:         stringPtrIfSet(pub.CreatedBy),
+		UpdatedBy:         stringPtrIfSet(pub.UpdatedBy),
 	}
 	if pub.Status != "" {
 		status := api.PublicationStatus(pub.Status)

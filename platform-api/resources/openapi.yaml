@@ -14725,9 +14725,12 @@ components:
 
     PublicationDraftDetails:
       allOf:
-        - $ref: '#/components/schemas/PublicationDraftDetailsInput'
+        - $ref: '#/components/schemas/PublicationDetailsCore'
         - $ref: '#/components/schemas/PublicationAuditFields'
         - type: object
+          required:
+            - displayName
+            - version
           properties:
             hasThumbnail:
               type: boolean
@@ -14740,13 +14743,13 @@ components:
             subscriptionPlans:
               type: array
               readOnly: true
-              description: The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+              description: The selected subscription plans, including deleted ones. Their ids are what a draft save sends as subscriptionPlanIds.
               items:
                 $ref: '#/components/schemas/PublicationSelection'
             documents:
               type: array
               readOnly: true
-              description: The selected documents, including deleted ones. Same documents as docIds.
+              description: The selected documents, including deleted ones. Their ids are what a draft save sends as docIds.
               items:
                 $ref: '#/components/schemas/PublicationSelection'
 
@@ -14764,10 +14767,6 @@ components:
             status:
               type: string
               enum: [PUBLISHED, DEPRECATED]
-            subscriptionPlanIds:
-              $ref: '#/components/schemas/SubscriptionPlanIdList'
-            docIds:
-              $ref: '#/components/schemas/DocIdList'
             hasThumbnail:
               type: boolean
               readOnly: true
@@ -14779,13 +14778,13 @@ components:
             subscriptionPlans:
               type: array
               readOnly: true
-              description: The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+              description: The selected subscription plans, including deleted ones.
               items:
                 $ref: '#/components/schemas/PublicationSelection'
             documents:
               type: array
               readOnly: true
-              description: The selected documents, including deleted ones. Same documents as docIds.
+              description: The selected documents, including deleted ones.
               items:
                 $ref: '#/components/schemas/PublicationSelection'
 

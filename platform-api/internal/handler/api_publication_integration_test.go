@@ -219,13 +219,19 @@ func TestPublicationHandler_SaveAndGetDraft_RoundTrip(t *testing.T) {
 	if saved["displayName"] != "My Listing" || saved["version"] != "1.0.0" || saved["agentVisibility"] != "HIDDEN" {
 		t.Fatalf("PUT draft: unexpected core fields: %v", saved)
 	}
-	plans, _ := saved["subscriptionPlanIds"].([]any)
-	if len(plans) != 1 || plans[0] != "gold" {
-		t.Fatalf("PUT draft: want subscriptionPlanIds [gold], got %v", saved["subscriptionPlanIds"])
+	plans, _ := saved["subscriptionPlans"].([]any)
+	if len(plans) != 1 || plans[0].(map[string]any)["id"] != "gold" {
+		t.Fatalf("PUT draft: want subscriptionPlans [gold], got %v", saved["subscriptionPlans"])
 	}
-	docs, _ := saved["docIds"].([]any)
-	if len(docs) != 1 || docs[0] != "quickstart" {
-		t.Fatalf("PUT draft: want docIds [quickstart], got %v", saved["docIds"])
+	docs, _ := saved["documents"].([]any)
+	if len(docs) != 1 || docs[0].(map[string]any)["id"] != "quickstart" {
+		t.Fatalf("PUT draft: want documents [quickstart], got %v", saved["documents"])
+	}
+	if _, ok := saved["subscriptionPlanIds"]; ok {
+		t.Fatalf("PUT draft: subscriptionPlanIds is request-only, got %v", saved["subscriptionPlanIds"])
+	}
+	if _, ok := saved["docIds"]; ok {
+		t.Fatalf("PUT draft: docIds is request-only, got %v", saved["docIds"])
 	}
 	if saved["hasThumbnail"] != false || saved["hasLandingPage"] != false {
 		t.Fatalf("PUT draft: want hasThumbnail/hasLandingPage false, got %v", saved)
@@ -454,13 +460,11 @@ func TestPublicationHandler_GetPublication_RoundTrip(t *testing.T) {
 	if got["apiPortalId"] != "my-portal" || got["apiPortalName"] != "My Portal" {
 		t.Fatalf("GET publication: want apiPortalId/apiPortalName from the resolved portal, got %v", got)
 	}
-	plans, _ := got["subscriptionPlanIds"].([]any)
-	if len(plans) != 1 || plans[0] != "gold" {
-		t.Fatalf("GET publication: want subscriptionPlanIds [gold], got %v", got["subscriptionPlanIds"])
+	if _, ok := got["subscriptionPlanIds"]; ok {
+		t.Fatalf("GET publication: subscriptionPlanIds is request-only, got %v", got["subscriptionPlanIds"])
 	}
-	docs, _ := got["docIds"].([]any)
-	if len(docs) != 1 || docs[0] != "quickstart" {
-		t.Fatalf("GET publication: want docIds [quickstart], got %v", got["docIds"])
+	if _, ok := got["docIds"]; ok {
+		t.Fatalf("GET publication: docIds is request-only, got %v", got["docIds"])
 	}
 	planSelections, _ := got["subscriptionPlans"].([]any)
 	if len(planSelections) != 1 || !reflect.DeepEqual(planSelections[0], map[string]any{"id": "gold", "displayName": "Gold plan", "sourceStatus": "UNCHANGED"}) {

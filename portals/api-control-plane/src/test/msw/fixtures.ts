@@ -164,6 +164,15 @@ export const aPublicationSummary = (
 
 export type PublicationSelectionFixture = Schema<'PublicationSelection'>;
 
+/** Selected plans or documents that still exist and are unchanged; a bare id is named after itself. */
+export const publicationSelections = (
+  ...items: (string | Pick<PublicationSelectionFixture, 'displayName' | 'id'>)[]
+): PublicationSelectionFixture[] =>
+  items.map((item) => {
+    const { displayName, id } = typeof item === 'string' ? { displayName: item, id: item } : item;
+    return { displayName, id, sourceStatus: 'UNCHANGED' };
+  });
+
 export type PublicationDraftDetailsFixture = Schema<'PublicationDraftDetails'>;
 
 export const aPublicationDraftDetails = (

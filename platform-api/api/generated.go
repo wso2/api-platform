@@ -5072,9 +5072,8 @@ type Publication struct {
 	CreatedBy     *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description   *string    `json:"description,omitempty" yaml:"description,omitempty"`
 	DisplayName   *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	DocIds        *DocIdList `json:"docIds,omitempty" yaml:"docIds,omitempty"`
 
-	// Documents The selected documents, including deleted ones. Same documents as docIds.
+	// Documents The selected documents, including deleted ones.
 	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
 
 	// Endpoints Author-entered; not derived from the API.
@@ -5099,10 +5098,9 @@ type Publication struct {
 		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
 		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
-	Status              *PublicationStatus      `json:"status,omitempty" yaml:"status,omitempty"`
-	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
+	Status *PublicationStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
-	// SubscriptionPlans The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+	// SubscriptionPlans The selected subscription plans, including deleted ones.
 	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
@@ -5168,9 +5166,8 @@ type PublicationDraftDetails struct {
 	CreatedBy       *string                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description     *string                                 `json:"description,omitempty" yaml:"description,omitempty"`
 	DisplayName     string                                  `json:"displayName" yaml:"displayName"`
-	DocIds          *DocIdList                              `json:"docIds,omitempty" yaml:"docIds,omitempty"`
 
-	// Documents The selected documents, including deleted ones. Same documents as docIds.
+	// Documents The selected documents, including deleted ones. Their ids are what a draft save sends as docIds.
 	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
 
 	// Endpoints Author-entered; not derived from the API.
@@ -5195,9 +5192,8 @@ type PublicationDraftDetails struct {
 		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
 		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
-	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
 
-	// SubscriptionPlans The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds.
+	// SubscriptionPlans The selected subscription plans, including deleted ones. Their ids are what a draft save sends as subscriptionPlanIds.
 	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
