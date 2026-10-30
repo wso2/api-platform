@@ -50,18 +50,26 @@ func WithExpansionState(ctx context.Context) context.Context {
 // captured text verbatim; resolving here keeps the feature readable while ensuring every
 // browser/API operation uses the same scenario-owned value.
 func Expand(ctx context.Context, value string) (string, error) {
-	if strings.Contains(value, unique.ContextPlaceholder) {
-		configureContextValues.Do(func() {
-			unique.ContextValue = func(ctx context.Context, name string) (string, error) {
-				return tcontext.ResolveString(ctx, name)
-			}
-		})
-		expanded, err := unique.Expand(ctx, value)
-		if err != nil {
-			return "", fmt.Errorf("expanding UI value %q: %w", value, err)
-		}
-		value = expanded
+	// UNIQUE first, through the scenario cache: unique.Expand would mint fresh names for any
+	// UNIQUE placeholder still in the value when it resolves the CTX ones.
+	expanded, err := expandUnique(ctx, value)
+	if err != nil || !strings.Contains(expanded, unique.ContextPlaceholder) {
+		return expanded, err
 	}
+	configureContextValues.Do(func() {
+		unique.ContextValue = func(ctx context.Context, name string) (string, error) {
+			return tcontext.ResolveString(ctx, name)
+		}
+	})
+	resolved, err := unique.Expand(ctx, expanded)
+	if err != nil {
+		return "", fmt.Errorf("expanding UI value %q: %w", value, err)
+	}
+	return resolved, nil
+}
+
+// expandUnique resolves the UNIQUE placeholders in value, reusing the scenario's cached names.
+func expandUnique(ctx context.Context, value string) (string, error) {
 	if !strings.Contains(value, unique.Placeholder) {
 		return value, nil
 	}

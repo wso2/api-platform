@@ -140,11 +140,12 @@ func TestKeyedUpstreamRefusesAWrongKeyWithoutRepeatingIt(t *testing.T) {
 	}
 
 	for name, rec := range map[string]*httptest.ResponseRecorder{
-		"wrong api-key":      request("api-key", "sk-wrong-key", `{"model":"gpt-4o"}`),
-		"wrong bearer":       request("Authorization", "Bearer sk-wrong-key", `{"model":"gpt-4o"}`),
-		"no key":             request("", "", `{"model":"gpt-4o"}`),
-		"empty api-key":      request("api-key", "", `{"model":"gpt-4o"}`),
-		"key without bearer": request("Authorization", "sk-testbench-valid-keyX", `{"model":"gpt-4o"}`),
+		"wrong api-key":            request("api-key", "sk-wrong-key", `{"model":"gpt-4o"}`),
+		"wrong bearer":             request("Authorization", "Bearer sk-wrong-key", `{"model":"gpt-4o"}`),
+		"no key":                   request("", "", `{"model":"gpt-4o"}`),
+		"empty api-key":            request("api-key", "", `{"model":"gpt-4o"}`),
+		"key without bearer":       request("Authorization", "sk-testbench-valid-keyX", `{"model":"gpt-4o"}`),
+		"valid key without bearer": request("Authorization", ValidAPIKey, `{"model":"gpt-4o"}`),
 	} {
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s: status %d, want 401", name, rec.Code)

@@ -77,7 +77,12 @@ func presentedKey(r *http.Request) string {
 	if key := r.Header.Get("api-key"); key != "" {
 		return key
 	}
-	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	// A bare Authorization value is not a bearer credential, so it presents no key.
+	key, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !bearer {
+		return ""
+	}
+	return key
 }
 
 // Handler returns the HTTP handler for the service.

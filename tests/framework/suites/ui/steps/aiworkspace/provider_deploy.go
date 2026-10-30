@@ -326,9 +326,18 @@ func (u *Steps) callStreamedInOrder(ctx context.Context, want string) error {
 				} `json:"delta"`
 			} `json:"choices"`
 		}
-		if data != "[DONE]" && json.Unmarshal([]byte(data), &chunk) == nil && len(chunk.Choices) > 0 {
+		if data == "[DONE]" {
+			continue
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			return fmt.Errorf("stream event %d is not a JSON chunk: %w: %q", len(events), err, data)
+		}
+		if len(chunk.Choices) > 0 {
 			text.WriteString(chunk.Choices[0].Delta.Content)
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reading the stream: %w", err)
 	}
 	if len(events) < 3 {
 		return fmt.Errorf("the response is not a chunked stream: %s", inv.body)

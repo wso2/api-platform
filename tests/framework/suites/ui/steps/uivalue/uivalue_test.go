@@ -60,3 +60,22 @@ func TestExpandUIValueRejectsMalformedPlaceholderAfterExpansion(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "malformed UNIQUE placeholder")
 }
+
+func TestExpandKeepsUniqueNamesStableAlongsideContextValues(t *testing.T) {
+	generator, err := unique.NewGenerator()
+	require.NoError(t, err)
+	local := tcontext.NewLocal("scenario")
+	ctx := tcontext.WithLocal(tcontext.WithShared(context.Background(), tcontext.NewShared("ui")), local)
+	require.NoError(t, unique.Install(ctx, generator))
+	ctx = WithExpansionState(ctx)
+	local.Set("org", "it-second-org")
+
+	first, err := Expand(ctx, "/organizations/${CTX:org}/apis/${UNIQUE:Api}")
+	require.NoError(t, err)
+	second, err := Expand(ctx, "/organizations/${CTX:org}/apis/${UNIQUE:Api}")
+	require.NoError(t, err)
+	alone, err := Expand(ctx, "${UNIQUE:Api}")
+	require.NoError(t, err)
+	require.Equal(t, first, second, "a mixed argument names the same resource every time")
+	require.Equal(t, "/organizations/it-second-org/apis/"+alone, first)
+}

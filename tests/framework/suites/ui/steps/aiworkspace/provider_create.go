@@ -168,7 +168,10 @@ func (u *Steps) triesToCreateProvider(ctx context.Context, name, apiKey string) 
 			if err := cleanup.Register(ctx, cleanup.Resource{
 				Kind: cleanup.KindLLMProvider, ID: body.ID, Actor: u.topo.Admin.Username,
 			}); err != nil {
-				return err
+				if delErr := u.deleteProviderID(ctx, body.ID); delErr != nil {
+					return fmt.Errorf("registering provider %q for cleanup: %w; deleting it failed: %v", body.ID, err, delErr)
+				}
+				return fmt.Errorf("registering provider %q for cleanup: %w", body.ID, err)
 			}
 		}
 		return u.registerFormSecret(ctx)
