@@ -44,3 +44,27 @@ and grepping for `Looking up`.
 
 `backend.py` is a fake provider: it echoes the body and auth header it received, and
 returns 500 when `ALWAYS_FAIL=true`.
+
+## T1 — what `per_try_idle_timeout` bounds (2026-10-30)
+
+`t1-idle-timeout.yaml` mirrors the retry policy the controller generates today: a
+`per_try_idle_timeout` and **no** `per_try_timeout`. `backend.py` gained three timing
+knobs (`DELAY_BEFORE_HEADERS`, `STREAM_CHUNKS`, `CHUNK_GAP`) so a target can be slow
+without being broken, which is the distinction the whole question turns on.
+
+```bash
+# TTFT: provider_a stalls 20s before any byte, idle timeout 5s
+ENVOY_CONFIG=t1-idle-timeout.yaml ENVOY_TAG=v1.40.0 A_DELAY=20 docker compose -p failover up -d
+curl -s -o /dev/null -w '%{http_code} %{time_total}\n' -X POST localhost:10000/v1/chat \
+  -H 'x-failover-groups: a,b' -d '{"model":"m"}'
+# -> 200 in ~5.3s, attempts=2, served by provider_b
+
+# Streaming: 6 chunks 3s apart (15s total), every gap under the 5s threshold
+ENVOY_CONFIG=t1-idle-timeout.yaml ENVOY_TAG=v1.40.0 A_CHUNKS=6 A_GAP=3 docker compose -p failover up -d
+# -> 200 in 15s, attempts=1, served whole by provider_a
+```
+
+The idle timer measures silence in either direction, so it bounds **time to first byte**,
+not just a mid-stream stall. That is the right signal for a streaming response and the
+wrong one for a non-streaming completion, where silence until the answer is ready is
+normal rather than a symptom.

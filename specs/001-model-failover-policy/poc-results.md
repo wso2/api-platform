@@ -1264,3 +1264,91 @@ single-selection path.
 The copy is what the image compiles, not the source repo, and nothing warned
 that the two had diverged. `gateway/sync-dev-policies.sh` now mirrors each dev
 policy and `--check` reports drift without writing.
+
+---
+
+## Timeouts: which slow targets fail over, and which legitimate ones get cut (2026-10-30)
+
+Prompted by the question "what about a timeout from the actual target?". Probed with
+`it/spikes/failover/t1-idle-timeout.yaml`, which mirrors the retry policy the controller
+generates today: `per_try_idle_timeout` set, `per_try_timeout` absent.
+
+### What the two timeouts do
+
+| | Bounds | On firing |
+|---|---|---|
+| `per_try_timeout` | one attempt's total duration | attempt failed → **retriable**, failover engages |
+| `per_try_idle_timeout` | silence within one attempt | attempt failed → **retriable**, failover engages |
+| route `timeout` | the whole request, retries included | local `504` → **terminal**, no failover |
+
+The route timeout is a local reply, so it joins `no_healthy_upstream` in the
+not-retriable class. The two per-try bounds are both retriable.
+
+### Measured
+
+**`per_try_idle_timeout` bounds TIME TO FIRST BYTE, not merely a mid-stream stall.**
+A target stalling 20s before sending anything, against a 5s idle timeout:
+
+```
+http=200  elapsed=5.3s  attempts=2  cluster=provider_b
+```
+
+Cancelled at 5s and failed over — despite being healthy and about to answer `200`.
+
+**Streaming with sub-threshold gaps never trips it.** Six chunks 3s apart, 15s total,
+same 5s idle timeout:
+
+```
+http=200  elapsed=15s  attempts=1  cluster=provider_a
+```
+
+### The defect this exposes is the OPPOSITE of the one suspected
+
+The concern was that a slow target would not fail over. It does. The real problem is that
+a *legitimately* slow one does, when it should not.
+
+A non-streaming completion sends **nothing** until the answer is ready. From the proxy's
+side that is indistinguishable from a hang, and the idle timer does not care which it is.
+With the current `perTryIdleTimeout` default of **10s**, any non-streaming completion
+taking longer than 10 seconds is cancelled and failed over — which for LLM traffic is
+routine, not exceptional.
+
+| Request shape | Behaviour today | Correct? |
+|---|---|---|
+| Streaming, target hangs before first token | failed over at 10s | yes |
+| Streaming, target stalls mid-stream >10s | failed over | yes |
+| Streaming, slow but steady (gaps <10s) | served, any total duration | yes |
+| **Non-streaming, legitimately takes >10s** | **failed over at 10s** | **no** |
+
+The effective ceiling for a non-streaming completion is therefore 10s, and the request
+then burns a second target for an answer the first was about to give.
+
+### Why it cannot simply be made per-request
+
+`x-envoy-upstream-rq-per-try-timeout-ms` overrides `per_try_timeout` per request, but
+**there is no header equivalent for `per_try_idle_timeout`** — confirmed against the full
+`RetryPolicy` field set in go-control-plane v1.40.0. It is static route configuration.
+
+So the policy cannot read `"stream": true` from the body and pick a bound, even though it
+already parses that body. The asymmetry is structural: streaming wants a SHORT idle bound,
+non-streaming wants a LONG one, and only one value exists per route.
+
+### Options
+
+| | Approach | Cost |
+|---|---|---|
+| **A** | Raise the `perTryIdleTimeout` default well above the longest expected non-streaming completion | A hung streaming target takes that long to fail over |
+| **B** | Generate separate routes for streaming and non-streaming; the policy rewrites `:path` on `"stream": true` and clears the route cache | Doubles the route count; needs `allow_all_routing`, which is already enabled (T021a) |
+| **C** | Set `per_try_timeout` per request via the header for non-streaming | **Does not work** — the idle timer fires first regardless |
+| **D** | Disable the idle timeout by default | Strictly worse than A: a hang then reaches the route timeout, which is terminal, so failover never engages at all |
+
+**A is the immediate fix**: a correct answer that is slow to fail over beats a fast failover
+of requests that were never broken. **B is the only option that gets both**, and its
+machinery already exists.
+
+### Secondary finding: the route timeout is itself tight for LLM
+
+`RouteTimeoutMs` defaults to **60000** (`config.go:1428`). That bounds the whole request,
+retries included, and firing it is terminal. Raising `perTryIdleTimeout` above 60s is
+therefore pointless — the route timeout wins. Any fix has to move both, and 60s is already
+short for a long non-streaming completion before failover is in the picture at all.

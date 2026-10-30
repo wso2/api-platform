@@ -1,0 +1,115 @@
+# PROBE T1 — what does per_try_idle_timeout actually bound?
+#
+# Our generated retry policy sets per_try_idle_timeout (default 10s) and leaves
+# per_try_timeout at 0, so NOTHING bounds an attempt's total duration. The question
+# this answers is whether the idle timer covers the gap between sending a request and
+# receiving the first response byte -- i.e. time-to-first-token.
+#
+#   If it DOES: a slow-to-start target is cancelled and failed over, and the real risk
+#   is the opposite one -- a legitimately slow non-streaming completion being failed
+#   over spuriously, since from the proxy's side the two are identical.
+#
+#   If it does NOT: a slow-to-start target consumes the whole route timeout, which is a
+#   terminal local 504 with no failover at all.
+#
+# provider_a stalls DELAY_BEFORE_HEADERS seconds before responding; provider_b is
+# instant. Order is a,b. Watch attempts= in the access log and the wall-clock time.
+admin: { address: { socket_address: { address: 0.0.0.0, port_value: 9901 } } }
+static_resources:
+  listeners:
+  - name: main
+    address: { socket_address: { address: 0.0.0.0, port_value: 10000 } }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: probe
+          access_log:
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              log_format:
+                text_format_source:
+                  inline_string: "ACCESSLOG cluster=%UPSTREAM_CLUSTER% attempts=%UPSTREAM_REQUEST_ATTEMPT_COUNT% md=%DYNAMIC_METADATA(wso2.failover)%\n"
+          route_config:
+            name: rc
+            cluster_specifier_plugins:
+            - extension:
+                name: failover-groups
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.priority_group.v3.PriorityGroupClusterSpecifier
+                  override_metadata_namespace: wso2.failover
+                  priority_groups:
+                  - name: rank-1
+                    clusters: [ { cluster_name: provider_a, weight: 1 } ]
+                  - name: rank-2
+                    clusters: [ { cluster_name: provider_b, weight: 1 } ]
+                  - name: rank-3
+                    clusters: [ { cluster_name: provider_c, weight: 1 } ]
+            virtual_hosts:
+            - name: vh
+              domains: ["*"]
+              routes:
+              - match: { prefix: "/" }
+                route:
+                  timeout: 60s
+                  cluster_specifier_plugin: failover-groups
+                  retry_policy:
+                    retry_on: "5xx,connect-failure,reset,retriable-status-codes"
+                    retriable_status_codes: [429, 500, 503]
+                    num_retries: 2
+                    # Exactly what the controller generates today: an idle bound and
+                    # NO total-attempt bound.
+                    per_try_idle_timeout: 5s
+                    refresh_cluster_on_retry: true
+          http_filters:
+          - name: envoy.filters.http.lua
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+              default_source_code:
+                inline_string: |
+                  local NAMES = { a = "provider_a", b = "provider_b", c = "provider_c" }
+                  function envoy_on_request(handle)
+                    local hdr = handle:headers():get("x-failover-groups")
+                    if hdr == nil or hdr == "" then return end
+                    local groups = {}
+                    local rank = 0
+                    for key in string.gmatch(hdr, "[^,]+") do
+                      local cluster = NAMES[key]
+                      if cluster ~= nil then
+                        rank = rank + 1
+                        groups[rank] = {
+                          name = "rank-" .. tostring(rank),
+                          clusters = { { cluster_name = cluster, weight = 1 } },
+                        }
+                      end
+                    end
+                    if rank > 0 then
+                      handle:streamInfo():dynamicMetadata():set(
+                        "wso2.failover", "priority_groups", groups)
+                      handle:clearRouteCache()
+                    end
+                  end
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: provider_a
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_a
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.11, port_value: 8080 } } } } ] } ]
+  - name: provider_b
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_b
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.12, port_value: 8080 } } } } ] } ]
+  - name: provider_c
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_c
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.13, port_value: 8080 } } } } ] } ]

@@ -7,19 +7,19 @@ networks:
 services:
   provider-a:
     image: python:3.12-alpine
-    environment: { PROVIDER: a, ALWAYS_FAIL: "${A_FAIL:-false}" }
+    environment: { PROVIDER: a, ALWAYS_FAIL: "${A_FAIL:-false}", DELAY_BEFORE_HEADERS: "${A_DELAY:-0}", STREAM_CHUNKS: "${A_CHUNKS:-0}", CHUNK_GAP: "${A_GAP:-0}" }
     volumes: [ "./backend.py:/backend.py:ro" ]
     command: python /backend.py
     networks: { probe: { ipv4_address: 172.28.0.11 } }
   provider-b:
     image: python:3.12-alpine
-    environment: { PROVIDER: b, ALWAYS_FAIL: "${B_FAIL:-false}" }
+    environment: { PROVIDER: b, ALWAYS_FAIL: "${B_FAIL:-false}", DELAY_BEFORE_HEADERS: "${B_DELAY:-0}", STREAM_CHUNKS: "${B_CHUNKS:-0}", CHUNK_GAP: "${B_GAP:-0}" }
     volumes: [ "./backend.py:/backend.py:ro" ]
     command: python /backend.py
     networks: { probe: { ipv4_address: 172.28.0.12 } }
   provider-c:
     image: python:3.12-alpine
-    environment: { PROVIDER: c, ALWAYS_FAIL: "${C_FAIL:-false}" }
+    environment: { PROVIDER: c, ALWAYS_FAIL: "${C_FAIL:-false}", DELAY_BEFORE_HEADERS: "${C_DELAY:-0}", STREAM_CHUNKS: "${C_CHUNKS:-0}", CHUNK_GAP: "${C_GAP:-0}" }
     volumes: [ "./backend.py:/backend.py:ro" ]
     command: python /backend.py
     networks: { probe: { ipv4_address: 172.28.0.13 } }
