@@ -18,7 +18,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { aGateway, aPublication, aPublicationDraftDetails, aRestApi } from '@/test/msw';
+import {
+  aGateway,
+  aPublication,
+  aPublicationDraftDetails,
+  aRestApi,
+  type PublicationSelectionFixture,
+} from '@/test/msw';
 import {
   buildProductionUrlOptions,
   deletedDocumentsOf,
@@ -104,9 +110,9 @@ describe('resolveDraftFormValues', () => {
 });
 
 describe('deleted plans', () => {
-  const selections = [
-    { deleted: false, displayName: 'Gold', edited: false, id: 'gold' },
-    { deleted: true, displayName: 'Platinum', edited: false, id: 'platinum' },
+  const selections: PublicationSelectionFixture[] = [
+    { displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' },
+    { displayName: 'Platinum', id: 'platinum', sourceStatus: 'DELETED' },
   ];
 
   it('leaves a deleted plan out of the form, whichever tier it is read from', () => {
@@ -135,9 +141,9 @@ describe('edited plans', () => {
   it('lists the plans edited since they were saved, leaving out deleted ones', () => {
     const draft = aPublicationDraftDetails({
       subscriptionPlans: [
-        { deleted: false, displayName: 'Gold', edited: true, id: 'gold' },
-        { deleted: false, displayName: 'Silver', edited: false, id: 'silver' },
-        { deleted: true, displayName: 'Platinum', edited: true, id: 'platinum' },
+        { displayName: 'Gold', id: 'gold', sourceStatus: 'UPDATED' },
+        { displayName: 'Silver', id: 'silver', sourceStatus: 'UNCHANGED' },
+        { displayName: 'Platinum', id: 'platinum', sourceStatus: 'DELETED' },
       ],
     });
 
@@ -147,10 +153,10 @@ describe('edited plans', () => {
 });
 
 describe('deleted and edited documents', () => {
-  const selections = [
-    { deleted: false, displayName: 'Guide', edited: true, id: 'guide' },
-    { deleted: true, displayName: 'Old guide', edited: true, id: 'gone' },
-    { deleted: false, displayName: 'FAQ', edited: false, id: 'faq' },
+  const selections: PublicationSelectionFixture[] = [
+    { displayName: 'Guide', id: 'guide', sourceStatus: 'UPDATED' },
+    { displayName: 'Old guide', id: 'gone', sourceStatus: 'DELETED' },
+    { displayName: 'FAQ', id: 'faq', sourceStatus: 'UNCHANGED' },
   ];
 
   it('leaves a deleted document out of the form, whichever tier it is read from', () => {

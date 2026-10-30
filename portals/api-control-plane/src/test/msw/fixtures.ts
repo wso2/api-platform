@@ -162,6 +162,8 @@ export const aPublicationSummary = (
   ...overrides,
 });
 
+export type PublicationSelectionFixture = Schema<'PublicationSelection'>;
+
 export type PublicationDraftDetailsFixture = Schema<'PublicationDraftDetails'>;
 
 export const aPublicationDraftDetails = (

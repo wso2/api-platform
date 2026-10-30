@@ -463,11 +463,11 @@ func TestPublicationHandler_GetPublication_RoundTrip(t *testing.T) {
 		t.Fatalf("GET publication: want docIds [quickstart], got %v", got["docIds"])
 	}
 	planSelections, _ := got["subscriptionPlans"].([]any)
-	if len(planSelections) != 1 || !reflect.DeepEqual(planSelections[0], map[string]any{"id": "gold", "displayName": "Gold plan", "deleted": false, "edited": false}) {
+	if len(planSelections) != 1 || !reflect.DeepEqual(planSelections[0], map[string]any{"id": "gold", "displayName": "Gold plan", "sourceStatus": "UNCHANGED"}) {
 		t.Fatalf("GET publication: want subscriptionPlans [gold], got %v", got["subscriptionPlans"])
 	}
 	docSelections, _ := got["documents"].([]any)
-	if len(docSelections) != 1 || !reflect.DeepEqual(docSelections[0], map[string]any{"id": "quickstart", "displayName": "Quickstart", "deleted": false, "edited": false}) {
+	if len(docSelections) != 1 || !reflect.DeepEqual(docSelections[0], map[string]any{"id": "quickstart", "displayName": "Quickstart", "sourceStatus": "UNCHANGED"}) {
 		t.Fatalf("GET publication: want documents [quickstart], got %v", got["documents"])
 	}
 	if got["hasThumbnail"] != true || got["hasLandingPage"] != true {

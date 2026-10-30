@@ -650,9 +650,22 @@ func ownersToResponse(pub *model.Publication) *ownersResponse {
 func selectionsToResponse(selections []model.PublicationSelection) []api.PublicationSelection {
 	out := make([]api.PublicationSelection, 0, len(selections))
 	for _, sel := range selections {
-		out = append(out, api.PublicationSelection{Id: sel.Handle, DisplayName: sel.DisplayName, Deleted: sel.Deleted, Edited: sel.Edited})
+		out = append(out, api.PublicationSelection{Id: sel.Handle, DisplayName: sel.DisplayName, SourceStatus: sourceStatus(sel)})
 	}
 	return out
+}
+
+// sourceStatus reports how a selection's source compares with the stored
+// copy. A deleted source is never also reported as updated.
+func sourceStatus(sel model.PublicationSelection) api.PublicationSelectionSourceStatus {
+	switch {
+	case sel.Deleted:
+		return api.DELETED
+	case sel.Edited:
+		return api.UPDATED
+	default:
+		return api.UNCHANGED
+	}
 }
 
 // draftModelToResponse converts the internal model into the generated

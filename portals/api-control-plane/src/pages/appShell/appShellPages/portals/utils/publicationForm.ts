@@ -97,14 +97,14 @@ type ListingSource = SelectionSource &
 /** The selected items that still exist; a deleted one cannot be saved or published, so it never enters the form. */
 const existingIds = (selections: SelectionList, ids: string[] | undefined): string[] => {
   if (!selections) return ids ?? [];
-  return selections.filter((item) => !item.deleted).map((item) => item.id);
+  return selections.filter((item) => item.sourceStatus !== 'DELETED').map((item) => item.id);
 };
 
 const deletedOf = (selections: SelectionList): DeletedSelection[] =>
-  (selections ?? []).filter((item) => item.deleted).map(({ id, displayName }) => ({ id, displayName }));
+  (selections ?? []).filter((item) => item.sourceStatus === 'DELETED').map(({ id, displayName }) => ({ id, displayName }));
 
 const editedIdsOf = (selections: SelectionList): string[] =>
-  (selections ?? []).filter((item) => item.edited && !item.deleted).map((item) => item.id);
+  (selections ?? []).filter((item) => item.sourceStatus === 'UPDATED').map((item) => item.id);
 
 /** The names stored with the selection, by id, as of the last save or publish. */
 const storedNamesOf = (selections: SelectionList): Record<string, string> =>

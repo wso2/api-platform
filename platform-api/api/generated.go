@@ -985,6 +985,27 @@ func (e PublicationDraftDetailsInputAgentVisibility) Valid() bool {
 	}
 }
 
+// Defines values for PublicationSelectionSourceStatus.
+const (
+	DELETED   PublicationSelectionSourceStatus = "DELETED"
+	UNCHANGED PublicationSelectionSourceStatus = "UNCHANGED"
+	UPDATED   PublicationSelectionSourceStatus = "UPDATED"
+)
+
+// Valid indicates whether the value is a known member of the PublicationSelectionSourceStatus enum.
+func (e PublicationSelectionSourceStatus) Valid() bool {
+	switch e {
+	case DELETED:
+		return true
+	case UNCHANGED:
+		return true
+	case UPDATED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PublicationSummaryItemStatus.
 const (
 	PublicationSummaryItemStatusDEPRECATED   PublicationSummaryItemStatus = "DEPRECATED"
@@ -5224,18 +5245,24 @@ type PublicationDraftDetailsInputAgentVisibility string
 
 // PublicationSelection A subscription plan or document selected by a publication, as it was when last saved or published.
 type PublicationSelection struct {
-	// Deleted True when the plan or document no longer exists. The publication keeps the selection until the next publish.
-	Deleted bool `json:"deleted" yaml:"deleted"`
-
 	// DisplayName The name stored with the selection, so it can still be shown after the source is deleted.
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// Edited True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it.
-	Edited bool `json:"edited" yaml:"edited"`
-
 	// Id The plan or document handle.
 	Id string `json:"id" yaml:"id"`
+
+	// SourceStatus How the selected plan or document compares with this selection, as last saved (a draft) or published (a live listing):
+	// - UNCHANGED: It has not changed since.
+	// - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
+	// - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+	SourceStatus PublicationSelectionSourceStatus `json:"sourceStatus" yaml:"sourceStatus"`
 }
+
+// PublicationSelectionSourceStatus How the selected plan or document compares with this selection, as last saved (a draft) or published (a live listing):
+// - UNCHANGED: It has not changed since.
+// - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
+// - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+type PublicationSelectionSourceStatus string
 
 // PublicationSummaryItem defines model for PublicationSummaryItem.
 type PublicationSummaryItem struct {

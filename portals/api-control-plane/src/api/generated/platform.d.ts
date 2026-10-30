@@ -7457,10 +7457,14 @@ export interface components {
             id: string;
             /** @description The name stored with the selection, so it can still be shown after the source is deleted. */
             displayName: string;
-            /** @description True when the plan or document no longer exists. The publication keeps the selection until the next publish. */
-            deleted: boolean;
-            /** @description True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it. */
-            edited: boolean;
+            /**
+             * @description How the selected plan or document compares with this selection, as last saved (a draft) or published (a live listing):
+             *     - UNCHANGED: It has not changed since.
+             *     - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
+             *     - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+             * @enum {string}
+             */
+            sourceStatus: "UNCHANGED" | "UPDATED" | "DELETED";
         };
         PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
             subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];

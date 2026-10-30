@@ -566,8 +566,8 @@ describe('PortalPublishPage', () => {
       draft: aPublicationDraftDetails({
         subscriptionPlanIds: ['gold', 'old'],
         subscriptionPlans: [
-          { deleted: false, displayName: 'Gold', edited: false, id: 'gold' },
-          { deleted: true, displayName: 'Platinum', edited: false, id: 'old' },
+          { displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' },
+          { displayName: 'Platinum', id: 'old', sourceStatus: 'DELETED' },
         ],
       }),
       plans: [gold],
@@ -598,8 +598,8 @@ describe('PortalPublishPage', () => {
       draft: aPublicationDraftDetails({
         docIds: ['guide', 'gone'],
         documents: [
-          { deleted: false, displayName: 'Getting started', edited: false, id: 'guide' },
-          { deleted: true, displayName: 'Old guide', edited: false, id: 'gone' },
+          { displayName: 'Getting started', id: 'guide', sourceStatus: 'UNCHANGED' },
+          { displayName: 'Old guide', id: 'gone', sourceStatus: 'DELETED' },
         ],
       }),
     });
