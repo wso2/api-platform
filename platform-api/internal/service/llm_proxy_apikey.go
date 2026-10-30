@@ -41,7 +41,6 @@ type LLMProxyAPIKeyService struct {
 	gatewayEventsService *GatewayEventsService
 	identity             *IdentityService
 	slogger              *slog.Logger
-	auditService         *AuditService
 }
 
 // NewLLMProxyAPIKeyService creates a new LLM proxy API key service instance
@@ -52,10 +51,8 @@ func NewLLMProxyAPIKeyService(
 	gatewayEventsService *GatewayEventsService,
 	identity *IdentityService,
 	slogger *slog.Logger,
-	auditService *AuditService,
 ) *LLMProxyAPIKeyService {
 	return &LLMProxyAPIKeyService{
-		auditService:         auditService,
 		llmProxyRepo:         llmProxyRepo,
 		apiRepo:              apiRepo,
 		apiKeyRepo:           apiKeyRepo,
@@ -141,10 +138,6 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName); err != nil {
 		s.slogger.Error("Failed to delete LLM proxy API key from database", "proxyId", proxyID, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to delete API key: %w", err)
-	}
-
-	if s.auditService != nil {
-		_ = s.auditService.Record("DELETE", existingKey.UUID, "api_key", orgID, userID)
 	}
 
 	s.slogger.Info("Successfully deleted LLM proxy API key", "proxyId", proxyID, "keyName", keyName)
@@ -282,10 +275,6 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		}
 		s.slogger.Error("Failed to persist LLM proxy API key to database", "proxyId", proxyID, "keyName", name, "error", err)
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
-	}
-
-	if s.auditService != nil {
-		_ = s.auditService.Record("CREATE", apiKeyUUID, "api_key", orgID, userID)
 	}
 
 	var expiresAt *string

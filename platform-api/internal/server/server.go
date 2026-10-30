@@ -330,10 +330,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
-		auditService,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger, auditService)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger, auditService)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
 	agentProxyAPIKeyService := service.NewAgentProxyAPIKeyService(agentProxyRepo, apiKeyRepo, identityService)
 	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
@@ -348,7 +347,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
-		auditService,
 	)
 	mcpDeploymentService := service.NewMCPDeploymentService(
 		mcpProxyRepo,
@@ -362,7 +360,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
-		auditService,
 	)
 	agentDeploymentService := service.NewAgentDeploymentService(
 		agentProxyRepo,
@@ -375,7 +372,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
-		auditService,
 	)
 	graphqlAPIDeploymentService := service.NewGraphQLAPIDeploymentService(
 		graphqlAPIRepo,

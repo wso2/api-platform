@@ -118,7 +118,7 @@ func TestLLMProviderAPIKey_AllowedForDPOrigin(t *testing.T) {
 		getByIDFunc: func(string, string) (*model.LLMProvider, error) { return provider, nil },
 	}
 	keyRepo := &dpCapturingAPIKeyRepo{}
-	svc := NewLLMProviderAPIKeyService(providerRepo, dpKeyAPIRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger(), nil)
+	svc := NewLLMProviderAPIKeyService(providerRepo, dpKeyAPIRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
 
 	resp, err := svc.CreateLLMProviderAPIKey(context.Background(), "dp-prov", "org-1", "",
 		&api.CreateLLMProviderAPIKeyRequest{DisplayName: "dp-consumer-key"})
@@ -151,7 +151,7 @@ func TestLLMProxyAPIKey_AllowedForDPOrigin(t *testing.T) {
 		getByIDFunc: func(string, string) (*model.LLMProxy, error) { return proxy, nil },
 	}
 	keyRepo := &dpCapturingAPIKeyRepo{}
-	svc := NewLLMProxyAPIKeyService(proxyRepo, dpKeyAPIRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger(), nil)
+	svc := NewLLMProxyAPIKeyService(proxyRepo, dpKeyAPIRepo{}, keyRepo, newDPKeyEventsService(), newTestIdentityService(), newTestLogger())
 
 	resp, err := svc.CreateLLMProxyAPIKey(context.Background(), "dp-proxy", "org-1", "",
 		&api.CreateLLMProxyAPIKeyRequest{DisplayName: "dp-consumer-key"})
@@ -189,7 +189,7 @@ func TestCreateLLMProviderAPIKey_AssociationScoped(t *testing.T) {
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 
 	svc := NewLLMProviderAPIKeyService(providerRepo, dpKeyNoAssocAPIRepo{}, keyRepo,
-		events, newTestIdentityService(), newTestLogger(), nil)
+		events, newTestIdentityService(), newTestLogger())
 
 	resp, err := svc.CreateLLMProviderAPIKey(context.Background(), "prov", "org-1", "",
 		&api.CreateLLMProviderAPIKeyRequest{DisplayName: "k"})
@@ -224,7 +224,7 @@ func TestCreateLLMProxyAPIKey_AssociationScoped(t *testing.T) {
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 
 	svc := NewLLMProxyAPIKeyService(proxyRepo, dpKeyNoAssocAPIRepo{}, keyRepo,
-		events, newTestIdentityService(), newTestLogger(), nil)
+		events, newTestIdentityService(), newTestLogger())
 
 	resp, err := svc.CreateLLMProxyAPIKey(context.Background(), "proxy", "org-1", "",
 		&api.CreateLLMProxyAPIKeyRequest{DisplayName: "k"})

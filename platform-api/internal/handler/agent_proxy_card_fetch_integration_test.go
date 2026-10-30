@@ -162,7 +162,6 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		identity,
 		cfg,
 		slog.New(slog.NewJSONHandler(deployLogs, nil)),
-		nil,
 	)
 
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)

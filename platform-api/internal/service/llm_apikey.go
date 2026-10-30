@@ -41,7 +41,6 @@ type LLMProviderAPIKeyService struct {
 	gatewayEventsService *GatewayEventsService
 	identity             *IdentityService
 	slogger              *slog.Logger
-	auditService         *AuditService
 }
 
 // NewLLMProviderAPIKeyService creates a new LLM provider API key service instance
@@ -52,10 +51,8 @@ func NewLLMProviderAPIKeyService(
 	gatewayEventsService *GatewayEventsService,
 	identity *IdentityService,
 	slogger *slog.Logger,
-	auditService *AuditService,
 ) *LLMProviderAPIKeyService {
 	return &LLMProviderAPIKeyService{
-		auditService:         auditService,
 		llmProviderRepo:      llmProviderRepo,
 		apiRepo:              apiRepo,
 		apiKeyRepo:           apiKeyRepo,
@@ -160,10 +157,6 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
 		s.slogger.Error("Failed to delete LLM provider API key from database", "providerId", providerID, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to delete API key: %w", err)
-	}
-
-	if s.auditService != nil {
-		_ = s.auditService.Record("DELETE", existingKey.UUID, "api_key", orgID, userID)
 	}
 
 	s.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName)
@@ -311,10 +304,6 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		}
 		s.slogger.Error("Failed to persist LLM provider API key to database", "providerId", providerID, "keyName", name, "error", err)
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
-	}
-
-	if s.auditService != nil {
-		_ = s.auditService.Record("CREATE", apiKeyUUID, "api_key", orgID, userID)
 	}
 
 	event := &model.APIKeyCreatedEvent{

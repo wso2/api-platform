@@ -31,8 +31,8 @@ import (
 // The build half needs no adapting: every kind's service already exposes those four
 // identically, because they all delegate to the shared build store. The deployment
 // half does — the kinds spell the same operations differently (DeployAPIByHandle,
-// DeployMCPProxyByHandle, DeployLLMProxy) — so the adapters below normalise that
-// and nothing else.
+// DeployMCPProxyByHandle, DeployLLMProxy) and only REST and GraphQL thread an actor through —
+// so the adapters below normalise that and nothing else.
 type ArtifactDeployments interface {
 	CreateBuildByHandle(handle, orgID, actor, description string,
 		metadata map[string]interface{}) (*api.BuildResponse, error)
@@ -119,12 +119,12 @@ func (a mcpDeployments) Deploy(handle string, req *api.DeployRequest, orgID, act
 	return a.DeployMCPProxyByHandle(handle, req, orgID, actor)
 }
 
-func (a mcpDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.UndeployDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a mcpDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a mcpDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.RestoreMCPDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a mcpDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreMCPDeploymentByHandle(handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a mcpDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -143,12 +143,12 @@ func (a llmProxyDeployments) Deploy(handle string, req *api.DeployRequest, orgID
 	return a.DeployLLMProxy(handle, req, orgID, actor)
 }
 
-func (a llmProxyDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.UndeployLLMProxyDeployment(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a llmProxyDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployLLMProxyDeployment(handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a llmProxyDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.RestoreLLMProxyDeployment(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a llmProxyDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreLLMProxyDeployment(handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a llmProxyDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -166,12 +166,12 @@ func (a llmProviderDeployments) Deploy(handle string, req *api.DeployRequest, or
 	return a.DeployLLMProvider(handle, req, orgID, actor)
 }
 
-func (a llmProviderDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.UndeployLLMProviderDeployment(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a llmProviderDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployLLMProviderDeployment(handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a llmProviderDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.RestoreLLMProviderDeployment(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a llmProviderDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreLLMProviderDeployment(handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a llmProviderDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {
@@ -190,12 +190,12 @@ func (a agentDeployments) Deploy(handle string, req *api.DeployRequest, orgID, a
 	return a.DeployByHandle(handle, req, orgID, actor)
 }
 
-func (a agentDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.UndeployByHandle(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a agentDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.UndeployByHandle(handle, deploymentID, gatewayHandle, orgID)
 }
 
-func (a agentDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
-	return a.RestoreByHandle(handle, deploymentID, gatewayHandle, orgID, actor)
+func (a agentDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
+	return a.RestoreByHandle(handle, deploymentID, gatewayHandle, orgID)
 }
 
 func (a agentDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {

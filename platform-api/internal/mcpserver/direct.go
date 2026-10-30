@@ -265,8 +265,8 @@ func (l llmProviders) deploy(org, user, id string, req *api.DeployRequest) (*api
 	return l.deploys.DeployLLMProvider(id, req, org, user)
 }
 
-func (l llmProviders) undeploy(org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return l.deploys.UndeployLLMProviderDeployment(id, deploymentID, gatewayID, org, user)
+func (l llmProviders) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return l.deploys.UndeployLLMProviderDeployment(id, deploymentID, gatewayID, org)
 }
 
 // llmProxies is the llm-proxy type.
@@ -315,8 +315,8 @@ func (l llmProxies) deploy(org, user, id string, req *api.DeployRequest) (*api.D
 	return l.deploys.DeployLLMProxy(id, req, org, user)
 }
 
-func (l llmProxies) undeploy(org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return l.deploys.UndeployLLMProxyDeployment(id, deploymentID, gatewayID, org, user)
+func (l llmProxies) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return l.deploys.UndeployLLMProxyDeployment(id, deploymentID, gatewayID, org)
 }
 
 // mcpProxies is the mcp-proxy type.
@@ -365,8 +365,8 @@ func (m mcpProxies) deploy(org, user, id string, req *api.DeployRequest) (*api.D
 	return m.deploys.DeployMCPProxyByHandle(id, req, org, user)
 }
 
-func (m mcpProxies) undeploy(org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return m.deploys.UndeployDeploymentByHandle(id, deploymentID, gatewayID, org, user)
+func (m mcpProxies) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return m.deploys.UndeployDeploymentByHandle(id, deploymentID, gatewayID, org)
 }
 
 // agentProxies is the agent-proxy type. Its body is a union over protocols,
@@ -416,8 +416,8 @@ func (a agentProxies) deploy(org, user, id string, req *api.DeployRequest) (*api
 	return a.deploys.DeployByHandle(id, req, org, user)
 }
 
-func (a agentProxies) undeploy(org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
-	return a.deploys.UndeployByHandle(id, deploymentID, gatewayID, org, user)
+func (a agentProxies) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return a.deploys.UndeployByHandle(id, deploymentID, gatewayID, org)
 }
 
 // anyList turns a typed list into the []any the adapters return.
