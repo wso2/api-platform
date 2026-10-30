@@ -97,9 +97,9 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 	}
 }
 
-func TestAuditServiceOutputNone(t *testing.T) {
+func TestAuditServiceNoOutput(t *testing.T) {
 	db := &recordingAuditTable{}
-	s := NewAuditService(db, config.Audit{Output: "none"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := NewAuditService(db, config.Audit{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	if err := s.Record("DELETE", "res-1", "project", "org-1", "user-1"); err != nil {
 		t.Fatalf("Record error = %v", err)
@@ -108,6 +108,6 @@ func TestAuditServiceOutputNone(t *testing.T) {
 		t.Fatalf("db rows = %d, want 1", len(db.rows))
 	}
 	if s.out != nil {
-		t.Fatal("output handler built although audit.output is none")
+		t.Fatal("output handler built although audit.output is unset")
 	}
 }

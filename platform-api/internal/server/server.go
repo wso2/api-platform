@@ -78,9 +78,9 @@ type Server struct {
 // there is no relaxed/demo mode.
 func validateServerConfig(cfg *config.Server) error {
 	switch cfg.Audit.Output {
-	case "none", "stdout", "file":
+	case "", "stdout", "file":
 	default:
-		return fmt.Errorf("audit.output must be \"none\", \"stdout\" or \"file\"; got %q", cfg.Audit.Output)
+		return fmt.Errorf("audit.output must be \"stdout\" or \"file\"; got %q", cfg.Audit.Output)
 	}
 	if slices.Contains(cfg.Listeners.CORS.AllowedOrigins, "*") {
 		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
