@@ -104,8 +104,8 @@ before changing one — most encode a failure mode that presents as a passing te
 
 ## Scenario sheets
 
-Every product feature has a scenario sheet (for example `AIW-LLM`, LLM Providers and
-Proxies), and every sheet row must be covered by **both** suites: `it` at the API level and
+Maintainers track some product features on a scenario sheet (for example `AIW-LLM`, LLM
+Providers and Proxies). Every row of such a sheet must be covered by **both** suites: `it` at the API level and
 `ui` through the browser. `coverage/<SHEET>.yaml` mirrors the sheet, one entry per ID, and
 says for each layer whether the ID is `automated`, `known-issue` (with the issue link),
 `exempt` (with the reason) or still `planned`.

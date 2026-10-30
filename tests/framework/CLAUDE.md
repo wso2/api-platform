@@ -382,8 +382,9 @@ boot instead of reporting a test failure.
 
 ## Scenario Sheets
 
-Every product feature has a scenario sheet, mirrored by `coverage/<SHEET>.yaml` (for
-example `coverage/AIW-LLM.yaml`). The manifest is the source of truth for which sheet IDs
+A product feature that maintainers track on a scenario sheet is mirrored by
+`coverage/<SHEET>.yaml` (for example `coverage/AIW-LLM.yaml`). Scenarios without sheet IDs
+are fine; the rules below apply to those that carry one. The manifest is the source of truth for which sheet IDs
 exist and how each layer covers them; `make standards-check` validates it against the
 feature files. The sheets are maintained internally, so the manifest is their public record:
 keep each entry readable without the sheet, and never link to the sheet itself.
@@ -404,7 +405,7 @@ keep each entry readable without the sheet, and never link to the sheet itself.
   to a scenario of its own tagged `@known-issue`, and record the issue in the manifest.
 - IT coverage is one scenario per ID (or a Scenario Outline) through the publisher REST API,
   the contract the UI, the CLI and customers share.
-- Do not invent IDs. An ID must exist on the sheet and in its manifest before it is tagged.
+- Do not invent IDs. Maintainers assign them; an ID must exist in a manifest before it is tagged.
 
 ## Scenario Annotations
 
