@@ -98,7 +98,10 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 
 func TestAuditServiceNoOutput(t *testing.T) {
 	db := &recordingAuditTable{}
-	s := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s, err := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	s.Record("DELETE", "res-1", "rest_api", "admin", "corr-1")
 
@@ -112,7 +115,10 @@ func TestAuditServiceNoOutput(t *testing.T) {
 
 func TestDisabledAuditServiceRecordsNothing(t *testing.T) {
 	db := &recordingAuditTable{}
-	s := NewAuditService(db, "gw-1", config.AuditConfig{Output: "stdout"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s, err := NewAuditService(db, "gw-1", config.AuditConfig{Output: "stdout"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	s.Record("CREATE", "res-1", "rest_api", "admin", "corr-1")
 

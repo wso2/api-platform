@@ -790,7 +790,11 @@ func main() {
 	// service. An immutable gateway rejects every API change, and its boot
 	// loader shares restAPIService and agentSvc, so nothing is audited there.
 	if !cfg.ImmutableGateway.Enabled {
-		auditService := audit.NewAuditService(db, gatewayID, cfg.Controller.Audit, log)
+		auditService, err := audit.NewAuditService(db, gatewayID, cfg.Controller.Audit, log)
+		if err != nil {
+			log.Error("Failed to create audit service", slog.Any("error", err))
+			os.Exit(1)
+		}
 		restAPIService.SetAuditService(auditService)
 		agentSvc.SetAuditService(auditService)
 		apiServer.SetAuditService(auditService)

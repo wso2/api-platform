@@ -20,6 +20,7 @@ package audit
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -45,12 +46,13 @@ type AuditService struct {
 	logger    *slog.Logger
 }
 
-func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig, logger *slog.Logger) *AuditService {
+func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig, logger *slog.Logger) (*AuditService, error) {
 	s := &AuditService{enabled: cfg.Enabled, store: store, gatewayID: gatewayID, logger: logger}
 	if !cfg.Enabled {
-		return s
+		return s, nil
 	}
 	switch cfg.Output {
+	case "":
 	case "stdout":
 		s.out = slog.NewJSONHandler(os.Stdout, nil)
 	case "file":
@@ -61,8 +63,10 @@ func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig,
 			break
 		}
 		s.out = slog.NewJSONHandler(f, nil)
+	default:
+		return nil, fmt.Errorf("controller.audit.output must be \"stdout\" or \"file\"; got %q", cfg.Output)
 	}
-	return s
+	return s, nil
 }
 
 func openAuditLogFile() (*os.File, error) {
@@ -76,10 +80,12 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 	if s == nil || !s.enabled {
 		return
 	}
-	// The correlation ID comes from the client; the column holds 64 (NVARCHAR(64) on SQL Server).
+	// The correlation ID comes from the client: the column holds 64 bytes
+	// (NVARCHAR(64) on SQL Server) and PostgreSQL rejects invalid UTF-8.
 	if len(correlationID) > 64 {
-		correlationID = strings.ToValidUTF8(correlationID[:64], "")
+		correlationID = correlationID[:64]
 	}
+	correlationID = strings.ToValidUTF8(correlationID, "")
 	id := uuid.New().String()
 	// Microseconds: the finest precision every supported database stores, so
 	// the row and the output line hold the same time.
@@ -102,6 +108,10 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 			slog.String("resourceId", resourceUUID),
 			slog.String("performedBy", performedBy),
 		)
-		_ = s.out.Handle(context.Background(), line)
+		if err := s.out.Handle(context.Background(), line); err != nil {
+			s.logger.Warn("Failed to write audit log line",
+				slog.String("action", action), slog.String("resource_type", resourceType),
+				slog.String("resource_uuid", resourceUUID), slog.Any("error", err))
+		}
 	}
 }
