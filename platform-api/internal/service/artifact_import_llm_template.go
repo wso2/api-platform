@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -51,6 +53,14 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 	var specTmpl model.LLMProviderTemplate
 	if err := utils.DecodeSpec(ctx.Configuration.Spec, &specTmpl); err != nil {
 		return nil, err
+	}
+	// A push carries the same metadata block as the REST API, so it may set
+	// deploymentType only to a value the REST API accepts.
+	if md := specTmpl.Metadata; md != nil && md.DeploymentType != "" &&
+		!api.LLMProviderTemplateDeploymentType(md.DeploymentType).Valid() {
+		return nil, apperror.ValidationFailed.New(fmt.Sprintf(
+			"The gateway LLM provider template %q cannot be imported: its metadata deploymentType must be 'managed' or 'self-managed'.",
+			handle))
 	}
 
 	version := strings.TrimSpace(specTmpl.Version)

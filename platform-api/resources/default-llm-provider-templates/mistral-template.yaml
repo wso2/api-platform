@@ -31,6 +31,7 @@ spec:
       valuePrefix: "Bearer "
     logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/mistral/icon.png
     openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/mistral/openapi.yaml
+    deploymentType: managed
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens

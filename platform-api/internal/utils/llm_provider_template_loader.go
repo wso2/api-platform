@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
 	"gopkg.in/yaml.v3"
@@ -44,6 +45,7 @@ type llmProviderTemplateMetadataYAML struct {
 	Auth           *llmProviderTemplateAuthYAML `yaml:"auth"`
 	LogoURL        string                       `yaml:"logoUrl"`
 	OpenapiSpecURL string                       `yaml:"openapiSpecUrl"`
+	DeploymentType string                       `yaml:"deploymentType"`
 }
 
 type llmProviderTemplateYAML struct {
@@ -120,6 +122,12 @@ func LoadLLMProviderTemplatesFromDirectory(dirPath string) ([]*model.LLMProvider
 		if strings.TrimSpace(doc.Spec.DisplayName) == "" {
 			return nil, fmt.Errorf("template file %s is missing spec.displayName", filePath)
 		}
+		// The REST API accepts only these values, so a file may not store anything else.
+		if md := doc.Spec.Metadata; md != nil {
+			if dt := strings.TrimSpace(md.DeploymentType); dt != "" && !api.LLMProviderTemplateDeploymentType(dt).Valid() {
+				return nil, fmt.Errorf("template file %s has invalid spec.metadata.deploymentType %q: must be 'managed' or 'self-managed'", filePath, dt)
+			}
+		}
 
 		managedBy := strings.TrimSpace(doc.Spec.ManagedBy)
 		if managedBy == "" {
@@ -194,8 +202,9 @@ func mapTemplateMetadata(in *llmProviderTemplateMetadataYAML) *model.LLMProvider
 		Auth:           auth,
 		LogoURL:        strings.TrimSpace(in.LogoURL),
 		OpenapiSpecURL: strings.TrimSpace(in.OpenapiSpecURL),
+		DeploymentType: strings.TrimSpace(in.DeploymentType),
 	}
-	if out.EndpointURL == "" && out.LogoURL == "" && out.Auth == nil && out.OpenapiSpecURL == "" {
+	if out.EndpointURL == "" && out.LogoURL == "" && out.Auth == nil && out.OpenapiSpecURL == "" && out.DeploymentType == "" {
 		return nil
 	}
 	return out

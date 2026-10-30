@@ -309,3 +309,75 @@ func TestLLMProviderTemplateRepo_CreateImportedVersion_DecidesLatestFromFamily(t
 		t.Errorf("family has %d is_latest rows, want exactly 1", latestCount)
 	}
 }
+
+// deploymentType is a metadata field, so it is stored inside the metadata block of the
+// configuration JSON, not a column: it must round-trip through Create and Update, and a
+// row written without it (built-ins, and templates created before the field existed)
+// reads back empty, which the service reports as "managed".
+func TestLLMProviderTemplateRepo_DeploymentTypeRoundTrip(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewLLMProviderTemplateRepo(db)
+
+	orgUUID := "org-tpl-dt"
+	createTestOrganizationAndProject(t, db, orgUUID, "project-tpl-dt")
+
+	selfManaged := &model.LLMProviderTemplate{
+		OrganizationUUID: orgUUID,
+		ID:               "local-llama-v1-0",
+		GroupID:          "local-llama",
+		Name:             "Local Llama",
+		ManagedBy:        "organization",
+		Version:          "v1.0",
+		Metadata: &model.LLMProviderTemplateMetadata{
+			EndpointURL:    "https://llm.example.com/v1",
+			DeploymentType: "self-managed",
+		},
+	}
+	if err := repo.Create(selfManaged); err != nil {
+		t.Fatalf("failed to create template: %v", err)
+	}
+	got, err := repo.GetByID("local-llama-v1-0", orgUUID)
+	if err != nil || got == nil {
+		t.Fatalf("GetByID: (%v, %v)", got, err)
+	}
+	if got.Metadata == nil || got.Metadata.DeploymentType != "self-managed" {
+		t.Fatalf("metadata after create = %+v, want deploymentType self-managed", got.Metadata)
+	}
+	if got.Metadata.EndpointURL != "https://llm.example.com/v1" {
+		t.Fatalf("metadata endpointUrl after create = %q, want it stored alongside deploymentType", got.Metadata.EndpointURL)
+	}
+
+	got.Metadata.DeploymentType = "managed"
+	if err := repo.Update(got); err != nil {
+		t.Fatalf("failed to update template: %v", err)
+	}
+	got, err = repo.GetByID("local-llama-v1-0", orgUUID)
+	if err != nil || got == nil {
+		t.Fatalf("GetByID after update: (%v, %v)", got, err)
+	}
+	if got.Metadata == nil || got.Metadata.DeploymentType != "managed" {
+		t.Fatalf("metadata after update = %+v, want deploymentType managed", got.Metadata)
+	}
+
+	legacy := &model.LLMProviderTemplate{
+		OrganizationUUID: orgUUID,
+		ID:               "openai",
+		GroupID:          "openai",
+		Name:             "OpenAI",
+		ManagedBy:        "wso2",
+		Version:          "v1.0",
+		Metadata:         &model.LLMProviderTemplateMetadata{EndpointURL: "https://api.openai.com"},
+	}
+	if err := repo.Create(legacy); err != nil {
+		t.Fatalf("failed to create legacy template: %v", err)
+	}
+	got, err = repo.GetByID("openai", orgUUID)
+	if err != nil || got == nil {
+		t.Fatalf("GetByID legacy: (%v, %v)", got, err)
+	}
+	if got.Metadata == nil || got.Metadata.DeploymentType != "" {
+		t.Fatalf("metadata for a template stored without a deploymentType = %+v, want it empty", got.Metadata)
+	}
+}

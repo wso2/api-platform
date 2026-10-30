@@ -1085,3 +1085,34 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 		}
 	})
 }
+
+// A gateway push carries the same metadata block as the REST API, so it may set
+// deploymentType only to a value the REST API accepts.
+func TestImport_LLMProviderTemplate_DeploymentType(t *testing.T) {
+	t.Run("supported value is stored", func(t *testing.T) {
+		d := setupImportTest(t)
+		req := dpTemplateReq("dp-dt-1", "local-tmpl", "Local")
+		req.Configuration.Spec["metadata"] = map[string]interface{}{"deploymentType": "self-managed"}
+		mustImport(t, d, req)
+
+		tmpl, err := d.templateRepo.GetByID("local-tmpl", importTestOrgID)
+		if err != nil || tmpl == nil {
+			t.Fatalf("GetByID: (%v, %v)", tmpl, err)
+		}
+		if tmpl.Metadata == nil || tmpl.Metadata.DeploymentType != "self-managed" {
+			t.Errorf("metadata = %+v, want deploymentType self-managed", tmpl.Metadata)
+		}
+	})
+
+	t.Run("unknown value is rejected", func(t *testing.T) {
+		d := setupImportTest(t)
+		req := dpTemplateReq("dp-dt-2", "typo-tmpl", "Typo")
+		req.Configuration.Spec["metadata"] = map[string]interface{}{"deploymentType": "on-prem"}
+		if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); !apperror.ValidationFailed.Is(err) {
+			t.Fatalf("Import = %v, want ErrValidationFailed", err)
+		}
+		if tmpl, _ := d.templateRepo.GetByID("typo-tmpl", importTestOrgID); tmpl != nil {
+			t.Errorf("template stored despite an unknown deploymentType: %+v", tmpl.Metadata)
+		}
+	})
+}
