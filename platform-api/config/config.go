@@ -91,8 +91,7 @@ type Logging struct {
 	Format string `koanf:"format"`
 }
 
-// Audit holds audit-log configuration. Audit records always go to the audit
-// table; Stdout also writes each one to stdout as a JSON line.
+// Audit holds audit-log configuration.
 type Audit struct {
 	Stdout bool `koanf:"stdout"`
 }
