@@ -243,8 +243,14 @@ services:
       test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:4010/health"]
       interval: 5s
       timeout: 3s
-      retries: 10
-      start_period: 5s
+      # Prism parses the whole OpenAPI spec before it listens, and on a loaded or slower
+      # machine that takes longer than the 55s this budget used to allow. Compose then
+      # declares the container unhealthy and ABORTS every service that depends on it —
+      # gateway-runtime included — so the whole suite fails to start with an error that
+      # names the mock rather than the timeout. The sibling mock above already allows 15s
+      # of start_period for the same reason.
+      retries: 20
+      start_period: 30s
     networks:
       - it-gateway-runtime-network
 
