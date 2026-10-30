@@ -59,7 +59,8 @@ type APIDeploymentParams struct {
 type APIDeploymentResult struct {
 	StoredConfig *models.StoredConfig
 	IsUpdate     bool
-	IsStale      bool // true if the DB row was NOT modified (a newer version already exists)
+	IsStale      bool                 // true if the DB row was NOT modified (a newer version already exists)
+	Previous     *models.StoredConfig // the configuration this deploy replaced, when the lookup found one
 }
 
 // ValidationErrorListError wraps validation errors for API configuration.
@@ -446,6 +447,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		StoredConfig: storedCfg,
 		IsUpdate:     isUpdate,
 		IsStale:      false,
+		Previous:     existingConfig,
 	}, nil
 }
 

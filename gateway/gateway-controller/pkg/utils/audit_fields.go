@@ -23,6 +23,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	auditservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 )
 
 // ConfigAuditFields is the audit event data for a deployable artifact (REST API,
@@ -127,4 +128,14 @@ func pathTarget[M ~string](methods []M, path string) string {
 		ms[i] = string(m)
 	}
 	return strings.Join(ms, ",") + " " + path
+}
+
+// DeployAuditData is the event data for a create request: the field values for a new
+// artifact, or the diff against the configuration it replaced when the request
+// overwrote an existing one (previous is nil for a new artifact).
+func DeployAuditData(previous, stored *models.StoredConfig) map[string]any {
+	if previous != nil {
+		return auditservice.AuditDiff(ConfigAuditFields(previous), ConfigAuditFields(stored))
+	}
+	return ConfigAuditFields(stored)
 }

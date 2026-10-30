@@ -5822,6 +5822,7 @@ Audited resource type.
 |Property|Value|
 |---|---|
 |*anonymous*|RestApi|
+|*anonymous*|GraphQLApi|
 |*anonymous*|LlmProvider|
 |*anonymous*|LlmProviderTemplate|
 |*anonymous*|LlmProxy|

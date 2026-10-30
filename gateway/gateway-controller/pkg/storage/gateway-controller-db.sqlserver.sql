@@ -338,7 +338,7 @@ CREATE TABLE dbo.audit_log (
     correlation_id NVARCHAR(64),
     action NVARCHAR(50) NOT NULL,
     resource_type NVARCHAR(50) NOT NULL,
-    resource_uuid NVARCHAR(40),
+    resource_uuid NVARCHAR(64),
     resource_name NVARCHAR(255),
     performed_by NVARCHAR(200),
     performed_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),

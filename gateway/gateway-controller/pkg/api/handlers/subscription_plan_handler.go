@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -377,12 +378,20 @@ func planAuditFields(p *models.SubscriptionPlan) map[string]any {
 		"stopOnQuotaReach":   p.StopOnQuotaReach,
 		"throttleLimitCount": nil,
 		"throttleLimitUnit":  nil,
+		"billingPlan":        nil,
+		"expiryTime":         nil,
 	}
 	if p.ThrottleLimitCount != nil {
 		fields["throttleLimitCount"] = *p.ThrottleLimitCount
 	}
 	if p.ThrottleLimitUnit != nil {
 		fields["throttleLimitUnit"] = *p.ThrottleLimitUnit
+	}
+	if p.BillingPlan != nil {
+		fields["billingPlan"] = *p.BillingPlan
+	}
+	if p.ExpiryTime != nil {
+		fields["expiryTime"] = p.ExpiryTime.UTC().Format(time.RFC3339)
 	}
 	return fields
 }

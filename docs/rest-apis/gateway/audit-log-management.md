@@ -54,6 +54,7 @@ Required roles: `admin`
 |action|delete|
 |action|revoke|
 |resourceType|RestApi|
+|resourceType|GraphQLApi|
 |resourceType|LlmProvider|
 |resourceType|LlmProviderTemplate|
 |resourceType|LlmProxy|

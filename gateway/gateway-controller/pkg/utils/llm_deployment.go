@@ -374,9 +374,11 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	}
 
 	isUpdate := params.IsUpdate
+	var previous *models.StoredConfig
 	if !isUpdate && params.ID != "" {
 		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
 			isUpdate = true
+			previous = existing
 		}
 	}
 
@@ -457,7 +459,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	}
 	s.publishLLMProviderEvent(action, apiID, params.CorrelationID, params.Logger)
 
-	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false}, nil
+	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false, Previous: previous}, nil
 }
 
 // DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
@@ -575,9 +577,11 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	}
 
 	isUpdate := params.IsUpdate
+	var previous *models.StoredConfig
 	if !isUpdate && params.ID != "" {
 		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
 			isUpdate = true
+			previous = existing
 		}
 	}
 
@@ -653,7 +657,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	}
 	s.publishLLMProxyEvent(action, apiID, params.CorrelationID, params.Logger)
 
-	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false}, nil
+	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false, Previous: previous}, nil
 }
 
 // LLMTemplateParams Template params for CRUD
@@ -1168,16 +1172,18 @@ func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*A
 	if result.IsUpdate {
 		auditAction = models.AuditActionUpdate
 	}
-	s.audit.Record(context.Background(), &auditservice.AuditEvent{
-		Action:        auditAction,
-		ResourceType:  models.AuditResourceTypeLLMProvider,
-		Outcome:       models.AuditOutcomeSucceeded,
-		PerformedBy:   params.Actor,
-		ResourceUUID:  result.StoredConfig.UUID,
-		ResourceName:  result.StoredConfig.Handle,
-		CorrelationID: params.CorrelationID,
-		EventData:     ConfigAuditFields(result.StoredConfig),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        auditAction,
+			ResourceType:  models.AuditResourceTypeLLMProvider,
+			Outcome:       models.AuditOutcomeSucceeded,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  result.StoredConfig.UUID,
+			ResourceName:  result.StoredConfig.Handle,
+			CorrelationID: params.CorrelationID,
+			EventData:     DeployAuditData(result.Previous, result.StoredConfig),
+		})
+	}
 
 	return result, nil
 }
@@ -1319,16 +1325,18 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	}
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 
-	s.audit.Record(context.Background(), &auditservice.AuditEvent{
-		Action:        models.AuditActionUpdate,
-		ResourceType:  models.AuditResourceTypeLLMProvider,
-		Outcome:       models.AuditOutcomeSucceeded,
-		PerformedBy:   params.Actor,
-		ResourceUUID:  result.StoredConfig.UUID,
-		ResourceName:  result.StoredConfig.Handle,
-		CorrelationID: params.CorrelationID,
-		EventData:     auditservice.AuditDiff(before, ConfigAuditFields(result.StoredConfig)),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionUpdate,
+			ResourceType:  models.AuditResourceTypeLLMProvider,
+			Outcome:       models.AuditOutcomeSucceeded,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  result.StoredConfig.UUID,
+			ResourceName:  result.StoredConfig.Handle,
+			CorrelationID: params.CorrelationID,
+			EventData:     auditservice.AuditDiff(before, ConfigAuditFields(result.StoredConfig)),
+		})
+	}
 
 	return result, nil
 }
@@ -1427,16 +1435,18 @@ func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*APID
 	if result.IsUpdate {
 		auditAction2 = models.AuditActionUpdate
 	}
-	s.audit.Record(context.Background(), &auditservice.AuditEvent{
-		Action:        auditAction2,
-		ResourceType:  models.AuditResourceTypeLLMProxy,
-		Outcome:       models.AuditOutcomeSucceeded,
-		PerformedBy:   params.Actor,
-		ResourceUUID:  result.StoredConfig.UUID,
-		ResourceName:  result.StoredConfig.Handle,
-		CorrelationID: params.CorrelationID,
-		EventData:     ConfigAuditFields(result.StoredConfig),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        auditAction2,
+			ResourceType:  models.AuditResourceTypeLLMProxy,
+			Outcome:       models.AuditOutcomeSucceeded,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  result.StoredConfig.UUID,
+			ResourceName:  result.StoredConfig.Handle,
+			CorrelationID: params.CorrelationID,
+			EventData:     DeployAuditData(result.Previous, result.StoredConfig),
+		})
+	}
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
 }
@@ -1473,16 +1483,18 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	if err != nil {
 		return nil, err
 	}
-	s.audit.Record(context.Background(), &auditservice.AuditEvent{
-		Action:        models.AuditActionUpdate,
-		ResourceType:  models.AuditResourceTypeLLMProxy,
-		Outcome:       models.AuditOutcomeSucceeded,
-		PerformedBy:   params.Actor,
-		ResourceUUID:  result.StoredConfig.UUID,
-		ResourceName:  result.StoredConfig.Handle,
-		CorrelationID: params.CorrelationID,
-		EventData:     auditservice.AuditDiff(before, ConfigAuditFields(result.StoredConfig)),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        models.AuditActionUpdate,
+			ResourceType:  models.AuditResourceTypeLLMProxy,
+			Outcome:       models.AuditOutcomeSucceeded,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  result.StoredConfig.UUID,
+			ResourceName:  result.StoredConfig.Handle,
+			CorrelationID: params.CorrelationID,
+			EventData:     auditservice.AuditDiff(before, ConfigAuditFields(result.StoredConfig)),
+		})
+	}
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
 }

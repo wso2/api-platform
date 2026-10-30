@@ -110,7 +110,7 @@ func TestAudit_SubscriptionPlan(t *testing.T) {
 	assert.Equal(t, "gold", e.ResourceName)
 	assert.Equal(t, "alice", e.PerformedBy)
 	assert.JSONEq(t, `{"name":"gold","status":"ACTIVE","stopOnQuotaReach":true,
-		"throttleLimitCount":100,"throttleLimitUnit":"Min"}`, e.EventData)
+		"throttleLimitCount":100,"throttleLimitUnit":"Min","billingPlan":null,"expiryTime":null}`, e.EventData)
 
 	w, req = createTestContext(http.MethodPut, "/subscription-plans/"+created.ID,
 		[]byte(`{"throttleLimitCount":200,"throttleLimitUnit":"Min","status":"INACTIVE"}`))

@@ -107,15 +107,17 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 	if result.IsUpdate {
 		createAction = models.AuditActionUpdate
 	}
-	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
-		Action:       createAction,
-		ResourceType: models.AuditResourceTypeGraphQLAPI,
-		Outcome:      models.AuditOutcomeSucceeded,
-		PerformedBy:  actorFromRequest(r),
-		ResourceUUID: result.StoredConfig.UUID,
-		ResourceName: result.StoredConfig.Handle,
-		EventData:    utils.ConfigAuditFields(result.StoredConfig),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       createAction,
+			ResourceType: models.AuditResourceTypeGraphQLAPI,
+			Outcome:      models.AuditOutcomeSucceeded,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: result.StoredConfig.UUID,
+			ResourceName: result.StoredConfig.Handle,
+			EventData:    utils.DeployAuditData(result.Previous, result.StoredConfig),
+		})
+	}
 
 	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }
@@ -270,15 +272,17 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 
 	s.pushDeployableGraphQLArtifact(result, correlationID, log)
 
-	s.auditService.Record(r.Context(), &auditservice.AuditEvent{
-		Action:       models.AuditActionUpdate,
-		ResourceType: models.AuditResourceTypeGraphQLAPI,
-		Outcome:      models.AuditOutcomeSucceeded,
-		PerformedBy:  actorFromRequest(r),
-		ResourceUUID: result.StoredConfig.UUID,
-		ResourceName: result.StoredConfig.Handle,
-		EventData:    auditservice.AuditDiff(utils.ConfigAuditFields(existing), utils.ConfigAuditFields(result.StoredConfig)),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.auditService.Record(r.Context(), &auditservice.AuditEvent{
+			Action:       models.AuditActionUpdate,
+			ResourceType: models.AuditResourceTypeGraphQLAPI,
+			Outcome:      models.AuditOutcomeSucceeded,
+			PerformedBy:  actorFromRequest(r),
+			ResourceUUID: result.StoredConfig.UUID,
+			ResourceName: result.StoredConfig.Handle,
+			EventData:    auditservice.AuditDiff(utils.ConfigAuditFields(existing), utils.ConfigAuditFields(result.StoredConfig)),
+		})
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }

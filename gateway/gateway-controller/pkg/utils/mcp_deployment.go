@@ -252,9 +252,11 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	}
 
 	isUpdate := false
+	var previous *models.StoredConfig
 	if params.ID != "" {
 		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
 			isUpdate = true
+			previous = existing
 		}
 	}
 
@@ -343,6 +345,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
 		IsUpdate:     isUpdate,
+		Previous:     previous,
 	}, nil
 }
 
@@ -457,16 +460,18 @@ func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*APID
 	if result.IsUpdate {
 		auditAction = models.AuditActionUpdate
 	}
-	s.audit.Record(context.Background(), &auditservice.AuditEvent{
-		Action:        auditAction,
-		ResourceType:  models.AuditResourceTypeMCPProxy,
-		Outcome:       models.AuditOutcomeSucceeded,
-		PerformedBy:   params.Actor,
-		ResourceUUID:  result.StoredConfig.UUID,
-		ResourceName:  result.StoredConfig.Handle,
-		CorrelationID: params.CorrelationID,
-		EventData:     ConfigAuditFields(result.StoredConfig),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        auditAction,
+			ResourceType:  models.AuditResourceTypeMCPProxy,
+			Outcome:       models.AuditOutcomeSucceeded,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  result.StoredConfig.UUID,
+			ResourceName:  result.StoredConfig.Handle,
+			CorrelationID: params.CorrelationID,
+			EventData:     DeployAuditData(result.Previous, result.StoredConfig),
+		})
+	}
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
 }

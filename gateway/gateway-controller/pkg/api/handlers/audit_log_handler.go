@@ -157,25 +157,22 @@ func (s *APIServer) parseAuditParams(w http.ResponseWriter, r *http.Request, par
 		filter.PerformedBy = *params.PerformedBy
 	}
 	if params.ResourceId != nil {
-		if len(*params.ResourceId) > 40 {
+		if len(*params.ResourceId) > 64 {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
-				Message: "resourceId exceeds maximum length of 40 characters",
+				Message: "resourceId exceeds maximum length of 64 characters",
 			})
 			return storage.AuditLogFilter{}, 0, 0, false
 		}
 		filter.ResourceUUID = *params.ResourceId
 	}
 
-	// Pagination
+	// Pagination: an out-of-range limit or offset is clamped into the documented
+	// window rather than rejected, as Platform API's list endpoints do; the response's
+	// pagination block reports the values applied.
 	limit := auditDefaultLimit
 	if params.Limit != nil {
-		limit = int(*params.Limit)
-		if limit <= 0 {
-			limit = auditDefaultLimit
-		} else if limit > auditMaxLimit {
-			limit = auditMaxLimit
-		}
+		limit = min(max(int(*params.Limit), 1), auditMaxLimit)
 	}
 	offset := 0
 	if params.Offset != nil {

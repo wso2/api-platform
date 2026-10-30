@@ -223,16 +223,18 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	if result.IsUpdate {
 		restapiAuditAction = models.AuditActionUpdate
 	}
-	s.audit.Record(context.Background(), &auditservice.AuditEvent{
-		Action:        restapiAuditAction,
-		ResourceType:  models.AuditResourceTypeRestAPI,
-		Outcome:       models.AuditOutcomeSucceeded,
-		PerformedBy:   params.Actor,
-		ResourceUUID:  result.StoredConfig.UUID,
-		ResourceName:  result.StoredConfig.Handle,
-		CorrelationID: params.CorrelationID,
-		EventData:     utils.ConfigAuditFields(result.StoredConfig),
-	})
+	if !result.IsStale { // a stale deploy wrote nothing
+		s.audit.Record(context.Background(), &auditservice.AuditEvent{
+			Action:        restapiAuditAction,
+			ResourceType:  models.AuditResourceTypeRestAPI,
+			Outcome:       models.AuditOutcomeSucceeded,
+			PerformedBy:   params.Actor,
+			ResourceUUID:  result.StoredConfig.UUID,
+			ResourceName:  result.StoredConfig.Handle,
+			CorrelationID: params.CorrelationID,
+			EventData:     utils.DeployAuditData(result.Previous, result.StoredConfig),
+		})
+	}
 
 	return &CreateResult{
 		StoredConfig: result.StoredConfig,

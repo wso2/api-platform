@@ -188,8 +188,10 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 	}
 
 	isUpdate := false
+	var previous *models.StoredConfig
 	if existing, err := s.db.GetConfig(artifactID); err == nil && existing != nil {
 		isUpdate = true
+		previous = existing
 	} else if err != nil && !storage.IsNotFoundError(err) && !storage.IsDatabaseUnavailableError(err) {
 		return nil, fmt.Errorf("failed to look up existing configuration: %w", err)
 	}
@@ -279,7 +281,7 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 		ResourceUUID:  storedCfg.UUID,
 		ResourceName:  storedCfg.Handle,
 		CorrelationID: params.CorrelationID,
-		EventData:     utils.ConfigAuditFields(storedCfg),
+		EventData:     utils.DeployAuditData(previous, storedCfg),
 	})
 
 	s.pushDeployedArtifact(storedCfg, params.CorrelationID, log)
