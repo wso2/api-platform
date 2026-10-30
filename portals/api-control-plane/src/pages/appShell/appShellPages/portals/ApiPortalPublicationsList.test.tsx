@@ -184,8 +184,16 @@ describe('ApiPortalPublicationsList', () => {
     expect(await screen.findByText('Create your first portal')).toBeInTheDocument();
     // The portal preview animation stands in for an icon.
     expect(screen.getByText('API catalog')).toBeInTheDocument();
-    // No CTA when the managed-portals extension isn't registered (the empty-state
-    // link points at that extension's route, so a naked button would 404 in OSS).
+    // Without the managed-portals extension the action opens the built-in registry.
+    expect(screen.getByRole('button', { name: 'Add Portal' })).toBeInTheDocument();
+  });
+
+  it('offers no Add Portal action to a user who may not create a portal', async () => {
+    servePublications([]);
+
+    renderPage(undefined, ['ap:api_publication:read']);
+
+    expect(await screen.findByText('Create your first portal')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add Portal' })).not.toBeInTheDocument();
   });
 

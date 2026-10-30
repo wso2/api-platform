@@ -18,15 +18,30 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { collection, recorder, type Recorder } from '../../../test/msw';
+import {
+  aCreateApiPortalBody,
+  accepts,
+  anApiPortal,
+  collection,
+  noContent,
+  recorder,
+  resource,
+  type Recorder,
+} from '../../../test/msw';
 import { server } from '../../../test/server';
 import { resetHttpClient } from '../../core/http';
-import { listApiPortals } from './apiPortals.endpoints';
+import {
+  createApiPortal,
+  deleteApiPortal,
+  getApiPortal,
+  listApiPortals,
+  updateApiPortal,
+} from './apiPortals.endpoints';
 
 /**
- * Contract tests for `/api-portals`. Pins the path, the paging/sort/search
- * passthrough, and the org header — a rename or drift on any of those would
- * silently shift the org-overview count off the real resource.
+ * Contract tests for `/api-portals`. Pins the paths, the paging/sort/search
+ * passthrough and the org header, and that the shared key travels only in
+ * request bodies: it is write-only and the registry pages rely on that.
  */
 
 let requests: Recorder;
@@ -68,5 +83,58 @@ describe('listApiPortals', () => {
     await listApiPortals({ orgId: 'acme-org' });
 
     expect(requests.last()?.headers.get('X-Org-Id')).toBe('acme-org');
+  });
+});
+
+const PORTAL_ID = 'partner-portal';
+const RESOURCE = `/api-portals/${PORTAL_ID}`;
+
+describe('getApiPortal', () => {
+  it('GETs one portal by handle', async () => {
+    server.use(resource(RESOURCE, anApiPortal(), { record: requests }));
+
+    await expect(getApiPortal(PORTAL_ID)).resolves.toMatchObject({ id: PORTAL_ID });
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/api-portals/partner-portal');
+  });
+
+  it('percent-encodes the handle', async () => {
+    server.use(resource('/api-portals/:apiPortalId', anApiPortal(), { record: requests }));
+
+    await getApiPortal('weird/id');
+
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/api-portals/weird%2Fid');
+  });
+});
+
+describe('createApiPortal / updateApiPortal / deleteApiPortal', () => {
+  it('POSTs a new portal with its shared key in the body', async () => {
+    server.use(accepts('post', '/api-portals', anApiPortal(), { record: requests }));
+
+    await createApiPortal(aCreateApiPortalBody({ sharedKey: 'b'.repeat(64) }));
+
+    expect(requests.last()?.method).toBe('POST');
+    expect(JSON.parse(requests.last()!.body)).toMatchObject({
+      handle: 'partner-portal',
+      sharedKey: 'b'.repeat(64),
+    });
+  });
+
+  it('PUTs an update to the resource path, rotating the key when one is given', async () => {
+    server.use(accepts('put', RESOURCE, anApiPortal(), { record: requests }));
+
+    await updateApiPortal(PORTAL_ID, { sharedKey: 'c'.repeat(64) });
+
+    expect(requests.last()?.method).toBe('PUT');
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/api-portals/partner-portal');
+    expect(JSON.parse(requests.last()!.body)).toEqual({ sharedKey: 'c'.repeat(64) });
+  });
+
+  it('DELETEs the resource path', async () => {
+    server.use(noContent('delete', RESOURCE, { record: requests }));
+
+    await deleteApiPortal(PORTAL_ID);
+
+    expect(requests.last()?.method).toBe('DELETE');
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/api-portals/partner-portal');
   });
 });

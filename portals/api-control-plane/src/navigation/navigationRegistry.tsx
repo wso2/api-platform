@@ -31,6 +31,7 @@ import {
   Megaphone,
   Network,
   NotepadText,
+  PanelsTopLeft,
   Rocket,
   SlidersHorizontal,
   UserRoundKey,
@@ -409,6 +410,15 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <Network />,
     to: orgLevelTo(routes.gateways),
     match: matchRoutes(routes.gateways(), routes.newGateway(), routes.gateway()),
+  },
+  {
+    id: 'apiPortals',
+    label: 'API Portals',
+    group: CLUSTER.place,
+    order: 32,
+    icon: <PanelsTopLeft />,
+    to: orgLevelTo(routes.orgApiPortals),
+    match: matchRoutes(routes.orgApiPortals(), routes.newOrgApiPortal(), routes.orgApiPortal()),
   },
   {
     id: 'develop',

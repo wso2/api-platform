@@ -248,11 +248,16 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
-  // Org-level portal registry lives in the cloud-plugin sidebar; this builder is
-  // the well-known link the built-in Publish page uses for its "register a portal"
-  // empty-state so the core does not encode the plugin's routePath literal.
-  managedApiPortals: (orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/managed-api-portals`,
+  // Org-level portal registry in the cloud build, owned by a cloud-plugin
+  // sidebar entry; named here so the core does not encode the plugin's
+  // routePath literal. The open-source build uses `orgApiPortals` instead.
+  managedApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/managed-api-portals`,
+  // The built-in registry of self-hosted API Portals. Distinct from the
+  // API-scoped `apiPortals` below, which lists one API's publications.
+  orgApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/api-portals`,
+  newOrgApiPortal: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/api-portals/new`,
+  orgApiPortal: (orgHandle = ':orgHandle', apiPortalId = ':apiPortalId') =>
+    `/organizations/${orgHandle}/api-portals/${apiPortalId}`,
   // GraphQL API-level pages — see `graphqlApiPath` for why these live under a
   // distinct `graphql-apis` segment rather than joining the REST `api*` builders above.
   graphqlApi: (

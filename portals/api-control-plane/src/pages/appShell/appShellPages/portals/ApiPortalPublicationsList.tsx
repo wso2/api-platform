@@ -25,11 +25,10 @@ import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
 import { PortalPublishIllustration } from '@/components/illustrations/PortalPublishIllustration';
 import { EmptyState, LoadingState } from '@/components/StateViews';
-import { useExtensions } from '@/extensions';
 import { useTrackFeature } from '@/featureUsage';
-import { routes } from '@/routes/paths';
 import { useActionPermission, useCan } from '@/permissions';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { usePortalRegistryPath } from '../apiPortals/usePortalRegistryPath';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
 import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublishWithDefaults } from './components/PublishWithDefaults';
@@ -165,15 +164,12 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
     });
   const publicationsQuery = useApiPublications(target.apiType, apiHandler, { limit: LIST_LIMIT });
 
-  // The empty-state "Add Portal" action points at the org-level portal registry,
-  // which lives in a cloud plugin. The OSS build has no such route, so guard on
-  // the extension being registered rather than emit a link that would 404.
-  const extensions = useExtensions();
-  const hasManagedPortalsExtension = extensions.some((ext) => ext.id === 'managed-api-portals');
-  // ...and only for a user who may create a portal there; others see the empty
-  // state without an action rather than a page whose Add Portal is disabled.
-  const canCreatePortal = useCan('CreateApiPortal');
-  const offerAddPortal = hasManagedPortalsExtension && canCreatePortal;
+  // The empty-state "Add Portal" action opens the org-level portal registry: the
+  // cloud plugin's managed portals page when it is registered, the built-in
+  // registry of self-hosted portals otherwise. Only for a user who may create a
+  // portal there; others see the empty state without an action.
+  const portalRegistryPath = usePortalRegistryPath();
+  const offerAddPortal = useCan('CreateApiPortal');
 
   // Rendered first in every branch below, so React keeps them mounted whichever one shows. Each reads and
   // writes in the organization and API it started in, even once the page has moved to another.
@@ -270,7 +266,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
           description={intl.formatMessage(messages.emptyDescription)}
           illustration={<PortalPublishIllustration />}
           singleLineDescription
-          onAction={offerAddPortal ? () => navigate(routes.managedApiPortals(orgHandle)) : undefined}
+          onAction={offerAddPortal ? () => navigate(portalRegistryPath(orgHandle)) : undefined}
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (

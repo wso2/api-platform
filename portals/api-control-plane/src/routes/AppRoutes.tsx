@@ -77,6 +77,21 @@ const GatewayCreatePage = lazy(() =>
     default: m.GatewayCreatePage,
   })),
 );
+const ApiPortalsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apiPortals/ApiPortalsPage').then((m) => ({
+    default: m.ApiPortalsPage,
+  })),
+);
+const ApiPortalCreatePage = lazy(() =>
+  import('../pages/appShell/appShellPages/apiPortals/ApiPortalCreatePage').then((m) => ({
+    default: m.ApiPortalCreatePage,
+  })),
+);
+const ApiPortalDetailPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apiPortals/ApiPortalDetailPage').then((m) => ({
+    default: m.ApiPortalDetailPage,
+  })),
+);
 const GatewayDetailPage = lazy(() =>
   import('../pages/appShell/appShellPages/gateways/GatewayDetailPage').then((m) => ({
     default: m.GatewayDetailPage,
@@ -519,6 +534,9 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.projects()} element={<ProjectListPage />} />
           <Route path={routes.newProject()} element={<ProjectCreatePage />} />
           <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />
+          <Route path={routes.orgApiPortals()} element={<ApiPortalsPage />} />
+          <Route path={routes.newOrgApiPortal()} element={<ApiPortalCreatePage />} />
+          <Route path={routes.orgApiPortal()} element={<ApiPortalDetailPage />} />
           {/*
             Project and API overview take a single fully-scoped path each: they
             are the deeper tiers of the sidebar's Overview item, which degrades
