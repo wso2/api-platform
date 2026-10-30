@@ -83,6 +83,11 @@ level = "info"   # debug | info | warn | error
 # Log encoding. Use "json" when shipping logs to an aggregator.
 format = "text"   # text | json
 
+# output also writes each audit record as a JSON line tagged "logType":"audit", to
+# "stdout" or "file" (./data/logs/audit.log); unset keeps records in the table only.
+[platform_api.audit]
+# output = "stdout"
+
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------

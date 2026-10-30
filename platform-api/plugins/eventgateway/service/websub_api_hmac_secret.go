@@ -48,6 +48,7 @@ type WebSubAPIHmacSecretService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	gatewayRepo          repository.GatewayRepository
 	slogger              *slog.Logger
+	auditService         *coreservice.AuditService
 }
 
 // NewWebSubAPIHmacSecretService creates a new WebSubAPIHmacSecretService.
@@ -60,6 +61,7 @@ func NewWebSubAPIHmacSecretService(
 	gatewayRepo repository.GatewayRepository,
 	encryptionKeyStr string,
 	slogger *slog.Logger,
+	auditService *coreservice.AuditService,
 ) (*WebSubAPIHmacSecretService, error) {
 	if encryptionKeyStr == "" {
 		return nil, apperror.HmacSecretNotConfigured.New()
@@ -69,6 +71,7 @@ func NewWebSubAPIHmacSecretService(
 		return nil, fmt.Errorf("invalid HMAC secret encryption key: %w", err)
 	}
 	return &WebSubAPIHmacSecretService{
+		auditService:         auditService,
 		repo:                 repo,
 		websubRepo:           websubRepo,
 		encryptionKey:        key,
@@ -142,6 +145,10 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, name, external
 		return nil, "", fmt.Errorf("failed to persist HMAC secret: %w", err)
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("CREATE", id, "hmac_secret", orgUUID, userID)
+	}
+
 	s.broadcastSecretEvent(orgUUID, api.UUID, handle, "CREATED")
 	return secret, plaintext, nil
 }
@@ -205,12 +212,16 @@ func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, 
 		return nil, "", fmt.Errorf("failed to update HMAC secret: %w", err)
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("UPDATE", existing.UUID, "hmac_secret", orgUUID, userID)
+	}
+
 	s.broadcastSecretEvent(orgUUID, api.UUID, secretName, "UPDATED")
 	return existing, plaintext, nil
 }
 
 // Delete permanently removes a named HMAC secret.
-func (s *WebSubAPIHmacSecretService) Delete(orgUUID, apiHandle, secretName string) error {
+func (s *WebSubAPIHmacSecretService) Delete(orgUUID, apiHandle, secretName, userID string) error {
 	api, err := s.websubRepo.GetByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to look up WebSub API: %w", err)
@@ -232,6 +243,10 @@ func (s *WebSubAPIHmacSecretService) Delete(orgUUID, apiHandle, secretName strin
 			return apperror.HmacSecretNotFound.Wrap(err)
 		}
 		return fmt.Errorf("failed to delete HMAC secret: %w", err)
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("DELETE", existing.UUID, "hmac_secret", orgUUID, userID)
 	}
 
 	s.broadcastSecretEvent(orgUUID, api.UUID, secretName, "DELETED")

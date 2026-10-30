@@ -31,7 +31,7 @@ import (
 // The build half needs no adapting: every kind's service already exposes those four
 // identically, because they all delegate to the shared build store. The deployment
 // half does — the kinds spell the same operations differently (DeployAPIByHandle,
-// DeployMCPProxyByHandle, DeployLLMProxy) and only REST threads an actor through —
+// DeployMCPProxyByHandle, DeployLLMProxy) and only REST and GraphQL thread an actor through —
 // so the adapters below normalise that and nothing else.
 type ArtifactDeployments interface {
 	CreateBuildByHandle(handle, orgID, actor, description string,
@@ -214,12 +214,12 @@ func (a graphqlDeployments) Deploy(handle string, req *api.DeployRequest, orgID,
 	return a.DeployGraphQLAPI(handle, req, orgID, actor)
 }
 
-func (a graphqlDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.UndeployGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a graphqlDeployments) Undeploy(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.UndeployGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
-func (a graphqlDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, _ string) (*api.DeploymentResponse, error) {
-	return a.RestoreGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID)
+func (a graphqlDeployments) Restore(handle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error) {
+	return a.RestoreGraphQLAPIDeployment(handle, deploymentID, gatewayHandle, orgID, actor)
 }
 
 func (a graphqlDeployments) GetDeployment(handle, deploymentID, orgID string) (*api.DeploymentResponse, error) {

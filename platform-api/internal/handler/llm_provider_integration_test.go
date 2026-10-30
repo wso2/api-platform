@@ -96,7 +96,7 @@ func setupLLMProviderEnv(t *testing.T) (http.Handler, func()) {
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
-	secretService := service.NewSecretService(secretRepo, v, identityService)
+	secretService := service.NewSecretService(secretRepo, v, identityService, nil)
 	providerService.SetSecretService(secretService)
 
 	h := NewLLMHandler(nil, providerService, nil, identityService, slog.Default())

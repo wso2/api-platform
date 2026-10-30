@@ -636,7 +636,7 @@ func TestLLMProviderUpdate_SwitchToOther_PreservesReferencedSecret(t *testing.T)
 		t.Fatalf("create vault: %v", err)
 	}
 	secretSvc := NewSecretService(repository.NewSecretRepo(d.db), v,
-		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)), nil)
 	if _, err := secretSvc.Create(importTestOrgID, "tester",
 		&dto.CreateSecretRequest{Handle: "shared-key", DisplayName: "Shared Key", Value: "sk-shared"}); err != nil {
 		t.Fatalf("create secret: %v", err)
