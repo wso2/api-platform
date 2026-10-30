@@ -21,12 +21,20 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/gatewayclient"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
 
 // subscriptionListServer serves GET /subscriptions?apiId=... with the subscriptions each API holds.
@@ -54,7 +62,7 @@ func subscriptionCR(apiID string, externalRefID *string) *apiv1.Subscription {
 
 func TestRecoverSubscriptionIDAfterConflict_AdoptsExternalRefIdOnTheSameAPI(t *testing.T) {
 	srv := subscriptionListServer(t, map[string][]map[string]any{
-		"orders-api": {{"id": "other-sub"}, {"id": "acme-sub-01", "externalRefId": "acme-sub-01"}},
+		"orders-api": {{"id": "other-sub", "externalRefId": "other-sub"}, {"id": "acme-sub-01", "externalRefId": "acme-sub-01"}},
 	})
 	ref := "acme-sub-01"
 
@@ -68,7 +76,7 @@ func TestRecoverSubscriptionIDAfterConflict_AdoptsExternalRefIdOnTheSameAPI(t *t
 // collided, so it never confirms that a token is in use.
 func TestRecoverSubscriptionIDAfterConflict_RejectsExternalRefIdNotOnTheAPI(t *testing.T) {
 	srv := subscriptionListServer(t, map[string][]map[string]any{
-		"orders-api":   {{"id": "other-sub"}},
+		"orders-api":   {{"id": "other-sub", "externalRefId": "other-sub"}},
 		"payments-api": {{"id": "acme-sub-01", "externalRefId": "acme-sub-01"}},
 	})
 	ref := "acme-sub-01"
@@ -130,4 +138,277 @@ func TestRecoverSubscriptionIDAfterConflict_DoesNotAdoptAnotherApplicationsSubsc
 	id, err := recoverSubscriptionIDAfterConflict(context.Background(), srv.URL, subscriptionCR("orders-api", nil), nil)
 	require.NoError(t, err)
 	require.Empty(t, id)
+}
+
+// Gateways that predate externalRefId ignore it, assign their own ids and leave externalRefId out of their
+// responses, so the subscription is recovered by API and application, as it was before externalRefId.
+func TestRecoverSubscriptionIDAfterConflict_FallsBackOnGatewaysWithoutExternalRefId(t *testing.T) {
+	srv := subscriptionListServer(t, map[string][]map[string]any{
+		"orders-api": {{"id": "gateway-assigned-uuid"}},
+	})
+	ref := "acme-sub-01"
+
+	id, err := recoverSubscriptionIDAfterConflict(context.Background(), srv.URL, subscriptionCR("orders-api", &ref), nil)
+	require.NoError(t, err)
+	require.Equal(t, "gateway-assigned-uuid", id)
+}
+
+// With no subscription on the API there is nothing to recover, whichever gateway version answered.
+func TestRecoverSubscriptionIDAfterConflict_RejectsExternalRefIdWhenTheAPIHasNoSubscriptions(t *testing.T) {
+	srv := subscriptionListServer(t, map[string][]map[string]any{})
+	ref := "acme-sub-01"
+
+	id, err := recoverSubscriptionIDAfterConflict(context.Background(), srv.URL, subscriptionCR("orders-api", &ref), nil)
+	require.Empty(t, id)
+	var nonRetryable *gatewayclient.NonRetryableError
+	require.ErrorAs(t, err, &nonRetryable)
+	require.Equal(t, http.StatusConflict, nonRetryable.StatusCode)
+}
+
+func TestSubscriptionIDOwnedByAnotherCR(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, apiv1.AddToScheme(scheme))
+
+	reg := registry.GetGatewayRegistry()
+	shared := &registry.GatewayInfo{
+		Name: "owner-check-shared", Namespace: "gw", ServiceName: "shared", ServicePort: 9090,
+		APISelector: &apiv1.APISelector{Scope: apiv1.NamespacedScope, Namespaces: []string{"owner-team-a", "owner-team-b"}},
+	}
+	other := &registry.GatewayInfo{
+		Name: "owner-check-other", Namespace: "gw", ServiceName: "other", ServicePort: 9090,
+		APISelector: &apiv1.APISelector{Scope: apiv1.NamespacedScope, Namespaces: []string{"owner-team-c"}},
+	}
+	reg.Register(shared)
+	reg.Register(other)
+	t.Cleanup(func() {
+		reg.Unregister(shared.Namespace, shared.Name)
+		reg.Unregister(other.Namespace, other.Name)
+	})
+
+	deployed := func(ns, name, id string) *apiv1.Subscription {
+		cr := &apiv1.Subscription{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}
+		cr.Status.Id = id
+		return cr
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&apiv1.Subscription{}).WithObjects(
+		deployed("owner-team-a", "orders", "acme-sub-01"),
+		deployed("owner-team-c", "orders", "acme-sub-02"),
+	).Build()
+	endpoint := shared.GetGatewayServiceEndpoint()
+
+	owned, err := subscriptionIDOwnedByAnotherCR(ctx, c, endpoint, deployed("owner-team-b", "orders", ""), "acme-sub-01")
+	require.NoError(t, err)
+	require.True(t, owned, "a CR in another namespace on the same gateway already manages the subscription")
+
+	owned, err = subscriptionIDOwnedByAnotherCR(ctx, c, endpoint, deployed("owner-team-a", "orders", ""), "acme-sub-01")
+	require.NoError(t, err)
+	require.False(t, owned, "the CR's own status.id is not another CR's")
+
+	owned, err = subscriptionIDOwnedByAnotherCR(ctx, c, endpoint, deployed("owner-team-b", "orders", ""), "acme-sub-02")
+	require.NoError(t, err)
+	require.False(t, owned, "the same id on a different gateway is a different subscription")
+}
+
+// subscriptionGatewayServer serves the subscription list and records every PUT body. putStatuses gives the
+// status of successive PUTs; once exhausted, PUTs succeed.
+func subscriptionGatewayServer(t *testing.T, byAPI map[string][]map[string]any, putStatuses ...int) (*httptest.Server, *[]map[string]any) {
+	t.Helper()
+	var puts []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			items := byAPI[r.URL.Query().Get("apiId")]
+			if items == nil {
+				items = []map[string]any{}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"subscriptions": items, "count": len(items)})
+		case http.MethodPut:
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			puts = append(puts, body)
+			if len(puts) <= len(putStatuses) && putStatuses[len(puts)-1] != http.StatusOK {
+				w.WriteHeader(putStatuses[len(puts)-1])
+				_, _ = w.Write([]byte(`{"status":"error","message":"rejected"}`))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": path.Base(r.URL.Path)})
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &puts
+}
+
+// deployedSubscription is a CR already on the gateway as acme-sub-01. With baseline set, it carries the
+// immutable-field fingerprint an earlier reconcile stored.
+func deployedSubscription(t *testing.T, baseline bool) *apiv1.Subscription {
+	t.Helper()
+	token, status, plan := "token-1", "REVOKED", "gold-plan-uuid"
+	cr := &apiv1.Subscription{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "orders"}}
+	cr.Spec.ApiId = "orders-api"
+	cr.Spec.SubscriptionToken.Value = &token
+	cr.Spec.Status = &status
+	cr.Spec.SubscriptionPlanId = &plan
+	cr.Status.Id = "acme-sub-01"
+	if baseline {
+		fp, err := subscriptionImmutableFingerprint(cr)
+		require.NoError(t, err)
+		cr.Annotations = map[string]string{annSubscriptionLastAppliedImmutableFingerprint: fp}
+	}
+	return cr
+}
+
+func subscriptionTestClient(t *testing.T, objs ...client.Object) client.Client {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, apiv1.AddToScheme(scheme))
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+}
+
+func TestSubscriptionDeploy_UpdatesStatusPlanAndTokenInOneRequest(t *testing.T) {
+	cr := deployedSubscription(t, true)
+	srv, puts := subscriptionGatewayServer(t, nil)
+
+	res, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	require.NoError(t, err)
+	require.Equal(t, "acme-sub-01", res.Id)
+	require.Equal(t, []map[string]any{{
+		"status": "REVOKED", "subscriptionPlanId": "gold-plan-uuid", "subscriptionToken": "token-1",
+	}}, *puts)
+}
+
+// A plan or token the gateway rejects must not stop the status, so a subscription can still be revoked.
+func TestSubscriptionDeploy_AppliesTheStatusWhenThePlanOrTokenIsRejected(t *testing.T) {
+	for _, code := range []int{http.StatusBadRequest, http.StatusConflict} {
+		cr := deployedSubscription(t, true)
+		srv, puts := subscriptionGatewayServer(t, nil, code)
+
+		_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+		var nonRetryable *gatewayclient.NonRetryableError
+		require.ErrorAs(t, err, &nonRetryable)
+		require.Equal(t, code, nonRetryable.StatusCode, "the CR still reports why the full update failed")
+		require.Len(t, *puts, 2)
+		require.Equal(t, map[string]any{"status": "REVOKED"}, (*puts)[1], "only the status is sent again")
+	}
+}
+
+// A missing subscription is not a plan or token problem, so no status-only update follows.
+func TestSubscriptionDeploy_DoesNotRetryTheStatusWhenTheSubscriptionIsMissing(t *testing.T) {
+	cr := deployedSubscription(t, true)
+	srv, puts := subscriptionGatewayServer(t, nil, http.StatusNotFound)
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	require.Error(t, err)
+	require.Len(t, *puts, 1)
+}
+
+func TestSubscriptionDeploy_AppliesTheStatusWhenTheTokenSecretIsMissing(t *testing.T) {
+	cr := deployedSubscription(t, true)
+	cr.Spec.SubscriptionToken = apiv1.SecretValueSource{ValueFrom: &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "missing-secret"}, Key: "token",
+	}}
+	fp, err := subscriptionImmutableFingerprint(cr)
+	require.NoError(t, err)
+	cr.Annotations[annSubscriptionLastAppliedImmutableFingerprint] = fp
+	srv, puts := subscriptionGatewayServer(t, nil)
+
+	_, err = (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	require.Error(t, err)
+	require.Equal(t, []map[string]any{{"status": "REVOKED"}}, *puts)
+}
+
+// A CR without a stored fingerprint, such as one from an earlier operator version, takes its spec as the
+// baseline once the gateway subscription matches it.
+func TestSubscriptionDeploy_SetsTheBaselineWhenTheGatewaySubscriptionMatches(t *testing.T) {
+	cr := deployedSubscription(t, false)
+	cr.Annotations = map[string]string{annSubscriptionLegacyCreateFingerprint: "legacy"}
+	srv, puts := subscriptionGatewayServer(t, map[string][]map[string]any{
+		"orders-api": {{"id": "acme-sub-01"}},
+	})
+	c := subscriptionTestClient(t, cr)
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), c, srv.URL, cr, nil)
+	require.NoError(t, err)
+	require.Len(t, *puts, 1)
+
+	var stored apiv1.Subscription
+	require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(cr), &stored))
+	require.NotEmpty(t, stored.Annotations[annSubscriptionLastAppliedImmutableFingerprint])
+	require.NotContains(t, stored.Annotations, annSubscriptionLegacyCreateFingerprint)
+}
+
+// An edit an earlier operator version rejected, here a changed apiId, must still be rejected: the
+// subscription is not on the API the spec now names, so nothing is updated and no baseline is stored.
+func TestSubscriptionDeploy_RejectsASpecThatNoLongerMatchesTheGatewaySubscription(t *testing.T) {
+	app := "app-1"
+	cases := map[string]struct {
+		byAPI  map[string][]map[string]any
+		mutate func(*apiv1.Subscription)
+	}{
+		"apiId changed": {
+			byAPI: map[string][]map[string]any{"payments-api": {{"id": "acme-sub-01"}}},
+		},
+		"applicationId changed": {
+			byAPI:  map[string][]map[string]any{"orders-api": {{"id": "acme-sub-01"}}},
+			mutate: func(cr *apiv1.Subscription) { cr.Spec.ApplicationId = &app },
+		},
+		"externalRefId added": {
+			byAPI: map[string][]map[string]any{"orders-api": {{"id": "acme-sub-01", "externalRefId": "acme-sub-01"}}},
+			mutate: func(cr *apiv1.Subscription) {
+				ref := "acme-sub-02"
+				cr.Spec.ExternalRefId = &ref
+			},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			cr := deployedSubscription(t, false)
+			if tc.mutate != nil {
+				tc.mutate(cr)
+			}
+			srv, puts := subscriptionGatewayServer(t, tc.byAPI)
+			c := subscriptionTestClient(t, cr)
+
+			_, err := (&subscriptionAdapter{}).Deploy(context.Background(), c, srv.URL, cr, nil)
+			var nonRetryable *gatewayclient.NonRetryableError
+			require.ErrorAs(t, err, &nonRetryable)
+			require.Contains(t, err.Error(), "immutable")
+			require.Empty(t, *puts)
+
+			var stored apiv1.Subscription
+			require.NoError(t, c.Get(context.Background(), client.ObjectKeyFromObject(cr), &stored))
+			require.NotContains(t, stored.Annotations, annSubscriptionLastAppliedImmutableFingerprint)
+		})
+	}
+}
+
+// Gateways that predate externalRefId never report it, so a CR they deployed under a gateway-assigned id
+// still matches its spec.externalRefId.
+func TestSubscriptionDeploy_AcceptsAGatewayAssignedIdOnGatewaysWithoutExternalRefId(t *testing.T) {
+	cr := deployedSubscription(t, false)
+	ref := "acme-sub-01-ref"
+	cr.Spec.ExternalRefId = &ref
+	srv, puts := subscriptionGatewayServer(t, map[string][]map[string]any{
+		"orders-api": {{"id": "acme-sub-01"}},
+	})
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	require.NoError(t, err)
+	require.Len(t, *puts, 1)
+}
+
+// A plan that is still being deployed is waited for, as before, and the status is then sent with it.
+func TestSubscriptionDeploy_WaitsForAPlanBeingDeployedBeforeSendingTheStatus(t *testing.T) {
+	cr := deployedSubscription(t, true)
+	plan := &apiv1.SubscriptionPlan{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "gold-plan-uuid"}}
+	srv, puts := subscriptionGatewayServer(t, nil)
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr, plan), srv.URL, cr, nil)
+	var retryable *gatewayclient.RetryableError
+	require.ErrorAs(t, err, &retryable)
+	require.Empty(t, *puts)
 }

@@ -86,6 +86,18 @@ func CreateSubscription(ctx context.Context, gatewayEndpoint string, payload Sub
 // UpdateSubscription PUTs a SubscriptionUpdateRequest payload to
 // /subscriptions/{subscriptionId}.
 func UpdateSubscription(ctx context.Context, gatewayEndpoint, subscriptionID string, payload SubscriptionUpdatePayload, auth AuthHeaderFunc) (*SubscriptionResponse, error) {
+	return putSubscription(ctx, gatewayEndpoint, subscriptionID, payload, auth)
+}
+
+// UpdateSubscriptionStatus PUTs only the status, leaving the plan and token unchanged on the gateway.
+func UpdateSubscriptionStatus(ctx context.Context, gatewayEndpoint, subscriptionID string, status *string, auth AuthHeaderFunc) (*SubscriptionResponse, error) {
+	payload := struct {
+		Status *string `json:"status,omitempty"`
+	}{Status: status}
+	return putSubscription(ctx, gatewayEndpoint, subscriptionID, payload, auth)
+}
+
+func putSubscription(ctx context.Context, gatewayEndpoint, subscriptionID string, payload any, auth AuthHeaderFunc) (*SubscriptionResponse, error) {
 	if subscriptionID == "" {
 		return nil, fmt.Errorf("subscription id is required")
 	}
