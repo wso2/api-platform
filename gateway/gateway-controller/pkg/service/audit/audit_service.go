@@ -20,7 +20,6 @@ package audit
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -46,13 +45,12 @@ type AuditService struct {
 	logger    *slog.Logger
 }
 
-func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig, logger *slog.Logger) (*AuditService, error) {
+func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig, logger *slog.Logger) *AuditService {
 	s := &AuditService{enabled: cfg.Enabled, store: store, gatewayID: gatewayID, logger: logger}
 	if !cfg.Enabled {
-		return s, nil
+		return s
 	}
 	switch cfg.Output {
-	case "":
 	case "stdout":
 		s.out = slog.NewJSONHandler(os.Stdout, nil)
 	case "file":
@@ -63,10 +61,8 @@ func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig,
 			break
 		}
 		s.out = slog.NewJSONHandler(f, nil)
-	default:
-		return nil, fmt.Errorf("controller.audit.output must be \"stdout\" or \"file\"; got %q", cfg.Output)
 	}
-	return s, nil
+	return s
 }
 
 func openAuditLogFile() (*os.File, error) {
@@ -108,10 +104,6 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 			slog.String("resourceId", resourceUUID),
 			slog.String("performedBy", performedBy),
 		)
-		if err := s.out.Handle(context.Background(), line); err != nil {
-			s.logger.Warn("Failed to write audit log line",
-				slog.String("action", action), slog.String("resource_type", resourceType),
-				slog.String("resource_uuid", resourceUUID), slog.Any("error", err))
-		}
+		_ = s.out.Handle(context.Background(), line)
 	}
 }

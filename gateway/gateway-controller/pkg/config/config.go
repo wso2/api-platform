@@ -1523,6 +1523,12 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	switch c.Controller.Audit.Output {
+	case "", "stdout", "file":
+	default:
+		return fmt.Errorf("controller.audit.output must be \"stdout\" or \"file\"; got %q", c.Controller.Audit.Output)
+	}
+
 	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,
 	// which is incompatible with external shared databases like Postgres.
 	if c.ImmutableGateway.Enabled && !strings.EqualFold(c.Controller.Storage.Type, "sqlite") {
