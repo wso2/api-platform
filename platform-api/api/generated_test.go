@@ -57,6 +57,8 @@ func TestGeneratedEnumsAcceptOnlyTheirConstants(t *testing.T) {
 				string(SubscriptionPlanPricingRequestPricingTypeUsageBased)}},
 		{"ListSubscriptionPlansParamsStatus", func(v string) bool { return ListSubscriptionPlansParamsStatus(v).Valid() },
 			[]string{string(ListSubscriptionPlansParamsStatusACTIVE), string(ListSubscriptionPlansParamsStatusINACTIVE)}},
+		{"PublicationSelectionSourceStatus", func(v string) bool { return PublicationSelectionSourceStatus(v).Valid() },
+			[]string{string(DELETED), string(UNCHANGED), string(UPDATED)}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
