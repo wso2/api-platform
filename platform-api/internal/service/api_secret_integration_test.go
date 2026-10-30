@@ -92,7 +92,7 @@ func setupAPISecretTestEnv(t *testing.T) (*APIService, *SecretService, func()) {
 
 	apiRepo := repository.NewAPIRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
-	auditRepo := NewAuditService(repository.NewAuditRepo(db), config.Audit{}, slog.Default())
+	auditRepo, _ := NewAuditService(repository.NewAuditRepo(db), config.Audit{}, slog.Default())
 
 	apiSvc := NewAPIService(apiRepo, projectRepo, nil, nil, nil, nil, nil, nil, &utils.APIUtil{}, slog.Default(), auditRepo, identity)
 	apiSvc.SetSecretService(secretSvc)
