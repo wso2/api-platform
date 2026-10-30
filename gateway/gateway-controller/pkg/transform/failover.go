@@ -31,8 +31,26 @@ const FailoverPolicyName = "model-failover"
 const (
 	// 0 leaves the route's overall timeout in effect, matching the reviewed schema's
 	// perTryTimeout default.
-	defaultPerAttemptTimeoutMs     = 0
-	defaultPerAttemptIdleTimeoutMs = 10000
+	defaultPerAttemptTimeoutMs = 0
+
+	// per_try_idle_timeout bounds SILENCE within an attempt — and silence means TIME TO
+	// FIRST BYTE, not merely a mid-stream stall. Probed 2026-10-30: a target that waited 20s
+	// before sending anything was cancelled at 5.3s against a 5s idle timeout, while healthy
+	// and about to answer 200 (poc-results.md, "Timeouts").
+	//
+	// That makes the old 10s default actively wrong for a NON-STREAMING completion, which
+	// sends nothing at all until the answer is ready. From the proxy's side that is
+	// indistinguishable from a hang, so any non-streaming request over 10s was cancelled and
+	// failed over — routine for LLM traffic, and it burned a second target for an answer the
+	// first was about to give. Streaming is unaffected either way: its chunks reset the timer.
+	//
+	// 50s rather than a round number because the value is bounded above, not chosen freely:
+	// the route's overall timeout (RouteTimeoutMs, 60s by default) is terminal and fires
+	// first, so anything at or above it is inert. T030p covers validating that relationship
+	// at deploy time instead of leaving an operator to discover a configured value does
+	// nothing. Splitting streaming and non-streaming routes would let both bounds be correct
+	// at once; deferred 2026-10-30 as a large change for ~40s of detection latency (T030o).
+	defaultPerAttemptIdleTimeoutMs = 50000
 	// wildcardModel matches any client-requested model. It must agree with the policy's
 	// WildcardModel.
 	wildcardModel = "*"

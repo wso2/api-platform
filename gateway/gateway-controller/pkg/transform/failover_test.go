@@ -363,3 +363,41 @@ func TestPerAttemptPolicies_SingleParameterlessInstance(t *testing.T) {
 		t.Fatalf("params = %v, want none", got[0].Params)
 	}
 }
+
+// The idle-timeout default is a correctness boundary, not a tuning preference, and nothing
+// guarded it until this test — the one place the value appeared in a test passed it as a
+// literal input rather than asserting the default.
+//
+// per_try_idle_timeout bounds SILENCE within an attempt, and silence means time to first
+// byte (probed 2026-10-30; see poc-results.md "Timeouts"). A non-streaming completion sends
+// nothing until the answer is ready, so the default is the effective ceiling on how long a
+// legitimate non-streaming request may take before the gateway cancels it and fails over to
+// a second target for an answer the first was about to give.
+func TestBuildFailoverConfig_IdleTimeoutDefaultDoesNotCutLegitimateRequests(t *testing.T) {
+	cfg := buildFailoverConfig(failoverPolicy(map[string]interface{}{
+		"targets": []interface{}{map[string]interface{}{"model": "gpt-4o", "provider": "openai"}},
+	}), everyProviderResolves)
+
+	if cfg == nil {
+		t.Fatal("expected a config")
+	}
+
+	// 10s was the original value and is the specific regression: non-streaming LLM
+	// completions routinely exceed it, so every one of them was being failed over.
+	const cutsLegitimateTraffic = 10000
+	if cfg.PerAttemptIdleTimeoutMs <= cutsLegitimateTraffic {
+		t.Fatalf("idle timeout default = %dms; at or below %dms a non-streaming completion "+
+			"is cancelled mid-flight and failed over while healthy",
+			cfg.PerAttemptIdleTimeoutMs, cutsLegitimateTraffic)
+	}
+
+	// Bounded above too: the route's overall timeout is terminal and fires first, so a value
+	// at or beyond it never takes effect. Keeping the assertion here means raising the
+	// default past the route timeout fails loudly rather than becoming silently inert.
+	const routeTimeoutMs = 60000 // pkg/config/config.go RouteTimeoutMs default
+	if cfg.PerAttemptIdleTimeoutMs >= routeTimeoutMs {
+		t.Fatalf("idle timeout default = %dms, at or above the %dms route timeout; the route "+
+			"timeout fires first and terminally, so this value would never apply",
+			cfg.PerAttemptIdleTimeoutMs, routeTimeoutMs)
+	}
+}
