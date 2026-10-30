@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -55,6 +56,7 @@ type MCPDeploymentParams struct {
 	CorrelationID string              // Correlation ID for tracking
 	Logger        *slog.Logger        // Logger instance
 	DesiredState  models.DesiredState // Desired deployment state; empty defaults to StateDeployed
+	Actor         string              // Authenticated user, recorded in the audit log
 }
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
@@ -75,6 +77,11 @@ type MCPDeploymentService struct {
 	// gateway-originated MCP proxy is created here including via the immutable-gateway loader.
 	controlPlaneClient    ArtifactPusher
 	deploymentPushEnabled bool
+	auditService          *audit.AuditService
+}
+
+func (s *MCPDeploymentService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 // NewMCPDeploymentService creates a new MCP deployment service
@@ -313,6 +320,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		action = "UPDATE"
 	}
 	s.publishMCPProxyEvent(action, apiID, params.CorrelationID, params.Logger)
+	s.auditService.Record(action, apiID, "mcp_proxy", params.Actor, params.CorrelationID)
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
@@ -473,7 +481,7 @@ func (s *MCPDeploymentService) isMCPUndeployRequest(params MCPDeploymentParams) 
 }
 
 // DeleteMCPProxy deletes an MCP proxy by handle using store/db and updates snapshot
-func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
+func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID, actor string, logger *slog.Logger) (*models.StoredConfig, error) {
 	cfg, err := s.GetMCPProxyByHandle(handle)
 	if err != nil {
 		if isMCPNotFoundError(err) {
@@ -500,6 +508,7 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishMCPProxyEvent("DELETE", cfg.UUID, correlationID, logger)
+	s.auditService.Record("DELETE", cfg.UUID, "mcp_proxy", actor, correlationID)
 	return cfg, nil
 }
 

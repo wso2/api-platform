@@ -300,6 +300,7 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 		slog.String("name", req.Name),
 		slog.Int("cert_count", count))
 	s.publishCertificateEvent("CREATE", certID, correlationID, log)
+	s.auditService.Record("CREATE", certID, "certificate", actorFromRequest(r), correlationID)
 
 	// Get cert store from snapshot manager
 	translator := s.snapshotManager.GetTranslator()
@@ -591,6 +592,7 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 
 	log.Info("Certificate deleted from database", slog.String("id", id))
 	s.publishCertificateEvent("DELETE", id, correlationID, log)
+	s.auditService.Record("DELETE", id, "certificate", actorFromRequest(r), correlationID)
 
 	certStore := translator.GetCertStore()
 
@@ -886,6 +888,7 @@ func (s *APIServer) UpdateCertificate(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	s.publishCertificateEvent("UPDATE", updated.UUID, correlationID, log)
+	s.auditService.Record("UPDATE", updated.UUID, "certificate", actorFromRequest(r), correlationID)
 
 	// The SDS update rebuilds this identity's gateway_identity:<name> secret.
 	// Reload does nothing for identity rows but keeps parity with upload.

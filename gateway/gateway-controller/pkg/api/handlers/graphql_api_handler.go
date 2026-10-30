@@ -69,6 +69,7 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to deploy GraphQL API configuration", slog.Any("error", err))
@@ -228,6 +229,7 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 		Origin:        existing.Origin,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to update GraphQL API configuration", slog.Any("error", err))
@@ -290,6 +292,7 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 
 	correlationID := middleware.GetCorrelationID(r)
 	s.publishGraphQLAPIEvent("DELETE", cfg.UUID, correlationID, log)
+	s.auditService.Record("DELETE", cfg.UUID, "graphql_api", actorFromRequest(r), correlationID)
 
 	// Notify the control plane (DP->CP) that this artifact was deleted via the shared
 	// handler path; it keeps the artifact and marks it undeployed.

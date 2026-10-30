@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
@@ -783,6 +784,17 @@ func main() {
 	}
 	// Without an encryption provider, gateway identity uploads are refused.
 	apiServer.SetEncryptionManager(encryptionProviderManager)
+
+	// Only changes users make through the management API are audited: the
+	// control-plane client builds its own services, which never get the audit
+	// service. An immutable gateway rejects every API change, and its boot
+	// loader shares restAPIService and agentSvc, so nothing is audited there.
+	if !cfg.ImmutableGateway.Enabled {
+		auditService := audit.NewAuditService(db, gatewayID, cfg.Controller.Audit, log)
+		restAPIService.SetAuditService(auditService)
+		agentSvc.SetAuditService(auditService)
+		apiServer.SetAuditService(auditService)
+	}
 
 	// Recompute certificate metrics and expiry warnings at startup and then
 	// every 24h.

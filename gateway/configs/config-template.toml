@@ -337,6 +337,13 @@ issuer = "api-platform-devportal"
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
+# enabled = true records changes made through the management API in the audit table.
+# output also writes each record as a JSON line tagged "logType":"audit":
+# "none", "stdout", or "file" (./data/logs/audit.log).
+[controller.audit]
+enabled = false
+output = "none"
+
 [controller.metrics]
 enabled = false
 port = '{{ env "APIP_GW_CONTROLLER_METRICS_PORT" "9091" }}'

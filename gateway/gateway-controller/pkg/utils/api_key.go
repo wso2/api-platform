@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -186,6 +187,11 @@ type APIKeyService struct {
 	apiKeyConfig *config.APIKeyConfig // Configuration for API keys
 	eventHub     eventhub.EventHub
 	gatewayID    string
+	auditService *audit.AuditService
+}
+
+func (s *APIKeyService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 // NewAPIKeyService creates a new API key generation service
@@ -367,6 +373,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 
 	apiId := config.UUID
 	s.publishAPIKeyEvent("CREATE", apiId, apiKey.UUID, params.CorrelationID, logger)
+	s.auditService.Record("CREATE", apiKey.UUID, "api_key", user.UserID, params.CorrelationID)
 
 	// Build response following the generated schema
 	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle, plainAPIKey, isExternalKeyInjection)
@@ -526,6 +533,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 
 		apiId := config.UUID
 		s.publishAPIKeyEvent("DELETE", apiId, apiKey.UUID, params.CorrelationID, logger)
+		s.auditService.Record("REVOKE", apiKey.UUID, "api_key", user.UserID, params.CorrelationID)
 		// Remove the API key from database (complete removal)
 		// Note: This is cleanup only - the revocation is already complete
 		if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
@@ -684,6 +692,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 
 	apiId := config.UUID
 	s.publishAPIKeyEvent("UPDATE", apiId, updatedKey.UUID, params.CorrelationID, logger)
+	s.auditService.Record("UPDATE", updatedKey.UUID, "api_key", user.UserID, params.CorrelationID)
 
 	// Build response
 	// If API key was updated, use the new masked value; otherwise use existing
@@ -854,6 +863,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 
 	apiId := config.UUID
 	s.publishAPIKeyEvent("UPDATE", apiId, regeneratedKey.UUID, params.CorrelationID, logger)
+	s.auditService.Record("UPDATE", regeneratedKey.UUID, "api_key", user.UserID, params.CorrelationID)
 
 	// Build and return the response
 	result.Response = s.buildAPIKeyResponse(regeneratedKey, params.Handle, plainAPIKey, false)

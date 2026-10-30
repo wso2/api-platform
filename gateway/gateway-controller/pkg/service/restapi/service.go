@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -92,6 +93,12 @@ type RestAPIService struct {
 	// binary, that deregisters WebSub hub topics for a deleted WebSubApi config.
 	// It is nil (and skipped) when event-gateway support is not compiled in.
 	webSubTopicDeregistrar func(cfg *models.StoredConfig, log *slog.Logger) error
+	auditService           *audit.AuditService
+}
+
+func (s *RestAPIService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
+	s.deploymentService.SetAuditService(auditService)
 }
 
 // SetWebSubTopicDeregistrar registers the event-gateway hook invoked from Delete
@@ -160,6 +167,7 @@ type CreateParams struct {
 	CorrelationID string
 	Kind          string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Create deploys a new REST API configuration.
@@ -179,6 +187,7 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: params.CorrelationID,
 		Logger:        log,
+		Actor:         params.Actor,
 	})
 	if err != nil {
 		return nil, err
@@ -314,6 +323,7 @@ type UpdateParams struct {
 	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Update modifies an existing REST API configuration.
@@ -393,6 +403,7 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	}
 
 	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
+	s.auditService.Record("UPDATE", existing.UUID, "rest_api", params.Actor, params.CorrelationID)
 
 	// Trigger bottom-up sync if enabled and connected
 	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() &&
@@ -428,6 +439,7 @@ type DeleteParams struct {
 	Handle        string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Delete removes a REST API configuration.
@@ -466,6 +478,7 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 
 	// Publish deletion event so all replicas (including self) converge through event listener sync.
 	s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, params.CorrelationID, log)
+	s.auditService.Record("DELETE", cfg.UUID, "rest_api", params.Actor, params.CorrelationID)
 
 	log.Info("API configuration deleted",
 		slog.String("id", cfg.UUID),

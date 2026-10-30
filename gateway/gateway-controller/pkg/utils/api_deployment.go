@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
@@ -51,6 +52,12 @@ type APIDeploymentParams struct {
 	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
 	CorrelationID string        // Correlation ID for tracking
 	Logger        *slog.Logger  // Logger instance
+	Actor         string        // Authenticated user, recorded in the audit log
+}
+
+var auditResourceTypes = map[models.ArtifactKind]string{
+	models.KindRestApi:    "rest_api",
+	models.KindGraphQLApi: "graphql_api",
 }
 
 // APIDeploymentResult contains the result of API deployment
@@ -82,6 +89,11 @@ type APIDeploymentService struct {
 	eventHub        eventhub.EventHub
 	gatewayID       string
 	secretResolver  funcs.SecretResolver
+	auditService    *audit.AuditService
+}
+
+func (s *APIDeploymentService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
@@ -413,6 +425,9 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		action = "UPDATE"
 	}
 	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
+	if resourceType, ok := auditResourceTypes[models.ArtifactKind(kind)]; ok {
+		s.auditService.Record(action, storedCfg.UUID, resourceType, params.Actor, params.CorrelationID)
+	}
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,

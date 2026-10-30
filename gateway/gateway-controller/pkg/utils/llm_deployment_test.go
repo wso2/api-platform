@@ -696,7 +696,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteLLMProviderTemplate("0000-non-existent-0000-000000000000", "corr-delete-template", logger)
+	_, err := service.DeleteLLMProviderTemplate("0000-non-existent-0000-000000000000", "corr-delete-template", "", logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -721,7 +721,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 	db.SaveLLMProviderTemplate(template)
 
 	// Delete it
-	deleted, err := service.DeleteLLMProviderTemplate("delete-me", "corr-delete-template", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	deleted, err := service.DeleteLLMProviderTemplate("delete-me", "corr-delete-template", "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	assert.NoError(t, err)
 	assert.NotNil(t, deleted)
 	assert.Equal(t, "delete-me", deleted.Configuration.Metadata.Name)
@@ -837,7 +837,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_WithDBAndEventHubPublish
 	require.NoError(t, db.SaveLLMProviderTemplate(template))
 	require.NoError(t, store.AddTemplate(template))
 
-	deleted, err := service.DeleteLLMProviderTemplate("openai", "corr-llm-template-delete", logger)
+	deleted, err := service.DeleteLLMProviderTemplate("openai", "corr-llm-template-delete", "", logger)
 	require.NoError(t, err)
 	require.NotNil(t, deleted)
 	assert.Equal(t, template.UUID, deleted.UUID)
@@ -1128,7 +1128,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_NotFound(t *testing.T) {
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteLLMProvider("0000-non-existent-0000-000000000000", "corr-id", logger)
+	_, err := service.DeleteLLMProvider("0000-non-existent-0000-000000000000", "corr-id", "", logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -1175,7 +1175,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 	require.NoError(t, db.SaveAPIKey(key))
 	require.NoError(t, store.Add(cfg))
 
-	deleted, err := service.DeleteLLMProvider(cfg.Handle, "corr-llm-provider-delete", logger)
+	deleted, err := service.DeleteLLMProvider(cfg.Handle, "corr-llm-provider-delete", "", logger)
 	require.NoError(t, err)
 	require.NotNil(t, deleted)
 	assert.Equal(t, cfg.UUID, deleted.UUID)
@@ -1204,7 +1204,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteLLMProxy("0000-non-existent-0000-000000000000", "corr-id", logger)
+	_, err := service.DeleteLLMProxy("0000-non-existent-0000-000000000000", "corr-id", "", logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -1276,7 +1276,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 	require.NoError(t, db.SaveAPIKey(key))
 	require.NoError(t, store.Add(cfg))
 
-	deleted, err := service.DeleteLLMProxy(cfg.Handle, "corr-llm-proxy-delete", logger)
+	deleted, err := service.DeleteLLMProxy(cfg.Handle, "corr-llm-proxy-delete", "", logger)
 	require.NoError(t, err)
 	require.NotNil(t, deleted)
 	assert.Equal(t, cfg.UUID, deleted.UUID)

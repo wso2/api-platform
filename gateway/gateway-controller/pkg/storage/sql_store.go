@@ -3493,6 +3493,25 @@ func (s *sqlStore) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) er
 }
 
 // SaveSecret persists a new encrypted secret
+func (s *sqlStore) SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceType, performedBy, correlationID string) error {
+	startTime := time.Now()
+	table := "audit"
+
+	query := `
+	INSERT INTO audit (uuid, gateway_id, correlation_id, action, resource_uuid, resource_type, performed_by, performed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	if _, err := s.exec(query, id, s.gatewayId, correlationID, action, resourceUUID, resourceType, performedBy, performedAt); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("insert", "exec_error").Inc()
+		return fmt.Errorf("failed to save audit record: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("insert", table).Observe(time.Since(startTime).Seconds())
+	return nil
+}
+
 func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 	startTime := time.Now()
 	table := "secrets"

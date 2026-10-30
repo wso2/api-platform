@@ -133,7 +133,7 @@ func (s *APIServer) CreateSubscription(w http.ResponseWriter, r *http.Request) {
 		Status:                status,
 		SubscriptionToken:     strings.TrimSpace(req.SubscriptionToken),
 	}
-	if err := s.getSubscriptionResourceService().SaveSubscription(sub, correlationID, log); err != nil {
+	if err := s.getSubscriptionResourceService().SaveSubscription(sub, correlationID, actorFromRequest(r), log); err != nil {
 		if storage.IsConflictError(err) {
 			log.Warn("Subscription create rejected due to a conflict", slog.Any("error", err))
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: subscriptionConflictMessage})
@@ -294,7 +294,7 @@ func (s *APIServer) UpdateSubscription(w http.ResponseWriter, r *http.Request, s
 		// UpdateSubscription re-hashes a non-empty plain token; otherwise it keeps the stored hash.
 		sub.SubscriptionToken = newToken
 	}
-	if err := s.getSubscriptionResourceService().UpdateSubscription(sub, correlationID, log); err != nil {
+	if err := s.getSubscriptionResourceService().UpdateSubscription(sub, correlationID, actorFromRequest(r), log); err != nil {
 		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
@@ -333,7 +333,7 @@ func (s *APIServer) DeleteSubscription(w http.ResponseWriter, r *http.Request, s
 		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 		return
 	}
-	if err := s.getSubscriptionResourceService().DeleteSubscription(subscriptionId, correlationID, log); err != nil {
+	if err := s.getSubscriptionResourceService().DeleteSubscription(subscriptionId, correlationID, actorFromRequest(r), log); err != nil {
 		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return

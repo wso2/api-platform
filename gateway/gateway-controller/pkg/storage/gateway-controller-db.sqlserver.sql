@@ -329,3 +329,16 @@ CREATE TABLE dbo.secrets (
 
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
+
+IF OBJECT_ID(N'dbo.audit', N'U') IS NULL
+CREATE TABLE dbo.audit (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    correlation_id NVARCHAR(64),
+    action NVARCHAR(50) NOT NULL,
+    resource_uuid NVARCHAR(64) NOT NULL,
+    resource_type NVARCHAR(50) NOT NULL,
+    performed_by NVARCHAR(200),
+    performed_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (gateway_id, uuid)
+);

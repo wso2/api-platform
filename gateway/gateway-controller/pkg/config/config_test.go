@@ -37,6 +37,7 @@ import (
 func validConfig() *Config {
 	return &Config{
 		Controller: Controller{
+			Audit: AuditConfig{Output: "none"},
 			Server: ServerConfig{
 				APIPort:                   8080,
 				XDSPort:                   18000,

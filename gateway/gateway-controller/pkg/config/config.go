@@ -222,6 +222,13 @@ type Controller struct {
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
 	EventHub     EventHubConfig     `koanf:"event_hub"`
+	Audit        AuditConfig        `koanf:"audit"`
+}
+
+// AuditConfig holds audit-log configuration.
+type AuditConfig struct {
+	Enabled bool   `koanf:"enabled"`
+	Output  string `koanf:"output"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -1317,6 +1324,10 @@ func defaultConfig() *Config {
 					ConnMaxIdleTime: 5 * time.Minute,
 				},
 			},
+			Audit: AuditConfig{
+				Enabled: false,
+				Output:  "none",
+			},
 			Encryption: EncryptionConfig{
 				Providers: []ProviderConfig{
 					{
@@ -1513,6 +1524,12 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	switch c.Controller.Audit.Output {
+	case "none", "stdout", "file":
+	default:
+		return fmt.Errorf("controller.audit.output must be \"none\", \"stdout\" or \"file\"; got %q", c.Controller.Audit.Output)
+	}
+
 	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,
 	// which is incompatible with external shared databases like Postgres.
 	if c.ImmutableGateway.Enabled && !strings.EqualFold(c.Controller.Storage.Type, "sqlite") {

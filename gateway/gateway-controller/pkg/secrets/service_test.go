@@ -25,6 +25,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,6 +81,10 @@ func NewMockStorage() *MockStorage {
 	return &MockStorage{
 		secrets: make(map[string]*models.Secret),
 	}
+}
+
+func (m *MockStorage) SaveAudit(string, time.Time, string, string, string, string, string) error {
+	return nil
 }
 
 func (m *MockStorage) SaveSecret(secret *models.Secret) error {
