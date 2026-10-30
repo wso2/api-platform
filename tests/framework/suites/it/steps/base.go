@@ -304,6 +304,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
 	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
 		b.sendUntilStatusAt)
+	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" and it never returns status (\d+)$`,
+		b.sendNeverStatusAt)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) with body:$`,
 		b.sendUntilStatusWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until header "([^"]*)" is "([^"]*)"$`,
@@ -595,6 +597,40 @@ func (b *Base) sendUntilStatusAt(ctx context.Context, method, ordinalWord, path 
 	}, func(resp *httpx.Response) bool {
 		return resp != nil && resp.StatusCode == want
 	}, fmt.Sprintf("waiting for %s %s to return %d", strings.ToUpper(method), url, want))
+}
+
+// neverStatusWindow is how long a gateway must keep refusing a status. Callers first prove
+// a positive deployment reached a gateway, so the window only has to outlast a delayed one.
+const neverStatusWindow = 15 * time.Second
+
+// sendNeverStatusAt polls a gateway replica's data plane for the whole window and fails the
+// moment it answers with the forbidden status.
+func (b *Base) sendNeverStatusAt(ctx context.Context, method, ordinalWord, path string, forbidden int) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURLAt(ordinalWord, resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	_, err = retry.Never(ctx, retry.Options{Interval: time.Second}, neverStatusWindow,
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, sendErr := b.funnel.Send(ctx, httpx.Request{
+				Method: strings.ToUpper(method), URL: url, Headers: headers, Host: b.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return resp, nil
+		}, func(resp *httpx.Response) bool {
+			return resp != nil && resp.StatusCode == forbidden
+		})
+	if err != nil {
+		return fmt.Errorf("checking that %s %s never returns %d: %w", strings.ToUpper(method), url, forbidden, err)
+	}
+	return nil
 }
 
 // sendUntilTimedOut polls a data-plane path until it fails with the wanted status AND its

@@ -19,6 +19,9 @@
 package platformgateway
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
@@ -143,4 +146,32 @@ type PlatformGatewayWiring struct {
 	ControlPlaneToken string `yaml:"controlPlaneToken"`
 	// LogLevel sets the gateway log level.
 	LogLevel string `yaml:"logLevel"`
+	// SecondOrganizationReplicas lists the replicas, numbered from 1 as in platform-gateway#2,
+	// that register in the control plane's second organization instead of the default one.
+	SecondOrganizationReplicas []int `yaml:"secondOrganizationReplicas"`
+}
+
+// Validate rejects replica numbers that cannot name a replica.
+func (w *PlatformGatewayWiring) Validate() error {
+	for _, replica := range w.SecondOrganizationReplicas {
+		if replica < 1 {
+			return fmt.Errorf("secondOrganizationReplicas: replica %d must be 1 or more", replica)
+		}
+	}
+	return nil
+}
+
+// InSecondOrganization reports whether the gateway instance labelled dependent registers in
+// the control plane's second organization.
+func (w *PlatformGatewayWiring) InSecondOrganization(dependent string) bool {
+	replica := "1"
+	if _, number, found := strings.Cut(dependent, "#"); found {
+		replica = number
+	}
+	for _, listed := range w.SecondOrganizationReplicas {
+		if strconv.Itoa(listed) == replica {
+			return true
+		}
+	}
+	return false
 }

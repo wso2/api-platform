@@ -462,3 +462,18 @@ func TestBuildVersionedWithPoliciesReadsTheReleasedPolicyList(t *testing.T) {
 		"controller-base", "runtime-base", &policyRecordingRunner{}, true)
 	require.ErrorContains(t, err, "no docker")
 }
+
+func TestPlatformGatewayWiringPlacesReplicasInTheSecondOrganization(t *testing.T) {
+	wiring := &PlatformGatewayWiring{SecondOrganizationReplicas: []int{2}}
+	require.NoError(t, wiring.Validate())
+	require.True(t, wiring.InSecondOrganization("platform-gateway#2"))
+	require.False(t, wiring.InSecondOrganization("platform-gateway#1"))
+	require.False(t, wiring.InSecondOrganization("platform-gateway#12"))
+	require.False(t, wiring.InSecondOrganization("platform-gateway"), "a single gateway is replica 1")
+
+	require.True(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{1}}).InSecondOrganization("platform-gateway"))
+	require.False(t, (&PlatformGatewayWiring{}).InSecondOrganization("platform-gateway#2"), "no list keeps every replica in the default organization")
+
+	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{0}}).Validate(), "replica 0")
+	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{-1}}).Validate(), "replica -1")
+}

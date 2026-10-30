@@ -20,6 +20,7 @@ package components
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 
 	"gopkg.in/yaml.v3"
@@ -35,6 +36,19 @@ type wiringFunc func(node *yaml.Node) (any, error)
 
 // Decode implements WiringSpec.
 func (f wiringFunc) Decode(node *yaml.Node) (any, error) { return f(node) }
+
+type dependentWiringKey struct{}
+
+// WithDependentWiring attaches the block wiring of the component a provisioner is producing
+// values for, so the provisioner can honour it.
+func WithDependentWiring(ctx context.Context, wiring any) context.Context {
+	return context.WithValue(ctx, dependentWiringKey{}, wiring)
+}
+
+// DependentWiring returns the wiring WithDependentWiring attached, or nil.
+func DependentWiring(ctx context.Context) any {
+	return ctx.Value(dependentWiringKey{})
+}
 
 // TypedWiring creates a strict WiringSpec for type T.
 func TypedWiring[T any]() WiringSpec {

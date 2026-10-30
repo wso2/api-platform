@@ -243,7 +243,13 @@ func provisionGatewayRegistration(
 		return nil, err
 	}
 
-	bearer, err := platformAPILogin(ctx, client, base, actor.Administrator())
+	var bearer string
+	if placement, ok := components.DependentWiring(ctx).(interface{ InSecondOrganization(string) bool }); ok &&
+		placement.InSecondOrganization(dependent) {
+		bearer, err = secondOrganizationBearer(ctx, client, base)
+	} else {
+		bearer, err = platformAPILogin(ctx, client, base, actor.Administrator())
+	}
 	if err != nil {
 		return nil, err
 	}

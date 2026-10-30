@@ -302,7 +302,7 @@ func (t *Topology) startComponent(
 	// below, because each instance needs its own identity.
 	if def.Shared {
 		for _, dep := range rc.AllDependencies() {
-			values, err := t.provisionedBy(ctx, dep, def.Name)
+			values, err := t.provisionedBy(components.WithDependentWiring(ctx, rc.Wiring), dep, def.Name)
 			if err != nil {
 				return err
 			}
@@ -349,7 +349,7 @@ func (t *Topology) startComponent(
 				replicaEnv[key] = value
 			}
 			for _, dep := range rc.AllDependencies() {
-				values, err := t.provisionedBy(ctx, dep, dependent)
+				values, err := t.provisionedBy(components.WithDependentWiring(ctx, rc.Wiring), dep, dependent)
 				if err != nil {
 					return err
 				}
@@ -410,7 +410,7 @@ func (t *Topology) startComponent(
 		}
 		dependent := components.Label(def.Name, ordinal, rc.Replicas)
 		for _, dep := range rc.AllDependencies() {
-			values, err := t.provisionedBy(ctx, dep, dependent)
+			values, err := t.provisionedBy(components.WithDependentWiring(ctx, rc.Wiring), dep, dependent)
 			if err != nil {
 				return err
 			}

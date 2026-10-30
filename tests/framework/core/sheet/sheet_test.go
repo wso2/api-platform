@@ -74,7 +74,7 @@ func byID(results []Result) map[string]Result {
 }
 
 func TestIsIDAndIDsFromTags(t *testing.T) {
-	valid := []string{"AIW-PRV-001", "AIW-PRX-034", "A1-B2-999"}
+	valid := []string{"AIW-PRV-001", "AIW-PRX-034", "A1-B2-999", "TENANT-001"}
 	invalid := []string{"", "AIW-PRV-1", "aiw-prv-001", "AIW-LLM", "@AIW-PRV-001", "AIW-PRV-0001", "cp14-01", "AIW--001"}
 	for _, v := range valid {
 		if !IsID(v) {

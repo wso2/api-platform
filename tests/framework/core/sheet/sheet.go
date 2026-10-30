@@ -41,10 +41,11 @@ const CheckStepPattern = `^sheet check "([^"]*)"$`
 
 var checkStep = regexp.MustCompile(CheckStepPattern)
 
-// idPattern is the shape of a sheet scenario ID: sheet code, area, three-digit number.
-var idPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]*-[A-Z][A-Z0-9]*-[0-9]{3}$`)
+// idPattern is the shape of a sheet scenario ID: sheet code, an optional area, and a
+// three-digit number.
+var idPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]*(-[A-Z][A-Z0-9]*)?-[0-9]{3}$`)
 
-// IsID reports whether value is a sheet scenario ID such as AIW-PRV-001.
+// IsID reports whether value is a sheet scenario ID such as AIW-PRV-001 or TENANT-001.
 func IsID(value string) bool {
 	return idPattern.MatchString(value)
 }

@@ -95,7 +95,7 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		})
 	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)"(?: as "([^"]*)")?(?: with header "([^"]*)" set to "([^"]*)")? with body:$`,
 		s.sendControlPlaneStep)
-	sc.Step(`^I send a "GET" request to the control plane at "([^"]*)" until the JSON field "([^"]*)" is "([^"]*)"$`,
+	sc.Step(`^I send a "GET" request to the control plane at "([^"]*)"(?: as "([^"]*)")? until the JSON field "([^"]*)" is "([^"]*)"$`,
 		s.pollControlPlaneJSONField)
 	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)" until the response header "([^"]*)" matches "([^"]*)" with body:$`,
 		s.pollControlPlaneHeader)
@@ -105,7 +105,7 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		s.updateFromTemplate)
 	sc.Step(`^I deploy the Agent proxy "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployAgentProxy)
-	sc.Step(`^I store the registered gateway id as "([^"]*)"$`, s.storeGatewayID)
+	sc.Step(`^I store the (registered|first|second) gateway id as "([^"]*)"$`, s.storeGatewayID)
 	sc.Step(`^I create a secret "([^"]*)" with value "([^"]*)" via the control plane$`, s.createSecretWithValue)
 	sc.Step(`^I store the Agent Card fixture URL for scope "([^"]*)" in mode "([^"]*)" as "([^"]*)"$`,
 		s.storeAgentCardFixtureURL)
@@ -113,10 +113,11 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		s.agentCardFixtureCountIs)
 	sc.Step(`^I fetch the Agent Card of Agent proxy "([^"]*)" via the control plane until the Agent Card fixture has received (\d+) requests? for scope "([^"]*)"$`,
 		s.fetchAgentCardUntilFixtureCount)
-	sc.Step(`^I obtain an API key for the registered gateway via the control plane$`, s.obtainGatewayToken)
+	sc.Step(`^I obtain an API key for the (registered|first|second) gateway via the control plane(?: as "([^"]*)")?$`,
+		s.obtainGatewayToken)
 	sc.Step(`^I send a "([^"]*)" request to the gateway internal API at "([^"]*)"( without a gateway API key)?$`,
 		s.sendGatewayInternal)
-	sc.Step(`^I resolve the gateway internal artifact id of Agent proxy deployment "([^"]*)" and store it as "([^"]*)"$`,
+	sc.Step(`^I resolve the gateway internal artifact id of (Agent proxy|REST API) deployment "([^"]*)" and store it as "([^"]*)"$`,
 		s.resolveInternalArtifactID)
 	sc.Step(`^I fetch the gateway deployment batch for deployment "([^"]*)" via the gateway internal API$`,
 		s.fetchDeploymentBatch)
@@ -136,8 +137,32 @@ func actorCredentials(who string) (actor.Credentials, error) {
 	case "developer":
 		return actor.Developer(), nil
 	default:
-		return actor.Credentials{}, fmt.Errorf("unknown control-plane actor %q: supported actors are admin, publisher, and developer", who)
+		return actor.Credentials{}, fmt.Errorf("unknown control-plane actor %q: supported actors are admin, publisher, developer, and %s", who, secondOrganizationAdmin)
 	}
+}
+
+// secondOrganizationAdmin names the administrator of the control plane's second organization
+// in features.
+const secondOrganizationAdmin = "org B admin"
+
+// actorBearer returns a control-plane bearer token for a feature's actor.
+func actorBearer(ctx context.Context, base, who string) (string, error) {
+	if strings.TrimSpace(who) == secondOrganizationAdmin {
+		bearer, err := controlplane.SecondOrganizationLogin(ctx, base)
+		if err != nil {
+			return "", fmt.Errorf("authenticating to the control plane as %q: %w", secondOrganizationAdmin, err)
+		}
+		return bearer, nil
+	}
+	credentials, err := actorCredentials(who)
+	if err != nil {
+		return "", err
+	}
+	bearer, err := controlplane.ControlPlaneLogin(ctx, base, credentials.Username, credentials.Password)
+	if err != nil {
+		return "", fmt.Errorf("authenticating to the control plane as %q: %w", credentials.Username, err)
+	}
+	return bearer, nil
 }
 
 // controlPlaneCall is one publisher-API request made through the funnel.
@@ -179,17 +204,13 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 	if !strings.HasPrefix(path, "/") {
 		return nil, fmt.Errorf("control-plane path %q must start with /", path)
 	}
-	credentials, err := actorCredentials(call.who)
-	if err != nil {
-		return nil, err
-	}
 	base, err := s.baseURL()
 	if err != nil {
 		return nil, err
 	}
-	bearer, err := controlplane.ControlPlaneLogin(ctx, base, credentials.Username, credentials.Password)
+	bearer, err := actorBearer(ctx, base, call.who)
 	if err != nil {
-		return nil, fmt.Errorf("authenticating to the control plane as %q: %w", credentials.Username, err)
+		return nil, err
 	}
 	headers := map[string]string{"Authorization": "Bearer " + bearer}
 	if call.body != nil {
@@ -506,7 +527,7 @@ func errorCode(resp *httpx.Response) string {
 // pollControlPlaneJSONField repeats a read until a JSON field holds the wanted value, publishing
 // the matching response. Deployment status is acknowledged asynchronously by the gateway, so a
 // read taken straight after the write legitimately reports the transitional state.
-func (s *Steps) pollControlPlaneJSONField(ctx context.Context, path, field, want string) error {
+func (s *Steps) pollControlPlaneJSONField(ctx context.Context, path, who, field, want string) error {
 	expected, err := stepscommon.Expand(ctx, want)
 	if err != nil {
 		return err
@@ -514,7 +535,7 @@ func (s *Steps) pollControlPlaneJSONField(ctx context.Context, path, field, want
 	last := "no response"
 	err = retry.Await(ctx, retry.Options{Interval: time.Second},
 		func(ctx context.Context) (*httpx.Response, error) {
-			resp, sendErr := s.sendControlPlane(ctx, controlPlaneCall{method: http.MethodGet, path: path})
+			resp, sendErr := s.sendControlPlane(ctx, controlPlaneCall{method: http.MethodGet, path: path, who: who})
 			if sendErr != nil {
 				return nil, retry.Transient(sendErr)
 			}
@@ -689,7 +710,16 @@ func (s *Steps) deployAgentProxy(ctx context.Context, handle, storeAs string) er
 	return tcontext.Set(ctx, storeAs, created.DeploymentID)
 }
 
-func (s *Steps) storeGatewayID(ctx context.Context, key string) error {
+// storeGatewayID stores a gateway's id. A replica's id is its fixed handle, which needs no
+// lookup and so also names a replica that another organization owns.
+func (s *Steps) storeGatewayID(ctx context.Context, which, key string) error {
+	if which != "registered" {
+		handle, err := gatewayHandleAt(which)
+		if err != nil {
+			return err
+		}
+		return tcontext.Set(ctx, key, handle)
+	}
 	base, bearer, err := s.authed(ctx)
 	if err != nil {
 		return err
@@ -834,12 +864,23 @@ func (s *Steps) fetchAgentCardUntilFixtureCount(ctx context.Context, handle stri
 // obtainGatewayToken mints an additional key for the block's gateway through the publisher API
 // and revokes it at cleanup. A gateway holds at most two active keys and the running gateway owns
 // one, so a key another runner holds is waited out rather than treated as a failure.
-func (s *Steps) obtainGatewayToken(ctx context.Context) error {
-	base, bearer, err := s.authed(ctx)
+// which is "registered" for the actor's first listed gateway, or "first"/"second" for that
+// replica; the actor's organization must own it.
+func (s *Steps) obtainGatewayToken(ctx context.Context, which, who string) error {
+	base, err := s.baseURL()
 	if err != nil {
 		return err
 	}
-	gatewayID, err := s.gatewayUUID(ctx, base, bearer)
+	bearer, err := actorBearer(ctx, base, who)
+	if err != nil {
+		return err
+	}
+	var gatewayID string
+	if which == "registered" {
+		gatewayID, err = s.gatewayUUID(ctx, base, bearer)
+	} else {
+		gatewayID, err = s.gatewayUUIDAt(ctx, base, bearer, which)
+	}
 	if err != nil {
 		return err
 	}
@@ -875,15 +916,16 @@ func (s *Steps) obtainGatewayToken(ctx context.Context) error {
 	if minted.ID == "" || minted.Token == "" {
 		return fmt.Errorf("the control plane minted a gateway key without an id or token")
 	}
-	revoke := func(ctx context.Context) error { return s.revokeGatewayToken(ctx, gatewayID, minted.ID) }
-	if err := s.registerTracked(ctx, platformGatewayTokenKind, gatewayID+agentProxyRecordD+minted.ID, revoke,
+	revoke := func(ctx context.Context) error { return s.revokeGatewayToken(ctx, who, gatewayID, minted.ID) }
+	record := strings.Join([]string{who, gatewayID, minted.ID}, agentProxyRecordD)
+	if err := s.registerTracked(ctx, platformGatewayTokenKind, record, revoke,
 		func(reg *cleanup.Registry) error {
 			return reg.RegisterDeleter(platformGatewayTokenKind, func(ctx context.Context, res cleanup.Resource) error {
 				parts := strings.Split(res.ID, agentProxyRecordD)
-				if len(parts) != 2 {
+				if len(parts) != 3 {
 					return fmt.Errorf("invalid gateway key cleanup record")
 				}
-				return s.revokeGatewayToken(ctx, parts[0], parts[1])
+				return s.revokeGatewayToken(ctx, parts[0], parts[1], parts[2])
 			})
 		}); err != nil {
 		return err
@@ -891,8 +933,21 @@ func (s *Steps) obtainGatewayToken(ctx context.Context) error {
 	return tcontext.Set(ctx, keyGatewayToken, minted.Token)
 }
 
-func (s *Steps) revokeGatewayToken(ctx context.Context, gatewayID, tokenID string) error {
-	resp, err := s.adminCall(ctx, http.MethodDelete, "/gateways/"+url.PathEscape(gatewayID)+"/tokens/"+url.PathEscape(tokenID))
+// revokeGatewayToken revokes a gateway key as the actor that obtained it, since only the
+// gateway's own organization can see it.
+func (s *Steps) revokeGatewayToken(ctx context.Context, who, gatewayID, tokenID string) error {
+	base, err := s.baseURL()
+	if err != nil {
+		return err
+	}
+	bearer, err := actorBearer(ctx, base, who)
+	if err != nil {
+		return err
+	}
+	resp, err := s.client.Do(ctx, httpx.Request{
+		Method: http.MethodDelete, URL: base + apiBase + "/gateways/" + url.PathEscape(gatewayID) + "/tokens/" + url.PathEscape(tokenID),
+		Headers: map[string]string{"Authorization": "Bearer " + bearer},
+	}, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -942,7 +997,7 @@ func (s *Steps) sendGatewayInternal(ctx context.Context, method, path, withoutKe
 // resolveInternalArtifactID finds a deployment in the gateway's own deployment listing and
 // stores the artifact identifier the gateway addresses it by. The public API never exposes that
 // identifier, which is the point: the internal routes key on it, the public ones on the handle.
-func (s *Steps) resolveInternalArtifactID(ctx context.Context, deployment, key string) error {
+func (s *Steps) resolveInternalArtifactID(ctx context.Context, artifact, deployment, key string) error {
 	deploymentID, err := stepscommon.Expand(ctx, deployment)
 	if err != nil {
 		return err
@@ -962,16 +1017,20 @@ func (s *Steps) resolveInternalArtifactID(ctx context.Context, deployment, key s
 	if err != nil {
 		return fmt.Errorf("listing the gateway's deployments: %w", err)
 	}
-	artifactID, err := internalArtifactID(resp, deploymentID)
+	artifactID, err := internalArtifactID(resp, internalArtifactKinds[artifact], deploymentID)
 	if err != nil {
 		return err
 	}
 	return tcontext.Set(ctx, key, artifactID)
 }
 
+// internalArtifactKinds maps a feature's artifact name to the kind the gateway deployment
+// listing reports for it.
+var internalArtifactKinds = map[string]string{"Agent proxy": "Agent", "REST API": "RestApi"}
+
 // internalArtifactID selects a deployment from the gateway deployment listing, requiring the
-// gateway's vocabulary for an Agent proxy.
-func internalArtifactID(resp *httpx.Response, deploymentID string) (string, error) {
+// gateway's vocabulary for the artifact kind.
+func internalArtifactID(resp *httpx.Response, kind, deploymentID string) (string, error) {
 	if resp == nil || resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("listing the gateway's deployments: %s", resp.Describe())
 	}
@@ -989,8 +1048,8 @@ func internalArtifactID(resp *httpx.Response, deploymentID string) (string, erro
 		if d.DeploymentID != deploymentID {
 			continue
 		}
-		if d.Kind != "Agent" {
-			return "", fmt.Errorf("the gateway lists deployment %q as kind %q, want Agent", deploymentID, d.Kind)
+		if d.Kind != kind {
+			return "", fmt.Errorf("the gateway lists deployment %q as kind %q, want %s", deploymentID, d.Kind, kind)
 		}
 		if d.ArtifactID == "" {
 			return "", fmt.Errorf("the gateway lists deployment %q without an artifact id", deploymentID)
