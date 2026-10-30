@@ -215,9 +215,12 @@ func seedPlanUsers(t *testing.T, db *database.DB, gold, silver *model.Subscripti
 			t.Fatalf("seed: %v\n%s", err, stmt)
 		}
 	}
-	for _, row := range [][]any{{"pub-1", gold.UUID}, {"pub-1", silver.UUID}, {"pub-2", gold.UUID}, {"pub-3", silver.UUID}} {
+	for _, row := range [][]any{
+		{"pub-1", gold.UUID, gold.Handle, gold.Name}, {"pub-1", silver.UUID, silver.Handle, silver.Name},
+		{"pub-2", gold.UUID, gold.Handle, gold.Name}, {"pub-3", silver.UUID, silver.Handle, silver.Name},
+	} {
 		if _, err := db.Exec(`INSERT INTO api_publication_plan_mappings (organization_uuid, publication_uuid, subscription_plan_uuid,
-			created_by) VALUES ('org-1', ?, ?, 'u')`, row...); err != nil {
+			plan_handle, display_name, created_by) VALUES ('org-1', ?, ?, ?, ?, 'u')`, row...); err != nil {
 			t.Fatalf("seed mapping: %v", err)
 		}
 	}
@@ -282,7 +285,7 @@ func TestSubscriptionPlanRepo_UsageAndDeleteWithReferences(t *testing.T) {
 		`SELECT COUNT(*) FROM subscription_plans WHERE handle = 'gold'`:                                           0,
 		`SELECT COUNT(*) FROM subscription_plan_limits WHERE subscription_plan_uuid = '` + gold.UUID + `'`:        0,
 		`SELECT COUNT(*) FROM subscription_plan_pricing WHERE subscription_plan_uuid = '` + gold.UUID + `'`:       0,
-		`SELECT COUNT(*) FROM api_publication_plan_mappings WHERE subscription_plan_uuid = '` + gold.UUID + `'`:   0,
+		`SELECT COUNT(*) FROM api_publication_plan_mappings WHERE subscription_plan_uuid = '` + gold.UUID + `'`:   2,
 		`SELECT COUNT(*) FROM api_publication_plan_mappings WHERE subscription_plan_uuid = '` + silver.UUID + `'`: 2,
 		`SELECT COUNT(*) FROM artifact_subscription_plans`:                                                        0,
 		`SELECT COUNT(*) FROM subscriptions WHERE subscription_plan_uuid IS NULL`:                                 2,

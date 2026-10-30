@@ -27,6 +27,11 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'portals/**'
+      - 'platform-api/**'
+      - 'tests/framework/suites/ui/**'
+      - '.github/workflows/ui.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -49,7 +54,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.10'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up Node.js

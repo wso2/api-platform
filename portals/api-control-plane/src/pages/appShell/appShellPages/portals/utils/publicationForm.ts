@@ -38,22 +38,22 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid',
     defaultMessage: 'Enter a full URL, for example https://api.example.com.',
   },
+  thumbnailType: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailType',
+    defaultMessage: 'Only JPEG and PNG images are supported.',
+  },
+  thumbnailSize: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailSize',
+    defaultMessage: 'The image must be 2 MB or smaller.',
+  },
 });
 
-/**
- * Form state and the pre-fill chain for the alpha "Publish to Portal" editor —
- * the API Details and Subscription Plans fields this release covers
- * (`displayName`, `version`, `description`, the two endpoint URLs,
- * `agentVisibility`, `subscriptionPlanIds`). Everything else
- * `PublicationDetailsCore` carries (tags, labels, owners, docIds) belongs to a
- * tab this alpha doesn't show, so a save never sends it — a save sends every
- * field currently shown, not every field the schema could hold.
- */
 export type AgentVisibility = NonNullable<PublicationDraftDetailsInput['agentVisibility']>;
 
 /** What the server stores for a listing that never set it; shown until the user chooses. */
 const DEFAULT_AGENT_VISIBILITY: AgentVisibility = 'VISIBLE';
 
+/** Form state for the publish editor: the fields its tabs show. A save sends every field shown, not every field the schema could hold. */
 export type DraftFormValues = {
   displayName: string;
   version: string;
@@ -62,6 +62,8 @@ export type DraftFormValues = {
   sandboxUrl: string;
   agentVisibility: AgentVisibility;
   subscriptionPlanIds: string[];
+  /** Handles of the API's documents published with it. */
+  docIds: string[];
 };
 
 /** A URL the Production URL can be picked from, and the gateway that serves it. */
@@ -80,6 +82,55 @@ export const buildProductionUrlOptions = (
     .map((gateway) => ({ gatewayName: gateway.displayName, url: buildInvokeUrl(gatewayEndpoint(gateway), context) }))
     .filter((option) => option.url !== '');
 
+/** A plan or document the listing still selects whose source has since been deleted; only its stored name is left. */
+export type DeletedSelection = { id: string; displayName: string };
+
+type SelectionList = Publication['subscriptionPlans'];
+type SelectionSource = Pick<
+  Publication | PublicationDraftDetails,
+  'docIds' | 'documents' | 'subscriptionPlanIds' | 'subscriptionPlans'
+>;
+/** A saved listing, draft or live: the fields the form is filled from. */
+type ListingSource = SelectionSource &
+  Pick<Publication | PublicationDraftDetails, 'agentVisibility' | 'description' | 'displayName' | 'endpoints' | 'version'>;
+
+/** The selected items that still exist; a deleted one cannot be saved or published, so it never enters the form. */
+const existingIds = (selections: SelectionList, ids: string[] | undefined): string[] => {
+  if (!selections) return ids ?? [];
+  return selections.filter((item) => !item.deleted).map((item) => item.id);
+};
+
+const deletedOf = (selections: SelectionList): DeletedSelection[] =>
+  (selections ?? []).filter((item) => item.deleted).map(({ id, displayName }) => ({ id, displayName }));
+
+const editedIdsOf = (selections: SelectionList): string[] =>
+  (selections ?? []).filter((item) => item.edited && !item.deleted).map((item) => item.id);
+
+/** The names stored with the selection, by id, as of the last save or publish. */
+const storedNamesOf = (selections: SelectionList): Record<string, string> =>
+  Object.fromEntries((selections ?? []).map((item) => [item.id, item.displayName]));
+
+/** The selected plans whose subscription plan was deleted, for the "Deleted" cards. */
+export const deletedPlansOf = (source: SelectionSource | undefined): DeletedSelection[] =>
+  deletedOf(source?.subscriptionPlans);
+
+/** The ids of selected plans changed in Settings after the selection was last saved or published. */
+export const editedPlanIdsOf = (source: SelectionSource | undefined): string[] =>
+  editedIdsOf(source?.subscriptionPlans);
+
+export const planNamesOf = (source: SelectionSource | undefined): Record<string, string> =>
+  storedNamesOf(source?.subscriptionPlans);
+
+/** The selected documents that were deleted, for the "Deleted" rows. */
+export const deletedDocumentsOf = (source: SelectionSource | undefined): DeletedSelection[] =>
+  deletedOf(source?.documents);
+
+/** The ids of selected documents changed after the selection was last saved or published. */
+export const editedDocIdsOf = (source: SelectionSource | undefined): string[] => editedIdsOf(source?.documents);
+
+export const documentNamesOf = (source: SelectionSource | undefined): Record<string, string> =>
+  storedNamesOf(source?.documents);
+
 export const emptyDraftFormValues: DraftFormValues = {
   displayName: '',
   version: '',
@@ -88,10 +139,22 @@ export const emptyDraftFormValues: DraftFormValues = {
   sandboxUrl: '',
   agentVisibility: DEFAULT_AGENT_VISIBILITY,
   subscriptionPlanIds: [],
+  docIds: [],
 };
 
 /** The API fields a draft starts from — REST and GraphQL APIs both carry them. */
 export type PublishableApiDetails = Pick<RestApi, 'description' | 'displayName' | 'version'>;
+
+const valuesOfListing = (listing: ListingSource): DraftFormValues => ({
+  displayName: listing.displayName ?? '',
+  version: listing.version ?? '',
+  description: listing.description ?? '',
+  productionUrl: listing.endpoints?.productionUrl ?? '',
+  sandboxUrl: listing.endpoints?.sandboxUrl ?? '',
+  agentVisibility: listing.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
+  subscriptionPlanIds: existingIds(listing.subscriptionPlans, listing.subscriptionPlanIds),
+  docIds: existingIds(listing.documents, listing.docIds),
+});
 
 /**
  * The read chain, only for pre-filling the form: draft, then
@@ -109,28 +172,8 @@ export const resolveDraftFormValues = (
   api: PublishableApiDetails | undefined,
   defaultProductionUrl?: string,
 ): DraftFormValues => {
-  if (draft) {
-    return {
-      displayName: draft.displayName ?? '',
-      version: draft.version ?? '',
-      description: draft.description ?? '',
-      productionUrl: draft.endpoints?.productionUrl ?? '',
-      sandboxUrl: draft.endpoints?.sandboxUrl ?? '',
-      agentVisibility: draft.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: draft.subscriptionPlanIds ?? [],
-    };
-  }
-  if (publication) {
-    return {
-      displayName: publication.displayName ?? '',
-      version: publication.version ?? '',
-      description: publication.description ?? '',
-      productionUrl: publication.endpoints?.productionUrl ?? '',
-      sandboxUrl: publication.endpoints?.sandboxUrl ?? '',
-      agentVisibility: publication.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: publication.subscriptionPlanIds ?? [],
-    };
-  }
+  if (draft) return valuesOfListing(draft);
+  if (publication) return valuesOfListing(publication);
   if (api) {
     return {
       displayName: api.displayName ?? '',
@@ -140,6 +183,7 @@ export const resolveDraftFormValues = (
       sandboxUrl: '',
       agentVisibility: DEFAULT_AGENT_VISIBILITY,
       subscriptionPlanIds: [],
+      docIds: [],
     };
   }
   return emptyDraftFormValues;
@@ -169,12 +213,41 @@ export const draftFormValuesToInput = (values: DraftFormValues): PublicationDraf
     ...((productionUrl ?? sandboxUrl) !== undefined
       ? { endpoints: { productionUrl, sandboxUrl } }
       : {}),
-    // Always sent, including `[]` to explicitly clear every selection: the
-    // generated field is a *pointer* to a slice, so `omitempty` only
-    // suppresses a nil pointer — an empty array still round-trips as an
-    // explicit "no plans selected" rather than being dropped.
+    // Always sent, even as `[]`: the draft PUT replaces both selections, so leaving one out
+    // would clear it.
     subscriptionPlanIds: values.subscriptionPlanIds,
+    docIds: values.docIds,
   };
+};
+
+/** A selection is a set: the server ignores order, and an item toggled off and on moves to the end. */
+export const sameSelection = (a: string[], b: string[]) => {
+  if (a === b) return true;
+  const members = new Set(a);
+  return members.size === new Set(b).size && b.every((id) => members.has(id));
+};
+
+/** Whether two sets of form values hold the same content, comparing each selection as a set. */
+export const sameDraftFormValues = (a: DraftFormValues, b: DraftFormValues): boolean =>
+  (Object.keys(a) as (keyof DraftFormValues)[]).every((field) => {
+    const left = a[field];
+    const right = b[field];
+    return Array.isArray(left) && Array.isArray(right) ? sameSelection(left, right) : left === right;
+  });
+
+/** The selection with `id` added, or removed when it is already there. */
+export const toggleSelection = (ids: readonly string[], id: string): string[] =>
+  ids.includes(id) ? ids.filter((selected) => selected !== id) : [...ids, id];
+
+const THUMBNAIL_TYPES: readonly string[] = ['image/jpeg', 'image/png'];
+/** The server's default cap on a draft thumbnail (`publication_thumbnail_max_bytes`), checked before uploading. */
+const THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Why a picked image can't be the thumbnail, or `undefined`. The server re-checks the type. */
+export const validateThumbnailFile = (file: Pick<File, 'size' | 'type'>): MessageDescriptor | undefined => {
+  if (!THUMBNAIL_TYPES.includes(file.type)) return messages.thumbnailType;
+  if (file.size > THUMBNAIL_MAX_BYTES) return messages.thumbnailSize;
+  return undefined;
 };
 
 export type DraftFormField = 'displayName' | 'version' | 'productionUrl' | 'sandboxUrl';

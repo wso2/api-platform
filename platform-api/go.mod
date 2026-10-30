@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/platform-api
 
-go 1.26.5
+go 1.26.10
 
 require (
 	github.com/go-playground/validator/v10 v10.30.4

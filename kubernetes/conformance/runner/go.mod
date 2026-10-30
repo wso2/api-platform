@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/kubernetes/conformance/runner
 
-go 1.26.2
+go 1.26.10
 
 require sigs.k8s.io/gateway-api/conformance v1.5.1
 

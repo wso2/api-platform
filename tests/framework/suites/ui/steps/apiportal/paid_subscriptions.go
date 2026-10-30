@@ -592,6 +592,33 @@ func (u *Steps) paidSubscription(ctx context.Context, page playwright.Page, chec
 	return subscription, err
 }
 
+// subscriptionPeriodStart is when the testbench Stripe service started the current period of the
+// checkout's subscription, on the testbench's clock.
+func (u *Steps) subscriptionPeriodStart(ctx context.Context, checkout string) (time.Time, error) {
+	response, err := u.testbenchCall(ctx, "stripe", http.MethodGet, "/test/state", nil)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !response.Succeeded() {
+		return time.Time{}, fmt.Errorf("reading Stripe's state: %s", response.Describe())
+	}
+	var state struct {
+		Subscriptions []struct {
+			PeriodStart int64             `json:"current_period_start"`
+			Metadata    map[string]string `json:"metadata"`
+		} `json:"subscriptions"`
+	}
+	if err := json.Unmarshal(response.Body, &state); err != nil {
+		return time.Time{}, fmt.Errorf("decoding Stripe's state: %w", err)
+	}
+	for _, sub := range state.Subscriptions {
+		if sub.Metadata["wso2_checkout"] == checkout {
+			return time.Unix(sub.PeriodStart, 0).UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("Stripe has no subscription for checkout %s", checkout)
+}
+
 // deregisterPaidSubscription forgets the paid subscription the scenario ended.
 func deregisterPaidSubscription(ctx context.Context, subscription string) error {
 	registry, err := cleanup.Of(ctx)
@@ -689,32 +716,41 @@ func (u *Steps) readRevenue(ctx context.Context) error {
 	if err := u.expect.Locator(revenueCard(page, "Paid subscriptions")).ToHaveText("1"); err != nil {
 		return err
 	}
+	billingMonth, err := resolveText(ctx, keyBillingMonth)
+	if err != nil {
+		return err
+	}
 	slots := page.Locator("#cfgRevenueChart .cfg-revenue-slot")
-	if err := u.expect.Locator(slots).ToHaveCount(1); err != nil {
+	current := slots.Last()
+	if err := u.expect.Locator(current).ToHaveAttribute("aria-pressed", "true"); err != nil {
+		return fmt.Errorf("the report should open on the current month: %w", err)
+	}
+	if err := u.expect.Locator(slots.First()).ToHaveAttribute("aria-label", regexp.MustCompile(`^`+billingMonth+`\b`)); err != nil {
 		return fmt.Errorf("the report should start at the month billing was set up: %w", err)
 	}
-	if err := u.expect.Locator(slots.First()).ToHaveAttribute("aria-pressed", "true"); err != nil {
-		return fmt.Errorf("the report should open on the current month: %w", err)
+	months, err := slots.Count()
+	if err != nil {
+		return err
 	}
 	if err := u.expect.Locator(page.Locator("#cfgRevenueCards")).ToContainText("so far"); err != nil {
 		return err
 	}
-	if err := slots.First().Click(); err != nil {
+	if err := current.Click(); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#cfgRevenueCards")).ToContainText("in the last 3 months"); err != nil {
 		return err
 	}
-	if err := slots.First().Click(); err != nil {
+	if err := current.Click(); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(slots.First()).ToHaveAttribute("aria-pressed", "true"); err != nil {
+	if err := u.expect.Locator(current).ToHaveAttribute("aria-pressed", "true"); err != nil {
 		return err
 	}
 	if _, err := page.Locator("#cfgRevenueMonths").SelectOption(playwright.SelectOptionValues{Values: &[]string{"ALL"}}); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(slots).ToHaveCount(1); err != nil {
+	if err := u.expect.Locator(slots).ToHaveCount(months); err != nil {
 		return err
 	}
 	if err := fillAndCheck(page, "#cfgRevenueSearch", "no such subscriber"); err != nil {
@@ -824,10 +860,13 @@ func (u *Steps) followUsage(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	now := time.Now().UTC()
+	start, err := u.subscriptionPeriodStart(ctx, checkout)
+	if err != nil {
+		return err
+	}
 	for _, usage := range []map[string]any{
-		{"subscription": checkout, "value": 250, "time": now},
-		{"subscription": checkout, "value": 40, "time": now.Add(-time.Hour)},
+		{"subscription": checkout, "value": 250},
+		{"subscription": checkout, "value": 40, "time": start.Add(-time.Hour)},
 	} {
 		response, err := u.testbenchCall(ctx, "moesif", http.MethodPost, "/test/usage", usage)
 		if err != nil {

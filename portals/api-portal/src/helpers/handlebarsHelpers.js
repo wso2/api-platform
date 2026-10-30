@@ -68,6 +68,12 @@ const helpers = {
         .replace(/</g, '\\u003c')
         .replace(/\u2028/g, '\\u2028')
         .replace(/\u2029/g, '\\u2029'),
+    // As `json`, for a value the caller has already serialised; serialising it
+    // again would double-encode it.
+    scriptJson: (context) => (typeof context === 'string' ? context : JSON.stringify(context ?? null))
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029'),
     // For embedding JSON inside HTML double-quoted attributes
     jsonAttr: (context) => new Handlebars.SafeString(Handlebars.escapeExpression(JSON.stringify(context ?? null))),
 

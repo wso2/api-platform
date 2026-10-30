@@ -31,7 +31,7 @@ xDS gRPC Server (Port 18000)
 
 ### Prerequisites
 
-- Go 1.25.1+
+- Go 1.26.10+
 - Make
 - Docker buildx
    - brew install docker-buildx

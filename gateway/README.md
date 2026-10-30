@@ -16,7 +16,7 @@ For end-user documentation, see [docs/gateway/](../docs/gateway/).
 ## Prerequisites
 
 - Docker + Docker Compose
-- Go 1.25.1+
+- Go 1.26.10+
 - Make
 
 ## Development

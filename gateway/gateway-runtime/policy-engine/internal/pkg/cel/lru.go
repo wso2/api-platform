@@ -21,7 +21,7 @@ package cel
 import (
 	"container/list"
 
-	"github.com/google/cel-go/cel"
+	"cel.dev/cel-go/cel"
 )
 
 // programLRUCache is a fixed-capacity LRU cache for compiled cel.Programs.

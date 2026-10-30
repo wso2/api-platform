@@ -50,7 +50,7 @@ func (r contentDocumentRepo) GetDocumentsByHandles(_ string, handles []string, _
 	found := map[string]*model.Document{}
 	for _, h := range handles {
 		if d, ok := r.docs[h]; ok {
-			found[h] = &model.Document{ID: d.ID, Handle: d.Handle, Type: d.Type, FileName: d.FileName}
+			found[h] = &model.Document{ID: d.ID, Handle: d.Handle, Type: d.Type, DisplayName: d.DisplayName, FileName: d.FileName}
 		}
 	}
 	return found, nil
@@ -67,14 +67,6 @@ func (r contentDocumentRepo) GetDocument(_, handle, _, _ string) (*model.Documen
 		return nil, nil
 	}
 	return r.docs[handle], nil
-}
-
-func (r contentDocumentRepo) GetDocumentHandlesByUUIDs(ids []string, _ string) (map[string]string, error) {
-	handles := map[string]string{}
-	for _, d := range r.docs {
-		handles[d.ID] = d.Handle
-	}
-	return handles, nil
 }
 
 func newContentService(docs map[string]*model.Document) *PublicationService {
@@ -218,11 +210,21 @@ func (r publishFlowDocsPublicationRepo) GetContent(draftUUID string, contentType
 	return r.publishFlowPublicationRepo.GetContent(draftUUID, contentType, orgUUID)
 }
 
-func (r publishFlowDocsPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, []string, []string, error) {
-	return &model.Publication{UUID: "draft-uuid"}, r.planUUIDs, r.docUUIDs, nil
+func (r publishFlowDocsPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, []model.PublicationSelection, []model.PublicationSelection, error) {
+	return &model.Publication{UUID: "draft-uuid"}, testSelections(r.planUUIDs), testSelections(r.docUUIDs), nil
 }
 
-func (r publishFlowDocsPublicationRepo) PromoteDraftToPublication(_, _, _, _ string, _ time.Time) (*model.Publication, bool, error) {
+// testSelections turns "uuid-<handle>" pointers into selections.
+func testSelections(uuids []string) []model.PublicationSelection {
+	var selections []model.PublicationSelection
+	for _, id := range uuids {
+		handle := strings.TrimPrefix(id, "uuid-")
+		selections = append(selections, model.PublicationSelection{UUID: id, Handle: handle, DisplayName: handle})
+	}
+	return selections
+}
+
+func (r publishFlowDocsPublicationRepo) PromoteDraftToPublication(_, _, _, _ string, _ time.Time, _ time.Time, _, _ []model.PublicationSelection) (*model.Publication, bool, error) {
 	*r.promoted = true
 	return &model.Publication{UUID: "draft-uuid"}, false, nil
 }
@@ -233,7 +235,7 @@ func newPublishDocsService(pub PortalPublisher, docUUIDs []string, thumbnail *mo
 	}
 	return NewPublicationService(
 		publishFlowArtifactRepo{}, publishFlowPortalRepo{}, contentDocumentRepo{docs: docs},
-		publishFlowPlanRepo{publicationTestPlans()}, publishFlowDocsPublicationRepo{docUUIDs: docUUIDs, thumbnail: thumbnail, promoted: promoted},
+		publicationTestPlans(), publishFlowDocsPublicationRepo{docUUIDs: docUUIDs, thumbnail: thumbnail, promoted: promoted},
 		pub, time.Minute, 0, nil)
 }
 
@@ -358,7 +360,7 @@ func TestPublish_StopsBeforeAnyPortalCallWhenTheContentCannotBeLoaded(t *testing
 			pub := &callLog{}
 			svc := NewPublicationService(
 				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, tc.docs,
-				publishFlowPlanRepo{tc.plans}, tc.repo, pub, time.Minute, 0, nil)
+				tc.plans, tc.repo, pub, time.Minute, 0, nil)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {

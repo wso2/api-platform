@@ -31,26 +31,28 @@ import (
 // portalDocument is a selected document placed at <Folder>/<FileName> under the ZIP's docs/.
 // Content is filled in by loadPortalContent.
 type portalDocument struct {
-	ID       string
-	Handle   string
-	Folder   string
-	FileName string
-	Content  []byte
+	ID          string
+	Handle      string
+	Type        string
+	DisplayName string
+	Folder      string
+	FileName    string
+	Content     []byte
 }
 
-// validateAndResolveDocUUIDs resolves each handle to its doc_uuid within artifactUUID (a
-// handle can repeat across APIs in an org), rejecting unknown handles and any selection
-// the portal cannot hold.
-func (s *PublicationService) validateAndResolveDocUUIDs(artifactUUID string, handles []string, orgUUID string) ([]string, error) {
+// resolveDocSelections resolves each handle to a selection carrying the document's UUID,
+// handle and name within artifactUUID (a handle can repeat across APIs in an org),
+// rejecting unknown handles and any selection the portal cannot hold.
+func (s *PublicationService) resolveDocSelections(artifactUUID string, handles []string, orgUUID string) ([]model.PublicationSelection, error) {
 	docs, err := s.resolvePortalDocuments(artifactUUID, handles, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	var uuids []string
+	var selections []model.PublicationSelection
 	for _, d := range docs {
-		uuids = append(uuids, d.ID)
+		selections = append(selections, model.PublicationSelection{UUID: d.ID, Handle: d.Handle, DisplayName: d.DisplayName})
 	}
-	return uuids, nil
+	return selections, nil
 }
 
 // resolvePortalDocuments looks up the selected documents and places them, in handle order.
@@ -156,7 +158,7 @@ func placeDocuments(docs []*model.Document) ([]portalDocument, error) {
 		}
 		owners[key] = doc.Handle
 
-		placed = append(placed, portalDocument{ID: doc.ID, Handle: doc.Handle, Folder: folder, FileName: fileName})
+		placed = append(placed, portalDocument{ID: doc.ID, Handle: doc.Handle, Type: doc.Type, DisplayName: doc.DisplayName, Folder: folder, FileName: fileName})
 	}
 	return placed, nil
 }

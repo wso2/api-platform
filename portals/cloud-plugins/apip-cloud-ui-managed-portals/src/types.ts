@@ -33,6 +33,8 @@ export interface ManagedPortal {
   url?: string;
   /** Data-plane env whose auth server backs portal-user login. Empty on list responses; populated by GET. */
   loginEnvironment?: string;
+  /** Whether portal users can create an account from the sign-in page. Empty on list responses; populated by GET. */
+  selfSignup?: boolean;
   /**
    * Provisioning-lifecycle status. Missing when the backend has not been
    * upgraded to write it; treated as `active` by the UI so pre-upgrade portals
@@ -49,12 +51,15 @@ export interface CreateManagedPortalInput {
   description?: string;
   /** When omitted, the server picks the org's preferred env; pass only to override that choice. */
   loginEnvironment?: string;
+  /** Defaults to on when omitted. */
+  selfSignup?: boolean;
 }
 
 export interface UpdateManagedPortalInput {
   name?: string;
   description?: string;
   loginEnvironment?: string;
+  selfSignup?: boolean;
 }
 
 /** One data-plane environment; only the fields the UI's env selector needs. */

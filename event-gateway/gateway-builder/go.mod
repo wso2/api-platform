@@ -1,9 +1,9 @@
 module github.com/wso2/api-platform/event-gateway/gateway-builder
 
-go 1.25.0
+go 1.26.10
 
 require (
-	golang.org/x/mod v0.37.0
+	golang.org/x/mod v0.42.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

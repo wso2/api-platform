@@ -92,7 +92,7 @@ const as = (extra) => Object.assign(
     const count = (q, ...p) => db.prepare(q).get(...p).n;
     const deletedEvents = () => count("SELECT COUNT(*) AS n FROM events WHERE type = 'subscription_plan.deleted'");
     const deletePlan = (planId) => call(plans.deleteSubscriptionPlan, as({ params: { planId } }));
-    // The delete answers before its transaction commits; this next call waits for it.
+    // Reads the plan back once its delete has answered.
     const settle = (planId) => call(plans.getSubscriptionPlan, as({ params: { planId } }));
 
     const eventsBefore = count('SELECT COUNT(*) AS n FROM events');
