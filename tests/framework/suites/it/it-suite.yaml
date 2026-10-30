@@ -653,10 +653,16 @@ blocks:
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: a2a-trip-planner
     runners:
       - name: startup-db-bootstrap
         features:
           - features/gateway/core/startup_db_bootstrap.feature
+      # Agents are served by Gateways newer than 1.2.0.
+      - name: startup-db-bootstrap-agent
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/startup_db_bootstrap_agent.feature
       - name: dp-to-cp-reconnect
         tags: "gateway-version>=1.2.0"
         features:
@@ -692,6 +698,22 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/security/jwks_disabled.feature
+
+  # Buffered bodies above gRPC's 4 MiB default reach the policy engine only on Gateways whose
+  # ext_proc server sizes its message limits from the body ceilings; released 1.2.0 does not.
+  - name: gateway-request-body-size
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/request-body-size.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: request-body-size
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_body_size.feature
 
   - name: vhost-routing-single
     parallel: 1

@@ -58,6 +58,15 @@ Feature: MCP proxy CRUD and connectivity
     And the JSON response should have field "result"
     And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
 
+    # The listing reflects the deploy and, below, the delete. It is filtered by this scenario's own
+    # display name: other runners on this gateway create MCP proxies concurrently, so an unfiltered
+    # count would not be stable.
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I send a "GET" request to the "gateway-controller" service at "/mcp-proxies?displayName=${CTX:mcpDisplayName}"
+    Then the response should be successful
+    And the JSON response field "count" should be 1
+
     When I update MCP proxy "${CTX:mcpName}" from "resources/templates/mcp.yaml" with values:
       | apiVersion        | ${CTX:gatewaySpecVersion} |
       | name              | ${CTX:mcpName}                    |
@@ -74,6 +83,9 @@ Feature: MCP proxy CRUD and connectivity
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
+    When I send a "GET" request to the "gateway-controller" service at "/mcp-proxies?displayName=${CTX:mcpDisplayName}"
+    Then the response should be successful
+    And the JSON response field "count" should be 0
 
   Scenario: An MCP proxy handles a notification and a tools/list request
     Given I generate a unique resource name from "mcp-notify" and store it as "mcpName"

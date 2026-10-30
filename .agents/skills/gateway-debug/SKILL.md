@@ -94,8 +94,7 @@ curl -s http://localhost:9901/clusters
 
 > **Admin port** for the controller is `9092` everywhere except the *dev*
 > docker-compose (`<REPO_ROOT>/gateway/docker-compose.yaml`), which remaps it
-> to `9094`. The IT compose (`<REPO_ROOT>/gateway/it/docker-compose.test.yaml`)
-> and the local dlv-driven controller (Step 3a) both bind the native `9092`.
+> to `9094`. The local dlv-driven controller (Step 3a) binds the native `9092`.
 > Pick the port that matches the mode you're in.
 
 Rule of thumb:
@@ -139,7 +138,7 @@ cd "$REPO_ROOT/gateway" && docker compose down
 > | Mode | Compose file (`<COMPOSE>`) | Run `docker compose` from (`<COMPOSE_CWD>`) | Use when |
 > |---|---|---|---|
 > | **Standalone** *(default)* | `<REPO_ROOT>/gateway/docker-compose.yaml` | `<REPO_ROOT>/gateway` (default filename, no `-f` needed) | Investigating from scratch; no IT scenario in play |
-> | **IT handoff** | `<REPO_ROOT>/gateway/it/docker-compose.test.yaml` | `<REPO_ROOT>/gateway/it` (use `-f docker-compose.test.yaml` — non-default filename) | Reproducing a failing integration test (handoff from [[gateway-integration-tests]]) — keeps the IT mocks (`mock-jwks`, `mock-platform-api`, …) that the scenario depends on |
+> | **IT handoff** | `<REPO_ROOT>/gateway/docker-compose.yaml` plus the integration framework's testbench container on its network | `<REPO_ROOT>/gateway` | Reproducing a failing integration test (handoff from [[gateway-integration-tests]]) — the testbench serves the mock backends (`http://testbench:<port>`) the scenario's upstreams point at |
 
 > **Pick a path before doing any 2x substep.** Two flows in the gateway
 > need different setups; choose based on what the bug actually involves.
@@ -160,8 +159,8 @@ cd "$REPO_ROOT/gateway" && docker compose down
 Make **two** changes to the `gateway-runtime` service block:
 
 1. Point the runtime at the host. Replace whatever the file currently has
-   for `GATEWAY_CONTROLLER_HOST` (in the dev compose it's `gateway-controller`;
-   in the IT compose it's `it-gateway-controller`) with `host.docker.internal`:
+   for `GATEWAY_CONTROLLER_HOST` (in the dev compose it's `gateway-controller`)
+   with `host.docker.internal`:
    ```yaml
    gateway-runtime:
      environment:
@@ -181,7 +180,7 @@ Make **two** changes to the `gateway-runtime` service block:
 
 **Remember to revert these in Step 8** (`git checkout -- <COMPOSE>`).
 A leftover `host.docker.internal` will silently break plain `docker compose up`
-(or `make test`, for the IT compose) for other people on the repo.
+for other people on the repo.
 
 ### 2b. Run the gateway-builder (required before launching policy-engine)
 
@@ -221,15 +220,28 @@ docker compose up -d gateway-runtime sample-backend
 docker compose logs -ft gateway-runtime          # tail [rtr] / [pol] streams
 ```
 
-IT-handoff mode (bring up only the services your scenario needs — minimally
-`gateway-runtime` + the backends/mocks it touches, e.g. `sample-backend`,
-`mock-jwks`, `mock-platform-api`):
+IT-handoff mode (the standalone stack plus the integration framework's testbench, which
+serves the scenario's mock backends as `http://testbench:<port>` — see
+`tests/framework/testbench/services` for each service's port):
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT/gateway/it"
-docker compose -f docker-compose.test.yaml up -d gateway-runtime sample-backend mock-platform-api  # add others as the scenario requires
-docker compose -f docker-compose.test.yaml logs -ft gateway-runtime
+make -C "$REPO_ROOT/tests/framework" testbench     # once, or after changing testbench/**
+cd "$REPO_ROOT/gateway"
+docker compose up -d gateway-runtime sample-backend
+# The project name is COMPOSE_PROJECT_NAME from gateway/.env (written by scripts/setup.sh,
+# unique per copy), or `gateway` without it, so look the network name up.
+NET="$(docker compose config --format json | jq -r '.networks["gateway-network"].name')"
+docker run -d --rm --name testbench --network "$NET" ghcr.io/wso2/api-platform/testbench:test
+docker compose logs -ft gateway-runtime
 ```
+
+The standalone controller reads `gateway/configs/config.toml`, not the framework block's overlay.
+If the scenario relies on overlay settings — e.g. `policy_configurations` such as jwt-auth key
+managers — add those entries to `configs/config.toml` (and revert them in Step 8). Mind where the
+URL is resolved: Envoy runs in Docker and reaches `http://testbench:<port>` upstreams, but a policy
+engine launched on the host (Step 3b) cannot resolve `testbench`. For settings the policy engine
+fetches itself (such as a JWKS URL), publish the port (`docker run … -p 3001:3001 …`) and use
+`http://localhost:3001` instead.
 
 Envoy will sit waiting for xDS from `host.docker.internal:18000` (controller)
 and ext_proc on `host.docker.internal:9001` (policy engine). Until you launch
@@ -407,9 +419,8 @@ this a one-liner. Use it as the default reproducer unless the bug requires a
 specific upstream.
 
 > The shipped YAML targets `http://sample-backend:5000` — the port from the
-> standalone dev compose. For the **IT handoff** compose target the IT
-> sample-backend listens on `:9080`; either edit the `upstream.main.url` to
-> `http://sample-backend:9080` or use the scenario's own deploy YAML.
+> standalone dev compose. In **IT handoff** mode, use the scenario's own resource values
+> instead: their upstreams point at the testbench (`http://testbench:<port>`).
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -660,14 +671,14 @@ require restarting the debugged process. Loop:
    either matches or it doesn't.
 5. If wrong again → reattach, refine breakpoints, iterate.
 
-For a finalised fix, also run the matching Integration Test feature so the regression is
-covered (Step 8 cleanup must run first — the IT stack uses the same ports):
+For a finalised fix, also run the matching integration test feature so the regression is
+covered. The integration framework builds the gateway from source, so the run includes the fix:
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT/gateway"
-make build-coverage                                # rebuild containerised images with the fix
-cd it && IT_FEATURE_PATHS=features/<area>.feature make test
+cd "$REPO_ROOT/tests/framework"
+go test ./suites/it -count=1 -v -timeout=60m -blocks <block>/sqlite -feature-tags "@<feature-tag>"
+# or the gateway-core block on SQLite:  make -C "$REPO_ROOT/gateway" test-integration
 ```
 
 See [[gateway-integration-tests]] for the full IT workflow.
@@ -683,8 +694,6 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 # 1) Revert the compose file you edited (and config.toml if Option 2B was used).
 #    Standalone mode:
 cd "$REPO_ROOT/gateway"        && git checkout -- docker-compose.yaml
-#    IT-handoff mode (use this one instead, not both):
-# cd "$REPO_ROOT/gateway/it"   && git checkout -- docker-compose.test.yaml
 cd "$REPO_ROOT/gateway"        && git checkout -- configs/config.toml 2>/dev/null || true
 
 # 2) Stop debugged processes
@@ -693,10 +702,9 @@ lsof -nP -iTCP:2346 -sTCP:LISTEN -t 2>/dev/null | xargs -r kill   # policy-engin
 pkill -f gateway-runtime/python-executor/main.py 2>/dev/null      # python executor
 
 # 3) Tear the Docker stack down (from the compose-cwd you chose at Step 2)
-#    Standalone:
+#    IT-handoff: stop the testbench first; it is attached to the compose network
+# docker stop testbench
 cd "$REPO_ROOT/gateway"      && docker compose down -v --remove-orphans
-#    IT-handoff (use this one instead, not both):
-# cd "$REPO_ROOT/gateway/it" && docker compose -f docker-compose.test.yaml down -v --remove-orphans
 
 # 4) (Optional) wipe controller dev DB for a clean next session
 rm -f gateway-controller/data/gateway.db*
@@ -721,7 +729,7 @@ even if Step 2a was edited multiple times. Confirm with
 | Controller starts but logs `policy definitions path not found` | Builder output missing or wrong path | Step 2b; verify `gateway/gateway-builder/target/output/gateway-controller/policies/` exists |
 | Controller starts then exits with `bind: address already in use` on 9090 | Another controller (in Docker, or stale dlv) still holds the port | `docker compose down`; `lsof -nP -iTCP:9090 -sTCP:LISTEN -t \| xargs kill` |
 | Router (Envoy) logs `no_healthy_upstream` for the local PE | PE not running, or the compose file still has `GATEWAY_CONTROLLER_HOST=gateway-controller` | Confirm Step 2a edit on the compose file you chose; confirm Step 3b PE listening on `127.0.0.1:9001` (`lsof -nP -iTCP:9001`) |
-| `docker compose up` (or `make test` for IT) fails after debugging with PE port collision | Step 2a wasn't reverted | Step 8 `git checkout -- <COMPOSE>` |
+| `docker compose up` fails after debugging with PE port collision | Step 2a wasn't reverted | Step 8 `git checkout -- <COMPOSE>` |
 | Python policy silently times out after debug session | Step 3d TOML block left in `config.toml` | Step 8 `git checkout -- configs/config.toml` |
 | Controller dump shows API but PE dump doesn't | xDS push problem on controller side | Attach to controller (2345), break in `xds.*Push` / `xds.*Snapshot` functions |
 | PE dump correct but request mishandled at router | Policy execution bug | Attach to PE (2346), break in `executor.*ChainExecutor.*Execute` or the policy's `OnRequest*` |

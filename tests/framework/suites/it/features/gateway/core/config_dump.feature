@@ -50,7 +50,7 @@ Feature: Configuration dump endpoint
       | spec.displayName       | ${CTX:apiName}                    |
       | spec.version           | ${CTX:apiVersion}                 |
       | spec.context           | ${CTX:apiContext}/$version        |
-      | spec.upstream.main.url | http://testbench:3002              |
+      | spec.upstream.main.url | http://config-dump-upstream:9080   |
       | spec.operations        | [{"method":"GET","path":"/data"}] |
     Then the response should be successful
 
@@ -60,6 +60,7 @@ Feature: Configuration dump endpoint
     And the JSON response field "status" should be "success"
     And the response body should contain "${CTX:apiName}"
     And the response body should contain "${CTX:apiContext}"
+    And the response body should contain "config-dump-upstream:9080"
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
@@ -75,7 +76,7 @@ Feature: Configuration dump endpoint
       | spec.displayName       | ${CTX:api1Name}                   |
       | spec.version           | ${CTX:api1Version}                |
       | spec.context           | ${CTX:api1Context}/$version       |
-      | spec.upstream.main.url | http://testbench:3002              |
+      | spec.upstream.main.url | http://config-dump-upstream-a:8080 |
       | spec.operations        | [{"method":"GET","path":"/resource1"}] |
     Then the response should be successful
 
@@ -88,7 +89,7 @@ Feature: Configuration dump endpoint
       | spec.displayName       | ${CTX:api2Name}                   |
       | spec.version           | ${CTX:api2Version}                |
       | spec.context           | ${CTX:api2Context}/$version       |
-      | spec.upstream.main.url | http://testbench:3002              |
+      | spec.upstream.main.url | http://config-dump-upstream-b:9090 |
       | spec.operations        | [{"method":"POST","path":"/resource2"}] |
     Then the response should be successful
 
@@ -97,6 +98,10 @@ Feature: Configuration dump endpoint
     And the response should be valid JSON
     And the response body should contain "${CTX:api1Name}"
     And the response body should contain "${CTX:api2Name}"
+    And the response body should contain "${CTX:api1Context}"
+    And the response body should contain "${CTX:api2Context}"
+    And the response body should contain "config-dump-upstream-a:8080"
+    And the response body should contain "config-dump-upstream-b:9090"
 
     When I delete the API "${CTX:api1Name}"
     Then the response should be successful

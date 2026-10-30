@@ -40,10 +40,36 @@ export type ApiFetch = <T = unknown>(
   body?: unknown
 ) => Promise<T | undefined>;
 
+/**
+ * One gateway release the Quick Start step can offer a download for, keyed by
+ * `type` since the AI gateway and the regular/event gateway ship as separate
+ * artifacts. Mirrors AI Workspace's own `GatewayVersionEntry`
+ * (`src/config.env.ts`) so the two hosts can feed this from whatever each
+ * already has — AI Workspace from its existing `PLATFORM_GATEWAY_VERSIONS`,
+ * API Control Plane from its own runtime config — without this package caring
+ * which.
+ */
+export type GatewayVersionEntry = {
+  type: 'ai' | 'regular' | 'event';
+  version: string;
+  /** Release tag, e.g. `v1.2.0`. Defaults to `v${version}` when omitted. */
+  latestVersion?: string;
+  /** Zip/folder version when it differs from `version` (rare). */
+  distVersion?: string;
+  channel: 'STS' | 'LTS';
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /** Available release versions per gateway type, for the self-hosted Quick Start panel. */
+  gatewayVersions: GatewayVersionEntry[];
+  /**
+   * `host:port` a self-hosted gateway's controller dials to reach the control plane, shown in
+   * the setup commands. Falls back to this page's own host when the host does not supply it.
+   */
+  controlPlaneHost?: string;
 };

@@ -1,7 +1,6 @@
 go 1.26.10
 
 use (
-	./cli/it
 	./cli/src
 	./common
 	./event-gateway/gateway-builder
@@ -13,7 +12,6 @@ use (
 	./gateway/gateway-builder
 	./gateway/gateway-controller
 	./gateway/gateway-runtime/policy-engine
-	./gateway/it
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/a2a
 	./gateway/system-policies/analytics

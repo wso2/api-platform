@@ -138,10 +138,15 @@ export function HeaderScopeSwitchers() {
         ? [{ handle: params.orgHandle, name: organization?.displayName || params.orgHandle }]
         : [];
 
-  const projectOptions: { handler: string; name: string }[] =
+  const projectOptions: { handler: string; name: string; description?: string }[] =
     projects.length > 0
-      ? projects.map((project) => ({ handler: project.id, name: project.displayName || project.id }))
-      : params.projectHandler && project ? [{ handler: params.projectHandler, name: project.displayName || params.projectHandler }]
+      ? projects.map((project) => ({
+          handler: project.id,
+          name: project.displayName || project.id,
+          description: project.description,
+        }))
+      : params.projectHandler && project
+        ? [{ handler: params.projectHandler, name: project.displayName || params.projectHandler, description: project.description }]
         : [];
 
   const restApisQuery = useAllRestApis({}, { projectId: project?.id, orgId: organization?.id });
@@ -163,16 +168,16 @@ export function HeaderScopeSwitchers() {
       .map((api) => api.id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0),
   );
-  const loadedApiOptions: { handler: string; name: string }[] =
+  const loadedApiOptions: { handler: string; name: string; description?: string }[] =
     (projects.length > 0 && project) ?
     apis
       .filter(
         (
           api
-        ): api is NonNullable<typeof api> & { id: string; displayName?: string } =>
+        ): api is NonNullable<typeof api> & { id: string; displayName?: string; description?: string } =>
           typeof api?.id === 'string' && api.id.length > 0
       )
-      .map((api) => ({ handler: api.id, name: api.displayName ?? api.id }))
+      .map((api) => ({ handler: api.id, name: api.displayName ?? api.id, description: api.description }))
     : [];
 
   // Whichever kind of API is in scope — REST's `apiHandler` or GraphQL's
@@ -183,11 +188,17 @@ export function HeaderScopeSwitchers() {
 
   // apis may not be loaded yet on first paint; keep the current API selectable
   // so the switcher never renders an out-of-range value.
-  const apiOptions: { handler: string; name: string }[] =
+  const apiOptions: { handler: string; name: string; description?: string }[] =
     loadedApiOptions.length > 0
       ? loadedApiOptions
       : selectedApiHandler
-        ? [{ handler: selectedApiHandler, name: component?.displayName || selectedApiHandler }]
+        ? [
+            {
+              handler: selectedApiHandler,
+              name: component?.displayName || selectedApiHandler,
+              description: component?.description,
+            },
+          ]
         : [];
 
   // A single loaded organization is read-only; use the loaded list so the
@@ -239,6 +250,7 @@ export function HeaderScopeSwitchers() {
               id: item.handler,
               handler: item.handler,
               name: item.name,
+              description: item.description,
             }))[0] || undefined}
             onChange={(id) => {
               changeProject(id);
@@ -247,11 +259,12 @@ export function HeaderScopeSwitchers() {
               id: item.handler,
               handler: item.handler,
               name: item.name,
+              description: item.description,
             }))}
             renderOptionContent={(option) => (
               <ComplexSelect.MenuItem.Text
                 primary={option.name}
-                secondary={option.id}
+                secondary={option.description || option.id}
                 slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
               />
             )}
@@ -313,6 +326,7 @@ export function HeaderScopeSwitchers() {
               id: item.handler,
               handler: item.handler,
               name: item.name,
+              description: item.description,
             }))[0] || undefined}
             onChange={(id) => {
               changeApi(id);
@@ -321,11 +335,12 @@ export function HeaderScopeSwitchers() {
               id: item.handler,
               handler: item.handler,
               name: item.name,
+              description: item.description,
             }))}
             renderOptionContent={(option) => (
               <ComplexSelect.MenuItem.Text
                 primary={option.name}
-                secondary={option.id}
+                secondary={option.description || option.id}
                 slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
               />
             )}

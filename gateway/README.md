@@ -76,17 +76,20 @@ connection, at-rest encryption, and how configuration is delivered — see
 # Unit tests
 make test
 
-# Integration tests (builds coverage-instrumented images + runs tests)
-make test-integration-all
-
-# Run integration tests only (images must be pre-built)
+# Integration tests: the gateway-core block of the integration framework (tests/framework)
+# on SQLite. The framework builds the gateway images from source; build the testbench image and
+# the ap CLI it also needs first (see tests/framework/README.md for the rest of the suite).
+make -C ../tests/framework testbench ap-cli
 make test-integration
+
+# The whole integration framework suite (every block and database)
+make test-integration-all
 
 # Build coverage-instrumented images only
 make build-coverage
 ```
 
-For integration test details, see [it/README.md](it/README.md).
+For integration test details, see [tests/framework/README.md](../tests/framework/README.md).
 
 ### Clean
 
