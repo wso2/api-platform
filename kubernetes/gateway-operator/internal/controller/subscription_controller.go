@@ -39,6 +39,7 @@ import (
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/gatewayclient"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/secretsource"
 )
 
@@ -153,16 +154,22 @@ func (a *subscriptionAdapter) GatewaySelectionKey(obj client.Object) (string, ma
 func (a *subscriptionAdapter) Deploy(ctx context.Context, k8sClient client.Client, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) (DeployResult, error) {
 	cr := obj.(*apiv1.Subscription)
 
+	// A deployed subscription still gets its status when the token or plan can't be resolved, so the
+	// resolution error is held until the status has been applied.
+	var resolveErr error
 	token, err := secretsource.Resolve(ctx, k8sClient, "spec.subscriptionToken", cr.Spec.SubscriptionToken, cr.Namespace)
 	if err != nil {
-		return DeployResult{}, classifySecretSourceResolveError(err)
+		resolveErr = classifySecretSourceResolveError(err)
 	}
-	resolvedPlanID, err := resolveSubscriptionPlanID(ctx, k8sClient, cr)
-	if err != nil {
-		return DeployResult{}, err
+	var resolvedPlanID *string
+	if resolveErr == nil {
+		resolvedPlanID, resolveErr = resolveSubscriptionPlanID(ctx, k8sClient, cr)
 	}
 
 	if cr.Status.Id == "" {
+		if resolveErr != nil {
+			return DeployResult{}, resolveErr
+		}
 		payload := gatewayclient.SubscriptionCreatePayload{
 			ExternalRefId:         cr.Spec.ExternalRefId,
 			ApiId:                 cr.Spec.ApiId,
@@ -182,6 +189,15 @@ func (a *subscriptionAdapter) Deploy(ctx context.Context, k8sClient client.Clien
 					return DeployResult{}, recErr
 				}
 				if recoveredID != "" {
+					// Adopting a subscription another CR already manages would let this CR overwrite its
+					// token and plan, and deleting either CR would delete it for both.
+					owned, ownErr := subscriptionIDOwnedByAnotherCR(ctx, k8sClient, gatewayEndpoint, cr, recoveredID)
+					if ownErr != nil {
+						return DeployResult{}, ownErr
+					}
+					if owned {
+						return DeployResult{}, subscriptionConflictError()
+					}
 					// The existing subscription may predate spec changes; bring its mutable fields in line.
 					if err := updateSubscriptionMutableFields(ctx, gatewayEndpoint, recoveredID, cr, token, resolvedPlanID, authFn); err != nil {
 						return DeployResult{}, err
@@ -214,18 +230,106 @@ func (a *subscriptionAdapter) Deploy(ctx context.Context, k8sClient client.Clien
 			}
 		}
 	} else {
-		// No prior fingerprint stored (e.g. pre-upgrade CR): establish a baseline.
+		// No prior fingerprint stored (a CR from an earlier operator version, or a lost annotation write).
+		// The spec may hold an edit an earlier version rejected, so it becomes the baseline only once the
+		// gateway subscription is confirmed to still match it.
+		if err := verifyDeployedSubscriptionMatchesSpec(ctx, gatewayEndpoint, cr, authFn); err != nil {
+			return DeployResult{}, err
+		}
 		if fp, fpErr := subscriptionImmutableFingerprint(cr); fpErr == nil {
 			_ = setSubscriptionLastAppliedImmutableFingerprint(ctx, k8sClient, cr, fp)
 		}
 	}
 
+	if resolveErr != nil {
+		// Only a lasting failure, such as a missing Secret, applies the status alone. A transient one, such
+		// as a SubscriptionPlan not deployed yet, is retried and then applies everything together.
+		var nr *gatewayclient.NonRetryableError
+		if errors.As(resolveErr, &nr) {
+			return DeployResult{}, updateSubscriptionStatusOnFailure(ctx, gatewayEndpoint, cr, resolveErr, authFn)
+		}
+		return DeployResult{}, resolveErr
+	}
 	// status, subscriptionPlanId and subscriptionToken are updated in place. Sending the token on every
 	// update also applies a rotated valueFrom Secret, since Secret drift triggers this redeploy.
 	if err := updateSubscriptionMutableFields(ctx, gatewayEndpoint, cr.Status.Id, cr, token, resolvedPlanID, authFn); err != nil {
+		var nr *gatewayclient.NonRetryableError
+		if errors.As(err, &nr) && (nr.StatusCode == http.StatusBadRequest || nr.StatusCode == http.StatusConflict) {
+			// The gateway rejected the plan or the token; the status alone can still be applied.
+			return DeployResult{}, updateSubscriptionStatusOnFailure(ctx, gatewayEndpoint, cr, err, authFn)
+		}
 		return DeployResult{}, err
 	}
 	return DeployResult{Id: cr.Status.Id}, nil
+}
+
+// updateSubscriptionStatusOnFailure applies spec.status alone after the plan or token could not be applied,
+// so a broken plan or token reference never blocks revoking or deactivating the subscription. It returns
+// cause either way, so the CR still reports why the full update failed.
+func updateSubscriptionStatusOnFailure(ctx context.Context, gatewayEndpoint string, cr *apiv1.Subscription, cause error, authFn gatewayclient.AuthHeaderFunc) error {
+	if cr.Spec.Status != nil {
+		_, _ = gatewayclient.UpdateSubscriptionStatus(ctx, gatewayEndpoint, cr.Status.Id, cr.Spec.Status, authFn)
+	}
+	return cause
+}
+
+// verifyDeployedSubscriptionMatchesSpec checks that the gateway subscription in status.id belongs to
+// spec.apiId and spec.applicationId, and, on gateways that report externalRefId, that it matches
+// spec.externalRefId.
+func verifyDeployedSubscriptionMatchesSpec(ctx context.Context, gatewayEndpoint string, cr *apiv1.Subscription, authFn gatewayclient.AuthHeaderFunc) error {
+	subscriptions, err := gatewayclient.ListSubscriptions(ctx, gatewayEndpoint, cr.Spec.ApiId, nil, authFn)
+	if err != nil {
+		return err
+	}
+	for i := range subscriptions {
+		sub := &subscriptions[i]
+		if sub.Id != cr.Status.Id {
+			continue
+		}
+		externalRefIDMatches := sub.ExternalRefId == nil || cr.Spec.ExternalRefId == nil ||
+			*cr.Spec.ExternalRefId == "" || *cr.Spec.ExternalRefId == sub.Id
+		if gatewayclient.SameApplication(sub.ApplicationId, cr.Spec.ApplicationId) && externalRefIDMatches {
+			return nil
+		}
+		break
+	}
+	return &gatewayclient.NonRetryableError{
+		Err: fmt.Errorf("the gateway subscription in status.id does not match spec.externalRefId, spec.apiId and " +
+			"spec.applicationId; these fields are immutable once status.id is set, so delete and recreate the " +
+			"Subscription to apply changes"),
+	}
+}
+
+// subscriptionIDOwnedByAnotherCR reports whether another Subscription CR that targets the same gateway
+// already holds id in status.id.
+func subscriptionIDOwnedByAnotherCR(ctx context.Context, k8sClient client.Client, gatewayEndpoint string, cr *apiv1.Subscription, id string) (bool, error) {
+	var list apiv1.SubscriptionList
+	if err := k8sClient.List(ctx, &list); err != nil {
+		return false, &gatewayclient.RetryableError{Err: fmt.Errorf("list Subscriptions: %w", err)}
+	}
+	for i := range list.Items {
+		other := &list.Items[i]
+		if other.Status.Id != id || (other.Namespace == cr.Namespace && other.Name == cr.Name) {
+			continue
+		}
+		// Deleting a CR deletes its subscription from every gateway it matches, so any shared gateway counts.
+		for _, gw := range registry.GetGatewayRegistry().FindMatchingGateways(other.Namespace, other.Labels) {
+			if gw.GetGatewayServiceEndpoint() == gatewayEndpoint {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// subscriptionConflictError reports a create conflict without saying whether the id or the token collided,
+// so the error never confirms that a token is in use.
+func subscriptionConflictError() error {
+	return &gatewayclient.NonRetryableError{
+		StatusCode: http.StatusConflict,
+		Err: fmt.Errorf("the subscription conflicts with an existing subscription on the gateway; " +
+			"check that spec.externalRefId and spec.subscriptionToken are not used by another subscription"),
+	}
 }
 
 // updateSubscriptionMutableFields PUTs the CR's status, plan and token to the gateway subscription.
@@ -244,7 +348,8 @@ func updateSubscriptionMutableFields(ctx context.Context, gatewayEndpoint, subsc
 // with. With spec.externalRefId the subscription id is known, so it is adopted only when that id is one of
 // this API's subscriptions and belongs to the CR's application; otherwise the id or the token belongs to a
 // different subscription, and the conflict is reported without saying which, so the error never confirms
-// that a token is in use. Without
+// that a token is in use. Gateways that predate externalRefId ignore it and assign their own ids, which they
+// show by leaving externalRefId out of their responses; those are recovered as if it were not set. Without
 // spec.externalRefId the id is looked up by apiId and applicationId, and is returned only when exactly one
 // subscription matches; otherwise no id is returned and the create conflict is retried.
 func recoverSubscriptionIDAfterConflict(ctx context.Context, gatewayEndpoint string, cr *apiv1.Subscription, authFn gatewayclient.AuthHeaderFunc) (string, error) {
@@ -253,16 +358,18 @@ func recoverSubscriptionIDAfterConflict(ctx context.Context, gatewayEndpoint str
 		if err != nil {
 			return "", err
 		}
+		gatewaySupportsExternalRefID := false
 		for i := range subscriptions {
+			if subscriptions[i].ExternalRefId != nil {
+				gatewaySupportsExternalRefID = true
+			}
 			if subscriptions[i].Id == *cr.Spec.ExternalRefId &&
 				gatewayclient.SameApplication(subscriptions[i].ApplicationId, cr.Spec.ApplicationId) {
 				return subscriptions[i].Id, nil
 			}
 		}
-		return "", &gatewayclient.NonRetryableError{
-			StatusCode: http.StatusConflict,
-			Err: fmt.Errorf("the subscription conflicts with an existing subscription on the gateway; " +
-				"check that spec.externalRefId and spec.subscriptionToken are not used by another subscription"),
+		if len(subscriptions) == 0 || gatewaySupportsExternalRefID {
+			return "", subscriptionConflictError()
 		}
 	}
 	return gatewayclient.FindSubscriptionIDByAPIAndApplication(ctx, gatewayEndpoint, cr.Spec.ApiId, cr.Spec.ApplicationId, authFn)
