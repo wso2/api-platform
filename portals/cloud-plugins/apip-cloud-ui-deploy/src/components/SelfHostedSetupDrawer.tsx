@@ -19,7 +19,13 @@
 import { useState, type FC } from 'react';
 import { Box, Card, CardContent, Chip, Drawer, IconButton, Stack, Typography } from '@wso2/oxygen-ui';
 import { Check, X } from '@wso2/oxygen-ui-icons-react';
-import { GatewaySetupStepsPreV1_2, GatewaySetupStepsV1_2Plus, isGatewayV12OrAbove } from './GatewaySetupSteps';
+import {
+  DISTRIBUTION_NAME,
+  GatewaySetupStepsPreV1_2,
+  GatewaySetupStepsV1_2Plus,
+  isGatewayV12OrAbove,
+  RELEASE_PATH,
+} from './GatewaySetupSteps';
 import type { GatewayVersionEntry } from '../hostPort';
 
 export type SelfHostedSetupDrawerProps = {
@@ -72,10 +78,6 @@ const ConnectionStatus: FC<{ isActive: boolean }> = ({ isActive }) =>
   );
 
 const PREREQUISITES = ['cURL installed', 'unzip installed', 'Docker installed and running'];
-// The GitHub release path segment (.../releases/download/gateway/v1.2.0/...) —
-// distinct from the zip's own filename prefix below, which keeps "api-gateway".
-const RELEASE_CHANNEL = 'gateway';
-const ZIP_PREFIX = 'api-gateway';
 
 /** The right-hand drawer with the steps for connecting a newly added self-hosted gateway. */
 const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
@@ -96,7 +98,9 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
 
   const gatewayVersion = versionEntry?.latestVersion ?? `v${versionEntry?.version ?? '1.0.0'}`;
   const distVersion = versionEntry?.distVersion ?? gatewayVersion.replace(/^v/, '');
-  const zipName = `wso2apip-${ZIP_PREFIX}-${distVersion}`;
+  // The release path and the zip's own name differ, and both follow the gateway's type.
+  const gatewayKind = versionEntry?.type ?? 'regular';
+  const zipName = `wso2apip-${DISTRIBUTION_NAME[gatewayKind]}-${distVersion}`;
 
   const handleRegenerate = async () => {
     setRegenerating(true);
@@ -114,7 +118,7 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
     gatewayVersion,
     gatewayZipName: zipName,
     gatewayFolderName: zipName,
-    releaseChannel: RELEASE_CHANNEL,
+    releaseChannel: RELEASE_PATH[gatewayKind],
     controlPlaneHost,
     registrationToken: token,
     hasJustRegeneratedToken: regenerated,

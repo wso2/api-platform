@@ -42,13 +42,21 @@ describe('readApi', () => {
     });
   });
 
-  it('reads nothing for kinds other than REST APIs', async () => {
-    let called = false;
-    const apiFetch = (async () => {
-      called = true;
+  it('reads only the display name for the other kinds, and never marks them read-only', async () => {
+    const calls: unknown[][] = [];
+    const apiFetch = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { name: 'Weather MCP', readOnly: true, upstream: { main: { url: 'https://x' } } };
     }) as ApiFetch;
-    const api = await createDeployClient(apiFetch, 'proj', 'x', 'LlmProvider' as never).readApi();
-    expect(api).toEqual({ readOnly: false });
-    expect(called).toBe(false);
+    const api = await createDeployClient(apiFetch, 'proj', 'weather', 'Mcp').readApi();
+    expect(api).toEqual({ name: 'Weather MCP', readOnly: false });
+    expect(calls[0]).toEqual(['GET', '/mcp-proxies/weather']);
+  });
+
+  it('leaves the name empty, rather than failing, when another kind cannot be read', async () => {
+    const apiFetch = (async () => {
+      throw new Error('boom');
+    }) as ApiFetch;
+    expect(await createDeployClient(apiFetch, 'proj', 'x', 'LlmProxy').readApi()).toEqual({ readOnly: false });
   });
 });

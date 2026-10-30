@@ -18,8 +18,14 @@
 
 import type { ApiFetch } from './hostPort';
 
+export type ManagedGatewayType = 'regular' | 'ai';
+
 export const DEFAULT_GATEWAY_NAME = 'Default Cloud Gateway';
 const DEFAULT_GATEWAY_DESCRIPTION = 'Default API Platform Cloud Gateway';
+
+/** The default gateway's display name; an AI gateway is named for its type so it does not shadow the regular one. */
+export const defaultGatewayName = (type: ManagedGatewayType): string =>
+  type === 'ai' ? 'Default AI Cloud Gateway' : DEFAULT_GATEWAY_NAME;
 
 /** A managed gateway as far as the Deploy page needs: which one, and how far along. */
 export type ManagedGatewayState = {
@@ -62,23 +68,30 @@ const toState = (dto: ManagedGatewayDTO): ManagedGatewayState => {
  */
 export function createManagedGatewaysClient(apiFetch: ApiFetch) {
   return {
-    /** Creates the default managed gateway in `environment`. */
-    async createDefaultGateway(environment: string): Promise<{ id?: string }> {
+    /**
+     * Creates the default managed gateway of `type` in `environment`. The id is
+     * required: it is what the page then watches, so a response without one is an
+     * error rather than something to guess a gateway from.
+     */
+    async createDefaultGateway(environment: string, type: ManagedGatewayType = 'regular'): Promise<{ id: string }> {
       const created = await apiFetch<{ id?: string }>('POST', '/managed-gateways', {
-        displayName: DEFAULT_GATEWAY_NAME,
+        displayName: defaultGatewayName(type),
         description: DEFAULT_GATEWAY_DESCRIPTION,
         environment,
-        functionalityType: 'regular',
+        functionalityType: type,
         isCritical: false,
         isDefault: true,
       });
-      return { id: created?.id };
+      if (!created?.id) {
+        throw new Error('The gateway service returned an incomplete response.');
+      }
+      return { id: created.id };
     },
 
-    async listGateways(): Promise<ManagedGatewayState[]> {
+    async listGateways(type: ManagedGatewayType = 'regular'): Promise<ManagedGatewayState[]> {
       const response = await apiFetch<{ list?: ManagedGatewayDTO[] }>(
         'GET',
-        '/managed-gateways?functionalityType=regular'
+        `/managed-gateways?functionalityType=${type}`
       );
       return (response?.list ?? []).map(toState);
     },

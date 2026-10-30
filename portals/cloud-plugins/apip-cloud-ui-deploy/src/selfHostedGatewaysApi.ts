@@ -18,7 +18,13 @@
 
 import type { ApiFetch, GatewayVersionEntry } from './hostPort';
 
+export type SelfHostedGatewayType = 'regular' | 'ai';
+
 export const DEFAULT_SELF_HOSTED_NAME = 'Default Self-Hosted Gateway';
+
+/** The default gateway's display name; an AI gateway is named for its type so it does not shadow the regular one. */
+export const defaultSelfHostedName = (type: SelfHostedGatewayType): string =>
+  type === 'ai' ? 'Default AI Self-Hosted Gateway' : DEFAULT_SELF_HOSTED_NAME;
 const DEFAULT_SELF_HOSTED_DESCRIPTION = 'Default API Platform Self-Hosted Gateway';
 
 /**
@@ -32,21 +38,48 @@ export const PENDING_ENDPOINT = 'pending://awaiting-connection';
 /** The gateways table's handle column holds 40 characters. */
 const MAX_HANDLE_LENGTH = 40;
 
-/** The latest regular-gateway release: the first entry of its type in the host's config. */
-export const latestRegularVersion = (
-  versions: GatewayVersionEntry[] | undefined
-): GatewayVersionEntry | undefined => versions?.find((entry) => entry.type === 'regular');
+/** The latest release of a gateway type: the first entry of that type in the host's config. */
+export const latestVersionFor = (
+  versions: GatewayVersionEntry[] | undefined,
+  type: SelfHostedGatewayType
+): GatewayVersionEntry | undefined => versions?.find((entry) => entry.type === type);
 
-/** `<environment>-<name>`, as the Gateways page derives it, kept within the column. */
-const deriveHandle = (name: string, environment: string): string => {
-  const slug = name
+/** The latest regular-gateway release. */
+export const latestRegularVersion = (versions: GatewayVersionEntry[] | undefined) =>
+  latestVersionFor(versions, 'regular');
+
+const slugify = (value: string): string =>
+  value
     .trim()
     .toLowerCase()
     .replace(/[\s_]+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '');
-  return `${environment}-${slug}`.slice(0, MAX_HANDLE_LENGTH).replace(/-+$/, '');
+
+/** A short, stable fingerprint of the full input, so truncated names stay distinct. */
+const fingerprint = (value: string): string => {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36).padStart(6, '0').slice(-6);
+};
+
+/**
+ * `<environment>-<name>`, as the Gateways page derives it. When that does not fit the
+ * 40-character column the environment is shortened and a fingerprint of the complete
+ * environment name is added, so two environments sharing a long prefix keep distinct ids.
+ */
+export const deriveHandle = (name: string, environment: string): string => {
+  const slug = slugify(name);
+  const env = slugify(environment) || 'env';
+  const full = `${env}-${slug}`;
+  if (full.length <= MAX_HANDLE_LENGTH) return full;
+  const tag = fingerprint(`${environment}|${name}`);
+  const room = MAX_HANDLE_LENGTH - slug.length - tag.length - 2;
+  if (room < 1) return `${tag}-${slug}`.slice(0, MAX_HANDLE_LENGTH).replace(/-+$/, '');
+  return `${env.slice(0, room).replace(/-+$/, '')}-${tag}-${slug}`;
 };
 
 /**
@@ -78,14 +111,16 @@ export function createSelfHostedGatewaysClient(apiFetch: ApiFetch) {
      */
     async createDefaultGateway(
       environment: string,
-      version?: string
+      version?: string,
+      type: SelfHostedGatewayType = 'regular'
     ): Promise<{ id: string; token: string | null }> {
+      const name = defaultSelfHostedName(type);
       const created = await apiFetch<{ id?: string }>('POST', '/gateways', {
-        id: deriveHandle(DEFAULT_SELF_HOSTED_NAME, environment),
-        displayName: DEFAULT_SELF_HOSTED_NAME,
+        id: deriveHandle(name, environment),
+        displayName: name,
         description: DEFAULT_SELF_HOSTED_DESCRIPTION,
         endpoints: [PENDING_ENDPOINT],
-        functionalityType: 'regular',
+        functionalityType: type,
         isCritical: false,
         ...(version ? { version } : {}),
         properties: { environment, isDefault: 'true' },

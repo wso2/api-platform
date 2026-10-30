@@ -102,6 +102,12 @@ export type RuntimeConfig = {
    * gateway setup instructions. Defaults to the platformApiBaseUrl host.
    */
   gatewayControlPlaneHost: string;
+  /**
+   * The control-plane host only when the deployment sets it (`GATEWAY_CONTROL_PLANE_HOST`), and
+   * empty otherwise. `gatewayControlPlaneHost` falls back to a guess, which is fine for this
+   * console's own page but must not be handed to setup commands for a gateway running elsewhere.
+   */
+  gatewayControlPlaneHostOverride: string;
   /** Policy Hub API (catalog of mediation policies) + its web UI link. */
   policyHubBaseUrl: string;
   policyHubWebUrl: string;
@@ -371,6 +377,8 @@ export const runtimeConfig: RuntimeConfig = {
     import.meta.env.VITE_GATEWAY_CONTROL_PLANE_HOST ||
     hostFromUrl(resolvedPlatformApiBaseUrl) ||
     'localhost:9243',
+  gatewayControlPlaneHostOverride:
+    fromWindow().GATEWAY_CONTROL_PLANE_HOST || import.meta.env.VITE_GATEWAY_CONTROL_PLANE_HOST || '',
   policyHubBaseUrl:
     fromWindow().POLICY_HUB_BASE_URL ||
     import.meta.env.VITE_POLICY_HUB_BASE_URL ||

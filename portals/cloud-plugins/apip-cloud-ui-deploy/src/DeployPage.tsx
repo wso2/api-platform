@@ -151,15 +151,32 @@ const DeployPage: FC<DeployPageProps> = ({
         </Alert>
       )}
 
-      {hasNoGateways ? (
-        <NoGatewayState
-          apiName={apiName}
-          environments={environments.map((environment) => environment.name)}
-          onAddSelfHosted={onAddGateway}
-          onAddCloud={onAddCloudGateway}
-          provisioning={provisioning}
-          selfHostedPending={selfHostedPending}
-        />
+      {hasNoGateways && !lockedReason ? (
+        <>
+          <NoGatewayState
+            apiName={apiName}
+            environments={environments.map((environment) => environment.name)}
+            onAddSelfHosted={onAddGateway}
+            onAddCloud={onAddCloudGateway}
+            provisioning={provisioning}
+            selfHostedPending={selfHostedPending}
+          />
+          {/* Builds belong to no gateway yet, so they can still be deleted to free a slot;
+              deploying stays off until a gateway is active. */}
+          {builds.length > 0 && (
+            <Box sx={{ maxWidth: 640, mx: 'auto', mt: 4 }}>
+              <BuildAreaCard
+                builds={builds}
+                targetEnvironment={environments[0]}
+                undeletableBuilds={undeletableBuildReasons(environments)}
+                busy={busy}
+                lockedReason="Add a gateway to deploy."
+                onDeployClick={() => undefined}
+                onDeleteBuild={onDeleteBuild}
+              />
+            </Box>
+          )}
+        </>
       ) : environments.length === 0 ? (
         <Box
           sx={{

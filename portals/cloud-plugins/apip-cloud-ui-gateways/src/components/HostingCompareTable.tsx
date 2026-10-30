@@ -127,6 +127,21 @@ const HostingCompareTable: FC<HostingCompareTableProps> = ({ onChoose }) => {
   return (
     <Box>
       <Box
+        role="tablist"
+        aria-label="Hosting options"
+        onKeyDown={(event) => {
+          const keys = Object.keys(CONTENT) as GatewayHosting[];
+          const index = keys.indexOf(active);
+          let next = index;
+          if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % keys.length;
+          else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index - 1 + keys.length) % keys.length;
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = keys.length - 1;
+          else return;
+          event.preventDefault();
+          setActive(keys[next]);
+          event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
+        }}
         sx={{
           display: 'inline-flex',
           gap: 0.5,
@@ -143,8 +158,10 @@ const HostingCompareTable: FC<HostingCompareTableProps> = ({ onChoose }) => {
             <Box
               key={key}
               role="tab"
+              id={`hosting-tab-${key}`}
               aria-selected={selected}
-              tabIndex={0}
+              aria-controls="hosting-tabpanel"
+              tabIndex={selected ? 0 : -1}
               onClick={() => setActive(key)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -175,6 +192,9 @@ const HostingCompareTable: FC<HostingCompareTableProps> = ({ onChoose }) => {
       </Box>
 
       <Box
+        role="tabpanel"
+        id="hosting-tabpanel"
+        aria-labelledby={`hosting-tab-${active}`}
         sx={{
           display: 'flex',
           flexWrap: 'wrap',

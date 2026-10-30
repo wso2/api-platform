@@ -64,7 +64,7 @@ type Config struct {
 	// `type` discriminator, since this BFF serves both "regular" and "event"
 	// gateway types rather than AI Workspace's single "ai" type.
 	GatewayVersions []GatewayVersionEntry `koanf:"gateway_versions"`
-	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
+	GatewayRelay    GatewayRelayConfig    `koanf:"gateway_relay"`
 
 	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
 
@@ -415,6 +415,13 @@ func Load(paths ...string) (*Config, error) {
 	}
 
 	cfg := defaultConfig()
+	// A catalog written in the config replaces the built-in one outright. Left in place, the
+	// decoder would merge each [[gateway_versions]] entry onto the default entry at the same
+	// index, so an override that omits a field (latest_version, say) would silently inherit
+	// another release's value, and the built-in entries could never be dropped.
+	if k.Exists("gateway_versions") {
+		cfg.GatewayVersions = nil
+	}
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",

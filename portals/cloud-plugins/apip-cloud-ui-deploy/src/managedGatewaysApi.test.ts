@@ -31,10 +31,16 @@ describe('listGateways', () => {
     return { client: createManagedGatewaysClient(apiFetch), calls };
   };
 
-  it('asks only for regular gateways', async () => {
+  it('asks only for regular gateways by default', async () => {
     const { client, calls } = listing([]);
     await client.listGateways();
     expect(calls[0]).toEqual(['GET', '/managed-gateways?functionalityType=regular']);
+  });
+
+  it('asks for the gateway type it was given', async () => {
+    const { client, calls } = listing([]);
+    await client.listGateways('ai');
+    expect(calls[0]).toEqual(['GET', '/managed-gateways?functionalityType=ai']);
   });
 
   it('reads each status the server reports', async () => {
@@ -95,8 +101,24 @@ describe('createDefaultGateway', () => {
     ]);
   });
 
-  it('returns no id when the server answers with no body', async () => {
+  it('creates an AI gateway, named for its type, when asked for one', async () => {
+    const calls: unknown[][] = [];
+    const apiFetch = (async (...args: unknown[]) => {
+      calls.push(args);
+      return { id: 'dev-default-ai-cloud-gateway' };
+    }) as ApiFetch;
+    await createManagedGatewaysClient(apiFetch).createDefaultGateway('dev', 'ai');
+    expect(calls[0]).toMatchObject([
+      'POST',
+      '/managed-gateways',
+      { displayName: 'Default AI Cloud Gateway', functionalityType: 'ai' },
+    ]);
+  });
+
+  it('throws when the server answers without an id, since the page follows the gateway by it', async () => {
     const apiFetch = (async () => undefined) as ApiFetch;
-    expect(await createManagedGatewaysClient(apiFetch).createDefaultGateway('dev')).toEqual({ id: undefined });
+    await expect(createManagedGatewaysClient(apiFetch).createDefaultGateway('dev')).rejects.toThrow(
+      /incomplete response/
+    );
   });
 });

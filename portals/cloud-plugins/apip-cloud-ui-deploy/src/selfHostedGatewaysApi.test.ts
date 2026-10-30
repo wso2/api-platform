@@ -23,7 +23,9 @@ import {
   DEFAULT_SELF_HOSTED_NAME,
   PENDING_ENDPOINT,
   createSelfHostedGatewaysClient,
+  deriveHandle,
   latestRegularVersion,
+  latestVersionFor,
 } from './selfHostedGatewaysApi';
 
 describe('latestRegularVersion', () => {
@@ -41,6 +43,17 @@ describe('latestRegularVersion', () => {
     expect(latestRegularVersion([{ type: 'event', version: '1.0', channel: 'LTS' }])).toBeUndefined();
     expect(latestRegularVersion([])).toBeUndefined();
     expect(latestRegularVersion(undefined)).toBeUndefined();
+  });
+});
+
+describe('latestVersionFor', () => {
+  it('is the first entry of the requested type', () => {
+    const versions: GatewayVersionEntry[] = [
+      { type: 'regular', version: '1.2', channel: 'LTS' },
+      { type: 'ai', version: '1.0', channel: 'LTS' },
+    ];
+    expect(latestVersionFor(versions, 'ai')?.version).toBe('1.0');
+    expect(latestVersionFor(versions, 'regular')?.version).toBe('1.2');
   });
 });
 
@@ -85,8 +98,29 @@ describe('createDefaultGateway', () => {
     await client.createDefaultGateway('a-very-long-environment-name-indeed');
     const id = (calls[0].body as { id: string }).id;
     expect(id.length).toBeLessThanOrEqual(40);
-    expect(id.startsWith('a-very-long-environment-name-indeed-')).toBe(true);
     expect(id.endsWith('-')).toBe(false);
+    expect(id.endsWith('-default-self-hosted-gateway')).toBe(true);
+  });
+
+  it('gives environments that share a long prefix different handles', () => {
+    const shared = 'production-eu-west-region-';
+    expect(deriveHandle('Default Self-Hosted Gateway', `${shared}one`)).not.toBe(
+      deriveHandle('Default Self-Hosted Gateway', `${shared}two`)
+    );
+  });
+
+  it('turns an environment name into a valid handle', () => {
+    expect(deriveHandle('Default Self-Hosted Gateway', 'Prod East')).toBe('prod-east-default-self-hosted-gateway');
+  });
+
+  it('registers an AI gateway, named for its type, when asked for one', async () => {
+    const { client, calls } = recording(ok);
+    await client.createDefaultGateway('dev', '1.0', 'ai');
+    expect(calls[0].body).toMatchObject({
+      displayName: 'Default AI Self-Hosted Gateway',
+      functionalityType: 'ai',
+      version: '1.0',
+    });
   });
 
   it('returns the id and the first token', async () => {

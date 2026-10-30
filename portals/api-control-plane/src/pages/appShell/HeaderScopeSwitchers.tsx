@@ -192,7 +192,13 @@ export function HeaderScopeSwitchers() {
     loadedApiOptions.length > 0
       ? loadedApiOptions
       : selectedApiHandler
-        ? [{ handler: selectedApiHandler, name: component?.displayName || selectedApiHandler }]
+        ? [
+            {
+              handler: selectedApiHandler,
+              name: component?.displayName || selectedApiHandler,
+              description: component?.description,
+            },
+          ]
         : [];
 
   // A single loaded organization is read-only; use the loaded list so the

@@ -36,10 +36,12 @@ import DockerIcon from '../assets/images/docker.svg';
 import KubernetesIcon from '../assets/images/helm.svg';
 import {
   CommandField,
+  DISTRIBUTION_NAME,
   GatewaySetupStepsKubernetes,
   GatewaySetupStepsPreV1_2,
   GatewaySetupStepsV1_2Plus,
   isGatewayV12OrAbove,
+  RELEASE_PATH,
 } from './GatewaySetupSteps';
 import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from '../utils/gateway';
 import type { GatewayVersionEntry } from '../hostPort';
@@ -51,25 +53,13 @@ export type GatewayOverviewProps = {
   /** `host:port` a self-hosted gateway's controller dials; shown in the setup commands. */
   controlPlaneHost: string;
   gatewayVersions: GatewayVersionEntry[];
+  /** The token minted when the gateway was just registered, so its setup steps can use it straight away. */
+  initialRegistrationToken?: string | null;
   onBack: () => void;
   onEditClick: (gatewayId: string) => void;
   /** Mints (and revokes the previous) registration token — see `selfHostedGatewaysApi.generateToken`. */
   onGenerateRegistrationToken: (gatewayId: string) => Promise<string>;
   notify: (message: string, severity?: 'success' | 'info' | 'warning' | 'error') => void;
-};
-
-/** The distribution name each gateway type's zip is published under: `wso2apip-<name>-<version>.zip`. */
-const DISTRIBUTION_NAME: Record<Gateway['type'], string> = {
-  ai: 'ai-gateway',
-  regular: 'api-gateway',
-  event: 'event-gateway',
-};
-
-/** The GitHub release path segment each type is published under: `releases/download/<segment>/<tag>/...`. */
-const RELEASE_PATH: Record<Gateway['type'], string> = {
-  ai: 'ai-gateway',
-  regular: 'gateway',
-  event: 'event-gateway',
 };
 
 const ACCENT = '#f7882f';
@@ -151,6 +141,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   environmentNames,
   controlPlaneHost,
   gatewayVersions,
+  initialRegistrationToken,
   onBack,
   onEditClick,
   onGenerateRegistrationToken,
@@ -158,24 +149,19 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
 }) => {
   const [tab, setTab] = useState<'configurations' | 'policies'>('configurations');
   const [installMethod, setInstallMethod] = useState<InstallMethod>('Quick Start');
-  const [registrationToken, setRegistrationToken] = useState<string | null>(null);
+  const [registrationToken, setRegistrationToken] = useState<string | null>(initialRegistrationToken ?? null);
   const [hasJustRegeneratedToken, setHasJustRegeneratedToken] = useState(false);
   const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
 
-  // The entries this gateway's own type offers, most recent first — matching
-  // AI Workspace's `resolveGatewayVersion`: fall back to the gateway's own
-  // reported version (prefixed with "v") when the catalog has nothing for it,
-  // so an overview page still renders a usable download command rather than
-  // nothing at all. Matched by the gateway's OWN declared version first — the
-  // catalog can carry several entries per type (e.g. multiple regular-gateway
-  // releases), so picking just any entry of the right type would offer
-  // download commands for a release this gateway was never actually created
-  // against. Only an untyped/legacy gateway (no `version` yet) falls back to
-  // that type's first entry, which the catalog's own ordering treats as
-  // "Latest" (see the "Add Gateway" form's version picker).
-  const versionEntry: GatewayVersionEntry | undefined =
-    gatewayVersions.find((entry) => entry.type === gateway.type && entry.version === gateway.version) ??
-    gatewayVersions.find((entry) => entry.type === gateway.type);
+  // The catalog entry whose release this gateway was created against. A gateway that
+  // reports a version is matched by it, and when the catalog does not list it the setup
+  // commands use the reported version itself (below) — falling back to another release
+  // would hand out a download for a version the gateway is not running. Only a legacy
+  // gateway with no version yet takes its type's first entry, which the catalog's own
+  // ordering treats as "Latest".
+  const versionEntry: GatewayVersionEntry | undefined = gateway.version
+    ? gatewayVersions.find((entry) => entry.type === gateway.type && entry.version === gateway.version)
+    : gatewayVersions.find((entry) => entry.type === gateway.type);
   const resolvedVersion = versionEntry?.latestVersion ?? (gateway.version ? `v${gateway.version}` : 'v1.0.0');
   const distVersion = versionEntry?.distVersion ?? resolvedVersion.replace(/^v/, '');
   const releaseChannel = RELEASE_PATH[gateway.type];

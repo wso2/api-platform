@@ -24,6 +24,8 @@ export type HostingOptionCardProps = {
   title: string;
   description: string;
   selected: boolean;
+  /** Roving tab stop: only the selected card (or the first, when none is) is reachable with Tab. */
+  tabIndex?: number;
   onClick: () => void;
 };
 
@@ -34,11 +36,11 @@ export type HostingOptionCardProps = {
  * one-time, harder-to-reverse decision the admin needs more to go on than a
  * type pick does.
  */
-const HostingOptionCard: FC<HostingOptionCardProps> = ({ icon, title, description, selected, onClick }) => (
+const HostingOptionCard: FC<HostingOptionCardProps> = ({ icon, title, description, selected, tabIndex = 0, onClick }) => (
   <Card
     role="radio"
     aria-checked={selected}
-    tabIndex={0}
+    tabIndex={tabIndex}
     onClick={onClick}
     onKeyDown={(event) => {
       if (event.key === 'Enter' || event.key === ' ') {

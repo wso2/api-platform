@@ -39,7 +39,10 @@ import {
   type AIWorkspaceExtension,
 } from "../../../../ai-workspace/src/extensions";
 import type { AIWorkspaceHostPort } from "../../../../ai-workspace/src/hostPort";
-import { PLATFORM_GATEWAY_VERSIONS } from "../../../../ai-workspace/src/config.env";
+import {
+  CONTROLPLANE_HOST,
+  PLATFORM_GATEWAY_VERSIONS,
+} from "../../../../ai-workspace/src/config.env";
 import {
   defineCloudPlugin,
   getCloudExtensions,
@@ -66,16 +69,17 @@ const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
  * `AIWorkspaceHostPort` (core, `ai-workspace/src/hostPort.tsx`) does not carry.
  * AI Workspace already hardcodes its release catalog as `PLATFORM_GATEWAY_VERSIONS`
  * (`ai-workspace/src/config.env.ts`) — every gateway here is an AI gateway, so
- * `type` is always `'ai'`, and `distVersion` falls back to that catalog's
- * `distFolderVersion` when the zip and unpack-folder versions coincide. Computed
- * once at module scope, same as `AI_GATEWAY_TYPES` above, since the source array
+ * `type` is always `'ai'`. `distVersion` is copied only when the catalog sets it:
+ * the zip's version defaults to the release tag, not to the unpack folder's
+ * `distFolderVersion`, so borrowing that would name a zip the release may not
+ * publish. Computed once at module scope, same as `AI_GATEWAY_TYPES` above, since the source array
  * is itself a static, hardcoded catalog.
  */
 const AI_GATEWAY_VERSIONS = PLATFORM_GATEWAY_VERSIONS.map((entry) => ({
   type: "ai" as const,
   version: entry.version,
   latestVersion: entry.latestVersion,
-  distVersion: entry.distVersion ?? entry.distFolderVersion,
+  distVersion: entry.distVersion,
   channel: entry.channel,
 }));
 
@@ -174,7 +178,11 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           render: (port: AIWorkspaceHostPort) => (
             <GatewaysFeature
               gatewayTypes={AI_GATEWAY_TYPES}
-              port={{ ...port, gatewayVersions: AI_GATEWAY_VERSIONS }}
+              port={{
+                ...port,
+                gatewayVersions: AI_GATEWAY_VERSIONS,
+                controlPlaneHost: CONTROLPLANE_HOST,
+              }}
             />
           ),
         },

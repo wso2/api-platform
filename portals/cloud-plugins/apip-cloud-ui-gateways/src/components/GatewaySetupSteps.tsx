@@ -68,6 +68,28 @@ export type GatewaySetupStepsProps = {
 
 const ACCENT = '#f7882f';
 
+/**
+ * Shown in the setup commands when the host supplies no control-plane address. A guessed
+ * address, such as this page's own host, would send a remote gateway to the wrong place.
+ */
+export const CONTROL_PLANE_HOST_PLACEHOLDER = '<control-plane-host:port>';
+
+type GatewayKind = 'ai' | 'regular' | 'event';
+
+/** The distribution name each gateway type's zip is published under: `wso2apip-<name>-<version>.zip`. */
+export const DISTRIBUTION_NAME: Record<GatewayKind, string> = {
+  ai: 'ai-gateway',
+  regular: 'api-gateway',
+  event: 'event-gateway',
+};
+
+/** The GitHub release path segment each type is published under: `releases/download/<segment>/<tag>/...`. */
+export const RELEASE_PATH: Record<GatewayKind, string> = {
+  ai: 'ai-gateway',
+  regular: 'gateway',
+  event: 'event-gateway',
+};
+
 /** A read-only command block: a "bash" header with a Copy button, then the command behind a `$` prompt. */
 export function CommandField({
   value,

@@ -151,8 +151,9 @@ allow_hosts = ["https://a.example.com", "https://b.example.com:9443"]
 	}
 }
 
-// The default catalog ships "regular" and "event" entries, so a deployment that
-// never mentions [[gateway_versions]] still gets a download step.
+// The default catalog ships "regular" entries, so a deployment that never mentions
+// [[gateway_versions]] still gets a download step. It has no "event" entry: no event
+// gateway release is published to link to.
 func TestLoad_GatewayVersionsDefaults(t *testing.T) {
 	cfg, err := Load(writeConfig(t, minimalControlPlane))
 	if err != nil {
@@ -162,10 +163,29 @@ func TestLoad_GatewayVersionsDefaults(t *testing.T) {
 	for _, gv := range cfg.GatewayVersions {
 		types[gv.Type] = true
 	}
-	for _, want := range []string{"regular", "event"} {
-		if !types[want] {
-			t.Errorf("default GatewayVersions has no %q entry", want)
-		}
+	if !types["regular"] {
+		t.Errorf("default GatewayVersions has no regular entry")
+	}
+	if types["event"] {
+		t.Errorf("default GatewayVersions has an event entry, but no event release is published")
+	}
+}
+
+// A catalog in the config replaces the built-in one: nothing is inherited from the
+// defaults, so an entry that omits latest_version gets none rather than another release's.
+func TestLoad_GatewayVersionsReplaceDefaults(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalControlPlane+`
+[[api_control_plane.gateway_versions]]
+type = "regular"
+version = "1.2"
+channel = "LTS"
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []GatewayVersionEntry{{Type: "regular", Version: "1.2", Channel: "LTS"}}
+	if len(cfg.GatewayVersions) != len(want) || cfg.GatewayVersions[0] != want[0] {
+		t.Errorf("GatewayVersions = %+v, want exactly %+v", cfg.GatewayVersions, want)
 	}
 }
 
@@ -218,9 +238,7 @@ func TestLoad_GatewayVersionsValidation(t *testing.T) {
 	}
 }
 
-// Missing fields are checked on validate() directly: through Load, an override
-// entry is decoded onto the default entry at the same index and inherits any
-// field it omits, so they can't be reproduced from TOML alone.
+// Missing fields are checked on validate() directly.
 func TestValidate_GatewayVersionsMissingFields(t *testing.T) {
 	tests := []struct {
 		name    string

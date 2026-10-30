@@ -82,6 +82,9 @@ const NAME_HELPER_TEXT = 'The gateway handle is derived from this name and canno
 /** A plausible local endpoint, shown pre-filled so the field reads as "edit this" rather than "write one from scratch". */
 const SAMPLE_SELF_HOSTED_URL = 'https://localhost:8443';
 
+/** Arrow keys that move a radio group's selection: forward (+1) or back (-1). */
+const ARROW_STEPS: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
 const HOSTING_OPTIONS: {
   value: GatewayHosting;
   icon: FC<{ size?: number }>;
@@ -143,7 +146,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // to discover it from, unlike managed) and the endpoint it will answer on.
   const typeVersions = gatewayVersions.filter((entry) => entry.type === type);
   const [version, setVersion] = useState(typeVersions[0]?.version ?? '');
-  const [url, setUrl] = useState(gateway?.url || SAMPLE_SELF_HOSTED_URL);
+  const [url, setUrl] = useState(gateway?.url ?? '');
 
   // The name is only constrained on create, where the backend derives the
   // gateway's handle from it. It is a plain display name from then on — the
@@ -194,8 +197,11 @@ const GatewayForm: FC<GatewayFormProps> = ({
 
   const [submitting, setSubmitting] = useState(false);
 
+  // A new self-hosted gateway needs the endpoint it will answer on. Editing one that has not
+  // connected yet has none to show, and the URL is not editable there.
+  const missingUrl = isSelfHosted && !isEdit && url.trim().length === 0;
   const missingRequired =
-    hosting === null || name.trim().length === 0 || environmentId.length === 0;
+    hosting === null || name.trim().length === 0 || environmentId.length === 0 || missingUrl;
   const canSubmit = !missingRequired && !nameError && !submitting;
 
   const handleSubmit = async () => {
@@ -250,14 +256,29 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   Compare options
                 </Link>
               </Box>
-              <Box role="radiogroup" aria-label="Hosting" sx={{ display: 'flex', gap: 2 }}>
-                {HOSTING_OPTIONS.map((option) => (
+              <Box
+                role="radiogroup"
+                aria-label="Hosting"
+                sx={{ display: 'flex', gap: 2 }}
+                onKeyDown={(event) => {
+                  const step = ARROW_STEPS[event.key];
+                  if (!step) return;
+                  event.preventDefault();
+                  const current = HOSTING_OPTIONS.findIndex((option) => option.value === hosting);
+                  const count = HOSTING_OPTIONS.length;
+                  const next = current === -1 ? (step > 0 ? 0 : count - 1) : (current + step + count) % count;
+                  setHosting(HOSTING_OPTIONS[next].value);
+                  event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
+                }}
+              >
+                {HOSTING_OPTIONS.map((option, index) => (
                   <HostingOptionCard
                     key={option.value}
                     icon={<option.icon size={20} />}
                     title={option.title}
                     description={option.description}
                     selected={hosting === option.value}
+                    tabIndex={hosting === option.value || (hosting === null && index === 0) ? 0 : -1}
                     onClick={() => setHosting(option.value)}
                   />
                 ))}

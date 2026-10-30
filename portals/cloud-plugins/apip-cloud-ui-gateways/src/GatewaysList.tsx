@@ -328,23 +328,26 @@ const GatewaysList: FC<GatewaysListProps> = ({
     [filteredGateways]
   );
 
-  // A gateway counts as Active here once it is up and not broken — 'active'
-  // (connected right now) or 'provisioning' (still being built, nothing wrong
-  // yet) both read as Active. Only 'failed' and 'inactive' (disconnected) pull
-  // it into the Inactive bucket, since those are the two states actually worth
-  // flagging on this summary.
+  // Active means connected right now. A gateway still being provisioned cannot serve traffic yet and
+  // has nothing wrong either, so it is in neither count; only 'failed' and 'inactive' (disconnected)
+  // are flagged as Inactive.
   const summarize = (list: Gateway[]) => ({
-    active: list.filter((gateway) => gateway.status === 'active' || gateway.status === 'provisioning')
-      .length,
-    inactive: list.filter((gateway) => gateway.status === 'failed' || gateway.status === 'inactive')
-      .length,
+    active: list.filter((gateway) => gateway.status === 'active').length,
+    inactive: list.filter((gateway) => gateway.status === 'failed' || gateway.status === 'inactive').length,
   });
   const managedSummary = summarize(gateways.filter((gateway) => gateway.hosting === 'managed'));
   const selfHostedSummary = summarize(gateways.filter((gateway) => gateway.hosting === 'self-hosted'));
 
   // Which hosting's gateways the table shows — a tab, independent of what the
   // search box narrows within it.
-  const [activeHosting, setActiveHosting] = useState<GatewayHosting>('managed');
+  // It opens on the hosting that has gateways, so a host with only self-hosted ones does not
+  // start on an empty managed tab.
+  const [activeHosting, setActiveHosting] = useState<GatewayHosting>(() =>
+    gateways.some((gateway) => gateway.hosting === 'managed') ||
+    !gateways.some((gateway) => gateway.hosting === 'self-hosted')
+      ? 'managed'
+      : 'self-hosted'
+  );
   const activeGateways = activeHosting === 'managed' ? managedGateways : selfHostedGateways;
 
   const handleDeleteConfirm = async () => {
