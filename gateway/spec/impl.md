@@ -255,15 +255,12 @@ Located in `gateway-controller/tests/integration/`:
 - **xDS Tests**: Verify xDS server behavior and snapshot updates
 - **End-to-End Tests**: Deploy API → verify Router routes traffic correctly
 
+End-to-end integration tests live in the integration framework (`tests/framework`), which starts
+the containers it needs itself:
+
 ```bash
-# Start test environment
-docker compose -f docker compose.test.yaml up -d
-
-# Run integration tests
+# The gateway-core integration tests on SQLite
 make test-integration
-
-# Cleanup test environment
-docker compose -f docker compose.test.yaml down
 ```
 
 ### Manual Testing Checklist

@@ -59,11 +59,11 @@ help: ## Show this help message
 	@echo '  make test-policy-engine        - Test policy-engine'
 	@echo ''
 	@echo 'Integration Test Targets:'
-	@echo '  make test-integration-all      - Build coverage images and run integration tests'
+	@echo '  make test-integration-all      - Run the whole integration framework suite (tests/framework)'
 	@echo '  make build-coverage            - Build all coverage-instrumented gateway components'
 	@echo '  make build-controller-coverage - Build coverage-instrumented gateway-controller Docker image'
 	@echo '  make build-gateway-runtime-coverage - Build coverage-instrumented gateway-runtime Docker image'
-	@echo '  make test-integration          - Run integration tests'
+	@echo '  make test-integration          - Run the gateway-core integration tests on SQLite (tests/framework)'
 	@echo ''
 	@echo 'Version Management:'
 	@echo '  make version-set VERSION=X              - Set gateway version and update artifacts'
@@ -172,12 +172,18 @@ test-gateway-builder: ## Test gateway-builder
 test-policy-engine: ## Test policy-engine
 	$(MAKE) -C gateway-runtime test
 
+# The integration framework builds the gateway images from source itself.
+# INTEGRATION_TEST_FLAGS passes extra suite flags, e.g. INTEGRATION_TEST_FLAGS=-logs to capture
+# container logs under IT_LOG_OUT.
+INTEGRATION_TEST_FLAGS ?=
+
 .PHONY: test-integration
-test-integration: ## Run integration tests
-	$(MAKE) -C it test
+test-integration: ## Run the gateway-core integration tests on SQLite (tests/framework)
+	cd ../tests/framework && go test ./suites/it -count=1 -timeout=60m -blocks gateway-core/sqlite $(INTEGRATION_TEST_FLAGS)
 
 .PHONY: test-integration-all
-test-integration-all: build-coverage test-integration ## Build coverage images and run integration tests
+test-integration-all: ## Run the whole integration framework suite (tests/framework)
+	cd ../tests/framework && go test ./suites/it -count=1 -timeout=90m $(INTEGRATION_TEST_FLAGS)
 
 # Version Management Targets
 .PHONY: version-set

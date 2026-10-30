@@ -39,6 +39,8 @@ Feature: Data-plane to control-plane artifact push
       | spec.responseModel | {"location":"payload","identifier":"$.model"} |
     Then the response should be successful
     And the control plane should receive the "LlmProviderTemplate" artifact "${CTX:templateName}"
+    And the gateway should record control-plane sync status "success" for the "LlmProviderTemplate" artifact "${CTX:templateName}"
+    And the gateway should record a control-plane artifact id for the "LlmProviderTemplate" artifact "${CTX:templateName}"
     And the control plane copy of the "LlmProviderTemplate" artifact "${CTX:templateName}" configuration should contain "${CTX:templateDisplayName}"
     And the control plane copy of the "LlmProviderTemplate" artifact "${CTX:templateName}" should be marked as gateway-originated
 
@@ -72,6 +74,8 @@ Feature: Data-plane to control-plane artifact push
       | accessControl.mode | allow_all                          |
     Then the response should be successful
     And the control plane should receive the "LlmProvider" artifact "${CTX:providerName}"
+    And the gateway should record control-plane sync status "success" for the "LlmProvider" artifact "${CTX:providerName}"
+    And the gateway should record a control-plane artifact id for the "LlmProvider" artifact "${CTX:providerName}"
     And the control plane copy of the "LlmProvider" artifact "${CTX:providerName}" should reference template "${CTX:templateName}"
 
     When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
@@ -84,6 +88,8 @@ Feature: Data-plane to control-plane artifact push
       | metadata.annotations | {"gateway.api-platform.wso2.com/project-id":"${CTX:projectHandle}"} |
     Then the response should be successful
     And the control plane should receive the "LlmProxy" artifact "${CTX:proxyName}"
+    And the gateway should record control-plane sync status "success" for the "LlmProxy" artifact "${CTX:proxyName}"
+    And the gateway should record a control-plane artifact id for the "LlmProxy" artifact "${CTX:proxyName}"
     And the control plane copy of the "LlmProxy" artifact "${CTX:proxyName}" should reference provider "${CTX:providerName}"
 
   Scenario: An MCP proxy created on the gateway is pushed to the control plane
@@ -102,6 +108,8 @@ Feature: Data-plane to control-plane artifact push
       | metadata.annotations  | {"gateway.api-platform.wso2.com/project-id":"${CTX:projectHandle}"} |
     Then the response should be successful
     And the control plane should receive the "Mcp" artifact "${CTX:mcpName}"
+    And the gateway should record control-plane sync status "success" for the "Mcp" artifact "${CTX:mcpName}"
+    And the gateway should record a control-plane artifact id for the "Mcp" artifact "${CTX:mcpName}"
     And the control plane copy of the "Mcp" artifact "${CTX:mcpName}" configuration should contain "${CTX:mcpContext}"
 
   Scenario: A REST API created on the gateway is pushed to the control plane
@@ -120,6 +128,8 @@ Feature: Data-plane to control-plane artifact push
       | metadata.annotations   | {"gateway.api-platform.wso2.com/project-id":"${CTX:projectHandle}"} |
     Then the response should be successful
     And the control plane should receive the "RestApi" artifact "${CTX:apiName}"
+    And the gateway should record control-plane sync status "success" for the "RestApi" artifact "${CTX:apiName}"
+    And the gateway should record a control-plane artifact id for the "RestApi" artifact "${CTX:apiName}"
     And the control plane copy of the "RestApi" artifact "${CTX:apiName}" configuration should contain "${CTX:apiContext}"
 
   Scenario: Updating a gateway-originated LLM provider pushes a fresh deployment to the control plane

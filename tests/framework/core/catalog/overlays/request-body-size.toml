@@ -1,0 +1,8 @@
+# Raise the downstream buffer limit from its 1 MiB default so the request-body-size block can send
+# buffered bodies above gRPC's 4 MiB default message size, and raise the policy engine's body
+# ceiling with it, as operators are told to: the ext_proc message limits are sized from it.
+[router.http_listener]
+per_connection_buffer_limit_bytes = 16777216
+
+[policy_engine.request_body]
+max_decompressed_bytes = 16777216

@@ -84,6 +84,19 @@ func TestJSONStringField(t *testing.T) {
 	}
 }
 
+func TestSizedJSONBody(t *testing.T) {
+	for _, size := range []int{11, 12, 6 << 20} {
+		body, err := sizedJSONBody(size)
+		require.NoError(t, err)
+		require.Len(t, body, size)
+		var decoded map[string]string
+		require.NoError(t, json.Unmarshal(body, &decoded))
+		require.Len(t, decoded["data"], size-11)
+	}
+	_, err := sizedJSONBody(10)
+	require.ErrorContains(t, err, "at least 11 bytes")
+}
+
 func TestNewRejectsInvalidPlatformAPICA(t *testing.T) {
 	_, err := newSuite(nil, []byte("not a PEM certificate"), nil)
 	require.ErrorContains(t, err, "loading the generated Platform API CA certificate")

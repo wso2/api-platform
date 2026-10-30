@@ -2,7 +2,7 @@
 
 A trip-planning agent that speaks the A2A protocol over both HTTP bindings. It is
 the upstream behind every `Agent` deployed by the gateway integration tests
-(`gateway/it/features/agent_*.feature`).
+(`tests/framework/suites/it/features/ai-workspace-gateway/agent*/agent_*.feature`).
 
 **It is a real A2A agent, not a mock.** It is built on the official
 [`a2a-sdk`](https://pypi.org/project/a2a-sdk/), and everything protocol-shaped —
@@ -97,10 +97,10 @@ docker run --rm -p 9099:9099 a2a-trip-planner:local
 
 ### As part of the integration-test stack
 
-It comes up automatically with `docker-compose.test.yaml` as service
-`a2a-trip-planner`, published on host port `9099`. Other containers reach it at
-`http://a2a-trip-planner:9099`, which is what the `Agent` resources in the
-feature files use as their upstream.
+The integration framework starts it as the `a2a-trip-planner` component of the blocks that
+need it (build the image with `make -C tests/framework a2a-trip-planner`); its host port is
+assigned dynamically. Other containers reach it at `http://a2a-trip-planner:9099`, which is what
+the `Agent` resources in the feature files use as their upstream.
 
 ## Configuration
 
