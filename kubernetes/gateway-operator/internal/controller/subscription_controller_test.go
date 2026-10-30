@@ -211,8 +211,9 @@ func TestSubscriptionIDOwnedByAnotherCR(t *testing.T) {
 	require.False(t, owned, "the same id on a different gateway is a different subscription")
 }
 
-// subscriptionGatewayServer serves the subscription list and records every PUT body. putStatuses gives the
-// status of successive PUTs; once exhausted, PUTs succeed.
+// subscriptionGatewayServer serves the subscription list, answers every create with 409 and records every
+// PUT body. putStatuses gives the status of successive PUTs; once exhausted, PUTs succeed and report the
+// plan they were sent, as a gateway with in-place plan updates does.
 func subscriptionGatewayServer(t *testing.T, byAPI map[string][]map[string]any, putStatuses ...int) (*httptest.Server, *[]map[string]any) {
 	t.Helper()
 	var puts []map[string]any
@@ -233,7 +234,15 @@ func subscriptionGatewayServer(t *testing.T, byAPI map[string][]map[string]any, 
 				_, _ = w.Write([]byte(`{"status":"error","message":"rejected"}`))
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": path.Base(r.URL.Path)})
+			id := path.Base(r.URL.Path)
+			resp := map[string]any{"id": id, "externalRefId": id}
+			if plan, ok := body["subscriptionPlanId"]; ok && plan != nil {
+				resp["subscriptionPlanId"] = plan
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+		case http.MethodPost:
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"status":"error","message":"conflict"}`))
 		default:
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
@@ -352,6 +361,20 @@ func TestSubscriptionDeploy_RejectsASpecThatNoLongerMatchesTheGatewaySubscriptio
 		"apiId changed": {
 			byAPI: map[string][]map[string]any{"payments-api": {{"id": "acme-sub-01"}}},
 		},
+		"billingCustomerId changed": {
+			byAPI: map[string][]map[string]any{"orders-api": {{"id": "acme-sub-01", "billingCustomerId": "cus_1"}}},
+			mutate: func(cr *apiv1.Subscription) {
+				customer := "cus_2"
+				cr.Spec.BillingCustomerId = &customer
+			},
+		},
+		"billingSubscriptionId added": {
+			byAPI: map[string][]map[string]any{"orders-api": {{"id": "acme-sub-01"}}},
+			mutate: func(cr *apiv1.Subscription) {
+				billing := "sub_1"
+				cr.Spec.BillingSubscriptionId = &billing
+			},
+		},
 		"applicationId changed": {
 			byAPI:  map[string][]map[string]any{"orders-api": {{"id": "acme-sub-01"}}},
 			mutate: func(cr *apiv1.Subscription) { cr.Spec.ApplicationId = &app },
@@ -411,4 +434,79 @@ func TestSubscriptionDeploy_WaitsForAPlanBeingDeployedBeforeSendingTheStatus(t *
 	var retryable *gatewayclient.RetryableError
 	require.ErrorAs(t, err, &retryable)
 	require.Empty(t, *puts)
+}
+
+// Once a fingerprint is stored, an immutable-field edit is rejected from it, without asking the gateway.
+func TestSubscriptionDeploy_RejectsAnImmutableFieldEditAfterTheBaseline(t *testing.T) {
+	cr := deployedSubscription(t, true)
+	cr.Spec.ApiId = "payments-api"
+	srv, puts := subscriptionGatewayServer(t, nil)
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	var nonRetryable *gatewayclient.NonRetryableError
+	require.ErrorAs(t, err, &nonRetryable)
+	require.Contains(t, err.Error(), "immutable")
+	require.Empty(t, *puts)
+}
+
+// A CR with matching billing ids on the gateway gets its baseline as usual.
+func TestSubscriptionDeploy_SetsTheBaselineWhenTheBillingIdsMatch(t *testing.T) {
+	cr := deployedSubscription(t, false)
+	customer, billing := "cus_1", "sub_1"
+	cr.Spec.BillingCustomerId = &customer
+	cr.Spec.BillingSubscriptionId = &billing
+	srv, puts := subscriptionGatewayServer(t, map[string][]map[string]any{
+		"orders-api": {{"id": "acme-sub-01", "billingCustomerId": "cus_1", "billingSubscriptionId": "sub_1"}},
+	})
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	require.NoError(t, err)
+	require.Len(t, *puts, 1)
+}
+
+// When the status-only fallback fails transiently, the error is retryable so the status is applied later,
+// and it still says why the full update failed.
+func TestSubscriptionDeploy_RetriesWhenTheStatusFallbackFailsTransiently(t *testing.T) {
+	cr := deployedSubscription(t, true)
+	srv, puts := subscriptionGatewayServer(t, nil, http.StatusBadRequest, http.StatusServiceUnavailable)
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	var retryable *gatewayclient.RetryableError
+	require.ErrorAs(t, err, &retryable)
+	require.Contains(t, err.Error(), "400")
+	require.Len(t, *puts, 2)
+}
+
+// A subscription adopted after a create conflict also gets its status when its plan or token is rejected.
+func TestSubscriptionDeploy_AppliesTheStatusToARecoveredSubscriptionWhenThePlanOrTokenIsRejected(t *testing.T) {
+	cr := deployedSubscription(t, false)
+	cr.Status.Id = ""
+	ref := "acme-sub-01"
+	cr.Spec.ExternalRefId = &ref
+	srv, puts := subscriptionGatewayServer(t, map[string][]map[string]any{
+		"orders-api": {{"id": "acme-sub-01", "externalRefId": "acme-sub-01"}},
+	}, http.StatusConflict)
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	var nonRetryable *gatewayclient.NonRetryableError
+	require.ErrorAs(t, err, &nonRetryable)
+	require.Equal(t, http.StatusConflict, nonRetryable.StatusCode)
+	require.Len(t, *puts, 2)
+	require.Equal(t, map[string]any{"status": "REVOKED"}, (*puts)[1])
+}
+
+// A gateway that accepts the update but keeps the old plan has not applied it, so the update fails instead
+// of being reported as programmed.
+func TestSubscriptionDeploy_FailsWhenTheGatewayKeepsTheOldPlan(t *testing.T) {
+	cr := deployedSubscription(t, true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPut, r.Method)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "acme-sub-01", "subscriptionPlanId": "silver-plan-uuid"})
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := (&subscriptionAdapter{}).Deploy(context.Background(), subscriptionTestClient(t, cr), srv.URL, cr, nil)
+	var nonRetryable *gatewayclient.NonRetryableError
+	require.ErrorAs(t, err, &nonRetryable)
+	require.Contains(t, err.Error(), "did not apply spec.subscriptionPlanId")
 }

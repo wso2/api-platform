@@ -54,11 +54,14 @@ type SubscriptionUpdatePayload struct {
 // SubscriptionResponse captures the gateway-issued fields returned from
 // POST/PUT /subscriptions.
 type SubscriptionResponse struct {
-	Id            string  `json:"id"`
-	ExternalRefId *string `json:"externalRefId,omitempty"`
-	ApiId         string  `json:"apiId"`
-	ApplicationId *string `json:"applicationId,omitempty"`
-	GatewayId     string  `json:"gatewayId"`
+	Id                    string  `json:"id"`
+	ExternalRefId         *string `json:"externalRefId,omitempty"`
+	ApiId                 string  `json:"apiId"`
+	ApplicationId         *string `json:"applicationId,omitempty"`
+	SubscriptionPlanId    *string `json:"subscriptionPlanId,omitempty"`
+	BillingCustomerId     *string `json:"billingCustomerId,omitempty"`
+	BillingSubscriptionId *string `json:"billingSubscriptionId,omitempty"`
+	GatewayId             string  `json:"gatewayId"`
 }
 
 type subscriptionListResponse struct {

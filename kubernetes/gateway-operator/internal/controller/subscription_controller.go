@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -199,7 +200,7 @@ func (a *subscriptionAdapter) Deploy(ctx context.Context, k8sClient client.Clien
 						return DeployResult{}, subscriptionConflictError()
 					}
 					// The existing subscription may predate spec changes; bring its mutable fields in line.
-					if err := updateSubscriptionMutableFields(ctx, gatewayEndpoint, recoveredID, cr, token, resolvedPlanID, authFn); err != nil {
+					if err := applySubscriptionUpdate(ctx, gatewayEndpoint, recoveredID, cr, token, resolvedPlanID, authFn); err != nil {
 						return DeployResult{}, err
 					}
 					if fp, fpErr := subscriptionImmutableFingerprint(cr); fpErr == nil {
@@ -246,36 +247,51 @@ func (a *subscriptionAdapter) Deploy(ctx context.Context, k8sClient client.Clien
 		// as a SubscriptionPlan not deployed yet, is retried and then applies everything together.
 		var nr *gatewayclient.NonRetryableError
 		if errors.As(resolveErr, &nr) {
-			return DeployResult{}, updateSubscriptionStatusOnFailure(ctx, gatewayEndpoint, cr, resolveErr, authFn)
+			return DeployResult{}, updateSubscriptionStatusOnFailure(ctx, gatewayEndpoint, cr.Status.Id, cr, resolveErr, authFn)
 		}
 		return DeployResult{}, resolveErr
 	}
 	// status, subscriptionPlanId and subscriptionToken are updated in place. Sending the token on every
 	// update also applies a rotated valueFrom Secret, since Secret drift triggers this redeploy.
-	if err := updateSubscriptionMutableFields(ctx, gatewayEndpoint, cr.Status.Id, cr, token, resolvedPlanID, authFn); err != nil {
-		var nr *gatewayclient.NonRetryableError
-		if errors.As(err, &nr) && (nr.StatusCode == http.StatusBadRequest || nr.StatusCode == http.StatusConflict) {
-			// The gateway rejected the plan or the token; the status alone can still be applied.
-			return DeployResult{}, updateSubscriptionStatusOnFailure(ctx, gatewayEndpoint, cr, err, authFn)
-		}
+	if err := applySubscriptionUpdate(ctx, gatewayEndpoint, cr.Status.Id, cr, token, resolvedPlanID, authFn); err != nil {
 		return DeployResult{}, err
 	}
 	return DeployResult{Id: cr.Status.Id}, nil
 }
 
+// applySubscriptionUpdate PUTs the CR's status, plan and token to the subscription. When the gateway rejects
+// the plan or the token, the status alone is still applied.
+func applySubscriptionUpdate(ctx context.Context, gatewayEndpoint, subscriptionID string, cr *apiv1.Subscription, token string, planID *string, authFn gatewayclient.AuthHeaderFunc) error {
+	err := updateSubscriptionMutableFields(ctx, gatewayEndpoint, subscriptionID, cr, token, planID, authFn)
+	var nr *gatewayclient.NonRetryableError
+	if errors.As(err, &nr) && (nr.StatusCode == http.StatusBadRequest || nr.StatusCode == http.StatusConflict) {
+		return updateSubscriptionStatusOnFailure(ctx, gatewayEndpoint, subscriptionID, cr, err, authFn)
+	}
+	return err
+}
+
 // updateSubscriptionStatusOnFailure applies spec.status alone after the plan or token could not be applied,
 // so a broken plan or token reference never blocks revoking or deactivating the subscription. It returns
-// cause either way, so the CR still reports why the full update failed.
-func updateSubscriptionStatusOnFailure(ctx context.Context, gatewayEndpoint string, cr *apiv1.Subscription, cause error, authFn gatewayclient.AuthHeaderFunc) error {
-	if cr.Spec.Status != nil {
-		_, _ = gatewayclient.UpdateSubscriptionStatus(ctx, gatewayEndpoint, cr.Status.Id, cr.Spec.Status, authFn)
+// cause, so the CR still reports why the full update failed, unless the status update fails transiently:
+// then a retryable error is returned so the status is applied on a later attempt.
+func updateSubscriptionStatusOnFailure(ctx context.Context, gatewayEndpoint, subscriptionID string, cr *apiv1.Subscription, cause error, authFn gatewayclient.AuthHeaderFunc) error {
+	if cr.Spec.Status == nil {
+		return cause
+	}
+	_, err := gatewayclient.UpdateSubscriptionStatus(ctx, gatewayEndpoint, subscriptionID, cr.Spec.Status, authFn)
+	var retryable *gatewayclient.RetryableError
+	if errors.As(err, &retryable) {
+		return &gatewayclient.RetryableError{
+			StatusCode: retryable.StatusCode,
+			Err:        fmt.Errorf("applying spec.status after the update failed (%v): %w", cause, err),
+		}
 	}
 	return cause
 }
 
 // verifyDeployedSubscriptionMatchesSpec checks that the gateway subscription in status.id belongs to
-// spec.apiId and spec.applicationId, and, on gateways that report externalRefId, that it matches
-// spec.externalRefId.
+// spec.apiId and spec.applicationId, has spec.billingCustomerId and spec.billingSubscriptionId, and, on
+// gateways that report externalRefId, matches spec.externalRefId.
 func verifyDeployedSubscriptionMatchesSpec(ctx context.Context, gatewayEndpoint string, cr *apiv1.Subscription, authFn gatewayclient.AuthHeaderFunc) error {
 	subscriptions, err := gatewayclient.ListSubscriptions(ctx, gatewayEndpoint, cr.Spec.ApiId, nil, authFn)
 	if err != nil {
@@ -288,15 +304,17 @@ func verifyDeployedSubscriptionMatchesSpec(ctx context.Context, gatewayEndpoint 
 		}
 		externalRefIDMatches := sub.ExternalRefId == nil || cr.Spec.ExternalRefId == nil ||
 			*cr.Spec.ExternalRefId == "" || *cr.Spec.ExternalRefId == sub.Id
-		if gatewayclient.SameApplication(sub.ApplicationId, cr.Spec.ApplicationId) && externalRefIDMatches {
+		if gatewayclient.SameApplication(sub.ApplicationId, cr.Spec.ApplicationId) && externalRefIDMatches &&
+			sameOptionalValue(sub.BillingCustomerId, cr.Spec.BillingCustomerId) &&
+			sameOptionalValue(sub.BillingSubscriptionId, cr.Spec.BillingSubscriptionId) {
 			return nil
 		}
 		break
 	}
 	return &gatewayclient.NonRetryableError{
-		Err: fmt.Errorf("the gateway subscription in status.id does not match spec.externalRefId, spec.apiId and " +
-			"spec.applicationId; these fields are immutable once status.id is set, so delete and recreate the " +
-			"Subscription to apply changes"),
+		Err: fmt.Errorf("the gateway subscription in status.id does not match spec.externalRefId, spec.apiId, " +
+			"spec.applicationId, spec.billingCustomerId and spec.billingSubscriptionId; these fields are immutable " +
+			"once status.id is set, so delete and recreate the Subscription to apply changes"),
 	}
 }
 
@@ -340,8 +358,30 @@ func updateSubscriptionMutableFields(ctx context.Context, gatewayEndpoint, subsc
 		SubscriptionPlanId: planID,
 		SubscriptionToken:  &token,
 	}
-	_, err := gatewayclient.UpdateSubscription(ctx, gatewayEndpoint, subscriptionID, payload, authFn)
-	return err
+	resp, err := gatewayclient.UpdateSubscription(ctx, gatewayEndpoint, subscriptionID, payload, authFn)
+	if err != nil {
+		return err
+	}
+	// Gateways without in-place plan updates accept the request but keep the old plan, so the plan they
+	// report back is checked before the update counts as applied.
+	if !sameOptionalValue(resp.SubscriptionPlanId, planID) {
+		return &gatewayclient.NonRetryableError{
+			Err: fmt.Errorf("the gateway did not apply spec.subscriptionPlanId; this gateway can't change a " +
+				"subscription's plan in place, so delete and recreate the Subscription to change it"),
+		}
+	}
+	return nil
+}
+
+// sameOptionalValue compares two optional values, treating unset, empty and blank as the same.
+func sameOptionalValue(a, b *string) bool {
+	trimmed := func(v *string) string {
+		if v == nil {
+			return ""
+		}
+		return strings.TrimSpace(*v)
+	}
+	return trimmed(a) == trimmed(b)
 }
 
 // recoverSubscriptionIDAfterConflict finds the gateway subscription that a conflicting create collided
