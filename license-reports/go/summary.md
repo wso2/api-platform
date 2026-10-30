@@ -1,6 +1,6 @@
 # Third-party Go License Report
 
-- Generated at: 2026-09-15T10:48:37Z
+- Generated at: 2026-10-30T06:17:25Z
 - Components scanned: 4
 - Internal prefixes ignored: github.com/wso2/,github.com/policy-engine/,platform-api/
 
@@ -14,16 +14,15 @@
 ## License Counts
 
 ### gateway-controller
-- Apache-2.0: 22
-- BSD-0-Clause: 1
+- Apache-2.0: 24
 - BSD-2-Clause: 1
 - BSD-3-Clause: 14
-- MIT: 29
+- MIT: 25
 
 ### gateway-runtime
-- Apache-2.0: 23
-- BSD-3-Clause: 18
-- MIT: 15
+- Apache-2.0: 26
+- BSD-3-Clause: 21
+- MIT: 17
 
 ### gateway-builder
 - BSD-3-Clause: 2
@@ -31,8 +30,8 @@
 - MIT: 2
 
 ### platform-api
-- Apache-2.0: 4
+- Apache-2.0: 11
 - BSD-2-Clause: 1
-- BSD-3-Clause: 10
-- MIT: 27
+- BSD-3-Clause: 13
+- MIT: 35
 
