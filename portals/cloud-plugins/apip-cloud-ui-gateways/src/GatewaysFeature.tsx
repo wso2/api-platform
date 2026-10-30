@@ -188,6 +188,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
           notify(`Gateway "${input.name}" created.`, 'success');
           // A create consumes quota; an edit does not.
           resourceLimits?.refresh();
+          port.resources?.invalidate('gateways');
         }
         await load();
         return true;
@@ -201,7 +202,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         submittingRef.current = false;
       }
     },
-    [client, load, notify, resourceLimits]
+    [client, load, notify, port, resourceLimits]
   );
 
   /**
@@ -230,7 +231,9 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         setSetupToken(token);
         setView('view');
         setEditingGatewayId(null);
+        // A self-hosted gateway consumes the same quota as a managed one.
         resourceLimits?.refresh();
+        port.resources?.invalidate('gateways');
         return 'opened';
       } catch (submitError) {
         notify(
@@ -242,7 +245,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         submittingRef.current = false;
       }
     },
-    [selfHostedClient, load, notify, resourceLimits]
+    [selfHostedClient, load, notify, port, resourceLimits]
   );
 
   const removeGateway = useCallback(
@@ -274,6 +277,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         await load();
         // Frees quota. Fired when pending too — teardown is already under way.
         resourceLimits?.refresh();
+        // The host caches gateway counts and cannot see this write.
+        port.resources?.invalidate('gateways');
       } catch (deleteError) {
         notify(
           deleteError instanceof Error ? deleteError.message : 'Unable to delete the gateway.',
@@ -283,7 +288,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         deletingRef.current = false;
       }
     },
-    [client, selfHostedClient, gateways, load, notify, resourceLimits]
+    [client, selfHostedClient, gateways, load, notify, port, resourceLimits]
   );
 
   if (loading) {

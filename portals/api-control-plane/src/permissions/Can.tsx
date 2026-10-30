@@ -17,11 +17,13 @@
  */
 
 import { cloneElement, isValidElement, type ReactNode } from 'react';
+import { useIntl } from 'react-intl';
 import { Tooltip } from '@wso2/oxygen-ui';
 
 import { useResourceLimits } from '../hooks/useResourceLimits';
 
-import { useActionPermission, useCanAny } from './useCan';
+import { permissionMessages } from './messages';
+import { usePermissions } from './PermissionContext';
 import { isWriteOperation, type PermissionOperation } from './evaluate';
 
 /**
@@ -73,15 +75,16 @@ export type CanProps = {
  */
 export function Can({ do: operations, children, denied = 'hide', fallback }: CanProps) {
   const list = Array.isArray(operations) ? operations : [operations];
-  // Both hooks run unconditionally; `useCanAny` gates multi-op checks and
-  // `useActionPermission` supplies the single-op tooltip.
-  const anyAllowed = useCanAny(list);
-  const action = useActionPermission(list[0]);
-  const allowed = list.length > 1 ? anyAllowed : action.allowed;
+  // The raw, scopes-only answer: `useCan*` fold read-only in themselves, and
+  // here it must *disable* rather than deny, so a `denied="hide"` control is
+  // still shown with the explanation instead of vanishing.
+  const { canAny, decide } = usePermissions();
+  const allowed = list.length > 1 ? canAny(list) : decide(list[0]).allowed;
 
   // Permission outranks read-only: there is no point explaining that an
   // organization cannot write to someone who could not perform the operation
   // anyway, and `denied="hide"` must keep hiding rather than start disabling.
+  const intl = useIntl();
   const { readOnly, readOnlyMessage } = useResourceLimits();
   const blockedByReadOnly = allowed && readOnly && list.some(isWriteOperation);
 
@@ -99,7 +102,11 @@ export function Can({ do: operations, children, denied = 'hide', fallback }: Can
   const child = children;
 
   return (
-    <Tooltip title={blockedByReadOnly ? readOnlyMessage : (action.tooltip ?? '')}>
+    <Tooltip
+      title={
+        blockedByReadOnly ? readOnlyMessage : intl.formatMessage(permissionMessages.denied)
+      }
+    >
       {/*
         A disabled MUI control sets `pointer-events: none`, so it never fires
         the enter/leave events a Tooltip listens for, the explanation would

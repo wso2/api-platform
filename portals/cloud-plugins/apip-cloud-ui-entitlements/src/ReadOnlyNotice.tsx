@@ -39,8 +39,8 @@ export type ReadOnlyNoticeProps = {
 export default function ReadOnlyNotice({ upgradeHref }: ReadOnlyNoticeProps): JSX.Element {
   return (
     <>
-      This organization is in <strong>read-only mode</strong>. Creating and deploying
-      APIs is disabled.
+      This organization is in <strong>read-only mode</strong> because its trial has
+      ended. Creating, editing and deploying are disabled; everything stays visible.
       {upgradeHref ? (
         <>
           {' '}

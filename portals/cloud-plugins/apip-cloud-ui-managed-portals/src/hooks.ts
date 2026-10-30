@@ -152,6 +152,8 @@ export function useManagedPortalList() {
         host.notify(`Portal "${portal.name}" created`, 'success');
         await refetch();
         host.resourceLimits?.refresh(); // a create consumes quota
+        // The host caches portal counts and cannot see this write.
+        host.resources?.invalidate('apiPortals');
         return portal;
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to create portal'), 'error');
@@ -183,6 +185,7 @@ export function useManagedPortalList() {
         host.notify('Portal deleted', 'success');
         await refetch();
         host.resourceLimits?.refresh(); // a delete frees quota
+        host.resources?.invalidate('apiPortals');
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to delete portal'), 'error');
         throw err;

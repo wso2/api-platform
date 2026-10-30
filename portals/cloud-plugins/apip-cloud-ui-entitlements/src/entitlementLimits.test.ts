@@ -20,12 +20,19 @@ const quota = (name: string, limit: number | null, used: number): Entitlement =>
   remaining: limit === null ? null : Math.max(0, limit - used),
 });
 
-const summary = (entitlements: Entitlement[], status = 'trial'): EntitlementSummary => ({
+const summary = (
+  entitlements: Entitlement[],
+  status = 'trial',
+  // A suspended trial keeps its trial plan, so this is the default: the status
+  // moves, the plan code does not. Pass a paid code for the other cases.
+  planCode: string | undefined = 'api-platform-trial'
+): EntitlementSummary => ({
   products: [
     {
       product: 'api-platform',
       subscription: {
         status,
+        plan_code: planCode,
         entitlements_active: ['active', 'trial', 'past_due'].includes(status),
       },
       entitlements,
@@ -82,15 +89,33 @@ describe('toResourceLimits', () => {
       expect(limits?.restApis).toMatchObject({ max: 5, used: 2 });
     });
 
-    // A dropped meter still in the response must not cap anything.
-    it('ignores a pooled meter that is still present in the response', () => {
+    // Every interface type spends the shared budget, so an exhausted budget
+    // stops the next API even while the narrower `apis` meter looks roomy —
+    // the case a plan with equal limits hides until types are mixed.
+    it('binds on the shared budget when it is the tighter of the two', () => {
       const limits = toResourceLimits(
         summary([quota('apis', 5, 1), quota('managed_interfaces', 10, 10)])
       );
-      expect(limits?.restApis).toMatchObject({ max: 5, used: 1 });
-      // The stale pool neither binds nor gets named.
+      expect(limits?.restApis).toMatchObject({ max: 10, used: 10 });
+      // And names the cap that actually binds, not this component's own.
+      expect(limits?.restApis?.message).toContain('Managed Interfaces');
+    });
+
+    it('binds on the apis meter when that one is tighter', () => {
+      const limits = toResourceLimits(
+        summary([quota('apis', 5, 5), quota('managed_interfaces', 10, 5)])
+      );
+      expect(limits?.restApis).toMatchObject({ max: 5, used: 5 });
       expect(limits?.restApis?.message).toContain('APIs');
-      expect(limits?.restApis?.message).not.toContain('Managed Interfaces');
+    });
+
+    // Both exhausted: the broader budget names itself, since it is the one the
+    // user has to raise to get anywhere.
+    it('names the budget when both are equally exhausted', () => {
+      const limits = toResourceLimits(
+        summary([quota('apis', 5, 5), quota('managed_interfaces', 5, 5)])
+      );
+      expect(limits?.restApis?.message).toContain('Managed Interfaces');
     });
   });
 
@@ -144,9 +169,40 @@ describe('isReadOnly', () => {
     expect(isReadOnly(trial({}))).toBe(false);
   });
 
-  it('is true once entitlements go inactive', () => {
+  it('is true once an inactive subscription is still on the trial plan', () => {
     expect(isReadOnly(summary([], 'suspended'))).toBe(true);
     expect(isReadOnly(summary([], 'cancelled'))).toBe(true);
+  });
+
+  // The narrow scope: this banner speaks about a finished trial, so a paid
+  // subscription suspended for some other reason (non-payment, an admin
+  // action) is left alone rather than shown trial-expiry wording. It cannot
+  // write either — billing refuses it — but saying so needs its own message.
+  it('is false for an inactive subscription on a paid plan', () => {
+    expect(isReadOnly(summary([], 'suspended', 'api-platform-growth'))).toBe(false);
+    expect(isReadOnly(summary([], 'cancelled', 'api-platform-enterprise'))).toBe(false);
+  });
+
+  it('is false when the plan code is missing, rather than guessing', () => {
+    // Built inline rather than through `summary`: passing `undefined` to a
+    // parameter with a default gets the default, which is the trial code.
+    const noPlanCode: EntitlementSummary = {
+      products: [
+        {
+          product: 'api-platform',
+          subscription: { status: 'suspended', entitlements_active: false },
+          entitlements: [],
+        },
+      ],
+    };
+    expect(isReadOnly(noPlanCode)).toBe(false);
+  });
+
+  // Every product codes its trial plan the same way, so this holds without
+  // naming api-platform's own code.
+  it('recognises any product\'s trial plan, case and padding aside', () => {
+    expect(isReadOnly(summary([], 'suspended', 'integration-platform-trial'))).toBe(true);
+    expect(isReadOnly(summary([], 'suspended', '  API-Platform-Trial  '))).toBe(true);
   });
 
   // past_due counts as active server-side: an unsettled invoice is not the same

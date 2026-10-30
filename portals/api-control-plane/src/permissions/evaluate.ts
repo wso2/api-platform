@@ -87,7 +87,16 @@ export const isWriteOperation = (operation: PermissionOperation): boolean => {
 
 /** Why a decision came out the way it did. */
 export type DecisionReason =
-  'granted' | 'missing-scope' | 'unknown-scopes' | 'unknown-operation' | 'loading';
+  | 'granted'
+  | 'missing-scope'
+  | 'unknown-scopes'
+  | 'unknown-operation'
+  | 'loading'
+  /**
+   * Scopes sufficed, but the organization may not write at all. Added by the
+   * `useCan` hooks, never by `decide`, which answers on scopes alone.
+   */
+  | 'read-only';
 
 export type Decision = {
   allowed: boolean;

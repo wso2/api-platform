@@ -24,7 +24,14 @@
  * the UI library into a plain Node test run.
  */
 
-import { APIS, METRIC_LABELS, STANDALONE_METRICS, productOf } from './entitlementLimits';
+import {
+  APIS,
+  INTERFACE_TYPE_METRICS,
+  MANAGED_INTERFACES,
+  METRIC_LABELS,
+  STANDALONE_METRICS,
+  productOf,
+} from './entitlementLimits';
 import type { Entitlement, EntitlementSummary } from './entitlementTypes';
 
 /** Mirrors oxygen-ui's `TrialBadgeUsageItem`, without importing the UI package. */
@@ -48,8 +55,15 @@ export type UsagePanel = {
   sections: UsageSection[];
 };
 
-/** APIs are metered by `apis` alone, so there is no per-type breakdown. */
-const INTERFACES_LABEL = METRIC_LABELS[APIS];
+const INTERFACES_LABEL = METRIC_LABELS[MANAGED_INTERFACES];
+
+/**
+ * A section header reads `sum(count) of sum(limit)`, so its items must add up.
+ * The type breakdown does not — the types share one budget, so summing their
+ * limits would claim a ceiling nothing enforces. Hence its own section, with
+ * no total; the budget's own figure is the one above it.
+ */
+const BY_TYPE_SECTION_KEY = 'interfaces-by-type';
 
 const isCapped = (entitlement: Entitlement | undefined): entitlement is Entitlement =>
   Boolean(entitlement) &&
@@ -79,26 +93,53 @@ export function toUsagePanel(
     if (e?.name) byCode.set(e.name, e);
   }
 
-  const apis = byCode.get(APIS);
-  // Unlimited (or absent) APIs: nothing to count. Matches the rule that
-  // hides the upgrade affordance for an organization with no cap to hit.
-  if (!isCapped(apis)) return null;
+  // The shared budget is the headline; fall back to `apis` for a billing
+  // deployment that does not report it, rather than showing no panel at all.
+  const interfaces = byCode.get(MANAGED_INTERFACES) ?? byCode.get(APIS);
+  // Unlimited (or absent): nothing to count. Matches the rule that hides the
+  // upgrade affordance for an organization with no cap to hit.
+  if (!isCapped(interfaces)) return null;
 
   const sections: UsageSection[] = [
     {
-      key: APIS,
+      key: MANAGED_INTERFACES,
       title: INTERFACES_LABEL,
       items: [
         {
-          key: APIS,
+          key: MANAGED_INTERFACES,
           label: INTERFACES_LABEL,
-          count: apis.used ?? 0,
-          limit: apis.limit!,
+          count: interfaces.used ?? 0,
+          limit: interfaces.limit!,
         },
       ],
-      totalSuffix: 'left',
+      // "used", not "left": the figure beside it is what has been consumed.
+      totalSuffix: 'used',
     },
   ];
+
+  // What the budget was spent on. Only capped types: an omitted one is absent,
+  // not zero, and rendering it would invent a cap billing never set.
+  const byTypeItems = INTERFACE_TYPE_METRICS.flatMap((code) => {
+    const entitlement = byCode.get(code);
+    if (!isCapped(entitlement)) return [];
+    return [
+      {
+        key: code,
+        label: METRIC_LABELS[code] ?? code,
+        count: entitlement.used ?? 0,
+        limit: entitlement.limit!,
+      },
+    ];
+  });
+
+  if (byTypeItems.length > 0) {
+    sections.push({
+      key: BY_TYPE_SECTION_KEY,
+      title: 'By type',
+      items: byTypeItems,
+      // No total — see BY_TYPE_SECTION_KEY.
+    });
+  }
 
   // Gateways and portals are capped independently of the APIs budget and of
   // each other, so neither belongs in the section above — creating a gateway
@@ -120,7 +161,7 @@ export function toUsagePanel(
           limit: entitlement.limit!,
         },
       ],
-      totalSuffix: 'left',
+      totalSuffix: 'used',
     });
   }
 

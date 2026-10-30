@@ -33,8 +33,18 @@ export const PRODUCT = 'api-platform';
 /** No ceiling, in the host's vocabulary. The API says `null`; the host says -1. */
 const UNLIMITED = -1;
 
-/** The APIs meter. */
+/**
+ * The shared budget every interface type spends. This, not `apis`, is what
+ * binds once a user mixes types: the budget can be exhausted while any one
+ * type's own meter still shows room.
+ */
+const MANAGED_INTERFACES = 'managed_interfaces';
+
+/** One interface type among several, not a budget of its own. See above. */
 const APIS = 'apis';
+const MCP_PROXIES = 'mcp_proxies';
+const LLM_PROXIES = 'llm_proxies';
+const AGENT_PROXIES = 'agent_proxies';
 
 /** Self-contained meter: self-hosted gateways have no shared budget. */
 const HYBRID_GATEWAYS = 'hybrid_gateways';
@@ -43,14 +53,21 @@ const HYBRID_GATEWAYS = 'hybrid_gateways';
 const API_DEVELOPER_PORTALS = 'api_developer_portals';
 
 /**
- * The caps the panel lists, in order. Each is independent, so no two of these
- * figures may ever be summed.
+ * The types the panel breaks the budget down by, in display order. Only those
+ * the plan actually caps are shown — an uncapped type is absent, not `0 / 0`.
  */
+const INTERFACE_TYPE_METRICS = [APIS, MCP_PROXIES, LLM_PROXIES, AGENT_PROXIES] as const;
+
+/** Caps listed after the budget. Independent, so never summed with it. */
 const STANDALONE_METRICS = [HYBRID_GATEWAYS, API_DEVELOPER_PORTALS] as const;
 
 /** Display names for the caps we may need to name in a tooltip. */
 const METRIC_LABELS: Record<string, string> = {
+  [MANAGED_INTERFACES]: 'Managed Interfaces',
   [APIS]: 'APIs',
+  [MCP_PROXIES]: 'MCP Proxies',
+  [LLM_PROXIES]: 'LLM Proxies',
+  [AGENT_PROXIES]: 'Agent Proxies',
   [HYBRID_GATEWAYS]: 'Gateways',
   [API_DEVELOPER_PORTALS]: 'Portals',
 };
@@ -109,6 +126,33 @@ function toLimit(entitlement: Entitlement): ResourceLimit {
 }
 
 /**
+ * The cap that actually binds across several meters: the one with the least
+ * headroom. An API is capped twice over — the shared budget and its own meter
+ * — and the one that stops the next create is whichever has less room.
+ * Headroom, not limit: two equal limits differ once one is further spent.
+ * Ties go to the earlier code, so the broader budget names itself.
+ */
+function bindingLimitOf(
+  entitlements: Map<string, Entitlement>,
+  codes: readonly string[]
+): ResourceLimit | undefined {
+  let bindingCode: string | undefined;
+  let leastRemaining = Infinity;
+
+  for (const code of codes) {
+    const entitlement = entitlements.get(code);
+    if (!entitlement) continue;
+    const remaining = remainingOf(entitlement);
+    if (bindingCode === undefined || remaining < leastRemaining) {
+      bindingCode = code;
+      leastRemaining = remaining;
+    }
+  }
+
+  return bindingCode === undefined ? undefined : bindingLimit(entitlements, bindingCode);
+}
+
+/**
  * One meter's cap, as the host's `{max, used, message}`. `undefined` when
  * nothing caps this type; an unlimited meter carries no message.
  */
@@ -152,7 +196,8 @@ export function toResourceLimits(
   const entitlements = byCode(product);
   const limits: ResourceLimitSet = {};
 
-  const restApis = bindingLimit(entitlements, APIS);
+  // Both meters: whichever binds disables the button and writes the tooltip.
+  const restApis = bindingLimitOf(entitlements, [MANAGED_INTERFACES, APIS]);
   if (restApis) limits.restApis = restApis;
 
   const gateways = bindingLimit(entitlements, HYBRID_GATEWAYS);
@@ -165,18 +210,43 @@ export function toResourceLimits(
 }
 
 /**
- * Whether the organization may write at all.
+ * Whether this subscription is on a trial plan. The plan code, not the status:
+ * an ended trial reports `suspended`, which alone cannot tell it apart from a
+ * paid subscription suspended for another reason.
  *
- * Decided by billing (`entitlements_active`), mirrored here. An absent verdict
- * reads as *not* read-only — an older billing deployment, or a failed read,
- * must never lock the console.
+ * `endsWith` rather than an exact code, so this holds for any product.
+ */
+function isTrialPlan(planCode: string | undefined): boolean {
+  return planCode?.trim().toLowerCase().endsWith('-trial') ?? false;
+}
+
+/**
+ * Whether the organization may write at all: billing says entitlements are
+ * inactive AND the subscription is still on a trial plan — a trial that ran
+ * out, not a paid subscription suspended for another reason.
+ *
+ * Scoped to trial expiry on purpose. A paid organization suspended for
+ * non-payment cannot write either, but saying so needs its own message, so
+ * this says nothing rather than something wrong. Note `past_due` counts as
+ * active, so an unsettled invoice does not reach here.
+ *
+ * Anything absent reads as *not* read-only — a failed read must never lock the
+ * console.
  */
 export function isReadOnly(summary: EntitlementSummary | null | undefined): boolean {
-  const product = productOf(summary);
-  if (!product?.subscription) return false;
-  return product.subscription.entitlements_active === false;
+  const subscription = productOf(summary)?.subscription;
+  if (!subscription) return false;
+  return subscription.entitlements_active === false && isTrialPlan(subscription.plan_code);
 }
 
 /** The meters the usage panel lists, in the order it lists them. */
-export const USAGE_METRICS = [APIS, ...STANDALONE_METRICS] as const;
-export { METRIC_LABELS, APIS, HYBRID_GATEWAYS, API_DEVELOPER_PORTALS, STANDALONE_METRICS };
+export const USAGE_METRICS = [MANAGED_INTERFACES, ...INTERFACE_TYPE_METRICS, ...STANDALONE_METRICS] as const;
+export {
+  METRIC_LABELS,
+  MANAGED_INTERFACES,
+  APIS,
+  INTERFACE_TYPE_METRICS,
+  HYBRID_GATEWAYS,
+  API_DEVELOPER_PORTALS,
+  STANDALONE_METRICS,
+};

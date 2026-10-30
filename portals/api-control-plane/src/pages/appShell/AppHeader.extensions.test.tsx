@@ -36,6 +36,7 @@ const port: CloudHostPort = {
   apiFetch: async () => undefined as never,
   billing: { organization: async () => null },
   resourceLimits: NO_RESOURCE_LIMITS,
+  resources: { invalidate: () => {} },
 };
 
 const headerEntry: ApiControlPlaneHeaderAction = {

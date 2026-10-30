@@ -19,6 +19,9 @@
 import { AppShell, Box, Footer, NotificationPanel } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Fragment, Suspense, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+
+import { useApiScope } from '../../api/core/scope';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { getBillingOrganization } from '../../billing/organization';
@@ -34,7 +37,14 @@ import { usePageTitle } from '../../navigation/usePageTitle';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
 import { APP_GATE_SLOT, type ApiControlPlaneAppGate } from '../../extensions';
-import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostPort';
+import { gatewayKeys } from '../../api/resources/gateways/gateways.queries';
+import { apiPortalKeys } from '../../api/resources/apiPortals/apiPortals.queries';
+import {
+  extensionApiFetch,
+  PortProvider,
+  type CloudHostPort,
+  type InvalidatableResource,
+} from '../../hostPort';
 import { useSlot } from '../../slots';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
@@ -98,6 +108,24 @@ export default function AppLayout() {
   // fills `resourceLimits`. Empty in any deployment registering no extension.
   const appGates = useSlot<ApiControlPlaneAppGate>(APP_GATE_SLOT);
 
+  // An extension writing through its own client cannot reach this cache, so it
+  // names what changed and the host maps that to keys. `all(org)`, not the
+  // list: a create or delete moves counts and pagination elsewhere too.
+  const queryClient = useQueryClient();
+  // The org *id* the queries are keyed on, not the URL handle — keying on the
+  // handle would invalidate a key nothing uses.
+  const { org } = useApiScope();
+  const resources = useMemo(
+    () => ({
+      invalidate: (resource: InvalidatableResource) => {
+        if (!org) return;
+        const keys = resource === 'gateways' ? gatewayKeys : apiPortalKeys;
+        void queryClient.invalidateQueries({ queryKey: keys.all(org) });
+      },
+    }),
+    [org, queryClient]
+  );
+
   // Built once per render from this portal's own hooks, then handed down as
   // a plain value to every extension's `render(port)` — see `hostPort.tsx`
   // for why this crosses the api-platform/apim-saas seam as a value, not a
@@ -115,6 +143,7 @@ export default function AppLayout() {
     // is no address for a gateway running somewhere else to dial.
     gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHostOverride || undefined,
     resourceLimits,
+    resources,
   };
 
   return (
@@ -132,39 +161,55 @@ export default function AppLayout() {
         </AppShell.Sidebar>
 
         <AppShell.Main>
-          {/* Headless — each returns null. Mounted inside PortProvider so a
-            gate receives the live Port, and inside the shell so it runs on
-            every in-shell route. */}
-          {appGates.map((gate) => (
-            <Fragment key={gate.id}>{gate.render(port)}</Fragment>
-          ))}
+          {/* `AppShell.Main` is a fragment, and the shell's own Box is a ROW
+            flex container. With one child that never showed; a second would
+            sit beside the page at half width. Stack explicitly, hand the
+            shell one item. */}
+          <Box
+            sx={{
+              display: 'flex',
+              flex: 1,
+              flexDirection: 'column',
+              // So a wide page scrolls inside itself rather than stretching
+              // this column past the viewport.
+              minHeight: 0,
+              minWidth: 0,
+            }}
+          >
+            {/* Headless — each returns null. Mounted inside PortProvider so a
+              gate receives the live Port, and inside the shell so it runs on
+              every in-shell route. */}
+            {appGates.map((gate) => (
+              <Fragment key={gate.id}>{gate.render(port)}</Fragment>
+            ))}
 
-          {/* Above the page, below the header: a user meeting a page of
-            disabled controls needs the one sentence that explains why. The
-            content is the supplier's own markup; this portal writes none of
-            it. Never rendered when nothing reports read-only. */}
-          {readOnly && <ReadOnlyBanner content={readOnlyBanner ?? readOnlyMessage} />}
+            {/* Above the page, below the header: a user meeting a page of
+              disabled controls needs the one sentence that explains why. The
+              content is the supplier's own markup; this portal writes none of
+              it. Never rendered when nothing reports read-only. */}
+            {readOnly && <ReadOnlyBanner content={readOnlyBanner ?? readOnlyMessage} />}
 
           {/* Pages render their own container (`AppPage`, or `PageContent`
             directly), so the shell adds none and a page owns its width and
             padding. The fallbacks stand in for a page, so they bring one of
             their own. */}
-          <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
-            {/* Error boundary scoped to routed page only; resets on pathname change */}
-            <ErrorBoundary
-              fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
-              resetKeys={[location.pathname]}
-            >
-              <Suspense
-                fallback={
-                  <AppPage>
-                    <LoadingState label="Loading" />
-                  </AppPage>
-                }
+            <Box sx={{ flex: 1, minWidth: 0, width: '100%', p: 1 }}>
+              {/* Error boundary scoped to routed page only; resets on pathname change */}
+              <ErrorBoundary
+                fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
+                resetKeys={[location.pathname]}
               >
-                <Outlet />
-              </Suspense>
-            </ErrorBoundary>
+                <Suspense
+                  fallback={
+                    <AppPage>
+                      <LoadingState label="Loading" />
+                    </AppPage>
+                  }
+                >
+                  <Outlet />
+                </Suspense>
+              </ErrorBoundary>
+            </Box>
           </Box>
         </AppShell.Main>
 

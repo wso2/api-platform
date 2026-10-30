@@ -129,6 +129,24 @@ export const NO_RESOURCE_LIMITS: ResourceLimitsPort = {
   refreshSignal: 0,
 };
 
+/**
+ * Resource kinds an extension can report as changed. Names, not query keys:
+ * the host owns the keys, so the cache layout can change without touching a
+ * plugin.
+ */
+export type InvalidatableResource = 'gateways' | 'apiPortals';
+
+/**
+ * How an extension reports that it changed data the host also caches. The
+ * host's own mutations invalidate React Query; one writing through `apiFetch`
+ * bypasses that, leaving stale counts (an Overview card) until the entry
+ * expires on its own.
+ */
+export type ResourcesPort = {
+  /** Drop every cached list, detail and child of `resource` for this org. */
+  invalidate: (resource: InvalidatableResource) => void;
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -143,6 +161,7 @@ export type CloudHostPort = {
   /** `host:port` a self-hosted gateway's controller dials, from the console's runtime config. */
   gatewayControlPlaneHost?: string;
   resourceLimits: ResourceLimitsPort;
+  resources: ResourcesPort;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

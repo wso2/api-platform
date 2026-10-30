@@ -77,6 +77,15 @@ export type AIWorkspaceHostPort = {
    * delete; `canCreate`/`limitMessage` gate this feature's own create button.
    * Optional: a host without entitlements omits it and nothing is capped.
    */
+  /**
+   * Tells the host that data it also caches has changed. This feature writes
+   * through its own client, which the host's cache cannot see, so without it
+   * the host's counts stay stale. Optional: a host that caches nothing omits it.
+   */
+  resources?: {
+    invalidate: (resource: 'gateways') => void;
+  };
+
   resourceLimits?: {
     refresh: () => void;
     canCreate?: (component: 'gateways') => boolean;

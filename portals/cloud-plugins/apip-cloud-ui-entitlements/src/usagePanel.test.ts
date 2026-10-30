@@ -24,9 +24,12 @@ const summary = (entitlements: Entitlement[]): EntitlementSummary => ({
   products: [{ product: 'api-platform', entitlements }],
 });
 
-/** Trial: 5 APIs. */
+/** Trial: 5 managed interfaces, all of them spendable on APIs. */
 const trial = (used: Record<string, number> = {}) =>
-  summary([quota('apis', 5, used.apis ?? 0)]);
+  summary([
+    quota('managed_interfaces', 5, used.interfaces ?? used.apis ?? 0),
+    quota('apis', 5, used.apis ?? 0),
+  ]);
 
 describe('toUsagePanel', () => {
   it('shows nothing when there is no summary', () => {
@@ -36,46 +39,80 @@ describe('toUsagePanel', () => {
 
   // Nothing to count and nowhere to upgrade to, so the badge falls back to a
   // plain countdown. The same rule that hides the upgrade affordance.
-  it('shows nothing when the APIs budget is unlimited', () => {
-    expect(toUsagePanel(summary([quota('apis', null, 9000)]))).toBeNull();
+  it('shows nothing when the interfaces budget is unlimited', () => {
+    expect(toUsagePanel(summary([quota('managed_interfaces', null, 9000)]))).toBeNull();
   });
 
-  it('shows nothing when the APIs budget is absent', () => {
+  it('shows nothing when the interfaces budget is absent', () => {
     expect(toUsagePanel(summary([quota('hybrid_gateways', 1, 0)]))).toBeNull();
   });
 
-  // The figure is the `apis` meter's own — the cap billing enforces and the
-  // create button gates on.
-  it('leads with the APIs budget', () => {
-    const panel = toUsagePanel(trial({ apis: 3 }));
-    const headline = panel!.sections[0];
-    expect(headline.title).toBe('APIs');
-    expect(headline.items).toEqual([{ key: 'apis', label: 'APIs', count: 3, limit: 5 }]);
-    expect(headline.totalSuffix).toBe('left');
+  // An older billing deployment reports no managed_interfaces meter at all.
+  // Showing the narrower meter beats showing nothing.
+  it('falls back to the apis meter when the budget is not reported', () => {
+    const panel = toUsagePanel(summary([quota('apis', 5, 2)]));
+    expect(panel!.sections[0].title).toBe('Managed Interfaces');
+    expect(panel!.sections[0].items[0].count).toBe(2);
   });
 
-  // A response still carrying the dropped meters must not add rows for them.
-  it('ignores pooled and proxy meters the response may still carry', () => {
+  // The shared budget, not the `apis` meter: every interface type spends it,
+  // so it is the figure that runs out and the one the create button gates on.
+  it('leads with the managed interfaces budget', () => {
+    const panel = toUsagePanel(trial({ apis: 3 }));
+    const headline = panel!.sections[0];
+    expect(headline.title).toBe('Managed Interfaces');
+    expect(headline.items).toEqual([
+      { key: 'managed_interfaces', label: 'Managed Interfaces', count: 3, limit: 5 },
+    ]);
+    // The figure beside the title is what has been spent, not what remains.
+    expect(headline.totalSuffix).toBe('used');
+  });
+
+  // What the budget was spent on, in its own section: these figures share one
+  // ceiling, so summing them into a section total would claim a ceiling of 15.
+  it('breaks the budget down by type, with no total of its own', () => {
     const panel = toUsagePanel(
       summary([
-        quota('apis', 5, 1),
         quota('managed_interfaces', 10, 4),
+        quota('apis', 5, 1),
         quota('mcp_proxies', 5, 2),
         quota('llm_proxies', 5, 1),
-        quota('agent_proxies', 5, 1),
+        quota('agent_proxies', 5, 0),
       ]),
     );
-    expect(panel!.sections.map((section) => section.key)).toEqual(['apis']);
-    const labels = panel!.sections.flatMap((section) =>
-      section.items.map((item) => item.label),
+    const byType = panel!.sections[1];
+    expect(byType.title).toBe('By type');
+    expect(byType.totalSuffix).toBeUndefined();
+    expect(byType.items.map((item) => item.label)).toEqual([
+      'APIs',
+      'MCP Proxies',
+      'LLM Proxies',
+      'Agent Proxies',
+    ]);
+  });
+
+  // A type this plan does not cap is absent, not zero — rendering it would
+  // invent a ceiling billing never set.
+  it('lists only the types the plan actually caps', () => {
+    const panel = toUsagePanel(
+      summary([
+        quota('managed_interfaces', 5, 1),
+        quota('apis', 5, 1),
+        quota('mcp_proxies', null, 0),
+      ]),
     );
-    expect(labels).toEqual(['APIs']);
+    expect(panel!.sections[1].items.map((item) => item.key)).toEqual(['apis']);
+  });
+
+  it('omits the breakdown entirely when no type is capped', () => {
+    const panel = toUsagePanel(summary([quota('managed_interfaces', 5, 1)]));
+    expect(panel!.sections.map((section) => section.key)).toEqual(['managed_interfaces']);
   });
 
   it('gives gateways and portals a section each, with their own totals', () => {
     const panel = toUsagePanel(
       summary([
-        quota('apis', 5, 3),
+        quota('managed_interfaces', 5, 3),
         quota('hybrid_gateways', 1, 0),
         quota('api_developer_portals', 1, 1),
       ]),
@@ -91,7 +128,7 @@ describe('toUsagePanel', () => {
     // budgets together and render "1 of 2", which means nothing.
     for (const section of standalone) {
       expect(section.items).toHaveLength(1);
-      expect(section.totalSuffix).toBe('left');
+      expect(section.totalSuffix).toBe('used');
     }
     expect(standalone[0].items[0]).toEqual({
       key: 'hybrid_gateways',
@@ -102,18 +139,18 @@ describe('toUsagePanel', () => {
     expect(standalone[1].items[0].count).toBe(1);
   });
 
-  // Three independent budgets, so three sections — never folded together,
-  // because a gateway takes nothing from the APIs budget.
-  it('keeps each budget in its own section', () => {
+  // Three independent budgets, so three sections at one level — never folded
+  // together, because a gateway takes nothing from the interfaces budget.
+  it('keeps each budget in its own section, at the same level', () => {
     const panel = toUsagePanel(
       summary([
-        quota('apis', 5, 1),
+        quota('managed_interfaces', 5, 1),
         quota('hybrid_gateways', 1, 1),
         quota('api_developer_portals', 1, 1),
       ]),
     );
     expect(panel!.sections.map((section) => section.key)).toEqual([
-      'apis',
+      'managed_interfaces',
       'hybrid_gateways',
       'api_developer_portals',
     ]);
@@ -123,13 +160,13 @@ describe('toUsagePanel', () => {
   it('omits a standalone section that has no ceiling', () => {
     const panel = toUsagePanel(
       summary([
-        quota('apis', 5, 1),
+        quota('managed_interfaces', 5, 1),
         quota('hybrid_gateways', null, 4),
         quota('api_developer_portals', 1, 0),
       ]),
     );
     expect(panel!.sections.map((section) => section.key)).toEqual([
-      'apis',
+      'managed_interfaces',
       'api_developer_portals',
     ]);
   });
