@@ -42,6 +42,7 @@ import {
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
+import { runtimeConfig } from '../../../../api-control-plane/src/config/runtime';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
@@ -62,6 +63,17 @@ export const cloudBrandLogo: BrandLogo = {
  * fresh array on every render would make that request repeat.
  */
 const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
+
+/**
+ * `GatewaysFeature`'s port requires `gatewayVersions`, which this host's own
+ * `CloudHostPort` (core, `api-control-plane/src/hostPort.tsx`) does not carry.
+ * API Control Plane has no hardcoded catalog the way AI Workspace does — its
+ * release versions come from the BFF's own `config.toml` (`[[gateway_versions]]`,
+ * see `bff/internal/config/config.go`), surfaced through this SPA's
+ * `runtimeConfig.gatewayVersions` (`src/config/runtime.ts`), which already
+ * falls back to `[]` for a deployment whose config predates this field.
+ */
+const API_GATEWAY_VERSIONS = runtimeConfig.gatewayVersions;
 
 /**
  * The API Deploy override. The built-in Deploy page sits inside `AppPage`, which
@@ -202,7 +214,17 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         group: '',
         order: 45,
         routePath: 'gateways',
-        render: (port) => <GatewaysFeature gatewayTypes={API_GATEWAY_TYPES} port={port} />,
+        render: (port) => (
+          <GatewaysFeature
+            gatewayTypes={API_GATEWAY_TYPES}
+            port={{
+              ...port,
+              gatewayVersions: API_GATEWAY_VERSIONS,
+              // The host names it `gatewayControlPlaneHost`; the plugin's port calls it `controlPlaneHost`.
+              controlPlaneHost: port.gatewayControlPlaneHost,
+            }}
+          />
+        ),
         label: 'Gateways',
         level: 'organization',
       },

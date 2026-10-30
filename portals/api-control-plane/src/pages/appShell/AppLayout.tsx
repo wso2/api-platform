@@ -59,6 +59,10 @@ export default function AppLayout() {
     notify,
     apiFetch: extensionApiFetch,
     billing: { organization: getBillingOrganization },
+    gatewayVersions: runtimeConfig.gatewayVersions,
+    // Only an explicitly configured host: the console's own fallback can be `localhost`, which
+    // is no address for a gateway running somewhere else to dial.
+    gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHostOverride || undefined,
   };
 
   return (

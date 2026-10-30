@@ -16,6 +16,24 @@
  * under the License.
  */
 
+/**
+ * One gateway release the Quick Start step can offer a download for, keyed by
+ * `type` since the regular and event gateways ship as separate artifacts.
+ * Mirrors the Go `GatewayVersionEntry` in the BFF's
+ * internal/config/config.go, and the shape consumed by
+ * portals/cloud-plugins/apip-cloud-ui-gateways (its own hand-mirrored copy,
+ * since that package lives in a separate repo) — keep all three in sync.
+ */
+export type GatewayVersionEntry = {
+  type: 'ai' | 'regular' | 'event';
+  version: string;
+  /** Release tag, e.g. "v1.2.0". Defaults to `v${version}` when omitted. */
+  latestVersion?: string;
+  /** Zip/folder version, when it differs from `version`. */
+  distVersion?: string;
+  channel: 'STS' | 'LTS';
+};
+
 export type RuntimeConfig = {
   appBasePath: string;
   apiBaseUrl: string;
@@ -84,6 +102,12 @@ export type RuntimeConfig = {
    * gateway setup instructions. Defaults to the platformApiBaseUrl host.
    */
   gatewayControlPlaneHost: string;
+  /**
+   * The control-plane host only when the deployment sets it (`GATEWAY_CONTROL_PLANE_HOST`), and
+   * empty otherwise. `gatewayControlPlaneHost` falls back to a guess, which is fine for this
+   * console's own page but must not be handed to setup commands for a gateway running elsewhere.
+   */
+  gatewayControlPlaneHostOverride: string;
   /** Policy Hub API (catalog of mediation policies) + its web UI link. */
   policyHubBaseUrl: string;
   policyHubWebUrl: string;
@@ -105,6 +129,15 @@ export type RuntimeConfig = {
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  /**
+   * Catalog of self-hosted-gateway releases for the Quick Start download
+   * step, one entry per gateway type ("regular" | "event" for this
+   * deployment). Sourced from the BFF's [[gateway_versions]] config and
+   * JSON-encoded into the runtime config as a string — the first
+   * non-string value in it — so it's JSON.parsed back out here rather than
+   * read as-is like every other field.
+   */
+  gatewayVersions: GatewayVersionEntry[];
   sanitizeHtmlDocsEnabled: boolean;
   sanitizeHtmlDocsAdditionalAllowedTags: string[];
   sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
@@ -155,6 +188,7 @@ type LegacyWindowConfig = Partial<{
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  gatewayVersions: string;
   sanitizeHtmlDocsEnabled: boolean | string;
   sanitizeHtmlDocsAdditionalAllowedTags: string;
   sanitizeHtmlDocsAdditionalAllowedAttributes: string;
@@ -237,6 +271,20 @@ const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
 const normalizeBasePath = (value?: string) => {
   if (!value || value === '/') return '';
   return `/${value.replace(/^\/|\/$/g, '')}`;
+};
+
+// gatewayVersions arrives JSON-encoded (see config.GatewayVersionEntry /
+// buildRuntimeConfig on the BFF); an absent or malformed value yields an
+// empty catalog rather than throwing, consistent with every other field here
+// falling back to a safe default instead of crashing the SPA on bad config.
+const readGatewayVersions = (value?: string): GatewayVersionEntry[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as GatewayVersionEntry[]) : [];
+  } catch {
+    return [];
+  }
 };
 
 // VITE_ override wins so a local platform-api can be targeted in dev even when the
@@ -329,6 +377,8 @@ export const runtimeConfig: RuntimeConfig = {
     import.meta.env.VITE_GATEWAY_CONTROL_PLANE_HOST ||
     hostFromUrl(resolvedPlatformApiBaseUrl) ||
     'localhost:9243',
+  gatewayControlPlaneHostOverride:
+    fromWindow().GATEWAY_CONTROL_PLANE_HOST || import.meta.env.VITE_GATEWAY_CONTROL_PLANE_HOST || '',
   policyHubBaseUrl:
     fromWindow().POLICY_HUB_BASE_URL ||
     import.meta.env.VITE_POLICY_HUB_BASE_URL ||
@@ -374,6 +424,7 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().usersManagementApiUrl ||
     import.meta.env.VITE_USERS_MANAGEMENT_API_URL ||
     '',
+  gatewayVersions: readGatewayVersions(fromWindow().gatewayVersions),
   sanitizeHtmlDocsEnabled: readSanitizeHtmlDocsEnabled(
     fromWindow().sanitizeHtmlDocsEnabled ?? import.meta.env.VITE_SANITIZE_HTML_DOCS_ENABLED,
   ),

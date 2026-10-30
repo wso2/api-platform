@@ -40,6 +40,11 @@ import {
 } from "../../../../ai-workspace/src/extensions";
 import type { AIWorkspaceHostPort } from "../../../../ai-workspace/src/hostPort";
 import {
+  CONTROLPLANE_HOST,
+  DEFAULT_CONTROLPLANE_HOST,
+  PLATFORM_GATEWAY_VERSIONS,
+} from "../../../../ai-workspace/src/config.env";
+import {
   defineCloudPlugin,
   getCloudExtensions,
   type CloudPluginFeature,
@@ -59,6 +64,25 @@ export const cloudBrandLogo: BrandLogo = {
  * fresh array on every render would make that request repeat.
  */
 const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
+
+/**
+ * `GatewaysFeature`'s port requires `gatewayVersions`, which this host's own
+ * `AIWorkspaceHostPort` (core, `ai-workspace/src/hostPort.tsx`) does not carry.
+ * AI Workspace already hardcodes its release catalog as `PLATFORM_GATEWAY_VERSIONS`
+ * (`ai-workspace/src/config.env.ts`) — every gateway here is an AI gateway, so
+ * `type` is always `'ai'`. `distVersion` is copied only when the catalog sets it:
+ * the zip's version defaults to the release tag, not to the unpack folder's
+ * `distFolderVersion`, so borrowing that would name a zip the release may not
+ * publish. Computed once at module scope, same as `AI_GATEWAY_TYPES` above, since the source array
+ * is itself a static, hardcoded catalog.
+ */
+const AI_GATEWAY_VERSIONS = PLATFORM_GATEWAY_VERSIONS.map((entry) => ({
+  type: "ai" as const,
+  version: entry.version,
+  latestVersion: entry.latestVersion,
+  distVersion: entry.distVersion,
+  channel: entry.channel,
+}));
 
 /**
  * Cloud features registered for the AI Workspace host. The host owns routing,
@@ -153,7 +177,17 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           icon: <Network size={20} />,
           hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
           render: (port: AIWorkspaceHostPort) => (
-            <GatewaysFeature gatewayTypes={AI_GATEWAY_TYPES} port={port} />
+            <GatewaysFeature
+              gatewayTypes={AI_GATEWAY_TYPES}
+              port={{
+                ...port,
+                gatewayVersions: AI_GATEWAY_VERSIONS,
+                // Only an address the deployment set: the local-Docker default is no address for a
+                // gateway running anywhere else, so the setup commands show a placeholder instead.
+                controlPlaneHost:
+                  CONTROLPLANE_HOST === DEFAULT_CONTROLPLANE_HOST ? undefined : CONTROLPLANE_HOST,
+              }}
+            />
           ),
         },
       ],

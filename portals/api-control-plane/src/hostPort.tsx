@@ -33,7 +33,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 
 import type { BillingOrganization } from './billing/organization';
-import { runtimeConfig } from './config/runtime';
+import { runtimeConfig, type GatewayVersionEntry } from './config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './contexts/auth/authConstants';
 
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
@@ -72,6 +72,10 @@ export type CloudHostPort = {
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
   billing: BillingPort;
+  /** Gateway releases from the BFF's `[[gateway_versions]]` config, newest first per type. */
+  gatewayVersions?: GatewayVersionEntry[];
+  /** `host:port` a self-hosted gateway's controller dials, from the console's runtime config. */
+  gatewayControlPlaneHost?: string;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

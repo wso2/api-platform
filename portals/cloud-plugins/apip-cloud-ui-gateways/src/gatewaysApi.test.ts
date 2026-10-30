@@ -79,3 +79,10 @@ describe('deleteGateway', () => {
     expect(await client.deleteGateway('development-edge')).toEqual({ pending: false });
   });
 });
+
+describe('gateway hosting', () => {
+  it('marks every gateway from /managed-gateways as managed', async () => {
+    const gateway = await first([{ id: 'dev-default', status: 'ACTIVE' }]);
+    expect(gateway.hosting).toBe('managed');
+  });
+});

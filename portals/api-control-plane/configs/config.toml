@@ -33,6 +33,41 @@ tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 base_url = '{{ env "APIP_ACP_POLICY_HUB_BASE_URL" "" }}'
 
 
+# Self-hosted-gateway releases the SPA's "Add Gateway" Quick Start step offers
+# a download for, one entry per gateway type this portal manages ("regular",
+# "event" — not "ai", which is AI Workspace's own catalog). Like policy_hub
+# above, this is a public catalog the browser reads verbatim, not something
+# templated per-environment — hence plain literal values here rather than
+# `{{ env ... }}`, the same convention [[api_control_plane.control_plane.upstreams]]
+# uses in the cloud overlay. Listed newest first — the first entry per type is
+# what the "Add Gateway" form marks "Latest". "regular" mirrors AI Workspace's
+# own released catalog (config.env.ts's PLATFORM_GATEWAY_VERSIONS); "event" is
+# still a placeholder — TODO: confirm its real released version/tag/channel
+# before relying on it in production.
+[[api_control_plane.gateway_versions]]
+type    = "regular"
+version = "2026.05.13"
+channel = "STS"
+
+[[api_control_plane.gateway_versions]]
+type           = "regular"
+version        = "1.1"
+latest_version = "v1.1.0"
+channel        = "LTS"
+
+[[api_control_plane.gateway_versions]]
+type           = "regular"
+version        = "1.0"
+latest_version = "v1.0.0"
+channel        = "LTS"
+
+[[api_control_plane.gateway_versions]]
+type           = "event"
+version        = "1.0"
+latest_version = "v1.0.0"
+channel        = "LTS"
+
+
 [api_control_plane.session]
 
 # Local dev runs the BFF over plain HTTP (no cert generation set up for this
