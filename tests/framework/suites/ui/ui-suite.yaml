@@ -94,6 +94,20 @@ blocks:
         features:
           - features/apiportal_applications.feature
 
+  # Management Portal tenant isolation: the console against the real control plane, with a
+  # second organization registered next to the default one, and the browser that drives it.
+  - name: management-portal-tenant
+    parallel: 2
+    components:
+      - name: platform-api
+      - name: api-control-plane
+        dependsOn: [platform-api]
+      - name: browser
+    runners:
+      - name: tenant-isolation
+        features:
+          - features/management_portal/tenant_isolation.feature
+
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai
   # service is the LLM the journeys invoke), and the browser that drives it all — on the

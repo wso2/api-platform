@@ -15,7 +15,10 @@ scenarios:
     title: As org B, get each of org A's REST API, gateway, application and secret; each returns 404, the same as a resource that does not exist.
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/tenant_isolation.feature
+          scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
     it:
       status: automated
       refs:
@@ -25,7 +28,10 @@ scenarios:
     title: As org B, list REST APIs, gateways, applications, secrets, LLM providers and MCP proxies; no list contains any of org A's resources.
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/tenant_isolation.feature
+          scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
     it:
       status: automated
       refs:
@@ -35,7 +41,10 @@ scenarios:
     title: As org B, update and delete org A's REST API, rotate org A's gateway token and delete org A's secret; each returns 404 and nothing changes.
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/tenant_isolation.feature
+          scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
     it:
       status: automated
       refs:
@@ -45,7 +54,10 @@ scenarios:
     title: As org A, deploy an API to org B's connected gateway; refused with 404 (gateway not found) and nothing reaches org B's gateway.
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/tenant_isolation.feature
+          scenario: "Journey: an organization's deploy screen offers only its own gateways"
     it:
       status: automated
       refs:

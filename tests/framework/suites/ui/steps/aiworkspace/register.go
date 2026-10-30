@@ -69,7 +69,7 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 		// Runner-scoped state outlives a scenario; one scenario's provider must never be
 		// called through another's remembered invoke URL.
 		tcontext.Remove(ctx, keyLatestInvokeURL)
-		return withUIExpansionState(ctx), nil
+		return ctx, nil
 	})
 	sc.Step(`^the user opens the workspace$`, u.openWorkspace)
 	sc.Step(`^the browser has no runtime configuration$`, u.withoutRuntimeConfiguration)

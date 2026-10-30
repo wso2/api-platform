@@ -33,6 +33,9 @@ RUN VITE_APP_BASE_PATH=/ npm run build
 # Stage 2 — BFF build     #
 ###########################
 FROM golang:1.26-alpine AS bff
+# Off by default; the test framework turns it on to collect BFF coverage.
+ARG ENABLE_COVERAGE=false
+ARG COVERAGE_PACKAGES=""
 WORKDIR /src
 
 # go.mod/go.sum first for better layer caching.
@@ -41,7 +44,12 @@ ENV CGO_ENABLED=0 GOWORK=off
 RUN go mod download
 
 COPY bff/ ./
-RUN go build -trimpath -ldflags "-s -w" -o /bff .
+RUN COVER_FLAGS=""; \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        COVER_FLAGS="-cover -covermode=atomic"; \
+        if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
+    fi; \
+    go build $COVER_FLAGS -trimpath -ldflags "-s -w" -o /bff .
 
 ###########################
 # Stage 3 — Runtime       #
@@ -51,6 +59,7 @@ FROM alpine:3.24
 ARG USERNAME=apicontrolplane
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
+ARG ENABLE_COVERAGE=false
 
 RUN addgroup -g $USER_GID $USERNAME && \
     adduser -D -u $USER_UID -G $USERNAME $USERNAME && \
@@ -62,6 +71,9 @@ WORKDIR /app
 # Built SPA (served by the BFF as static files) and the BFF binary.
 COPY --chown=$USER_UID:$USER_GID --from=web /app/build /app
 COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
+
+# A coverage build writes its counters here, through GOCOVERDIR set by the test framework.
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:$USER_GID" /coverage; fi
 
 USER $USER_UID
 

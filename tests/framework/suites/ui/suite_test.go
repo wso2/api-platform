@@ -36,6 +36,7 @@ import (
 
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
@@ -46,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps"
 	apiportalsteps "github.com/wso2/api-platform/tests/framework/suites/ui/steps/apiportal"
+	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/managementportal"
 )
 
 var selection topology.Selection
@@ -330,6 +332,12 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	reg.RegisterDeleter(cleanup.KindGateway, platformAPIDeleter(auth, "/api/v0.9/gateways"))
 	reg.RegisterDeleter(cleanup.KindApplication, platformAPIDeleter(auth, "/api/v0.9/applications"))
 	reg.RegisterDeleter(cleanup.KindAPIKey, deleteAPIKey(auth))
+	reg.RegisterDeleter(cleanup.KindAPI, platformAPIDeleter(auth, "/api/v0.9/rest-apis"))
+	secondOrganization := &platformAPIAuth{topo: topo, client: client, secondOrganization: true}
+	reg.RegisterDeleter(managementportal.KindSecondOrganizationRESTAPI,
+		platformAPIDeleter(secondOrganization, "/api/v0.9/rest-apis"))
+	reg.RegisterDeleter(managementportal.KindSecondOrganizationGateway,
+		platformAPIDeleter(secondOrganization, "/api/v0.9/gateways"))
 	portalAuth := &apiPortalAuth{topo: topo, client: client, cookies: map[string]string{}}
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalAPI, portalAPIDeleter(portalAuth, "apis"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalMCP, portalAPIDeleter(portalAuth, "mcp-servers"))
@@ -358,6 +366,8 @@ type platformAPIAuth struct {
 	topo   *frameworkruntime.Topology
 	client *httpx.Client
 	token  string
+	// secondOrganization authenticates as the control plane's second organization instead.
+	secondOrganization bool
 }
 
 func (a *platformAPIAuth) baseURL() (string, error) {
@@ -371,6 +381,14 @@ func (a *platformAPIAuth) authHeader(ctx context.Context) (string, error) {
 	base, err := a.baseURL()
 	if err != nil {
 		return "", err
+	}
+	if a.secondOrganization {
+		token, err := platformapi.SecondOrganizationLogin(ctx, base)
+		if err != nil {
+			return "", fmt.Errorf("authenticating as the second organization: %w", err)
+		}
+		a.token = token
+		return "Bearer " + a.token, nil
 	}
 	form := url.Values{
 		"username": {a.topo.Admin.Username},
