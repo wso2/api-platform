@@ -107,6 +107,7 @@ type ControlPlaneClient interface {
 	SubmitAPIMSync(task func())
 	SubmitAPIMSyncAndWait(task func())
 	SubmitArtifactPush(task func())
+	SyncAPIKeysForArtifact(cfg *models.StoredConfig)
 }
 
 // secretSyncer is the narrow interface the sync loop needs from the secrets service.
@@ -1228,6 +1229,83 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			}
 		}
 	}
+}
+
+// SyncAPIKeysForArtifact pulls the control plane's API keys for a single artifact
+// and loads them into the gateway. Call it when an artifact is created on the
+// gateway, that is when no configuration existed for its UUID.
+//
+// Deleting an artifact also deletes its API keys locally, and the control plane
+// only sends a key when it is created, updated or revoked, or in the bulk sync on
+// (re)connect. Without this pull, an artifact that is deleted and created again
+// with the same UUID (for example an agent that is suspended and resumed, whose
+// RestApi is removed and re-applied) comes back with no keys, and every key the
+// control plane still reports as active is rejected until the gateway reconnects.
+//
+// Best effort: failures are logged, and the next bulk sync reconciles.
+func (c *Client) SyncAPIKeysForArtifact(cfg *models.StoredConfig) {
+	if cfg == nil || cfg.UUID == "" {
+		return
+	}
+	if c.apiUtilsService == nil || c.db == nil || c.apiKeyService == nil {
+		return
+	}
+	if !isAPIKeyBulkSyncKind(cfg.Kind) {
+		return
+	}
+	if c.isOnPrem() && !onPremSupportedAPIKeyKinds[cfg.Kind] {
+		return
+	}
+
+	logger := c.logger.With(
+		slog.String("artifact_uuid", cfg.UUID),
+		slog.String("kind", cfg.Kind),
+	)
+
+	issuer := ""
+	if c.systemConfig != nil {
+		issuer = c.systemConfig.APIKey.Issuer
+	}
+
+	keys, err := c.apiUtilsService.FetchAPIKeysByKind(cfg.Kind, issuer)
+	if err != nil {
+		logger.Warn("Failed to fetch API keys for created artifact; keys load on the next bulk sync",
+			slog.Any("error", err))
+		return
+	}
+
+	synced := 0
+	for i := range keys {
+		key := keys[i]
+		if key.UUID == "" {
+			continue
+		}
+		switch {
+		case key.ArtifactUUID == cfg.UUID:
+		case cfg.CPArtifactID != "" && key.ArtifactUUID == cfg.CPArtifactID:
+			// The control plane reports keys of a bottom-up synced artifact against
+			// its cp_artifact_id; store them under the local UUID, as the bulk sync does.
+			key.ArtifactUUID = cfg.UUID
+		default:
+			continue
+		}
+
+		if err := c.db.UpsertAPIKey(&key); err != nil {
+			logger.Warn("Failed to upsert API key for created artifact",
+				slog.String("key_uuid", key.UUID),
+				slog.Any("error", err))
+			continue
+		}
+		etag := key.ETag
+		if etag == "" {
+			etag = utils.APIKeyETag(key.ArtifactUUID, key.Name, key.UpdatedAt)
+		}
+		c.apiKeyService.PublishAPIKeyEvent("CREATE", key.ArtifactUUID, key.UUID, etag, c.logger)
+		synced++
+	}
+
+	logger.Info("Synced API keys for created artifact from control plane",
+		slog.Int("key_count", synced))
 }
 
 // Close closes the WebSocket connection
