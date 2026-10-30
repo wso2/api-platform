@@ -39,6 +39,10 @@ func TestParseVersion(t *testing.T) {
 		{"", Version{}, false},
 		{"0.4.2-rc1", Version{}, false},
 		{"v0.4.2.1", Version{}, false},
+		{"0.0.0", Version{0, 0, 0}, true},
+		{"00.4.2", Version{}, false},
+		{"0.04.2", Version{}, false},
+		{"1.2.03", Version{}, false},
 	}
 	for _, c := range cases {
 		got, ok := ParseVersion(c.in)
