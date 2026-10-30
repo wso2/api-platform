@@ -385,7 +385,8 @@ boot instead of reporting a test failure.
 Every product feature has a scenario sheet, mirrored by `coverage/<SHEET>.yaml` (for
 example `coverage/AIW-LLM.yaml`). The manifest is the source of truth for which sheet IDs
 exist and how each layer covers them; `make standards-check` validates it against the
-feature files.
+feature files. The sheets are maintained internally, so the manifest is their public record:
+keep each entry readable without the sheet, and never link to the sheet itself.
 
 - Every sheet ID must be accounted for in both layers: `ui` (browser journeys under
   `suites/ui`) and `it` (API-level scenarios under `suites/it`). A layer's status is

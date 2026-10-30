@@ -110,6 +110,9 @@ Proxies), and every sheet row must be covered by **both** suites: `it` at the AP
 says for each layer whether the ID is `automated`, `known-issue` (with the issue link),
 `exempt` (with the reason) or still `planned`.
 
+The sheets themselves are maintained internally; the manifest is their public record and
+holds everything needed to read a sheet ID, so contributors never need the sheet.
+
 - **IDs live in the code.** A scenario is tagged with every sheet ID it covers
   (`@AIW-PRV-001`); tag IDs on scenarios only, never on a feature or rule. Run one ID with
   `-feature-tags=@AIW-PRV-004`, or a whole sheet with `-feature-tags=@AIW-LLM`.
