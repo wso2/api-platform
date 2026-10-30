@@ -86,25 +86,20 @@ export const buildProductionUrlOptions = (
 export type DeletedSelection = { id: string; displayName: string };
 
 type SelectionList = Publication['subscriptionPlans'];
-type SelectionSource = Pick<
-  Publication | PublicationDraftDetails,
-  'docIds' | 'documents' | 'subscriptionPlanIds' | 'subscriptionPlans'
->;
+type SelectionSource = Pick<Publication | PublicationDraftDetails, 'documents' | 'subscriptionPlans'>;
 /** A saved listing, draft or live: the fields the form is filled from. */
 type ListingSource = SelectionSource &
   Pick<Publication | PublicationDraftDetails, 'agentVisibility' | 'description' | 'displayName' | 'endpoints' | 'version'>;
 
 /** The selected items that still exist; a deleted one cannot be saved or published, so it never enters the form. */
-const existingIds = (selections: SelectionList, ids: string[] | undefined): string[] => {
-  if (!selections) return ids ?? [];
-  return selections.filter((item) => !item.deleted).map((item) => item.id);
-};
+const existingIds = (selections: SelectionList): string[] =>
+  (selections ?? []).filter((item) => item.sourceStatus !== 'DELETED').map((item) => item.id);
 
 const deletedOf = (selections: SelectionList): DeletedSelection[] =>
-  (selections ?? []).filter((item) => item.deleted).map(({ id, displayName }) => ({ id, displayName }));
+  (selections ?? []).filter((item) => item.sourceStatus === 'DELETED').map(({ id, displayName }) => ({ id, displayName }));
 
 const editedIdsOf = (selections: SelectionList): string[] =>
-  (selections ?? []).filter((item) => item.edited && !item.deleted).map((item) => item.id);
+  (selections ?? []).filter((item) => item.sourceStatus === 'UPDATED').map((item) => item.id);
 
 /** The names stored with the selection, by id, as of the last save or publish. */
 const storedNamesOf = (selections: SelectionList): Record<string, string> =>
@@ -152,8 +147,8 @@ const valuesOfListing = (listing: ListingSource): DraftFormValues => ({
   productionUrl: listing.endpoints?.productionUrl ?? '',
   sandboxUrl: listing.endpoints?.sandboxUrl ?? '',
   agentVisibility: listing.agentVisibility ?? DEFAULT_AGENT_VISIBILITY,
-  subscriptionPlanIds: existingIds(listing.subscriptionPlans, listing.subscriptionPlanIds),
-  docIds: existingIds(listing.documents, listing.docIds),
+  subscriptionPlanIds: existingIds(listing.subscriptionPlans),
+  docIds: existingIds(listing.documents),
 });
 
 /**
