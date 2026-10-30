@@ -113,11 +113,16 @@ func LoadManifests(dir string) ([]Manifest, error) {
 	}
 	manifests := make([]Manifest, 0, len(paths))
 	seen := map[string]string{}
+	sheets := map[string]string{}
 	for _, path := range paths {
 		m, err := LoadManifest(path)
 		if err != nil {
 			return nil, err
 		}
+		if other, dup := sheets[m.Sheet]; dup {
+			return nil, fmt.Errorf("sheet: sheet %s is declared in both %s and %s; keep one manifest per sheet", m.Sheet, other, path)
+		}
+		sheets[m.Sheet] = path
 		for _, e := range m.Scenarios {
 			if other, dup := seen[e.ID]; dup {
 				return nil, fmt.Errorf("sheet: %s is listed in both %s and %s", e.ID, other, path)

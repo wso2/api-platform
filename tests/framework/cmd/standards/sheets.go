@@ -21,6 +21,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -71,9 +72,21 @@ func parseFeatureFile(path string) (parsedFeature, error) {
 	var pending []string
 	inBackground := false
 	current := -1
+	docString := "" // the open doc-string delimiter, while inside one
 	scanner := bufio.NewScanner(file)
 	for lineNo := 1; scanner.Scan(); lineNo++ {
 		line := strings.TrimSpace(scanner.Text())
+		// Doc-string content is step payload, never Gherkin.
+		if docString != "" {
+			if strings.HasPrefix(line, docString) {
+				docString = ""
+			}
+			continue
+		}
+		if strings.HasPrefix(line, `"""`) || strings.HasPrefix(line, "```") {
+			docString = line[:3]
+			continue
+		}
 		switch {
 		case strings.HasPrefix(line, "@"):
 			pending = append(pending, tagsOf(line)...)
@@ -86,7 +99,11 @@ func parseFeatureFile(path string) (parsedFeature, error) {
 			name := strings.TrimSpace(line[strings.Index(line, ":")+1:])
 			parsed.scenarios = append(parsed.scenarios, featureScenario{name: name, line: lineNo, tags: pending})
 			pending, inBackground, current = nil, false, len(parsed.scenarios)-1
-		case strings.HasPrefix(line, "Examples:"):
+		case strings.HasPrefix(line, "Examples:"), strings.HasPrefix(line, "Scenarios:"):
+			// Tags above Examples select the outline's rows, so they count as the scenario's.
+			if current >= 0 {
+				parsed.scenarios[current].tags = append(parsed.scenarios[current].tags, pending...)
+			}
 			pending = nil
 		default:
 			match := sheetCheckLine.FindStringSubmatch(line)
@@ -103,6 +120,15 @@ func parseFeatureFile(path string) (parsedFeature, error) {
 	return parsed, scanner.Err()
 }
 
+// featureKey identifies a feature file by its absolute, slash-separated path, so roots and
+// manifest refs given relative or absolute name the same file.
+func featureKey(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	return filepath.ToSlash(filepath.Clean(path))
+}
+
 // layerOf derives the suite layer from a feature path, or "" outside suites/ui and suites/it.
 func layerOf(path string) sheet.Layer {
 	path = filepath.ToSlash(path)
@@ -117,7 +143,7 @@ func layerOf(path string) sheet.Layer {
 
 // checkSheets verifies that the scenario-sheet manifests in manifestDir and the sheet
 // tags and checkpoints in the feature roots agree with each other.
-func checkSheets(manifestDir, featureRoots string) []string {
+func checkSheets(manifestDir, featureRoots, suites string) []string {
 	if strings.TrimSpace(manifestDir) == "" {
 		return nil
 	}
@@ -125,9 +151,9 @@ func checkSheets(manifestDir, featureRoots string) []string {
 	if err != nil {
 		return []string{err.Error()}
 	}
+	enrolled, issues := enrolledFeatures(suites)
 
 	features := map[string]parsedFeature{}
-	var issues []string
 	for root := range strings.SplitSeq(featureRoots, ",") {
 		root = strings.TrimSpace(root)
 		if root == "" {
@@ -145,7 +171,7 @@ func checkSheets(manifestDir, featureRoots string) []string {
 				issues = append(issues, fmt.Sprintf("%s: %v", path, parseErr))
 				return nil
 			}
-			features[filepath.ToSlash(filepath.Clean(path))] = parsed
+			features[featureKey(path)] = parsed
 			return nil
 		})
 		if walkErr != nil {
@@ -163,10 +189,10 @@ func checkSheets(manifestDir, featureRoots string) []string {
 				cov := e.For(layer)
 				anyKnownIssue := false
 				for _, ref := range cov.Refs {
-					refIssues, knownIssue := checkSheetRef(m.Path, e.ID, layer, cov.Status, ref, features)
+					refIssues, knownIssue := checkSheetRef(m.Path, e.ID, layer, cov.Status, ref, features, enrolled)
 					issues = append(issues, refIssues...)
 					anyKnownIssue = anyKnownIssue || knownIssue
-					key := string(layer) + "|" + filepath.ToSlash(filepath.Clean(ref.Feature)) + "|" + ref.Scenario
+					key := string(layer) + "|" + featureKey(ref.Feature) + "|" + ref.Scenario
 					referenced[key] = append(referenced[key], e.ID)
 				}
 				if cov.Status == sheet.KnownIssue && !anyKnownIssue {
@@ -176,7 +202,19 @@ func checkSheets(manifestDir, featureRoots string) []string {
 		}
 	}
 
+	sheetOf := map[string]string{}
+	for _, m := range manifests {
+		for _, e := range m.Scenarios {
+			sheetOf[e.ID] = m.Sheet
+		}
+	}
+
 	for path, f := range features {
+		for _, code := range sheetsTagged(f, sheetOf) {
+			if !slices.Contains(f.featureTags, code) {
+				issues = append(issues, fmt.Sprintf("%s: the feature carries sheet IDs of %s, so it must be tagged @%s", path, code, code))
+			}
+		}
 		for _, tag := range f.featureTags {
 			if sheet.IsID(tag) {
 				issues = append(issues, fmt.Sprintf("%s: sheet ID @%s must be tagged on each scenario, not on the feature or rule", path, tag))
@@ -199,6 +237,10 @@ func checkSheets(manifestDir, featureRoots string) []string {
 				}
 			}
 			if len(s.checks) == 0 {
+				// A journey's checks are what attribute a failure to one of its IDs.
+				if layer == sheet.LayerUI && len(ids) > 1 {
+					issues = append(issues, fmt.Sprintf("%s covers %d sheet IDs but has no `sheet check` steps", at, len(ids)))
+				}
 				continue
 			}
 			if len(ids) == 0 {
@@ -227,15 +269,18 @@ func checkSheets(manifestDir, featureRoots string) []string {
 
 // checkSheetRef validates one manifest ref and reports whether its scenario is tagged
 // @known-issue.
-func checkSheetRef(manifest, id string, layer sheet.Layer, status sheet.CoverageStatus, ref sheet.Ref, features map[string]parsedFeature) ([]string, bool) {
+func checkSheetRef(manifest, id string, layer sheet.Layer, status sheet.CoverageStatus, ref sheet.Ref, features map[string]parsedFeature, enrolled map[string]bool) ([]string, bool) {
 	at := fmt.Sprintf("%s: %s %s ref %s / %q", manifest, id, layer, ref.Feature, ref.Scenario)
-	path := filepath.ToSlash(filepath.Clean(ref.Feature))
+	path := featureKey(ref.Feature)
 	if layerOf(path) != layer {
 		return []string{fmt.Sprintf("%s: a %s ref must point into suites/%s", at, layer, layer)}, false
 	}
 	f, ok := features[path]
 	if !ok {
 		return []string{fmt.Sprintf("%s: feature file not found in the checked feature roots", at)}, false
+	}
+	if enrolled != nil && !enrolled[path] {
+		return []string{fmt.Sprintf("%s: no runner in the checked suites runs this feature", at)}, false
 	}
 	for _, s := range f.scenarios {
 		if s.name != ref.Scenario {
@@ -253,4 +298,57 @@ func checkSheetRef(manifest, id string, layer sheet.Layer, status sheet.Coverage
 		return issues, knownIssue
 	}
 	return []string{fmt.Sprintf("%s: no scenario with that name in the feature", at)}, false
+}
+
+// sheetsTagged returns the sheet codes whose IDs the feature's scenarios carry.
+func sheetsTagged(f parsedFeature, sheetOf map[string]string) []string {
+	var codes []string
+	for _, s := range f.scenarios {
+		for _, id := range sheet.IDsFromTags(s.tags) {
+			if code, ok := sheetOf[id]; ok && !slices.Contains(codes, code) {
+				codes = append(codes, code)
+			}
+		}
+	}
+	return codes
+}
+
+// enrolledFeatures returns the features the suites' runners run, keyed like featureKey, or
+// nil when no suites are given. A runner's feature paths are relative to its suite file.
+func enrolledFeatures(suites string) (map[string]bool, []string) {
+	if strings.TrimSpace(suites) == "" {
+		return nil, nil
+	}
+	enrolled := map[string]bool{}
+	var issues []string
+	for raw := range strings.SplitSeq(suites, ",") {
+		path := strings.TrimSpace(raw)
+		if path == "" {
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			issues = append(issues, fmt.Sprintf("%s: read suite YAML: %v", path, err))
+			continue
+		}
+		var suite struct {
+			Blocks []struct {
+				Runners []struct {
+					Features []string `yaml:"features"`
+				} `yaml:"runners"`
+			} `yaml:"blocks"`
+		}
+		if err := yaml.Unmarshal(data, &suite); err != nil {
+			issues = append(issues, fmt.Sprintf("%s: parse suite YAML: %v", path, err))
+			continue
+		}
+		for _, block := range suite.Blocks {
+			for _, runner := range block.Runners {
+				for _, feature := range runner.Features {
+					enrolled[featureKey(filepath.Join(filepath.Dir(path), feature))] = true
+				}
+			}
+		}
+	}
+	return enrolled, issues
 }

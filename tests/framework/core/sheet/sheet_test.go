@@ -474,8 +474,87 @@ func TestLoadManifestsRejectsEmptyDirAndCrossFileDuplicates(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeManifest(t, dir, "a.yaml", validManifest)
-	writeManifest(t, dir, "b.yaml", strings.Replace(validManifest, "title: LLM Providers and Proxies", "title: copy", 1))
-	if _, err := LoadManifests(dir); err == nil {
-		t.Fatal("an ID listed in two manifests should fail")
+	writeManifest(t, dir, "b.yaml", strings.Replace(validManifest, "sheet: AIW-LLM", "sheet: AIW-OTHER", 1))
+	if _, err := LoadManifests(dir); err == nil || !strings.Contains(err.Error(), "is listed in both") {
+		t.Fatalf("an ID listed in two manifests should fail, got %v", err)
+	}
+
+	same := t.TempDir()
+	writeManifest(t, same, "a.yaml", validManifest)
+	writeManifest(t, same, "b.yaml", strings.ReplaceAll(validManifest, "AIW-PRV-", "AIW-PRX-"))
+	if _, err := LoadManifests(same); err == nil || !strings.Contains(err.Error(), "keep one manifest per sheet") {
+		t.Fatalf("two manifests for one sheet should fail, got %v", err)
+	}
+}
+
+func TestDuplicateTaggedScenarioRecordsItsIDsAsFailed(t *testing.T) {
+	rec, _ := runFeature(t, `Feature: f
+  @AIW-PRV-001 @AIW-PRV-002 @AIW-PRV-001
+  Scenario: twice
+    Given a step passes
+`)
+	got := byID(rec.Results())
+	for _, id := range []string{"AIW-PRV-001", "AIW-PRV-002"} {
+		r, ok := got["twice|"+id]
+		if !ok || r.Status != Failed || !strings.Contains(r.Error, "more than once") {
+			t.Fatalf("%s = %+v, want a failed result naming the duplicate tag", id, r)
+		}
+	}
+	if len(rec.Results()) != 2 {
+		t.Fatalf("results = %+v, want one per unique ID", rec.Results())
+	}
+}
+
+func TestSinkRefusesToClearUnrelatedFiles(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSink(root); err == nil || !strings.Contains(err.Error(), "refusing to clear") {
+		t.Fatalf("NewSink over unrelated files = %v, want a refusal", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "notes.txt")); err != nil {
+		t.Fatalf("the unrelated file must survive: %v", err)
+	}
+
+	nested := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(nested, "block", "deeper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSink(nested); err == nil {
+		t.Fatal("a block directory holding more than reports should be refused")
+	}
+
+	// A sink's own root, marker included, is cleared on the next run.
+	own := filepath.Join(t.TempDir(), "results")
+	sink, err := NewSink(own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sink.Write(Report{Block: "b", Runner: "r", Results: []Result{{ID: "AIW-PRV-001"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(own, "extra.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSink(own); err != nil {
+		t.Fatalf("a marked sink root should be cleared, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(own, "extra.txt")); !os.IsNotExist(err) {
+		t.Fatalf("the marked root should have been emptied, stat = %v", err)
+	}
+}
+
+func TestSinkRejectsRunnersThatMapToOneReport(t *testing.T) {
+	sink, err := NewSink(filepath.Join(t.TempDir(), "results"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sink.Write(Report{Block: "b", Runner: "a/b", Results: []Result{{ID: "AIW-PRV-001"}}}); err != nil {
+		t.Fatal(err)
+	}
+	err = sink.Write(Report{Block: "b", Runner: "a_b", Results: []Result{{ID: "AIW-PRV-002"}}})
+	if err == nil || !strings.Contains(err.Error(), "maps to the same file") {
+		t.Fatalf("a second runner mapping to the same report = %v, want a refusal", err)
 	}
 }

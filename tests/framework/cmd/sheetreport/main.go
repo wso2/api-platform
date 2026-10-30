@@ -22,10 +22,13 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"sort"
 	"strings"
@@ -104,7 +107,11 @@ func loadResults(spec string) (map[sheet.Layer]map[string][]sheet.Result, error)
 			return nil, fmt.Errorf("-results entry %q must be ui=<dir> or it=<dir>", pair)
 		}
 		index := map[string][]sheet.Result{}
-		if _, err := os.Stat(dir); err == nil {
+		_, statErr := os.Stat(dir)
+		if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+			return nil, fmt.Errorf("reading %s results: %w", layer, statErr)
+		}
+		if statErr == nil {
 			reports, err := sheet.ReadReports(dir)
 			if err != nil {
 				return nil, err
@@ -187,11 +194,17 @@ func cell(s string) string {
 	return s
 }
 
+// untested reports whether a layer has no test by design or not yet: a planned or exempt
+// layer that did not run is not a missing result.
+func untested(r row) bool {
+	return r.Result == notRun && (r.Coverage == sheet.Planned || r.Coverage == sheet.Exempt)
+}
+
 func writeMarkdown(w io.Writer, rows []row, leg string) error {
+	bw := bufio.NewWriter(w)
 	counts := map[string]int{}
 	for _, r := range rows {
-		// A planned ID has no test to run, so it is not counted as "not run".
-		if r.Result != "" && !(r.Result == notRun && r.Coverage == sheet.Planned) {
+		if r.Result != "" && !untested(r) {
 			counts[r.Result]++
 		}
 		counts["coverage:"+string(r.Coverage)]++
@@ -200,19 +213,20 @@ func writeMarkdown(w io.Writer, rows []row, leg string) error {
 	if leg != "" {
 		title += " (" + leg + ")"
 	}
-	fmt.Fprintf(w, "### %s\n\n", title)
-	fmt.Fprintf(w, "Run: %d passed, %d failed, %d not reached, %d not run. Coverage: %d automated, %d known-issue, %d exempt, %d planned.\n\n",
+	fmt.Fprintf(bw, "### %s\n\n", title)
+	fmt.Fprintf(bw, "Run: %d passed, %d failed, %d not reached, %d not run. Coverage: %d automated, %d known-issue, %d exempt, %d planned.\n\n",
 		counts[string(sheet.Passed)], counts[string(sheet.Failed)], counts[string(sheet.NotReached)], counts[notRun],
 		counts["coverage:automated"], counts["coverage:known-issue"], counts["coverage:exempt"], counts["coverage:planned"])
-	fmt.Fprintln(w, "| ID | Layer | Coverage | Result | Failed step | Error |")
-	fmt.Fprintln(w, "|---|---|---|---|---|---|")
+	fmt.Fprintln(bw, "| ID | Layer | Coverage | Result | Failed step | Error |")
+	fmt.Fprintln(bw, "|---|---|---|---|---|---|")
 	for _, r := range rows {
-		// Only layers that ran, and nothing for IDs no test exists for yet.
-		if r.Result == "" || (r.Coverage == sheet.Planned && r.Result == notRun) {
+		// Only layers that ran, and nothing for IDs that have no test.
+		if r.Result == "" || untested(r) {
 			continue
 		}
-		fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(bw, "| %s | %s | %s | %s | %s | %s |\n",
 			r.ID, r.Layer, r.Coverage, cell(r.Result), cell(r.Step), cell(r.Error))
 	}
-	return nil
+	// A buffered writer keeps the first write error and returns it here.
+	return bw.Flush()
 }

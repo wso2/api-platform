@@ -21,8 +21,10 @@ package sheet
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -192,7 +194,16 @@ func (r *Recorder) Bind(sc *godog.ScenarioContext) {
 		seen := map[string]bool{}
 		for _, id := range ids {
 			if seen[id] {
-				return ctx, fmt.Errorf("sheet: scenario %q is tagged @%s more than once", pickle.Name, id)
+				err := fmt.Errorf("sheet: scenario %q is tagged @%s more than once", pickle.Name, id)
+				// The scenario never runs, so its IDs are failed here rather than left unreported.
+				r.mu.Lock()
+				for unique := range seen {
+					r.results = append(r.results, Result{
+						ID: unique, Status: Failed, Scenario: pickle.Name, Feature: pickle.Uri, Error: err.Error(),
+					})
+				}
+				r.mu.Unlock()
+				return ctx, err
 			}
 			seen[id] = true
 		}
@@ -299,8 +310,12 @@ type Sink struct {
 	root string
 }
 
+// sinkMarker marks a directory as a sink root, which NewSink may empty.
+const sinkMarker = ".sheet-results"
+
 // NewSink empties root and returns a sink writing into it, so one run's reports are
-// never merged with an earlier run's.
+// never merged with an earlier run's. It refuses to empty a directory that holds anything
+// other than sheet reports, so a mistaken root never loses unrelated files.
 func NewSink(root string) (*Sink, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, fmt.Errorf("sheet: the sink needs a root directory")
@@ -309,13 +324,55 @@ func NewSink(root string) (*Sink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sheet: resolving sink root %q: %w", root, err)
 	}
+	owned, err := holdsOnlyReports(abs)
+	if err != nil {
+		return nil, fmt.Errorf("sheet: inspecting sink root %q: %w", abs, err)
+	}
+	if !owned {
+		return nil, fmt.Errorf("sheet: refusing to clear %q: it holds files other than sheet reports", abs)
+	}
 	if err := os.RemoveAll(abs); err != nil {
 		return nil, fmt.Errorf("sheet: clearing sink root %q: %w", abs, err)
 	}
 	if err := os.MkdirAll(abs, 0o755); err != nil {
 		return nil, fmt.Errorf("sheet: creating sink root %q: %w", abs, err)
 	}
+	if err := os.WriteFile(filepath.Join(abs, sinkMarker), nil, 0o644); err != nil {
+		return nil, fmt.Errorf("sheet: marking sink root %q: %w", abs, err)
+	}
 	return &Sink{root: abs}, nil
+}
+
+// holdsOnlyReports reports whether root is absent, carries the sink marker, or holds nothing
+// but the sink's own layout: block directories of .json reports.
+func holdsOnlyReports(root string) (bool, error) {
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.Name() == sinkMarker && entry.Type().IsRegular() {
+			return true, nil
+		}
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			return false, nil
+		}
+		reports, err := os.ReadDir(filepath.Join(root, entry.Name()))
+		if err != nil {
+			return false, err
+		}
+		for _, report := range reports {
+			if !report.Type().IsRegular() || filepath.Ext(report.Name()) != ".json" {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
 }
 
 // Root returns the sink's absolute root directory.
@@ -344,10 +401,20 @@ func (s *Sink) Write(report Report) error {
 		return fmt.Errorf("sheet: encoding report for %s/%s: %w", report.Block, report.Runner, err)
 	}
 	path := filepath.Join(dir, safeName(report.Runner)+".json")
-	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+	// Exclusive create: runners whose names map to one file name must not replace each other.
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("sheet: report %q already written this run; runner %q maps to the same file as another runner in block %q",
+			path, report.Runner, report.Block)
+	}
+	if err != nil {
 		return fmt.Errorf("sheet: writing report %q: %w", path, err)
 	}
-	return nil
+	if _, err := file.Write(append(data, '\n')); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sheet: writing report %q: %w", path, err)
+	}
+	return file.Close()
 }
 
 // ReadReports loads every runner report beneath root.

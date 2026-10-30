@@ -132,12 +132,36 @@ func TestRunWritesMarkdownAndOmitsUnrunLayers(t *testing.T) {
 	require.NotContains(t, md, "| AIW-PRV-001 | it |", "a layer outside this run has no rows")
 }
 
+func TestMarkdownLeavesExemptLayersOutOfNotRun(t *testing.T) {
+	cov, ui, _ := fixture(t)
+	it := t.TempDir() // the IT layer ran, but AIW-PRV-002's IT layer is exempt
+	out := filepath.Join(t.TempDir(), "summary.md")
+	require.NoError(t, run(cov, "ui="+ui+",it="+it, "", "markdown", out))
+	data, err := os.ReadFile(out)
+	require.NoError(t, err)
+	md := string(data)
+	require.Contains(t, md, "1 not run.", "only AIW-PRV-001's automated IT layer is missing a result")
+	require.NotContains(t, md, "| AIW-PRV-002 | it |", "an exempt layer has no test, so it has no row")
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, os.ErrClosed }
+
+func TestWriteMarkdownReturnsWriteErrors(t *testing.T) {
+	require.ErrorIs(t, writeMarkdown(failingWriter{}, []row{{ID: "AIW-PRV-001", Result: "passed"}}, ""), os.ErrClosed)
+}
+
 func TestRunRejectsBadInput(t *testing.T) {
 	cov, ui, _ := fixture(t)
 	require.Error(t, run(t.TempDir(), "", "", "csv", ""), "no manifests")
 	require.Error(t, run(cov, "web="+ui, "", "csv", ""), "unknown layer")
 	require.Error(t, run(cov, "ui", "", "csv", ""), "missing dir")
 	require.Error(t, run(cov, "ui="+ui, "", "xml", ""), "unknown format")
+	notADir := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(notADir, nil, 0o600))
+	require.Error(t, run(cov, "ui="+filepath.Join(notADir, "results"), "", "csv", ""),
+		"a results path that cannot be read is an error, not an empty layer")
 	require.Error(t, run(cov, "ui="+ui, "", "csv", filepath.Join(t.TempDir(), "no", "such", "file.csv")))
 	require.NoError(t, os.WriteFile(filepath.Join(ui, "bad.json"), []byte("{"), 0o600))
 	require.Error(t, run(cov, "ui="+ui, "", "csv", ""), "malformed report")

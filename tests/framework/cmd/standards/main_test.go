@@ -341,7 +341,8 @@ Feature: Providers
     Given nothing
 `
 
-const sheetITFeature = `Feature: Providers API
+const sheetITFeature = `@AIW-LLM
+Feature: Providers API
   @AIW-PRV-001 @type:smoke
   Scenario: Create a provider
     Given something
@@ -358,8 +359,8 @@ const sheetITFeature = `Feature: Providers API
 
 func TestCheckSheetsAcceptsConsistentManifest(t *testing.T) {
 	cov, roots := writeSheetFixture(t, sheetManifest, sheetUIFeature, sheetITFeature)
-	require.Empty(t, checkSheets(cov, roots))
-	require.Empty(t, checkSheets("", roots))
+	require.Empty(t, checkSheets(cov, roots, ""))
+	require.Empty(t, checkSheets("", roots, ""))
 }
 
 func TestCheckSheetsReportsDrift(t *testing.T) {
@@ -381,6 +382,10 @@ func TestCheckSheetsReportsDrift(t *testing.T) {
 		{"ref scenario lacks tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@type:smoke", 1), "is not tagged @AIW-PRV-001"},
 		{"known-issue without tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-002 @known-issue", "@AIW-PRV-002", 1), "needs at least one referenced scenario tagged @known-issue"},
 		{"automated but known-issue", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@AIW-PRV-001 @known-issue", 1), "its status must be known-issue"},
+		{"journey without checks", sheetManifest, strings.NewReplacer("    * sheet check \"AIW-PRV-002\"\n", "", "    * sheet check \"AIW-PRV-001\"\n", "").Replace(sheetUIFeature), sheetITFeature, "covers 2 sheet IDs but has no `sheet check` steps"},
+		{"feature without its sheet tag", sheetManifest, sheetUIFeature, strings.Replace(sheetITFeature, "@AIW-LLM\n", "", 1), "must be tagged @AIW-LLM"},
+		{"check inside a doc string", sheetManifest, strings.Replace(sheetUIFeature, "    * sheet check \"AIW-PRV-001\"\n", "    Given a body:\n      \"\"\"\n      * sheet check \"AIW-PRV-001\"\n      \"\"\"\n", 1), sheetITFeature, `has no ` + "`sheet check" + ` "AIW-PRV-001"`},
+		{"known-issue tag above Examples", sheetManifest, sheetUIFeature, strings.NewReplacer("@AIW-PRV-002 @known-issue", "@AIW-PRV-002", "@AIW-NOT-TAGGEDHERE", "@known-issue").Replace(sheetITFeature), ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -388,10 +393,39 @@ func TestCheckSheetsReportsDrift(t *testing.T) {
 			if tc.manifest == "" {
 				require.NoError(t, os.Remove(filepath.Join(cov, "AIW-LLM.yaml")))
 			}
-			issues := strings.Join(checkSheets(cov, roots), "\n")
+			issues := strings.Join(checkSheets(cov, roots, ""), "\n")
+			if tc.want == "" {
+				require.Empty(t, issues)
+				return
+			}
 			require.Contains(t, issues, tc.want)
 		})
 	}
+}
+
+func TestCheckSheetsMatchesAbsoluteRootsToRelativeRefs(t *testing.T) {
+	cov, roots := writeSheetFixture(t, sheetManifest, sheetUIFeature, sheetITFeature)
+	// The fixture's refs are absolute; relative roots must name the same files.
+	t.Chdir(filepath.Dir(cov))
+	relative := strings.NewReplacer(filepath.Dir(cov)+string(filepath.Separator), "").Replace(roots)
+	require.Empty(t, checkSheets(cov, relative, ""))
+}
+
+func TestCheckSheetsRequiresEnrolledFeatures(t *testing.T) {
+	cov, roots := writeSheetFixture(t, sheetManifest, sheetUIFeature, sheetITFeature)
+	root := filepath.Dir(cov)
+	suite := func(layer, body string) string {
+		path := filepath.Join(root, "suites", layer, layer+"-suite.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+		return path
+	}
+	runs := "blocks:\n  - name: b\n    runners:\n      - name: r\n        features:\n          - features/create.feature\n"
+	suites := suite("ui", runs) + "," + suite("it", runs)
+	require.Empty(t, checkSheets(cov, roots, suites))
+
+	suites = suite("ui", runs) + "," + suite("it", "blocks:\n  - name: b\n    runners: []\n")
+	require.Contains(t, strings.Join(checkSheets(cov, roots, suites), "\n"), "no runner in the checked suites runs this feature")
+	require.Contains(t, strings.Join(checkSheets(cov, roots, filepath.Join(root, "missing.yaml")), "\n"), "read suite YAML")
 }
 
 func TestCheckSheetsAcceptsKnownIssueAlongsidePassingRefs(t *testing.T) {
@@ -404,7 +438,7 @@ func TestCheckSheetsAcceptsKnownIssueAlongsidePassingRefs(t *testing.T) {
 `, 1)
 	it := strings.Replace(sheetITFeature, "@AIW-PRV-001 @type:smoke", "@AIW-PRV-001 @AIW-PRV-002 @type:smoke", 1)
 	cov, roots := writeSheetFixture(t, manifest, sheetUIFeature, it)
-	require.Empty(t, checkSheets(cov, roots))
+	require.Empty(t, checkSheets(cov, roots, ""))
 }
 
 func TestParseFeatureFileHandlesTagsRulesAndComments(t *testing.T) {
@@ -416,6 +450,14 @@ func TestParseFeatureFileHandlesTagsRulesAndComments(t *testing.T) {
 	require.Equal(t, []string{"f1", "r1"}, f.featureTags)
 	require.Len(t, f.scenarios, 1)
 	require.Equal(t, []string{"s1", "s2"}, f.scenarios[0].tags)
+	require.Equal(t, []string{"AIW-PRV-001"}, f.scenarios[0].checks)
+
+	docString := filepath.Join(t.TempDir(), "doc.feature")
+	require.NoError(t, os.WriteFile(docString, []byte("Feature: x\n  @s\n  Scenario: one\n    Given a body:\n      ```\n      Scenario: not a scenario\n      @not-a-tag\n      ```\n    * sheet check \"AIW-PRV-001\"\n"), 0o600))
+	f, err = parseFeatureFile(docString)
+	require.NoError(t, err)
+	require.Len(t, f.scenarios, 1, "a doc string's content is not Gherkin")
+	require.Equal(t, []string{"s"}, f.scenarios[0].tags)
 	require.Equal(t, []string{"AIW-PRV-001"}, f.scenarios[0].checks)
 	_, err = parseFeatureFile(filepath.Join(t.TempDir(), "missing.feature"))
 	require.Error(t, err)

@@ -82,7 +82,7 @@ func main() {
 	issues = append(issues, checkCleanupRegistration(*steps)...)
 	issues = append(issues, checkDependencies(*steps, splitRoots(*approvedImports))...)
 	issues = append(issues, checkDocumentation(*docs)...)
-	issues = append(issues, checkSheets(*sheets, *sheetFeatures)...)
+	issues = append(issues, checkSheets(*sheets, *sheetFeatures, *suites)...)
 	sort.Strings(issues)
 	for _, issue := range issues {
 		fmt.Fprintln(os.Stderr, issue)
