@@ -23,10 +23,11 @@ const DEFAULT_SELF_HOSTED_DESCRIPTION = 'Default API Platform Self-Hosted Gatewa
 
 /**
  * platform-api's native create needs at least one endpoint, and a self-hosted
- * gateway has none until its own controller dials in. This is the local
- * default listener address it will come up on.
+ * gateway has none until its own controller dials in. Must match the Gateways
+ * plugin's placeholder (`PENDING_ENDPOINT` in its `selfHostedGatewaysApi`), which
+ * hides it from the gateway's displayed URL.
  */
-const PENDING_ENDPOINT = 'localhost:8443';
+export const PENDING_ENDPOINT = 'pending://awaiting-connection';
 
 /** The gateways table's handle column holds 40 characters. */
 const MAX_HANDLE_LENGTH = 40;

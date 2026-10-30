@@ -304,15 +304,11 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     );
   }
 
-  if (view === 'view') {
-    const viewedGateway = visibleGateways.find((gateway) => gateway.id === viewingGatewayId);
-    if (!viewedGateway) {
-      // The gateway behind this id is gone (deleted elsewhere, or a stale
-      // link) — fall back to the list rather than rendering an overview for
-      // nothing.
-      setView('list');
-      return null;
-    }
+  // A viewed gateway that is gone (deleted elsewhere, or a stale link) falls
+  // through to the list below rather than rendering an overview for nothing.
+  const viewedGateway =
+    view === 'view' ? visibleGateways.find((gateway) => gateway.id === viewingGatewayId) : undefined;
+  if (viewedGateway) {
     const environmentNames = new Map(environments.map((environment) => [environment.id, environment.name]));
     return (
       <GatewayOverview

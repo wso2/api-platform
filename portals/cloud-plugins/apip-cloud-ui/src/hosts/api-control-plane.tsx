@@ -217,7 +217,12 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         render: (port) => (
           <GatewaysFeature
             gatewayTypes={API_GATEWAY_TYPES}
-            port={{ ...port, gatewayVersions: API_GATEWAY_VERSIONS }}
+            port={{
+              ...port,
+              gatewayVersions: API_GATEWAY_VERSIONS,
+              // The host names it `gatewayControlPlaneHost`; the plugin's port calls it `controlPlaneHost`.
+              controlPlaneHost: port.gatewayControlPlaneHost,
+            }}
           />
         ),
         label: 'Gateways',

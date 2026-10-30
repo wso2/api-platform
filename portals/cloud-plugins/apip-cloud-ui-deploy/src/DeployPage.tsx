@@ -33,7 +33,6 @@ export type DeployPageProps = {
   builds: Build[];
   /** Display name of the API, shown when there is no gateway to deploy to. */
   apiName: string;
-  /** Starts adding a gateway: a self-hosted one, or the WSO2 managed demo gateway. */
   /** Creates the self-hosted gateway in the named environment. */
   onAddGateway: (environment: string) => void;
   /** Creates the managed gateway in the named environment. */

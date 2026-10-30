@@ -21,13 +21,6 @@ import {
   Box,
   Button,
   Card,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
-  Radio,
-  RadioGroup,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Cloud, Server } from '@wso2/oxygen-ui-icons-react';
@@ -51,9 +44,9 @@ export type NoGatewayStateProps = {
   apiName: string;
   /** The pipeline's environments, none of which has a gateway yet. */
   environments: string[];
-  /** Creates the self-hosted gateway in the chosen environment. */
+  /** Creates the self-hosted gateway in the first environment. */
   onAddSelfHosted: (environment: string) => void;
-  /** Creates the managed gateway in the chosen environment. */
+  /** Creates the managed gateway in the first environment. */
   onAddCloud: (environment: string) => void;
   /** Set while the managed gateway is being created and until it is active. */
   provisioning?: { startedAt: number; environment: string };
@@ -327,21 +320,13 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({
   provisioning,
   selfHostedPending,
 }) => {
-  // Which kind of gateway the environment picker is choosing for; null when closed.
-  const [picking, setPicking] = useState<'cloud' | 'self-hosted' | null>(null);
-  const [selected, setSelected] = useState('');
-
-  const create = (kind: 'cloud' | 'self-hosted', environment: string) =>
-    kind === 'cloud' ? onAddCloud(environment) : onAddSelfHosted(environment);
-
-  // One environment needs no question; several ask which one gets the gateway.
+  // The gateway always goes into the first environment of the pipeline; there is
+  // no question to answer, however many environments the project has.
   const handleAdd = (kind: 'cloud' | 'self-hosted') => {
-    if (environments.length === 1) {
-      create(kind, environments[0]);
-      return;
-    }
-    setSelected(environments[0] ?? '');
-    setPicking(kind);
+    const [environment] = environments;
+    if (!environment) return;
+    if (kind === 'cloud') onAddCloud(environment);
+    else onAddSelfHosted(environment);
   };
 
   return (
@@ -389,33 +374,6 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({
           />
         )}
       </Card>
-
-      <Dialog open={picking !== null} onClose={() => setPicking(null)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontSize: 16, fontWeight: 600 }}>Choose an environment</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            The gateway is created in the environment you pick.
-          </Typography>
-          <RadioGroup value={selected} onChange={(event) => setSelected(event.target.value)}>
-            {environments.map((name) => (
-              <FormControlLabel key={name} value={name} control={<Radio />} label={name} />
-            ))}
-          </RadioGroup>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setPicking(null)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={!selected}
-            onClick={() => {
-              if (picking) create(picking, selected);
-              setPicking(null);
-            }}
-          >
-            Create gateway
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

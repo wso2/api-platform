@@ -49,6 +49,9 @@ export type DeployFeatureProps = {
 /** How often to re-read while a deployment is still settling. */
 const POLL_INTERVAL_MS = 4000;
 
+/** How long a managed gateway may stay in provisioning before the page stops waiting for it. */
+const PROVISIONING_TIMEOUT_MS = 10 * 60 * 1000;
+
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
@@ -243,13 +246,14 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     setSelfHostedPending({ startedAt: Date.now() });
     selfHostedClient
       .createDefaultGateway(environment, version?.version)
-      .then(({ id, token }) => {
-        setSelfHosted({ id, environment, token, version });
-        notify(`Self-hosted gateway "${DEFAULT_SELF_HOSTED_NAME}" registered.`, 'success');
-        return load({ quiet: true });
-      })
-      .catch((createError) =>
-        notify(errorMessage(createError, 'Unable to register the gateway.'), 'error')
+      .then(
+        ({ id, token }) => {
+          setSelfHosted({ id, environment, token, version });
+          notify(`Self-hosted gateway "${DEFAULT_SELF_HOSTED_NAME}" registered.`, 'success');
+          // The gateway exists from here on; a failed refresh must not read as a failed registration.
+          return load({ quiet: true }).catch(() => undefined);
+        },
+        (createError) => notify(errorMessage(createError, 'Unable to register the gateway.'), 'error')
       )
       .finally(() => {
         setBusy(false);
@@ -289,6 +293,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         } else if (mine?.status === 'failed') {
           setProvisioning(null);
           notify(mine.statusReason || 'The gateway could not be created.', 'error');
+        } else if (Date.now() - provisioning.startedAt > PROVISIONING_TIMEOUT_MS) {
+          setProvisioning(null);
+          notify('The gateway is taking longer than expected. Check the Gateways page for its status.', 'warning');
         }
       } catch {
         // A failed read is retried on the next tick.
