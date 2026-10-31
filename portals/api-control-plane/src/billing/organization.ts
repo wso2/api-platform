@@ -26,7 +26,17 @@ const PRODUCT = 'api-platform';
 export type BillingOrganization = {
   subscription?: {
     status?: string;
-    trial?: { days_remaining: number; trial_end: string } | null;
+    trial?: {
+      days_remaining: number;
+      trial_end: string;
+      /**
+       * Full length of the trial in days, as the product is configured. Read
+       * rather than assumed: the badge's progress ring is `elapsed / trial_days`,
+       * and a hardcoded constant here pinned the ring at a full circle for the
+       * first half of every trial.
+       */
+      trial_days?: number;
+    } | null;
   } | null;
 };
 

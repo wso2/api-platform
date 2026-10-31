@@ -17,10 +17,14 @@
  */
 
 import { cloneElement, isValidElement, type ReactNode } from 'react';
+import { useIntl } from 'react-intl';
 import { Tooltip } from '@wso2/oxygen-ui';
 
-import { useActionPermission, useCanAny } from './useCan';
-import type { PermissionOperation } from './evaluate';
+import { useResourceLimits } from '../hooks/useResourceLimits';
+
+import { permissionMessages } from './messages';
+import { usePermissions } from './PermissionContext';
+import { isWriteOperation, type PermissionOperation } from './evaluate';
 
 /**
  * How to render a denied control.
@@ -53,32 +57,56 @@ export type CanProps = {
  * it disabled with a tooltip. For more complex denial states, use
  * `useActionPermission` directly.
  *
+ * It also honours **read-only mode**: when something has reported that the
+ * organization may not write at all, every *write* operation renders disabled
+ * with that explanation, whatever the user's scopes say. Reads are untouched,
+ * so a read-only organization still browses normally. Which operations write is
+ * taken from the spec's own scope map (`isWriteOperation`), not from their
+ * names, so a new write surface is covered the day it is generated rather than
+ * when someone remembers to wrap it.
+ *
+ * That is deliberately here rather than at ~26 call sites: read-only is an
+ * organization-wide fact, and a rule applied by hand to every control is one
+ * that silently misses the twenty-seventh. Nothing reports read-only unless a
+ * supplier is mounted, so this is inert in a standalone build.
+ *
  * This component provides only a UI guard; server-side authorization remains
  * required.
  */
 export function Can({ do: operations, children, denied = 'hide', fallback }: CanProps) {
   const list = Array.isArray(operations) ? operations : [operations];
-  // Both hooks run unconditionally; `useCanAny` gates multi-op checks and
-  // `useActionPermission` supplies the single-op tooltip.
-  const anyAllowed = useCanAny(list);
-  const action = useActionPermission(list[0]);
-  const allowed = list.length > 1 ? anyAllowed : action.allowed;
+  // The raw, scopes-only answer: `useCan*` fold read-only in themselves, and
+  // here it must *disable* rather than deny, so a `denied="hide"` control is
+  // still shown with the explanation instead of vanishing.
+  const { canAny, decide } = usePermissions();
+  const allowed = list.length > 1 ? canAny(list) : decide(list[0]).allowed;
 
-  if (allowed) return <>{children}</>;
-  if (denied === 'hide') return <>{fallback ?? null}</>;
+  // Permission outranks read-only: there is no point explaining that an
+  // organization cannot write to someone who could not perform the operation
+  // anyway, and `denied="hide"` must keep hiding rather than start disabling.
+  const intl = useIntl();
+  const { readOnly, readOnlyMessage } = useResourceLimits();
+  const blockedByReadOnly = allowed && readOnly && list.some(isWriteOperation);
+
+  if (allowed && !blockedByReadOnly) return <>{children}</>;
+  if (!allowed && denied === 'hide') return <>{fallback ?? null}</>;
 
   // `disable` needs a single child so we can clone it with `disabled`.
   // `isValidElement` gives a clearer error than `Children.only`.
   if (!isValidElement(children)) {
     throw new Error(
-      'Can with denied="disable" needs a single element child that accepts a `disabled` prop. ' +
-        'Wrap plain content in a control, or use denied="hide".',
+      'Can needs a single element child that accepts a `disabled` prop in order to ' +
+        'disable it. Wrap plain content in a control, or use denied="hide".',
     );
   }
   const child = children;
 
   return (
-    <Tooltip title={action.tooltip ?? ''}>
+    <Tooltip
+      title={
+        blockedByReadOnly ? readOnlyMessage : intl.formatMessage(permissionMessages.denied)
+      }
+    >
       {/*
         A disabled MUI control sets `pointer-events: none`, so it never fires
         the enter/leave events a Tooltip listens for, the explanation would

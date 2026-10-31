@@ -44,6 +44,12 @@ export { PermissionContext, usePermissions, type PermissionState } from './Permi
 
 export { Can, type CanProps, type DeniedBehaviour } from './Can';
 
+/**
+ * `Can` plus the organization's write access and creation quota. Use it for a
+ * create control; `Can` alone remains right for everything else.
+ */
+export { CanCreate, type CanCreateProps } from './CanCreate';
+
 export { permissionMessages } from './messages';
 
 export {

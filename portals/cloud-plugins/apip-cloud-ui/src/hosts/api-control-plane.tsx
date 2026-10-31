@@ -25,7 +25,10 @@ import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
 import { LogsFeature, MetricsPanel, ScopedLogsNotice } from '@wso2-enterprise/apip-cloud-ui-logs';
 import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
-import { TrialStatusFeature } from '@wso2-enterprise/apip-cloud-ui-trial-status';
+import {
+  EntitlementsGate,
+  TrialStatusFeature,
+} from '@wso2-enterprise/apip-cloud-ui-entitlements';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
@@ -33,6 +36,7 @@ import {
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import {
+  APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
@@ -164,6 +168,11 @@ const observabilityLogsPath = (orgHandle: string) =>
 
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
+    // Entitlements is console-only. The shared `apip-cloud-ui-trial-status`
+    // package still serves AI Workspace unchanged; this console renders the
+    // newer badge from its own package instead, so neither portal constrains
+    // the other. Keeps the slot id `trial-status` so nothing downstream that
+    // selects on it has to change.
     id: 'trial-status',
     version: '0.1.0',
     extensions: [
@@ -172,6 +181,16 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         slot: HEADER_ACTIONS_SLOT,
         order: 10,
         render: (port) => <TrialStatusFeature port={port} />,
+      },
+      {
+        // Headless: supplies the organization's creation limits and read-only
+        // verdict through the Port. Mounted on every in-shell route, and the
+        // only thing that ever calls `resourceLimits.set` — with no cloud
+        // plugin registered the host supplies nothing and stays unrestricted.
+        id: 'entitlements-gate',
+        slot: APP_GATE_SLOT,
+        order: 10,
+        render: (port) => <EntitlementsGate port={port} />,
       },
     ],
   }),
