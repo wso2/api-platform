@@ -112,6 +112,20 @@ blocks:
         features:
           - features/apiportal_billing.feature
 
+  # Management Portal tenant isolation: the console against the real control plane, with a
+  # second organization registered next to the default one, and the browser that drives it.
+  - name: management-portal-tenant
+    parallel: 2
+    components:
+      - name: platform-api
+      - name: api-control-plane
+        dependsOn: [platform-api]
+      - name: browser
+    runners:
+      - name: tenant-isolation
+        features:
+          - features/management_portal/tenant_isolation.feature
+
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai
   # service is the LLM the journeys invoke), and the browser that drives it all — on the
@@ -172,3 +186,28 @@ blocks:
       - name: coverage-branches
         features:
           - features/coverage_branches.feature
+      # Sheet AIW-LLM, provider creation through the browser.
+      - name: aiw-llm-provider-creation
+        features:
+          - features/aiw_llm/provider_creation.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-inspection
+        features:
+          - features/aiw_llm/provider_inspection.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-configuration
+        features:
+          - features/aiw_llm/provider_configuration.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-policies
+        features:
+          - features/aiw_llm/provider_policies.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-templates
+        features:
+          - features/aiw_llm/provider_templates.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-deployment
+        features:
+          - features/aiw_llm/provider_deployment.feature
+        tags: "~@known-issue"

@@ -542,19 +542,26 @@ func TestInternalArtifactID(t *testing.T) {
 		{"artifactId":"uuid-rest","deploymentId":"dep-rest","kind":"RestApi"},
 		{"artifactId":"uuid-agent","deploymentId":"dep-agent","kind":"Agent"},
 		{"artifactId":"","deploymentId":"dep-blank","kind":"Agent"}]}`)}
-	got, err := internalArtifactID(listing, "dep-agent")
+	got, err := internalArtifactID(listing, internalArtifactKinds["Agent proxy"], "dep-agent")
 	require.NoError(t, err)
 	require.Equal(t, "uuid-agent", got)
+	got, err = internalArtifactID(listing, internalArtifactKinds["REST API"], "dep-rest")
+	require.NoError(t, err)
+	require.Equal(t, "uuid-rest", got)
 
-	_, err = internalArtifactID(listing, "dep-rest")
+	_, err = internalArtifactID(listing, "Agent", "dep-rest")
 	require.ErrorContains(t, err, "want Agent", "a control-plane AgentProxy must be listed in the gateway's vocabulary")
-	_, err = internalArtifactID(listing, "dep-blank")
+	_, err = internalArtifactID(listing, "RestApi", "dep-agent")
+	require.ErrorContains(t, err, "want RestApi")
+	_, err = internalArtifactID(listing, "", "dep-agent")
+	require.ErrorContains(t, err, "want ", "an unknown artifact name never matches a listed kind")
+	_, err = internalArtifactID(listing, "Agent", "dep-blank")
 	require.ErrorContains(t, err, "without an artifact id")
-	_, err = internalArtifactID(listing, "dep-missing")
+	_, err = internalArtifactID(listing, "Agent", "dep-missing")
 	require.ErrorContains(t, err, "does not include")
-	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusUnauthorized}, "dep-agent")
+	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusUnauthorized}, "Agent", "dep-agent")
 	require.Error(t, err)
-	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`[`)}, "dep-agent")
+	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`[`)}, "Agent", "dep-agent")
 	require.Error(t, err)
 }
 
@@ -943,7 +950,7 @@ func TestCallHeaders(t *testing.T) {
 func TestCallTokenUsesTheCallsOwnBearer(t *testing.T) {
 	s := &Steps{}
 	for _, token := range []string{"", "garbage"} {
-		got, err := s.callToken(context.Background(), "https://unused.invalid", controlPlaneCall{bearer: &token}, actor.Credentials{})
+		got, err := s.callToken(context.Background(), "https://unused.invalid", controlPlaneCall{bearer: &token})
 		require.NoError(t, err)
 		require.Equal(t, token, got, "an own bearer is used as it is, even when empty, without a login")
 	}

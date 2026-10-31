@@ -23,6 +23,8 @@
 # target platform, so emulating node per-platform costs minutes and buys
 # nothing.
 FROM --platform=$BUILDPLATFORM node:24-alpine AS web
+# Off by default; the test framework turns it on to collect browser coverage.
+ARG ENABLE_COVERAGE=false
 WORKDIR /app
 
 # Separate dependency install for better layer caching.
@@ -30,7 +32,11 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
 COPY . .
-RUN VITE_APP_BASE_PATH=/ npm run build
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        NODE_OPTIONS=--max-old-space-size=8192 VITE_COVERAGE=true VITE_APP_BASE_PATH=/ npm run build -- --sourcemap hidden; \
+    else \
+        VITE_APP_BASE_PATH=/ npm run build; \
+    fi
 
 ###########################
 # Stage 2 — BFF build     #
@@ -45,6 +51,9 @@ RUN VITE_APP_BASE_PATH=/ npm run build
 FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS bff
 ARG TARGETOS
 ARG TARGETARCH
+# Off by default; the test framework turns it on to collect BFF coverage.
+ARG ENABLE_COVERAGE=false
+ARG COVERAGE_PACKAGES=""
 
 # The BFF depends on the shared httpkit module (guarded HTTP client, netguard)
 # via a relative replace directive, so the module tree is reproduced under /src
@@ -63,8 +72,13 @@ RUN go mod download
 
 COPY --from=httpkit . /src/httpkit
 COPY bff/ ./
-RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w" -o /bff .
+RUN COVER_FLAGS=""; \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        COVER_FLAGS="-cover -covermode=atomic"; \
+        if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
+    fi; \
+    GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build $COVER_FLAGS -trimpath -ldflags "-s -w" -o /bff .
 
 ###########################
 # Stage 3 — Runtime       #
@@ -74,6 +88,7 @@ FROM alpine:3.24
 ARG USERNAME=apicontrolplane
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
+ARG ENABLE_COVERAGE=false
 
 RUN addgroup -g $USER_GID $USERNAME && \
     adduser -D -u $USER_UID -G $USERNAME $USERNAME && \
@@ -85,6 +100,9 @@ WORKDIR /app
 # Built SPA (served by the BFF as static files) and the BFF binary.
 COPY --chown=$USER_UID:$USER_GID --from=web /app/build /app
 COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
+
+# A coverage build writes its counters here, through GOCOVERDIR set by the test framework.
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:$USER_GID" /coverage; fi
 
 USER $USER_UID
 

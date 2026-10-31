@@ -1,0 +1,8 @@
+displayName: ${VALUE:displayName}
+version: v1.0
+template: ${VALUE:template}
+upstream:
+  main:
+    url: ${VALUE:upstreamUrl}
+accessControl:
+  mode: allow_all

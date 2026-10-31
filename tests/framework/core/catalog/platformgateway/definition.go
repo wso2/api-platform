@@ -19,6 +19,9 @@
 package platformgateway
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
@@ -149,6 +152,35 @@ type PlatformGatewayWiring struct {
 	// SigningKeys gives the runtime the fixed integration-test signing keys at
 	// /secrets/gateway-runtime/signing. The block's overlay configures them under [signing].
 	SigningKeys bool `yaml:"signingKeys"`
+	// SecondOrganizationReplicas lists the replicas, numbered from 1 as in platform-gateway#2,
+	// that register in the control plane's second organization instead of the default one.
+	SecondOrganizationReplicas []int `yaml:"secondOrganizationReplicas"`
+}
+
+// InSecondOrganization reports whether the gateway instance labelled dependent registers in
+// the control plane's second organization.
+func (w *PlatformGatewayWiring) InSecondOrganization(dependent string) bool {
+	replica := "1"
+	if _, number, found := strings.Cut(dependent, "#"); found {
+		replica = number
+	}
+	for _, listed := range w.SecondOrganizationReplicas {
+		if strconv.Itoa(listed) == replica {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidateReplicas rejects a second-organization replica the block does not run, which would
+// otherwise leave the second organization without its gateway.
+func (w *PlatformGatewayWiring) ValidateReplicas(replicas int) error {
+	for _, replica := range w.SecondOrganizationReplicas {
+		if replica > replicas {
+			return fmt.Errorf("secondOrganizationReplicas: replica %d exceeds the block's %d replica(s)", replica, replicas)
+		}
+	}
+	return nil
 }
 
 // gatewayGeneratedFiles returns the key material every gateway stack mounts. It is generated

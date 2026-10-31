@@ -22,15 +22,19 @@ package steps
 
 import (
 	"context"
+	"strings"
 
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/sheet"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/aiworkspace"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/apiportal"
+	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/managementportal"
+	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/uivalue"
 )
 
 // assertTimeoutMs bounds every web-first assertion. Generous over a fresh SPA load,
@@ -58,6 +62,10 @@ func New(topo *frameworkruntime.Topology, coverageSink *coverage.Sink) *UI {
 // Register wires the browser lifecycle and every step this suite provides.
 func (u *UI) Register(sc *godog.ScenarioContext) {
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+		// Runner-scoped state outlives a scenario; a sensitive page in one scenario must not
+		// suppress the failure evidence of the next.
+		tcontext.Remove(ctx, keySensitiveArtifacts)
+		ctx = uivalue.WithExpansionState(ctx)
 		ctx, err := u.openScenarioPage(ctx)
 		if err != nil {
 			return ctx, err
@@ -75,7 +83,8 @@ func (u *UI) Register(sc *godog.ScenarioContext) {
 	})
 	sc.After(func(ctx context.Context, scn *godog.Scenario, scenarioErr error) (context.Context, error) {
 		if scenarioErr != nil {
-			name := artifactBaseName(scn.Name)
+			// Lead with the sheet ID whose checks failed, so a journey's evidence names it.
+			name := artifactBaseName(strings.TrimSpace(sheet.FailedID(ctx) + " " + scn.Name))
 			u.saveFailureArtifacts(ctx, name)
 			u.stopTracing(ctx, name, true)
 		} else {
@@ -92,6 +101,8 @@ func (u *UI) Register(sc *godog.ScenarioContext) {
 	})
 
 	apiportal.New(u.topo, u.expect, u.page).Register(sc)
+
+	managementportal.New(u.topo, u.expect, u.page).Register(sc)
 
 	aiworkspace.New(u.topo, u.expect, u.page, markSensitiveArtifacts, u.browserFor,
 		u.closeScenarioPage, newAppPage, u.coverageSink != nil).Register(sc)

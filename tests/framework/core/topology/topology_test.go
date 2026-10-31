@@ -21,6 +21,7 @@ package topology
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2941,4 +2942,39 @@ func TestGatewayVersionLatestPullsPublishedImagesWithTheCurrentContract(t *testi
 		require.Equal(t, "legacy", selected.SkippedRunners[0].Runner)
 		require.Contains(t, selected.SkippedRunners[0].Reason, "current source build")
 	}
+}
+
+// replicaWiring names replicas, so the loader checks it against the block's replica count.
+type replicaWiring struct {
+	Replica int `yaml:"replica"`
+}
+
+func (w *replicaWiring) ValidateReplicas(replicas int) error {
+	if w.Replica > replicas {
+		return fmt.Errorf("replica %d is not run", w.Replica)
+	}
+	return nil
+}
+
+func TestWiringIsCheckedAgainstTheReplicaCount(t *testing.T) {
+	registry := components.NewRegistry()
+	require.NoError(t, registry.Register(&components.Definition{
+		Name: "replicated", Image: components.ImageRef{Ref: "r:test"}, Alias: "replicated",
+		Endpoints: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+		Wiring:    components.TypedWiring[replicaWiring](),
+	}))
+	block := func(replicas, replica int) []byte {
+		return []byte(fmt.Sprintf(`
+suite: s
+blocks:
+  - name: b
+    components: [{name: replicated, replicas: %d}]
+    wiring: {replicated: {replica: %d}}
+    runners: [{name: r, features: [f.feature]}]
+`, replicas, replica))
+	}
+	_, err := Load(block(2, 2), registry)
+	require.NoError(t, err)
+	_, err = Load(block(2, 3), registry)
+	require.ErrorContains(t, err, `component "replicated" wiring: replica 3 is not run`)
 }

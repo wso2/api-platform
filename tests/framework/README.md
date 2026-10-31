@@ -2,11 +2,10 @@
 
 One integration/E2E framework for every api-platform suite: declarative multi-component
 topologies, safe parallelism, framework-provisioned infrastructure (containers, databases,
-schema), dynamic port mapping, scoped state, resource cleanup, and a tagged coverage taxonomy.
+schema), dynamic port mapping, scoped state, resource cleanup, and per-ID traceability to the
+product scenario sheets.
 
-See [`docs/migration-tasks.md`](docs/migration-tasks.md) for the active legacy-feature migration
-tasks, and [`docs/capability-map.yml`](docs/capability-map.yml) for the
-`@cap`/`@feat` vocabulary.
+See [Scenario sheets](#scenario-sheets) for how scenarios map to a feature's scenario sheet.
 
 ## Quick start
 
@@ -80,12 +79,14 @@ framework/
   core/runtime/     networks, databases, containers, Compose, readiness
   core/cleanup/     owner-tagged resource registry
   core/util/        HTTP, retry, runner context, and unique-name helpers
-  core/taxonomy/    capability-map lint and coverage-tree renderer
+  core/sheet/       scenario-sheet IDs: checkpoint step, per-ID results, manifests
   core/assets/      resolves repository-relative files: workspace first, embedded copy second
   core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
   snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
   it/  cloud/  ui/
+coverage/           one manifest per scenario sheet (AIW-LLM.yaml, ...)
+cmd/sheetreport/    run results + manifests -> sheet CSV / Markdown summary
 ```
 
 The cloud suite targets externally hosted APIP services. It does not compile product code,
@@ -101,6 +102,36 @@ their step contracts.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.
+
+## Scenario sheets
+
+Maintainers track some product features on a scenario sheet (for example `AIW-LLM`, LLM
+Providers and Proxies). Every row of such a sheet must be covered by **both** suites: `it` at the API level and
+`ui` through the browser. `coverage/<SHEET>.yaml` mirrors the sheet, one entry per ID, and
+says for each layer whether the ID is `automated`, `known-issue` (with the issue link),
+`exempt` (with the reason) or still `planned`.
+
+The sheets themselves are maintained internally; the manifest is their public record and
+holds everything needed to read a sheet ID, so contributors never need the sheet.
+
+- **IDs live in the code.** A scenario is tagged with every sheet ID it covers
+  (`@AIW-PRV-001`); tag IDs on scenarios only, never on a feature or rule. Run one ID with
+  `-feature-tags=@AIW-PRV-004`, or a whole sheet with `-feature-tags=@AIW-LLM`.
+- **UI scenarios are journeys.** One browser flow covers several IDs, and the step
+  `* sheet check "AIW-PRV-004"` marks where each ID's checks begin. A failure is reported
+  against the ID whose checks were running, and every later ID as not reached. Order a
+  journey by dependency, then priority, so an unrelated defect cannot hide a P1 result. An
+  ID that is a known product defect runs in a scenario of its own, since `@known-issue`
+  excludes the whole scenario.
+- **IT scenarios** are one per ID (or a Scenario Outline) through the publisher REST API.
+- **Results.** Each runner prints `SHEET ...` lines for every ID that did not pass and
+  writes `suites/<suite>/sheet-results/<block>/<runner>.json`.
+  `make sheet-report` merges the last UI and IT runs into `sheet-report.csv` (ID, layer,
+  coverage, result, failing step, error, automation ref) for the sheet's result and
+  automation columns; CI also writes the table to each run's summary page.
+- **Consistency.** `make standards-check` fails when the manifest, the tags and the
+  `sheet check` steps disagree — an unknown ID, a tag the manifest does not reference, a
+  journey whose checks and tags differ, or a `known-issue` status without the tag.
 
 ## Using the framework from another repository
 

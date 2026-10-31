@@ -61,3 +61,44 @@ test('fails loudly when source-level browser coverage is absent', () => {
     },
   )
 })
+
+test('a container path prefix maps a file to its own portal before the /src/ heuristics', () => {
+  const { root, input, output } = fixture()
+  const other = path.join(root, 'other', 'src')
+  const mine = path.join(root, 'mine', 'src')
+  fs.mkdirSync(other, { recursive: true })
+  fs.mkdirSync(mine, { recursive: true })
+  // Both portals have App.js; only the prefix tells them apart.
+  fs.writeFileSync(path.join(other, 'App.js'), 'const other = 1\n')
+  fs.writeFileSync(path.join(mine, 'App.js'), 'const mine = 1\n')
+  const counters = (file) => ({
+    path: file,
+    statementMap: { 0: { start: { line: 1, column: 0 }, end: { line: 1, column: 15 } } },
+    fnMap: {}, branchMap: {}, s: { 0: 1 }, f: {}, b: {},
+  })
+  fs.writeFileSync(path.join(input, 'raw-istanbul.json'), JSON.stringify({
+    ['/app/src/App.js']: counters('/app/src/App.js'),
+  }))
+
+  execFileSync(process.execPath, [
+    converter, input, output, root,
+    '--source-root', 'other/src', '--source-root', 'mine/src',
+    '--path-prefix', '/app/src/=mine/src/', '--include', 'mine/src/**/*.js',
+  ])
+
+  const lcov = fs.readFileSync(path.join(output, 'lcov.info'), 'utf8')
+  assert.match(lcov, /SF:.*mine[\\/]src[\\/]App\.js/)
+  assert.doesNotMatch(lcov, /other[\\/]src/)
+})
+
+test('a malformed path prefix is a usage error', () => {
+  const { root, input, output } = fixture()
+  for (const value of ['/app/src/', '=mine/src', '/app/src/=']) {
+    assert.throws(
+      () => execFileSync(process.execPath, [converter, input, output, root, '--path-prefix', value],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }),
+      (error) => error.status === 2,
+      value,
+    )
+  }
+})

@@ -622,6 +622,25 @@ func TestBuildVersionedWithPoliciesReadsTheReleasedPolicyList(t *testing.T) {
 	require.ErrorContains(t, err, "no docker")
 }
 
+func TestPlatformGatewayWiringPlacesReplicasInTheSecondOrganization(t *testing.T) {
+	wiring := &PlatformGatewayWiring{SecondOrganizationReplicas: []int{2}}
+	require.NoError(t, wiring.Validate())
+	require.True(t, wiring.InSecondOrganization("platform-gateway#2"))
+	require.False(t, wiring.InSecondOrganization("platform-gateway#1"))
+	require.False(t, wiring.InSecondOrganization("platform-gateway#12"))
+	require.False(t, wiring.InSecondOrganization("platform-gateway"), "a single gateway is replica 1")
+
+	require.True(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{1}}).InSecondOrganization("platform-gateway"))
+	require.False(t, (&PlatformGatewayWiring{}).InSecondOrganization("platform-gateway#2"), "no list keeps every replica in the default organization")
+
+	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{0}}).Validate(), "replica 0")
+	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{-1}}).Validate(), "replica -1")
+
+	require.NoError(t, wiring.ValidateReplicas(2))
+	require.ErrorContains(t, wiring.ValidateReplicas(1), "replica 2 exceeds the block's 1 replica(s)")
+	require.NoError(t, (&PlatformGatewayWiring{}).ValidateReplicas(1), "no list names no replica")
+}
+
 func TestStagePolicyWorkspaceExcludesIntegrationTests(t *testing.T) {
 	root := unitRepoRoot(t)
 	source, err := os.MkdirTemp(root, ".framework-policy-source-")

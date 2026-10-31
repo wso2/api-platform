@@ -284,13 +284,15 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"subscription.yaml":          "Subscription",
 	}
 	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
-	controlPlaneProtocols := map[string]string{
-		"agent-proxy.yaml": "a2a",
+	// Each names the payload block that identifies the resource.
+	controlPlaneBlocks := map[string]string{
+		"agent-proxy.yaml":     "a2a",
+		"llm-provider-cp.yaml": "upstream",
 	}
 
 	paths, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	require.NoError(t, err)
-	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneProtocols))
+	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneBlocks))
 	for _, path := range paths {
 		name := filepath.Base(path)
 		content, err := os.ReadFile(path)
@@ -298,13 +300,15 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		var document map[string]any
 		require.NoError(t, yaml.Unmarshal(content, &document))
 
-		if protocol, isControlPlane := controlPlaneProtocols[name]; isControlPlane {
-			require.Equal(t, protocol, document["protocol"], "template %q", name)
+		if blockName, isControlPlane := controlPlaneBlocks[name]; isControlPlane {
+			if name == "agent-proxy.yaml" {
+				require.Equal(t, "a2a", document["protocol"], "template %q", name)
+			}
 			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
 				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
 			}
-			block, ok := document[protocol].(map[string]any)
-			require.True(t, ok, "template %q must define its %q protocol block", name, protocol)
+			block, ok := document[blockName].(map[string]any)
+			require.True(t, ok, "template %q must define its %q block", name, blockName)
 			require.NotEmpty(t, block, "template %q", name)
 			continue
 		}
@@ -482,6 +486,16 @@ func TestJSONArrayItemSteps(t *testing.T) {
 		require.ErrorContains(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "z", "status", "active"), "has 0 items")
 		require.NoError(t, base.jsonArrayItemFieldAbsent(ctx, "list", "id", "b", "nested"))
 		require.ErrorContains(t, base.jsonArrayItemFieldAbsent(ctx, "list", "id", "a", "nested"), "should not have field")
+	})
+	t.Run("item order", func(t *testing.T) {
+		ctx := publish(t, listBody)
+		require.NoError(t, base.jsonArrayItemOrder(ctx, "list", "id", "a", "id", "b"))
+		require.ErrorContains(t, base.jsonArrayItemOrder(ctx, "list", "id", "b", "id", "a"), "not before")
+		require.ErrorContains(t, base.jsonArrayItemOrder(ctx, "list", "id", "a", "id", "a"), "not before")
+		require.ErrorContains(t, base.jsonArrayItemOrder(ctx, "list", "id", "a", "id", "z"), "no item")
+		dup := publish(t, `{"list":[{"id":"x"},{"id":"x"},{"id":"y"}]}`)
+		require.ErrorContains(t, base.jsonArrayItemOrder(dup, "list", "id", "x", "id", "y"), "several items")
+		require.Error(t, base.jsonArrayItemOrder(publish(t, `{"list":3}`), "list", "id", "a", "id", "b"))
 	})
 	t.Run("ambiguous selection", func(t *testing.T) {
 		ctx := publish(t, `{"list":[{"id":"dup","v":1},{"id":"dup","v":2}]}`)

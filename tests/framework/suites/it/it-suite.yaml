@@ -968,6 +968,32 @@ blocks:
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_import.feature
         tags: "gateway-version>1.2.0"
+      # Sheet AIW-LLM, AI Workspace provider creation through the control plane. Runs on
+      # every platform-api database: the generated provider ID is stored in a bounded column.
+      - name: aiw-llm-provider-create
+        features:
+          - features/ai-workspace/llm-providers/create.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-inspect
+        features:
+          - features/ai-workspace/llm-providers/inspect.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-configure
+        features:
+          - features/ai-workspace/llm-providers/configure.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-policies
+        features:
+          - features/ai-workspace/llm-providers/policies.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-templates
+        features:
+          - features/ai-workspace/llm-providers/templates.feature
+        tags: "~@known-issue"
+      - name: aiw-llm-provider-deploy
+        features:
+          - features/ai-workspace/llm-providers/deploy.feature
+        tags: "~@known-issue"
 
   # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
   # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the
@@ -1020,6 +1046,39 @@ blocks:
       - name: multigateway
         features:
           - features/management-portal/deployments/multigateway.feature
+
+  # Control-plane tenant isolation: a second organization registered next to the default one,
+  # with the second gateway connected to it. One runner at a time, so the window in which the
+  # second organization's gateway must receive nothing sees no other deployment.
+  - name: tenant-isolation
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        replicas: 2
+        db: sqlite
+      - name: testbench
+    wiring:
+      platform-gateway:
+        secondOrganizationReplicas: [2]
+    runners:
+      - name: tenant-read
+        features:
+          - features/management-portal/tenant-isolation/read.feature
+      - name: tenant-list
+        features:
+          - features/management-portal/tenant-isolation/list.feature
+      - name: tenant-write
+        features:
+          - features/management-portal/tenant-isolation/write.feature
+      - name: tenant-deploy
+        features:
+          - features/management-portal/tenant-isolation/deploy.feature
+      - name: tenant-gateway-connection
+        features:
+          - features/management-portal/tenant-isolation/gateway_connection.feature
 
   - name: devportal-webhook
     parallel: 1

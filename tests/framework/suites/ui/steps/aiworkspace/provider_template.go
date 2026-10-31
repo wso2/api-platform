@@ -227,7 +227,7 @@ func (u *Steps) createsProviderFromTemplateVersion(ctx context.Context, provider
 	if !ok || expectedTemplateID == "" {
 		return fmt.Errorf("no recorded template id for version %q", version)
 	}
-	return u.submitProviderFormForTemplate(ctx, providerName, nil, expectedTemplateID)
+	return u.submitProviderFormForTemplate(ctx, providerName, nil, "", expectedTemplateID)
 }
 
 // confirmsTemplateVersionDelete opens the delete confirmation for the template version

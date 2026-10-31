@@ -65,6 +65,8 @@ func main() {
 	unitRoot := flag.String("unit-root", ".", "framework root for unit-test layout checks")
 	suites := flag.String("suites", "", "comma-separated product suite YAML files")
 	docs := flag.String("docs", "core", "framework source directory for documentation checks")
+	sheets := flag.String("sheets", "", "optional scenario-sheet manifest directory")
+	sheetFeatures := flag.String("sheet-features", "suites/it/features,suites/ui/features", "comma-separated feature roots checked against the sheet manifests")
 	approvedImports := flag.String("approved-imports", "",
 		"optional comma-separated import-path prefixes step definitions may also import, such as the importing project's own step packages")
 	flag.Parse()
@@ -80,6 +82,7 @@ func main() {
 	issues = append(issues, checkCleanupRegistration(*steps)...)
 	issues = append(issues, checkDependencies(*steps, splitRoots(*approvedImports))...)
 	issues = append(issues, checkDocumentation(*docs)...)
+	issues = append(issues, checkSheets(*sheets, *sheetFeatures, *suites)...)
 	sort.Strings(issues)
 	for _, issue := range issues {
 		fmt.Fprintln(os.Stderr, issue)

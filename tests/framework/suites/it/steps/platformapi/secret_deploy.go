@@ -31,6 +31,7 @@ import (
 
 	"github.com/cucumber/godog"
 
+	controlplane "github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -109,7 +110,7 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createLLMProxy)
 	sc.Step(`^I create an MCP proxy "([^"]*)" via the control plane with context "([^"]*)" referencing secret "([^"]*)"$`,
 		s.createMCPProxy)
-	sc.Step(`^I create an MCP proxy "([^"]*)" via the control plane with context "([^"]*)" and spec versions "([^"]*)"$`,
+	sc.Step(`^I create an MCP proxy "([^"]*)" via the control plane(?: in project "([^"]*)")? with context "([^"]*)" and spec versions "([^"]*)"$`,
 		s.createMCPProxySpecVersions)
 	sc.Step(`^I fetch MCP server info via the control plane for "([^"]*)"$`, s.fetchMCPServerInfo)
 	sc.Step(`^the fetched MCP server info should report spec version "([^"]*)"$`,
@@ -262,17 +263,7 @@ func deregisterDeletedPlatformResource(ctx context.Context, rawURL string) error
 }
 
 func isLastProjectValidation(resp *httpx.Response) bool {
-	if resp == nil || resp.StatusCode != http.StatusBadRequest {
-		return false
-	}
-	var body struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(resp.Body, &body); err != nil {
-		return false
-	}
-	return body.Code == "VALIDATION_FAILED" && body.Message == "Organization must have at least one project"
+	return resp != nil && controlplane.IsLastProjectRetention(resp.StatusCode, resp.Body)
 }
 
 func (s *Steps) registerPlatformDeployment(ctx context.Context, collection, handle, deploymentID, gatewayID string) error {
@@ -625,8 +616,13 @@ func (s *Steps) createMCPProxy(ctx context.Context, id, resourceContext, secretH
 // createMCPProxySpecVersions creates an MCP proxy declaring several MCP revisions, which is the
 // form a dual-era server needs: mcpSpecVersion holds one and cannot describe such a server.
 // versions is a comma-separated list, so a feature table reads as a list rather than as JSON.
-func (s *Steps) createMCPProxySpecVersions(ctx context.Context, id, resourceContext, versions string) error {
+// An empty projectHandle leaves the proxy outside any project.
+func (s *Steps) createMCPProxySpecVersions(ctx context.Context, id, projectHandle, resourceContext, versions string) error {
 	resolvedID, err := stepscommon.Expand(ctx, id)
+	if err != nil {
+		return err
+	}
+	resolvedProject, err := stepscommon.Expand(ctx, projectHandle)
 	if err != nil {
 		return err
 	}
@@ -645,7 +641,7 @@ func (s *Steps) createMCPProxySpecVersions(ctx context.Context, id, resourceCont
 
 	// The deprecated scalar is deliberately absent: platform-api rejects a request that sets
 	// both forms, since the two could disagree about what the proxy serves.
-	if err := s.postJSON(ctx, base, bearer, "/mcp-proxies", map[string]any{
+	payload := map[string]any{
 		"id":              resolvedID,
 		"displayName":     resolvedID,
 		"version":         "v1.0",
@@ -654,7 +650,11 @@ func (s *Steps) createMCPProxySpecVersions(ctx context.Context, id, resourceCont
 		"upstream": map[string]any{
 			"main": map[string]any{"url": "http://testbench:3009/mcp"},
 		},
-	}, nil); err != nil {
+	}
+	if resolvedProject != "" {
+		payload["projectId"] = resolvedProject
+	}
+	if err := s.postJSON(ctx, base, bearer, "/mcp-proxies", payload, nil); err != nil {
 		return err
 	}
 	return s.registerPlatformResource(ctx, platformMCPKind, resolvedID, "/mcp-proxies")

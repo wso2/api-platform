@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
+	"github.com/wso2/api-platform/tests/framework/core/sheet"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
@@ -75,16 +76,34 @@ type Deps struct {
 	// into one file for the block's whole lifetime. Nil in a default run — the suite
 	// decides whether container output is being collected at all.
 	Logs *logcapture.Sink
+
+	// Sheets, when non-nil, receives one report per runner of the scenario-sheet IDs its
+	// scenarios covered. Every runner records sheet IDs and prints their summary either
+	// way; the sink only decides whether the reports are also written to disk.
+	Sheets *sheet.Sink
 }
 
 var runnerOutputMu sync.Mutex
 
 // flushRunnerOutput writes one runner report without interleaving it with another report.
-func flushRunnerOutput(dst io.Writer, label string, buf *bytes.Buffer) {
+//
+// A child process sharing stdout (the browser driver, a container runtime) can leave it in
+// non-blocking mode, where one large write stops at the pipe's capacity — about 64 KiB —
+// and the rest of a report, failure summary included, is lost. Fd puts an *os.File back
+// into blocking mode first, and any error is returned rather than dropped.
+func flushRunnerOutput(dst io.Writer, label string, buf *bytes.Buffer) error {
 	runnerOutputMu.Lock()
 	defer runnerOutputMu.Unlock()
-	fmt.Fprintf(dst, "\n=== %s ===\n", label)
-	_, _ = io.Copy(dst, buf)
+	if f, ok := dst.(*os.File); ok {
+		f.Fd()
+	}
+	if _, err := fmt.Fprintf(dst, "\n=== %s ===\n", label); err != nil {
+		return fmt.Errorf("writing the %s report: %w", label, err)
+	}
+	if _, err := io.Copy(dst, buf); err != nil {
+		return fmt.Errorf("writing the %s report: %w", label, err)
+	}
+	return nil
 }
 
 // Run executes a resolved suite with parallel blocks and sequential scenarios per runner.
@@ -233,6 +252,7 @@ func runRunner(
 	}
 
 	var out bytes.Buffer
+	sheets := sheet.NewRecorder()
 
 	opts := godog.Options{
 		Format:      "pretty",
@@ -271,6 +291,7 @@ func runRunner(
 				return ctx, scenarioErr
 			})
 
+			sheets.Bind(sc)
 			registrar(sc)
 		},
 		Options: &opts,
@@ -278,7 +299,15 @@ func runRunner(
 
 	status := suite.Run()
 
-	flushRunnerOutput(os.Stdout, topo.Block.Name+"/"+runner.Name, &out)
+	sheets.WriteSummary(&out)
+	if err := deps.Sheets.Write(sheet.Report{
+		Block: topo.Block.Name, Runner: runner.Name, Results: sheets.Results(),
+	}); err != nil {
+		t.Errorf("runner %q: %v", runner.Name, err)
+	}
+	if err := flushRunnerOutput(os.Stdout, topo.Block.Name+"/"+runner.Name, &out); err != nil {
+		t.Errorf("runner %q: %v", runner.Name, err)
+	}
 
 	if status != 0 {
 		t.Errorf("runner %q finished with status %d", runner.Name, status)

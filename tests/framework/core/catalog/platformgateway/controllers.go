@@ -42,10 +42,16 @@ const (
 	xdsControllerConfigFile  = "tests/framework/core/catalog/platformgateway/resources/controller-xds.toml"
 )
 
-// Validate rejects a controller count the gateway cannot run.
+// Validate rejects a controller count the gateway cannot run and replica numbers below 1;
+// ValidateReplicas checks the upper bound once the block's replica count is known.
 func (w *PlatformGatewayWiring) Validate() error {
 	if w.Controllers < 0 || w.Controllers > 2 {
 		return fmt.Errorf("controllers must be 1 or 2, got %d", w.Controllers)
+	}
+	for _, replica := range w.SecondOrganizationReplicas {
+		if replica < 1 {
+			return fmt.Errorf("secondOrganizationReplicas: replica %d must be 1 or more", replica)
+		}
 	}
 	return nil
 }
