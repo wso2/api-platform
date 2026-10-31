@@ -825,6 +825,64 @@ func TestImport_MCPProxy_CapabilityFetchFailureIsBestEffort(t *testing.T) {
 	}
 }
 
+// TestImport_MCPProxy_RePushKeepsCapabilitiesWhenFetchFails verifies a winning re-push whose
+// capability refetch fails keeps the cached capabilities (same upstream), and drops them
+// when the upstream URL changed since they no longer describe the new server.
+func TestImport_MCPProxy_RePushKeepsCapabilitiesWhenFetchFails(t *testing.T) {
+	d := setupImportTest(t)
+	tools := []map[string]interface{}{{"name": "get_weather"}}
+	stubMCPServerInfo(t, &api.MCPServerInfoFetchResponse{Tools: &tools}, nil)
+
+	mcpReq := func(dpID, url string) dto.ImportGatewayArtifactRequest {
+		req := dpMCPReq(dpID, "weather-mcp", "Weather MCP")
+		req.Configuration.Spec["upstream"] = map[string]interface{}{"url": url}
+		return req
+	}
+	mustImport(t, d, withDeployedAt(mcpReq("dp-1", "https://mcp.example.com/sse"), baseDeployedAt))
+
+	load := func() *model.MCPProxy {
+		p, err := repository.NewMCPProxyRepo(d.db).GetByHandle("weather-mcp", importTestOrgID)
+		if err != nil || p == nil {
+			t.Fatalf("load MCP proxy: (%v, %v)", p, err)
+		}
+		return p
+	}
+
+	stubMCPServerInfo(t, nil, errors.New("upstream unreachable"))
+	mustImport(t, d, withDeployedAt(mcpReq("dp-2", "https://mcp.example.com/sse"), newerDeployedAt))
+	if c := load().Configuration.Capabilities; c == nil || c.Tools == nil || len(*c.Tools) != 1 {
+		t.Errorf("Capabilities = %+v, want cached tools kept after failed refetch on same upstream", c)
+	}
+
+	mustImport(t, d, withDeployedAt(mcpReq("dp-3", "https://other.example.com/sse"), evenNewerDeployedAt))
+	if c := load().Configuration.Capabilities; c != nil {
+		t.Errorf("Capabilities = %+v, want nil when upstream changed and refetch failed", c)
+	}
+}
+
+// TestImport_LLMProviderTemplate_RePushPreservesCPOnlyFields verifies a winning gateway
+// re-push does not wipe the control-plane-only metadata block (the gateway spec has none).
+func TestImport_LLMProviderTemplate_RePushPreservesCPOnlyFields(t *testing.T) {
+	d := setupImportTest(t)
+	mustImport(t, d, withDeployedAt(dpTemplateReq("dp-1", "tmpl", "Tmpl"), baseDeployedAt))
+
+	tm, _ := d.templateRepo.GetByID("tmpl", importTestOrgID)
+	tm.Metadata = &model.LLMProviderTemplateMetadata{
+		LogoURL: "https://cp/logo.png", EndpointURL: "https://cp.example.com/v1", OpenapiSpecURL: "https://cp/openapi.json"}
+	tm.UpdatedAt = time.Time{} // CP-native update: repo stamps now
+	if err := d.templateRepo.Update(tm); err != nil {
+		t.Fatal(err)
+	}
+
+	mustImport(t, d, withDeployedAt(dpTemplateReq("dp-2", "tmpl", "Tmpl"), time.Now().UTC().Add(time.Minute)))
+
+	got, _ := d.templateRepo.GetByID("tmpl", importTestOrgID)
+	if got.Metadata == nil || got.Metadata.LogoURL != "https://cp/logo.png" ||
+		got.Metadata.EndpointURL != "https://cp.example.com/v1" || got.Metadata.OpenapiSpecURL != "https://cp/openapi.json" {
+		t.Errorf("Metadata = %+v, want CP-set metadata preserved across gateway re-push", got.Metadata)
+	}
+}
+
 // TestImport_GeneratesDeploymentIDWhenAbsent verifies the control plane falls back to
 // generating its own deployment ID when the gateway does not supply one.
 func TestImport_GeneratesDeploymentIDWhenAbsent(t *testing.T) {
@@ -979,8 +1037,8 @@ func TestImport_MCPProxy_ReadOnlyInGetAndList(t *testing.T) {
 
 // TestCPSideGuard_DPOriginUpdate verifies control-plane updates to DP-originated
 // (gateway-pushed) artifacts protect the gateway-owned runtime configuration while still
-// allowing control-plane metadata edits. Templates reject a runtime (token-extraction)
-// change outright (ErrArtifactRuntimeImmutable) but allow metadata; providers/proxies/MCP
+// allowing control-plane metadata edits. Templates reject a gateway-deployed-spec change (token
+// extraction, display name, managedBy) outright (ErrArtifactRuntimeImmutable) but allow metadata; providers/proxies/MCP
 // proxies preserve their runtime config verbatim (a runtime edit in the payload is silently
 // ignored) and apply only metadata (description/models/OpenAPI). DP artifacts are seeded
 // through the import flow. (deploy/undeploy/restore guards are covered by the
@@ -1001,11 +1059,18 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 			t.Errorf("Template Update(DP, extraction change) = %v, want ErrArtifactRuntimeImmutable", err)
 		}
 
-		// Editing the OpenAPI spec URL / display name (neither read by the gateway at request
-		// time) leaves the runtime artifact untouched and is allowed.
-		specURL := "https://example.com/openapi.yaml"
+		// The display name is part of the gateway-deployed template spec, so renaming a DP
+		// template from the control plane is rejected too.
 		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
 			DisplayName: "Renamed",
+		}); !apperror.ArtifactRuntimeImmutable.Is(err) {
+			t.Errorf("Template Update(DP, display name change) = %v, want ErrArtifactRuntimeImmutable", err)
+		}
+
+		// Editing the OpenAPI spec URL (not part of the deployed spec) is allowed.
+		specURL := "https://example.com/openapi.yaml"
+		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
+			DisplayName: "T",
 			Metadata:    &api.LLMProviderTemplateMetadata{OpenapiSpecUrl: &specURL},
 		}); err != nil {
 			t.Errorf("Template Update(DP, openapi/metadata edit) = %v, want success", err)

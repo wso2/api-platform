@@ -456,12 +456,11 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 	}
 	m.ResourceMappings = resourceMappings
 
-	// A DP-originated (gateway_api) template is read-only in the control plane only for
-	// changes that alter what the gateway consumes at runtime: the token-extraction
-	// identifiers and per-resource mappings. Everything else — name, description,
-	// managedBy, the inline OpenAPI spec, and the metadata block (endpointUrl, auth,
-	// logoUrl, openapiSpecUrl), none of which the gateway reads at request time — stays
-	// editable.
+	// A DP-originated (gateway_api) template is read-only in the control plane for
+	// changes to the gateway-deployed spec: displayName, managedBy, the token-extraction
+	// identifiers and per-resource mappings. Everything else — description, the inline
+	// OpenAPI spec, and the metadata block (endpointUrl, auth, logoUrl, openapiSpecUrl),
+	// none of which the gateway deploys — stays editable.
 	if existing.Origin == constants.OriginDP {
 		if err := ensureTemplateRuntimeArtifactUnchanged(existing, m); err != nil {
 			return nil, err
@@ -504,10 +503,11 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 // transformer (gateway-controller pkg/utils/llm_transformer.go) reads only these; it
 // never uses the template's metadata block (endpointUrl, auth, logoUrl, openapiSpecUrl),
 // which is authoring/reference/display data. So the metadata block — along with the
-// control-plane-only fields (name, description, managedBy, enabled, inline OpenAPI spec)
-// — stays editable on a DP-originated template; only a change to the extraction fields
-// or resource mappings is rejected.
+// control-plane-only fields (description, enabled, inline OpenAPI spec) — stays editable
+// on a DP-originated template.
 type templateRuntimeArtifact struct {
+	DisplayName      string                                     `yaml:"displayName"`
+	ManagedBy        string                                     `yaml:"managedBy,omitempty"`
 	PromptTokens     *model.ExtractionIdentifier                `yaml:"promptTokens,omitempty"`
 	CompletionTokens *model.ExtractionIdentifier                `yaml:"completionTokens,omitempty"`
 	TotalTokens      *model.ExtractionIdentifier                `yaml:"totalTokens,omitempty"`
@@ -519,6 +519,8 @@ type templateRuntimeArtifact struct {
 
 func templateRuntimeArtifactOf(t *model.LLMProviderTemplate) templateRuntimeArtifact {
 	return templateRuntimeArtifact{
+		DisplayName:      t.Name,
+		ManagedBy:        t.ManagedBy,
 		PromptTokens:     t.PromptTokens,
 		CompletionTokens: t.CompletionTokens,
 		TotalTokens:      t.TotalTokens,

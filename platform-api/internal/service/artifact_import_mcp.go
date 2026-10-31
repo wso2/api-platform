@@ -101,7 +101,11 @@ func (i *mcpProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		projectID := ctx.ProjectID
 		existing.ProjectUUID = &projectID
 		// Refresh capabilities from the upstream alongside the rest of the configuration.
+		// If it fails, keep the previously cached capabilities provided the upstream is unchanged.
 		cfg.Capabilities = i.fetchCapabilities(ctx.OrgID, cfg)
+		if cfg.Capabilities == nil && sameMCPUpstreamURL(existing.Configuration, cfg) {
+			cfg.Capabilities = existing.Configuration.Capabilities
+		}
 		existing.Configuration = cfg
 	case utils.WriteGatewaySpecificOnly:
 		// CP-owned: No gateway specific metadata is written to the working copy
@@ -110,6 +114,15 @@ func (i *mcpProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		return nil, fmt.Errorf("failed to update MCP proxy from gateway import: %w", err)
 	}
 	return &ImportResult{ID: ctx.ID, DeployedVersion: version, Deployable: true}, nil
+}
+
+// sameMCPUpstreamURL reports whether both configurations target the same non-empty main
+// upstream URL, i.e. whether cached capabilities for one still describe the other.
+func sameMCPUpstreamURL(a, b model.MCPProxyConfiguration) bool {
+	if a.Upstream.Main == nil || b.Upstream.Main == nil {
+		return false
+	}
+	return a.Upstream.Main.URL != "" && a.Upstream.Main.URL == b.Upstream.Main.URL
 }
 
 // mapMCPProxySpecToConfig reverse-maps a gateway-pushed MCP proxy deployment spec into
