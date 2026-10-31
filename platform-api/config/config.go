@@ -38,6 +38,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -391,6 +392,31 @@ type Auth struct {
 	// dot-separated path into a nested claim ("realm_access.org_id") — see
 	// resolveClaimPath in internal/middleware/auth.go.
 	ClaimMappings ClaimMappings `koanf:"claim_mappings"`
+	// ServiceAccount configures service-account token issue and verification.
+	ServiceAccount ServiceAccount `koanf:"service_account"`
+}
+
+// ServiceAccount groups the service-account settings.
+type ServiceAccount struct {
+	// Enabled false removes the routes, refuses every SA token and skips the
+	// startup checks. Accounts stay in the DB.
+	Enabled  bool          `koanf:"enabled"`
+	TokenTTL time.Duration `koanf:"token_ttl"`
+	// Audience is written to every SA token's aud and required back on it.
+	Audience   string                   `koanf:"audience"`
+	Revocation ServiceAccountRevocation `koanf:"revocation"`
+	// Signing is optional. With no keys, SA tokens are signed with auth.jwt.
+	Signing ServiceAccountSigning `koanf:"signing"`
+}
+
+// ServiceAccountRevocation tunes the revocation-watermark cache.
+type ServiceAccountRevocation struct {
+	PollInterval time.Duration `koanf:"poll_interval"`
+}
+
+// HasOwnKey reports whether SA tokens have their own signing keys.
+func (s *ServiceAccount) HasOwnKey() bool {
+	return len(s.Signing.Keys) > 0
 }
 
 // Authorization modes selectable via auth.authorization.mode.
@@ -1068,6 +1094,10 @@ func validateAuthConfig(auth *Auth) error {
 		return err
 	}
 
+	if err := validateServiceAccountConfig(auth); err != nil {
+		return err
+	}
+
 	// Authorization is validated outside the mode switch, not inside any one
 	// mode's branch: it applies in every authentication mode.
 	return validateAuthorizationConfig(&auth.Authorization, &auth.ClaimMappings)
@@ -1100,6 +1130,27 @@ func validateAuthModeConfig(auth *Auth) error {
 	default:
 		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeInternalToken, AuthModeFile, AuthModeIDP, auth.Mode)
 	}
+}
+
+// validateServiceAccountConfig checks [auth.service_account]. A half-configured
+// signing key or a shared issuer would surface as a 401 long after startup.
+func validateServiceAccountConfig(auth *Auth) error {
+	sa := &auth.ServiceAccount
+	if !sa.Enabled {
+		return nil
+	}
+	if sa.TokenTTL <= 0 {
+		return fmt.Errorf("auth.service_account.token_ttl must be a positive duration")
+	}
+	if strings.TrimSpace(sa.Audience) == "" {
+		return fmt.Errorf("auth.service_account.audience must not be blank")
+	}
+	// The jitter adds rand.N(poll_interval/2), which panics on zero.
+	if sa.Revocation.PollInterval <= 0 || sa.Revocation.PollInterval/2 == 0 {
+		return fmt.Errorf("auth.service_account.revocation.poll_interval must be a positive duration of at least 2ns")
+	}
+
+	return validateServiceAccountSigning(auth)
 }
 
 // ValidateAuthSkipPath rejects a skip-path entry that would widen the auth
@@ -1326,6 +1377,11 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 	for i, u := range cfg.Users {
 		if u.Username == "" {
 			return fmt.Errorf("auth.file.users[%d]: username is required (set it in config via {{ env }}/{{ file }})", i)
+		}
+		// The prefix is reserved for service-account subjects.
+		if strings.HasPrefix(u.Username, constants.ServiceAccountSubPrefix) {
+			return fmt.Errorf("auth.file.users[%d]: username must not start with %q (reserved for service accounts)",
+				i, constants.ServiceAccountSubPrefix)
 		}
 		if u.PasswordHash == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)

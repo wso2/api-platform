@@ -16,3 +16,9 @@ negative_ttl = "8s"
 # Turns on the Platform API's MCP server at /api/v0.9/mcp.
 [platform_api.mcp_server]
 enabled = true
+
+# Service accounts: the /service-accounts routes, /roles, /.well-known/jwks and service-account
+# token verification. With no signing keys configured, tokens are signed with the auth.jwt key
+# pair the framework generates; lifetime and audience stay at their defaults.
+[platform_api.auth.service_account]
+enabled = true

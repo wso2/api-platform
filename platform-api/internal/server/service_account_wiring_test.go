@@ -1,0 +1,254 @@
+/*
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package server
+
+import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
+)
+
+// An empty issuer would make the map accept only tokens with no iss, so it is refused.
+func TestBuildIssuerKeyMap_RefusesEmptyIssuer(t *testing.T) {
+	key := mustRSAKey(t)
+	local := &config.Server{}
+	local.Auth.Mode = config.AuthModeInternalToken
+	local.Auth.InternalToken.SkipValidation = true
+	if _, err := buildIssuerKeyMap(local, nil); err == nil || !strings.Contains(err.Error(), "auth.jwt.issuer") {
+		t.Fatalf("internal_token with empty issuer: got %v", err)
+	}
+
+	idp := &config.Server{}
+	idp.Auth.Mode = config.AuthModeIDP
+	idp.Auth.IDP.Issuer = []string{"https://idp.example"}
+	shared := keyring("", false, key, "")
+	if _, err := buildIssuerKeyMap(idp, shared); err == nil || !strings.Contains(err.Error(), "auth.jwt.issuer") {
+		t.Fatalf("idp with an empty shared SA issuer: got %v", err)
+	}
+	idp.Auth.ServiceAccount.Audience = "platform-api"
+	if _, err := buildIssuerKeyMap(idp, nil); err != nil {
+		t.Fatalf("idp without SA keys needs no auth.jwt.issuer: %v", err)
+	}
+}
+
+// keyring holds one key, signing under kid (its thumbprint when kid is "").
+func keyring(issuer string, own bool, key *rsa.PrivateKey, kid string) *service.ServiceAccountKeys {
+	k := saKey(&key.PublicKey, kid)
+	return &service.ServiceAccountKeys{Issuer: issuer, OwnIssuer: own, Active: k, PrivateKey: key,
+		Keys: []service.ServiceAccountKey{k}}
+}
+
+// saKey is an RS256 key under kid, or its thumbprint when kid is "".
+func saKey(pub *rsa.PublicKey, kid string) service.ServiceAccountKey {
+	jwk, _ := utils.NewJWK(pub, "RS256", kid)
+	return service.ServiceAccountKey{JWK: jwk, Public: pub}
+}
+
+// signSATestToken mints a real SA token with keys, as /token would.
+func signSATestToken(t *testing.T, keys *service.ServiceAccountKeys) string {
+	t.Helper()
+	cfg := &config.Server{}
+	cfg.Auth.ServiceAccount = config.ServiceAccount{TokenTTL: time.Minute, Audience: "platform-api"}
+	sa := &model.ServiceAccount{UUID: "0198a1b2-0000-7000-8000-000000000001", Handle: "ci-bot", ClientID: "sa_acme_ci-bot_abc123", TokenVersion: 1}
+	tok, err := service.NewSATokenSigner(keys, cfg).Sign(sa, &model.Organization{ID: "org-1", Handle: "acme"}, "ap:rest_api:read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tok.Token
+}
+
+// Each mode registers the right issuers with the right keys: a real SA token
+// verifies where it should, and an IdP issuer is never verified locally.
+func TestBuildIssuerKeyMap_Modes(t *testing.T) {
+	login, sa, previous := mustRSAKey(t), mustRSAKey(t), mustRSAKey(t)
+	pubFile := filepath.Join(t.TempDir(), "login.pub")
+	der, err := x509.MarshalPKIXPublicKey(&login.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pubFile, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	shared := keyring("platform-api", false, login, "")
+	// Two keys: "previous" verifies only, sa signs.
+	own := keyring("platform-api-sa", true, sa, "")
+	own.Keys = append([]service.ServiceAccountKey{saKey(&previous.PublicKey, "previous")}, own.Keys...)
+	// A token the previous key signed while it was active.
+	oldOwn := keyring("platform-api-sa", true, previous, "previous")
+	// Signed for the shared issuer by a key the map does not hold.
+	forged := keyring("platform-api", false, sa, "")
+
+	t.Run("file mode, own SA issuer", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.Mode = config.AuthModeFile
+		cfg.Auth.JWT = config.JWT{Issuer: "platform-api", PublicKeyFile: pubFile}
+		cfg.Auth.ServiceAccount.Audience = "platform-api"
+		m, err := buildIssuerKeyMap(cfg, own)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, keys := range map[string]*service.ServiceAccountKeys{"active key": own, "verify-only key": oldOwn, "auth.jwt key": shared} {
+			if _, err := m.VerifyServiceAccountToken(signSATestToken(t, keys)); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+		if _, err := m.VerifyServiceAccountToken(signSATestToken(t, forged)); err == nil {
+			t.Error("a key not loaded from public_key_file verified for the local issuer")
+		}
+	})
+
+	t.Run("missing auth.jwt public key", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.Mode = config.AuthModeFile
+		cfg.Auth.JWT = config.JWT{Issuer: "platform-api", PublicKeyFile: filepath.Join(t.TempDir(), "missing.pub")}
+		if _, err := buildIssuerKeyMap(cfg, shared); err == nil || !strings.Contains(err.Error(), "public_key_file") {
+			t.Fatalf("got %v", err)
+		}
+	})
+
+	// skip_validation needs no auth.jwt key file; the shared SA key still verifies.
+	t.Run("skip_validation, shared key", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.Mode = config.AuthModeInternalToken
+		cfg.Auth.InternalToken.SkipValidation = true
+		cfg.Auth.JWT.Issuer = "platform-api"
+		cfg.Auth.ServiceAccount.Audience = "platform-api"
+		m, err := buildIssuerKeyMap(cfg, shared)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := m.VerifyServiceAccountToken(signSATestToken(t, shared)); err != nil {
+			t.Fatalf("shared-key SA token: %v", err)
+		}
+	})
+
+	t.Run("idp mode, shared key", func(t *testing.T) {
+		cfg := &config.Server{}
+		cfg.Auth.Mode = config.AuthModeIDP
+		cfg.Auth.IDP.Issuer = []string{"https://idp.example"}
+		cfg.Auth.ServiceAccount.Audience = "platform-api"
+		m, err := buildIssuerKeyMap(cfg, shared)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.IsLocal("https://idp.example") || !m.IsServiceAccountToken("platform-api", "anything") {
+			t.Fatal("the shared issuer must be the SA kind, the IdP issuer never local")
+		}
+		if _, err := m.VerifyServiceAccountToken(signSATestToken(t, shared)); err != nil {
+			t.Fatalf("shared-key SA token: %v", err)
+		}
+	})
+}
+
+// With service accounts off, both public SA routes leave the skip list, including
+// the JWKS, which is outside the /service-accounts prefix.
+func TestIsServiceAccountSkipPath(t *testing.T) {
+	paths := []string{"/health", constants.APIBasePath + "/service-accounts/token", constants.JWKSPath, "/api/internal/v1/apis"}
+	got := slices.DeleteFunc(slices.Clone(paths), isServiceAccountSkipPath)
+	if !slices.Equal(got, []string{"/health", "/api/internal/v1/apis"}) {
+		t.Fatalf("skip paths left = %v", got)
+	}
+}
+
+// Keys of every supported algorithm sit in one list. Whichever is active signs
+// with its own algorithm and kid, and the other three still verify.
+func TestServiceAccountSigningAlgorithms(t *testing.T) {
+	dir := t.TempDir()
+	p256, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	p384, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	rsaKey := mustRSAKey(t)
+	entries := []struct {
+		kid, alg string
+		key      crypto.PrivateKey
+	}{
+		{"rs256", "RS256", rsaKey}, {"ps256", "PS256", rsaKey}, {"es256", "ES256", p256}, {"es384", "ES384", p384},
+	}
+	cfg := &config.Server{}
+	cfg.Auth.Mode = config.AuthModeIDP
+	cfg.Auth.ServiceAccount = config.ServiceAccount{Audience: "platform-api", TokenTTL: time.Minute}
+	cfg.Auth.ServiceAccount.Signing.Issuer = "platform-api-sa"
+	for _, e := range entries {
+		der, err := x509.MarshalPKCS8PrivateKey(e.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, e.kid+".pem")
+		if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg.Auth.ServiceAccount.Signing.Keys = append(cfg.Auth.ServiceAccount.Signing.Keys,
+			config.ServiceAccountSigningKey{Path: path, Kid: e.kid, Algorithm: e.alg})
+	}
+
+	var keyring *service.ServiceAccountKeys
+	tokens := map[string]string{}
+	for i, e := range entries {
+		for j := range cfg.Auth.ServiceAccount.Signing.Keys {
+			cfg.Auth.ServiceAccount.Signing.Keys[j].Active = j == i
+		}
+		keys, err := service.LoadServiceAccountKeys(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyring = keys
+		tokens[e.kid] = signSATestToken(t, keys)
+	}
+	m, err := buildIssuerKeyMap(cfg, keyring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		parsed, _, err := jwt.NewParser().ParseUnverified(tokens[e.kid], jwt.MapClaims{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Header["alg"] != e.alg || parsed.Header["kid"] != e.kid {
+			t.Errorf("%s: header = %v", e.kid, parsed.Header)
+		}
+		if _, err := m.VerifyServiceAccountToken(tokens[e.kid]); err != nil {
+			t.Errorf("%s: %v", e.kid, err)
+		}
+	}
+}
+
+func mustRSAKey(t *testing.T) *rsa.PrivateKey {
+	t.Helper()
+	k, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}

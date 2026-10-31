@@ -222,6 +222,32 @@ const (
 	ScopeThumbnailManage = "ap:thumbnail:manage"
 )
 
+// Service-account scopes. Manage creates privilege (an account and its roles),
+// so keep it out of self-service roles, as with ScopeAPIKeyAllManage.
+const (
+	ScopeServiceAccountRead   = "ap:service_account:read"
+	ScopeServiceAccountManage = "ap:service_account:manage"
+)
+
+// ServiceAccountSubPrefix namespaces a service account's sub claim so it cannot
+// collide with a real user in user_idp_references.idp_id (UNIQUE). Reserved at
+// startup, in file-mode config and in IdP-mode authentication.
+const ServiceAccountSubPrefix = "sa:"
+
+// ServiceAccountTokenVersionClaim carries the account's token version at mint
+// time. A token below the account's revocation watermark is rejected, which
+// needs no clock agreement between replicas.
+const ServiceAccountTokenVersionClaim = "sa_tv"
+
+// ServiceAccountReservedHandle is the public token endpoint's path segment. An
+// account with this handle would sit under that auth skip path, so every
+// management call on it would arrive unauthenticated and fail.
+const ServiceAccountReservedHandle = "token"
+
+// JWKSPath publishes the service-account signing keys. At the server root, not
+// under APIBasePath, so the URL a key manager stores survives an API version bump.
+const JWKSPath = "/.well-known/jwks"
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"

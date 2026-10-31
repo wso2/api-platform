@@ -240,3 +240,49 @@ instead of a crash-looping pod.
 {{- end -}}
 {{- $canonical -}}
 {{- end -}}
+
+{{/*
+Returns "true" when service accounts are enabled with their own signing keys,
+else "". Without keys they sign with the shared auth.jwt pair. The render fails on
+keys without an issuer, an issuer without keys, an unknown algorithm, or anything
+but one active key.
+*/}}
+{{- define "apip.platformApi.saOwnKey" -}}
+{{- $sa := default (dict) .Values.config.auth.serviceAccount -}}
+{{- if $sa.enabled -}}
+{{- $signing := default (dict) $sa.signing -}}
+{{- $keys := default (list) $signing.keys -}}
+{{- if $keys -}}
+{{- if not $signing.issuer -}}
+{{- fail "platform-api: config.auth.serviceAccount.signing.issuer is required with signing.keys." -}}
+{{- end -}}
+{{- $active := 0 -}}
+{{- range $keys -}}
+{{- if not .path -}}
+{{- fail "platform-api: every config.auth.serviceAccount.signing.keys entry needs a path." -}}
+{{- end -}}
+{{- if and .algorithm (not (has .algorithm (list "RS256" "PS256" "ES256" "ES384"))) -}}
+{{- fail (printf "platform-api: config.auth.serviceAccount.signing.keys algorithm must be RS256, PS256, ES256 or ES384, got %q." .algorithm) -}}
+{{- end -}}
+{{- if .active }}{{ $active = add1 $active }}{{ end -}}
+{{- end -}}
+{{- if ne $active 1 -}}
+{{- fail (printf "platform-api: config.auth.serviceAccount.signing.keys needs exactly one key with active: true (found %d)." $active) -}}
+{{- end -}}
+true
+{{- else if $signing.issuer -}}
+{{- fail "platform-api: config.auth.serviceAccount.signing.issuer needs signing.keys; without keys, service accounts sign with auth.jwt and carry its issuer." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Returns "true" when service accounts are enabled without their own keys, so
+they sign with auth.jwt — which must then be rendered and mounted in every mode.
+*/}}
+{{- define "apip.platformApi.saSharedKey" -}}
+{{- $sa := default (dict) .Values.config.auth.serviceAccount -}}
+{{- if and $sa.enabled (not (include "apip.platformApi.saOwnKey" .)) -}}
+true
+{{- end -}}
+{{- end -}}

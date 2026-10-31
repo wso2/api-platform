@@ -68,6 +68,7 @@ var (
 	platformGatewayKind          = cleanup.Kind{Name: "platform-api-gateway", Order: 88}
 	platformProjectKind          = cleanup.Kind{Name: "platform-api-project", Order: 100}
 	platformGraphQLAPIKind       = cleanup.Kind{Name: "platform-api-graphql-api", Order: 55}
+	platformServiceAccountKind   = cleanup.Kind{Name: "platform-api-service-account", Order: 62}
 )
 
 // platformCollectionKinds maps a top-level control-plane collection to the cleanup kind of a
@@ -86,6 +87,7 @@ var platformCollectionKinds = map[string]cleanup.Kind{
 	"applications":       platformApplicationKind,
 	"secrets":            platformSecretKind,
 	"api-portals":        platformAPIPortalKind,
+	"service-accounts":   platformServiceAccountKind,
 }
 
 // platformResourcePattern parses a control-plane resource path: a top-level resource, or one
