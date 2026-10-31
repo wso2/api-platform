@@ -42,6 +42,7 @@ import { useProviderTemplates } from '../../../../contexts/llmProvider/providerT
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import {
   familyHandle,
   truncateProviderDisplayName,
@@ -614,9 +615,7 @@ export default function ProviderTemplatesList({
                 </Stack>
               </Box>
             ) : (
-              <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                No custom templates match your search.
-              </Typography>
+              <NoSearchResults message="No custom templates match your search." />
             )}
 
             {builtInTemplates.length > 0 && (
@@ -633,9 +632,7 @@ export default function ProviderTemplatesList({
                     {filteredBuiltIn.map((template) => renderCard(template))}
                   </Box>
                 ) : (
-                  <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                    No built-in templates match your search.
-                  </Typography>
+                  <NoSearchResults message="No built-in templates match your search." />
                 )}
               </>
             )}

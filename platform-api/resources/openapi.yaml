@@ -3925,6 +3925,9 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: List of LLM providers
@@ -4763,6 +4766,9 @@ paths:
         - $ref: '#/components/parameters/projectId-Q'
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: List of LLM proxies
@@ -5561,6 +5567,9 @@ paths:
         - $ref: '#/components/parameters/projectId-Q'
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: List of MCP proxies
@@ -7670,6 +7679,7 @@ paths:
         - Applications
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
+        - $ref: '#/components/parameters/applicationType-Q'
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
         - $ref: '#/components/parameters/sortBy-Q'
@@ -16033,6 +16043,16 @@ components:
       schema:
         type: string
         example: "default-project"
+
+    applicationType-Q:
+      name: type
+      in: query
+      required: false
+      description: >-
+        Restrict the returned applications to this type. Omitted means every
+        type.
+      schema:
+        $ref: '#/components/schemas/ApplicationType'
 
     displayName-Q:
       name: displayName

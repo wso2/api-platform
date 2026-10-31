@@ -63,7 +63,18 @@ export async function createMCPServer(
 }
 
 /**
- * Get all MCP Servers
+ * Options for filtering/sorting a {@link getMCPServers} page. `search` is a
+ * case-insensitive substring match against the server's display name and id,
+ * applied server-side.
+ */
+export interface GetMCPServersOptions {
+  search?: string;
+  sortBy?: 'name' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Get a page of MCP Servers
  *
  * Organization is resolved from the JWT token on the server side.
  *
@@ -77,11 +88,26 @@ export async function getMCPServers(
   projectId: string,
   baseUrl: string,
   limit: number = 20,
-  offset: number = 0
+  offset: number = 0,
+  options?: GetMCPServersOptions
 ): Promise<MCPServerListResponse> {
   try {
+    const params = new URLSearchParams({
+      projectId,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (options?.search) {
+      params.set('query', options.search);
+    }
+    if (options?.sortBy) {
+      params.set('sortBy', options.sortBy);
+    }
+    if (options?.sortOrder) {
+      params.set('sortOrder', options.sortOrder);
+    }
     const response = await get<MCPServerListResponse>(
-      `/mcp-proxies?projectId=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
+      `/mcp-proxies?${params.toString()}`,
       undefined,
       baseUrl
     );

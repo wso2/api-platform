@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Avatar,
@@ -61,7 +61,6 @@ import {
 } from '../../../../utils/projectRouting';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
-import { fetchAllPages } from '../../../../utils/pagination';
 import type { MCPServer } from '../../../../utils/types';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 import { getErrorMessage } from '../../../../utils/apiError';
@@ -69,18 +68,17 @@ import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifact
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
+import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
+import { logger } from '../../../../utils/logger';
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
 }
 
-// -1 is MUI's convention for an "All" rows-per-page option.
-const ALL_ROWS = -1;
-const ROWS_PER_PAGE_OPTIONS = [
-  20,
-  50,
-  { label: 'All', value: ALL_ROWS },
-];
+// The backend hard-caps `limit` at 100, so there is no true "All" option once
+// the list is paginated server-side.
+const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
 export default function ExternalServersList(): React.JSX.Element {
   const navigate = useNavigate();
@@ -115,51 +113,100 @@ export default function ExternalServersList(): React.JSX.Element {
   const isProjectLevel = Boolean(effectiveProject?.id);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [servers, setServers] = useState<MCPServer[]>([]);
-  const [isServersLoading, setIsServersLoading] = useState(false);
-  const [hasFetchedServers, setHasFetchedServers] = useState(false);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    offset: 0,
+    limit: 20,
+  });
+  const [isServersLoading, setIsServersLoading] = useState(true);
+  // True once the first fetch (success or failure) has completed. Prevents a
+  // background refetch (e.g. from typing in search) from unmounting the
+  // search box and table in favor of the full skeleton, which would drop
+  // input focus mid-keystroke.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [serversError, setServersError] = useState<Error | null>(null);
+  const [hasAnyServers, setHasAnyServers] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MCPServer | null>(null);
+  const fetchServersRequestRef = useRef(0);
 
   const organizationId = currentOrganization?.uuid ?? '';
   const projectId = effectiveProject?.id ?? '';
   const apimBaseUrl = PLATFORM_API_BASE_URL;
 
   useEffect(() => {
-    if (!organizationId || !projectId) return;
-    let cancelled = false;
-    const fetchServers = async () => {
-      try {
-        setIsServersLoading(true);
-        setHasFetchedServers(false);
-        // The collection endpoint defaults to limit=20 when unpaged, and this
-        // list has no pager of its own — walk every page so projects with
-        // more than 20 MCP proxies aren't silently truncated.
-        const response = await fetchAllPages<MCPServer>((limit, offset) =>
-          mcpProxiesApis.getMCPServers(projectId, apimBaseUrl, limit, offset)
-        );
-        if (!cancelled) {
-          setServers(response.list ?? []);
-        }
-      } catch {
-        // silently fail on load
-      } finally {
-        if (!cancelled) {
-          setIsServersLoading(false);
-          setHasFetchedServers(true);
-        }
+    const handle = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const fetchServers = useCallback(async () => {
+    const requestId = (fetchServersRequestRef.current += 1);
+    if (!organizationId || !projectId) {
+      setServers([]);
+      setPagination({ total: 0, offset: 0, limit: rowsPerPage });
+      setIsServersLoading(false);
+      return;
+    }
+
+    try {
+      setIsServersLoading(true);
+      setServersError(null);
+      const response = await mcpProxiesApis.getMCPServers(
+        projectId,
+        apimBaseUrl,
+        rowsPerPage,
+        page * rowsPerPage,
+        debouncedSearchQuery ? { search: debouncedSearchQuery } : undefined
+      );
+      if (fetchServersRequestRef.current !== requestId) return;
+      setServers(response.list ?? []);
+      setPagination(
+        response.pagination ?? { total: 0, offset: 0, limit: rowsPerPage }
+      );
+      if (!debouncedSearchQuery) {
+        setHasAnyServers((response.pagination?.total ?? 0) > 0);
       }
-    };
+    } catch (err) {
+      if (fetchServersRequestRef.current !== requestId) return;
+      logger.error('Failed to fetch MCP Proxies:', err);
+      setServersError(
+        err instanceof Error ? err : new Error('Failed to fetch MCP proxies')
+      );
+    } finally {
+      if (fetchServersRequestRef.current === requestId) {
+        setIsServersLoading(false);
+        setHasLoadedOnce(true);
+      }
+    }
+  }, [
+    organizationId,
+    projectId,
+    apimBaseUrl,
+    page,
+    rowsPerPage,
+    debouncedSearchQuery,
+  ]);
+
+  useEffect(() => {
     fetchServers();
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId, projectId, apimBaseUrl]);
+  }, [fetchServers]);
 
   useEffect(() => {
     setSelectedProjectId('');
   }, [currentOrganization?.id]);
+
+  // A stale search term carried across a project switch would otherwise keep
+  // `hasAnyServers` pinned to the previous project's value (it's only
+  // recomputed from an unfiltered fetch) — reset the search box so the new
+  // project's own "has any" state is captured on its first fetch.
+  useEffect(() => {
+    setSearchQuery('');
+  }, [projectId]);
 
   const selectedProject = useMemo(
     () =>
@@ -177,51 +224,25 @@ export default function ExternalServersList(): React.JSX.Element {
     );
   };
 
-  const filteredServers = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return servers;
-
-    return servers.filter((server) =>
-      [server.displayName, server.description, server.context, server.version]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [searchQuery, servers]);
-
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, rowsPerPage]);
+  }, [debouncedSearchQuery, rowsPerPage]);
 
-  // A search/rowsPerPage change is handled above, but the list can also
-  // shrink out from under the current page from other causes — a delete, a
-  // refresh, or switching projects — which must clamp `page` back into range
-  // too, or the table renders an empty slice while servers still exist.
+  // The list can shrink out from under the current page — a delete, or a
+  // search/rowsPerPage change reducing the total — which must clamp `page`
+  // back into range too, or the table requests a page past the end.
   useEffect(() => {
-    if (rowsPerPage === ALL_ROWS) return;
-    const maxPage = Math.max(
-      0,
-      Math.ceil(filteredServers.length / rowsPerPage) - 1
-    );
+    const maxPage = Math.max(0, Math.ceil(pagination.total / rowsPerPage) - 1);
     if (page > maxPage) setPage(maxPage);
-  }, [filteredServers.length, rowsPerPage, page]);
-
-  const pagedServers = useMemo(() => {
-    if (rowsPerPage === ALL_ROWS) return filteredServers;
-    return filteredServers.slice(
-      page * rowsPerPage,
-      page * rowsPerPage + rowsPerPage
-    );
-  }, [filteredServers, page, rowsPerPage]);
+  }, [pagination.total, rowsPerPage, page]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || !organizationId) return;
     const serverId = deleteTarget.id;
     try {
       await mcpProxiesApis.deleteMCPServer(serverId, apimBaseUrl);
-      setServers((prev) => prev.filter((s) => s.id !== serverId));
       showSnackbar('MCP Proxy deleted successfully.', 'success');
+      await fetchServers();
     } catch (error) {
       showSnackbar(
         getErrorDescription(error, 'Failed to delete MCP Proxy.'),
@@ -353,7 +374,7 @@ export default function ExternalServersList(): React.JSX.Element {
             </PageTitle.SubHeader>
           </PageTitle>
 
-          {servers.length > 0 ? (
+          {hasAnyServers ? (
             <Tooltip title={createMcpProxyTooltip}>
               <Box component="span" sx={{ ml: 'auto', flexShrink: 0 }}>
                 <Button
@@ -379,7 +400,7 @@ export default function ExternalServersList(): React.JSX.Element {
         </Box>
       </Grid>
 
-      {isServersLoading || !hasFetchedServers ? (
+      {isServersLoading && !hasLoadedOnce ? (
         <Grid size={{ xs: 12 }}>
           <Card>
             <TableContainer>
@@ -427,7 +448,11 @@ export default function ExternalServersList(): React.JSX.Element {
             </TableContainer>
           </Card>
         </Grid>
-      ) : hasFetchedServers && servers.length === 0 ? (
+      ) : serversError && !isServersLoading ? (
+        <Grid size={{ xs: 12 }}>
+          <ErrorAlert error={serversError} onRetry={fetchServers} />
+        </Grid>
+      ) : hasLoadedOnce && !hasAnyServers && !isServersLoading ? (
         <Grid size={{ xs: 12 }}>
           <Box
             sx={{
@@ -509,7 +534,14 @@ export default function ExternalServersList(): React.JSX.Element {
             />
           </Grid>
 
-          <Grid size={{ xs: 12 }}>
+          <Grid
+            size={{ xs: 12 }}
+            sx={{
+              opacity: isServersLoading ? 0.5 : 1,
+              transition: 'opacity 0.15s ease',
+              pointerEvents: isServersLoading ? 'none' : 'auto',
+            }}
+          >
             <Card>
               <TableContainer>
                 <Table size="small">
@@ -524,19 +556,21 @@ export default function ExternalServersList(): React.JSX.Element {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredServers.length === 0 ? (
+                    {servers.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6}>
-                          <Typography variant="body2" color="text.secondary">
-                            <FormattedMessage
-                              id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.no.mcp.servers.found"
-                              defaultMessage="No MCP proxies found."
-                            />
-                          </Typography>
+                          <NoSearchResults
+                            message={
+                              <FormattedMessage
+                                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.no.mcp.servers.found"
+                                defaultMessage="No MCP proxies match your search."
+                              />
+                            }
+                          />
                         </TableCell>
                       </TableRow>
                     ) : (
-                      pagedServers.map((server) => (
+                      servers.map((server) => (
                         <TableRow
                           key={server.id}
                           hover
@@ -624,10 +658,10 @@ export default function ExternalServersList(): React.JSX.Element {
                 </Table>
               </TableContainer>
 
-              {filteredServers.length >= 20 && (
+              {pagination.total >= ROWS_PER_PAGE_OPTIONS[0] && (
                 <TablePagination
                   component="div"
-                  count={filteredServers.length}
+                  count={pagination.total}
                   page={page}
                   onPageChange={(_event, nextPage) => setPage(nextPage)}
                   rowsPerPage={rowsPerPage}

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Avatar,
@@ -45,6 +45,7 @@ import {
 } from '@wso2/oxygen-ui';
 import { Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import { useApplications } from '../../../../contexts/ApplicationsContext';
 import { useAppAuth, useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
@@ -68,6 +69,8 @@ import * as llmProviderApis from '../../../../apis/llmProviderApis';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { getErrorMessage } from '../../../../utils/apiError';
 import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
+import { logger } from '../../../../utils/logger';
+import type { LLMProvider } from '../../../../utils/types';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -81,13 +84,9 @@ import NoProviders from '../../../../assets/images/NoProviders.svg';
 import { FormattedMessage } from 'react-intl';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
-// -1 is MUI's convention for an "All" rows-per-page option.
-const ALL_ROWS = -1;
-const ROWS_PER_PAGE_OPTIONS = [
-  20,
-  50,
-  { label: 'All', value: ALL_ROWS },
-];
+// The backend hard-caps `limit` at 100 (see parsePagination in platform-api),
+// so there is no true "All" option once the list is paginated server-side.
+const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
 const statusChipColor: Record<string, 'success' | 'warning' | 'default'> = {
   Active: 'success',
@@ -127,13 +126,7 @@ export default function ServiceProviders() {
   // scopes rather than the read-only-aware permission: an admin in a read-only
   // organization still gets the admin empty state, with its action disabled.
   const { hasPermission: hasScope } = useAppAuthScopes();
-  const {
-    providersResponse,
-    deleteProvider,
-    isLoading,
-    error: providersError,
-    refreshProviders,
-  } = useLLMProviders();
+  const { deleteProvider } = useLLMProviders();
   const { applications } = useApplications();
   const { templatesResponse } = useProviderTemplates();
   const { currentProject, currentOrganization, setCurrentProject } =
@@ -149,6 +142,7 @@ export default function ServiceProviders() {
       )
     : buildOrgPath(currentOrganization, '/service-provider/create');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -169,54 +163,100 @@ export default function ServiceProviders() {
   >([]);
   const showSnackbar = useAIWorkspaceSnackbar();
 
-  const hasError = Boolean(providersError);
+  // Server-paginated/searched page of providers — independent of
+  // LLMProvidersContext's full-org-list cache (used by other pages that need
+  // every provider, e.g. picker dropdowns). Only this list view fetches one
+  // real page at a time.
+  const [providers, setProviders] = useState<LLMProvider[]>([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    offset: 0,
+    limit: 20,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  // True once the first fetch (success or failure) has completed. The full-page
+  // skeleton only shows before this; afterward, a background refetch (e.g. from
+  // typing in search) keeps the search box and current results mounted instead
+  // of unmounting them — unmounting a controlled <TextField> mid-typing drops
+  // focus, which is what made search feel laggy / drop backspace keystrokes.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [providersError, setProvidersError] = useState<Error | null>(null);
+  // Whether the organization has any providers at all, independent of the
+  // active search — only updated from an unfiltered fetch's total, so a
+  // zero-result search doesn't flip this back to "empty org".
+  const [hasAnyProviders, setHasAnyProviders] = useState(false);
+  const fetchProvidersRequestRef = useRef(0);
 
-  // Access the list from the API response
-  const providers = providersResponse.list;
+  const hasError = Boolean(providersError);
   const emptyMessage = 'No Available LLM Providers';
   const { canCreate, limitMessage } = useResourceLimits();
   const isProviderQuotaReached = !canCreate('llmProviders');
   const providerQuotaTooltip = limitMessage('llmProviders');
 
-  const filteredProviders = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return providers;
-
-    return providers.filter((provider) => {
-      const lastUpdated =
-        provider.lastUpdated ?? provider.updatedAt ?? provider.createdAt;
-      return (
-        provider.displayName.toLowerCase().includes(query) ||
-        formatRelativeTime(lastUpdated).toLowerCase().includes(query) ||
-        (provider.status ?? '').toLowerCase().includes(query)
-      );
-    });
-  }, [providers, searchQuery]);
+  // Debounce the search box so each keystroke doesn't fire a backend request.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
 
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, rowsPerPage]);
+  }, [debouncedSearchQuery, rowsPerPage]);
 
-  // A search/rowsPerPage change is handled above, but the list can also
-  // shrink out from under the current page from other causes — a delete, a
-  // refresh, or switching organizations — which must clamp `page` back into
-  // range too, or the grid renders an empty slice while providers still exist.
+  const fetchProviders = useCallback(async () => {
+    const requestId = (fetchProvidersRequestRef.current += 1);
+    if (!currentOrganization?.uuid) {
+      setProviders([]);
+      setPagination({ total: 0, offset: 0, limit: rowsPerPage });
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setProvidersError(null);
+      const response = await llmProviderApis.getLLMProviders(
+        currentOrganization.uuid,
+        apimBaseUrl,
+        rowsPerPage,
+        page * rowsPerPage,
+        debouncedSearchQuery ? { search: debouncedSearchQuery } : undefined
+      );
+      if (fetchProvidersRequestRef.current !== requestId) return;
+      setProviders(response.list ?? []);
+      setPagination(
+        response.pagination ?? { total: 0, offset: 0, limit: rowsPerPage }
+      );
+      if (!debouncedSearchQuery) {
+        setHasAnyProviders((response.pagination?.total ?? 0) > 0);
+      }
+    } catch (err) {
+      if (fetchProvidersRequestRef.current !== requestId) return;
+      logger.error('Failed to fetch LLM providers:', err);
+      setProvidersError(
+        err instanceof Error ? err : new Error('Failed to fetch providers')
+      );
+    } finally {
+      if (fetchProvidersRequestRef.current === requestId) {
+        setIsLoading(false);
+        setHasLoadedOnce(true);
+      }
+    }
+  }, [currentOrganization?.uuid, apimBaseUrl, page, rowsPerPage, debouncedSearchQuery]);
+
   useEffect(() => {
-    if (rowsPerPage === ALL_ROWS) return;
-    const maxPage = Math.max(
-      0,
-      Math.ceil(filteredProviders.length / rowsPerPage) - 1
-    );
-    if (page > maxPage) setPage(maxPage);
-  }, [filteredProviders.length, rowsPerPage, page]);
+    fetchProviders();
+  }, [fetchProviders]);
 
-  const pagedProviders = useMemo(() => {
-    if (rowsPerPage === ALL_ROWS) return filteredProviders;
-    return filteredProviders.slice(
-      page * rowsPerPage,
-      page * rowsPerPage + rowsPerPage
-    );
-  }, [filteredProviders, page, rowsPerPage]);
+  // The list can shrink out from under the current page — a delete, or a
+  // search/rowsPerPage change reducing the total — which must clamp `page`
+  // back into range too, or the grid requests a page past the end.
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(pagination.total / rowsPerPage) - 1);
+    if (page > maxPage) setPage(maxPage);
+  }, [pagination.total, rowsPerPage, page]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
@@ -226,6 +266,7 @@ export default function ServiceProviders() {
       showSnackbar('Provider deleted successfully.', 'success');
       setDeleteTarget(null);
       setDeleteConfirmationInput('');
+      await fetchProviders();
     } catch (error) {
       showSnackbar(
         getErrorMessage(error, 'Failed to delete provider. Please try again.'),
@@ -406,7 +447,7 @@ export default function ServiceProviders() {
           display="flex"
           justifyContent="flex-end"
         >
-          {!isProjectLevel && providers.length > 0 && (
+          {!isProjectLevel && hasAnyProviders && (
             <Tooltip
               title={
                 canCreateProvider ? (
@@ -454,7 +495,7 @@ export default function ServiceProviders() {
       </Box>
 
       {/* Loading State */}
-      {isLoading && (
+      {isLoading && !hasLoadedOnce && (
         <Grid container spacing={2} sx={{ mt: 1 }}>
           {[0, 1, 2].map((key) => (
             <Grid key={key} size={{ xs: 12, md: 6, lg: 4 }}>
@@ -485,12 +526,12 @@ export default function ServiceProviders() {
       {/* Error State */}
       {hasError && !isLoading && (
         <Box sx={{ py: 2 }}>
-          <ErrorAlert error={providersError} onRetry={refreshProviders} />
+          <ErrorAlert error={providersError} onRetry={fetchProviders} />
         </Box>
       )}
 
       {/* Providers Section */}
-      {!isLoading && !hasError && providers.length === 0 && (
+      {!isLoading && !hasError && !hasAnyProviders && (
         <Box
           sx={{
             display: 'flex',
@@ -575,7 +616,7 @@ export default function ServiceProviders() {
         </Box>
       )}
 
-      {!isLoading && !hasError && providers.length > 0 && (
+      {hasLoadedOnce && !hasError && hasAnyProviders && (
         <>
           <Box sx={{ mb: 3 }}>
             <TextField
@@ -596,8 +637,19 @@ export default function ServiceProviders() {
             />
           </Box>
 
+          <Box
+            sx={{
+              opacity: isLoading ? 0.5 : 1,
+              transition: 'opacity 0.15s ease',
+              pointerEvents: isLoading ? 'none' : 'auto',
+            }}
+          >
+          {providers.length === 0 ? (
+            <NoSearchResults message="No providers match your search." />
+          ) : (
+            <>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            {pagedProviders.map((provider) => {
+            {providers.map((provider) => {
               const providerId = provider.id ?? provider.displayName;
               const providerStatus = provider.status ?? 'Unknown';
               const lastUpdated =
@@ -856,10 +908,10 @@ export default function ServiceProviders() {
             })}
           </Grid>
 
-          {filteredProviders.length >= 20 && (
+          {pagination.total >= ROWS_PER_PAGE_OPTIONS[0] && (
             <TablePagination
               component="div"
-              count={filteredProviders.length}
+              count={pagination.total}
               page={page}
               onPageChange={(_event, nextPage) => setPage(nextPage)}
               rowsPerPage={rowsPerPage}
@@ -869,6 +921,9 @@ export default function ServiceProviders() {
               rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
             />
           )}
+            </>
+          )}
+          </Box>
         </>
       )}
 

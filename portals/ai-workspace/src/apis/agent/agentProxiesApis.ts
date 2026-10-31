@@ -58,7 +58,18 @@ export async function createAgentProxy(
 }
 
 /**
- * Get all Agent Proxies
+ * Options for filtering/sorting a {@link getAgentProxies} page. `search` is a
+ * case-insensitive substring match against the proxy's display name and id,
+ * applied server-side.
+ */
+export interface GetAgentProxiesOptions {
+  search?: string;
+  sortBy?: 'name' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Get a page of Agent Proxies
  *
  * Organization is resolved from the JWT token on the server side.
  *
@@ -72,11 +83,26 @@ export async function getAgentProxies(
   projectId: string,
   baseUrl: string,
   limit: number = 20,
-  offset: number = 0
+  offset: number = 0,
+  options?: GetAgentProxiesOptions
 ): Promise<AgentProxyListResponse> {
   try {
+    const params = new URLSearchParams({
+      projectId,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (options?.search) {
+      params.set('query', options.search);
+    }
+    if (options?.sortBy) {
+      params.set('sortBy', options.sortBy);
+    }
+    if (options?.sortOrder) {
+      params.set('sortOrder', options.sortOrder);
+    }
     const response = await get<AgentProxyListResponse>(
-      `/agent-proxies?projectId=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
+      `/agent-proxies?${params.toString()}`,
       undefined,
       baseUrl
     );

@@ -8388,6 +8388,8 @@ export interface components {
         "entityID-Q": string;
         /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned. */
         "projectId-Q": string;
+        /** @description Restrict the returned applications to this type. Omitted means every type. */
+        "applicationType-Q": components["schemas"]["ApplicationType"];
         /**
          * @description **Display name** shared by every version of a REST API. Matched exactly
          *     (case-sensitive) and scoped to the organization in the JWT token.
@@ -11420,6 +11422,12 @@ export interface operations {
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
                 offset?: components["parameters"]["offset-Q"];
+                /** @description Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt). */
+                sortBy?: components["parameters"]["sortBy-Q"];
+                /** @description Sort direction applied to `sortBy`. */
+                sortOrder?: components["parameters"]["sortOrder-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
             };
             header?: never;
             path?: never;
@@ -12093,6 +12101,12 @@ export interface operations {
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
                 offset?: components["parameters"]["offset-Q"];
+                /** @description Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt). */
+                sortBy?: components["parameters"]["sortBy-Q"];
+                /** @description Sort direction applied to `sortBy`. */
+                sortOrder?: components["parameters"]["sortOrder-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
             };
             header?: never;
             path?: never;
@@ -12657,6 +12671,12 @@ export interface operations {
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */
                 offset?: components["parameters"]["offset-Q"];
+                /** @description Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt). */
+                sortBy?: components["parameters"]["sortBy-Q"];
+                /** @description Sort direction applied to `sortBy`. */
+                sortOrder?: components["parameters"]["sortOrder-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
             };
             header?: never;
             path?: never;
@@ -14231,6 +14251,8 @@ export interface operations {
             query: {
                 /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned. */
                 projectId: components["parameters"]["projectId-Q"];
+                /** @description Restrict the returned applications to this type. Omitted means every type. */
+                type?: components["parameters"]["applicationType-Q"];
                 /** @description Maximum number of items to return per page. */
                 limit?: components["parameters"]["limit-Q"];
                 /** @description Zero-based index of the first item to return. */

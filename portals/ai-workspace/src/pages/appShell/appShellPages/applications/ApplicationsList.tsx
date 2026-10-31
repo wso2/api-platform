@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Avatar,
@@ -39,6 +39,7 @@ import {
   PageTitle,
   Select,
   Stack,
+  TablePagination,
   TextField,
   Tooltip,
   Typography,
@@ -57,11 +58,19 @@ import {
 } from '../../../../utils/projectRouting';
 import type { Application } from '../../../../utils/types';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import NoApplications from '../../../../assets/images/NoApplications.svg';
 import { getErrorCode } from '../../../../utils/apiError';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import { applicationApis } from '../../../../apis/applicationApis';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { logger } from '../../../../utils/logger';
+
+// The backend hard-caps `limit` at 100, so there is no true "All" option once
+// the list is paginated server-side.
+const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -86,13 +95,7 @@ export default function ApplicationsList() {
     setCurrentProject,
     isProjectsLoading,
   } = useAppShell();
-  const {
-    applications,
-    isLoading,
-    error,
-    deleteApplication,
-    refreshApplications,
-  } = useApplications();
+  const { deleteApplication } = useApplications();
   const showSnackbar = useAIWorkspaceSnackbar();
 
   const routeProject = useMemo(
@@ -107,11 +110,120 @@ export default function ApplicationsList() {
 
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [deleteTarget, setDeleteTarget] = useState<Application | null>(null);
+
+  // Server-paginated/searched page of GenAI applications — fetched directly
+  // by this page rather than through ApplicationsContext's unpaginated
+  // default-page cache, which other consumers (pickers, overview cards) still
+  // use as-is.
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    offset: 0,
+    limit: 20,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  // True once the first fetch (success or failure) has completed. Prevents a
+  // background refetch (e.g. from typing in search) from unmounting the
+  // search box and grid in favor of the full-page spinner, which would drop
+  // input focus mid-keystroke.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const [hasAnyApplications, setHasAnyApplications] = useState(false);
+  const fetchApplicationsRequestRef = useRef(0);
+
+  const organizationId = currentOrganization?.uuid ?? '';
+  const effectiveProjectId = effectiveProject?.id ?? '';
+  const apimBaseUrl = PLATFORM_API_BASE_URL;
 
   useEffect(() => {
     setSelectedProjectId('');
   }, [currentOrganization?.id]);
+
+  // A stale search term carried across a project switch would otherwise keep
+  // `hasAnyApplications` pinned to the previous project's value (it's only
+  // recomputed from an unfiltered fetch) — reset the search box so the new
+  // project's own "has any" state is captured on its first fetch.
+  useEffect(() => {
+    setSearchQuery('');
+  }, [effectiveProjectId]);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const fetchApplications = useCallback(async () => {
+    const requestId = (fetchApplicationsRequestRef.current += 1);
+    if (!organizationId || !effectiveProjectId) {
+      setApplications([]);
+      setPagination({ total: 0, offset: 0, limit: rowsPerPage });
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await applicationApis.getApplications(
+        effectiveProjectId,
+        apimBaseUrl,
+        {
+          type: 'genai',
+          limit: rowsPerPage,
+          offset: page * rowsPerPage,
+          query: debouncedSearchQuery || undefined,
+        }
+      );
+      if (fetchApplicationsRequestRef.current !== requestId) return;
+      setApplications(response.list ?? []);
+      setPagination(
+        response.pagination ?? { total: 0, offset: 0, limit: rowsPerPage }
+      );
+      if (!debouncedSearchQuery) {
+        setHasAnyApplications((response.pagination?.total ?? 0) > 0);
+      }
+    } catch (err) {
+      if (fetchApplicationsRequestRef.current !== requestId) return;
+      logger.error('Failed to fetch applications:', err);
+      setError(
+        err instanceof Error ? err : new Error('Failed to fetch applications')
+      );
+    } finally {
+      if (fetchApplicationsRequestRef.current === requestId) {
+        setIsLoading(false);
+        setHasLoadedOnce(true);
+      }
+    }
+  }, [
+    organizationId,
+    effectiveProjectId,
+    apimBaseUrl,
+    page,
+    rowsPerPage,
+    debouncedSearchQuery,
+  ]);
+
+  useEffect(() => {
+    fetchApplications();
+  }, [fetchApplications]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearchQuery, rowsPerPage]);
+
+  // The list can shrink out from under the current page — a delete, or a
+  // search/rowsPerPage change reducing the total — which must clamp `page`
+  // back into range too, or the grid requests a page past the end.
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(pagination.total / rowsPerPage) - 1);
+    if (page > maxPage) setPage(maxPage);
+  }, [pagination.total, rowsPerPage, page]);
 
   const selectedProject = useMemo(
     () =>
@@ -129,30 +241,13 @@ export default function ApplicationsList() {
     );
   };
 
-  const genAIApplications = useMemo(
-    () => applications.filter((app) => app.type === 'genai'),
-    [applications]
-  );
-
-  const filteredApplications = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return genAIApplications;
-
-    return applications.filter((app) =>
-      [app.displayName, app.description]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [searchQuery, genAIApplications]);
-
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
 
     try {
       await deleteApplication(deleteTarget.id);
       showSnackbar('Application deleted successfully.', 'success');
+      await fetchApplications();
     } catch {
       showSnackbar('Failed to delete application. Please try again.', 'error');
     } finally {
@@ -297,7 +392,7 @@ export default function ApplicationsList() {
           </PageTitle.SubHeader>
         </PageTitle>
 
-        {filteredApplications.length > 0 ? (
+        {hasAnyApplications ? (
           <Tooltip title={createApplicationTooltip}>
             <Box component="span" sx={{ ml: 'auto', flexShrink: 0 }}>
               <Button
@@ -321,7 +416,7 @@ export default function ApplicationsList() {
   );
 
   const renderProjectList = () => {
-    if (isLoading) {
+    if (isLoading && !hasLoadedOnce) {
       return (
         <Grid size={{ xs: 12 }}>
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -398,95 +493,108 @@ export default function ApplicationsList() {
 
       return (
         <Grid size={{ xs: 12 }}>
-          <ErrorAlert error={error} onRetry={refreshApplications} />
+          <ErrorAlert error={error} onRetry={fetchApplications} />
+        </Grid>
+      );
+    }
+
+    if (!hasAnyApplications && !isLoading) {
+      return (
+        <Grid size={{ xs: 12 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              py: 6,
+            }}
+          >
+            <Stack
+              spacing={1.5}
+              alignItems="center"
+              justifyContent="center"
+              sx={{ textAlign: 'center', py: 2, width: '100%' }}
+            >
+              <Box
+                component="img"
+                src={NoApplications}
+                alt="No applications"
+                sx={{ width: 140, maxWidth: '80%' }}
+              />
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.your.first.genai.application"
+                  defaultMessage="Create your first GenAI Application"
+                />
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ maxWidth: 420 }}
+              >
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.setup.genai.application.description"
+                  defaultMessage="Set up a GenAI application to securely consume AI services through your workspace."
+                />
+              </Typography>
+              <Tooltip title={createApplicationTooltip}>
+                <Box component="span">
+                  <Button
+                    variant="contained"
+                    component={RouterLink}
+                    to={newApplicationPath}
+                    startIcon={<Plus size={20} />}
+                    disabled={!canCreateApplication}
+                    sx={DISABLED_ACTION_SX}
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
+                      defaultMessage="Create Application"
+                    />
+                  </Button>
+                </Box>
+              </Tooltip>
+            </Stack>
+          </Box>
         </Grid>
       );
     }
 
     return (
       <>
-        {filteredApplications.length > 0 ? (
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              fullWidth
-              placeholder={searchQuery ? undefined : 'Search Applications...'}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search size={20} />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-          </Grid>
-        ) : null}
-
         <Grid size={{ xs: 12 }}>
+          <TextField
+            fullWidth
+            placeholder={searchQuery ? undefined : 'Search Applications...'}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={20} />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+        </Grid>
+
+        <Grid
+          size={{ xs: 12 }}
+          sx={{
+            opacity: isLoading ? 0.5 : 1,
+            transition: 'opacity 0.15s ease',
+            pointerEvents: isLoading ? 'none' : 'auto',
+          }}
+        >
           <Grid container spacing={2}>
-            {filteredApplications.length === 0 ? (
+            {applications.length === 0 ? (
               <Grid size={{ xs: 12 }}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    py: 6,
-                  }}
-                >
-                  <Stack
-                    spacing={1.5}
-                    alignItems="center"
-                    justifyContent="center"
-                    sx={{ textAlign: 'center', py: 2, width: '100%' }}
-                  >
-                    <Box
-                      component="img"
-                      src={NoApplications}
-                      alt="No applications"
-                      sx={{ width: 140, maxWidth: '80%' }}
-                    />
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.your.first.genai.application"
-                        defaultMessage="Create your first GenAI Application"
-                      />
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ maxWidth: 420 }}
-                    >
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.setup.genai.application.description"
-                        defaultMessage="Set up a GenAI application to securely consume AI services through your workspace."
-                      />
-                    </Typography>
-                    <Tooltip title={createApplicationTooltip}>
-                      <Box component="span">
-                        <Button
-                          variant="contained"
-                          component={RouterLink}
-                          to={newApplicationPath}
-                          startIcon={<Plus size={20} />}
-                          disabled={!canCreateApplication}
-                          sx={DISABLED_ACTION_SX}
-                        >
-                          <FormattedMessage
-                            id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
-                            defaultMessage="Create Application"
-                          />
-                        </Button>
-                      </Box>
-                    </Tooltip>
-                  </Stack>
-                </Box>
+                <NoSearchResults message="No GenAI applications match your search." />
               </Grid>
             ) : (
-              filteredApplications.map((app) => {
+              applications.map((app) => {
                 const descriptionText = app.description?.trim() || '';
                 const lastUpdated =
                   app.lastUpdated ?? app.updatedAt ?? app.createdAt;
@@ -610,6 +718,20 @@ export default function ApplicationsList() {
               })
             )}
           </Grid>
+
+          {pagination.total >= ROWS_PER_PAGE_OPTIONS[0] && (
+            <TablePagination
+              component="div"
+              count={pagination.total}
+              page={page}
+              onPageChange={(_event, nextPage) => setPage(nextPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(event) =>
+                setRowsPerPage(parseInt(event.target.value, 10))
+              }
+              rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+            />
+          )}
         </Grid>
       </>
     );

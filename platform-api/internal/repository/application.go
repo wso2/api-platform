@@ -234,12 +234,16 @@ func (r *ApplicationRepo) GetApplicationsByOrganizationID(orgID string) ([]*mode
 	return scanApplications(rows)
 }
 
-func (r *ApplicationRepo) GetApplicationsByProjectIDPaginated(projectID, orgID string, opts ListOptions) ([]*model.Application, error) {
+func (r *ApplicationRepo) GetApplicationsByProjectIDPaginated(projectID, orgID, appType string, opts ListOptions) ([]*model.Application, error) {
 	query := `
 		SELECT uuid, handle, project_uuid, organization_uuid, created_by, updated_by, display_name, description, type, created_at, updated_at
 		FROM applications
 		WHERE project_uuid = ? AND organization_uuid = ?`
 	args := []any{projectID, orgID}
+	if appType != "" {
+		query += " AND type = ?"
+		args = append(args, appType)
+	}
 	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
 		query += searchClause
 		args = append(args, searchArgs...)
@@ -274,12 +278,16 @@ func (r *ApplicationRepo) GetApplicationsByOrganizationIDPaginated(orgID string,
 	return scanApplications(rows)
 }
 
-func (r *ApplicationRepo) CountApplicationsByProjectID(projectID, orgID, search string) (int, error) {
+func (r *ApplicationRepo) CountApplicationsByProjectID(projectID, orgID, appType, search string) (int, error) {
 	query := `
 		SELECT COUNT(*)
 		FROM applications
 		WHERE project_uuid = ? AND organization_uuid = ?`
 	args := []any{projectID, orgID}
+	if appType != "" {
+		query += " AND type = ?"
+		args = append(args, appType)
+	}
 	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
 		query += searchClause
 		args = append(args, searchArgs...)
