@@ -19,40 +19,17 @@
 package handlers
 
 import (
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 
-	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/subscription"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
-
-// validateThrottleLimits ensures throttleLimitCount and throttleLimitUnit are provided together,
-// count is positive, and unit is one of Day, Hour, Min, Month.
-func validateThrottleLimits(count *int, unit *string) error {
-	countProvided := count != nil
-	unitProvided := unit != nil && *unit != ""
-	if countProvided != unitProvided {
-		return fmt.Errorf("throttleLimitCount and throttleLimitUnit must be provided together")
-	}
-	if !countProvided {
-		return nil
-	}
-	if *count <= 0 {
-		return fmt.Errorf("throttleLimitCount must be positive")
-	}
-	switch *unit {
-	case "Day", "Hour", "Min", "Month":
-		return nil
-	default:
-		return fmt.Errorf("throttleLimitUnit must be one of: Day, Hour, Min, Month")
-	}
-}
 
 // CreateSubscriptionPlan implements ServerInterface.CreateSubscriptionPlan (POST /subscription-plans)
 func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
@@ -69,79 +46,40 @@ func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		writeSubscriptionBodyError(w, err)
 		return
 	}
-	planName := strings.TrimSpace(req.PlanName)
-	if planName == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName is required"})
-		return
-	}
 
-	var unitStr *string
-	if req.ThrottleLimitUnit != nil {
-		s := string(*req.ThrottleLimitUnit)
-		unitStr = &s
-	}
-	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
-		return
-	}
-
-	status := models.SubscriptionPlanStatusActive
-	if req.Status != nil {
-		st := models.SubscriptionPlanStatus(*req.Status)
-		switch st {
-		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
-			status = st
+	result, err := s.getSubscriptionService().CreatePlan(subscription.CreatePlanParams{
+		Request:       req,
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		var validationErr *subscription.ValidationError
+		switch {
+		case errors.As(err, &validationErr):
+			writeSubscriptionError(w, http.StatusBadRequest, validationErr.Message)
+		case storage.IsConflictError(err):
+			writeSubscriptionError(w, http.StatusConflict, "Subscription plan already exists")
 		default:
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
-			return
+			log.Error("Failed to save subscription plan", slog.Any("error", storageCause(err)))
+			writeSubscriptionError(w, http.StatusInternalServerError, "Failed to create subscription plan")
 		}
-	}
-
-	plan := &models.SubscriptionPlan{
-		ID:               uuid.New().String(),
-		PlanName:         planName,
-		StopOnQuotaReach: true,
-		Status:           status,
-	}
-	if req.BillingPlan != nil {
-		plan.BillingPlan = req.BillingPlan
-	}
-	if req.StopOnQuotaReach != nil {
-		plan.StopOnQuotaReach = *req.StopOnQuotaReach
-	}
-	if req.ThrottleLimitCount != nil && req.ThrottleLimitUnit != nil {
-		s := string(*req.ThrottleLimitUnit)
-		plan.ThrottleLimitCount = req.ThrottleLimitCount
-		plan.ThrottleLimitUnit = &s
-	}
-	if req.ExpiryTime != nil {
-		plan.ExpiryTime = req.ExpiryTime
-	}
-
-	if err := s.getSubscriptionResourceService().SaveSubscriptionPlan(plan, correlationID, log); err != nil {
-		if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan already exists"})
-			return
-		}
-		log.Error("Failed to save subscription plan", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription plan"})
 		return
 	}
-	httputil.WriteJSON(w, http.StatusCreated, subscriptionPlanToResponse(plan))
+	httputil.WriteJSON(w, http.StatusCreated, subscriptionPlanToResponse(result.Plan))
 }
 
 // ListSubscriptionPlans implements ServerInterface.ListSubscriptionPlans (GET /subscription-plans)
 func (s *APIServer) ListSubscriptionPlans(w http.ResponseWriter, r *http.Request) {
 	log := middleware.GetLogger(r, s.logger)
 
-	list, err := s.db.ListSubscriptionPlans("")
+	result, err := s.getSubscriptionService().ListPlans()
 	if err != nil {
-		log.Error("Failed to list subscription plans", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscription plans"})
+		log.Error("Failed to list subscription plans", slog.Any("error", storageCause(err)))
+		writeSubscriptionError(w, http.StatusInternalServerError, "Failed to list subscription plans")
 		return
 	}
-	items := make([]api.SubscriptionPlanResponse, 0, len(list))
-	for _, p := range list {
+	items := make([]api.SubscriptionPlanResponse, 0, len(result.Plans))
+	for _, p := range result.Plans {
 		items = append(items, subscriptionPlanToResponse(p))
 	}
 	count := len(items)
@@ -152,21 +90,12 @@ func (s *APIServer) ListSubscriptionPlans(w http.ResponseWriter, r *http.Request
 func (s *APIServer) GetSubscriptionPlan(w http.ResponseWriter, r *http.Request, planId string) {
 	log := middleware.GetLogger(r, s.logger)
 
-	plan, err := s.db.GetSubscriptionPlanByID(planId, "")
+	result, err := s.getSubscriptionService().GetPlan(planId)
 	if err != nil {
-		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
-			return
-		}
-		log.Error("Failed to get subscription plan", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
+		writePlanLoadError(w, log, err, "Failed to get subscription plan")
 		return
 	}
-	if plan == nil {
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
-		return
-	}
-	httputil.WriteJSON(w, http.StatusOK, subscriptionPlanToResponse(plan))
+	httputil.WriteJSON(w, http.StatusOK, subscriptionPlanToResponse(result.Plan))
 }
 
 // UpdateSubscriptionPlan implements ServerInterface.UpdateSubscriptionPlan (PUT /subscription-plans/{planId})
@@ -177,18 +106,10 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	existing, err := s.db.GetSubscriptionPlanByID(planId, "")
+	svc := s.getSubscriptionService()
+	existing, err := svc.GetPlan(planId)
 	if err != nil {
-		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
-			return
-		}
-		log.Error("Failed to get subscription plan for update", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
-		return
-	}
-	if existing == nil {
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+		writePlanLoadError(w, log, err, "Failed to get subscription plan for update")
 		return
 	}
 
@@ -201,96 +122,30 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Apply the changes to a copy, so a rejected request leaves the stored plan untouched.
-	updated := *existing
-
-	if req.PlanName != nil {
-		trimmed := strings.TrimSpace(*req.PlanName)
-		if trimmed == "" {
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName cannot be empty"})
-			return
-		}
-		updated.PlanName = trimmed
-	}
-
-	// Omitted fields stay unchanged; an explicit null (or empty string) removes billingPlan.
-	if _, sent := fields["billingPlan"]; sent {
-		if req.BillingPlan == nil || strings.TrimSpace(*req.BillingPlan) == "" {
-			updated.BillingPlan = nil
-		} else {
-			billingPlan := *req.BillingPlan
-			updated.BillingPlan = &billingPlan
-		}
-	}
-
-	if req.StopOnQuotaReach != nil {
-		updated.StopOnQuotaReach = *req.StopOnQuotaReach
-	}
-
-	// The throttle limit is a pair: both fields are set together, or both sent as null to make the
-	// plan unlimited.
-	_, countSent := fields["throttleLimitCount"]
-	_, unitSent := fields["throttleLimitUnit"]
-	if countSent || unitSent {
-		countCleared := countSent && req.ThrottleLimitCount == nil
-		unitCleared := unitSent && (req.ThrottleLimitUnit == nil || *req.ThrottleLimitUnit == "")
+	result, err := svc.UpdatePlan(subscription.UpdatePlanParams{
+		Existing:      existing.Plan,
+		Request:       req,
+		Fields:        fields,
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		var validationErr *subscription.ValidationError
 		switch {
-		case countCleared && unitCleared:
-			updated.ThrottleLimitCount = nil
-			updated.ThrottleLimitUnit = nil
-		case countCleared || unitCleared:
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: "throttleLimitCount and throttleLimitUnit must be set or cleared together",
-			})
-			return
+		case errors.Is(err, subscription.ErrPlanNotFound):
+			writeSubscriptionError(w, http.StatusNotFound, "Subscription plan not found")
+		case errors.As(err, &validationErr):
+			writeSubscriptionError(w, http.StatusBadRequest, validationErr.Message)
+		case storage.IsConflictError(err):
+			log.Warn("Subscription plan update rejected due to a conflict", slog.Any("error", storageCause(err)))
+			writeSubscriptionError(w, http.StatusConflict, "A subscription plan with this name already exists")
 		default:
-			var unitStr *string
-			if req.ThrottleLimitUnit != nil {
-				unit := string(*req.ThrottleLimitUnit)
-				unitStr = &unit
-			}
-			if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
-				httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
-				return
-			}
-			count := *req.ThrottleLimitCount
-			updated.ThrottleLimitCount = &count
-			updated.ThrottleLimitUnit = unitStr
+			log.Error("Failed to update subscription plan", slog.Any("error", storageCause(err)))
+			writeSubscriptionError(w, http.StatusInternalServerError, "Failed to update subscription plan")
 		}
-	}
-
-	// Omitted expiryTime stays unchanged; an explicit null removes it.
-	if _, sent := fields["expiryTime"]; sent {
-		updated.ExpiryTime = req.ExpiryTime
-	}
-
-	if req.Status != nil {
-		st := models.SubscriptionPlanStatus(*req.Status)
-		switch st {
-		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
-			updated.Status = st
-		default:
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
-			return
-		}
-	}
-
-	if err := s.getSubscriptionResourceService().UpdateSubscriptionPlan(&updated, correlationID, log); err != nil {
-		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
-			return
-		}
-		if storage.IsConflictError(err) {
-			log.Warn("Subscription plan update rejected due to a conflict", slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: "A subscription plan with this name already exists"})
-			return
-		}
-		log.Error("Failed to update subscription plan", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription plan"})
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, subscriptionPlanToResponse(&updated))
+	httputil.WriteJSON(w, http.StatusOK, subscriptionPlanToResponse(result.Plan))
 }
 
 // DeleteSubscriptionPlan implements ServerInterface.DeleteSubscriptionPlan (DELETE /subscription-plans/{planId})
@@ -301,21 +156,31 @@ func (s *APIServer) DeleteSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, log); err != nil {
-		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
-			return
+	if err := s.getSubscriptionService().DeletePlan(planId, correlationID, log); err != nil {
+		switch {
+		case errors.Is(err, subscription.ErrPlanNotFound):
+			writeSubscriptionError(w, http.StatusNotFound, "Subscription plan not found")
+		case storage.IsConflictError(err):
+			log.Warn("Subscription plan delete rejected while in use", slog.Any("error", storageCause(err)))
+			writeSubscriptionError(w, http.StatusConflict, "Subscription plan is in use by one or more subscriptions")
+		default:
+			log.Error("Failed to delete subscription plan", slog.Any("error", storageCause(err)))
+			writeSubscriptionError(w, http.StatusInternalServerError, "Failed to delete subscription plan")
 		}
-		if storage.IsConflictError(err) {
-			log.Warn("Subscription plan delete rejected while in use", slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan is in use by one or more subscriptions"})
-			return
-		}
-		log.Error("Failed to delete subscription plan", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription plan"})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// writePlanLoadError writes the response for a failed plan read: 404 when it does not exist;
+// otherwise it logs logMessage and returns 500.
+func writePlanLoadError(w http.ResponseWriter, log *slog.Logger, err error, logMessage string) {
+	if errors.Is(err, subscription.ErrPlanNotFound) {
+		writeSubscriptionError(w, http.StatusNotFound, "Subscription plan not found")
+		return
+	}
+	log.Error(logMessage, slog.Any("error", storageCause(err)))
+	writeSubscriptionError(w, http.StatusInternalServerError, "Failed to get subscription plan")
 }
 
 func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionPlanResponse {
