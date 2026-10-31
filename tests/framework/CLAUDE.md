@@ -162,13 +162,9 @@ Before adding a helper, step, or dependency:
   The Platform Gateway template binding translates the compatible policy shape
   and the LLM-provider assertion binding selects the returned field. Feature
   files must describe the attached-policy behavior, not either representation.
-- Gateway `1.1.0` semantic-cache configuration uses the legacy root Redis keys;
-  the semantic-AI overlay and Redis provisioner must keep those keys and the
-  per-topology password available alongside the current vector-store keys.
-  Gateway-version-specific semantic-cache behavior must be isolated in a
-  runner selector: the cross-authenticated-caller isolation scenario is gated
-  to Gateway `>=1.2.0`, where that contract exists. Do not weaken the
-  isolation assertion to make an older Gateway pass.
+- The Redis provisioner passes its per-topology password through both the
+  legacy root Redis key, which Gateway `1.1.0` semantic-cache reads, and the
+  current vector-store key. Keep both.
 - Keep version-specific response or request handling in the relevant product
   step package. Do not make generic JSON assertions silently accept multiple
   data types or response shapes.
