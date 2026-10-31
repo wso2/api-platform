@@ -18,9 +18,9 @@ blocks:
       - name: apip-project
         features:
           - features/apip_project.feature
-      - name: apip-environment
+      - name: apip-auth
         features:
-          - features/apip_environment.feature
-      - name: apip-gateway
+          - features/apip_auth.feature
+      - name: apip-deploy
         features:
-          - features/apip_gateway.feature
+          - features/apip_deploy.feature
