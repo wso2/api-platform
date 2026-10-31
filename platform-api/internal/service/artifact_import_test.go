@@ -323,6 +323,79 @@ func TestArtifactImport_RestAPIFlatOperationsPreserved(t *testing.T) {
 	}
 }
 
+func TestArtifactImport_RestAPIMatchOperationsPreserved(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := restImportRequest("11111111-1111-1111-1111-111111111114", "match-ops-api", "Match Ops API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{
+			// The match form takes precedence over the simple fields.
+			"method": "DELETE",
+			"path":   "/ignored",
+			"match": map[string]interface{}{
+				"method":  "post",
+				"path":    map[string]interface{}{"type": "Exact", "value": "/alerts/{id}"},
+				"headers": []interface{}{map[string]interface{}{"name": "x-tenant", "value": "a"}},
+			},
+			"policies": []interface{}{
+				map[string]interface{}{"name": "set-headers", "version": "v1"},
+			},
+		},
+	}
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 1 || ops[0].Request == nil {
+		t.Fatalf("stored operations = %+v, want 1 with a request", ops)
+	}
+	if r := ops[0].Request; r.Method != "POST" || r.Path != "/alerts/{id}" {
+		t.Errorf("operation = (%q, %q), want (POST, /alerts/{id}) from match", r.Method, r.Path)
+	}
+	if p := ops[0].Request.Policies; len(p) != 1 || p[0].Name != "set-headers" || p[0].Version != "v1" {
+		t.Errorf("operation policies = %+v, want [set-headers v1]", p)
+	}
+}
+
+func TestArtifactImport_RestAPIOperationsReplacedOnNewerPush(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "11111111-1111-1111-1111-111111111115"
+	first := restImportRequest(id, "replace-ops-api", "Replace Ops API")
+	first.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": "GET", "path": "/alerts"},
+	}
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, withDeployedAt(first, baseDeployedAt))
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+
+	second := restImportRequest(id, "replace-ops-api", "Replace Ops API")
+	second.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": "GET", "path": "/alerts"},
+		map[string]interface{}{"method": "PUT", "path": "/alerts/{id}"},
+	}
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, withDeployedAt(second, newerDeployedAt)); err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 2 || ops[1].Request == nil || ops[1].Request.Method != "PUT" || ops[1].Request.Path != "/alerts/{id}" {
+		t.Errorf("stored operations = %+v, want the newer push's two operations", ops)
+	}
+}
+
 func TestArtifactImport_RestAPIMalformedOperationRejected(t *testing.T) {
 	d := setupImportTest(t)
 
