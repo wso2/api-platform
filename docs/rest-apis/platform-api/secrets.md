@@ -31,7 +31,7 @@ Create a new encrypted secret scoped to the organization. The plaintext value is
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:secret:create`, `ap:secret:manage`
+Required scopes (the token must carry at least one of): `ap:credential:secret:create`, `ap:credential:secret:manage`, `ap:manage`
 
 </aside>
 
@@ -166,7 +166,7 @@ never included in list or get responses.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:secret:read`, `ap:secret:manage`
+Required scopes (the token must carry at least one of): `ap:credential:secret:read`, `ap:credential:secret:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -288,7 +288,7 @@ Returns metadata for a single secret. The plaintext value is never returned.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:secret:read`, `ap:secret:manage`
+Required scopes (the token must carry at least one of): `ap:credential:secret:read`, `ap:credential:secret:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -399,7 +399,7 @@ without modification.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:secret:update`, `ap:secret:manage`
+Required scopes (the token must carry at least one of): `ap:credential:secret:update`, `ap:credential:secret:manage`, `ap:manage`
 
 </aside>
 
@@ -529,7 +529,7 @@ still referenced by any LLM provider or API configuration.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:secret:delete`, `ap:secret:manage`
+Required scopes (the token must carry at least one of): `ap:credential:secret:delete`, `ap:credential:secret:manage`, `ap:manage`
 
 </aside>
 

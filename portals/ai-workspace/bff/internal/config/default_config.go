@@ -91,8 +91,9 @@ func defaultConfig() *Config {
 			// Keycloak deployments override the subject type. Scopes stays empty so
 			// normalize can inherit the login scopes.
 			OIDC: OIDCConfig{
-				Scopes:       defaultOIDCScopes,
-				RequireHTTPS: true,
+				// Scopes stays empty: normalize resolves it from defaultLoginScopes.
+				RequestLegacyScopes: true,
+				RequireHTTPS:        true,
 				TokenExchange: TokenExchangeConfig{
 					Enabled:            false,
 					GrantType:          GrantTokenExchange,

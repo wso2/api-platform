@@ -60,7 +60,7 @@ func (f *fake) deploy(_ context.Context, _ caller, _ *apiType, _ string, req api
 // through a real client, so the SDK checks the raw types against its schema.
 func TestPlatformTools_ReturnTheRawObjectsThroughTheSDKOutputCheck(t *testing.T) {
 	s, _ := newTestServer(t)
-	cs := connect(t, s, who(testOrg, "ap:project:manage", "ap:gateway:manage", "ap:rest_api:manage"))
+	cs := connect(t, s, who(testOrg, "ap:project:manage", "ap:gateway:manage", "ap:api:rest:manage"))
 
 	for _, tc := range []struct {
 		tool string

@@ -29,6 +29,12 @@ import (
 // ScopeRegistry maps (HTTP method, net/http path pattern) to the acceptable scopes for
 // that operation. Scopes are OR-evaluated: the caller needs at least one.
 type ScopeRegistry struct {
+	// reserved holds the spec's x-reserved-permissions: permission-tree
+	// permissions that are declared — and so may be granted by a role — but
+	// that no operation accepts yet (a feature whose API has not shipped while a
+	// UI already gates on it). They never admit a request; ScopeEnforcer only
+	// ever matches an operation's own accepted list.
+	reserved map[string]struct{}
 	// scopes is keyed by "METHOD:/api/v1/path/{}", with path parameter names
 	// normalized away by normalizePathParams.
 	scopes map[string][]string
@@ -121,6 +127,9 @@ type openAPIDoc struct {
 		URL string `yaml:"url"`
 	} `yaml:"servers"`
 	Paths map[string]map[string]yaml.Node `yaml:"paths"`
+	// ReservedPermissions is the top-level x-reserved-permissions list
+	// (see ScopeRegistry.reserved), written by scripts/permission_tree.py.
+	ReservedPermissions []string `yaml:"x-reserved-permissions"`
 }
 
 // httpMethods is the set of path-item keys that denote an operation. Anything
@@ -163,6 +172,28 @@ func (r *ScopeRegistry) Merge(other *ScopeRegistry) {
 	for k, v := range other.scopes {
 		r.scopes[k] = v
 	}
+	for s := range other.reserved {
+		if r.reserved == nil {
+			r.reserved = make(map[string]struct{})
+		}
+		r.reserved[s] = struct{}{}
+	}
+}
+
+// IsReserved reports whether scope is a reserved permission: declared by the
+// spec's x-reserved-permissions, grantable, but accepted by no operation yet.
+func (r *ScopeRegistry) IsReserved(scope string) bool {
+	_, ok := r.reserved[scope]
+	return ok
+}
+
+// reservedSet builds the reserved-permission set of a parsed spec.
+func reservedSet(doc *openAPIDoc) map[string]struct{} {
+	set := make(map[string]struct{}, len(doc.ReservedPermissions))
+	for _, s := range doc.ReservedPermissions {
+		set[s] = struct{}{}
+	}
+	return set
 }
 
 // LoadScopeRegistryFromBytes parses an OpenAPI 3.x YAML document from in-memory
@@ -179,7 +210,7 @@ func LoadScopeRegistryFromBytes(data []byte) (*ScopeRegistry, error) {
 		basePath = extractBasePath(doc.Servers[0].URL)
 	}
 
-	registry := &ScopeRegistry{scopes: make(map[string][]string)}
+	registry := &ScopeRegistry{scopes: make(map[string][]string), reserved: reservedSet(&doc)}
 	for oaPath, pathItem := range doc.Paths {
 		httpPath := basePath + oaPath
 		methods, opErr := operationsIn(pathItem, oaPath)
@@ -218,7 +249,7 @@ func LoadScopeRegistry(specPath string) (*ScopeRegistry, error) {
 		basePath = extractBasePath(doc.Servers[0].URL)
 	}
 
-	registry := &ScopeRegistry{scopes: make(map[string][]string)}
+	registry := &ScopeRegistry{scopes: make(map[string][]string), reserved: reservedSet(&doc)}
 
 	for oaPath, pathItem := range doc.Paths {
 		// Keep OpenAPI {param} syntax — it matches net/http ServeMux path values directly.

@@ -88,7 +88,8 @@ func defaultConfig() *Config {
 			OIDC: OIDCConfig{
 				Discovery:        true,
 				ClientAuthMethod: "client_secret_post",
-				Scopes:           defaultOIDCScopes,
+				// Scopes stays empty: normalize resolves it from defaultLoginScopes.
+				RequestLegacyScopes: true,
 			},
 			// Defaults mirror the Platform API's own claim_mappings defaults so the
 			// two agree out of the box; override on both sides together when an IdP

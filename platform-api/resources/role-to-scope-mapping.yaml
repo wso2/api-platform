@@ -26,314 +26,146 @@
 #         fails startup rather than silently denying requests later. The
 #         event-gateway scopes below are commented out for that reason: uncomment
 #         them on a build that includes that plugin.
-#   dp:*  API Portal scopes. This server mints them into the token but never
-#         enforces them, so it validates only their shape, not their existence.
 #
-# Scope convention:
-#   ap:<resource>:manage             — every action on that resource, INCLUDING
-#                                      its subresources: each subresource
-#                                      operation lists the parent :manage in its
-#                                      own accepted-scope set, so granting
-#                                      ap:llm_provider:manage already covers
-#                                      every ap:llm_provider:api_key:… and
-#                                      ap:llm_provider:deployment:… operation.
-#                                      Grant a
-#                                      subresource scope only to a role that does
-#                                      NOT hold the parent :manage — listing both
-#                                      is redundant.
-#   ap:<resource>:<sub>:manage       — every action on the subresource only
-#   ap:<resource>:all:manage         — ownership override (widens which users'
-#                                      rows are reachable, not which actions). It
-#                                      is never implied by, and never implies,
-#                                      the plain :manage above — grant it
-#                                      explicitly alongside the base scope.
-#   dp:<resource>:manage             — every action on that API Portal resource
-#                                      (API Portal read operations accept the
-#                                      :manage scope as well as :read)
+# The shipped roles grant Platform API scopes only. A scope in another
+# component's namespace (the API Portal's dp:*, say) may be added to a role: this
+# server mints it into the token but never enforces it, so it validates only its
+# shape, not its existence.
 #
-# There is no wildcard form: a scope grants only the operations that list it, so
-# every scope a role needs must be spelled out here. A "*" in any segment is
-# rejected as malformed at startup.
+# Scope convention — ap: scopes are permissions from the permission tree in
+# resources/permission-tree.yaml (ThunderID model: resource -> sub-resource ->
+# action, joined with ":"), e.g. ap:api:rest:deployment:manage.
+#   ap:<node>:read     every side-effect-free operation on that node AND on
+#                      every node below it
+#   ap:<node>:manage   every operation on that node AND on every node below it
+#   ap:<node>:<action> one action (create, update, delete, restore, undeploy,
+#                      ...) on that node only: ap:api:rest:create creates a
+#                      REST API, not its builds, deployments or keys
+# Only read and manage flow DOWN the tree: ap:api:read reads every API kind with
+# its builds, deployments and key listings; ap:api:llm:manage covers everything
+# under LLM proxies. Grant the highest node that matches the persona and do not
+# list a node already covered by an ancestor. The root is a node too: ap:manage
+# admits every Platform API operation and ap:read every read, which is what
+# the admin and viewer roles below grant. A token minted from a role (file
+# mode) carries the role's list verbatim, so an admin token holds just those.
+#   ap:credential:api_key:all:manage — ownership override (widens which users'
+#                      API keys are reachable, not which actions; GO-AUTH-020).
+#                      Never implied by any other permission.
+#
+# Pre-tree names (ap:rest_api:*, ap:llm_proxy:*, ...) are no longer declared by
+# the OpenAPI spec. They stay accepted here and in tokens through
+# resources/legacy-scope-mapping.yaml, which names the tree permission each one
+# grants; ScopeEnforcer translates them per request. Prefer the tree names in
+# this file — the shipped roles use nothing else. scripts/permission_tree.py
+# generates the spec's security blocks from the tree.
+#
+# An event-gateway build adds the ap:api:websub and ap:api:webbroker nodes.
+# ap:api:read and ap:api:manage already cover them there, so only a role that
+# holds per-kind grants (the operator's deployment grants) needs the commented
+# event-gateway lines below; they fail startup on a default build.
+#
+# There is no wildcard form: a scope grants only the operations that list it. A
+# "*" in any segment is rejected as malformed at startup.
 #
 # This file requires a server restart to take effect.
 
 roles:
-  # Platform administrator — full access to every resource and operation,
-  # across both the Platform API and the API Portal.
+  # Platform administrator — full access to every resource and operation.
   - name: ap_admin
     scopes:
-      # Platform API
-      - ap:organization:manage
-      - ap:project:manage
-      - ap:gateway:manage
-      - ap:gateway_custom_policy:manage
-      - ap:rest_api:manage
-      - ap:docs:manage
-      - ap:thumbnail:manage
-      - ap:application:manage
-      - ap:subscription:manage
-      - ap:subscription_plan:manage
-      - ap:meter:manage
-      - ap:llm_template:manage
-      - ap:llm_provider:manage
-      - ap:llm_proxy:manage
-      - ap:mcp_proxy:manage
-      - ap:agent_proxy:manage
-      - ap:secret:manage
-      - ap:api_key:read
+      # Platform API — the root permission admits every operation.
+      - ap:manage
       # Administrative access to every user's API keys, not just the caller's.
-      - ap:api_key:all:manage
-      - ap:api_portal:draft:manage
-      - ap:api_portal:manage
-      - ap:api_portal:publication:read
-      - ap:api_portal:graphql_api:manage
-      - ap:api_portal:rest_api:manage
-      - ap:api_publication:read
-      # - ap:websub_api:manage   # event-gateway build only
-      # - ap:webbroker_api:manage   # event-gateway build only
-      - ap:graphql_api:manage
-      # API Portal & MCP Hub
-      - dp:organization:manage
-      - dp:organization_content:manage
-      - dp:api:manage
-      - dp:api_content:manage
-      - dp:mcp_server:manage
-      - dp:mcp_server_content:manage
-      - dp:api_workflow:manage
-      - dp:api_key:manage
-      - dp:mcp_server_key:manage
-      - dp:application:manage
-      - dp:application_key:manage
-      - dp:application_key:revoke
-      - dp:application_key_mapping:manage
-      - dp:subscription:manage
-      - dp:subscription_plan:manage
-      - dp:key_manager:manage
-      - dp:key_manager:read
-      - dp:view:manage
-      - dp:label:manage
-      - dp:webhook_subscriber:manage
-      - dp:event:read
+      # Never implied by any other permission, the root included.
+      - ap:credential:api_key:all:manage
 
-  # Platform operator / CI-CD service account — runs gateways, deployments,
-  # subscription plans, key managers and webhooks; reads everything else.
+  # Platform operator / CI-CD service account — runs gateways, deployments and
+  # subscription plans; reads everything else, including API Portal
+  # registrations (creating and deleting portals is admin-only).
   - name: ap_operator
     scopes:
-      # Platform API
+      - ap:api:read
+      - ap:api:rest:build:manage
+      - ap:api:rest:deployment:manage
+      - ap:api:graphql:build:manage
+      - ap:api:graphql:deployment:manage
+      - ap:api:llm:build:manage
+      - ap:api:llm:deployment:manage
+      - ap:api:mcp:build:manage
+      - ap:api:mcp:deployment:manage
+      - ap:api:agent:build:manage
+      - ap:api:agent:deployment:manage
+      # - ap:api:websub:deployment:manage   # event-gateway build only
+      # - ap:api:webbroker:deployment:manage   # event-gateway build only
+      - ap:llm_provider:read
+      - ap:llm_provider:template:manage
+      - ap:llm_provider:build:manage
+      - ap:llm_provider:deployment:manage
+      - ap:gateway:manage
+      - ap:gateway_policy:manage
       - ap:organization:read
       - ap:project:read
-      - ap:gateway:manage
-      - ap:gateway_custom_policy:manage
-      - ap:rest_api:read
-      - ap:docs:read
-      - ap:thumbnail:read
-      - ap:rest_api:deployment:manage
-      - ap:rest_api:build:manage
-      - ap:llm_template:manage
-      - ap:llm_provider:read
-      - ap:llm_provider:deployment:manage
-      - ap:llm_provider:build:manage
-      - ap:llm_proxy:read
-      - ap:llm_proxy:deployment:manage
-      - ap:llm_proxy:build:manage
-      - ap:mcp_proxy:read
-      - ap:mcp_proxy:deployment:manage
-      - ap:mcp_proxy:build:manage
-      - ap:agent_proxy:read
-      - ap:agent_proxy:deployment:manage
-      - ap:agent_proxy:build:manage
+      - ap:application:read
+      - ap:subscription:read
       - ap:subscription_plan:manage
       - ap:meter:manage
-      - ap:application:read
-      - ap:application:api_key:read
-      - ap:application:association:read
-      - ap:subscription:read
-      - ap:secret:read
-      - ap:api_key:read
-      - ap:api_portal:manage
-      - ap:api_portal:publication:read
-      - ap:api_publication:read
-      # - ap:websub_api:read   # event-gateway build only
-      # - ap:websub_api:deployment:read   # event-gateway build only
-      # - ap:webbroker_api:read   # event-gateway build only
-      # - ap:webbroker_api:deployment:read   # event-gateway build only
-      - ap:graphql_api:read
-      - ap:graphql_api:deployment:manage
-      - ap:graphql_api:build:manage
-      # API Portal & MCP Hub
-      - dp:key_manager:manage
-      - dp:key_manager:read
-      - dp:webhook_subscriber:manage
-      - dp:subscription_plan:manage
-      - dp:organization:read
-      - dp:organization_content:read
-      - dp:api:read
-      - dp:mcp_server:read
-      - dp:mcp_server_content:read
-      - dp:application:read
-      - dp:subscription:read
-      - dp:view:read
-      - dp:label:read
-      - dp:api_key:read
-      - dp:mcp_server_key:read
-      - dp:api_workflow:read
-      - dp:event:read
+      - ap:content:read
+      - ap:portal:read
+      # MCP proxy publishing to a portal, kept from the pre-tree ap:api_portal:manage
+      # grant (reserved: the AI Workspace gates on it ahead of the API operation).
+      - ap:portal:mcp_proxy:manage
+      - ap:publication:read
+      - ap:credential:secret:read
+      - ap:credential:api_key:read
 
-  # API publisher — owns the full REST API, MCP proxy, Agent proxy and LLM proxy
-  # lifecycle and the Developer Portal content for it. LLM providers are read-only: a publisher
-  # points proxies at an existing provider, but creating, editing, deleting and
-  # deploying providers are all admin tasks. Manages secrets, which back the
-  # upstream auth values on the proxies it configures. Reads applications,
-  # subscriptions and plans.
+  # API publisher — owns the full REST API, GraphQL API, MCP proxy, Agent proxy
+  # and LLM proxy lifecycle and the portal drafts and publishing for it. LLM providers
+  # are read-only: a publisher points proxies at an existing provider and can see
+  # where it is deployed, but creating, editing, deleting and deploying providers
+  # require admin access, except provider builds/deployments which operators also manage.
+  # Manages secrets, which back the upstream auth values on
+  # the proxies it configures. Reads applications, subscriptions and plans.
   - name: ap_publisher
     scopes:
-      # Platform API
+      - ap:api:manage
+      - ap:llm_provider:read
+      - ap:gateway:read
+      - ap:gateway_policy:read
       - ap:organization:read
       - ap:project:manage
-      - ap:rest_api:manage
-      - ap:docs:manage
-      - ap:thumbnail:manage
-      - ap:mcp_proxy:manage
-      - ap:agent_proxy:manage
-      - ap:llm_provider:read
-      - ap:llm_proxy:manage
-      - ap:llm_template:read
-      - ap:gateway:read
-      - ap:gateway:manifest:read
-      - ap:gateway_custom_policy:read
-      - ap:subscription_plan:read
-      - ap:meter:read
       - ap:application:read
       - ap:subscription:read
-      - ap:secret:manage
-      - ap:api_key:read
-      - ap:api_portal:draft:manage
-      - ap:api_portal:publication:read
-      - ap:api_portal:read
-      - ap:api_portal:graphql_api:manage
-      - ap:api_portal:rest_api:manage
-      - ap:api_publication:read
-      # - ap:websub_api:manage   # event-gateway build only
-      # - ap:webbroker_api:manage   # event-gateway build only
-      - ap:graphql_api:manage
-      # API Portal & MCP Hub
-      - dp:api:manage
-      - dp:api_content:manage
-      - dp:mcp_server:manage
-      - dp:mcp_server_content:manage
-      - dp:api_workflow:manage
-      - dp:label:manage
-      - dp:view:manage
-      - dp:organization:read
-      - dp:organization_content:read
-      - dp:application:read
-      - dp:subscription:read
-      - dp:subscription_plan:read
-      - dp:api_key:read
-      - dp:mcp_server_key:read
-      - dp:event:read
+      - ap:subscription_plan:read
+      - ap:meter:read
+      - ap:content:manage
+      - ap:portal:read
+      - ap:portal:draft:manage
+      - ap:portal:rest_api:manage
+      - ap:portal:graphql_api:manage
+      - ap:publication:read
+      - ap:credential:secret:manage
+      - ap:credential:api_key:read
 
   # API consumer — manages its own applications, subscriptions and keys;
   # reads the API/MCP catalog and the plans it can subscribe to.
   - name: ap_subscriber
     scopes:
-      # Platform API
+      # Platform API — every API kind's catalog, builds and deployments, read-only
+      # (on an event-gateway build that includes WebSub and WebBroker APIs).
+      - ap:api:read
+      - ap:llm_provider:read
       - ap:organization:read
       - ap:project:read
       - ap:application:manage
       - ap:subscription:manage
       - ap:subscription_plan:read
-      - ap:rest_api:read
-      - ap:docs:read
-      - ap:thumbnail:read
-      - ap:mcp_proxy:read
-      - ap:agent_proxy:read
-      - ap:llm_proxy:read
-      - ap:llm_provider:read
-      - ap:graphql_api:read
-      - ap:api_key:read
-      # API Portal & MCP Hub
-      - dp:application:manage
-      - dp:application_key:manage
-      - dp:application_key:revoke
-      - dp:subscription:manage
-      - dp:api_key:manage
-      - dp:mcp_server_key:manage
-      - dp:api:read
-      - dp:mcp_server:read
-      - dp:subscription_plan:read
-      - dp:organization:read
-      - dp:organization_content:read
-      - dp:view:read
-      - dp:label:read
+      - ap:content:read
+      - ap:credential:api_key:read
 
-  # Auditor — read-only across both components. Grants no mutating scope
+  # Auditor — read-only. Grants no mutating scope
   # (the two POSTs it can reach, mcp-proxies/fetch-server-info and
   # agent-proxies/fetch-agent-card, are reads the spec models as POSTs).
   - name: ap_viewer
     scopes:
-      # Platform API
-      - ap:organization:read
-      - ap:project:read
-      - ap:gateway:read
-      - ap:gateway:manifest:read
-      - ap:gateway:token:read
-      - ap:gateway_custom_policy:read
-      - ap:rest_api:read
-      - ap:docs:read
-      - ap:thumbnail:read
-      - ap:rest_api:deployment:read
-      - ap:rest_api:build:read
-      - ap:application:read
-      - ap:application:api_key:read
-      - ap:application:association:read
-      - ap:application:association:api_key:read
-      - ap:subscription:read
-      - ap:subscription_plan:read
-      - ap:meter:read
-      - ap:llm_template:read
-      - ap:llm_provider:read
-      - ap:llm_provider:deployment:read
-      - ap:llm_provider:build:read
-      - ap:llm_provider:api_key:read
-      - ap:llm_proxy:read
-      - ap:llm_proxy:deployment:read
-      - ap:llm_proxy:build:read
-      - ap:llm_proxy:api_key:read
-      - ap:mcp_proxy:read
-      - ap:mcp_proxy:deployment:read
-      - ap:mcp_proxy:build:read
-      - ap:agent_proxy:read
-      - ap:agent_proxy:deployment:read
-      - ap:agent_proxy:build:read
-      - ap:agent_proxy:api_key:read
-      - ap:secret:read
-      - ap:api_key:read
-      - ap:api_portal:draft:read
-      - ap:api_portal:publication:read
-      - ap:api_portal:read
-      - ap:api_publication:read
-      # - ap:websub_api:read   # event-gateway build only
-      # - ap:websub_api:deployment:read   # event-gateway build only
-      # - ap:webbroker_api:read   # event-gateway build only
-      # - ap:webbroker_api:deployment:read   # event-gateway build only
-      - ap:graphql_api:read
-      - ap:graphql_api:deployment:read
-      - ap:graphql_api:build:read
-      # API Portal & MCP Hub
-      - dp:organization:read
-      - dp:organization_content:read
-      - dp:api:read
-      - dp:mcp_server:read
-      - dp:mcp_server_content:read
-      - dp:application:read
-      - dp:subscription:read
-      - dp:subscription_plan:read
-      - dp:view:read
-      - dp:label:read
-      - dp:key_manager:read
-      - dp:api_key:read
-      - dp:mcp_server_key:read
-      - dp:api_workflow:read
-      - dp:webhook_subscriber:read
-      - dp:event:read
+      # Platform API — the root read permission admits every read.
+      - ap:read

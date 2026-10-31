@@ -512,6 +512,11 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+	// RequestLegacyScopes adds legacyOIDCScopes to the default login scope
+	// request. Consulted only when scope is not set. Defaults to true so an
+	// upgraded deployment keeps requesting the pre-permission-tree names its
+	// IDP may still assign; the shipped config template sets it to false.
+	RequestLegacyScopes bool `koanf:"request_legacy_scopes"`
 
 	// RequireHTTPS refuses to send the client secret (and, on revocation, the refresh
 	// token) to a plaintext identity provider endpoint: the token_endpoint and
@@ -590,48 +595,76 @@ const (
 // src/config.env.ts CSRF_HEADER and must be kept in sync with this value.
 const CSRFHeaderName = "X-Requested-By"
 
-// defaultOIDCScopes is the full set of scopes the BFF requests in OIDC mode so a
-// logged-in user's access token carries every ap:* permission the Platform API
-// authorizes against. The IDP must still have these scopes registered and granted
-// to the user, otherwise it drops the ungranted ones. Override with the [auth.oidc] scope
-// config key to request a narrower set.
+// defaultOIDCScopes is what the BFF requests at login when [ai_workspace.auth.oidc]
+// scope is not set and request_legacy_scopes is false: openid, profile, email,
+// offline_access and exactly the permission-tree scopes the shipped roles in
+// platform-api/resources/role-to-scope-mapping.yaml grant. An IDP issues the
+// intersection of requested and entitled scopes, so a user whose IDP role
+// mirrors a shipped role receives that role's full grant, and nothing a role
+// does not hold is ever requested. A parent or root permission (ap:api:manage,
+// ap:manage) admits every operation beneath it, so the fine-grained tree
+// actions are not requested; a deployment whose IDP roles grant one of those
+// adds it through the scope config key. The API-key ownership override
+// (ap:credential:api_key:all:manage) is deliberately never requested.
 //
-// offline_access is required: without it most IDPs (Asgardeo, WSO2 IS, Okta,
-// Azure AD) issue no refresh token, so the BFF cannot silently renew the access
-// token and the user is logged out the moment it expires. Keep it in any override.
+// offline_access is required: without it most IDPs issue no refresh token, so
+// the BFF cannot silently renew the access token and the user is logged out the
+// moment it expires. Keep it in any override.
 const defaultOIDCScopes = "openid profile email offline_access" +
-	" ap:api_key:read" +
-	" ap:organization:read ap:organization:manage ap:organization:subscription:read" +
-	" ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage" +
-	" ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage" +
-	" ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
-	" ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read" +
-	" ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage" +
-	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
-	" ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage" +
-	" ap:gateway:artifact:read ap:gateway:manifest:read" +
-	" ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage" +
-	" ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage" +
-	" ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage" +
-	" ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore" +
-	" ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage" +
-	" ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage" +
-	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore" +
-	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
-	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
+	" ap:organization:read ap:project:read ap:project:manage ap:application:read ap:application:manage" +
+	" ap:gateway:read ap:gateway:manage ap:llm_provider:read ap:llm_provider:deployment:manage ap:manage" +
+	" ap:read ap:api:manage ap:api:read ap:api:agent:build:manage ap:api:agent:deployment:manage" +
+	" ap:api:graphql:build:manage ap:api:graphql:deployment:manage ap:api:llm:build:manage ap:api:llm:deployment:manage ap:api:mcp:build:manage" +
+	" ap:api:mcp:deployment:manage ap:api:rest:build:manage ap:api:rest:deployment:manage ap:content:manage ap:content:read" +
+	" ap:credential:api_key:read ap:credential:secret:manage ap:credential:secret:read ap:gateway_policy:manage ap:gateway_policy:read" +
+	" ap:llm_provider:build:manage ap:llm_provider:template:manage ap:portal:read ap:portal:draft:manage ap:portal:graphql_api:manage ap:portal:mcp_proxy:manage" +
+	" ap:portal:rest_api:manage ap:publication:read ap:subscription:manage ap:subscription:read ap:subscription_plan:manage" +
+	" ap:subscription_plan:read ap:meter:read ap:meter:manage"
+
+// legacyOIDCScopes are added to defaultOIDCScopes while request_legacy_scopes
+// is true (the built-in default, so an upgraded deployment keeps requesting
+// what it did before the permission tree): the pre-tree scope names
+// (ap:rest_api:manage, ...) that the Platform API still translates through
+// platform-api/resources/legacy-scope-mapping.yaml, and the fine-grained
+// actions no shipped role grants. An IDP that still assigns those names keeps
+// issuing them; once its roles carry the permission-tree names, set
+// request_legacy_scopes = false to request defaultOIDCScopes alone.
+const legacyOIDCScopes = "" +
+	" ap:api_key:read ap:organization:manage ap:organization:subscription:read ap:project:create ap:project:update" +
+	" ap:project:delete ap:application:create ap:application:update ap:application:delete ap:application:api_key:read" +
+	" ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage ap:application:association:read ap:application:association:create" +
+	" ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read ap:gateway:create ap:gateway:update" +
+	" ap:gateway:delete ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
+	" ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage ap:gateway:artifact:read" +
+	" ap:gateway:manifest:read ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete" +
+	" ap:llm_template:manage ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage" +
+	" ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read" +
+	" ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore ap:llm_proxy:read" +
+	" ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:api_key:read" +
+	" ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create" +
+	" ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore ap:mcp_proxy:read" +
+	" ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read" +
+	" ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
 	" ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage" +
 	" ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage" +
-	" ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore" +
-	" ap:graphql_api:read ap:graphql_api:create ap:graphql_api:update ap:graphql_api:delete ap:graphql_api:manage" +
-	" ap:graphql_api:gateway:read ap:graphql_api:gateway:create ap:graphql_api:gateway:manage" +
-	" ap:graphql_api:api_key:create ap:graphql_api:api_key:update ap:graphql_api:api_key:delete ap:graphql_api:api_key:manage" +
-	" ap:graphql_api:deployment:read ap:graphql_api:deployment:create ap:graphql_api:deployment:delete ap:graphql_api:deployment:manage ap:graphql_api:deployment:undeploy ap:graphql_api:deployment:restore" +
-	" ap:api_portal:read ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage" +
-	" ap:api_portal:draft:read ap:api_portal:draft:update ap:api_portal:draft:manage" +
-	" ap:api_portal:publication:read" +
-	" ap:api_portal:mcp_proxy:publish ap:api_portal:mcp_proxy:unpublish ap:api_portal:mcp_proxy:manage" +
-	" ap:api_publication:read" +
-	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
+	" ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy" +
+	" ap:agent_proxy:deployment:restore ap:graphql_api:read ap:graphql_api:create ap:graphql_api:update ap:graphql_api:delete" +
+	" ap:graphql_api:manage ap:graphql_api:gateway:read ap:graphql_api:gateway:create ap:graphql_api:gateway:manage ap:graphql_api:api_key:create" +
+	" ap:graphql_api:api_key:update ap:graphql_api:api_key:delete ap:graphql_api:api_key:manage ap:graphql_api:deployment:read ap:graphql_api:deployment:create" +
+	" ap:graphql_api:deployment:delete ap:graphql_api:deployment:manage ap:graphql_api:deployment:undeploy ap:graphql_api:deployment:restore ap:api_portal:read" +
+	" ap:api_portal:create ap:api_portal:update ap:api_portal:delete ap:api_portal:manage ap:api_portal:draft:read" +
+	" ap:api_portal:draft:update ap:api_portal:draft:manage ap:api_portal:publication:read ap:api_portal:mcp_proxy:publish ap:api_portal:mcp_proxy:unpublish" +
+	" ap:api_portal:mcp_proxy:manage ap:api_publication:read ap:secret:read ap:secret:create ap:secret:update" +
+	" ap:secret:delete ap:secret:manage"
+
+// defaultLoginScopes is the login scope request used when [auth.oidc] scope is
+// not set: defaultOIDCScopes, plus legacyOIDCScopes when requestLegacy is true.
+func defaultLoginScopes(requestLegacy bool) string {
+	if requestLegacy {
+		return defaultOIDCScopes + legacyOIDCScopes
+	}
+	return defaultOIDCScopes
+}
 
 // Load resolves configuration from one or more config.toml files. At least one path
 // is required and each must exist and parse — there is no default path and no
@@ -690,6 +723,12 @@ func (c *Config) normalize() {
 	// against lowercase constants, so a capital letter must not be the difference
 	// between a config that starts and one that does not.
 	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
+	// An unset scope (or an {{ env }} token with nothing behind it) means "the
+	// default request", resolved here so the token-exchange inheritance below and
+	// every reader of Scopes see the final list.
+	if strings.TrimSpace(c.Auth.OIDC.Scopes) == "" {
+		c.Auth.OIDC.Scopes = defaultLoginScopes(c.Auth.OIDC.RequestLegacyScopes)
+	}
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	// Written as "v0.9", "/v0.9" or "/v0.9/" all mean the same thing; which one an

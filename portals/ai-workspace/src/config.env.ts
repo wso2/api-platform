@@ -103,7 +103,13 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:agent_proxy:read ap:agent_proxy:create ap:agent_proxy:update ap:agent_proxy:delete ap:agent_proxy:manage' +
   ' ap:agent_proxy:api_key:read ap:agent_proxy:api_key:create ap:agent_proxy:api_key:update ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage' +
   ' ap:agent_proxy:deployment:read ap:agent_proxy:deployment:create ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage ap:agent_proxy:deployment:undeploy ap:agent_proxy:deployment:restore' +
-  ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage'
+  ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage' +
+  // Permission-tree names (platform-api/resources/permission-tree.yaml) for the same resources.
+  ' ap:api:read ap:api:manage ap:api:graphql:read ap:api:graphql:manage ap:api:graphql:build:read ap:api:graphql:build:manage ap:api:graphql:deployment:read ap:api:graphql:deployment:manage ap:api:llm:read ap:api:llm:manage ap:api:llm:build:read ap:api:llm:build:manage ap:api:llm:deployment:read ap:api:llm:deployment:manage ap:api:llm:api_key:read ap:api:mcp:read ap:api:mcp:manage ap:api:mcp:build:read ap:api:mcp:build:manage ap:api:mcp:deployment:read ap:api:mcp:deployment:manage ap:api:agent:read ap:api:agent:manage ap:api:agent:build:read ap:api:agent:build:manage ap:api:agent:deployment:read ap:api:agent:deployment:manage ap:api:agent:api_key:read' +
+  ' ap:llm_provider:template:read ap:llm_provider:template:manage ap:llm_provider:build:read ap:llm_provider:build:manage' +
+  ' ap:gateway_policy:read ap:gateway_policy:manage' +
+  ' ap:portal:read ap:portal:manage ap:portal:draft:read ap:portal:draft:manage ap:portal:publication:read' +
+  ' ap:credential:secret:read ap:credential:secret:manage ap:credential:api_key:read'
 );
 
 // OIDC redirect URIs — app-specific, not IDP-specific. Defaults are derived from

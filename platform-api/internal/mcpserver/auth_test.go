@@ -164,7 +164,7 @@ func TestRegister_DiscoveryRoute(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &meta))
 	assert.Equal(t, "https://platform-api.example.com/api/v0.9/mcp", meta.Resource)
 	assert.Equal(t, s.auth.IDP.Issuer, meta.Servers)
-	assert.Contains(t, meta.Scopes, "ap:rest_api:read")
+	assert.Contains(t, meta.Scopes, "ap:api:rest:read")
 }
 
 func TestRegister_SkipPaths(t *testing.T) {

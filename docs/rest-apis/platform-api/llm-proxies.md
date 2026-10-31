@@ -35,16 +35,27 @@ Deploy a new LLM proxy configuration.
   "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
+    "as": "openai-upstream",
     "auth": {
       "type": "api-key",
       "header": "X-API-Key",
       "value": "my-api-key-value"
+    },
+    "transformer": {
+      "type": "openai-to-anthropic",
+      "version": "v1",
+      "params": {}
     }
   },
   "additionalProviders": [
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -52,6 +63,24 @@ Deploy a new LLM proxy configuration.
       }
     }
   ],
+  "providers": [
+    {
+      "id": "anthropic-provider",
+      "alias": "anthropic-upstream",
+      "isPrimary": true,
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
+  "inboundTemplate": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Proxy API\n  version: v1.0\npaths: {}\n",
   "globalPolicies": [
     {
@@ -120,7 +149,7 @@ Deploy a new LLM proxy configuration.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:create`, `ap:api:llm:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -148,15 +177,25 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
   "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
+    "as": "openai-upstream",
     "auth": {
       "type": "api-key",
       "header": "X-API-Key"
+    },
+    "transformer": {
+      "type": "openai-to-anthropic",
+      "version": "v1",
+      "params": {}
     }
   },
   "additionalProviders": [
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -164,6 +203,23 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
       }
     }
   ],
+  "providers": [
+    {
+      "id": "anthropic-provider",
+      "alias": "anthropic-upstream",
+      "isPrimary": true,
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
+  "inboundTemplate": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Proxy API\n  version: v1.0\npaths: {}\n",
   "globalPolicies": [
     {
@@ -337,7 +393,7 @@ Retrieve a list of all LLM proxies for a project. Requires the projectId query p
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:read`, `ap:api:llm:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -436,7 +492,7 @@ Retrieve the complete configuration for a specific LLM proxy.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:read`, `ap:api:llm:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -464,15 +520,25 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
   "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
+    "as": "openai-upstream",
     "auth": {
       "type": "api-key",
       "header": "X-API-Key"
+    },
+    "transformer": {
+      "type": "openai-to-anthropic",
+      "version": "v1",
+      "params": {}
     }
   },
   "additionalProviders": [
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -480,6 +546,23 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
       }
     }
   ],
+  "providers": [
+    {
+      "id": "anthropic-provider",
+      "alias": "anthropic-upstream",
+      "isPrimary": true,
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
+  "inboundTemplate": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Proxy API\n  version: v1.0\npaths: {}\n",
   "globalPolicies": [
     {
@@ -618,16 +701,27 @@ Update the configuration of an existing LLM proxy.
   "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
+    "as": "openai-upstream",
     "auth": {
       "type": "api-key",
       "header": "X-API-Key",
       "value": "my-api-key-value"
+    },
+    "transformer": {
+      "type": "openai-to-anthropic",
+      "version": "v1",
+      "params": {}
     }
   },
   "additionalProviders": [
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -635,6 +729,24 @@ Update the configuration of an existing LLM proxy.
       }
     }
   ],
+  "providers": [
+    {
+      "id": "anthropic-provider",
+      "alias": "anthropic-upstream",
+      "isPrimary": true,
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
+  "inboundTemplate": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Proxy API\n  version: v1.0\npaths: {}\n",
   "globalPolicies": [
     {
@@ -703,7 +815,7 @@ Update the configuration of an existing LLM proxy.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:update`, `ap:api:llm:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -732,15 +844,25 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `
   "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
+    "as": "openai-upstream",
     "auth": {
       "type": "api-key",
       "header": "X-API-Key"
+    },
+    "transformer": {
+      "type": "openai-to-anthropic",
+      "version": "v1",
+      "params": {}
     }
   },
   "additionalProviders": [
     {
       "id": "anthropic-provider",
       "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
       "transformer": {
         "type": "openai-to-anthropic",
         "version": "v1",
@@ -748,6 +870,23 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `
       }
     }
   ],
+  "providers": [
+    {
+      "id": "anthropic-provider",
+      "alias": "anthropic-upstream",
+      "isPrimary": true,
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
+  "inboundTemplate": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Proxy API\n  version: v1.0\npaths: {}\n",
   "globalPolicies": [
     {
@@ -904,7 +1043,7 @@ Remove an LLM proxy.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:delete`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:delete`, `ap:api:llm:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -1023,7 +1162,7 @@ authenticate requests to the LLM proxy when API key validation is enabled.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:create`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:api_key:create`, `ap:api:llm:api_key:manage`, `ap:api:llm:manage`, `ap:api:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -1145,7 +1284,7 @@ Returns all API keys associated with the specified LLM proxy. The plain key valu
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:read`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:api_key:read`, `ap:api:llm:api_key:manage`, `ap:api:llm:read`, `ap:api:llm:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -1249,7 +1388,7 @@ Deletes the key from the database and broadcasts a revoke event to the allowed g
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:delete`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:api_key:delete`, `ap:api:llm:api_key:manage`, `ap:api:llm:manage`, `ap:api:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 

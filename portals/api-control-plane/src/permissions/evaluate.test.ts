@@ -38,9 +38,31 @@ describe('evaluate', () => {
   beforeEach(resetPermissionWarnings);
 
   it('grants on the narrow scope', () => {
-    const d = decideOperation('CreateProject', ready(['ap:project:create']));
+    const d = decideOperation('DeployAPI', ready(['ap:api:rest:deployment:manage']));
     expect([d.allowed, d.reason]).toEqual([true, 'granted']);
-    expect(d.required).toEqual(['ap:project:create', 'ap:project:manage']);
+    // The node's own action and :manage, plus :manage on every ancestor, as the
+    // spec lists them. A parent's create does not flow down.
+    expect(d.required).toEqual([
+      'ap:api:manage',
+      'ap:api:rest:deployment:create',
+      'ap:api:rest:deployment:manage',
+      'ap:api:rest:manage',
+      'ap:manage',
+    ]);
+  });
+
+  it('grants on a parent or root read/manage, because the spec lists them', () => {
+    expect(decideOperation('DeployAPI', ready(['ap:api:rest:manage'])).allowed).toBe(true);
+    expect(decideOperation('DeployAPI', ready(['ap:api:manage'])).allowed).toBe(true);
+    expect(decideOperation('GetBuilds', ready(['ap:api:rest:read'])).allowed).toBe(true);
+    expect(decideOperation('GetBuilds', ready(['ap:api:read'])).allowed).toBe(true);
+    expect(decideOperation('DeployAPI', ready(['ap:manage'])).allowed).toBe(true);
+    expect(decideOperation('GetBuilds', ready(['ap:read'])).allowed).toBe(true);
+    expect(decideOperation('DeployAPI', ready(['ap:read'])).allowed).toBe(false);
+    // …but a parent's own create/update does not flow down.
+    expect(decideOperation('DeployAPI', ready(['ap:api:rest:create'])).allowed).toBe(false);
+    expect(decideOperation('DeployAPI', ready(['ap:api:rest:update'])).allowed).toBe(false);
+    expect(decideOperation('DeployAPI', ready(['ap:api:read'])).allowed).toBe(false);
   });
 
   it('grants on the broader manage scope without any client-side implication', () => {
@@ -79,20 +101,46 @@ describe('evaluate', () => {
     expect(toGrantedSet(null)).toBeUndefined();
   });
 
+  it('translates pre-tree scope names the way the Platform API does', () => {
+    // The old name stays (the API accepts it too) and its tree permission joins it.
+    expect([...(toGrantedSet(['ap:rest_api:deployment:create']) ?? [])]).toEqual([
+      'ap:rest_api:deployment:create',
+      'ap:api:rest:deployment:create',
+    ]);
+    expect(decideOperation('DeployAPI', ready(['ap:rest_api:deployment:create'])).allowed).toBe(
+      true,
+    );
+    // Parent privilege through a legacy name: ap:rest_api:manage -> ap:api:rest:manage.
+    expect(decideOperation('DeployAPI', ready(['ap:rest_api:manage'])).allowed).toBe(true);
+    expect(decideOperation('GetBuilds', ready(['ap:rest_api:read'])).allowed).toBe(true);
+    expect(decideOperation('DeployAPI', ready(['ap:rest_api:read'])).allowed).toBe(false);
+    // A name the mapping does not know grants nothing.
+    expect(decideOperation('DeployAPI', ready(['ap:rest_api:deploy'])).allowed).toBe(false);
+    expect(toGrantedSet(['ap:rest_api:deploy'])?.size).toBe(1);
+  });
+
   it('any-of across operations, unioning required scopes when all are denied', () => {
-    const input = ready(['ap:rest_api:read']);
+    const input = ready(['ap:api:rest:read']);
     expect(decideAnyOperation(['DeployAPI', 'UndeployDeployment'], input).allowed).toBe(false);
-    const d = decideAnyOperation(['DeployAPI', 'UndeployDeployment'], input);
+    // Two API kinds share only the ap:api:manage ancestor, so the union grows.
+    const d = decideAnyOperation(['DeployAPI', 'DeployMCPProxy'], input);
     expect(d.required.length).toBeGreaterThan(decideOperation('DeployAPI', input).required.length);
     expect(decideAnyOperation(['DeployAPI', 'ListRESTAPIs'], input).allowed).toBe(true);
     expect(decideAnyOperation([], input).allowed).toBe(true);
   });
 
-  it('checks a raw override scope', () => {
-    expect(decideScope('ap:api_key:all:manage', ready(['ap:api_key:all:manage'])).allowed).toBe(
-      true,
-    );
-    expect(decideScope('ap:api_key:all:manage', ready(['ap:api_key:read'])).allowed).toBe(false);
+  it('checks a raw override scope, by its tree name or its pre-tree name', () => {
+    expect(
+      decideScope('ap:credential:api_key:all:manage', ready(['ap:api_key:all:manage'])).allowed,
+    ).toBe(true);
+    expect(
+      decideScope('ap:credential:api_key:all:manage', ready(['ap:credential:api_key:all:manage']))
+        .allowed,
+    ).toBe(true);
+    expect(
+      decideScope('ap:credential:api_key:all:manage', ready(['ap:credential:api_key:read']))
+        .allowed,
+    ).toBe(false);
   });
 });
 

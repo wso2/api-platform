@@ -37,6 +37,11 @@ servers:
 security:
   - OAuth2Security: []
 
+x-reserved-permissions:
+  - ap:portal:mcp_proxy:manage
+  - ap:portal:mcp_proxy:publish
+  - ap:portal:mcp_proxy:unpublish
+
 paths:
   /organizations:
     post:
@@ -52,6 +57,7 @@ paths:
         - OAuth2Security:
             - ap:organization:create
             - ap:organization:manage
+            - ap:manage
       requestBody:
         description: Organization that needs to be added
         required: true
@@ -86,6 +92,8 @@ paths:
         - OAuth2Security:
             - ap:organization:read
             - ap:organization:manage
+            - ap:read
+            - ap:manage
       tags:
         - Organizations
       parameters:
@@ -113,6 +121,8 @@ paths:
         - OAuth2Security:
             - ap:organization:read
             - ap:organization:manage
+            - ap:read
+            - ap:manage
       tags:
         - Organizations
       parameters:
@@ -146,6 +156,8 @@ paths:
         - OAuth2Security:
             - ap:organization:read
             - ap:organization:manage
+            - ap:read
+            - ap:manage
       tags:
         - Organizations
       parameters:
@@ -177,6 +189,7 @@ paths:
         - OAuth2Security:
             - ap:project:create
             - ap:project:manage
+            - ap:manage
       tags:
         - Projects
       requestBody:
@@ -218,6 +231,8 @@ paths:
         - OAuth2Security:
             - ap:project:read
             - ap:project:manage
+            - ap:read
+            - ap:manage
       tags:
         - Projects
       parameters:
@@ -251,6 +266,8 @@ paths:
         - OAuth2Security:
             - ap:project:read
             - ap:project:manage
+            - ap:read
+            - ap:manage
       tags:
         - Projects
       parameters:
@@ -281,6 +298,7 @@ paths:
         - OAuth2Security:
             - ap:project:update
             - ap:project:manage
+            - ap:manage
       tags:
         - Projects
       parameters:
@@ -321,6 +339,7 @@ paths:
         - OAuth2Security:
             - ap:project:delete
             - ap:project:manage
+            - ap:manage
       tags:
         - Projects
       parameters:
@@ -351,8 +370,12 @@ paths:
       operationId: ListRESTAPIs
       security:
         - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST APIs
       parameters:
@@ -385,8 +408,10 @@ paths:
       operationId: CreateRESTAPI
       security:
         - OAuth2Security:
-            - ap:rest_api:create
-            - ap:rest_api:manage
+            - ap:api:rest:create
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST APIs
       requestBody:
@@ -432,8 +457,10 @@ paths:
       operationId: ValidateOpenAPISpec
       security:
         - OAuth2Security:
-            - ap:rest_api:create
-            - ap:rest_api:manage
+            - ap:api:rest:create
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST APIs
       requestBody:
@@ -473,8 +500,10 @@ paths:
       operationId: ImportOpenAPI
       security:
         - OAuth2Security:
-            - ap:rest_api:create
-            - ap:rest_api:manage
+            - ap:api:rest:create
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST APIs
       requestBody:
@@ -529,8 +558,12 @@ paths:
       operationId: ListRESTAPIVersions
       security:
         - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST APIs
       parameters:
@@ -562,8 +595,12 @@ paths:
       operationId: GetRESTAPI
       security:
         - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST APIs
       parameters:
@@ -592,8 +629,10 @@ paths:
       operationId: UpdateRESTAPI
       security:
         - OAuth2Security:
-            - ap:rest_api:update
-            - ap:rest_api:manage
+            - ap:api:rest:update
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST APIs
       parameters:
@@ -633,8 +672,10 @@ paths:
       operationId: DeleteRESTAPI
       security:
         - OAuth2Security:
-            - ap:rest_api:delete
-            - ap:rest_api:manage
+            - ap:api:rest:delete
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST APIs
       parameters:
@@ -663,8 +704,12 @@ paths:
       operationId: GetRESTAPISpec
       security:
         - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST APIs
       parameters:
@@ -693,8 +738,10 @@ paths:
       operationId: UpdateRESTAPISpec
       security:
         - OAuth2Security:
-            - ap:rest_api:update
-            - ap:rest_api:manage
+            - ap:api:rest:update
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST APIs
       parameters:
@@ -735,11 +782,16 @@ paths:
       operationId: GetRESTAPIGateways
       security:
         - OAuth2Security:
-            - ap:rest_api:gateway:read
-            - ap:rest_api:gateway:manage
-            - ap:rest_api:manage
-            - ap:gateway:read
+            - ap:api:rest:gateway:read
+            - ap:api:rest:gateway:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
             - ap:gateway:manage
+            - ap:gateway:read
       tags:
         - REST APIs
         - Gateways
@@ -773,9 +825,11 @@ paths:
       operationId: AddGatewaysToAPI
       security:
         - OAuth2Security:
-            - ap:rest_api:gateway:create
-            - ap:rest_api:gateway:manage
-            - ap:rest_api:manage
+            - ap:api:rest:gateway:create
+            - ap:api:rest:gateway:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST APIs
         - Gateways
@@ -817,10 +871,12 @@ paths:
       operationId: CreateAPIKey
       security:
         - OAuth2Security:
-            - ap:rest_api:api_key:create
-            - ap:rest_api:api_key:manage
-            - ap:rest_api:manage
-            - ap:api_key:all:manage
+            - ap:api:rest:api_key:create
+            - ap:api:rest:api_key:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - REST APIs
         - API Keys
@@ -894,10 +950,12 @@ paths:
       operationId: UpdateAPIKey
       security:
         - OAuth2Security:
-            - ap:rest_api:api_key:update
-            - ap:rest_api:api_key:manage
-            - ap:rest_api:manage
-            - ap:api_key:all:manage
+            - ap:api:rest:api_key:update
+            - ap:api:rest:api_key:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - REST APIs
         - API Keys
@@ -946,10 +1004,12 @@ paths:
       operationId: RevokeAPIKey
       security:
         - OAuth2Security:
-            - ap:rest_api:api_key:delete
-            - ap:rest_api:api_key:manage
-            - ap:rest_api:manage
-            - ap:api_key:all:manage
+            - ap:api:rest:api_key:delete
+            - ap:api:rest:api_key:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - REST APIs
         - API Keys
@@ -1002,9 +1062,11 @@ paths:
       operationId: CreateBuild
       security:
         - OAuth2Security:
-            - ap:rest_api:build:create
-            - ap:rest_api:build:manage
-            - ap:rest_api:manage
+            - ap:api:rest:build:create
+            - ap:api:rest:build:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1048,9 +1110,14 @@ paths:
       operationId: GetBuilds
       security:
         - OAuth2Security:
-            - ap:rest_api:build:read
-            - ap:rest_api:build:manage
-            - ap:rest_api:manage
+            - ap:api:rest:build:read
+            - ap:api:rest:build:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1082,9 +1149,14 @@ paths:
       operationId: GetBuild
       security:
         - OAuth2Security:
-            - ap:rest_api:build:read
-            - ap:rest_api:build:manage
-            - ap:rest_api:manage
+            - ap:api:rest:build:read
+            - ap:api:rest:build:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1130,9 +1202,11 @@ paths:
       operationId: DeleteBuild
       security:
         - OAuth2Security:
-            - ap:rest_api:build:delete
-            - ap:rest_api:build:manage
-            - ap:rest_api:manage
+            - ap:api:rest:build:delete
+            - ap:api:rest:build:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1173,9 +1247,11 @@ paths:
       operationId: DeployAPI
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:create
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
+            - ap:api:rest:deployment:create
+            - ap:api:rest:deployment:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1223,9 +1299,14 @@ paths:
       operationId: GetDeployments
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:read
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
+            - ap:api:rest:deployment:read
+            - ap:api:rest:deployment:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1260,9 +1341,14 @@ paths:
       operationId: GetDeployment
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:read
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
+            - ap:api:rest:deployment:read
+            - ap:api:rest:deployment:manage
+            - ap:api:rest:read
+            - ap:api:rest:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1290,9 +1376,11 @@ paths:
       operationId: DeleteDeployment
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:delete
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
+            - ap:api:rest:deployment:delete
+            - ap:api:rest:deployment:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1328,9 +1416,11 @@ paths:
       operationId: UndeployDeployment
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:undeploy
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
+            - ap:api:rest:deployment:undeploy
+            - ap:api:rest:deployment:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1387,9 +1477,11 @@ paths:
       operationId: RestoreDeployment
       security:
         - OAuth2Security:
-            - ap:rest_api:deployment:restore
-            - ap:rest_api:deployment:manage
-            - ap:rest_api:manage
+            - ap:api:rest:deployment:restore
+            - ap:api:rest:deployment:manage
+            - ap:api:rest:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - REST API Deployments
         - Deployments
@@ -1440,7 +1532,9 @@ paths:
       operationId: listApiPublications
       security:
         - OAuth2Security:
-            - ap:api_publication:read
+            - ap:publication:read
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       parameters:
@@ -1482,7 +1576,11 @@ paths:
       operationId: getApiPublication
       security:
         - OAuth2Security:
-            - ap:api_portal:publication:read
+            - ap:portal:publication:read
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1512,7 +1610,11 @@ paths:
       operationId: getApiPublicationDefinition
       security:
         - OAuth2Security:
-            - ap:api_portal:publication:read
+            - ap:portal:publication:read
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1538,7 +1640,11 @@ paths:
       operationId: getApiPublicationLandingPage
       security:
         - OAuth2Security:
-            - ap:api_portal:publication:read
+            - ap:portal:publication:read
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1564,7 +1670,11 @@ paths:
       operationId: getApiPublicationThumbnail
       security:
         - OAuth2Security:
-            - ap:api_portal:publication:read
+            - ap:portal:publication:read
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1592,8 +1702,12 @@ paths:
       operationId: getApiPublicationDraft
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:read
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:read
+            - ap:portal:draft:manage
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1617,8 +1731,10 @@ paths:
       operationId: saveApiPublicationDraft
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:update
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:update
+            - ap:portal:draft:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       requestBody:
@@ -1658,8 +1774,12 @@ paths:
       operationId: getApiPublicationDraftDefinition
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:read
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:read
+            - ap:portal:draft:manage
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1679,8 +1799,10 @@ paths:
       operationId: saveApiPublicationDraftDefinition
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:update
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:update
+            - ap:portal:draft:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       requestBody:
@@ -1733,8 +1855,12 @@ paths:
       operationId: getApiPublicationDraftLandingPage
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:read
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:read
+            - ap:portal:draft:manage
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1754,8 +1880,10 @@ paths:
       operationId: saveApiPublicationDraftLandingPage
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:update
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:update
+            - ap:portal:draft:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       requestBody:
@@ -1793,8 +1921,12 @@ paths:
       operationId: getApiPublicationDraftThumbnail
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:read
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:read
+            - ap:portal:draft:manage
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1814,8 +1946,10 @@ paths:
       operationId: saveApiPublicationDraftThumbnail
       security:
         - OAuth2Security:
-            - ap:api_portal:draft:update
-            - ap:api_portal:draft:manage
+            - ap:portal:draft:update
+            - ap:portal:draft:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       requestBody:
@@ -1869,7 +2003,10 @@ paths:
       operationId: publishRestApiToApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:manage
+            - ap:portal:rest_api:publish
+            - ap:portal:rest_api:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1917,7 +2054,10 @@ paths:
       operationId: unpublishRestApiFromApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:manage
+            - ap:portal:rest_api:unpublish
+            - ap:portal:rest_api:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1946,7 +2086,10 @@ paths:
       operationId: deprecateRestApiOnApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:rest_api:manage
+            - ap:portal:rest_api:deprecate
+            - ap:portal:rest_api:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -1987,7 +2130,10 @@ paths:
       operationId: publishGraphQLApiToApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:manage
+            - ap:portal:graphql_api:publish
+            - ap:portal:graphql_api:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -2035,7 +2181,10 @@ paths:
       operationId: unpublishGraphQLApiFromApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:manage
+            - ap:portal:graphql_api:unpublish
+            - ap:portal:graphql_api:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -2064,7 +2213,10 @@ paths:
       operationId: deprecateGraphQLApiOnApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:graphql_api:manage
+            - ap:portal:graphql_api:deprecate
+            - ap:portal:graphql_api:manage
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Publications
       responses:
@@ -2097,8 +2249,12 @@ paths:
       operationId: ListAPIDocuments
       security:
         - OAuth2Security:
-            - ap:docs:read
-            - ap:docs:manage
+            - ap:content:document:read
+            - ap:content:document:manage
+            - ap:content:read
+            - ap:content:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Documents
       parameters:
@@ -2127,7 +2283,9 @@ paths:
       operationId: CreateAPIDocument
       security:
         - OAuth2Security:
-            - ap:docs:manage
+            - ap:content:document:manage
+            - ap:content:manage
+            - ap:manage
       tags:
         - API Documents
       requestBody:
@@ -2176,8 +2334,12 @@ paths:
       operationId: GetAPIDocument
       security:
         - OAuth2Security:
-            - ap:docs:read
-            - ap:docs:manage
+            - ap:content:document:read
+            - ap:content:document:manage
+            - ap:content:read
+            - ap:content:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Documents
       responses:
@@ -2202,7 +2364,9 @@ paths:
       operationId: UpdateAPIDocument
       security:
         - OAuth2Security:
-            - ap:docs:manage
+            - ap:content:document:manage
+            - ap:content:manage
+            - ap:manage
       tags:
         - API Documents
       requestBody:
@@ -2237,7 +2401,9 @@ paths:
       operationId: DeleteAPIDocument
       security:
         - OAuth2Security:
-            - ap:docs:manage
+            - ap:content:document:manage
+            - ap:content:manage
+            - ap:manage
       tags:
         - API Documents
       responses:
@@ -2269,8 +2435,12 @@ paths:
       operationId: GetAPIDocumentContent
       security:
         - OAuth2Security:
-            - ap:docs:read
-            - ap:docs:manage
+            - ap:content:document:read
+            - ap:content:document:manage
+            - ap:content:read
+            - ap:content:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Documents
       responses:
@@ -2304,8 +2474,12 @@ paths:
       operationId: GetAPIThumbnail
       security:
         - OAuth2Security:
-            - ap:thumbnail:read
-            - ap:thumbnail:manage
+            - ap:content:thumbnail:read
+            - ap:content:thumbnail:manage
+            - ap:content:read
+            - ap:content:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Thumbnail
       responses:
@@ -2337,7 +2511,9 @@ paths:
       operationId: UpsertAPIThumbnail
       security:
         - OAuth2Security:
-            - ap:thumbnail:manage
+            - ap:content:thumbnail:manage
+            - ap:content:manage
+            - ap:manage
       tags:
         - API Thumbnail
       requestBody:
@@ -2369,7 +2545,9 @@ paths:
       operationId: DeleteAPIThumbnail
       security:
         - OAuth2Security:
-            - ap:thumbnail:manage
+            - ap:content:thumbnail:manage
+            - ap:content:manage
+            - ap:manage
       tags:
         - API Thumbnail
       responses:
@@ -2394,8 +2572,12 @@ paths:
       operationId: ListGraphQLAPIs
       security:
         - OAuth2Security:
-            - ap:graphql_api:read
-            - ap:graphql_api:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - GraphQL APIs
       parameters:
@@ -2443,8 +2625,10 @@ paths:
       operationId: CreateGraphQLAPI
       security:
         - OAuth2Security:
-            - ap:graphql_api:create
-            - ap:graphql_api:manage
+            - ap:api:graphql:create
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL APIs
       requestBody:
@@ -2493,8 +2677,12 @@ paths:
       operationId: GetGraphQLAPI
       security:
         - OAuth2Security:
-            - ap:graphql_api:read
-            - ap:graphql_api:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - GraphQL APIs
       parameters:
@@ -2535,8 +2723,10 @@ paths:
       operationId: UpdateGraphQLAPI
       security:
         - OAuth2Security:
-            - ap:graphql_api:update
-            - ap:graphql_api:manage
+            - ap:api:graphql:update
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL APIs
       parameters:
@@ -2581,8 +2771,10 @@ paths:
       operationId: DeleteGraphQLAPI
       security:
         - OAuth2Security:
-            - ap:graphql_api:delete
-            - ap:graphql_api:manage
+            - ap:api:graphql:delete
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL APIs
       parameters:
@@ -2619,8 +2811,12 @@ paths:
       operationId: GetGraphQLAPISDL
       security:
         - OAuth2Security:
-            - ap:graphql_api:read
-            - ap:graphql_api:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - GraphQL APIs
       parameters:
@@ -2662,8 +2858,10 @@ paths:
       operationId: ValidateGraphQLSchema
       security:
         - OAuth2Security:
-            - ap:graphql_api:create
-            - ap:graphql_api:manage
+            - ap:api:graphql:create
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL APIs
       requestBody:
@@ -2701,11 +2899,16 @@ paths:
       operationId: GetGraphQLAPIGateways
       security:
         - OAuth2Security:
-            - ap:graphql_api:gateway:read
-            - ap:graphql_api:gateway:manage
-            - ap:graphql_api:manage
-            - ap:gateway:read
+            - ap:api:graphql:gateway:read
+            - ap:api:graphql:gateway:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
             - ap:gateway:manage
+            - ap:gateway:read
       tags:
         - GraphQL APIs
         - Gateways
@@ -2746,9 +2949,11 @@ paths:
       operationId: AddGatewaysToGraphQLAPI
       security:
         - OAuth2Security:
-            - ap:graphql_api:gateway:create
-            - ap:graphql_api:gateway:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:gateway:create
+            - ap:api:graphql:gateway:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL APIs
         - Gateways
@@ -2797,10 +3002,12 @@ paths:
       operationId: CreateGraphQLAPIKey
       security:
         - OAuth2Security:
-            - ap:graphql_api:api_key:create
-            - ap:graphql_api:api_key:manage
-            - ap:graphql_api:manage
-            - ap:api_key:all:manage
+            - ap:api:graphql:api_key:create
+            - ap:api:graphql:api_key:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - GraphQL APIs
         - API Keys
@@ -2853,10 +3060,12 @@ paths:
       operationId: UpdateGraphQLAPIKey
       security:
         - OAuth2Security:
-            - ap:graphql_api:api_key:update
-            - ap:graphql_api:api_key:manage
-            - ap:graphql_api:manage
-            - ap:api_key:all:manage
+            - ap:api:graphql:api_key:update
+            - ap:api:graphql:api_key:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - GraphQL APIs
         - API Keys
@@ -2912,10 +3121,12 @@ paths:
       operationId: RevokeGraphQLAPIKey
       security:
         - OAuth2Security:
-            - ap:graphql_api:api_key:delete
-            - ap:graphql_api:api_key:manage
-            - ap:graphql_api:manage
-            - ap:api_key:all:manage
+            - ap:api:graphql:api_key:delete
+            - ap:api:graphql:api_key:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - GraphQL APIs
         - API Keys
@@ -2962,9 +3173,11 @@ paths:
       operationId: DeployGraphQLAPI
       security:
         - OAuth2Security:
-            - ap:graphql_api:deployment:create
-            - ap:graphql_api:deployment:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:deployment:create
+            - ap:api:graphql:deployment:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3017,9 +3230,14 @@ paths:
       operationId: GetGraphQLAPIDeployments
       security:
         - OAuth2Security:
-            - ap:graphql_api:deployment:read
-            - ap:graphql_api:deployment:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:deployment:read
+            - ap:api:graphql:deployment:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3061,9 +3279,14 @@ paths:
       operationId: GetGraphQLAPIDeployment
       security:
         - OAuth2Security:
-            - ap:graphql_api:deployment:read
-            - ap:graphql_api:deployment:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:deployment:read
+            - ap:api:graphql:deployment:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3098,9 +3321,11 @@ paths:
       operationId: DeleteGraphQLAPIDeployment
       security:
         - OAuth2Security:
-            - ap:graphql_api:deployment:delete
-            - ap:graphql_api:deployment:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:deployment:delete
+            - ap:api:graphql:deployment:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3143,9 +3368,11 @@ paths:
       operationId: UndeployGraphQLAPIDeployment
       security:
         - OAuth2Security:
-            - ap:graphql_api:deployment:undeploy
-            - ap:graphql_api:deployment:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:deployment:undeploy
+            - ap:api:graphql:deployment:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3209,9 +3436,11 @@ paths:
       operationId: RestoreGraphQLAPIDeployment
       security:
         - OAuth2Security:
-            - ap:graphql_api:deployment:restore
-            - ap:graphql_api:deployment:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:deployment:restore
+            - ap:api:graphql:deployment:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3286,9 +3515,11 @@ paths:
       operationId: CreateGraphQLAPIBuild
       security:
         - OAuth2Security:
-            - ap:graphql_api:build:create
-            - ap:graphql_api:build:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:build:create
+            - ap:api:graphql:build:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3337,9 +3568,14 @@ paths:
       operationId: GetGraphQLAPIBuilds
       security:
         - OAuth2Security:
-            - ap:graphql_api:build:read
-            - ap:graphql_api:build:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:build:read
+            - ap:api:graphql:build:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3376,9 +3612,14 @@ paths:
       operationId: GetGraphQLAPIBuild
       security:
         - OAuth2Security:
-            - ap:graphql_api:build:read
-            - ap:graphql_api:build:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:build:read
+            - ap:api:graphql:build:manage
+            - ap:api:graphql:read
+            - ap:api:graphql:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3429,9 +3670,11 @@ paths:
       operationId: DeleteGraphQLAPIBuild
       security:
         - OAuth2Security:
-            - ap:graphql_api:build:delete
-            - ap:graphql_api:build:manage
-            - ap:graphql_api:manage
+            - ap:api:graphql:build:delete
+            - ap:api:graphql:build:manage
+            - ap:api:graphql:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - GraphQL API Deployments
         - Deployments
@@ -3473,8 +3716,10 @@ paths:
       operationId: createLLMProviderTemplate
       security:
         - OAuth2Security:
-            - ap:llm_template:create
-            - ap:llm_template:manage
+            - ap:llm_provider:template:create
+            - ap:llm_provider:template:manage
+            - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Templates
       requestBody:
@@ -3523,8 +3768,12 @@ paths:
       operationId: listLLMProviderTemplates
       security:
         - OAuth2Security:
-            - ap:llm_template:read
-            - ap:llm_template:manage
+            - ap:llm_provider:template:read
+            - ap:llm_provider:template:manage
+            - ap:llm_provider:read
+            - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3588,8 +3837,10 @@ paths:
       operationId: copyLLMProviderTemplateVersion
       security:
         - OAuth2Security:
-            - ap:llm_template:create
-            - ap:llm_template:manage
+            - ap:llm_provider:template:create
+            - ap:llm_provider:template:manage
+            - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3661,8 +3912,12 @@ paths:
       operationId: getLLMProviderTemplate
       security:
         - OAuth2Security:
-            - ap:llm_template:read
-            - ap:llm_template:manage
+            - ap:llm_provider:template:read
+            - ap:llm_provider:template:manage
+            - ap:llm_provider:read
+            - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3696,8 +3951,10 @@ paths:
       operationId: updateLLMProviderTemplate
       security:
         - OAuth2Security:
-            - ap:llm_template:update
-            - ap:llm_template:manage
+            - ap:llm_provider:template:update
+            - ap:llm_provider:template:manage
+            - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3741,8 +3998,10 @@ paths:
       operationId: setLLMProviderTemplateVersionEnabled
       security:
         - OAuth2Security:
-            - ap:llm_template:update
-            - ap:llm_template:manage
+            - ap:llm_provider:template:update
+            - ap:llm_provider:template:manage
+            - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3794,8 +4053,10 @@ paths:
       operationId: deleteLLMProviderTemplateVersion
       security:
         - OAuth2Security:
-            - ap:llm_template:delete
-            - ap:llm_template:manage
+            - ap:llm_provider:template:delete
+            - ap:llm_provider:template:manage
+            - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Templates
       parameters:
@@ -3832,6 +4093,7 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:create
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Providers
       requestBody:
@@ -3920,6 +4182,8 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:read
             - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Providers
       parameters:
@@ -3946,6 +4210,8 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:read
             - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Providers
       parameters:
@@ -3977,6 +4243,7 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:update
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Providers
       parameters:
@@ -4018,6 +4285,7 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:delete
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Providers
       parameters:
@@ -4068,6 +4336,7 @@ paths:
             - ap:llm_provider:build:create
             - ap:llm_provider:build:manage
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4118,7 +4387,10 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:build:read
             - ap:llm_provider:build:manage
+            - ap:llm_provider:read
             - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4157,7 +4429,10 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:build:read
             - ap:llm_provider:build:manage
+            - ap:llm_provider:read
             - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4211,6 +4486,7 @@ paths:
             - ap:llm_provider:build:delete
             - ap:llm_provider:build:manage
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4255,6 +4531,7 @@ paths:
             - ap:llm_provider:deployment:create
             - ap:llm_provider:deployment:manage
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4307,7 +4584,10 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:deployment:read
             - ap:llm_provider:deployment:manage
+            - ap:llm_provider:read
             - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4349,7 +4629,10 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:deployment:read
             - ap:llm_provider:deployment:manage
+            - ap:llm_provider:read
             - ap:llm_provider:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4385,6 +4668,7 @@ paths:
             - ap:llm_provider:deployment:delete
             - ap:llm_provider:deployment:manage
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4428,6 +4712,7 @@ paths:
             - ap:llm_provider:deployment:undeploy
             - ap:llm_provider:deployment:manage
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4492,6 +4777,7 @@ paths:
             - ap:llm_provider:deployment:restore
             - ap:llm_provider:deployment:manage
             - ap:llm_provider:manage
+            - ap:manage
       tags:
         - LLM Provider Deployments
         - Deployments
@@ -4547,9 +4833,14 @@ paths:
       operationId: listLLMProxiesByProvider
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:read
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:deployment:read
+            - ap:api:llm:deployment:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Providers
       parameters:
@@ -4590,7 +4881,8 @@ paths:
             - ap:llm_provider:api_key:create
             - ap:llm_provider:api_key:manage
             - ap:llm_provider:manage
-            - ap:api_key:all:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - LLM Providers
         - API Keys
@@ -4637,8 +4929,11 @@ paths:
         - OAuth2Security:
             - ap:llm_provider:api_key:read
             - ap:llm_provider:api_key:manage
+            - ap:llm_provider:read
             - ap:llm_provider:manage
-            - ap:api_key:all:manage
+            - ap:read
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - LLM Providers
         - API Keys
@@ -4677,7 +4972,8 @@ paths:
             - ap:llm_provider:api_key:delete
             - ap:llm_provider:api_key:manage
             - ap:llm_provider:manage
-            - ap:api_key:all:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - LLM Providers
         - API Keys
@@ -4716,8 +5012,10 @@ paths:
       operationId: createLLMProxy
       security:
         - OAuth2Security:
-            - ap:llm_proxy:create
-            - ap:llm_proxy:manage
+            - ap:api:llm:create
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxies
       requestBody:
@@ -4755,8 +5053,12 @@ paths:
       operationId: listLLMProxies
       security:
         - OAuth2Security:
-            - ap:llm_proxy:read
-            - ap:llm_proxy:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4782,8 +5084,12 @@ paths:
       operationId: getLLMProxy
       security:
         - OAuth2Security:
-            - ap:llm_proxy:read
-            - ap:llm_proxy:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4813,8 +5119,10 @@ paths:
       operationId: updateLLMProxy
       security:
         - OAuth2Security:
-            - ap:llm_proxy:update
-            - ap:llm_proxy:manage
+            - ap:api:llm:update
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4854,8 +5162,10 @@ paths:
       operationId: deleteLLMProxy
       security:
         - OAuth2Security:
-            - ap:llm_proxy:delete
-            - ap:llm_proxy:manage
+            - ap:api:llm:delete
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxies
       parameters:
@@ -4903,9 +5213,11 @@ paths:
       operationId: CreateLLMProxyBuild
       security:
         - OAuth2Security:
-            - ap:llm_proxy:build:create
-            - ap:llm_proxy:build:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:build:create
+            - ap:api:llm:build:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4954,9 +5266,14 @@ paths:
       operationId: GetLLMProxyBuilds
       security:
         - OAuth2Security:
-            - ap:llm_proxy:build:read
-            - ap:llm_proxy:build:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:build:read
+            - ap:api:llm:build:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -4993,9 +5310,14 @@ paths:
       operationId: GetLLMProxyBuild
       security:
         - OAuth2Security:
-            - ap:llm_proxy:build:read
-            - ap:llm_proxy:build:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:build:read
+            - ap:api:llm:build:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5046,9 +5368,11 @@ paths:
       operationId: DeleteLLMProxyBuild
       security:
         - OAuth2Security:
-            - ap:llm_proxy:build:delete
-            - ap:llm_proxy:build:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:build:delete
+            - ap:api:llm:build:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5090,9 +5414,11 @@ paths:
       operationId: deployLLMProxy
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:create
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:deployment:create
+            - ap:api:llm:deployment:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5143,9 +5469,14 @@ paths:
       operationId: getLLMProxyDeployments
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:read
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:deployment:read
+            - ap:api:llm:deployment:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5185,9 +5516,14 @@ paths:
       operationId: getLLMProxyDeployment
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:read
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:deployment:read
+            - ap:api:llm:deployment:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5220,9 +5556,11 @@ paths:
       operationId: deleteLLMProxyDeployment
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:delete
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:deployment:delete
+            - ap:api:llm:deployment:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5263,9 +5601,11 @@ paths:
       operationId: undeployLLMProxyDeployment
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:undeploy
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:deployment:undeploy
+            - ap:api:llm:deployment:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5327,9 +5667,11 @@ paths:
       operationId: restoreLLMProxyDeployment
       security:
         - OAuth2Security:
-            - ap:llm_proxy:deployment:restore
-            - ap:llm_proxy:deployment:manage
-            - ap:llm_proxy:manage
+            - ap:api:llm:deployment:restore
+            - ap:api:llm:deployment:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - LLM Proxy Deployments
         - Deployments
@@ -5388,10 +5730,12 @@ paths:
       operationId: createLLMProxyAPIKey
       security:
         - OAuth2Security:
-            - ap:llm_proxy:api_key:create
-            - ap:llm_proxy:api_key:manage
-            - ap:llm_proxy:manage
-            - ap:api_key:all:manage
+            - ap:api:llm:api_key:create
+            - ap:api:llm:api_key:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - LLM Proxies
       parameters:
@@ -5435,10 +5779,15 @@ paths:
       operationId: listLLMProxyAPIKeys
       security:
         - OAuth2Security:
-            - ap:llm_proxy:api_key:read
-            - ap:llm_proxy:api_key:manage
-            - ap:llm_proxy:manage
-            - ap:api_key:all:manage
+            - ap:api:llm:api_key:read
+            - ap:api:llm:api_key:manage
+            - ap:api:llm:read
+            - ap:api:llm:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - LLM Proxies
         - API Keys
@@ -5474,10 +5823,12 @@ paths:
       operationId: deleteLLMProxyAPIKey
       security:
         - OAuth2Security:
-            - ap:llm_proxy:api_key:delete
-            - ap:llm_proxy:api_key:manage
-            - ap:llm_proxy:manage
-            - ap:api_key:all:manage
+            - ap:api:llm:api_key:delete
+            - ap:api:llm:api_key:manage
+            - ap:api:llm:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - LLM Proxies
         - API Keys
@@ -5516,8 +5867,10 @@ paths:
       operationId: createMCPProxy
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:create
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:create
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxies
       requestBody:
@@ -5553,8 +5906,12 @@ paths:
       operationId: listMCPProxies
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:read
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:read
+            - ap:api:mcp:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5580,8 +5937,12 @@ paths:
       operationId: getMCPProxy
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:read
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:read
+            - ap:api:mcp:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5611,8 +5972,10 @@ paths:
       operationId: updateMCPProxy
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:update
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:update
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5652,8 +6015,10 @@ paths:
       operationId: deleteMCPProxy
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:delete
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:delete
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxies
       parameters:
@@ -5701,9 +6066,11 @@ paths:
       operationId: CreateMCPProxyBuild
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:build:create
-            - ap:mcp_proxy:build:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:build:create
+            - ap:api:mcp:build:manage
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5752,9 +6119,14 @@ paths:
       operationId: GetMCPProxyBuilds
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:build:read
-            - ap:mcp_proxy:build:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:build:read
+            - ap:api:mcp:build:manage
+            - ap:api:mcp:read
+            - ap:api:mcp:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5791,9 +6163,14 @@ paths:
       operationId: GetMCPProxyBuild
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:build:read
-            - ap:mcp_proxy:build:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:build:read
+            - ap:api:mcp:build:manage
+            - ap:api:mcp:read
+            - ap:api:mcp:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5844,9 +6221,11 @@ paths:
       operationId: DeleteMCPProxyBuild
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:build:delete
-            - ap:mcp_proxy:build:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:build:delete
+            - ap:api:mcp:build:manage
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5888,9 +6267,11 @@ paths:
       operationId: DeployMCPProxy
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:deployment:create
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:deployment:create
+            - ap:api:mcp:deployment:manage
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5939,9 +6320,14 @@ paths:
       operationId: GetMCPProxyDeployments
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:deployment:read
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:deployment:read
+            - ap:api:mcp:deployment:manage
+            - ap:api:mcp:read
+            - ap:api:mcp:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -5981,9 +6367,14 @@ paths:
       operationId: GetMCPProxyDeployment
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:deployment:read
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:deployment:read
+            - ap:api:mcp:deployment:manage
+            - ap:api:mcp:read
+            - ap:api:mcp:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -6016,9 +6407,11 @@ paths:
       operationId: DeleteMCPProxyDeployment
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:deployment:delete
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:deployment:delete
+            - ap:api:mcp:deployment:manage
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -6057,9 +6450,11 @@ paths:
       operationId: UndeployMCPProxyDeployment
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:deployment:undeploy
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:deployment:undeploy
+            - ap:api:mcp:deployment:manage
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -6119,9 +6514,11 @@ paths:
       operationId: RestoreMCPProxyDeployment
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:deployment:restore
-            - ap:mcp_proxy:deployment:manage
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:deployment:restore
+            - ap:api:mcp:deployment:manage
+            - ap:api:mcp:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - MCP Proxy Deployments
         - Deployments
@@ -6177,8 +6574,12 @@ paths:
       operationId: fetchMCPProxyServerInfo
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:read
-            - ap:mcp_proxy:manage
+            - ap:api:mcp:read
+            - ap:api:mcp:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - MCP Proxies
       requestBody:
@@ -6215,8 +6616,10 @@ paths:
       operationId: createAgentProxy
       security:
         - OAuth2Security:
-            - ap:agent_proxy:create
-            - ap:agent_proxy:manage
+            - ap:api:agent:create
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxies
       requestBody:
@@ -6262,8 +6665,12 @@ paths:
       operationId: listAgentProxies
       security:
         - OAuth2Security:
-            - ap:agent_proxy:read
-            - ap:agent_proxy:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - Agent Proxies
       parameters:
@@ -6312,8 +6719,12 @@ paths:
       operationId: fetchAgentCard
       security:
         - OAuth2Security:
-            - ap:agent_proxy:read
-            - ap:agent_proxy:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - Agent Proxies
         - Agent Cards
@@ -6379,8 +6790,12 @@ paths:
       operationId: getAgentProxy
       security:
         - OAuth2Security:
-            - ap:agent_proxy:read
-            - ap:agent_proxy:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - Agent Proxies
       parameters:
@@ -6423,8 +6838,10 @@ paths:
       operationId: updateAgentProxy
       security:
         - OAuth2Security:
-            - ap:agent_proxy:update
-            - ap:agent_proxy:manage
+            - ap:api:agent:update
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxies
       parameters:
@@ -6467,8 +6884,10 @@ paths:
       operationId: deleteAgentProxy
       security:
         - OAuth2Security:
-            - ap:agent_proxy:delete
-            - ap:agent_proxy:manage
+            - ap:api:agent:delete
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxies
       parameters:
@@ -6515,9 +6934,11 @@ paths:
       operationId: createAgentProxyDeployment
       security:
         - OAuth2Security:
-            - ap:agent_proxy:deployment:create
-            - ap:agent_proxy:deployment:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:deployment:create
+            - ap:api:agent:deployment:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6564,9 +6985,14 @@ paths:
       operationId: listAgentProxyDeployments
       security:
         - OAuth2Security:
-            - ap:agent_proxy:deployment:read
-            - ap:agent_proxy:deployment:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:deployment:read
+            - ap:api:agent:deployment:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6602,9 +7028,14 @@ paths:
       operationId: getAgentProxyDeployment
       security:
         - OAuth2Security:
-            - ap:agent_proxy:deployment:read
-            - ap:agent_proxy:deployment:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:deployment:read
+            - ap:api:agent:deployment:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6634,9 +7065,11 @@ paths:
       operationId: deleteAgentProxyDeployment
       security:
         - OAuth2Security:
-            - ap:agent_proxy:deployment:delete
-            - ap:agent_proxy:deployment:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:deployment:delete
+            - ap:api:agent:deployment:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6671,9 +7104,11 @@ paths:
       operationId: undeployAgentProxyDeployment
       security:
         - OAuth2Security:
-            - ap:agent_proxy:deployment:undeploy
-            - ap:agent_proxy:deployment:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:deployment:undeploy
+            - ap:api:agent:deployment:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6722,9 +7157,11 @@ paths:
       operationId: restoreAgentProxyDeployment
       security:
         - OAuth2Security:
-            - ap:agent_proxy:deployment:restore
-            - ap:agent_proxy:deployment:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:deployment:restore
+            - ap:api:agent:deployment:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6780,9 +7217,11 @@ paths:
       operationId: createAgentProxyBuild
       security:
         - OAuth2Security:
-            - ap:agent_proxy:build:create
-            - ap:agent_proxy:build:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:build:create
+            - ap:api:agent:build:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6826,9 +7265,14 @@ paths:
       operationId: listAgentProxyBuilds
       security:
         - OAuth2Security:
-            - ap:agent_proxy:build:read
-            - ap:agent_proxy:build:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:build:read
+            - ap:api:agent:build:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6860,9 +7304,14 @@ paths:
       operationId: getAgentProxyBuild
       security:
         - OAuth2Security:
-            - ap:agent_proxy:build:read
-            - ap:agent_proxy:build:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:build:read
+            - ap:api:agent:build:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6908,9 +7357,11 @@ paths:
       operationId: deleteAgentProxyBuild
       security:
         - OAuth2Security:
-            - ap:agent_proxy:build:delete
-            - ap:agent_proxy:build:manage
-            - ap:agent_proxy:manage
+            - ap:api:agent:build:delete
+            - ap:api:agent:build:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
       tags:
         - Agent Proxy Deployments
         - Deployments
@@ -6942,14 +7393,19 @@ paths:
       description: |
         Returns API-key metadata for the specified Agent proxy. Key material is never returned by
         this operation. Only keys the caller created are listed, unless the caller holds
-        `ap:api_key:all:manage`, which lists every key on the Agent proxy.
+        `ap:credential:api_key:all:manage`, which lists every key on the Agent proxy.
       operationId: listAgentProxyAPIKeys
       security:
         - OAuth2Security:
-            - ap:agent_proxy:api_key:read
-            - ap:agent_proxy:api_key:manage
-            - ap:agent_proxy:manage
-            - ap:api_key:all:manage
+            - ap:api:agent:api_key:read
+            - ap:api:agent:api_key:manage
+            - ap:api:agent:read
+            - ap:api:agent:manage
+            - ap:api:read
+            - ap:api:manage
+            - ap:read
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Agent Proxies
         - API Keys
@@ -6991,10 +7447,12 @@ paths:
       operationId: createAgentProxyAPIKey
       security:
         - OAuth2Security:
-            - ap:agent_proxy:api_key:create
-            - ap:agent_proxy:api_key:manage
-            - ap:agent_proxy:manage
-            - ap:api_key:all:manage
+            - ap:api:agent:api_key:create
+            - ap:api:agent:api_key:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Agent Proxies
         - API Keys
@@ -7039,16 +7497,18 @@ paths:
         Updates an existing API key for the specified Agent proxy, with the same behavior as
         REST API keys: the supplied `apiKey` value replaces the key material, is hashed before
         storage, and is broadcast to the gateways the Agent proxy is deployed to. Only the
-        key's creator may update it, unless the caller holds `ap:api_key:all:manage`. The
+        key's creator may update it, unless the caller holds `ap:credential:api_key:all:manage`. The
         Agent proxy must be associated with at least one gateway; otherwise the update is
         refused with 503.
       operationId: updateAgentProxyAPIKey
       security:
         - OAuth2Security:
-            - ap:agent_proxy:api_key:update
-            - ap:agent_proxy:api_key:manage
-            - ap:agent_proxy:manage
-            - ap:api_key:all:manage
+            - ap:api:agent:api_key:update
+            - ap:api:agent:api_key:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Agent Proxies
         - API Keys
@@ -7095,14 +7555,16 @@ paths:
         confirms the control-plane deletion, not that every gateway has already dropped the key.
         An Agent proxy associated with no gateway has nothing to notify, and the key is still
         deleted. Only the key's creator may delete it, unless the caller holds
-        `ap:api_key:all:manage`.
+        `ap:credential:api_key:all:manage`.
       operationId: revokeAgentProxyAPIKey
       security:
         - OAuth2Security:
-            - ap:agent_proxy:api_key:delete
-            - ap:agent_proxy:api_key:manage
-            - ap:agent_proxy:manage
-            - ap:api_key:all:manage
+            - ap:api:agent:api_key:delete
+            - ap:api:agent:api_key:manage
+            - ap:api:agent:manage
+            - ap:api:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Agent Proxies
         - API Keys
@@ -7132,6 +7594,7 @@ paths:
         - OAuth2Security:
             - ap:gateway:create
             - ap:gateway:manage
+            - ap:manage
       tags:
         - Gateways
       requestBody:
@@ -7174,6 +7637,8 @@ paths:
         - OAuth2Security:
             - ap:gateway:read
             - ap:gateway:manage
+            - ap:read
+            - ap:manage
       tags:
         - Gateways
       parameters:
@@ -7207,6 +7672,8 @@ paths:
         - OAuth2Security:
             - ap:gateway:read
             - ap:gateway:manage
+            - ap:read
+            - ap:manage
       tags:
         - Gateways
       parameters:
@@ -7237,6 +7704,7 @@ paths:
         - OAuth2Security:
             - ap:gateway:update
             - ap:gateway:manage
+            - ap:manage
       tags:
         - Gateways
       parameters:
@@ -7277,6 +7745,7 @@ paths:
         - OAuth2Security:
             - ap:gateway:delete
             - ap:gateway:manage
+            - ap:manage
       tags:
         - Gateways
       parameters:
@@ -7308,7 +7777,10 @@ paths:
         - OAuth2Security:
             - ap:gateway:token:read
             - ap:gateway:token:manage
+            - ap:gateway:read
             - ap:gateway:manage
+            - ap:read
+            - ap:manage
       tags:
         - Gateway Tokens
       parameters:
@@ -7339,6 +7811,7 @@ paths:
             - ap:gateway:token:create
             - ap:gateway:token:manage
             - ap:gateway:manage
+            - ap:manage
       tags:
         - Gateway Tokens
       parameters:
@@ -7376,6 +7849,7 @@ paths:
             - ap:gateway:token:delete
             - ap:gateway:token:manage
             - ap:gateway:manage
+            - ap:manage
       tags:
         - Gateway Tokens
       parameters:
@@ -7414,7 +7888,10 @@ paths:
       security:
         - OAuth2Security:
             - ap:gateway:manifest:read
+            - ap:gateway:read
             - ap:gateway:manage
+            - ap:read
+            - ap:manage
       tags:
         - Gateways
       parameters:
@@ -7441,8 +7918,10 @@ paths:
       operationId: ListGatewayCustomPolicies
       security:
         - OAuth2Security:
-            - ap:gateway_custom_policy:read
-            - ap:gateway_custom_policy:manage
+            - ap:gateway_policy:read
+            - ap:gateway_policy:manage
+            - ap:read
+            - ap:manage
       tags:
         - Gateway Policies
       parameters:
@@ -7475,8 +7954,9 @@ paths:
       operationId: SyncCustomPolicy
       security:
         - OAuth2Security:
-            - ap:gateway_custom_policy:create
-            - ap:gateway_custom_policy:manage
+            - ap:gateway_policy:create
+            - ap:gateway_policy:manage
+            - ap:manage
       tags:
         - Gateway Policies
       parameters:
@@ -7541,8 +8021,10 @@ paths:
       operationId: GetGatewayCustomPolicy
       security:
         - OAuth2Security:
-            - ap:gateway_custom_policy:read
-            - ap:gateway_custom_policy:manage
+            - ap:gateway_policy:read
+            - ap:gateway_policy:manage
+            - ap:read
+            - ap:manage
       tags:
         - Gateway Policies
       parameters:
@@ -7581,8 +8063,9 @@ paths:
       operationId: DeleteGatewayCustomPolicy
       security:
         - OAuth2Security:
-            - ap:gateway_custom_policy:delete
-            - ap:gateway_custom_policy:manage
+            - ap:gateway_policy:delete
+            - ap:gateway_policy:manage
+            - ap:manage
       tags:
         - Gateway Policies
       parameters:
@@ -7625,6 +8108,7 @@ paths:
         - OAuth2Security:
             - ap:application:create
             - ap:application:manage
+            - ap:manage
       tags:
         - Applications
       requestBody:
@@ -7666,6 +8150,8 @@ paths:
         - OAuth2Security:
             - ap:application:read
             - ap:application:manage
+            - ap:read
+            - ap:manage
       tags:
         - Applications
       parameters:
@@ -7700,6 +8186,8 @@ paths:
         - OAuth2Security:
             - ap:application:read
             - ap:application:manage
+            - ap:read
+            - ap:manage
       tags:
         - Applications
       parameters:
@@ -7729,6 +8217,7 @@ paths:
         - OAuth2Security:
             - ap:application:update
             - ap:application:manage
+            - ap:manage
       tags:
         - Applications
       parameters:
@@ -7768,6 +8257,7 @@ paths:
         - OAuth2Security:
             - ap:application:delete
             - ap:application:manage
+            - ap:manage
       tags:
         - Applications
       parameters:
@@ -7796,8 +8286,11 @@ paths:
         - OAuth2Security:
             - ap:application:api_key:read
             - ap:application:api_key:manage
+            - ap:application:read
             - ap:application:manage
-            - ap:api_key:all:manage
+            - ap:read
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -7833,7 +8326,8 @@ paths:
             - ap:application:api_key:create
             - ap:application:api_key:manage
             - ap:application:manage
-            - ap:api_key:all:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -7874,7 +8368,8 @@ paths:
             - ap:application:api_key:delete
             - ap:application:api_key:manage
             - ap:application:manage
-            - ap:api_key:all:manage
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -7906,7 +8401,10 @@ paths:
         - OAuth2Security:
             - ap:application:association:read
             - ap:application:association:manage
+            - ap:application:read
             - ap:application:manage
+            - ap:read
+            - ap:manage
       tags:
         - Applications
       parameters:
@@ -7939,6 +8437,7 @@ paths:
             - ap:application:association:create
             - ap:application:association:manage
             - ap:application:manage
+            - ap:manage
       tags:
         - Applications
       parameters:
@@ -7978,6 +8477,7 @@ paths:
             - ap:application:association:delete
             - ap:application:association:manage
             - ap:application:manage
+            - ap:manage
       tags:
         - Applications
       parameters:
@@ -8006,9 +8506,13 @@ paths:
       security:
         - OAuth2Security:
             - ap:application:association:api_key:read
+            - ap:application:association:read
             - ap:application:association:manage
+            - ap:application:read
             - ap:application:manage
-            - ap:api_key:all:manage
+            - ap:read
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -8046,6 +8550,7 @@ paths:
         - OAuth2Security:
             - ap:subscription_plan:create
             - ap:subscription_plan:manage
+            - ap:manage
       tags:
         - SubscriptionPlans
       requestBody:
@@ -8084,6 +8589,8 @@ paths:
         - OAuth2Security:
             - ap:subscription_plan:read
             - ap:subscription_plan:manage
+            - ap:read
+            - ap:manage
       tags:
         - SubscriptionPlans
       parameters:
@@ -8117,6 +8624,8 @@ paths:
         - OAuth2Security:
             - ap:subscription_plan:read
             - ap:subscription_plan:manage
+            - ap:read
+            - ap:manage
       tags:
         - SubscriptionPlans
       parameters:
@@ -8153,6 +8662,7 @@ paths:
         - OAuth2Security:
             - ap:subscription_plan:update
             - ap:subscription_plan:manage
+            - ap:manage
       tags:
         - SubscriptionPlans
       parameters:
@@ -8198,6 +8708,7 @@ paths:
         - OAuth2Security:
             - ap:subscription_plan:delete
             - ap:subscription_plan:manage
+            - ap:manage
       tags:
         - SubscriptionPlans
       parameters:
@@ -8241,6 +8752,8 @@ paths:
             - ap:subscription_plan:pricing:read
             - ap:subscription_plan:read
             - ap:subscription_plan:manage
+            - ap:read
+            - ap:manage
       tags:
         - SubscriptionPlans
       responses:
@@ -8271,6 +8784,8 @@ paths:
         - OAuth2Security:
             - ap:meter:read
             - ap:meter:manage
+            - ap:read
+            - ap:manage
       tags:
         - Meters
       parameters:
@@ -8301,6 +8816,7 @@ paths:
         - OAuth2Security:
             - ap:meter:create
             - ap:meter:manage
+            - ap:manage
       tags:
         - Meters
       requestBody:
@@ -8351,6 +8867,8 @@ paths:
         - OAuth2Security:
             - ap:meter:read
             - ap:meter:manage
+            - ap:read
+            - ap:manage
       tags:
         - Meters
       responses:
@@ -8379,6 +8897,7 @@ paths:
         - OAuth2Security:
             - ap:meter:update
             - ap:meter:manage
+            - ap:manage
       tags:
         - Meters
       requestBody:
@@ -8418,6 +8937,7 @@ paths:
         - OAuth2Security:
             - ap:meter:delete
             - ap:meter:manage
+            - ap:manage
       tags:
         - Meters
       responses:
@@ -8445,6 +8965,7 @@ paths:
         - OAuth2Security:
             - ap:subscription:create
             - ap:subscription:manage
+            - ap:manage
       tags:
         - Subscriptions
       requestBody:
@@ -8486,6 +9007,8 @@ paths:
         - OAuth2Security:
             - ap:subscription:read
             - ap:subscription:manage
+            - ap:read
+            - ap:manage
       tags:
         - Subscriptions
       parameters:
@@ -8543,6 +9066,8 @@ paths:
         - OAuth2Security:
             - ap:subscription:read
             - ap:subscription:manage
+            - ap:read
+            - ap:manage
       tags:
         - Subscriptions
       parameters:
@@ -8580,6 +9105,7 @@ paths:
         - OAuth2Security:
             - ap:subscription:update
             - ap:subscription:manage
+            - ap:manage
       tags:
         - Subscriptions
       parameters:
@@ -8630,6 +9156,7 @@ paths:
         - OAuth2Security:
             - ap:subscription:delete
             - ap:subscription:manage
+            - ap:manage
       tags:
         - Subscriptions
       parameters:
@@ -8671,8 +9198,9 @@ paths:
       operationId: CreateApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:create
-            - ap:api_portal:manage
+            - ap:portal:create
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Portals
       requestBody:
@@ -8708,8 +9236,10 @@ paths:
       operationId: ListApiPortals
       security:
         - OAuth2Security:
-            - ap:api_portal:read
-            - ap:api_portal:manage
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Portals
       parameters:
@@ -8739,8 +9269,10 @@ paths:
       operationId: GetApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:read
-            - ap:api_portal:manage
+            - ap:portal:read
+            - ap:portal:manage
+            - ap:read
+            - ap:manage
       tags:
         - API Portals
       parameters:
@@ -8768,8 +9300,9 @@ paths:
       operationId: UpdateApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:update
-            - ap:api_portal:manage
+            - ap:portal:update
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Portals
       parameters:
@@ -8807,8 +9340,9 @@ paths:
       operationId: DeleteApiPortal
       security:
         - OAuth2Security:
-            - ap:api_portal:delete
-            - ap:api_portal:manage
+            - ap:portal:delete
+            - ap:portal:manage
+            - ap:manage
       tags:
         - API Portals
       parameters:
@@ -8829,18 +9363,20 @@ paths:
 
   /me/api-keys:
     get:
-      summary: List API keys for the current user, or for all users with `ap:api_key:all:manage`
+      summary: List API keys for the current user, or for all users with `ap:credential:api_key:all:manage`
       description: |
         Returns API keys created by the caller within the organization.
-        Callers holding the `ap:api_key:all:manage` scope instead receive every user's API keys
+        Callers holding the `ap:credential:api_key:all:manage` scope instead receive every user's API keys
         in the organization; the `createdBy` field identifies each key's creator.
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
       operationId: listUserAPIKeys
       security:
         - OAuth2Security:
-            - ap:api_key:read
-            - ap:api_key:all:manage
+            - ap:credential:api_key:read
+            - ap:read
+            - ap:manage
+            - ap:credential:api_key:all:manage
       tags:
         - API Keys
       parameters:
@@ -8880,8 +9416,9 @@ paths:
       operationId: createSecret
       security:
         - OAuth2Security:
-            - ap:secret:create
-            - ap:secret:manage
+            - ap:credential:secret:create
+            - ap:credential:secret:manage
+            - ap:manage
       tags:
         - Secrets
       requestBody:
@@ -8927,8 +9464,10 @@ paths:
       operationId: listSecrets
       security:
         - OAuth2Security:
-            - ap:secret:read
-            - ap:secret:manage
+            - ap:credential:secret:read
+            - ap:credential:secret:manage
+            - ap:read
+            - ap:manage
       tags:
         - Secrets
       parameters:
@@ -8964,8 +9503,10 @@ paths:
       operationId: getSecret
       security:
         - OAuth2Security:
-            - ap:secret:read
-            - ap:secret:manage
+            - ap:credential:secret:read
+            - ap:credential:secret:manage
+            - ap:read
+            - ap:manage
       tags:
         - Secrets
       parameters:
@@ -9000,8 +9541,9 @@ paths:
       operationId: rotateSecret
       security:
         - OAuth2Security:
-            - ap:secret:update
-            - ap:secret:manage
+            - ap:credential:secret:update
+            - ap:credential:secret:manage
+            - ap:manage
       tags:
         - Secrets
       parameters:
@@ -9048,8 +9590,9 @@ paths:
       operationId: deleteSecret
       security:
         - OAuth2Security:
-            - ap:secret:delete
-            - ap:secret:manage
+            - ap:credential:secret:delete
+            - ap:credential:secret:manage
+            - ap:manage
       tags:
         - Secrets
       parameters:
@@ -9120,42 +9663,106 @@ components:
         clientCredentials:
           tokenUrl: https://localhost:9243/oauth2/token
           scopes:
-            ap:agent_proxy:api_key:create: Create an API key for an Agent proxy
-            ap:agent_proxy:api_key:delete: Revoke an API key of an Agent proxy
-            ap:agent_proxy:api_key:manage: Full access to an Agent proxy's API keys
-            ap:agent_proxy:api_key:read: Read an Agent proxy's API key metadata
-            ap:agent_proxy:api_key:update: Update an API key of an Agent proxy
-            ap:agent_proxy:build:create: Prepare a build of an Agent proxy
-            ap:agent_proxy:build:delete: Delete a build of an Agent proxy
-            ap:agent_proxy:build:manage: Full access to an Agent proxy's builds
-            ap:agent_proxy:build:read: Read builds of an Agent proxy
-            ap:agent_proxy:create: Create an Agent proxy
-            ap:agent_proxy:delete: Delete an Agent proxy
-            ap:agent_proxy:deployment:create: Deploy an Agent proxy
-            ap:agent_proxy:deployment:delete: Delete an Agent proxy deployment
-            ap:agent_proxy:deployment:manage: Full access to Agent proxy deployments
-            ap:agent_proxy:deployment:read: Read Agent proxy deployments
-            ap:agent_proxy:deployment:restore: Restore an Agent proxy deployment
-            ap:agent_proxy:deployment:undeploy: Undeploy an Agent proxy deployment
-            ap:agent_proxy:manage: Full access to Agent proxies
-            ap:agent_proxy:read: Read Agent proxies
-            ap:agent_proxy:update: Update an Agent proxy
-            ap:api_key:all:manage: Manage API keys created by any user in the organization
-            ap:api_key:read: Read API keys owned by the current user
-            ap:docs:manage: Create, update, and delete user-authored API documents
-            ap:docs:read: Read user-authored API documents
-            ap:api_portal:create: Create an API Portal
-            ap:api_portal:delete: Delete an API Portal
-            ap:api_portal:draft:manage: Read and write an API's draft for one portal
-            ap:api_portal:draft:read: Read an API's draft for one portal — the private workspace prepared before publishing
-            ap:api_portal:draft:update: Edit an API's draft for one portal
-            ap:api_portal:manage: Full access to API Portals
-            ap:api_portal:publication:read: Read an API's live listing on one portal
-            ap:api_portal:read: Read API Portals
-            ap:api_portal:graphql_api:manage: Publish, unpublish and deprecate a GraphQL API on a portal
-            ap:api_portal:rest_api:manage: Publish, unpublish and deprecate a REST API on a portal
-            ap:api_portal:update: Update an API Portal
-            ap:api_publication:read: Read an API's publication status across every portal
+            ap:api:agent:api_key:create: Create an API key for an Agent proxy
+            ap:api:agent:api_key:delete: Revoke an API key of an Agent proxy
+            ap:api:agent:api_key:manage: Full access to an Agent proxy's API keys
+            ap:api:agent:api_key:read: Read Agent proxy API keys
+            ap:api:agent:api_key:update: Update an API key of an Agent proxy
+            ap:api:agent:build:create: Prepare a build of an Agent proxy
+            ap:api:agent:build:delete: Delete a build of an Agent proxy
+            ap:api:agent:build:manage: Full access to Agent proxy builds
+            ap:api:agent:build:read: Read Agent proxy builds
+            ap:api:agent:create: Create an Agent proxy
+            ap:api:agent:delete: Delete an Agent proxy
+            ap:api:agent:deployment:create: Deploy an Agent proxy
+            ap:api:agent:deployment:delete: Delete an Agent proxy deployment
+            ap:api:agent:deployment:manage: Full access to Agent proxy deployments
+            ap:api:agent:deployment:read: Read Agent proxy deployments
+            ap:api:agent:deployment:restore: Restore an Agent proxy deployment
+            ap:api:agent:deployment:undeploy: Undeploy an Agent proxy deployment
+            ap:api:agent:manage: Full access to Agent proxies
+            ap:api:agent:read: Read Agent proxies
+            ap:api:agent:update: Update an Agent proxy
+            ap:api:graphql:api_key:create: Create an API key for a GraphQL API
+            ap:api:graphql:api_key:delete: Delete an API key of a GraphQL API
+            ap:api:graphql:api_key:manage: Full access to a GraphQL API's API keys
+            ap:api:graphql:api_key:update: Update an API key of a GraphQL API
+            ap:api:graphql:build:create: Prepare a build of a GraphQL API
+            ap:api:graphql:build:delete: Delete a build of a GraphQL API
+            ap:api:graphql:build:manage: Full access to GraphQL API builds
+            ap:api:graphql:build:read: Read GraphQL API builds
+            ap:api:graphql:create: Create a GraphQL API
+            ap:api:graphql:delete: Delete a GraphQL API
+            ap:api:graphql:deployment:create: Deploy a GraphQL API
+            ap:api:graphql:deployment:delete: Delete a GraphQL API deployment
+            ap:api:graphql:deployment:manage: Full access to GraphQL API deployments
+            ap:api:graphql:deployment:read: Read GraphQL API deployments
+            ap:api:graphql:deployment:restore: Restore a GraphQL API deployment
+            ap:api:graphql:deployment:undeploy: Undeploy a GraphQL API deployment
+            ap:api:graphql:gateway:create: Add gateways to a GraphQL API
+            ap:api:graphql:gateway:manage: Full access to a GraphQL API's gateways
+            ap:api:graphql:gateway:read: Read a GraphQL API's gateways
+            ap:api:graphql:manage: Full access to GraphQL APIs
+            ap:api:graphql:read: Read GraphQL APIs
+            ap:api:graphql:update: Update a GraphQL API
+            ap:api:llm:api_key:create: Create an LLM proxy API key
+            ap:api:llm:api_key:delete: Delete an LLM proxy API key
+            ap:api:llm:api_key:manage: Full access to LLM proxy API keys
+            ap:api:llm:api_key:read: Read LLM proxy API keys
+            ap:api:llm:build:create: Prepare a build of an LLM proxy
+            ap:api:llm:build:delete: Delete a build of an LLM proxy
+            ap:api:llm:build:manage: Full access to LLM proxy builds
+            ap:api:llm:build:read: Read LLM proxy builds
+            ap:api:llm:create: Create an LLM proxy
+            ap:api:llm:delete: Delete an LLM proxy
+            ap:api:llm:deployment:create: Deploy an LLM proxy
+            ap:api:llm:deployment:delete: Delete an LLM proxy deployment
+            ap:api:llm:deployment:manage: Full access to LLM proxy deployments
+            ap:api:llm:deployment:read: Read LLM proxy deployments
+            ap:api:llm:deployment:restore: Restore an LLM proxy deployment
+            ap:api:llm:deployment:undeploy: Undeploy an LLM proxy deployment
+            ap:api:llm:manage: Full access to LLM proxies
+            ap:api:llm:read: Read LLM proxies
+            ap:api:llm:update: Update an LLM proxy
+            ap:api:manage: Full access to APIs of every kind
+            ap:api:mcp:build:create: Prepare a build of an MCP proxy
+            ap:api:mcp:build:delete: Delete a build of an MCP proxy
+            ap:api:mcp:build:manage: Full access to MCP proxy builds
+            ap:api:mcp:build:read: Read MCP proxy builds
+            ap:api:mcp:create: Create an MCP proxy
+            ap:api:mcp:delete: Delete an MCP proxy
+            ap:api:mcp:deployment:create: Deploy an MCP proxy
+            ap:api:mcp:deployment:delete: Delete an MCP proxy deployment
+            ap:api:mcp:deployment:manage: Full access to MCP proxy deployments
+            ap:api:mcp:deployment:read: Read MCP proxy deployments
+            ap:api:mcp:deployment:restore: Restore an MCP proxy deployment
+            ap:api:mcp:deployment:undeploy: Undeploy an MCP proxy deployment
+            ap:api:mcp:manage: Full access to MCP proxies
+            ap:api:mcp:read: Read MCP proxies
+            ap:api:mcp:update: Update an MCP proxy
+            ap:api:read: Read APIs of every kind
+            ap:api:rest:api_key:create: Create an API key for a REST API
+            ap:api:rest:api_key:delete: Delete an API key of a REST API
+            ap:api:rest:api_key:manage: Full access to a REST API's API keys
+            ap:api:rest:api_key:update: Update an API key of a REST API
+            ap:api:rest:build:create: Prepare a build of a REST API
+            ap:api:rest:build:delete: Delete a build of a REST API
+            ap:api:rest:build:manage: Full access to REST API builds
+            ap:api:rest:build:read: Read REST API builds
+            ap:api:rest:create: Create a REST API
+            ap:api:rest:delete: Delete a REST API
+            ap:api:rest:deployment:create: Deploy a REST API
+            ap:api:rest:deployment:delete: Delete a REST API deployment
+            ap:api:rest:deployment:manage: Full access to REST API deployments
+            ap:api:rest:deployment:read: Read REST API deployments
+            ap:api:rest:deployment:restore: Restore a REST API deployment
+            ap:api:rest:deployment:undeploy: Undeploy a REST API deployment
+            ap:api:rest:gateway:create: Add gateways to a REST API
+            ap:api:rest:gateway:manage: Full access to a REST API's gateways
+            ap:api:rest:gateway:read: Read a REST API's gateways
+            ap:api:rest:manage: Full access to REST APIs
+            ap:api:rest:read: Read REST APIs
+            ap:api:rest:update: Update a REST API
             ap:application:api_key:create: Create an application API key
             ap:application:api_key:delete: Delete an application API key
             ap:application:api_key:manage: Full access to application API keys
@@ -9170,6 +9777,19 @@ components:
             ap:application:manage: Full access to applications
             ap:application:read: Read applications
             ap:application:update: Update an application
+            ap:content:document:manage: Full access to API documents
+            ap:content:document:read: Read API documents
+            ap:content:manage: Full access to API content (docs and thumbnails, every API kind)
+            ap:content:read: Read API content (docs and thumbnails, every API kind)
+            ap:content:thumbnail:manage: Full access to API thumbnails
+            ap:content:thumbnail:read: Read API thumbnails
+            ap:credential:api_key:all:manage: Manage API keys created by any user in the organization
+            ap:credential:api_key:read: Read API keys owned by the current user
+            ap:credential:secret:create: Create a secret
+            ap:credential:secret:delete: Delete a secret
+            ap:credential:secret:manage: Full access to Secrets
+            ap:credential:secret:read: Read Secrets
+            ap:credential:secret:update: Update a secret
             ap:gateway:create: Create a gateway
             ap:gateway:delete: Delete a gateway
             ap:gateway:manage: Full access to gateways
@@ -9180,32 +9800,10 @@ components:
             ap:gateway:token:manage: Full access to gateway tokens
             ap:gateway:token:read: Read gateway tokens
             ap:gateway:update: Update a gateway
-            ap:gateway_custom_policy:create: Create a gateway custom policy
-            ap:gateway_custom_policy:delete: Delete a gateway custom policy
-            ap:gateway_custom_policy:manage: Full access to gateway custom policies
-            ap:gateway_custom_policy:read: Read gateway custom policies
-            ap:graphql_api:api_key:create: Create an API key for a GraphQL API
-            ap:graphql_api:api_key:delete: Delete an API key of a GraphQL API
-            ap:graphql_api:api_key:manage: Full access to a GraphQL API's API keys
-            ap:graphql_api:api_key:update: Update an API key of a GraphQL API
-            ap:graphql_api:build:create: Prepare a build of a GraphQL API
-            ap:graphql_api:build:delete: Delete a build of a GraphQL API
-            ap:graphql_api:build:manage: Full access to a GraphQL API's builds
-            ap:graphql_api:build:read: Read builds of a GraphQL API
-            ap:graphql_api:create: Create a GraphQL API
-            ap:graphql_api:delete: Delete a GraphQL API
-            ap:graphql_api:deployment:create: Deploy a GraphQL API
-            ap:graphql_api:deployment:delete: Delete a GraphQL API deployment
-            ap:graphql_api:deployment:manage: Full access to GraphQL API deployments
-            ap:graphql_api:deployment:read: Read GraphQL API deployments
-            ap:graphql_api:deployment:restore: Restore a GraphQL API deployment
-            ap:graphql_api:deployment:undeploy: Undeploy a GraphQL API deployment
-            ap:graphql_api:gateway:create: Add gateways to a GraphQL API
-            ap:graphql_api:gateway:manage: Full access to a GraphQL API's gateways
-            ap:graphql_api:gateway:read: Read a GraphQL API's gateways
-            ap:graphql_api:manage: Full access to GraphQL APIs
-            ap:graphql_api:read: Read GraphQL APIs
-            ap:graphql_api:update: Update a GraphQL API
+            ap:gateway_policy:create: Create a gateway custom policy
+            ap:gateway_policy:delete: Delete a gateway custom policy
+            ap:gateway_policy:manage: Full access to Gateway custom policies
+            ap:gateway_policy:read: Read Gateway custom policies
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
@@ -9224,99 +9822,59 @@ components:
             ap:llm_provider:deployment:undeploy: Undeploy an LLM provider deployment
             ap:llm_provider:manage: Full access to LLM providers
             ap:llm_provider:read: Read LLM providers
+            ap:llm_provider:template:create: Create an LLM provider template
+            ap:llm_provider:template:delete: Delete an LLM provider template
+            ap:llm_provider:template:manage: Full access to LLM provider templates
+            ap:llm_provider:template:read: Read LLM provider templates
+            ap:llm_provider:template:update: Update an LLM provider template
             ap:llm_provider:update: Update an LLM provider
-            ap:llm_proxy:api_key:create: Create an LLM proxy API key
-            ap:llm_proxy:api_key:delete: Delete an LLM proxy API key
-            ap:llm_proxy:api_key:manage: Full access to LLM proxy API keys
-            ap:llm_proxy:api_key:read: Read LLM proxy API keys
-            ap:llm_proxy:build:create: Prepare a build of an LLM proxy
-            ap:llm_proxy:build:delete: Delete a build of an LLM proxy
-            ap:llm_proxy:build:manage: Full access to an LLM proxy's builds
-            ap:llm_proxy:build:read: Read builds of an LLM proxy
-            ap:llm_proxy:create: Create an LLM proxy
-            ap:llm_proxy:delete: Delete an LLM proxy
-            ap:llm_proxy:deployment:create: Deploy an LLM proxy
-            ap:llm_proxy:deployment:delete: Delete an LLM proxy deployment
-            ap:llm_proxy:deployment:manage: Full access to LLM proxy deployments
-            ap:llm_proxy:deployment:read: Read LLM proxy deployments
-            ap:llm_proxy:deployment:restore: Restore an LLM proxy deployment
-            ap:llm_proxy:deployment:undeploy: Undeploy an LLM proxy deployment
-            ap:llm_proxy:manage: Full access to LLM proxies
-            ap:llm_proxy:read: Read LLM proxies
-            ap:llm_proxy:update: Update an LLM proxy
-            ap:llm_template:create: Create an LLM provider template
-            ap:llm_template:delete: Delete an LLM provider template
-            ap:llm_template:manage: Full access to LLM provider templates
-            ap:llm_template:read: Read LLM provider templates
-            ap:llm_template:update: Update an LLM provider template
-            ap:mcp_proxy:build:create: Prepare a build of an MCP proxy
-            ap:mcp_proxy:build:delete: Delete a build of an MCP proxy
-            ap:mcp_proxy:build:manage: Full access to an MCP proxy's builds
-            ap:mcp_proxy:build:read: Read builds of an MCP proxy
-            ap:mcp_proxy:create: Create an MCP proxy
-            ap:mcp_proxy:delete: Delete an MCP proxy
-            ap:mcp_proxy:deployment:create: Deploy an MCP proxy
-            ap:mcp_proxy:deployment:delete: Delete an MCP proxy deployment
-            ap:mcp_proxy:deployment:manage: Full access to MCP proxy deployments
-            ap:mcp_proxy:deployment:read: Read MCP proxy deployments
-            ap:mcp_proxy:deployment:restore: Restore an MCP proxy deployment
-            ap:mcp_proxy:deployment:undeploy: Undeploy an MCP proxy deployment
-            ap:mcp_proxy:manage: Full access to MCP proxies
-            ap:mcp_proxy:read: Read MCP proxies
-            ap:mcp_proxy:update: Update an MCP proxy
-            ap:organization:create: Create an organization
-            ap:organization:manage: Full access to an organization
-            ap:organization:read: Read an organization
-            ap:project:create: Create a project
-            ap:project:delete: Delete a project
-            ap:project:manage: Full access to projects
-            ap:project:read: Read projects
-            ap:project:update: Update a project
-            ap:rest_api:api_key:create: Create an API key for a REST API
-            ap:rest_api:api_key:delete: Delete an API key of a REST API
-            ap:rest_api:api_key:manage: Full access to a REST API's API keys
-            ap:rest_api:api_key:update: Update an API key of a REST API
-            ap:rest_api:build:create: Prepare a build of a REST API
-            ap:rest_api:build:delete: Delete a build of a REST API
-            ap:rest_api:build:manage: Full access to a REST API's builds
-            ap:rest_api:build:read: Read builds of a REST API
-            ap:rest_api:create: Create a REST API
-            ap:rest_api:delete: Delete a REST API
-            ap:rest_api:deployment:create: Deploy a REST API
-            ap:rest_api:deployment:delete: Delete a REST API deployment
-            ap:rest_api:deployment:manage: Full access to REST API deployments
-            ap:rest_api:deployment:read: Read REST API deployments
-            ap:rest_api:deployment:restore: Restore a REST API deployment
-            ap:rest_api:deployment:undeploy: Undeploy a REST API deployment
-            ap:rest_api:gateway:create: Add gateways to a REST API
-            ap:rest_api:gateway:manage: Full access to a REST API's gateways
-            ap:rest_api:gateway:read: Read a REST API's gateways
-            ap:rest_api:manage: Full access to REST APIs
-            ap:rest_api:read: Read REST APIs
-            ap:rest_api:update: Update a REST API
-            ap:secret:create: Create a secret
-            ap:secret:delete: Delete a secret
-            ap:secret:manage: Full access to secrets
-            ap:secret:read: Read secrets
-            ap:secret:update: Update a secret
-            ap:subscription:create: Create a subscription
-            ap:subscription:delete: Delete a subscription
-            ap:subscription:manage: Full access to subscriptions
-            ap:subscription:read: Read subscriptions
-            ap:subscription:update: Update a subscription
+            ap:manage: Full access to every Platform API resource and operation
             ap:meter:create: Create a meter
             ap:meter:delete: Delete a meter
             ap:meter:manage: Full access to meters
             ap:meter:read: Read meters
             ap:meter:update: Update a meter
+            ap:organization:create: Create an organization
+            ap:organization:manage: Full access to an organization
+            ap:organization:read: Read an organization
+            ap:portal:create: Create an API Portal
+            ap:portal:delete: Delete an API Portal
+            ap:portal:draft:manage: Full access to Portal drafts
+            ap:portal:draft:read: Read Portal drafts
+            ap:portal:draft:update: Edit an API's draft for one portal
+            ap:portal:graphql_api:deprecate: Deprecate Portal Graphql Api
+            ap:portal:graphql_api:manage: Full access to Publishing GraphQL APIs to a portal
+            ap:portal:graphql_api:publish: Publish Portal Graphql Api
+            ap:portal:graphql_api:unpublish: Unpublish Portal Graphql Api
+            ap:portal:manage: Full access to API Portals and publishing to them
+            ap:portal:mcp_proxy:manage: Full access to publishing MCP proxies to an API Portal (reserved — no operation accepts it yet)
+            ap:portal:mcp_proxy:publish: Publish an MCP proxy to an API Portal (reserved — no operation accepts it yet)
+            ap:portal:mcp_proxy:unpublish: Unpublish an MCP proxy from an API Portal (reserved — no operation accepts it yet)
+            ap:portal:publication:read: Read Portal listings (incl. /api-publications)
+            ap:portal:read: Read API Portals and publishing to them
+            ap:portal:rest_api:deprecate: Deprecate Portal Rest Api
+            ap:portal:rest_api:manage: Full access to Publishing REST APIs to a portal
+            ap:portal:rest_api:publish: Publish Portal Rest Api
+            ap:portal:rest_api:unpublish: Unpublish Portal Rest Api
+            ap:portal:update: Update an API Portal
+            ap:project:create: Create a project
+            ap:project:delete: Delete a project
+            ap:project:manage: Full access to projects
+            ap:project:read: Read projects
+            ap:project:update: Update a project
+            ap:publication:read: Read an API's publication status across every portal
+            ap:read: Read every Platform API resource
+            ap:subscription:create: Create a subscription
+            ap:subscription:delete: Delete a subscription
+            ap:subscription:manage: Full access to subscriptions
+            ap:subscription:read: Read subscriptions
+            ap:subscription:update: Update a subscription
             ap:subscription_plan:create: Create a subscription plan
             ap:subscription_plan:delete: Delete a subscription plan
             ap:subscription_plan:manage: Full access to subscription plans
+            ap:subscription_plan:pricing:read: Read the pricing of a subscription plan
             ap:subscription_plan:read: Read subscription plans
             ap:subscription_plan:update: Update a subscription plan
-            ap:subscription_plan:pricing:read: Read the pricing of a subscription plan
-            ap:thumbnail:manage: Create, update, and delete an API's thumbnail
-            ap:thumbnail:read: Read an API's thumbnail
   schemas:
     APIKeyItem:
       type: object

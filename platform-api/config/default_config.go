@@ -34,6 +34,7 @@ func defaultConfig() *Server {
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
+		LegacyScopeMappingPath:     "./resources/legacy-scope-mapping.yaml",
 		Database: Database{
 			Driver:          "sqlite3",
 			Path:            "./data/api_platform.db",
@@ -103,7 +104,8 @@ func defaultConfig() *Server {
 				},
 				// No default user: shipping a functional username/password hash would give
 				// every fresh install a known-credential admin — one that now also holds
-				// ap:api_key:all:manage over every user's API keys. Operators supply the
+				// ap:credential:api_key:all:manage (ap:api_key:all:manage before the permission
+				// tree) over every user's API keys. Operators supply the
 				// admin via config (see config.toml's fail-closed {{ env }} tokens), and
 				// validateFileBasedConfig refuses to start when auth.mode=file leaves this
 				// empty.

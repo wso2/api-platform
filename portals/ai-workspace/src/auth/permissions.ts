@@ -16,6 +16,13 @@
  * under the License.
  */
 
+import {
+  LEGACY_SCOPE_RESOURCES,
+  LEGACY_SCOPES,
+  OWNERSHIP_MODIFIER_SCOPES,
+  PERMISSION_TREE_NODES,
+} from './permissionTree.generated';
+
 export type PlatformRole = 'admin' | 'developer' | 'publisher' | 'operator' | 'viewer';
 
 export const PLATFORM_ROLES: readonly PlatformRole[] = ['admin', 'developer', 'publisher', 'operator', 'viewer'];
@@ -89,7 +96,6 @@ export const SCOPES = {
   GATEWAY_CUSTOM_POLICY_CREATE:  'ap:gateway_custom_policy:create',
   GATEWAY_CUSTOM_POLICY_DELETE:  'ap:gateway_custom_policy:delete',
   GATEWAY_CUSTOM_POLICY_MANAGE:  'ap:gateway_custom_policy:manage',
-  GATEWAY_ARTIFACTS_READ: 'ap:gateway:artifact:read',
   GATEWAY_MANIFEST_READ:  'ap:gateway:manifest:read',
 
   // REST APIs
@@ -110,7 +116,6 @@ export const SCOPES = {
   REST_API_API_KEY_UPDATE:    'ap:rest_api:api_key:update',
   REST_API_API_KEY_DELETE:    'ap:rest_api:api_key:delete',
   REST_API_API_KEY_MANAGE:    'ap:rest_api:api_key:manage',
-  REST_API_PUBLICATION_READ:  'ap:rest_api:publication:read',
 
   // Subscriptions
   SUBSCRIPTION_READ:        'ap:subscription:read',
@@ -211,7 +216,6 @@ export const SCOPES = {
   WEBBROKER_API_MANAGE:            'ap:webbroker_api:manage',
   WEBBROKER_API_API_KEY_MANAGE:    'ap:webbroker_api:api_key:manage',
   WEBBROKER_API_DEPLOYMENT_MANAGE: 'ap:webbroker_api:deployment:manage',
-  WEBBROKER_API_PUBLICATION_READ:  'ap:webbroker_api:publication:read',
 
   // Secrets
   SECRET_READ:   'ap:secret:read',
@@ -255,52 +259,130 @@ export type DeployableResourceType = keyof typeof DEPLOYMENT_SCOPES;
 
 /**
  * Scopes that must be held explicitly and are never derived from a broader
- * `:manage`. `ap:api_key:all:manage` is an ownership override (it widens which
- * users' keys are reachable, not which actions), so holding `ap:api_key:manage`
- * must not confer it — matching the service-layer rule in
- * `platform-api/internal/service` and `/me/api-keys` in openapi.yaml, the one
- * operation whose accepted-scope list omits its parent `:manage`.
+ * `:manage`. The API-key ownership override widens which users' keys are
+ * reachable, not which actions, so holding `ap:api_key:manage` or
+ * `ap:credential:api_key:read` must not confer it — matching the service-layer
+ * rule in `platform-api/internal/service` and `/me/api-keys` in openapi.yaml.
+ * It is known by two names while the spec dual-accepts pre-tree scopes; holding
+ * either satisfies a check for either.
  */
 const NON_DERIVABLE_SCOPE_SUFFIX = ':all:manage';
+
+const isOwnershipOverride = (scope: string): boolean =>
+  (OWNERSHIP_MODIFIER_SCOPES as readonly string[]).includes(scope);
+
+/**
+ * The permission-tree strings that satisfy `scope`, in the order the spec lists
+ * them.
+ *
+ * Mirrors `Tree.inherit` in `platform-api/scripts/permission_tree.py`, which
+ * builds every operation's accepted list in openapi.yaml from
+ * `permission-tree.yaml`: the scope's resource names a tree node (a pre-tree
+ * resource such as `llm_proxy:api_key` through `LEGACY_SCOPE_RESOURCES`, a tree
+ * prefix such as `ap:api:llm:api_key` directly) and its verb names the action.
+ * The scope is satisfied by that action on the node, by `:manage` on the node
+ * and on every ancestor that defines it, and — for a read — by `:read` on every
+ * ancestor that defines it. Only read and manage flow down the tree; a parent's
+ * create, update, delete, ... never reaches a child. So
+ * `ap:llm_proxy:api_key:read` accepts `ap:api:llm:api_key:read`,
+ * `ap:api:llm:api_key:manage`, `ap:api:llm:read`, `ap:api:llm:manage`,
+ * `ap:api:read`, `ap:api:manage`, `ap:read` and `ap:manage`, while
+ * `ap:llm_proxy:api_key:create` accepts `ap:api:llm:api_key:create`,
+ * `ap:api:llm:api_key:manage`, `ap:api:llm:manage`, `ap:api:manage` and
+ * `ap:manage` — not `ap:api:llm:create`.
+ *
+ * Every gate in SCOPES resolves to a tree node — a feature whose API has not
+ * shipped yet (MCP proxy publishing, `ap:portal:mcp_proxy`) is a reserved node
+ * of the tree, not a special case here. Returns nothing for a resource the tree
+ * does not know, so a scope the spec no longer declares cannot be satisfied by
+ * accident.
+ */
+export function treePermissionsFor(scope: string): string[] {
+  const parts = scope.split(':');
+  if (parts.length < 3 || parts[0] !== 'ap' || isOwnershipOverride(scope)) return [];
+
+  const action = parts[parts.length - 1];
+  const prefix = parts.slice(0, -1).join(':');
+  const node = prefix in PERMISSION_TREE_NODES ? prefix : LEGACY_SCOPE_RESOURCES[parts.slice(1, -1).join(':')];
+  if (!node) return [];
+
+  const segments = node.split(':');
+  const accepted: string[] = [];
+  for (let depth = segments.length; depth >= 1; depth -= 1) {
+    const ancestor = segments.slice(0, depth).join(':');
+    const actions = PERMISSION_TREE_NODES[ancestor] ?? [];
+    // The gate's action on its own node; on an ancestor only read and manage are inherited.
+    const ownNode = depth === segments.length;
+    if ((ownNode || action === 'read' || action === 'manage') && actions.includes(action)) {
+      accepted.push(`${ancestor}:${action}`);
+    }
+    if (action !== 'manage' && actions.includes('manage')) accepted.push(`${ancestor}:manage`);
+  }
+  return accepted;
+}
+
+/**
+ * The scopes a user effectively holds: each one as carried, plus the tree
+ * permissions `LEGACY_SCOPES` says a pre-tree name grants — exactly what
+ * `ScopeEnforcer` computes for a request before matching. A name the mapping
+ * does not list contributes nothing extra.
+ */
+export function effectiveScopes(userScopes: readonly string[]): Set<string> {
+  const held = new Set<string>();
+  for (const scope of userScopes) {
+    held.add(scope);
+    for (const granted of LEGACY_SCOPES[scope] ?? []) held.add(granted);
+  }
+  return held;
+}
 
 /**
  * Check whether a set of scopes grants a requested scope.
  *
  * Mirrors how platform-api actually authorizes a request: each operation in
- * openapi.yaml declares a list of accepted scopes, and `ScopeEnforcer`
- * (`platform-api/internal/middleware/authorization.go`) admits the caller if a
- * held scope matches an entry in that list exactly — there is no wildcard form.
- * Rules:
+ * openapi.yaml declares a list of accepted scopes — the node's own action and
+ * `:manage`, the same on every ancestor up to the root, and any cross-resource
+ * grant — and `ScopeEnforcer` (`platform-api/internal/middleware/authorization.go`)
+ * admits the caller if a held scope, after pre-tree names are translated,
+ * matches an entry exactly. There is no wildcard form. So a gate, whether
+ * named by a pre-tree scope (`ap:llm_proxy:deployment:create`) or a tree
+ * permission (`ap:api:llm:deployment:create`), is satisfied when the user's
+ * effective scopes (`effectiveScopes`: held names plus what each pre-tree name
+ * grants) contain:
  *
- *  1. Exact match — the scope is directly present.
- *  2. Own-level `:manage` — an operation accepting `<level>:<action>` also
- *     accepts `<level>:manage` (`ap:llm_provider:api_key:read` is satisfied by
- *     `ap:llm_provider:api_key:manage`).
- *  3. Ancestor `:manage` — a resource-level `:manage` also covers its
- *     sub-resources' operations, because those operations list it explicitly.
- *     `ap:llm_provider:manage` appears in the accepted list of every
- *     `/llm-providers/{id}/api-keys` and `/deployments` operation, so it grants
- *     `ap:llm_provider:api_key:create`, `ap:llm_provider:deployment:read`, etc.
- *     This holds for 47 of the 48 sub-resource operations in the spec; the sole
- *     exception is the override scope excluded above.
+ *  1. The gate itself.
+ *  2. Own-level or ancestor `:manage` spelled like the gate
+ *     (`ap:llm_provider:manage` for `ap:llm_provider:api_key:create`) — the
+ *     pre-tree reading, kept for a gate and a token that both use old names.
+ *  3. Any permission `treePermissionsFor(gate)` lists: the node's action and
+ *     `:manage`, `:manage` on every ancestor, and for a read `:read` on every
+ *     ancestor, up to `ap:manage`/`ap:read`. This is what a tree token
+ *     (`ap:api:llm:manage`, `ap:api:read`, ...) and, through `effectiveScopes`,
+ *     a pre-tree token (`ap:llm_proxy:manage`) satisfy.
+ *
+ * The ownership override is the one exception: it is matched by name only
+ * (either of its two names), never derived.
  */
 export function checkPermission(userScopes: string[], scope: string): boolean {
-  if (userScopes.includes(scope)) return true;
+  const held = effectiveScopes(userScopes);
+  if (held.has(scope)) return true;
 
   const parts = scope.split(':');
   if (parts.length < 2) return false;
 
-  if (scope.endsWith(NON_DERIVABLE_SCOPE_SUFFIX)) return false;
+  if (scope.endsWith(NON_DERIVABLE_SCOPE_SUFFIX)) {
+    return isOwnershipOverride(scope) && OWNERSHIP_MODIFIER_SCOPES.some((name) => held.has(name));
+  }
 
   // Own-level `:manage`, then each broader ancestor's `:manage`. For
   // `ap:llm_provider:api_key:read` that is `ap:llm_provider:api_key:manage`
   // followed by `ap:llm_provider:manage`.
   for (let depth = parts.length - 1; depth >= 2; depth -= 1) {
     const candidate = `${parts.slice(0, depth).join(':')}:manage`;
-    if (candidate !== scope && userScopes.includes(candidate)) return true;
+    if (candidate !== scope && held.has(candidate)) return true;
   }
 
-  return false;
+  return treePermissionsFor(scope).some((candidate) => held.has(candidate));
 }
 
 /**

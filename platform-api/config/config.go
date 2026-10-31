@@ -98,7 +98,14 @@ type Server struct {
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
 	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
-	OpenAPISpecMaxFetchBytes   int64  `koanf:"openapi_spec_max_fetch_bytes"`
+	// LegacyScopeMappingPath is the YAML file naming the permission-tree scope
+	// each pre-tree ap: scope grants (resources/legacy-scope-mapping.yaml). The
+	// scope enforcer translates those legacy names on every request, so tokens,
+	// IDP roles and role-to-scope mappings that still carry them keep working.
+	// Empty disables the translation: only scopes the OpenAPI spec declares are
+	// then accepted.
+	LegacyScopeMappingPath   string `koanf:"legacy_scope_mapping_path"`
+	OpenAPISpecMaxFetchBytes int64  `koanf:"openapi_spec_max_fetch_bytes"`
 	// MCPResponseMaxBytes bounds the body read from an MCP backend's initialize/JSON-RPC
 	// responses (internal/utils/mcp.go). <= 0 falls back to the fetcher's built-in 10 MiB
 	// default — mirroring OpenAPISpecMaxFetchBytes's own zero-means-default convention.

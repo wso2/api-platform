@@ -45,7 +45,7 @@ func TestUpdateAPI_NullRemovesAField(t *testing.T) {
 	s, f := newTestServer(t)
 	f.api = object{"id": "a1", "vhost": "a.example.com", "description": "old",
 		"upstream": map[string]any{"main": map[string]any{"url": "http://x", "auth": map[string]any{"type": "api-key", "value": "{{ secret \"k\" }}"}}}}
-	cs := connect(t, s, who(testOrg, "ap:agent_proxy:manage"))
+	cs := connect(t, s, who(testOrg, "ap:api:agent:manage"))
 
 	res, text := call(t, cs, "update_api", map[string]any{"apiType": "agent-proxy", "apiId": "a1",
 		"payload": map[string]any{"vhost": nil, "upstream": map[string]any{"main": map[string]any{"auth": map[string]any{"value": nil}}}}})
@@ -69,16 +69,16 @@ func TestUpdateAPI_RESTAPIDescriptionMatchesTheRESTAPI(t *testing.T) {
 		require.False(t, res.IsError, text)
 	}
 
-	update("rest-api", "ap:rest_api:manage", nil)
+	update("rest-api", "ap:api:rest:manage", nil)
 	assert.NotContains(t, f.updated, "description", "null leaves it out, so the service keeps the stored one")
 
-	update("rest-api", "ap:rest_api:manage", "")
+	update("rest-api", "ap:api:rest:manage", "")
 	assert.Equal(t, "", f.updated["description"])
 
-	update("mcp-proxy", "ap:mcp_proxy:manage", nil)
+	update("mcp-proxy", "ap:api:mcp:manage", nil)
 	assert.NotContains(t, f.updated, "description")
 
-	update("rest-api", "ap:rest_api:manage", "new")
+	update("rest-api", "ap:api:rest:manage", "new")
 	assert.Equal(t, "new", f.updated["description"])
 }
 
@@ -86,8 +86,8 @@ func TestUpdateAPI_RefusesAnIDChange(t *testing.T) {
 	s, f := newTestServer(t)
 	f.api = object{"id": "a1", "projectId": "default"}
 	for _, tc := range []struct{ apiType, scope string }{
-		{"rest-api", "ap:rest_api:manage"}, {"llm-provider", "ap:llm_provider:manage"}, {"llm-proxy", "ap:llm_proxy:manage"},
-		{"mcp-proxy", "ap:mcp_proxy:manage"}, {"agent-proxy", "ap:agent_proxy:manage"},
+		{"rest-api", "ap:api:rest:manage"}, {"llm-provider", "ap:llm_provider:manage"}, {"llm-proxy", "ap:api:llm:manage"},
+		{"mcp-proxy", "ap:api:mcp:manage"}, {"agent-proxy", "ap:api:agent:manage"},
 	} {
 		cs := connect(t, s, who(testOrg, tc.scope))
 		for _, id := range []any{"other", ""} {
@@ -128,7 +128,7 @@ func TestMerge(t *testing.T) {
 func TestListAPIs_ShowsReadOnly(t *testing.T) {
 	s, f := newTestServer(t)
 	f.listed = []object{{"id": "g1", "displayName": "G", "readOnly": true}, {"id": "c1", "displayName": "C", "readOnly": false}}
-	_, text := call(t, connect(t, s, who(testOrg, "ap:agent_proxy:read")), "list_apis", map[string]any{"apiType": "agent-proxy"})
+	_, text := call(t, connect(t, s, who(testOrg, "ap:api:agent:read")), "list_apis", map[string]any{"apiType": "agent-proxy"})
 	assert.Contains(t, text, `{"displayName":"G","id":"g1","readOnly":true}`)
 	assert.NotContains(t, text, `"readOnly":false`)
 }

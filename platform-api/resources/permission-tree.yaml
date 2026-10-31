@@ -1,0 +1,1855 @@
+# Platform API permission tree.
+#
+# Every permission is a node path and an action joined with ":" (ap:api:rest:
+# deployment:undeploy). All 197 pre-tree permissions keep their exact action
+# names — create, update, delete, restore, undeploy, regenerate, publish,
+# unpublish, deprecate — only their resource paths change; none is folded into
+# manage. The four API/content
+# aggregates (ap:api:read, ap:api:manage, ap:content:read, ap:content:manage)
+# and the root's ap:read and ap:manage are explicit additions. Nodes marked
+# `plugin: eventgateway` exist only on a build that includes that plugin; their
+# permissions are declared by the plugin's own OpenAPI spec.
+#
+# Each `legacy` entry names a pre-tree resource prefix the node absorbed;
+# legacy-scope-mapping.yaml lists the exact pre-tree scopes and the permission
+# each one grants.
+#
+# x-operation-permissions binds every operation (by operationId, or by
+# "METHOD /path" for a plugin operation that has none) to the permissions it
+# accepts directly. scripts/permission_tree.py expands each binding by the
+# inheritance rule below and writes the result into the operation's security
+# block, so the OpenAPI specs — and the Platform API, which matches scopes by
+# exact string equality — accept a parent's or the root's read and manage for
+# every operation on the nodes beneath it. Run the script after editing this file;
+# internal/server/permission_tree_test.go fails when the two disagree.
+#
+# The x-* fields are policy metadata, not executable middleware or standard
+# OpenAPI semantics.
+resource_server:
+  name: WSO2 API Platform
+  delimiter: ':'
+tree:
+- handle: ap
+  name: Platform API
+  actions:
+  - manage
+  - read
+  resources:
+  - handle: api
+    name: Api
+    resources:
+    - handle: agent
+      name: Agent
+      resources:
+      - handle: api_key
+        name: Api Key
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - update
+        legacy:
+        - agent_proxy:api_key
+      - handle: build
+        name: Build
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        legacy:
+        - agent_proxy:build
+      - handle: deployment
+        name: Deployment
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - restore
+        - undeploy
+        legacy:
+        - agent_proxy:deployment
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - agent_proxy
+    - handle: graphql
+      name: Graphql
+      resources:
+      - handle: api_key
+        name: Api Key
+        actions:
+        - create
+        - delete
+        - manage
+        - update
+        legacy:
+        - graphql_api:api_key
+      - handle: build
+        name: Build
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        legacy:
+        - graphql_api:build
+      - handle: deployment
+        name: Deployment
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - restore
+        - undeploy
+        legacy:
+        - graphql_api:deployment
+      - handle: gateway
+        name: Gateway
+        actions:
+        - create
+        - manage
+        - read
+        legacy:
+        - graphql_api:gateway
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - graphql_api
+    - handle: llm
+      name: Llm
+      resources:
+      - handle: api_key
+        name: Api Key
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        legacy:
+        - llm_proxy:api_key
+      - handle: build
+        name: Build
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        legacy:
+        - llm_proxy:build
+      - handle: deployment
+        name: Deployment
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - restore
+        - undeploy
+        legacy:
+        - llm_proxy:deployment
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - llm_proxy
+    - handle: mcp
+      name: Mcp
+      resources:
+      - handle: build
+        name: Build
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        legacy:
+        - mcp_proxy:build
+      - handle: deployment
+        name: Deployment
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - restore
+        - undeploy
+        legacy:
+        - mcp_proxy:deployment
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - mcp_proxy
+    - handle: rest
+      name: Rest
+      resources:
+      - handle: api_key
+        name: Api Key
+        actions:
+        - create
+        - delete
+        - manage
+        - update
+        legacy:
+        - rest_api:api_key
+      - handle: build
+        name: Build
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        legacy:
+        - rest_api:build
+      - handle: deployment
+        name: Deployment
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - restore
+        - undeploy
+        legacy:
+        - rest_api:deployment
+      - handle: gateway
+        name: Gateway
+        actions:
+        - create
+        - manage
+        - read
+        legacy:
+        - rest_api:gateway
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - rest_api
+    - handle: webbroker
+      name: Webbroker
+      plugin: eventgateway
+      resources:
+      - handle: api_key
+        name: Api Key
+        actions:
+        - create
+        - delete
+        - manage
+        - update
+        legacy:
+        - webbroker_api:api_key
+      - handle: deployment
+        name: Deployment
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - restore
+        - undeploy
+        legacy:
+        - webbroker_api:deployment
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - webbroker_api
+    - handle: websub
+      name: Websub
+      plugin: eventgateway
+      resources:
+      - handle: api_key
+        name: Api Key
+        actions:
+        - create
+        - delete
+        - manage
+        - update
+        legacy:
+        - websub_api:api_key
+      - handle: deployment
+        name: Deployment
+        actions:
+        - create
+        - delete
+        - manage
+        - read
+        - restore
+        - undeploy
+        legacy:
+        - websub_api:deployment
+      - handle: hmac_secret
+        name: Hmac Secret
+        actions:
+        - create
+        - delete
+        - read
+        - regenerate
+        legacy:
+        - websub_api:hmac_secret
+      - handle: publication
+        name: Publication
+        actions:
+        - create
+        - delete
+        legacy:
+        - websub_api:publication
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - websub_api
+    actions:
+    - manage
+    - read
+  - handle: application
+    name: Application
+    resources:
+    - handle: api_key
+      name: Api Key
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      legacy:
+      - application:api_key
+    - handle: association
+      name: Association
+      resources:
+      - handle: api_key
+        name: Api Key
+        actions:
+        - read
+        legacy:
+        - application:association:api_key
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      legacy:
+      - application:association
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+    legacy:
+    - application
+  - handle: content
+    name: Content
+    resources:
+    - handle: document
+      name: Document
+      actions:
+      - manage
+      - read
+      legacy:
+      - docs
+    - handle: thumbnail
+      name: Thumbnail
+      actions:
+      - manage
+      - read
+      legacy:
+      - thumbnail
+    actions:
+    - manage
+    - read
+  - handle: credential
+    name: Credential
+    resources:
+    - handle: api_key
+      name: Api Key
+      resources:
+      - handle: all
+        name: All
+        actions:
+        - manage
+        legacy:
+        - api_key:all
+      actions:
+      - read
+      legacy:
+      - api_key
+    - handle: secret
+      name: Secret
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - secret
+  - handle: gateway
+    name: Gateway
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+    resources:
+    - handle: manifest
+      name: Manifest
+      actions:
+      - read
+      legacy:
+      - gateway:manifest
+    - handle: token
+      name: Token
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      legacy:
+      - gateway:token
+    legacy:
+    - gateway
+  - handle: gateway_policy
+    name: Gateway Policy
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    legacy:
+    - gateway_custom_policy
+  - handle: llm_provider
+    name: Llm Provider
+    resources:
+    - handle: api_key
+      name: Api Key
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      legacy:
+      - llm_provider:api_key
+    - handle: build
+      name: Build
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      legacy:
+      - llm_provider:build
+    - handle: deployment
+      name: Deployment
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - restore
+      - undeploy
+      legacy:
+      - llm_provider:deployment
+    - handle: template
+      name: Template
+      actions:
+      - create
+      - delete
+      - manage
+      - read
+      - update
+      legacy:
+      - llm_template
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+    legacy:
+    - llm_provider
+  - handle: meter
+    name: Meter
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+  - handle: organization
+    name: Organization
+    actions:
+    - create
+    - manage
+    - read
+    legacy:
+    - organization
+  - handle: portal
+    name: Portal
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+    resources:
+    - handle: draft
+      name: Draft
+      actions:
+      - manage
+      - read
+      - update
+      legacy:
+      - api_portal:draft
+    - handle: graphql_api
+      name: Graphql Api
+      actions:
+      - deprecate
+      - manage
+      - publish
+      - unpublish
+      legacy:
+      - api_portal:graphql_api
+    - handle: mcp_proxy
+      name: Mcp Proxy
+      # Reserved: the AI Workspace gates MCP proxy publish/unpublish on these,
+      # but the Platform API has no MCP proxy publish operation yet. Drop
+      # `reserved` and bind the operations once it ships.
+      reserved: true
+      actions:
+      - manage
+      - publish
+      - unpublish
+      legacy:
+      - api_portal:mcp_proxy
+    - handle: publication
+      name: Publication
+      actions:
+      - read
+      legacy:
+      - api_portal:publication
+    - handle: rest_api
+      name: Rest Api
+      actions:
+      - deprecate
+      - manage
+      - publish
+      - unpublish
+      legacy:
+      - api_portal:rest_api
+    legacy:
+    - api_portal
+  - handle: project
+    name: Project
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+    legacy:
+    - project
+  - handle: publication
+    name: Publication
+    actions:
+    - read
+    legacy:
+    - api_publication
+  - handle: subscription
+    name: Subscription
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+    legacy:
+    - subscription
+  - handle: subscription_plan
+    name: Subscription Plan
+    resources:
+    - handle: pricing
+      name: Pricing
+      actions:
+      - read
+    actions:
+    - create
+    - delete
+    - manage
+    - read
+    - update
+    legacy:
+    - subscription_plan
+x-authorization-policy:
+  scope_list_semantics: any
+  inheritance: >-
+    An operation bound to a node and action accepts that action's permission and
+    :manage on the node itself, then :manage on every ancestor that defines it
+    and, for a read, :read on every ancestor too. Only read and manage flow down
+    the tree (ap:manage admits every operation and ap:read every read;
+    ap:api:manage admits everything under ap:api; ap:api:rest:read admits every
+    read under REST APIs). Every other verb applies to its own node only:
+    ap:api:rest:create creates REST APIs and admits nothing on their builds,
+    deployments, keys or gateways. Nothing is inferred
+    from string prefixes at request time — the generator writes every admitting
+    permission into each operation's security block, and the enforcer matches by
+    exact string equality.
+  ownership_override: ap:credential:api_key:all:manage is a separate ownership check; retain existing handler behavior.
+  aggregate_members:
+    ap:api:read:
+    - ap:api:agent:api_key:read
+    - ap:api:agent:build:read
+    - ap:api:agent:deployment:read
+    - ap:api:agent:read
+    - ap:api:graphql:build:read
+    - ap:api:graphql:deployment:read
+    - ap:api:graphql:gateway:read
+    - ap:api:graphql:read
+    - ap:api:llm:api_key:read
+    - ap:api:llm:build:read
+    - ap:api:llm:deployment:read
+    - ap:api:llm:read
+    - ap:api:mcp:build:read
+    - ap:api:mcp:deployment:read
+    - ap:api:mcp:read
+    - ap:api:rest:build:read
+    - ap:api:rest:deployment:read
+    - ap:api:rest:gateway:read
+    - ap:api:rest:read
+    - ap:api:webbroker:deployment:read
+    - ap:api:webbroker:read
+    - ap:api:websub:deployment:read
+    - ap:api:websub:hmac_secret:read
+    - ap:api:websub:read
+    ap:api:manage:
+    - ap:api:agent:api_key:create
+    - ap:api:agent:api_key:delete
+    - ap:api:agent:api_key:manage
+    - ap:api:agent:api_key:read
+    - ap:api:agent:api_key:update
+    - ap:api:agent:build:create
+    - ap:api:agent:build:delete
+    - ap:api:agent:build:manage
+    - ap:api:agent:build:read
+    - ap:api:agent:create
+    - ap:api:agent:delete
+    - ap:api:agent:deployment:create
+    - ap:api:agent:deployment:delete
+    - ap:api:agent:deployment:manage
+    - ap:api:agent:deployment:read
+    - ap:api:agent:deployment:restore
+    - ap:api:agent:deployment:undeploy
+    - ap:api:agent:manage
+    - ap:api:agent:read
+    - ap:api:agent:update
+    - ap:api:graphql:api_key:create
+    - ap:api:graphql:api_key:delete
+    - ap:api:graphql:api_key:manage
+    - ap:api:graphql:api_key:update
+    - ap:api:graphql:build:create
+    - ap:api:graphql:build:delete
+    - ap:api:graphql:build:manage
+    - ap:api:graphql:build:read
+    - ap:api:graphql:create
+    - ap:api:graphql:delete
+    - ap:api:graphql:deployment:create
+    - ap:api:graphql:deployment:delete
+    - ap:api:graphql:deployment:manage
+    - ap:api:graphql:deployment:read
+    - ap:api:graphql:deployment:restore
+    - ap:api:graphql:deployment:undeploy
+    - ap:api:graphql:gateway:create
+    - ap:api:graphql:gateway:manage
+    - ap:api:graphql:gateway:read
+    - ap:api:graphql:manage
+    - ap:api:graphql:read
+    - ap:api:graphql:update
+    - ap:api:llm:api_key:create
+    - ap:api:llm:api_key:delete
+    - ap:api:llm:api_key:manage
+    - ap:api:llm:api_key:read
+    - ap:api:llm:build:create
+    - ap:api:llm:build:delete
+    - ap:api:llm:build:manage
+    - ap:api:llm:build:read
+    - ap:api:llm:create
+    - ap:api:llm:delete
+    - ap:api:llm:deployment:create
+    - ap:api:llm:deployment:delete
+    - ap:api:llm:deployment:manage
+    - ap:api:llm:deployment:read
+    - ap:api:llm:deployment:restore
+    - ap:api:llm:deployment:undeploy
+    - ap:api:llm:manage
+    - ap:api:llm:read
+    - ap:api:llm:update
+    - ap:api:mcp:build:create
+    - ap:api:mcp:build:delete
+    - ap:api:mcp:build:manage
+    - ap:api:mcp:build:read
+    - ap:api:mcp:create
+    - ap:api:mcp:delete
+    - ap:api:mcp:deployment:create
+    - ap:api:mcp:deployment:delete
+    - ap:api:mcp:deployment:manage
+    - ap:api:mcp:deployment:read
+    - ap:api:mcp:deployment:restore
+    - ap:api:mcp:deployment:undeploy
+    - ap:api:mcp:manage
+    - ap:api:mcp:read
+    - ap:api:mcp:update
+    - ap:api:rest:api_key:create
+    - ap:api:rest:api_key:delete
+    - ap:api:rest:api_key:manage
+    - ap:api:rest:api_key:update
+    - ap:api:rest:build:create
+    - ap:api:rest:build:delete
+    - ap:api:rest:build:manage
+    - ap:api:rest:build:read
+    - ap:api:rest:create
+    - ap:api:rest:delete
+    - ap:api:rest:deployment:create
+    - ap:api:rest:deployment:delete
+    - ap:api:rest:deployment:manage
+    - ap:api:rest:deployment:read
+    - ap:api:rest:deployment:restore
+    - ap:api:rest:deployment:undeploy
+    - ap:api:rest:gateway:create
+    - ap:api:rest:gateway:manage
+    - ap:api:rest:gateway:read
+    - ap:api:rest:manage
+    - ap:api:rest:read
+    - ap:api:rest:update
+    - ap:api:webbroker:api_key:create
+    - ap:api:webbroker:api_key:delete
+    - ap:api:webbroker:api_key:manage
+    - ap:api:webbroker:api_key:update
+    - ap:api:webbroker:create
+    - ap:api:webbroker:delete
+    - ap:api:webbroker:deployment:create
+    - ap:api:webbroker:deployment:delete
+    - ap:api:webbroker:deployment:manage
+    - ap:api:webbroker:deployment:read
+    - ap:api:webbroker:deployment:restore
+    - ap:api:webbroker:deployment:undeploy
+    - ap:api:webbroker:manage
+    - ap:api:webbroker:read
+    - ap:api:webbroker:update
+    - ap:api:websub:api_key:create
+    - ap:api:websub:api_key:delete
+    - ap:api:websub:api_key:manage
+    - ap:api:websub:api_key:update
+    - ap:api:websub:create
+    - ap:api:websub:delete
+    - ap:api:websub:deployment:create
+    - ap:api:websub:deployment:delete
+    - ap:api:websub:deployment:manage
+    - ap:api:websub:deployment:read
+    - ap:api:websub:deployment:restore
+    - ap:api:websub:deployment:undeploy
+    - ap:api:websub:hmac_secret:create
+    - ap:api:websub:hmac_secret:delete
+    - ap:api:websub:hmac_secret:read
+    - ap:api:websub:hmac_secret:regenerate
+    - ap:api:websub:manage
+    - ap:api:websub:publication:create
+    - ap:api:websub:publication:delete
+    - ap:api:websub:read
+    - ap:api:websub:update
+    ap:content:read:
+    - ap:content:document:read
+    - ap:content:thumbnail:read
+    ap:content:manage:
+    - ap:content:document:manage
+    - ap:content:document:read
+    - ap:content:thumbnail:manage
+    - ap:content:thumbnail:read
+x-operation-permissions:
+  RegisterOrganization:
+  - ap:organization:create
+  - ap:organization:manage
+  ListOrganizations:
+  - ap:organization:manage
+  - ap:organization:read
+  GetOrganization:
+  - ap:organization:manage
+  - ap:organization:read
+  HeadOrganization:
+  - ap:organization:manage
+  - ap:organization:read
+  CreateProject:
+  - ap:project:create
+  - ap:project:manage
+  ListProjects:
+  - ap:project:manage
+  - ap:project:read
+  GetProject:
+  - ap:project:manage
+  - ap:project:read
+  UpdateProject:
+  - ap:project:manage
+  - ap:project:update
+  DeleteProject:
+  - ap:project:delete
+  - ap:project:manage
+  ListRESTAPIs:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:manage
+  - ap:api:rest:read
+  CreateRESTAPI:
+  - ap:api:manage
+  - ap:api:rest:create
+  - ap:api:rest:manage
+  ValidateOpenAPISpec:
+  - ap:api:manage
+  - ap:api:rest:create
+  - ap:api:rest:manage
+  ImportOpenAPI:
+  - ap:api:manage
+  - ap:api:rest:create
+  - ap:api:rest:manage
+  ListRESTAPIVersions:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:manage
+  - ap:api:rest:read
+  GetRESTAPI:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:manage
+  - ap:api:rest:read
+  UpdateRESTAPI:
+  - ap:api:manage
+  - ap:api:rest:manage
+  - ap:api:rest:update
+  DeleteRESTAPI:
+  - ap:api:manage
+  - ap:api:rest:delete
+  - ap:api:rest:manage
+  GetRESTAPISpec:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:manage
+  - ap:api:rest:read
+  UpdateRESTAPISpec:
+  - ap:api:manage
+  - ap:api:rest:manage
+  - ap:api:rest:update
+  GetRESTAPIGateways:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:gateway:manage
+  - ap:api:rest:gateway:read
+  - ap:api:rest:manage
+  - ap:gateway:manage
+  - ap:gateway:read
+  AddGatewaysToAPI:
+  - ap:api:manage
+  - ap:api:rest:gateway:create
+  - ap:api:rest:gateway:manage
+  - ap:api:rest:manage
+  CreateAPIKey:
+  - ap:api:manage
+  - ap:api:rest:api_key:create
+  - ap:api:rest:api_key:manage
+  - ap:api:rest:manage
+  - ap:credential:api_key:all:manage
+  UpdateAPIKey:
+  - ap:api:manage
+  - ap:api:rest:api_key:manage
+  - ap:api:rest:api_key:update
+  - ap:api:rest:manage
+  - ap:credential:api_key:all:manage
+  RevokeAPIKey:
+  - ap:api:manage
+  - ap:api:rest:api_key:delete
+  - ap:api:rest:api_key:manage
+  - ap:api:rest:manage
+  - ap:credential:api_key:all:manage
+  CreateBuild:
+  - ap:api:manage
+  - ap:api:rest:build:create
+  - ap:api:rest:build:manage
+  - ap:api:rest:manage
+  GetBuilds:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:build:manage
+  - ap:api:rest:build:read
+  - ap:api:rest:manage
+  GetBuild:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:build:manage
+  - ap:api:rest:build:read
+  - ap:api:rest:manage
+  DeleteBuild:
+  - ap:api:manage
+  - ap:api:rest:build:delete
+  - ap:api:rest:build:manage
+  - ap:api:rest:manage
+  DeployAPI:
+  - ap:api:manage
+  - ap:api:rest:deployment:create
+  - ap:api:rest:deployment:manage
+  - ap:api:rest:manage
+  GetDeployments:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:deployment:manage
+  - ap:api:rest:deployment:read
+  - ap:api:rest:manage
+  GetDeployment:
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:rest:deployment:manage
+  - ap:api:rest:deployment:read
+  - ap:api:rest:manage
+  DeleteDeployment:
+  - ap:api:manage
+  - ap:api:rest:deployment:delete
+  - ap:api:rest:deployment:manage
+  - ap:api:rest:manage
+  UndeployDeployment:
+  - ap:api:manage
+  - ap:api:rest:deployment:manage
+  - ap:api:rest:deployment:undeploy
+  - ap:api:rest:manage
+  RestoreDeployment:
+  - ap:api:manage
+  - ap:api:rest:deployment:manage
+  - ap:api:rest:deployment:restore
+  - ap:api:rest:manage
+  listApiPublications:
+  - ap:publication:read
+  getApiPublication:
+  - ap:portal:publication:read
+  getApiPublicationDefinition:
+  - ap:portal:publication:read
+  getApiPublicationLandingPage:
+  - ap:portal:publication:read
+  getApiPublicationThumbnail:
+  - ap:portal:publication:read
+  getApiPublicationDraft:
+  - ap:portal:draft:manage
+  - ap:portal:draft:read
+  saveApiPublicationDraft:
+  - ap:portal:draft:manage
+  - ap:portal:draft:update
+  getApiPublicationDraftDefinition:
+  - ap:portal:draft:manage
+  - ap:portal:draft:read
+  saveApiPublicationDraftDefinition:
+  - ap:portal:draft:manage
+  - ap:portal:draft:update
+  getApiPublicationDraftLandingPage:
+  - ap:portal:draft:manage
+  - ap:portal:draft:read
+  saveApiPublicationDraftLandingPage:
+  - ap:portal:draft:manage
+  - ap:portal:draft:update
+  getApiPublicationDraftThumbnail:
+  - ap:portal:draft:manage
+  - ap:portal:draft:read
+  saveApiPublicationDraftThumbnail:
+  - ap:portal:draft:manage
+  - ap:portal:draft:update
+  publishRestApiToApiPortal:
+  - ap:portal:rest_api:manage
+  - ap:portal:rest_api:publish
+  unpublishRestApiFromApiPortal:
+  - ap:portal:rest_api:manage
+  - ap:portal:rest_api:unpublish
+  deprecateRestApiOnApiPortal:
+  - ap:portal:rest_api:manage
+  - ap:portal:rest_api:deprecate
+  publishGraphQLApiToApiPortal:
+  - ap:portal:graphql_api:manage
+  - ap:portal:graphql_api:publish
+  unpublishGraphQLApiFromApiPortal:
+  - ap:portal:graphql_api:manage
+  - ap:portal:graphql_api:unpublish
+  deprecateGraphQLApiOnApiPortal:
+  - ap:portal:graphql_api:manage
+  - ap:portal:graphql_api:deprecate
+  ListAPIDocuments:
+  - ap:content:document:manage
+  - ap:content:document:read
+  - ap:content:manage
+  - ap:content:read
+  CreateAPIDocument:
+  - ap:content:document:manage
+  - ap:content:manage
+  GetAPIDocument:
+  - ap:content:document:manage
+  - ap:content:document:read
+  - ap:content:manage
+  - ap:content:read
+  UpdateAPIDocument:
+  - ap:content:document:manage
+  - ap:content:manage
+  DeleteAPIDocument:
+  - ap:content:document:manage
+  - ap:content:manage
+  GetAPIDocumentContent:
+  - ap:content:document:manage
+  - ap:content:document:read
+  - ap:content:manage
+  - ap:content:read
+  GetAPIThumbnail:
+  - ap:content:manage
+  - ap:content:read
+  - ap:content:thumbnail:manage
+  - ap:content:thumbnail:read
+  UpsertAPIThumbnail:
+  - ap:content:manage
+  - ap:content:thumbnail:manage
+  DeleteAPIThumbnail:
+  - ap:content:manage
+  - ap:content:thumbnail:manage
+  ListGraphQLAPIs:
+  - ap:api:graphql:manage
+  - ap:api:graphql:read
+  - ap:api:manage
+  - ap:api:read
+  CreateGraphQLAPI:
+  - ap:api:graphql:create
+  - ap:api:graphql:manage
+  - ap:api:manage
+  GetGraphQLAPI:
+  - ap:api:graphql:manage
+  - ap:api:graphql:read
+  - ap:api:manage
+  - ap:api:read
+  UpdateGraphQLAPI:
+  - ap:api:graphql:manage
+  - ap:api:graphql:update
+  - ap:api:manage
+  DeleteGraphQLAPI:
+  - ap:api:graphql:delete
+  - ap:api:graphql:manage
+  - ap:api:manage
+  GetGraphQLAPISDL:
+  - ap:api:graphql:manage
+  - ap:api:graphql:read
+  - ap:api:manage
+  - ap:api:read
+  ValidateGraphQLSchema:
+  - ap:api:graphql:create
+  - ap:api:graphql:manage
+  - ap:api:manage
+  GetGraphQLAPIGateways:
+  - ap:api:graphql:gateway:manage
+  - ap:api:graphql:gateway:read
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:api:read
+  - ap:gateway:manage
+  - ap:gateway:read
+  AddGatewaysToGraphQLAPI:
+  - ap:api:graphql:gateway:create
+  - ap:api:graphql:gateway:manage
+  - ap:api:graphql:manage
+  - ap:api:manage
+  CreateGraphQLAPIKey:
+  - ap:api:graphql:api_key:create
+  - ap:api:graphql:api_key:manage
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  UpdateGraphQLAPIKey:
+  - ap:api:graphql:api_key:manage
+  - ap:api:graphql:api_key:update
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  RevokeGraphQLAPIKey:
+  - ap:api:graphql:api_key:delete
+  - ap:api:graphql:api_key:manage
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  DeployGraphQLAPI:
+  - ap:api:graphql:deployment:create
+  - ap:api:graphql:deployment:manage
+  - ap:api:graphql:manage
+  - ap:api:manage
+  GetGraphQLAPIDeployments:
+  - ap:api:graphql:deployment:manage
+  - ap:api:graphql:deployment:read
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:api:read
+  GetGraphQLAPIDeployment:
+  - ap:api:graphql:deployment:manage
+  - ap:api:graphql:deployment:read
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:api:read
+  DeleteGraphQLAPIDeployment:
+  - ap:api:graphql:deployment:delete
+  - ap:api:graphql:deployment:manage
+  - ap:api:graphql:manage
+  - ap:api:manage
+  UndeployGraphQLAPIDeployment:
+  - ap:api:graphql:deployment:manage
+  - ap:api:graphql:deployment:undeploy
+  - ap:api:graphql:manage
+  - ap:api:manage
+  RestoreGraphQLAPIDeployment:
+  - ap:api:graphql:deployment:manage
+  - ap:api:graphql:deployment:restore
+  - ap:api:graphql:manage
+  - ap:api:manage
+  CreateGraphQLAPIBuild:
+  - ap:api:graphql:build:create
+  - ap:api:graphql:build:manage
+  - ap:api:graphql:manage
+  - ap:api:manage
+  GetGraphQLAPIBuilds:
+  - ap:api:graphql:build:manage
+  - ap:api:graphql:build:read
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:api:read
+  GetGraphQLAPIBuild:
+  - ap:api:graphql:build:manage
+  - ap:api:graphql:build:read
+  - ap:api:graphql:manage
+  - ap:api:manage
+  - ap:api:read
+  DeleteGraphQLAPIBuild:
+  - ap:api:graphql:build:delete
+  - ap:api:graphql:build:manage
+  - ap:api:graphql:manage
+  - ap:api:manage
+  createLLMProviderTemplate:
+  - ap:llm_provider:template:create
+  - ap:llm_provider:template:manage
+  listLLMProviderTemplates:
+  - ap:llm_provider:template:manage
+  - ap:llm_provider:template:read
+  copyLLMProviderTemplateVersion:
+  - ap:llm_provider:template:create
+  - ap:llm_provider:template:manage
+  getLLMProviderTemplate:
+  - ap:llm_provider:template:manage
+  - ap:llm_provider:template:read
+  updateLLMProviderTemplate:
+  - ap:llm_provider:template:manage
+  - ap:llm_provider:template:update
+  setLLMProviderTemplateVersionEnabled:
+  - ap:llm_provider:template:manage
+  - ap:llm_provider:template:update
+  deleteLLMProviderTemplateVersion:
+  - ap:llm_provider:template:delete
+  - ap:llm_provider:template:manage
+  createLLMProvider:
+  - ap:llm_provider:create
+  - ap:llm_provider:manage
+  listLLMProviders:
+  - ap:llm_provider:manage
+  - ap:llm_provider:read
+  getLLMProvider:
+  - ap:llm_provider:manage
+  - ap:llm_provider:read
+  updateLLMProvider:
+  - ap:llm_provider:manage
+  - ap:llm_provider:update
+  deleteLLMProvider:
+  - ap:llm_provider:delete
+  - ap:llm_provider:manage
+  CreateLLMProviderBuild:
+  - ap:llm_provider:build:create
+  - ap:llm_provider:build:manage
+  - ap:llm_provider:manage
+  GetLLMProviderBuilds:
+  - ap:llm_provider:build:manage
+  - ap:llm_provider:build:read
+  - ap:llm_provider:manage
+  GetLLMProviderBuild:
+  - ap:llm_provider:build:manage
+  - ap:llm_provider:build:read
+  - ap:llm_provider:manage
+  DeleteLLMProviderBuild:
+  - ap:llm_provider:build:delete
+  - ap:llm_provider:build:manage
+  - ap:llm_provider:manage
+  deployLLMProvider:
+  - ap:llm_provider:deployment:create
+  - ap:llm_provider:deployment:manage
+  - ap:llm_provider:manage
+  getLLMProviderDeployments:
+  - ap:llm_provider:deployment:manage
+  - ap:llm_provider:deployment:read
+  - ap:llm_provider:manage
+  getLLMProviderDeployment:
+  - ap:llm_provider:deployment:manage
+  - ap:llm_provider:deployment:read
+  - ap:llm_provider:manage
+  deleteLLMProviderDeployment:
+  - ap:llm_provider:deployment:delete
+  - ap:llm_provider:deployment:manage
+  - ap:llm_provider:manage
+  undeployLLMProviderDeployment:
+  - ap:llm_provider:deployment:manage
+  - ap:llm_provider:deployment:undeploy
+  - ap:llm_provider:manage
+  restoreLLMProviderDeployment:
+  - ap:llm_provider:deployment:manage
+  - ap:llm_provider:deployment:restore
+  - ap:llm_provider:manage
+  listLLMProxiesByProvider:
+  - ap:api:llm:deployment:manage
+  - ap:api:llm:deployment:read
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:api:read
+  createLLMProviderAPIKey:
+  - ap:credential:api_key:all:manage
+  - ap:llm_provider:api_key:create
+  - ap:llm_provider:api_key:manage
+  - ap:llm_provider:manage
+  listLLMProviderAPIKeys:
+  - ap:credential:api_key:all:manage
+  - ap:llm_provider:api_key:manage
+  - ap:llm_provider:api_key:read
+  - ap:llm_provider:manage
+  deleteLLMProviderAPIKey:
+  - ap:credential:api_key:all:manage
+  - ap:llm_provider:api_key:delete
+  - ap:llm_provider:api_key:manage
+  - ap:llm_provider:manage
+  createLLMProxy:
+  - ap:api:llm:create
+  - ap:api:llm:manage
+  - ap:api:manage
+  listLLMProxies:
+  - ap:api:llm:manage
+  - ap:api:llm:read
+  - ap:api:manage
+  - ap:api:read
+  getLLMProxy:
+  - ap:api:llm:manage
+  - ap:api:llm:read
+  - ap:api:manage
+  - ap:api:read
+  updateLLMProxy:
+  - ap:api:llm:manage
+  - ap:api:llm:update
+  - ap:api:manage
+  deleteLLMProxy:
+  - ap:api:llm:delete
+  - ap:api:llm:manage
+  - ap:api:manage
+  CreateLLMProxyBuild:
+  - ap:api:llm:build:create
+  - ap:api:llm:build:manage
+  - ap:api:llm:manage
+  - ap:api:manage
+  GetLLMProxyBuilds:
+  - ap:api:llm:build:manage
+  - ap:api:llm:build:read
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:api:read
+  GetLLMProxyBuild:
+  - ap:api:llm:build:manage
+  - ap:api:llm:build:read
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:api:read
+  DeleteLLMProxyBuild:
+  - ap:api:llm:build:delete
+  - ap:api:llm:build:manage
+  - ap:api:llm:manage
+  - ap:api:manage
+  deployLLMProxy:
+  - ap:api:llm:deployment:create
+  - ap:api:llm:deployment:manage
+  - ap:api:llm:manage
+  - ap:api:manage
+  getLLMProxyDeployments:
+  - ap:api:llm:deployment:manage
+  - ap:api:llm:deployment:read
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:api:read
+  getLLMProxyDeployment:
+  - ap:api:llm:deployment:manage
+  - ap:api:llm:deployment:read
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:api:read
+  deleteLLMProxyDeployment:
+  - ap:api:llm:deployment:delete
+  - ap:api:llm:deployment:manage
+  - ap:api:llm:manage
+  - ap:api:manage
+  undeployLLMProxyDeployment:
+  - ap:api:llm:deployment:manage
+  - ap:api:llm:deployment:undeploy
+  - ap:api:llm:manage
+  - ap:api:manage
+  restoreLLMProxyDeployment:
+  - ap:api:llm:deployment:manage
+  - ap:api:llm:deployment:restore
+  - ap:api:llm:manage
+  - ap:api:manage
+  createLLMProxyAPIKey:
+  - ap:api:llm:api_key:create
+  - ap:api:llm:api_key:manage
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  listLLMProxyAPIKeys:
+  - ap:api:llm:api_key:manage
+  - ap:api:llm:api_key:read
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:api:read
+  - ap:credential:api_key:all:manage
+  deleteLLMProxyAPIKey:
+  - ap:api:llm:api_key:delete
+  - ap:api:llm:api_key:manage
+  - ap:api:llm:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  createMCPProxy:
+  - ap:api:manage
+  - ap:api:mcp:create
+  - ap:api:mcp:manage
+  listMCPProxies:
+  - ap:api:manage
+  - ap:api:mcp:manage
+  - ap:api:mcp:read
+  - ap:api:read
+  getMCPProxy:
+  - ap:api:manage
+  - ap:api:mcp:manage
+  - ap:api:mcp:read
+  - ap:api:read
+  updateMCPProxy:
+  - ap:api:manage
+  - ap:api:mcp:manage
+  - ap:api:mcp:update
+  deleteMCPProxy:
+  - ap:api:manage
+  - ap:api:mcp:delete
+  - ap:api:mcp:manage
+  CreateMCPProxyBuild:
+  - ap:api:manage
+  - ap:api:mcp:build:create
+  - ap:api:mcp:build:manage
+  - ap:api:mcp:manage
+  GetMCPProxyBuilds:
+  - ap:api:manage
+  - ap:api:mcp:build:manage
+  - ap:api:mcp:build:read
+  - ap:api:mcp:manage
+  - ap:api:read
+  GetMCPProxyBuild:
+  - ap:api:manage
+  - ap:api:mcp:build:manage
+  - ap:api:mcp:build:read
+  - ap:api:mcp:manage
+  - ap:api:read
+  DeleteMCPProxyBuild:
+  - ap:api:manage
+  - ap:api:mcp:build:delete
+  - ap:api:mcp:build:manage
+  - ap:api:mcp:manage
+  DeployMCPProxy:
+  - ap:api:manage
+  - ap:api:mcp:deployment:create
+  - ap:api:mcp:deployment:manage
+  - ap:api:mcp:manage
+  GetMCPProxyDeployments:
+  - ap:api:manage
+  - ap:api:mcp:deployment:manage
+  - ap:api:mcp:deployment:read
+  - ap:api:mcp:manage
+  - ap:api:read
+  GetMCPProxyDeployment:
+  - ap:api:manage
+  - ap:api:mcp:deployment:manage
+  - ap:api:mcp:deployment:read
+  - ap:api:mcp:manage
+  - ap:api:read
+  DeleteMCPProxyDeployment:
+  - ap:api:manage
+  - ap:api:mcp:deployment:delete
+  - ap:api:mcp:deployment:manage
+  - ap:api:mcp:manage
+  UndeployMCPProxyDeployment:
+  - ap:api:manage
+  - ap:api:mcp:deployment:manage
+  - ap:api:mcp:deployment:undeploy
+  - ap:api:mcp:manage
+  RestoreMCPProxyDeployment:
+  - ap:api:manage
+  - ap:api:mcp:deployment:manage
+  - ap:api:mcp:deployment:restore
+  - ap:api:mcp:manage
+  fetchMCPProxyServerInfo:
+  - ap:api:manage
+  - ap:api:mcp:manage
+  - ap:api:mcp:read
+  - ap:api:read
+  createAgentProxy:
+  - ap:api:agent:create
+  - ap:api:agent:manage
+  - ap:api:manage
+  listAgentProxies:
+  - ap:api:agent:manage
+  - ap:api:agent:read
+  - ap:api:manage
+  - ap:api:read
+  fetchAgentCard:
+  - ap:api:agent:manage
+  - ap:api:agent:read
+  - ap:api:manage
+  - ap:api:read
+  getAgentProxy:
+  - ap:api:agent:manage
+  - ap:api:agent:read
+  - ap:api:manage
+  - ap:api:read
+  updateAgentProxy:
+  - ap:api:agent:manage
+  - ap:api:agent:update
+  - ap:api:manage
+  deleteAgentProxy:
+  - ap:api:agent:delete
+  - ap:api:agent:manage
+  - ap:api:manage
+  createAgentProxyDeployment:
+  - ap:api:agent:deployment:create
+  - ap:api:agent:deployment:manage
+  - ap:api:agent:manage
+  - ap:api:manage
+  listAgentProxyDeployments:
+  - ap:api:agent:deployment:manage
+  - ap:api:agent:deployment:read
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:api:read
+  getAgentProxyDeployment:
+  - ap:api:agent:deployment:manage
+  - ap:api:agent:deployment:read
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:api:read
+  deleteAgentProxyDeployment:
+  - ap:api:agent:deployment:delete
+  - ap:api:agent:deployment:manage
+  - ap:api:agent:manage
+  - ap:api:manage
+  undeployAgentProxyDeployment:
+  - ap:api:agent:deployment:manage
+  - ap:api:agent:deployment:undeploy
+  - ap:api:agent:manage
+  - ap:api:manage
+  restoreAgentProxyDeployment:
+  - ap:api:agent:deployment:manage
+  - ap:api:agent:deployment:restore
+  - ap:api:agent:manage
+  - ap:api:manage
+  createAgentProxyBuild:
+  - ap:api:agent:build:create
+  - ap:api:agent:build:manage
+  - ap:api:agent:manage
+  - ap:api:manage
+  listAgentProxyBuilds:
+  - ap:api:agent:build:manage
+  - ap:api:agent:build:read
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:api:read
+  getAgentProxyBuild:
+  - ap:api:agent:build:manage
+  - ap:api:agent:build:read
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:api:read
+  deleteAgentProxyBuild:
+  - ap:api:agent:build:delete
+  - ap:api:agent:build:manage
+  - ap:api:agent:manage
+  - ap:api:manage
+  listAgentProxyAPIKeys:
+  - ap:api:agent:api_key:manage
+  - ap:api:agent:api_key:read
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:api:read
+  - ap:credential:api_key:all:manage
+  createAgentProxyAPIKey:
+  - ap:api:agent:api_key:create
+  - ap:api:agent:api_key:manage
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  updateAgentProxyAPIKey:
+  - ap:api:agent:api_key:manage
+  - ap:api:agent:api_key:update
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  revokeAgentProxyAPIKey:
+  - ap:api:agent:api_key:delete
+  - ap:api:agent:api_key:manage
+  - ap:api:agent:manage
+  - ap:api:manage
+  - ap:credential:api_key:all:manage
+  CreateGateway:
+  - ap:gateway:create
+  - ap:gateway:manage
+  ListGateways:
+  - ap:gateway:manage
+  - ap:gateway:read
+  GetGateway:
+  - ap:gateway:manage
+  - ap:gateway:read
+  UpdateGateway:
+  - ap:gateway:manage
+  - ap:gateway:update
+  DeleteGateway:
+  - ap:gateway:delete
+  - ap:gateway:manage
+  listGatewayTokens:
+  - ap:gateway:manage
+  - ap:gateway:token:manage
+  - ap:gateway:token:read
+  rotateGatewayToken:
+  - ap:gateway:manage
+  - ap:gateway:token:create
+  - ap:gateway:token:manage
+  revokeGatewayToken:
+  - ap:gateway:manage
+  - ap:gateway:token:delete
+  - ap:gateway:token:manage
+  GetGatewayManifest:
+  - ap:gateway:manage
+  - ap:gateway:manifest:read
+  ListGatewayCustomPolicies:
+  - ap:gateway_policy:manage
+  - ap:gateway_policy:read
+  SyncCustomPolicy:
+  - ap:gateway_policy:create
+  - ap:gateway_policy:manage
+  GetGatewayCustomPolicy:
+  - ap:gateway_policy:manage
+  - ap:gateway_policy:read
+  DeleteGatewayCustomPolicy:
+  - ap:gateway_policy:delete
+  - ap:gateway_policy:manage
+  CreateApplication:
+  - ap:application:create
+  - ap:application:manage
+  ListApplications:
+  - ap:application:manage
+  - ap:application:read
+  GetApplication:
+  - ap:application:manage
+  - ap:application:read
+  UpdateApplication:
+  - ap:application:manage
+  - ap:application:update
+  DeleteApplication:
+  - ap:application:delete
+  - ap:application:manage
+  ListApplicationAPIKeys:
+  - ap:application:api_key:manage
+  - ap:application:api_key:read
+  - ap:application:manage
+  - ap:credential:api_key:all:manage
+  AddApplicationAPIKeys:
+  - ap:application:api_key:create
+  - ap:application:api_key:manage
+  - ap:application:manage
+  - ap:credential:api_key:all:manage
+  RemoveApplicationAPIKey:
+  - ap:application:api_key:delete
+  - ap:application:api_key:manage
+  - ap:application:manage
+  - ap:credential:api_key:all:manage
+  ListApplicationAssociations:
+  - ap:application:association:manage
+  - ap:application:association:read
+  - ap:application:manage
+  AddApplicationAssociations:
+  - ap:application:association:create
+  - ap:application:association:manage
+  - ap:application:manage
+  RemoveApplicationAssociation:
+  - ap:application:association:delete
+  - ap:application:association:manage
+  - ap:application:manage
+  ListApplicationAssociationAPIKeys:
+  - ap:application:association:api_key:read
+  - ap:application:association:manage
+  - ap:application:manage
+  - ap:credential:api_key:all:manage
+  CreateSubscriptionPlan:
+  - ap:subscription_plan:create
+  - ap:subscription_plan:manage
+  ListSubscriptionPlans:
+  - ap:subscription_plan:manage
+  - ap:subscription_plan:read
+  GetSubscriptionPlan:
+  - ap:subscription_plan:manage
+  - ap:subscription_plan:read
+  UpdateSubscriptionPlan:
+  - ap:subscription_plan:manage
+  - ap:subscription_plan:update
+  DeleteSubscriptionPlan:
+  - ap:subscription_plan:delete
+  - ap:subscription_plan:manage
+  GetSubscriptionPlanPricing:
+  - ap:subscription_plan:pricing:read
+  ListMeters:
+  - ap:meter:manage
+  - ap:meter:read
+  CreateMeter:
+  - ap:meter:create
+  - ap:meter:manage
+  GetMeter:
+  - ap:meter:manage
+  - ap:meter:read
+  UpdateMeter:
+  - ap:meter:manage
+  - ap:meter:update
+  DeleteMeter:
+  - ap:meter:delete
+  - ap:meter:manage
+  CreateSubscription:
+  - ap:subscription:create
+  - ap:subscription:manage
+  ListSubscriptions:
+  - ap:subscription:manage
+  - ap:subscription:read
+  GetSubscription:
+  - ap:subscription:manage
+  - ap:subscription:read
+  UpdateSubscription:
+  - ap:subscription:manage
+  - ap:subscription:update
+  DeleteSubscription:
+  - ap:subscription:delete
+  - ap:subscription:manage
+  CreateApiPortal:
+  - ap:portal:create
+  - ap:portal:manage
+  ListApiPortals:
+  - ap:portal:manage
+  - ap:portal:read
+  GetApiPortal:
+  - ap:portal:manage
+  - ap:portal:read
+  UpdateApiPortal:
+  - ap:portal:manage
+  - ap:portal:update
+  DeleteApiPortal:
+  - ap:portal:delete
+  - ap:portal:manage
+  listUserAPIKeys:
+  - ap:credential:api_key:all:manage
+  - ap:credential:api_key:read
+  createSecret:
+  - ap:credential:secret:create
+  - ap:credential:secret:manage
+  listSecrets:
+  - ap:credential:secret:manage
+  - ap:credential:secret:read
+  getSecret:
+  - ap:credential:secret:manage
+  - ap:credential:secret:read
+  rotateSecret:
+  - ap:credential:secret:manage
+  - ap:credential:secret:update
+  deleteSecret:
+  - ap:credential:secret:delete
+  - ap:credential:secret:manage
+  # Event-gateway plugin operations (platform-api/plugins/eventgateway/openapi.yaml),
+  # which declare no operationId.
+  "POST /api/v0.9/websub-apis":
+  - ap:api:manage
+  - ap:api:websub:create
+  - ap:api:websub:manage
+  "GET /api/v0.9/websub-apis":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:websub:manage
+  - ap:api:websub:read
+  "GET /api/v0.9/websub-apis/{apiId}":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:websub:manage
+  - ap:api:websub:read
+  "PUT /api/v0.9/websub-apis/{apiId}":
+  - ap:api:manage
+  - ap:api:websub:manage
+  - ap:api:websub:update
+  "DELETE /api/v0.9/websub-apis/{apiId}":
+  - ap:api:manage
+  - ap:api:websub:delete
+  - ap:api:websub:manage
+  "POST /api/v0.9/websub-apis/{apiId}/publications":
+  - ap:api:manage
+  - ap:api:websub:manage
+  - ap:api:websub:publication:create
+  "DELETE /api/v0.9/websub-apis/{apiId}/publications/{devportalId}":
+  - ap:api:manage
+  - ap:api:websub:manage
+  - ap:api:websub:publication:delete
+  "POST /api/v0.9/websub-apis/{apiId}/deployments":
+  - ap:api:manage
+  - ap:api:websub:deployment:create
+  - ap:api:websub:deployment:manage
+  "GET /api/v0.9/websub-apis/{apiId}/deployments":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:websub:deployment:manage
+  - ap:api:websub:deployment:read
+  "GET /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:websub:deployment:manage
+  - ap:api:websub:deployment:read
+  "DELETE /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}":
+  - ap:api:manage
+  - ap:api:websub:deployment:delete
+  - ap:api:websub:deployment:manage
+  "POST /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}/undeploy":
+  - ap:api:manage
+  - ap:api:websub:deployment:manage
+  - ap:api:websub:deployment:undeploy
+  "POST /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}/restore":
+  - ap:api:manage
+  - ap:api:websub:deployment:manage
+  - ap:api:websub:deployment:restore
+  "POST /api/v0.9/websub-apis/{apiId}/api-keys":
+  - ap:api:manage
+  - ap:api:websub:api_key:create
+  - ap:api:websub:api_key:manage
+  - ap:credential:api_key:all:manage
+  "PUT /api/v0.9/websub-apis/{apiId}/api-keys/{keyName}":
+  - ap:api:manage
+  - ap:api:websub:api_key:manage
+  - ap:api:websub:api_key:update
+  - ap:credential:api_key:all:manage
+  "DELETE /api/v0.9/websub-apis/{apiId}/api-keys/{keyName}":
+  - ap:api:manage
+  - ap:api:websub:api_key:delete
+  - ap:api:websub:api_key:manage
+  - ap:credential:api_key:all:manage
+  "POST /api/v1/websub-apis/{apiId}/secrets":
+  - ap:api:manage
+  - ap:api:websub:hmac_secret:create
+  - ap:api:websub:manage
+  "GET /api/v1/websub-apis/{apiId}/secrets":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:websub:hmac_secret:read
+  - ap:api:websub:manage
+  "DELETE /api/v1/websub-apis/{apiId}/secrets/{secretName}":
+  - ap:api:manage
+  - ap:api:websub:hmac_secret:delete
+  - ap:api:websub:manage
+  "POST /api/v1/websub-apis/{apiId}/secrets/{secretName}/regenerate":
+  - ap:api:manage
+  - ap:api:websub:hmac_secret:regenerate
+  - ap:api:websub:manage
+  "POST /api/v0.9/webbroker-apis":
+  - ap:api:manage
+  - ap:api:webbroker:create
+  - ap:api:webbroker:manage
+  "GET /api/v0.9/webbroker-apis":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:webbroker:manage
+  - ap:api:webbroker:read
+  "GET /api/v0.9/webbroker-apis/{apiId}":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:webbroker:manage
+  - ap:api:webbroker:read
+  "PUT /api/v0.9/webbroker-apis/{apiId}":
+  - ap:api:manage
+  - ap:api:webbroker:manage
+  - ap:api:webbroker:update
+  "DELETE /api/v0.9/webbroker-apis/{apiId}":
+  - ap:api:manage
+  - ap:api:webbroker:delete
+  - ap:api:webbroker:manage
+  "POST /api/v0.9/webbroker-apis/{apiId}/deployments":
+  - ap:api:manage
+  - ap:api:webbroker:deployment:create
+  - ap:api:webbroker:deployment:manage
+  "GET /api/v0.9/webbroker-apis/{apiId}/deployments":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:webbroker:deployment:manage
+  - ap:api:webbroker:deployment:read
+  "GET /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}":
+  - ap:api:manage
+  - ap:api:read
+  - ap:api:webbroker:deployment:manage
+  - ap:api:webbroker:deployment:read
+  "DELETE /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}":
+  - ap:api:manage
+  - ap:api:webbroker:deployment:delete
+  - ap:api:webbroker:deployment:manage
+  "POST /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy":
+  - ap:api:manage
+  - ap:api:webbroker:deployment:manage
+  - ap:api:webbroker:deployment:undeploy
+  "POST /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}/restore":
+  - ap:api:manage
+  - ap:api:webbroker:deployment:manage
+  - ap:api:webbroker:deployment:restore
+  "POST /api/v0.9/webbroker-apis/{apiId}/api-keys":
+  - ap:api:manage
+  - ap:api:webbroker:api_key:create
+  - ap:api:webbroker:api_key:manage
+  - ap:credential:api_key:all:manage
+  "PUT /api/v0.9/webbroker-apis/{apiId}/api-keys/{keyName}":
+  - ap:api:manage
+  - ap:api:webbroker:api_key:manage
+  - ap:api:webbroker:api_key:update
+  - ap:credential:api_key:all:manage
+  "DELETE /api/v0.9/webbroker-apis/{apiId}/api-keys/{keyName}":
+  - ap:api:manage
+  - ap:api:webbroker:api_key:delete
+  - ap:api:webbroker:api_key:manage
+  - ap:credential:api_key:all:manage

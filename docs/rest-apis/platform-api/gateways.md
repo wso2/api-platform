@@ -49,7 +49,7 @@ Organization ID is automatically extracted from the token and does not need to b
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:create`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:create`, `ap:gateway:manage`, `ap:manage`
 
 </aside>
 
@@ -197,7 +197,7 @@ Organization ID is automatically extracted from the token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:read`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:read`, `ap:gateway:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -329,7 +329,7 @@ in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:read`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:read`, `ap:gateway:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -479,7 +479,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:update`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:update`, `ap:gateway:manage`, `ap:manage`
 
 </aside>
 
@@ -616,7 +616,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:delete`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:delete`, `ap:gateway:manage`, `ap:manage`
 
 </aside>
 
@@ -736,7 +736,7 @@ policies additionally include their full policy definition schema.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:manifest:read`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:manifest:read`, `ap:gateway:read`, `ap:gateway:manage`, `ap:read`, `ap:manage`
 
 </aside>
 

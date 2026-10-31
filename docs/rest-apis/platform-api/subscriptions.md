@@ -41,7 +41,7 @@ Creates a subscription for the specified artifact.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription:create`, `ap:subscription:manage`
+Required scopes (the token must carry at least one of): `ap:subscription:create`, `ap:subscription:manage`, `ap:manage`
 
 </aside>
 
@@ -67,6 +67,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:create`
   "subscriptionPlanName": "string",
   "organizationId": "acme",
   "status": "ACTIVE",
+  "billing": {
+    "status": "ACTIVE",
+    "customerId": "string",
+    "subscriptionId": "string"
+  },
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -184,7 +189,7 @@ Supports pagination via limit and offset.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription:read`, `ap:subscription:manage`
+Required scopes (the token must carry at least one of): `ap:subscription:read`, `ap:subscription:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -225,6 +230,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
       "subscriptionPlanName": "string",
       "organizationId": "acme",
       "status": "ACTIVE",
+      "billing": {
+        "status": "ACTIVE",
+        "customerId": "string",
+        "subscriptionId": "string"
+      },
       "createdBy": "john.doe",
       "updatedBy": "john.doe",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -320,7 +330,7 @@ Returns a single subscription by ID, scoped to the organization in the access to
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription:read`, `ap:subscription:manage`
+Required scopes (the token must carry at least one of): `ap:subscription:read`, `ap:subscription:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -346,6 +356,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
   "subscriptionPlanName": "string",
   "organizationId": "acme",
   "status": "ACTIVE",
+  "billing": {
+    "status": "ACTIVE",
+    "customerId": "string",
+    "subscriptionId": "string"
+  },
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -466,7 +481,7 @@ Query parameter `subscriberId` is required and must match the subscription's sub
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription:update`, `ap:subscription:manage`
+Required scopes (the token must carry at least one of): `ap:subscription:update`, `ap:subscription:manage`, `ap:manage`
 
 </aside>
 
@@ -494,6 +509,11 @@ Required scopes (the token must carry at least one of): `ap:subscription:update`
   "subscriptionPlanName": "string",
   "organizationId": "acme",
   "status": "ACTIVE",
+  "billing": {
+    "status": "ACTIVE",
+    "customerId": "string",
+    "subscriptionId": "string"
+  },
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -593,7 +613,7 @@ Query parameter `subscriberId` is required and must match the subscription's sub
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:subscription:delete`, `ap:subscription:manage`
+Required scopes (the token must carry at least one of): `ap:subscription:delete`, `ap:subscription:manage`, `ap:manage`
 
 </aside>
 

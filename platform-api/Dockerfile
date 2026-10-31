@@ -117,6 +117,7 @@ COPY internal/database/schema.sqlserver.sql  ./internal/database/schema.sqlserve
 COPY internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.sql
 COPY resources/default-llm-provider-templates ./resources/default-llm-provider-templates
 COPY resources/openapi.yaml                  ./resources/openapi.yaml
+COPY resources/legacy-scope-mapping.yaml     ./resources/legacy-scope-mapping.yaml
 
 RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:0" /coverage && chmod 775 /coverage; fi
 

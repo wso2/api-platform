@@ -186,7 +186,7 @@ func TestToolsList_ShowsOnlyWhatTheCallerMayUse(t *testing.T) {
 	names := toolNames(t, connect(t, s, who(testOrg, "ap:project:read")))
 	assert.ElementsMatch(t, []string{"list_projects", "get_api_schema"}, names)
 
-	names = toolNames(t, connect(t, s, who(testOrg, "ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage")))
+	names = toolNames(t, connect(t, s, who(testOrg, "ap:api:rest:manage", "ap:project:manage", "ap:gateway:manage")))
 	assert.Len(t, names, 14)
 }
 
@@ -194,7 +194,7 @@ func TestToolsList_ShowsOnlyWhatTheCallerMayUse(t *testing.T) {
 // to a caller who may use some, and is hidden from one who may use none.
 func TestToolsList_ListsEveryAPIType(t *testing.T) {
 	s, _ := newTestServer(t)
-	res, err := connect(t, s, who(testOrg, "ap:llm_proxy:read")).ListTools(context.Background(), nil)
+	res, err := connect(t, s, who(testOrg, "ap:api:llm:read")).ListTools(context.Background(), nil)
 	require.NoError(t, err)
 	var names []string
 	for _, tool := range res.Tools {
@@ -220,7 +220,7 @@ func TestAdd_MissingScopeIsAToolError(t *testing.T) {
 	res, text := call(t, connect(t, s, who(testOrg, "ap:project:read")), "list_apis",
 		map[string]any{"apiType": "rest-api", "projectId": "default"})
 	assert.True(t, res.IsError)
-	assert.Contains(t, text, "missing permission: this needs ap:rest_api:")
+	assert.Contains(t, text, "missing permission: this needs ap:api:rest:")
 }
 
 // TestScopeChecksOff_EveryToolIsOpen: with the Platform API's scope checks off,
@@ -238,7 +238,7 @@ func TestScopeChecksOff_EveryToolIsOpen(t *testing.T) {
 // TestToolRiskLevels pins each tool's risk level.
 func TestToolRiskLevels(t *testing.T) {
 	s, _ := newTestServer(t)
-	scopes := []string{"ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage"}
+	scopes := []string{"ap:api:rest:manage", "ap:project:manage", "ap:gateway:manage"}
 	expected := map[string]*mcp.ToolAnnotations{
 		"list_apis": read, "get_api": read, "get_api_schema": read, "list_api_deployments": read,
 		"list_projects": read, "list_gateways": read, "get_gateway": read,
@@ -273,7 +273,7 @@ func TestAdd_NoCallerIsRefused(t *testing.T) {
 
 func TestCreateAPI_PayloadRules(t *testing.T) {
 	s, f := newTestServer(t)
-	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	cs := connect(t, s, who(testOrg, "ap:api:rest:manage"))
 	payload := func(auth string) map[string]any {
 		return map[string]any{"displayName": "Orders", "version": "v1", "context": "/orders", "projectId": "default",
 			"upstream": map[string]any{"main": map[string]any{"url": "http://orders", "auth": map[string]any{"type": "bearer", "value": auth}}}}
@@ -296,7 +296,7 @@ func TestUpdateAPI_Merges(t *testing.T) {
 	f.api = object{"id": "orders-v1", "context": "/orders", "version": "v1", "projectId": "default",
 		"description": "old", "policies": []any{map[string]any{"name": "cors"}},
 		"upstream": map[string]any{"main": map[string]any{"url": "http://orders"}}}
-	cs := connect(t, s, who(testOrg, "ap:rest_api:read", "ap:rest_api:update"))
+	cs := connect(t, s, who(testOrg, "ap:api:rest:read", "ap:api:rest:update"))
 
 	res, text := call(t, cs, "update_api", map[string]any{"apiType": "rest-api", "apiId": "orders-v1",
 		"payload": map[string]any{"description": "new"}})
@@ -304,7 +304,7 @@ func TestUpdateAPI_Merges(t *testing.T) {
 	assert.Equal(t, "new", f.updated["description"])
 	assert.Equal(t, f.api["policies"], f.updated["policies"], "fields left out survive the PUT")
 
-	res, text = call(t, connect(t, s, who(testOrg, "ap:rest_api:update")), "update_api",
+	res, text = call(t, connect(t, s, who(testOrg, "ap:api:rest:update")), "update_api",
 		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "payload": map[string]any{"description": "x"}})
 	assert.True(t, res.IsError, "update reads first, so it needs a read scope too")
 	assert.Contains(t, text, "missing permission")
@@ -318,7 +318,7 @@ func TestUndeployAPI_StopsAtFirstFailureAndSaysWhatFinished(t *testing.T) {
 	}
 	f.running[1].Status = api.DeploymentResponseStatusDEPLOYING // still starting: undeployed too
 	f.failOn = b
-	res, text := call(t, connect(t, s, who(testOrg, "ap:rest_api:manage")), "undeploy_api",
+	res, text := call(t, connect(t, s, who(testOrg, "ap:api:rest:manage")), "undeploy_api",
 		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw1", "confirm": true})
 	assert.True(t, res.IsError)
 	assert.Contains(t, text, "undeployed ["+a+", "+c+"], then deployment "+b+" failed: gateway is not connected")
@@ -328,7 +328,7 @@ func TestUndeployAPI_StopsAtFirstFailureAndSaysWhatFinished(t *testing.T) {
 func TestUndeployAPI_NothingRunningSaysSo(t *testing.T) {
 	s, f := newTestServer(t)
 	f.running = []api.DeploymentResponse{{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000009"), GatewayId: "gw1", Status: api.DeploymentResponseStatusUNDEPLOYED}}
-	res, text := call(t, connect(t, s, who(testOrg, "ap:rest_api:manage")), "undeploy_api",
+	res, text := call(t, connect(t, s, who(testOrg, "ap:api:rest:manage")), "undeploy_api",
 		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw-typo", "confirm": true})
 	assert.False(t, res.IsError, "a repeat must stay safe")
 	assert.Contains(t, text, "Nothing to undeploy: orders-v1 has no running deployment on gateway gw-typo")
@@ -338,7 +338,7 @@ func TestUndeployAPI_NothingRunningSaysSo(t *testing.T) {
 func TestUndeployAPI_EmptyGatewayIsRefused(t *testing.T) {
 	s, f := newTestServer(t)
 	f.running = []api.DeploymentResponse{{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000001"), GatewayId: "gw1", Status: api.DeploymentResponseStatusDEPLOYED}}
-	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	cs := connect(t, s, who(testOrg, "ap:api:rest:manage"))
 	for _, gateway := range []string{"", "  "} {
 		res, text := call(t, cs, "undeploy_api", map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": gateway, "confirm": true})
 		assert.True(t, res.IsError)
@@ -350,7 +350,7 @@ func TestUndeployAPI_EmptyGatewayIsRefused(t *testing.T) {
 // Only the destructive tools take confirm, and it is required.
 func TestDestructiveTools_TakeConfirm(t *testing.T) {
 	s, _ := newTestServer(t)
-	res, err := connect(t, s, who(testOrg, "ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage")).
+	res, err := connect(t, s, who(testOrg, "ap:api:rest:manage", "ap:project:manage", "ap:gateway:manage")).
 		ListTools(context.Background(), nil)
 	require.NoError(t, err)
 	var withConfirm []string
@@ -374,7 +374,7 @@ func TestUndeployAPI_RefusedWithoutConfirm(t *testing.T) {
 	f.running = []api.DeploymentResponse{{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000001"), GatewayId: "gw1", Status: api.DeploymentResponseStatusDEPLOYED}}
 	var logs bytes.Buffer
 	s.logger = slog.New(slog.NewTextHandler(&logs, nil))
-	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	cs := connect(t, s, who(testOrg, "ap:api:rest:manage"))
 	args := map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "gatewayId": "gw1"}
 
 	res, text := call(t, cs, "undeploy_api", args)
@@ -392,7 +392,7 @@ func TestUndeployAPI_RefusedWithoutConfirm(t *testing.T) {
 func TestListAPIs_ProjectRule(t *testing.T) {
 	s, f := newTestServer(t)
 	f.listed = []object{{"id": "agent-1", "displayName": "Agent", "status": "CREATED"}}
-	cs := connect(t, s, who(testOrg, "ap:rest_api:read", "ap:llm_provider:read", "ap:mcp_proxy:read", "ap:agent_proxy:read"))
+	cs := connect(t, s, who(testOrg, "ap:api:rest:read", "ap:llm_provider:read", "ap:api:mcp:read", "ap:api:agent:read"))
 
 	res, text := call(t, cs, "list_apis", map[string]any{"apiType": "rest-api"})
 	assert.True(t, res.IsError)
@@ -424,7 +424,7 @@ func TestCheckRoutes_RefusesARouteWithNoScopes(t *testing.T) {
 // TestToolContract follows the console agent's main lint rules.
 func TestToolContract(t *testing.T) {
 	s, _ := newTestServer(t)
-	res, err := connect(t, s, who(testOrg, "ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage")).
+	res, err := connect(t, s, who(testOrg, "ap:api:rest:manage", "ap:project:manage", "ap:gateway:manage")).
 		ListTools(context.Background(), nil)
 	require.NoError(t, err)
 	verbNoun := regexp.MustCompile(`^(list|get|create|update|delete|deploy|undeploy)_[a-z_]+$`)
@@ -482,7 +482,7 @@ func TestMCPHandler_RefusesALoopbackCallWithAnotherHost(t *testing.T) {
 
 func TestDeleteAPI_ReportsWhatWasDeleted(t *testing.T) {
 	s, f := newTestServer(t)
-	cs := connect(t, s, who(testOrg, "ap:llm_proxy:manage"))
+	cs := connect(t, s, who(testOrg, "ap:api:llm:manage"))
 	args := map[string]any{"apiType": "llm-proxy", "apiId": "chat-proxy", "confirm": true}
 
 	res, text := call(t, cs, "delete_api", args)
@@ -531,7 +531,7 @@ func TestListAPIDeployments_ShapesItems(t *testing.T) {
 		{DeploymentId: uuidOf("aaaaaaaa-0000-0000-0000-000000000001"), Name: "d", GatewayId: "gw1", Status: api.DeploymentResponseStatusDEPLOYED},
 		failed,
 	}
-	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	cs := connect(t, s, who(testOrg, "ap:api:rest:manage"))
 
 	res, text := call(t, cs, "list_api_deployments", map[string]any{"apiType": "rest-api", "apiId": "orders-v1"})
 	require.False(t, res.IsError, text)
@@ -547,7 +547,7 @@ func TestListAPIDeployments_ShapesItems(t *testing.T) {
 func TestListAPIDeployments_PagesWithACursor(t *testing.T) {
 	s, f := newTestServer(t)
 	s.backend = shortPage{f}
-	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	cs := connect(t, s, who(testOrg, "ap:api:rest:manage"))
 	args := map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "limit": 1}
 
 	_, text := call(t, cs, "list_api_deployments", args)
@@ -578,7 +578,7 @@ func (failingDeployments) listDeployments(context.Context, caller, *apiType, str
 func TestListAPIDeployments_BackendErrorIsAToolError(t *testing.T) {
 	s, _ := newTestServer(t)
 	s.backend = failingDeployments{&fake{}}
-	res, _ := call(t, connect(t, s, who(testOrg, "ap:rest_api:manage")), "list_api_deployments",
+	res, _ := call(t, connect(t, s, who(testOrg, "ap:api:rest:manage")), "list_api_deployments",
 		map[string]any{"apiType": "rest-api", "apiId": "orders-v1"})
 	assert.True(t, res.IsError)
 }

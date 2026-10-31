@@ -26,7 +26,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:token:read`, `ap:gateway:token:manage`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:token:read`, `ap:gateway:token:manage`, `ap:gateway:read`, `ap:gateway:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -129,7 +129,7 @@ to enable zero-downtime rotation. Access is validated against the organization i
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:token:create`, `ap:gateway:token:manage`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:token:create`, `ap:gateway:token:manage`, `ap:gateway:manage`, `ap:manage`
 
 </aside>
 
@@ -254,7 +254,7 @@ token succeeds. Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:gateway:token:delete`, `ap:gateway:token:manage`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:gateway:token:delete`, `ap:gateway:token:manage`, `ap:gateway:manage`, `ap:manage`
 
 </aside>
 

@@ -29,7 +29,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:read`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:read`, `ap:api:rest:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -345,7 +345,7 @@ belong to the organization specified in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:create`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:create`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -541,6 +541,369 @@ Required scopes (the token must carry at least one of): `ap:rest_api:create`, `a
 |---|---|---|---|---|
 |201|Location|string|uri|URL of the newly created resource.|
 
+## Validate an OpenAPI specification
+
+<a id="opIdValidateOpenAPISpec"></a>
+
+`POST /rest-apis/validate-openapi`
+
+> Code samples
+
+```shell
+
+curl -X POST https://localhost:9243/api/v0.9/rest-apis/validate-openapi \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Content-Type: multipart/form-data' \
+  -H 'Accept: application/json' \
+  -F 'file=string' \
+  -F 'url=https://petstore3.swagger.io/api/v3/openapi.json'
+
+```
+
+Validates an OpenAPI 3.x specification without creating
+or modifying any resource. The spec may be supplied either as a
+multipart file upload (`file`) or as a URL (`url`) that the backend
+fetches server-side. Exactly one of `file` or `url` is required.
+Returns a structured result indicating whether the spec is valid and,
+if not, the list of validation errors.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:rest:create`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`
+
+</aside>
+
+<h3 id="validate-an-openapi-specification-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[OpenAPISpecFileRequest](schemas.md#schemaopenapispecfilerequest)|true|none|
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "isValid": true,
+  "errors": [
+    {
+      "message": "string",
+      "path": "string"
+    }
+  ],
+  "info": {
+    "title": "string",
+    "version": "string"
+  },
+  "content": "string"
+}
+```
+
+> 400 Response
+
+```json
+{
+  "status": "error",
+  "code": "VALIDATION_FAILED",
+  "message": "The request failed validation.",
+  "errors": [
+    {
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
+    }
+  ]
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 413 Response
+
+```json
+{
+  "status": "error",
+  "code": "PAYLOAD_TOO_LARGE",
+  "message": "The uploaded file exceeds the maximum allowed size."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="validate-an-openapi-specification-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Validation result (valid or invalid — both return 200)|[ValidateOpenAPIResponse](schemas.md#schemavalidateopenapiresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Payload Too Large. The uploaded file exceeds the maximum allowed size.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+## Create a REST API from an OpenAPI specification
+
+<a id="opIdImportOpenAPI"></a>
+
+`POST /rest-apis/import-openapi`
+
+> Code samples
+
+```shell
+
+curl -X POST https://localhost:9243/api/v0.9/rest-apis/import-openapi \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Content-Type: multipart/form-data' \
+  -H 'Accept: application/json' \
+  -F 'file=string' \
+  -F 'url=https://petstore3.swagger.io/api/v3/openapi.json' \
+  -F 'id=my-rest-api-handle' \
+  -F 'displayName=PizzaShackAPI' \
+  -F 'description=This is a simple API for Pizza Shack online pizza delivery store' \
+  -F 'context=/pizza' \
+  -F 'version=1.0.0' \
+  -F 'projectId=default-project'
+
+```
+
+Creates a new REST API by parsing an OpenAPI 3.x
+specification. The spec may be supplied either as a multipart file
+upload (`file`) or as a URL (`url`) that the backend fetches
+server-side. Exactly one of `file` or `url` is required. The backend
+extracts operations from the spec, creates the API, and persists the
+raw spec as the API definition document.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:rest:create`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`
+
+</aside>
+
+<h3 id="create-a-rest-api-from-an-openapi-specification-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[ImportOpenAPIRequest](schemas.md#schemaimportopenapirequest)|true|none|
+
+> Example responses
+>
+> 201 Response
+
+```json
+{
+  "id": "my-rest-api-handle",
+  "displayName": "PizzaShackAPI",
+  "description": "This is a simple API for Pizza Shack online pizza delivery store",
+  "context": "/pizza",
+  "version": "1.0.0",
+  "createdBy": "john.doe",
+  "updatedBy": "john.doe",
+  "projectId": "default-project",
+  "createdAt": "2023-10-12T10:30:00Z",
+  "updatedAt": "2023-10-12T10:30:00Z",
+  "readOnly": false,
+  "upstream": {
+    "main": {
+      "url": "http://prod-backend:5000/api/v2",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      }
+    },
+    "sandbox": {
+      "url": "http://prod-backend:5000/api/v2",
+      "auth": {
+        "type": "api-key",
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
+      }
+    }
+  },
+  "lifeCycleStatus": "CREATED",
+  "kind": "RestApi",
+  "transport": [
+    "http",
+    "https"
+  ],
+  "policies": [
+    {
+      "executionCondition": "request.header.x-custom == 'enabled'",
+      "name": "SET_HEADER",
+      "params": {
+        "key": "MyHeader",
+        "value": "MyValue"
+      },
+      "version": "v1"
+    }
+  ],
+  "operations": [
+    {
+      "name": "getPetById",
+      "description": "Find pet by ID",
+      "request": {
+        "method": "GET",
+        "path": "/pet/{petId}",
+        "policies": [
+          {
+            "executionCondition": "request.header.x-custom == 'enabled'",
+            "name": "SET_HEADER",
+            "params": {
+              "key": "MyHeader",
+              "value": "MyValue"
+            },
+            "version": "v1"
+          }
+        ]
+      }
+    }
+  ],
+  "channels": [
+    {
+      "name": "issues",
+      "description": "Channel for order events",
+      "request": {
+        "method": "SUB",
+        "name": "issues",
+        "policies": [
+          {
+            "executionCondition": "request.header.x-custom == 'enabled'",
+            "name": "SET_HEADER",
+            "params": {
+              "key": "MyHeader",
+              "value": "MyValue"
+            },
+            "version": "v1"
+          }
+        ]
+      }
+    }
+  ],
+  "subscriptionPlans": [
+    "Gold",
+    "Silver"
+  ]
+}
+```
+
+> 400 Response
+
+```json
+{
+  "status": "error",
+  "code": "VALIDATION_FAILED",
+  "message": "The request failed validation.",
+  "errors": [
+    {
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
+    }
+  ]
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 409 Response
+
+```json
+{
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "The request conflicts with the current state of the resource."
+}
+```
+
+> 413 Response
+
+```json
+{
+  "status": "error",
+  "code": "PAYLOAD_TOO_LARGE",
+  "message": "The uploaded file exceeds the maximum allowed size."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="create-a-rest-api-from-an-openapi-specification-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API created successfully|[RESTAPI](schemas.md#schemarestapi)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
+|413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Payload Too Large. The uploaded file exceeds the maximum allowed size.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the newly created resource.|
+
 ## List the versions of a REST API
 
 <a id="opIdListRESTAPIVersions"></a>
@@ -579,7 +942,7 @@ An empty result is a 200 with versionsAvailable false, not a 404.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:read`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:read`, `ap:api:rest:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -712,7 +1075,7 @@ in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:read`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:read`, `ap:api:rest:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -1004,7 +1367,7 @@ in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:update`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:update`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -1223,7 +1586,7 @@ in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:delete`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:delete`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -1307,6 +1670,236 @@ Required scopes (the token must carry at least one of): `ap:rest_api:delete`, `a
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
+## Get API definition
+
+<a id="opIdGetRESTAPISpec"></a>
+
+`GET /rest-apis/{restApiId}/openapi`
+
+> Code samples
+
+```shell
+
+curl -X GET https://localhost:9243/api/v0.9/rest-apis/{restApiId}/openapi \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
+
+```
+
+Returns the raw OpenAPI spec stored for this API as YAML. Returns 404 if no definition
+has been uploaded yet. The `content` field carries the spec text.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:rest:read`, `ap:api:rest:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
+
+</aside>
+
+<h3 id="get-api-definition-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|restApiId|path|string|true|**API ID** consisting of the **handle** (unique identifier) of the API.|
+
+#### Detailed descriptions
+
+**restApiId**: **API ID** consisting of the **handle** (unique identifier) of the API.
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "content": "string"
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "NOT_FOUND",
+  "message": "The specified resource does not exist."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="get-api-definition-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API definition retrieved successfully|[OpenAPIContent](schemas.md#schemaopenapicontent)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
+## Update API definition
+
+<a id="opIdUpdateRESTAPISpec"></a>
+
+`PUT /rest-apis/{restApiId}/openapi`
+
+> Code samples
+
+```shell
+
+curl -X PUT https://localhost:9243/api/v0.9/rest-apis/{restApiId}/openapi \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Content-Type: multipart/form-data' \
+  -H 'Accept: application/json' \
+  -F 'file=string' \
+  -F 'url=https://petstore3.swagger.io/api/v3/openapi.json'
+
+```
+
+Replaces (or creates) the OpenAPI/Swagger spec stored for this API. Accepts a
+multipart/form-data upload with a single `file` field containing the spec.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:api:rest:update`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`
+
+</aside>
+
+<h3 id="update-api-definition-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|restApiId|path|string|true|**API ID** consisting of the **handle** (unique identifier) of the API.|
+|body|body|[OpenAPISpecFileRequest](schemas.md#schemaopenapispecfilerequest)|true|none|
+
+#### Detailed descriptions
+
+**restApiId**: **API ID** consisting of the **handle** (unique identifier) of the API.
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "content": "string"
+}
+```
+
+> 400 Response
+
+```json
+{
+  "status": "error",
+  "code": "VALIDATION_FAILED",
+  "message": "The request failed validation.",
+  "errors": [
+    {
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
+    }
+  ]
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "NOT_FOUND",
+  "message": "The specified resource does not exist."
+}
+```
+
+> 413 Response
+
+```json
+{
+  "status": "error",
+  "code": "PAYLOAD_TOO_LARGE",
+  "message": "The uploaded file exceeds the maximum allowed size."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="update-api-definition-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API definition updated successfully|[OpenAPIContent](schemas.md#schemaopenapicontent)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
+|413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Payload Too Large. The uploaded file exceeds the maximum allowed size.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
+
 ## Get gateways for REST API
 
 <a id="opIdGetRESTAPIGateways"></a>
@@ -1332,7 +1925,7 @@ Access is validated against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:gateway:read`, `ap:rest_api:gateway:manage`, `ap:rest_api:manage`, `ap:gateway:read`, `ap:gateway:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:gateway:read`, `ap:api:rest:gateway:manage`, `ap:api:rest:read`, `ap:api:rest:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`, `ap:gateway:manage`, `ap:gateway:read`
 
 </aside>
 
@@ -1488,7 +2081,7 @@ in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:gateway:create`, `ap:rest_api:gateway:manage`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:gateway:create`, `ap:api:rest:gateway:manage`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`
 
 </aside>
 
@@ -1661,7 +2254,7 @@ allows external platforms to inject API keys to hybrid gateways.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:api_key:create`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:api_key:create`, `ap:api:rest:api_key:manage`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -1819,7 +2412,7 @@ This endpoint allows external platforms to rotate API keys on hybrid gateways.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:api_key:update`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:api_key:update`, `ap:api:rest:api_key:manage`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -1952,7 +2545,7 @@ to revoke API keys on hybrid gateways.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:api_key:delete`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:api:rest:api_key:delete`, `ap:api:rest:api_key:manage`, `ap:api:rest:manage`, `ap:api:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 

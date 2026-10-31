@@ -66,7 +66,7 @@ func TestLoadRoleScopeMap_AcceptsPluginScopeAfterMerge(t *testing.T) {
 	}
 
 	path := writeRolesFile(t, "widget-admin", "ap:widget_read")
-	m, err := loadRoleScopeMap(roleModeConfig(path), reg, testLogger())
+	m, err := loadRoleScopeMap(roleModeConfig(path), reg, nil, testLogger())
 	if err != nil {
 		t.Fatalf("loadRoleScopeMap: unexpected error for a plugin-declared scope: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestLoadRoleScopeMap_RejectsPluginScopeBeforeMerge(t *testing.T) {
 	reg := emptyRegistry(t)
 
 	path := writeRolesFile(t, "widget-admin", "ap:widget_read")
-	_, err := loadRoleScopeMap(roleModeConfig(path), reg, testLogger())
+	_, err := loadRoleScopeMap(roleModeConfig(path), reg, nil, testLogger())
 	if err == nil {
 		t.Fatal("expected an error for a scope missing from the registry, got nil")
 	}
@@ -105,7 +105,7 @@ func TestLoadRoleScopeMap_LoadedInScopeMode(t *testing.T) {
 	cfg := roleModeConfig(writeRolesFile(t, "widget-admin", "ap:widget_read"))
 	cfg.Auth.Authorization.Mode = config.AuthzModeScope
 
-	m, err := loadRoleScopeMap(cfg, reg, testLogger())
+	m, err := loadRoleScopeMap(cfg, reg, nil, testLogger())
 	if err != nil {
 		t.Fatalf("loadRoleScopeMap: unexpected error: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestLoadRoleScopeMap_LoadedInScopeMode(t *testing.T) {
 // loaded — config validation is what guarantees the path is set wherever a role
 // is actually named.
 func TestLoadRoleScopeMap_SkippedWhenUnconfigured(t *testing.T) {
-	m, err := loadRoleScopeMap(&config.Server{}, emptyRegistry(t), testLogger())
+	m, err := loadRoleScopeMap(&config.Server{}, emptyRegistry(t), nil, testLogger())
 	if err != nil {
 		t.Fatalf("loadRoleScopeMap: unexpected error: %v", err)
 	}
@@ -172,7 +172,9 @@ func TestShippedSampleRolesValidateAgainstShippedSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loading the shipped role-to-scope-mapping.yaml: %v", err)
 	}
-	if err := middleware.ValidateRoleScopeMap(m, reg); err != nil {
+	// Validated without the legacy mapping: the shipped roles grant permission-tree
+	// names only, so they must resolve against the spec alone.
+	if err := middleware.ValidateRoleScopeMap(m, reg, nil); err != nil {
 		t.Fatalf("shipped role-to-scope-mapping.yaml is not valid against the shipped spec: %v", err)
 	}
 
@@ -184,18 +186,16 @@ func TestShippedSampleRolesValidateAgainstShippedSpec(t *testing.T) {
 		}
 	}
 
-	// Roles span the platform: a role names Developer Portal scopes too, which
-	// this server mints but does not enforce. If the namespace-scoped validation
-	// above ever regresses to registry-only, this is what would start failing.
-	found := false
-	for _, s := range m["ap_admin"] {
-		if strings.HasPrefix(s, "dp:") {
-			found = true
-			break
+	// The shipped roles grant Platform API scopes only. A foreign namespace
+	// (the Developer Portal's dp:*) is still accepted by the validator — see the
+	// fixtures in middleware/role_scope_map_test.go — but nothing shipped here
+	// relies on it.
+	for role, scopes := range m {
+		for _, s := range scopes {
+			if !strings.HasPrefix(s, "ap:") {
+				t.Errorf("shipped role %q grants %q outside the ap: namespace", role, s)
+			}
 		}
-	}
-	if !found {
-		t.Fatalf("expected ap_admin to grant Developer Portal scopes: %v", m["ap_admin"])
 	}
 }
 

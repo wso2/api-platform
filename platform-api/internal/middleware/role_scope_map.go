@@ -82,12 +82,14 @@ var wellFormedScope = regexp.MustCompile(`^[a-z0-9_-]+(?::[a-z0-9_-]+)+$`)
 // Validation is namespace-scoped. A scope in this server's own namespace
 // (PlatformScopePrefix) must be declared in the OpenAPI spec — that includes
 // scopes contributed by compiled-in plugins, so this must run after the plugin
-// specs are merged. A scope in another component's namespace is checked only for
-// well-formedness: the roles file is where a role's grants across the whole
+// specs are merged — or be a pre-permission-tree name that legacy translates
+// (an operator's existing roles file keeps loading; ScopeEnforcer expands the
+// name per request). A scope in another component's namespace is checked only
+// for well-formedness: the roles file is where a role's grants across the whole
 // platform are described, and it is the only place a file-mode user's grants can
 // be expressed, so refusing scopes this server does not declare would make them
 // ungrantable.
-func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry) error {
+func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry, legacy LegacyScopeMap) error {
 	known := registry.AllScopes()
 	for role, scopes := range m {
 		for _, s := range scopes {
@@ -98,9 +100,16 @@ func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry) error 
 			if !strings.HasPrefix(s, PlatformScopePrefix) {
 				continue // another component's namespace — not ours to validate
 			}
-			if _, ok := known[s]; !ok {
-				return fmt.Errorf("role-to-scope-mapping.yaml: role %q references unknown scope %q — check the OpenAPI spec for valid scope names", role, s)
+			if _, ok := known[s]; ok {
+				continue
 			}
+			if _, ok := legacy[s]; ok {
+				continue // a pre-tree name — translated per request
+			}
+			if registry.IsReserved(s) {
+				continue // declared ahead of the operation that will accept it
+			}
+			return fmt.Errorf("role-to-scope-mapping.yaml: role %q references unknown scope %q — check the OpenAPI spec for valid scope names", role, s)
 		}
 	}
 	return nil

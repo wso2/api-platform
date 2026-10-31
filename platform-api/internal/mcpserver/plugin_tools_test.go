@@ -127,8 +127,8 @@ func TestPluginTool_ReplacesAnAPITypeBuiltIn(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.False(t, s.takesAPIType["deploy_api"])
-	assert.NotContains(t, toolNames(t, connect(t, s, who(testOrg, "ap:llm_proxy:manage"))), "deploy_api")
-	cs := connect(t, s, who(testOrg, "ap:rest_api:manage"))
+	assert.NotContains(t, toolNames(t, connect(t, s, who(testOrg, "ap:api:llm:manage"))), "deploy_api")
+	cs := connect(t, s, who(testOrg, "ap:api:rest:manage"))
 	assert.Contains(t, toolNames(t, cs), "deploy_api")
 	res, text := call(t, cs, "deploy_api", map[string]any{"name": "a"})
 	assert.False(t, res.IsError, text)

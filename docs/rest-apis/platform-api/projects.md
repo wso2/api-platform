@@ -38,7 +38,7 @@ Organization ID is automatically extracted from the token and does not need to b
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:project:create`, `ap:project:manage`
+Required scopes (the token must carry at least one of): `ap:project:create`, `ap:project:manage`, `ap:manage`
 
 </aside>
 
@@ -163,7 +163,7 @@ Organization ID is automatically extracted from the token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:project:read`, `ap:project:manage`
+Required scopes (the token must carry at least one of): `ap:project:read`, `ap:project:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -277,7 +277,7 @@ in the JWT token to ensure users can only access projects in their organization.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:project:read`, `ap:project:manage`
+Required scopes (the token must carry at least one of): `ap:project:read`, `ap:project:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -400,7 +400,7 @@ in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:project:update`, `ap:project:manage`
+Required scopes (the token must carry at least one of): `ap:project:update`, `ap:project:manage`, `ap:manage`
 
 </aside>
 
@@ -535,7 +535,7 @@ against the organization in the JWT token.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:project:delete`, `ap:project:manage`
+Required scopes (the token must carry at least one of): `ap:project:delete`, `ap:project:manage`, `ap:manage`
 
 </aside>
 

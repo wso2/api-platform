@@ -90,7 +90,7 @@ paths:
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateRoleScopeMap(map[string][]string{"ap_admin": tt.scopes}, registry)
+			err := ValidateRoleScopeMap(map[string][]string{"ap_admin": tt.scopes}, registry, nil)
 			switch {
 			case tt.wantErr == "" && err != nil:
 				t.Fatalf("unexpected error: %v", err)

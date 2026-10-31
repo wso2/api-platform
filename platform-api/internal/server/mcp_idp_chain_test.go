@@ -246,7 +246,7 @@ func TestMCPServer_OtherRoutesKeepTheirScopeCheck(t *testing.T) {
 		return w.Code
 	}
 	assert.Equal(t, http.StatusForbidden, status("/api/v0.9/mcp-proxies", "ap:project:read"))
-	assert.Equal(t, http.StatusOK, status("/api/v0.9/mcp-proxies", "ap:mcp_proxy:read"))
+	assert.Equal(t, http.StatusOK, status("/api/v0.9/mcp-proxies", "ap:api:mcp:read"))
 	assert.Equal(t, http.StatusForbidden, status("/api/v0.9/projects", "ap:gateway:read"))
 	assert.Equal(t, http.StatusOK, status("/api/v0.9/projects", "ap:project:read"))
 }

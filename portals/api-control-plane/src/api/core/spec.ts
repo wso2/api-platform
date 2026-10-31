@@ -114,4 +114,9 @@ export type ItemOf<Id extends OperationId> =
  * to `api/generated`. Scopes are interpreted by `src/permissions/evaluate.ts`;
  * other modules must not access `OPERATION_SCOPES` directly.
  */
-export { AP_SCOPES, OPERATION_SCOPES, type ApScope } from '../generated/operationScopes';
+export {
+  AP_SCOPES,
+  LEGACY_SCOPES,
+  OPERATION_SCOPES,
+  type ApScope,
+} from '../generated/operationScopes';

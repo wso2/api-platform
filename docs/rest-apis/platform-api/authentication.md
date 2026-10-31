@@ -75,7 +75,7 @@ uuid         = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"   # emitted as the `organi
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2a$12$..."     # bcrypt; htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-scopes        = "ap:organization:manage ap:rest_api:manage ap:gateway:manage"
+scopes        = "ap:organization:manage ap:api:rest:manage ap:gateway:manage"
 
 [platform_api.auth.jwt]
 issuer           = "platform-api"
@@ -149,17 +149,31 @@ roles        = ""               # e.g. "realm_access.roles" (Keycloak) or "roles
 
 ### Scope naming convention
 
-Scopes follow `ap:<resource>[:<subresource>]:<action>`:
+Scopes are permissions of the tree in `platform-api/resources/permission-tree.yaml`: a node path
+and an action, `ap:<node>[:<sub-node>...]:<action>`. Every API kind lives under `ap:api`
+(`ap:api:rest`, `ap:api:graphql`, `ap:api:llm`, `ap:api:mcp`, `ap:api:agent`); secrets and API
+keys under `ap:credential`; docs and thumbnails under `ap:content`.
 
 | Form | Grants |
 |---|---|
-| `ap:rest_api:read` | A single action on a resource |
-| `ap:rest_api:manage` | Every action on that resource (read, create, update, delete) |
-| `ap:rest_api:deployment:manage` | Every action on the **subresource** only — not on the parent `rest_api` |
+| `ap:api:rest:deployment:create` | One action on one node |
+| `ap:api:rest:deployment:manage` | Every action on that node and on every node beneath it |
+| `ap:api:rest:read` | Every read on that node and on every node beneath it (builds, deployments, key listings) |
+| `ap:api:rest:create` | Creating a REST API only — a parent's `create`, `update`, `delete`, `restore`, `undeploy` never reaches a child |
+| `ap:api:read`, `ap:api:manage` | Every read / every operation on every API kind |
+| `ap:read`, `ap:manage` | The root: every read / every operation of the Platform API |
 
-An operation may declare several acceptable scopes. The token needs **at least one** of them —
-which is why `ap:rest_api:create` and `ap:rest_api:manage` typically both appear on a create
-operation.
+Only `read` and `manage` flow down the tree. An operation's `security` block lists **every**
+scope that admits it — the node's own action and `manage`, `manage` on each ancestor and, for a
+read, `read` on each ancestor — and the token needs **at least one** of them. Nothing is inferred
+from the scope string at request time.
+
+**Pre-tree names.** Earlier releases named scopes per resource and verb (`ap:rest_api:manage`,
+`ap:llm_proxy:deployment:read`, `ap:api_key:all:manage`). The spec no longer declares them, but a
+token, IDP role or role file that still carries one keeps working: `legacy-scope-mapping.yaml`
+names the tree permission each one grants and the server translates them on every request. An old
+name reaches exactly the operations it reached before, plus only the reads a parent's `read` now
+flows down to.
 
 ### Validation modes
 
@@ -175,13 +189,13 @@ operation.
 roles:
   - name: platform-admin
     scopes:
-      - ap:organization:manage
-      - ap:rest_api:manage
-      - ap:gateway:manage
+      - ap:manage                            # the root admits every operation
+      - ap:credential:api_key:all:manage     # every user's API keys — never implied
   - name: platform-operator
     scopes:
       - ap:organization:read
-      - ap:rest_api:read
+      - ap:api:read
+      - ap:api:rest:deployment:manage
 ```
 
 ### Disabling scope checks
@@ -233,7 +247,11 @@ which part of a credential was wrong.
 
 ## Scope Reference
 
-The complete set of scopes defined by this API, as declared in the OpenAPI `OAuth2Security` scheme.
+The complete set of scopes defined by this API, as declared in the OpenAPI `OAuth2Security` scheme
+(the permission tree's permissions that at least one operation accepts, plus the spec's
+`x-reserved-permissions`: permissions a role may grant ahead of the operation that will accept
+them, marked *reserved* below — no operation admits them yet; pre-tree names are not
+declared — see [Scope naming convention](#scope-naming-convention)).
 
 - OAuth2, flow: `clientCredentials`
 - Token URL declared in the spec: `https://localhost:9243/oauth2/token`
@@ -246,7 +264,106 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 
 |Scope|Scope Description|
 |---|---|
-|ap:api_key:read|Read API keys owned by the current user|
+|ap:api:agent:api_key:create|Create an API key for an Agent proxy|
+|ap:api:agent:api_key:delete|Revoke an API key of an Agent proxy|
+|ap:api:agent:api_key:manage|Full access to an Agent proxy's API keys|
+|ap:api:agent:api_key:read|Read Agent proxy API keys|
+|ap:api:agent:api_key:update|Update an API key of an Agent proxy|
+|ap:api:agent:build:create|Prepare a build of an Agent proxy|
+|ap:api:agent:build:delete|Delete a build of an Agent proxy|
+|ap:api:agent:build:manage|Full access to Agent proxy builds|
+|ap:api:agent:build:read|Read Agent proxy builds|
+|ap:api:agent:create|Create an Agent proxy|
+|ap:api:agent:delete|Delete an Agent proxy|
+|ap:api:agent:deployment:create|Deploy an Agent proxy|
+|ap:api:agent:deployment:delete|Delete an Agent proxy deployment|
+|ap:api:agent:deployment:manage|Full access to Agent proxy deployments|
+|ap:api:agent:deployment:read|Read Agent proxy deployments|
+|ap:api:agent:deployment:restore|Restore an Agent proxy deployment|
+|ap:api:agent:deployment:undeploy|Undeploy an Agent proxy deployment|
+|ap:api:agent:manage|Full access to Agent proxies|
+|ap:api:agent:read|Read Agent proxies|
+|ap:api:agent:update|Update an Agent proxy|
+|ap:api:graphql:api_key:create|Create an API key for a GraphQL API|
+|ap:api:graphql:api_key:delete|Delete an API key of a GraphQL API|
+|ap:api:graphql:api_key:manage|Full access to a GraphQL API's API keys|
+|ap:api:graphql:api_key:update|Update an API key of a GraphQL API|
+|ap:api:graphql:build:create|Prepare a build of a GraphQL API|
+|ap:api:graphql:build:delete|Delete a build of a GraphQL API|
+|ap:api:graphql:build:manage|Full access to GraphQL API builds|
+|ap:api:graphql:build:read|Read GraphQL API builds|
+|ap:api:graphql:create|Create a GraphQL API|
+|ap:api:graphql:delete|Delete a GraphQL API|
+|ap:api:graphql:deployment:create|Deploy a GraphQL API|
+|ap:api:graphql:deployment:delete|Delete a GraphQL API deployment|
+|ap:api:graphql:deployment:manage|Full access to GraphQL API deployments|
+|ap:api:graphql:deployment:read|Read GraphQL API deployments|
+|ap:api:graphql:deployment:restore|Restore a GraphQL API deployment|
+|ap:api:graphql:deployment:undeploy|Undeploy a GraphQL API deployment|
+|ap:api:graphql:gateway:create|Add gateways to a GraphQL API|
+|ap:api:graphql:gateway:manage|Full access to a GraphQL API's gateways|
+|ap:api:graphql:gateway:read|Read a GraphQL API's gateways|
+|ap:api:graphql:manage|Full access to GraphQL APIs|
+|ap:api:graphql:read|Read GraphQL APIs|
+|ap:api:graphql:update|Update a GraphQL API|
+|ap:api:llm:api_key:create|Create an LLM proxy API key|
+|ap:api:llm:api_key:delete|Delete an LLM proxy API key|
+|ap:api:llm:api_key:manage|Full access to LLM proxy API keys|
+|ap:api:llm:api_key:read|Read LLM proxy API keys|
+|ap:api:llm:build:create|Prepare a build of an LLM proxy|
+|ap:api:llm:build:delete|Delete a build of an LLM proxy|
+|ap:api:llm:build:manage|Full access to LLM proxy builds|
+|ap:api:llm:build:read|Read LLM proxy builds|
+|ap:api:llm:create|Create an LLM proxy|
+|ap:api:llm:delete|Delete an LLM proxy|
+|ap:api:llm:deployment:create|Deploy an LLM proxy|
+|ap:api:llm:deployment:delete|Delete an LLM proxy deployment|
+|ap:api:llm:deployment:manage|Full access to LLM proxy deployments|
+|ap:api:llm:deployment:read|Read LLM proxy deployments|
+|ap:api:llm:deployment:restore|Restore an LLM proxy deployment|
+|ap:api:llm:deployment:undeploy|Undeploy an LLM proxy deployment|
+|ap:api:llm:manage|Full access to LLM proxies|
+|ap:api:llm:read|Read LLM proxies|
+|ap:api:llm:update|Update an LLM proxy|
+|ap:api:manage|Full access to APIs of every kind|
+|ap:api:mcp:build:create|Prepare a build of an MCP proxy|
+|ap:api:mcp:build:delete|Delete a build of an MCP proxy|
+|ap:api:mcp:build:manage|Full access to MCP proxy builds|
+|ap:api:mcp:build:read|Read MCP proxy builds|
+|ap:api:mcp:create|Create an MCP proxy|
+|ap:api:mcp:delete|Delete an MCP proxy|
+|ap:api:mcp:deployment:create|Deploy an MCP proxy|
+|ap:api:mcp:deployment:delete|Delete an MCP proxy deployment|
+|ap:api:mcp:deployment:manage|Full access to MCP proxy deployments|
+|ap:api:mcp:deployment:read|Read MCP proxy deployments|
+|ap:api:mcp:deployment:restore|Restore an MCP proxy deployment|
+|ap:api:mcp:deployment:undeploy|Undeploy an MCP proxy deployment|
+|ap:api:mcp:manage|Full access to MCP proxies|
+|ap:api:mcp:read|Read MCP proxies|
+|ap:api:mcp:update|Update an MCP proxy|
+|ap:api:read|Read APIs of every kind|
+|ap:api:rest:api_key:create|Create an API key for a REST API|
+|ap:api:rest:api_key:delete|Delete an API key of a REST API|
+|ap:api:rest:api_key:manage|Full access to a REST API's API keys|
+|ap:api:rest:api_key:update|Update an API key of a REST API|
+|ap:api:rest:build:create|Prepare a build of a REST API|
+|ap:api:rest:build:delete|Delete a build of a REST API|
+|ap:api:rest:build:manage|Full access to REST API builds|
+|ap:api:rest:build:read|Read REST API builds|
+|ap:api:rest:create|Create a REST API|
+|ap:api:rest:delete|Delete a REST API|
+|ap:api:rest:deployment:create|Deploy a REST API|
+|ap:api:rest:deployment:delete|Delete a REST API deployment|
+|ap:api:rest:deployment:manage|Full access to REST API deployments|
+|ap:api:rest:deployment:read|Read REST API deployments|
+|ap:api:rest:deployment:restore|Restore a REST API deployment|
+|ap:api:rest:deployment:undeploy|Undeploy a REST API deployment|
+|ap:api:rest:gateway:create|Add gateways to a REST API|
+|ap:api:rest:gateway:manage|Full access to a REST API's gateways|
+|ap:api:rest:gateway:read|Read a REST API's gateways|
+|ap:api:rest:manage|Full access to REST APIs|
+|ap:api:rest:read|Read REST APIs|
+|ap:api:rest:update|Update a REST API|
 |ap:application:api_key:create|Create an application API key|
 |ap:application:api_key:delete|Delete an application API key|
 |ap:application:api_key:manage|Full access to application API keys|
@@ -261,26 +378,41 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 |ap:application:manage|Full access to applications|
 |ap:application:read|Read applications|
 |ap:application:update|Update an application|
-|ap:docs:manage|Full access to API documents|
-|ap:docs:read|Read API documents|
+|ap:content:document:manage|Full access to API documents|
+|ap:content:document:read|Read API documents|
+|ap:content:manage|Full access to API content (docs and thumbnails, every API kind)|
+|ap:content:read|Read API content (docs and thumbnails, every API kind)|
+|ap:content:thumbnail:manage|Full access to API thumbnails|
+|ap:content:thumbnail:read|Read API thumbnails|
+|ap:credential:api_key:all:manage|Manage API keys created by any user in the organization|
+|ap:credential:api_key:read|Read API keys owned by the current user|
+|ap:credential:secret:create|Create a secret|
+|ap:credential:secret:delete|Delete a secret|
+|ap:credential:secret:manage|Full access to Secrets|
+|ap:credential:secret:read|Read Secrets|
+|ap:credential:secret:update|Update a secret|
 |ap:gateway:create|Create a gateway|
 |ap:gateway:delete|Delete a gateway|
 |ap:gateway:manage|Full access to gateways|
 |ap:gateway:manifest:read|Read a gateway manifest|
 |ap:gateway:read|Read gateways|
-|ap:gateway_custom_policy:create|Create a gateway custom policy|
-|ap:gateway_custom_policy:delete|Delete a gateway custom policy|
-|ap:gateway_custom_policy:manage|Full access to gateway custom policies|
-|ap:gateway_custom_policy:read|Read gateway custom policies|
 |ap:gateway:token:create|Create a gateway token|
 |ap:gateway:token:delete|Delete a gateway token|
 |ap:gateway:token:manage|Full access to gateway tokens|
 |ap:gateway:token:read|Read gateway tokens|
 |ap:gateway:update|Update a gateway|
+|ap:gateway_policy:create|Create a gateway custom policy|
+|ap:gateway_policy:delete|Delete a gateway custom policy|
+|ap:gateway_policy:manage|Full access to Gateway custom policies|
+|ap:gateway_policy:read|Read Gateway custom policies|
 |ap:llm_provider:api_key:create|Create an LLM provider API key|
 |ap:llm_provider:api_key:delete|Delete an LLM provider API key|
 |ap:llm_provider:api_key:manage|Full access to LLM provider API keys|
 |ap:llm_provider:api_key:read|Read LLM provider API keys|
+|ap:llm_provider:build:create|Prepare a build of an LLM provider|
+|ap:llm_provider:build:delete|Delete a build of an LLM provider|
+|ap:llm_provider:build:manage|Full access to an LLM provider's builds|
+|ap:llm_provider:build:read|Read builds of an LLM provider|
 |ap:llm_provider:create|Create an LLM provider|
 |ap:llm_provider:delete|Delete an LLM provider|
 |ap:llm_provider:deployment:create|Deploy an LLM provider|
@@ -291,72 +423,43 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 |ap:llm_provider:deployment:undeploy|Undeploy an LLM provider deployment|
 |ap:llm_provider:manage|Full access to LLM providers|
 |ap:llm_provider:read|Read LLM providers|
+|ap:llm_provider:template:create|Create an LLM provider template|
+|ap:llm_provider:template:delete|Delete an LLM provider template|
+|ap:llm_provider:template:manage|Full access to LLM provider templates|
+|ap:llm_provider:template:read|Read LLM provider templates|
+|ap:llm_provider:template:update|Update an LLM provider template|
 |ap:llm_provider:update|Update an LLM provider|
-|ap:llm_proxy:api_key:create|Create an LLM proxy API key|
-|ap:llm_proxy:api_key:delete|Delete an LLM proxy API key|
-|ap:llm_proxy:api_key:manage|Full access to LLM proxy API keys|
-|ap:llm_proxy:api_key:read|Read LLM proxy API keys|
-|ap:llm_proxy:create|Create an LLM proxy|
-|ap:llm_proxy:delete|Delete an LLM proxy|
-|ap:llm_proxy:deployment:create|Deploy an LLM proxy|
-|ap:llm_proxy:deployment:delete|Delete an LLM proxy deployment|
-|ap:llm_proxy:deployment:manage|Full access to LLM proxy deployments|
-|ap:llm_proxy:deployment:read|Read LLM proxy deployments|
-|ap:llm_proxy:deployment:restore|Restore an LLM proxy deployment|
-|ap:llm_proxy:deployment:undeploy|Undeploy an LLM proxy deployment|
-|ap:llm_proxy:manage|Full access to LLM proxies|
-|ap:llm_proxy:read|Read LLM proxies|
-|ap:llm_proxy:update|Update an LLM proxy|
-|ap:llm_template:create|Create an LLM provider template|
-|ap:llm_template:delete|Delete an LLM provider template|
-|ap:llm_template:manage|Full access to LLM provider templates|
-|ap:llm_template:read|Read LLM provider templates|
-|ap:llm_template:update|Update an LLM provider template|
-|ap:mcp_proxy:create|Create an MCP proxy|
-|ap:mcp_proxy:delete|Delete an MCP proxy|
-|ap:mcp_proxy:deployment:create|Deploy an MCP proxy|
-|ap:mcp_proxy:deployment:delete|Delete an MCP proxy deployment|
-|ap:mcp_proxy:deployment:manage|Full access to MCP proxy deployments|
-|ap:mcp_proxy:deployment:read|Read MCP proxy deployments|
-|ap:mcp_proxy:deployment:restore|Restore an MCP proxy deployment|
-|ap:mcp_proxy:deployment:undeploy|Undeploy an MCP proxy deployment|
-|ap:mcp_proxy:manage|Full access to MCP proxies|
-|ap:mcp_proxy:read|Read MCP proxies|
-|ap:mcp_proxy:update|Update an MCP proxy|
+|ap:manage|Full access to every Platform API resource and operation|
 |ap:organization:create|Create an organization|
 |ap:organization:manage|Full access to an organization|
 |ap:organization:read|Read an organization|
+|ap:portal:create|Create an API Portal|
+|ap:portal:delete|Delete an API Portal|
+|ap:portal:draft:manage|Full access to Portal drafts|
+|ap:portal:draft:read|Read Portal drafts|
+|ap:portal:draft:update|Edit an API's draft for one portal|
+|ap:portal:graphql_api:deprecate|Deprecate Portal Graphql Api|
+|ap:portal:graphql_api:manage|Full access to Publishing GraphQL APIs to a portal|
+|ap:portal:graphql_api:publish|Publish Portal Graphql Api|
+|ap:portal:graphql_api:unpublish|Unpublish Portal Graphql Api|
+|ap:portal:manage|Full access to API Portals and publishing to them|
+|ap:portal:mcp_proxy:manage|Full access to publishing MCP proxies to an API Portal (reserved — no operation accepts it yet)|
+|ap:portal:mcp_proxy:publish|Publish an MCP proxy to an API Portal (reserved — no operation accepts it yet)|
+|ap:portal:mcp_proxy:unpublish|Unpublish an MCP proxy from an API Portal (reserved — no operation accepts it yet)|
+|ap:portal:publication:read|Read Portal listings (incl. /api-publications)|
+|ap:portal:read|Read API Portals and publishing to them|
+|ap:portal:rest_api:deprecate|Deprecate Portal Rest Api|
+|ap:portal:rest_api:manage|Full access to Publishing REST APIs to a portal|
+|ap:portal:rest_api:publish|Publish Portal Rest Api|
+|ap:portal:rest_api:unpublish|Unpublish Portal Rest Api|
+|ap:portal:update|Update an API Portal|
 |ap:project:create|Create a project|
 |ap:project:delete|Delete a project|
 |ap:project:manage|Full access to projects|
 |ap:project:read|Read projects|
 |ap:project:update|Update a project|
-|ap:rest_api:api_key:create|Create an API key for a REST API|
-|ap:rest_api:api_key:delete|Delete an API key of a REST API|
-|ap:rest_api:api_key:manage|Full access to a REST API's API keys|
-|ap:rest_api:api_key:update|Update an API key of a REST API|
-|ap:rest_api:build:create|Prepare a build of a REST API|
-|ap:rest_api:build:manage|Full access to a REST API's builds|
-|ap:rest_api:build:read|Read a REST API's builds|
-|ap:rest_api:create|Create a REST API|
-|ap:rest_api:delete|Delete a REST API|
-|ap:rest_api:deployment:create|Deploy a REST API|
-|ap:rest_api:deployment:delete|Delete a REST API deployment|
-|ap:rest_api:deployment:manage|Full access to REST API deployments|
-|ap:rest_api:deployment:read|Read REST API deployments|
-|ap:rest_api:deployment:restore|Restore a REST API deployment|
-|ap:rest_api:deployment:undeploy|Undeploy a REST API deployment|
-|ap:rest_api:gateway:create|Add gateways to a REST API|
-|ap:rest_api:gateway:manage|Full access to a REST API's gateways|
-|ap:rest_api:gateway:read|Read a REST API's gateways|
-|ap:rest_api:manage|Full access to REST APIs|
-|ap:rest_api:read|Read REST APIs|
-|ap:rest_api:update|Update a REST API|
-|ap:secret:create|Create a secret|
-|ap:secret:delete|Delete a secret|
-|ap:secret:manage|Full access to secrets|
-|ap:secret:read|Read secrets|
-|ap:secret:update|Update a secret|
+|ap:publication:read|Read an API's publication status across every portal|
+|ap:read|Read every Platform API resource|
 |ap:subscription:create|Create a subscription|
 |ap:subscription:delete|Delete a subscription|
 |ap:subscription:manage|Full access to subscriptions|
@@ -367,5 +470,3 @@ login endpoint described under [Obtaining a token](#obtaining-a-token)
 |ap:subscription_plan:manage|Full access to subscription plans|
 |ap:subscription_plan:read|Read subscription plans|
 |ap:subscription_plan:update|Update a subscription plan|
-|ap:thumbnail:manage|Full access to API thumbnails|
-|ap:thumbnail:read|Read API thumbnails|

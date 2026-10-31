@@ -237,7 +237,7 @@ Deploy a new LLM provider configuration.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:create`, `ap:llm_provider:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:create`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 
@@ -561,7 +561,7 @@ Retrieve a list of all LLM providers.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:read`, `ap:llm_provider:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:read`, `ap:llm_provider:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -653,7 +653,7 @@ Retrieve the complete configuration for a specific LLM provider.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:read`, `ap:llm_provider:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:read`, `ap:llm_provider:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -1155,7 +1155,7 @@ Update the configuration of an existing LLM provider.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:update`, `ap:llm_provider:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:update`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 
@@ -1474,7 +1474,7 @@ Remove an LLM provider.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:delete`, `ap:llm_provider:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:delete`, `ap:llm_provider:manage`, `ap:manage`
 
 </aside>
 
@@ -1577,7 +1577,7 @@ Retrieve a list of LLM proxies that use the specified LLM provider.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:deployment:read`, `ap:llm_proxy:deployment:manage`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:api:llm:deployment:read`, `ap:api:llm:deployment:manage`, `ap:api:llm:read`, `ap:api:llm:manage`, `ap:api:read`, `ap:api:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -1716,7 +1716,7 @@ authenticate requests to the LLM provider when API key validation is enabled.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:api_key:create`, `ap:llm_provider:api_key:manage`, `ap:llm_provider:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:api_key:create`, `ap:llm_provider:api_key:manage`, `ap:llm_provider:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -1838,7 +1838,7 @@ Returns all API keys associated with the specified LLM provider. The plain key v
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:api_key:read`, `ap:llm_provider:api_key:manage`, `ap:llm_provider:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:api_key:read`, `ap:llm_provider:api_key:manage`, `ap:llm_provider:read`, `ap:llm_provider:manage`, `ap:read`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 
@@ -1942,7 +1942,7 @@ Deletes the key from the database and broadcasts a revoke event to the allowed g
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_provider:api_key:delete`, `ap:llm_provider:api_key:manage`, `ap:llm_provider:manage`, `ap:api_key:all:manage`
+Required scopes (the token must carry at least one of): `ap:llm_provider:api_key:delete`, `ap:llm_provider:api_key:manage`, `ap:llm_provider:manage`, `ap:manage`, `ap:credential:api_key:all:manage`
 
 </aside>
 

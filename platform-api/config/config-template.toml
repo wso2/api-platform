@@ -60,6 +60,10 @@
 db_schema_path                = "./internal/database/schema.sql"
 openapi_spec_path             = "./resources/openapi.yaml"
 llm_template_definitions_path = "./resources/default-llm-provider-templates"
+# Pre-permission-tree scope names (ap:rest_api:manage, ...) and the permission
+# each one grants; tokens and role mappings carrying them keep working through
+# it. Set to "" to accept only the scopes the OpenAPI spec declares.
+legacy_scope_mapping_path     = "./resources/legacy-scope-mapping.yaml"
 
 # Byte cap when fetching a remote OpenAPI spec by URL. <= 0 uses the
 # built-in 5 MiB default.

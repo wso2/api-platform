@@ -38,7 +38,7 @@ A valid Bearer JWT token with the `ap:organization:create` or `ap:organization:m
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:organization:create`, `ap:organization:manage`
+Required scopes (the token must carry at least one of): `ap:organization:create`, `ap:organization:manage`, `ap:manage`
 
 </aside>
 
@@ -140,7 +140,7 @@ collection envelope.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:organization:read`, `ap:organization:manage`
+Required scopes (the token must carry at least one of): `ap:organization:read`, `ap:organization:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -229,7 +229,7 @@ Returns the organization with the specified handle (id).
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:organization:read`, `ap:organization:manage`
+Required scopes (the token must carry at least one of): `ap:organization:read`, `ap:organization:manage`, `ap:read`, `ap:manage`
 
 </aside>
 
@@ -319,7 +319,7 @@ Returns only headers without a response body.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:organization:read`, `ap:organization:manage`
+Required scopes (the token must carry at least one of): `ap:organization:read`, `ap:organization:manage`, `ap:read`, `ap:manage`
 
 </aside>
 

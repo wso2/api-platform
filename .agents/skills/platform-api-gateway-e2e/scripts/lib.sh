@@ -117,7 +117,7 @@ gw_mgmt_base() {
 
 # --- auth ---------------------------------------------------------------------
 b64url() { printf '%s' "$1" | base64 | tr '+/' '-_' | tr -d '=\n'; }
-E2E_SCOPES="ap:organization:manage ap:project:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:llm_template:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:agent_proxy:manage ap:secret:manage ap:api_key:read ap:api_key:all:manage"
+E2E_SCOPES="ap:api:manage ap:llm_provider:manage ap:gateway:manage ap:gateway_policy:manage ap:organization:manage ap:project:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:content:manage ap:portal:manage ap:credential:secret:manage ap:credential:api_key:read ap:credential:api_key:all:manage"
 # platform-api runs with internal_token + skip_validation, so an unsigned token is accepted.
 mint_token() {
   local h p
