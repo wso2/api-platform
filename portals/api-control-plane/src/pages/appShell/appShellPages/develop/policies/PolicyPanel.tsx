@@ -17,25 +17,25 @@
  */
 
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Box,
   Card,
   CardContent,
   Divider,
   InputAdornment,
   MenuItem,
+  Select,
   Stack,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronDown, Globe, Search } from '@wso2/oxygen-ui-icons-react';
+import { Globe, Route, Search } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useIsPolicyHubConfigured, type PolicySummary } from '@/api/resources/policyHub';
 import { useUpdateRestApi, type Policy, type RestApi } from '@/api/resources/restApis';
+import { SecondaryText } from '@/components/common/SecondaryText';
+import { hairline, iconTileSx } from '@/theme/receipes';
 import { useNotifications } from '@/components/Notifications';
 import { PolicyIndicator, SwaggerResourceRow } from '@/components/SwaggerOperationsView';
 import { AttachedPolicyList } from './AttachedPolicyList';
@@ -48,17 +48,13 @@ import {
   toEditableOperations,
   withPolicyEdits,
 } from '../../apis/utils/developEdit';
+import { countPolicyChanges } from './policyChanges';
 import { getDraggedPolicy, type PolicyScope, scopeId } from './policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from './PolicyConfigDrawer';
 import { PoliciesPageTitle } from './PoliciesPageTitle';
 import { ReadOnlyPoliciesNotice } from './ReadOnlyPoliciesNotice';
 
 const messages = defineMessages({
-  heading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.heading',
-    defaultMessage: 'Policies',
-    description: 'Heading over the panel where policies are attached. Noun.',
-  },
   hint: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.hint',
     defaultMessage: 'Drag policies from the right onto the API or a resource.',
@@ -71,7 +67,7 @@ const messages = defineMessages({
   },
   globalPolicies: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalPolicies',
-    defaultMessage: 'Global policies (API level)',
+    defaultMessage: 'Global policies',
     description: 'Section for policies applying to every resource of the API.',
   },
   globalEmpty: {
@@ -80,24 +76,30 @@ const messages = defineMessages({
   },
   globalDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalDescription',
-    defaultMessage: 'Policies applied here will affect all API resources',
+    defaultMessage: 'Applied to every resource in this API',
   },
   resources: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resources',
-    defaultMessage: 'Resource-wise policies',
+    defaultMessage: 'Resource policies',
     description: "Section listing the API's operations, each with its own policies. Noun.",
   },
   resourcesDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourcesDescription',
-    defaultMessage: 'Attach policies only to the specific resources',
+    defaultMessage: 'Run after global policies, only on the selected resource',
   },
   searchResources: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.searchResources',
-    defaultMessage: 'Search resources',
+    defaultMessage: 'Search resources by path',
   },
   allMethods: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.allMethods',
     defaultMessage: 'All methods',
+    description: 'Option that shows resources of every HTTP method.',
+  },
+  methodFilterLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.methodFilterLabel',
+    defaultMessage: 'Filter resources by method',
+    description: 'Accessible name of the group of HTTP method filter buttons.',
   },
   noResources: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noResources',
@@ -110,8 +112,8 @@ const messages = defineMessages({
   },
   resourceEmpty: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty',
-    defaultMessage: 'Drag and drop policies here, or use Add Policy.',
-    description: '"Add Policy" is the label of a button in this same list.',
+    defaultMessage: 'Drag and drop policies here',
+    description: 'Drop hint inside a resource that has no policies yet.',
   },
   policyUpdated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyUpdated',
@@ -129,6 +131,13 @@ const messages = defineMessages({
   },
 });
 
+/** Conventional HTTP method order for the filter; unknown methods sort last. */
+const METHOD_ORDER = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+const methodRank = (method: string): number => {
+  const rank = METHOD_ORDER.indexOf(method.toUpperCase());
+  return rank === -1 ? METHOD_ORDER.length : rank;
+};
+
 type EditState = { scope: PolicyScope; policyIndex: number; policy: Policy } | null;
 
 /**
@@ -141,9 +150,15 @@ function DropZone({
   onEnter,
   onLeave,
   onDrop,
+  bleed = false,
   children,
 }: {
   active: boolean;
+  /**
+   * Stretches the zone to the edges of a padded container (a resource row's body), so the
+   * drag-over ring lands on that container's edge instead of floating inside it.
+   */
+  bleed?: boolean;
   /** Rejects drops (and never highlights) — used for a read-only API. */
   disabled?: boolean;
   onEnter: () => void;
@@ -164,13 +179,19 @@ function DropZone({
         event.preventDefault();
         if (!disabled) onDrop();
       }}
-      sx={{
-        border: '2px dashed',
-        borderColor: active ? 'primary.main' : 'transparent',
-        borderRadius: 1.5,
-        outline: active ? 'none' : undefined,
-        p: active ? 0.5 : 0,
-        transition: 'border-color .12s',
+      // A thin ring and a faint tint mark the target while a policy hovers it. They sit
+      // on the zone's own edge and take no space, so nothing shifts under the cursor.
+      sx={(theme) => {
+        const palette = theme.vars?.palette ?? theme.palette;
+        return {
+          ...(bleed ? { mx: -1.5, my: -1, px: 1.5, py: 1 } : null),
+          backgroundColor: active
+            ? `color-mix(in srgb, ${palette.primary.main} 8%, transparent)`
+            : 'transparent',
+          borderRadius: `${theme.shape.borderRadius}px`,
+          outline: active ? `${hairline(theme)} ${palette.primary.main}` : 'none',
+          transition: 'background-color .12s, outline-color .12s',
+        };
       }}
     >
       {children}
@@ -205,10 +226,17 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
   // Only the fields `save` actually submits count towards "unsaved" — not the
   // resource search/filter or which config drawer is open.
-  const { dirty, markSaved } = useDirtyTracking({ apiPolicies, operations });
+  const { dirty, markSaved, saved } = useDirtyTracking({ apiPolicies, operations });
+  // A dirty page always has at least one edit, even if the diff cannot see which.
+  const changeCount = dirty
+    ? Math.max(1, countPolicyChanges(saved, { apiPolicies, operations }))
+    : 0;
 
   const methods = useMemo(
-    () => [...new Set(operations.map((operation) => operation.method))].sort(),
+    () =>
+      [...new Set(operations.map((operation) => operation.method))].sort(
+        (a, b) => methodRank(a) - methodRank(b) || a.localeCompare(b),
+      ),
     [operations],
   );
   const visibleOperations = operations
@@ -331,176 +359,167 @@ export function PolicyPanel({ api }: { api: RestApi }) {
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {/* LEFT: Policies (drop targets) */}
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
-          <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
-            <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography sx={{ fontWeight: 700 }} variant="h6">
-                <FormattedMessage {...messages.heading} />
-              </Typography>
-            </Box>
-            <Divider />
-            <CardContent sx={{ px: { lg: 5, xs: 2 }, py: 2 }}>
-              {/* Global / API-level */}
-              <Card
-                sx={{
-                  borderRadius: 2,
-                  mb: 3,
-                  p: 2.5,
-                }}
-              >
-                <Stack alignItems="center" direction="row" spacing={1.25}>
-                  <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, display: 'flex', p: 1 }}>
-                    <Globe size={18} />
-                  </Box>
-                  <Typography sx={{ fontWeight: 700 }} variant="subtitle1">
+          {/* Global / API-level */}
+          <Card sx={{ mb: 2 }}>
+            <CardContent sx={{ p: 2 }}>
+              <Stack alignItems="center" direction="row" spacing={1.5} sx={{ mb: 1.5 }}>
+                <Box sx={(theme) => iconTileSx(theme, 36)}>
+                  <Globe size={18} />
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 700, lineHeight: 1.3 }} variant="subtitle2">
                     <FormattedMessage {...messages.globalPolicies} />
                   </Typography>
-                </Stack>
-                <Typography color="text.secondary" sx={{ mb: 2, mt: 0.75 }} variant="body2">
-                  <FormattedMessage {...messages.globalDescription} />
-                </Typography>
-                <DropZone
-                  active={activeZone === scopeId({ kind: 'api' })}
-                  disabled={readOnly}
-                  onDrop={() => dropOnScope({ kind: 'api' })}
-                  onEnter={() => setActiveZone(scopeId({ kind: 'api' }))}
-                  onLeave={() => setActiveZone(null)}
-                >
-                  <AttachedPolicyList
-                    canAdd={hubEnabled}
-                    emptyText={readOnly ? undefined : intl.formatMessage(messages.globalEmpty)}
-                    onAdd={() => {
-                      setEditing(null);
-                      setScope({ kind: 'api' });
-                      setPicked(null);
-                    }}
-                    onEdit={(i) => openEdit({ kind: 'api' }, i)}
-                    onReorder={(from, to) => reorderAt({ kind: 'api' }, from, to)}
-                    onRemove={(i) => removeAt({ kind: 'api' }, i)}
-                    policies={apiPolicies}
-                    readOnly={readOnly}
-                    showHeader={false}
-                  />
-                </DropZone>
-              </Card>
+                  <SecondaryText sx={{ display: 'block', lineHeight: 1.3 }} variant="caption">
+                    <FormattedMessage {...messages.globalDescription} />
+                  </SecondaryText>
+                </Box>
+              </Stack>
+              <DropZone
+                active={activeZone === scopeId({ kind: 'api' })}
+                disabled={readOnly}
+                onDrop={() => dropOnScope({ kind: 'api' })}
+                onEnter={() => setActiveZone(scopeId({ kind: 'api' }))}
+                onLeave={() => setActiveZone(null)}
+              >
+                <AttachedPolicyList
+                  canAdd={hubEnabled}
+                  emptyText={readOnly ? undefined : intl.formatMessage(messages.globalEmpty)}
+                  onAdd={() => {
+                    setEditing(null);
+                    setScope({ kind: 'api' });
+                    setPicked(null);
+                  }}
+                  onEdit={(i) => openEdit({ kind: 'api' }, i)}
+                  onReorder={(from, to) => reorderAt({ kind: 'api' }, from, to)}
+                  onRemove={(i) => removeAt({ kind: 'api' }, i)}
+                  policies={apiPolicies}
+                  readOnly={readOnly}
+                  showHeader={false}
+                  variant="chips"
+                />
+              </DropZone>
+            </CardContent>
+          </Card>
 
-              <Card sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                <Accordion
-                  defaultExpanded
-                  disableGutters
-                  elevation={0}
-                  sx={{ bgcolor: 'transparent', '&:before': { display: 'none' } }}
-                >
-                  <AccordionSummary
-                    expandIcon={<ChevronDown size={18} />}
-                    sx={{ px: 2.5, py: 1.25 }}
-                  >
-                    <Box>
-                      <Typography sx={{ fontWeight: 700 }}>
-                        <FormattedMessage {...messages.resources} />
-                      </Typography>
-                      <Typography color="text.secondary" variant="body2">
-                        <FormattedMessage {...messages.resourcesDescription} />
-                      </Typography>
-                    </Box>
-                  </AccordionSummary>
-                  <AccordionDetails sx={{ px: 2.5, pb: 2.5 }}>
-                    <Stack direction={{ sm: 'row', xs: 'column' }} spacing={1.5} sx={{ mb: 2 }}>
-                      <TextField
-                        fullWidth
-                        onChange={(event) => setResourceSearch(event.target.value)}
-                        placeholder={intl.formatMessage(messages.searchResources)}
-                        size="small"
-                        slotProps={{
-                          input: {
-                            endAdornment: (
-                              <InputAdornment position="end">
-                                <Search size={18} />
-                              </InputAdornment>
-                            ),
-                          },
-                        }}
-                        value={resourceSearch}
-                      />
-                      <TextField
-                        onChange={(event) => setMethodFilter(event.target.value)}
-                        select
-                        size="small"
-                        sx={{ minWidth: 180 }}
-                        value={methodFilter}
-                      >
-                        <MenuItem value="all">
-                          <FormattedMessage {...messages.allMethods} />
-                        </MenuItem>
-                        {methods.map((method) => (
-                          <MenuItem key={method} value={method}>
-                            {method}
+          {/* Resource-wise (rows keep their own look) */}
+          <Card>
+            <CardContent sx={{ p: 2 }}>
+              <Stack alignItems="center" direction="row" spacing={1.5} sx={{ mb: 1.5 }}>
+                <Box sx={(theme) => iconTileSx(theme, 36)}>
+                  <Route size={18} />
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontWeight: 700, lineHeight: 1.3 }} variant="subtitle2">
+                    <FormattedMessage {...messages.resources} />
+                  </Typography>
+                  <SecondaryText sx={{ display: 'block', lineHeight: 1.3 }} variant="caption">
+                    <FormattedMessage {...messages.resourcesDescription} />
+                  </SecondaryText>
+                </Box>
+              </Stack>
+              <TextField
+                fullWidth
+                onChange={(event) => setResourceSearch(event.target.value)}
+                placeholder={intl.formatMessage(messages.searchResources)}
+                size="small"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <>
+                        <Divider flexItem orientation="vertical" />
+                        <Select
+                          disableUnderline
+                          inputProps={{
+                            'aria-label': intl.formatMessage(messages.methodFilterLabel),
+                          }}
+                          onChange={(event) => setMethodFilter(event.target.value)}
+                          sx={{ minWidth: 150, px: 1 }}
+                          value={methodFilter}
+                          variant="standard"
+                        >
+                          <MenuItem value="all">
+                            <FormattedMessage {...messages.allMethods} />
                           </MenuItem>
-                        ))}
-                      </TextField>
-                    </Stack>
-                    {visibleOperations.length === 0 ? (
-                      <Typography color="text.secondary" variant="body2">
-                        <FormattedMessage
-                          {...(operations.length === 0
-                            ? messages.noResources
-                            : messages.noMatchingResources)}
-                        />
-                      </Typography>
-                    ) : (
-                      <Stack spacing={1}>
-                        {visibleOperations.map(({ operation: op, index }) => {
-                          const zid = scopeId({ kind: 'operation', index });
-                          // The "/" fallback is a URL path, not prose — kept out of
-                          // JSX so it is never mistaken for translatable text.
-                          const displayPath = op.path || '/';
-                          return (
-                            <SwaggerResourceRow
-                              badge={<PolicyIndicator policies={op.policies ?? []} />}
-                              // An imported contract carries a summary; a
-                              // hand-added resource usually only has the name it
-                              // was given, so that stands in for it.
-                              description={op.description || op.name}
-                              key={index}
-                              method={op.method}
-                              path={displayPath}
-                            >
-                              <DropZone
-                                active={activeZone === zid}
-                                disabled={readOnly}
-                                onDrop={() => dropOnScope({ kind: 'operation', index })}
-                                onEnter={() => setActiveZone(zid)}
-                                onLeave={() => setActiveZone(null)}
-                              >
-                                <AttachedPolicyList
-                                  canAdd={hubEnabled}
-                                  emptyText={
-                                    readOnly
-                                      ? undefined
-                                      : intl.formatMessage(messages.resourceEmpty)
-                                  }
-                                  onAdd={() => {
-                                    setEditing(null);
-                                    setScope({ kind: 'operation', index });
-                                    setPicked(null);
-                                  }}
-                                  onEdit={(i) => openEdit({ kind: 'operation', index }, i)}
-                                  onReorder={(from, to) =>
-                                    reorderAt({ kind: 'operation', index }, from, to)
-                                  }
-                                  onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
-                                  policies={op.policies || []}
-                                  readOnly={readOnly}
-                                  showHeader={false}
-                                />
-                              </DropZone>
-                            </SwaggerResourceRow>
-                          );
-                        })}
-                      </Stack>
-                    )}
-                  </AccordionDetails>
-                </Accordion>
-              </Card>
+                          {methods.map((method) => (
+                            <MenuItem key={method} value={method}>
+                              {method}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </>
+                    ),
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Search size={18} />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+                sx={{ '& .MuiInputBase-root': { pr: 0 }, mb: 2 }}
+                value={resourceSearch}
+              />
+              {visibleOperations.length === 0 ? (
+                <Typography color="text.secondary" variant="body2">
+                  <FormattedMessage
+                    {...(operations.length === 0
+                      ? messages.noResources
+                      : messages.noMatchingResources)}
+                  />
+                </Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {visibleOperations.map(({ operation: op, index }) => {
+                    const zid = scopeId({ kind: 'operation', index });
+                    // The "/" fallback is a URL path, not prose — kept out of
+                    // JSX so it is never mistaken for translatable text.
+                    const displayPath = op.path || '/';
+                    return (
+                      <SwaggerResourceRow
+                        badge={<PolicyIndicator policies={op.policies ?? []} />}
+                        // An imported contract carries a summary; a
+                        // hand-added resource usually only has the name it
+                        // was given, so that stands in for it.
+                        description={op.description || op.name}
+                        key={index}
+                        method={op.method}
+                        path={displayPath}
+                      >
+                        <DropZone
+                          active={activeZone === zid}
+                          bleed
+                          disabled={readOnly}
+                          onDrop={() => dropOnScope({ kind: 'operation', index })}
+                          onEnter={() => setActiveZone(zid)}
+                          onLeave={() => setActiveZone(null)}
+                        >
+                          <AttachedPolicyList
+                            canAdd={hubEnabled}
+                            emptyText={
+                              readOnly ? undefined : intl.formatMessage(messages.resourceEmpty)
+                            }
+                            onAdd={() => {
+                              setEditing(null);
+                              setScope({ kind: 'operation', index });
+                              setPicked(null);
+                            }}
+                            onEdit={(i) => openEdit({ kind: 'operation', index }, i)}
+                            onReorder={(from, to) =>
+                              reorderAt({ kind: 'operation', index }, from, to)
+                            }
+                            onRemove={(i) => removeAt({ kind: 'operation', index }, i)}
+                            inheritedPolicies={apiPolicies}
+                            policies={op.policies || []}
+                            readOnly={readOnly}
+                            showHeader={false}
+                            variant="resource"
+                          />
+                        </DropZone>
+                      </SwaggerResourceRow>
+                    );
+                  })}
+                </Stack>
+              )}
             </CardContent>
           </Card>
         </Box>
@@ -509,7 +528,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
             for a read-only API: still browsable, but nothing can be attached. */}
         {hubEnabled && (
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
-            <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
+            <Card sx={{ height: '100%', overflow: 'hidden' }}>
               <CardContent sx={{ height: 620, p: 2 }}>
                 <AvailablePoliciesPanel disabled={readOnly} onSelect={pickFromCatalog} />
               </CardContent>
@@ -520,6 +539,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
 
       {!readOnly && (
         <SaveBar
+          changeCount={changeCount}
           dirty={dirty}
           disabled={!restApiId}
           onCancel={cancel}

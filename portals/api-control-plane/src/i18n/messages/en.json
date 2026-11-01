@@ -864,6 +864,10 @@
     "defaultMessage": "gateways",
     "description": "Plural noun for gateways, used inside the limit-reached sentence."
   },
+  "apiControlPlane.hooks.useResourceLimits.componentPortals": {
+    "defaultMessage": "portals",
+    "description": "Plural noun for developer portals, used inside the limit-reached sentence."
+  },
   "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
     "defaultMessage": "APIs",
     "description": "Plural noun for APIs, used inside the limit-reached sentence."
@@ -1676,10 +1680,11 @@
     "description": "Heading of the drawer for picking an earlier deployment to put back in service."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.cancel": {
-    "defaultMessage": "Cancel"
+    "defaultMessage": "Discard",
+    "description": "Throws away the unsaved edits and restores the last saved state. Verb."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.save": {
-    "defaultMessage": "Save",
+    "defaultMessage": "Save changes",
     "description": "Default label on the save bar button. Verb phrase."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.saving": {
@@ -1689,6 +1694,10 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.unsaved": {
     "defaultMessage": "You have unsaved changes",
     "description": "Shown on the save bar while the panel has edits that have not been saved yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.unsavedCount": {
+    "defaultMessage": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+    "description": "Shown on the save bar. {count} is how many edits have not been saved yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentBody.empty": {
     "defaultMessage": "This document has no content."
@@ -1925,6 +1934,10 @@
     "defaultMessage": "Policies",
     "description": "Heading over the list of policies attached at this scope. Noun."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.inheritedFromGlobal": {
+    "defaultMessage": "Inherited from global",
+    "description": "Legend for the dashed chips: policies this resource gets from the API-level section."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.remove": {
     "defaultMessage": "Remove",
     "description": "Tooltip on the button that detaches a policy. Verb."
@@ -1933,12 +1946,21 @@
     "defaultMessage": "Remove policy",
     "description": "Accessible label for the remove button on one attached policy."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.reorderHint": {
+    "defaultMessage": "Drag to reorder this resource’s policies",
+    "description": "Hint under a resource’s policy chips."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.allCategories": {
     "defaultMessage": "All",
     "description": "Placeholder shown when no category filters are selected."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categories": {
-    "defaultMessage": "Categories"
+    "defaultMessage": "Categories",
+    "description": "Accessible name of the category filter dropdown. Plural noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categoriesSelected": {
+    "defaultMessage": "{count} categories",
+    "description": "Shown in the category dropdown when several categories are selected. {count} is a number."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription": {
     "defaultMessage": "No policies match the filter."
@@ -1953,20 +1975,16 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.loadError": {
     "defaultMessage": "Unable to load policies from the Policy Hub."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.next": {
-    "defaultMessage": "Next",
-    "description": "Pagination button for the next page of the catalog."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.policyHub": {
     "defaultMessage": "Policy Hub",
     "description": "Link opening the Policy Hub website. Product name — leave untranslated."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.previous": {
-    "defaultMessage": "Previous",
-    "description": "Pagination button for the previous page of the catalog."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.searchPlaceholder": {
     "defaultMessage": "Search policies"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.subtitle": {
+    "defaultMessage": "Drag onto Global policies or a resource",
+    "description": "Hint under the catalog heading about how to attach a policy."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.version": {
     "defaultMessage": "v{version}",
@@ -1993,6 +2011,18 @@
     "defaultMessage": "Policies",
     "description": "Heading of the Policies page of an API. Noun."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyChip.edit": {
+    "defaultMessage": "Edit",
+    "description": "Tooltip on the button that reconfigures an attached policy. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyChip.editLabel": {
+    "defaultMessage": "Edit policy",
+    "description": "Accessible label for the edit button on one attached policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyChip.removeLabel": {
+    "defaultMessage": "Remove policy",
+    "description": "Accessible label for the remove button on one attached policy."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy": {
     "defaultMessage": "Attach policy",
     "description": "Attaches the configured policy to the selected scope. Verb phrase."
@@ -2018,6 +2048,14 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.noParameters": {
     "defaultMessage": "This policy has no configurable parameters."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.readyToAttach": {
+    "defaultMessage": "Ready to attach",
+    "description": "Footer status when every parameter is valid and the policy can be attached."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.readyToSave": {
+    "defaultMessage": "Ready to save",
+    "description": "Footer status when every parameter is valid and the edits can be saved."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.savePolicy": {
     "defaultMessage": "Save policy",
     "description": "Confirms edits to an already-attached policy. Verb phrase."
@@ -2027,16 +2065,17 @@
     "description": "Drawer heading. {policyName} is the policy’s catalog name, backend data; do not translate it."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.allMethods": {
-    "defaultMessage": "All methods"
+    "defaultMessage": "All methods",
+    "description": "Option that shows resources of every HTTP method."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalDescription": {
-    "defaultMessage": "Policies applied here will affect all API resources"
+    "defaultMessage": "Applied to every resource in this API"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalEmpty": {
     "defaultMessage": "Drag and drop policies here to apply across all resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalPolicies": {
-    "defaultMessage": "Global policies (API level)",
+    "defaultMessage": "Global policies",
     "description": "Section for policies applying to every resource of the API."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.heading": {
@@ -2050,6 +2089,10 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.hubUnavailable": {
     "defaultMessage": "Policy Hub is not configured; policies cannot be added.",
     "description": "Shown instead of the instruction when no Policy Hub URL is set."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.methodFilterLabel": {
+    "defaultMessage": "Filter resources by method",
+    "description": "Accessible name of the group of HTTP method filter buttons."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noMatchingResources": {
     "defaultMessage": "No resources match the filters."
@@ -2067,61 +2110,180 @@
     "description": "Toast after editing an attached policy; the change is not persisted until Save."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty": {
-    "defaultMessage": "Drag and drop policies here, or use Add Policy.",
-    "description": "\"Add Policy\" is the label of a button in this same list."
+    "defaultMessage": "Drag and drop policies here",
+    "description": "Drop hint inside a resource that has no policies yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resources": {
-    "defaultMessage": "Resource-wise policies",
+    "defaultMessage": "Resource policies",
     "description": "Section listing the API's operations, each with its own policies. Noun."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourcesDescription": {
-    "defaultMessage": "Attach policies only to the specific resources"
+    "defaultMessage": "Run after global policies, only on the selected resource"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved": {
     "defaultMessage": "Policies saved."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.searchResources": {
-    "defaultMessage": "Search resources"
+    "defaultMessage": "Search resources by path"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body": {
     "defaultMessage": "This API was created from a gateway. You can view its policies, but attach, edit, remove and reorder actions are managed by the gateway and are unavailable in the API Control Plane.",
     "description": "Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.addEntry": {
     "defaultMessage": "Add entry",
     "description": "Adds another key/value pair to a map parameter. Verb phrase."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addItem": {
-    "defaultMessage": "Add item",
-    "description": "Adds another entry to a list parameter. Verb phrase."
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.booleanFalse": {
+    "defaultMessage": "false",
+    "description": "Text beside a switch that is off."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.advancedSettings": {
-    "defaultMessage": "Advanced Settings",
-    "description": "Toggle revealing the parameters the policy marks as advanced."
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.booleanTrue": {
+    "defaultMessage": "true",
+    "description": "Text beside a switch that is on."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.keyPlaceholder": {
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.deleteEntry": {
+    "defaultMessage": "Delete {name}",
+    "description": "Accessible label for the button removing one key/value pair. {name} is the entry key, or the word for an unnamed entry."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.hideValue": {
+    "defaultMessage": "Hide {label}",
+    "description": "Accessible label for the button masking a field again. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.keyLabel": {
     "defaultMessage": "Key",
-    "description": "Placeholder for the name side of a key/value parameter pair. Noun."
+    "description": "Accessible label for the name side of a key/value pair. Noun."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeEntryLabel": {
-    "defaultMessage": "Remove entry",
-    "description": "Accessible label for the button deleting one key/value pair."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeItemLabel": {
-    "defaultMessage": "Remove item",
-    "description": "Accessible label for the button deleting one entry of a list parameter."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.requiredMarker": {
-    "defaultMessage": "*",
-    "description": "Marker appended to a required field’s label. Includes its leading space; adjust or drop the space to suit the locale’s typography."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.selectPlaceholder": {
-    "defaultMessage": "Select…",
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.selectPlaceholder": {
+    "defaultMessage": "Select...",
     "description": "Empty option shown before a value is chosen from a dropdown."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.valuePlaceholder": {
-    "defaultMessage": "Value",
-    "description": "Placeholder for the value side of a key/value parameter pair. Noun."
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.showValue": {
+    "defaultMessage": "Show {label}",
+    "description": "Accessible label for the button revealing a masked field. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.tagPlaceholder": {
+    "defaultMessage": "Type a value and press enter",
+    "description": "Placeholder of the input that collects a list of values."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.unnamedEntry": {
+    "defaultMessage": "entry",
+    "description": "Stands in for the key of a key/value pair that has none yet. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.add": {
+    "defaultMessage": "Add",
+    "description": "Confirms a new policy configuration. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Dismisses the form without saving. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.close": {
+    "defaultMessage": "Close",
+    "description": "Dismisses a read-only view of the policy. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.fixFields": {
+    "defaultMessage": "{count, plural, one {Fix the highlighted field to continue.} other {Fix the # highlighted fields to continue.}}",
+    "description": "Banner above the form after a submit attempt with validation problems. {count} is how many fields have one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.goToField": {
+    "defaultMessage": "Go to field",
+    "description": "Scrolls to and focuses the field a validation problem is about. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.needsAttention": {
+    "defaultMessage": "Needs attention",
+    "description": "Heading of the panel listing the validation problems still to fix."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.ready": {
+    "defaultMessage": "Ready",
+    "description": "Footer status shown when the form has no validation problems. Adjective."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.rootPath": {
+    "defaultMessage": "Parameters",
+    "description": "Names the whole form in a validation message that is not about one field. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.showAllErrors": {
+    "defaultMessage": "Show all errors",
+    "description": "Checkbox that reveals every validation error in the form at once."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.showLess": {
+    "defaultMessage": "Show less",
+    "description": "Collapses an expanded description. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.showMore": {
+    "defaultMessage": "Show more",
+    "description": "Expands a truncated description. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.statusToFix": {
+    "defaultMessage": "{count} to fix",
+    "description": "Chip showing how many validation problems remain. {count} is a number."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.toggleProblems": {
+    "defaultMessage": "Show or hide the list of problems",
+    "description": "Accessible label for the chip that expands or collapses the validation problems panel."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.update": {
+    "defaultMessage": "Update",
+    "description": "Confirms edits to an existing policy configuration. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.addItem": {
+    "defaultMessage": "Add Item",
+    "description": "Adds another entry to a list of objects. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.advancedSettings": {
+    "defaultMessage": "Advanced Settings",
+    "description": "Accessible label for the section holding the parameters the policy marks as advanced."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.advancedSettingsCount": {
+    "defaultMessage": "Advanced settings ({count})",
+    "description": "Heading of the advanced parameters section. {count} is how many it holds."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.chooseAtLeastOne": {
+    "defaultMessage": "Configure at least one",
+    "description": "Legend of a group of options where any combination may be selected."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.chooseOne": {
+    "defaultMessage": "Choose one",
+    "description": "Legend of a group of options where exactly one is selected."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.clearField": {
+    "defaultMessage": "Clear {label}",
+    "description": "Accessible label for the button resetting an optional section. {label} is the section name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.collapseField": {
+    "defaultMessage": "Collapse {label}",
+    "description": "Accessible label for the button hiding a field’s contents. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.deleteItem": {
+    "defaultMessage": "Delete Item {number}",
+    "description": "Accessible label for the button removing one list entry. {number} is its 1-based position."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.deprecated": {
+    "defaultMessage": "Deprecated",
+    "description": "Badge on a parameter the policy marks as deprecated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.expandField": {
+    "defaultMessage": "Expand {label}",
+    "description": "Accessible label for the button revealing a field’s contents. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.gatewayDefaultHint": {
+    "defaultMessage": "Leave empty to use the gateway’s configured value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.itemLabel": {
+    "defaultMessage": "Item {number}",
+    "description": "Label of one entry in a list. {number} is its 1-based position."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.requiredMarker": {
+    "defaultMessage": "*",
+    "description": "Marker beside the label of a required parameter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.showLess": {
+    "defaultMessage": "Show less",
+    "description": "Collapses an expanded description. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.showMore": {
+    "defaultMessage": "Show more",
+    "description": "Expands a truncated description. Verb phrase."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.routings.ResourcesPanel.add": {
     "defaultMessage": "Add"

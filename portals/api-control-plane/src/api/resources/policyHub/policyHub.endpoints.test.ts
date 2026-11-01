@@ -47,6 +47,11 @@ describe('buildPolicyQuery', () => {
     );
   });
 
+  it('adds a trimmed search term and omits a blank one', () => {
+    expect(buildPolicyQuery(1, 20, [], '  jwt ')).toBe('offset=0&limit=20&search=jwt');
+    expect(buildPolicyQuery(1, 20, [], '   ')).toBe('offset=0&limit=20');
+  });
+
   it('omits categories when empty', () => {
     expect(buildPolicyQuery(2, 10, [])).toBe('offset=10&limit=10');
   });
@@ -132,6 +137,36 @@ describe('policyHub endpoints (MSW fetch)', () => {
     expect(definition).toMatchObject({ name: 'rewrite', version: '2.0.0' });
     expect(definition.schema.type).toBe('object');
     expect(definition.schema.properties?.['New Path']).toMatchObject({ type: 'string' });
+  });
+
+  it('getPolicyDefinition keeps the parameters as authored, cross-field rules included', async () => {
+    const { getPolicyDefinition } = await loadEndpoints();
+    const yaml = [
+      'name: auth',
+      'version: 1.0.0',
+      'displayName: Auth',
+      'parameters:',
+      '  type: object',
+      '  properties:',
+      '    endpoint:',
+      '      type: string',
+      '    token:',
+      '      type: string',
+      '  oneOf:',
+      '    - required: [endpoint]',
+      '    - required: [token]',
+      'systemParameters:',
+      '  type: object',
+    ].join('\n');
+    server.use(
+      http.get(`${HUB}/policies/auth/versions/1.0.0/definition`, () => HttpResponse.text(yaml)),
+    );
+    const definition = await getPolicyDefinition('auth', '1.0.0');
+    expect(definition.displayName).toBe('Auth');
+    expect(definition.parameters).toMatchObject({
+      oneOf: [{ required: ['endpoint'] }, { required: ['token'] }],
+    });
+    expect(definition.systemParameters).toMatchObject({ type: 'object' });
   });
 
   it('rejects with an http-kind ApiError carrying the status on a 500', async () => {

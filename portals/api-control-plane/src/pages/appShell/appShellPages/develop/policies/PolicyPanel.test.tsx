@@ -53,10 +53,10 @@ describe('PolicyPanel', () => {
     expect(screen.getByText(/This API was created from a gateway/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Edit policy')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Remove policy')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     // Nothing to interact with that could make the page dirty either.
     await user.keyboard('{Tab}');
-    expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    expect(screen.queryByText(/unsaved change/)).not.toBeInTheDocument();
   });
 
   it('keeps the editing controls for a control-plane API', () => {
@@ -67,12 +67,28 @@ describe('PolicyPanel', () => {
     expect(screen.getAllByLabelText('Remove policy').length).toBeGreaterThan(0);
   });
 
-  it('opens with the resource-wise policies section expanded', () => {
+  it('shows the global and resource sections with a method filter', () => {
     renderPanel(false);
 
-    expect(screen.getByRole('button', { name: /Resource-wise policies/ })).toHaveAttribute(
-      'aria-expanded',
-      'true',
+    expect(screen.getByText('Global policies')).toBeInTheDocument();
+    expect(screen.getByText('Applied to every resource in this API')).toBeInTheDocument();
+    expect(screen.getByText('Resource policies')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Filter resources by method' })).toHaveTextContent(
+      'All methods',
     );
+    expect(screen.getByPlaceholderText('Search resources by path')).toBeInTheDocument();
+  });
+
+  it('numbers the global policies as pills that can be edited and removed', () => {
+    const api = aRestApi({ policies: [{ name: 'cors', params: {}, version: 'v1' }] });
+    renderWithProviders(
+      <ApiScopeProvider orgId={ORG}>
+        <PolicyPanel api={api} />
+      </ApiScopeProvider>,
+    );
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Edit policy').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Remove policy').length).toBeGreaterThan(0);
   });
 });

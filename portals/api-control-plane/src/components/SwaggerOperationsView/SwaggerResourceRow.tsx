@@ -21,6 +21,7 @@ import { ChevronDown, ChevronUp } from '@wso2/oxygen-ui-icons-react';
 import { useId, useState, type ReactNode } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 
+import { SecondaryText } from '@/components/common/SecondaryText';
 import { hairline } from '@/theme/receipes';
 import { MethodBadge } from './MethodBadge';
 import { methodPalette } from './methodPalette';
@@ -125,9 +126,9 @@ export function SwaggerResourceRow({
             </Typography>
           )}
           {description && (
-            <Typography color="text.secondary" noWrap variant="body2">
+            <SecondaryText noWrap variant="body2">
               {description}
-            </Typography>
+            </SecondaryText>
           )}
         </Box>
 

@@ -18,30 +18,34 @@
 
 import {
   Avatar,
-  Autocomplete,
   Box,
   Button,
+  Card,
+  CardContent,
   Checkbox,
   Chip,
-  CircularProgress,
-  FormControl,
-  FormLabel,
+  Divider,
   InputAdornment,
+  MenuItem,
+  Select,
+  Skeleton,
   Stack,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ExternalLink, GripVertical, Search, Shield } from '@wso2/oxygen-ui-icons-react';
-import { useMemo, useState } from 'react';
+import { ExternalLink, GripVertical, Library, Search, Shield } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import {
   usePolicyHubCategories,
-  usePolicyHubPolicies,
+  usePolicyHubInfinitePolicies,
   type PolicySummary,
 } from '@/api/resources/policyHub';
+import { SecondaryText } from '@/components/common/SecondaryText';
 import { EmptyState, ErrorState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
+import { iconTileSx } from '@/theme/receipes';
 import { POLICY_DND_MIME, setDraggedPolicy } from './policyDnd';
 
 const messages = defineMessages({
@@ -67,6 +71,18 @@ const messages = defineMessages({
   categories: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categories',
     defaultMessage: 'Categories',
+    description: 'Accessible name of the category filter dropdown. Plural noun.',
+  },
+  categoriesSelected: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categoriesSelected',
+    defaultMessage: '{count} categories',
+    description:
+      'Shown in the category dropdown when several categories are selected. {count} is a number.',
+  },
+  subtitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.subtitle',
+    defaultMessage: 'Drag onto Global policies or a resource',
+    description: 'Hint under the catalog heading about how to attach a policy.',
   },
   loadError: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.loadError',
@@ -86,19 +102,38 @@ const messages = defineMessages({
     description:
       'Version chip on a catalog entry. {version} is backend data; keep the "v" prefix if it reads naturally.',
   },
-  previous: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.previous',
-    defaultMessage: 'Previous',
-    description: 'Pagination button for the previous page of the catalog.',
-  },
-  next: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.next',
-    defaultMessage: 'Next',
-    description: 'Pagination button for the next page of the catalog.',
-  },
 });
 
 const PAGE_SIZE = 20;
+
+/** How long typing must pause before the catalog is searched. */
+const SEARCH_DEBOUNCE_MS = 300;
+
+/** Placeholder cards while the first page, or the next one, is on its way. */
+const INITIAL_SKELETONS = 8;
+const NEXT_PAGE_SKELETONS = 3;
+
+/** A catalog card's outline while its policy is still loading. */
+function PolicySkeletonCard() {
+  return (
+    <Card>
+      <CardContent
+        sx={{
+          alignItems: 'center',
+          display: 'flex',
+          gap: 1,
+          p: 1.25,
+          '&:last-child': { pb: 1.25 },
+        }}
+      >
+        <Skeleton height={16} variant="rounded" width={16} />
+        <Skeleton height={28} variant="rounded" width={28} />
+        <Skeleton sx={{ flex: 1 }} variant="text" />
+        <Skeleton height={22} variant="rounded" width={44} />
+      </CardContent>
+    </Card>
+  );
+}
 
 /**
  * The "Available Policies" panel: the Policy Hub catalog rendered inline, with
@@ -116,38 +151,64 @@ export function AvailablePoliciesPanel({
   const intl = useIntl();
   const [search, setSearch] = useState('');
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
-  const [page, setPage] = useState(1);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // The hub does the searching, so wait for the typing to settle before asking it.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const categoriesQuery = usePolicyHubCategories();
-  const policiesQuery = usePolicyHubPolicies(page, PAGE_SIZE, activeCategories);
+  const policiesQuery = usePolicyHubInfinitePolicies(PAGE_SIZE, debouncedSearch, activeCategories);
+  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = policiesQuery;
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const list = policiesQuery.data?.policies || [];
-    if (!term) return list;
-    return list.filter((p) =>
-      [p.displayName, p.name, p.description, ...p.tags]
-        .filter(Boolean)
-        .some((v) => v!.toLowerCase().includes(term)),
+  const policies = useMemo(
+    () => policiesQuery.data?.pages.flatMap((page) => page.policies) ?? [],
+    [policiesQuery.data],
+  );
+
+  // Load the next page when the end of the list scrolls into view. Re-observing after
+  // each page keeps loading when a short page leaves the end still on screen.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    // A failed page stops the loading: retrying on every re-render would hammer the hub.
+    if (
+      !sentinel ||
+      !hasNextPage ||
+      isFetchNextPageError ||
+      typeof IntersectionObserver === 'undefined'
+    ) {
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      { root: scrollRef.current, rootMargin: '120px' },
     );
-  }, [policiesQuery.data, search]);
-
-  const total = policiesQuery.data?.total ?? 0;
-  const hasMore = page * PAGE_SIZE < total;
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, policies.length]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Box
-        sx={{
-          alignItems: 'center',
-          display: 'flex',
-          justifyContent: 'space-between',
-          mb: 1.5,
-        }}
-      >
-        <Typography sx={{ fontWeight: 700 }} variant="h6">
-          <FormattedMessage {...messages.heading} />
-        </Typography>
+      <Stack alignItems="center" direction="row" spacing={1.5} sx={{ mb: 1.5 }}>
+        <Box sx={(theme) => iconTileSx(theme, 36)}>
+          <Library size={18} />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 700, lineHeight: 1.3 }} variant="subtitle2">
+            <FormattedMessage {...messages.heading} />
+          </Typography>
+          <SecondaryText sx={{ display: 'block', lineHeight: 1.3 }} variant="caption">
+            <FormattedMessage {...messages.subtitle} />
+          </SecondaryText>
+        </Box>
         {runtimeConfig.policyHubWebUrl && (
           <Button
             component="a"
@@ -160,8 +221,9 @@ export function AvailablePoliciesPanel({
             <FormattedMessage {...messages.policyHub} />
           </Button>
         )}
-      </Box>
+      </Stack>
 
+      {/* One line: the search box with the category filter docked on its right. */}
       <TextField
         fullWidth
         onChange={(event) => setSearch(event.target.value)}
@@ -169,6 +231,45 @@ export function AvailablePoliciesPanel({
         size="small"
         slotProps={{
           input: {
+            endAdornment:
+              (categoriesQuery.data?.length || 0) > 0 ? (
+                <>
+                  <Divider flexItem orientation="vertical" />
+                  <Select
+                    disableUnderline
+                    displayEmpty
+                    inputProps={{ 'aria-label': intl.formatMessage(messages.categories) }}
+                    multiple
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setActiveCategories(typeof next === 'string' ? next.split(',') : next);
+                    }}
+                    renderValue={(selected) =>
+                      selected.length === 0
+                        ? intl.formatMessage(messages.allCategories)
+                        : selected.length === 1
+                          ? selected[0]
+                          : intl.formatMessage(messages.categoriesSelected, {
+                              count: selected.length,
+                            })
+                    }
+                    sx={{ maxWidth: 170, minWidth: 120, px: 1 }}
+                    value={activeCategories}
+                    variant="standard"
+                  >
+                    {categoriesQuery.data!.map((category) => (
+                      <MenuItem key={category} value={category}>
+                        <Checkbox
+                          checked={activeCategories.includes(category)}
+                          size="small"
+                          sx={{ mr: 1 }}
+                        />
+                        {category}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </>
+              ) : null,
             startAdornment: (
               <InputAdornment position="start">
                 <Search size={18} />
@@ -176,64 +277,31 @@ export function AvailablePoliciesPanel({
             ),
           },
         }}
+        sx={{ '& .MuiInputBase-root': { pr: 0 } }}
         value={search}
       />
 
-      {(categoriesQuery.data?.length || 0) > 0 && (
-        <FormControl fullWidth sx={{ mt: 1.5 }}>
-          <FormLabel htmlFor="policy-category-filter" sx={{ mb: 0.75 }}>
-            {intl.formatMessage(messages.categories)}
-          </FormLabel>
-          <Autocomplete
-            disableCloseOnSelect
-            multiple
-            onChange={(_event, nextCategories) => {
-              setActiveCategories(nextCategories);
-              setPage(1);
-            }}
-            options={categoriesQuery.data!}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                id="policy-category-filter"
-                placeholder={
-                  activeCategories.length === 0
-                    ? intl.formatMessage(messages.allCategories)
-                    : undefined
-                }
-                size="small"
-              />
-            )}
-            renderOption={(props, category, state) => (
-              <Box component="li" {...props}>
-                <Checkbox checked={state.selected} size="small" sx={{ mr: 1 }} />
-                {category}
-              </Box>
-            )}
-            value={activeCategories}
-          />
-        </FormControl>
-      )}
-
-      <Box sx={{ flex: 1, mt: 1.5, overflowY: 'auto' }}>
+      <Box ref={scrollRef} sx={{ flex: 1, mt: 1.5, overflowY: 'auto' }}>
         {policiesQuery.isPending ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress size={24} />
-          </Box>
+          <Stack aria-busy spacing={1}>
+            {Array.from({ length: INITIAL_SKELETONS }, (_unused, index) => (
+              <PolicySkeletonCard key={index} />
+            ))}
+          </Stack>
         ) : policiesQuery.error ? (
           // The hub's own wording is deliberately not shown: `ApiError.message`
           // for a hub failure is a sterile client-side string, and echoing an
           // upstream message risks naming internal hosts.
           <ErrorState message={intl.formatMessage(messages.loadError)} />
-        ) : filtered.length === 0 ? (
+        ) : policies.length === 0 ? (
           <EmptyState
             title={intl.formatMessage(messages.emptyTitle)}
             description={intl.formatMessage(messages.emptyDescription)}
           />
         ) : (
           <Stack spacing={1}>
-            {filtered.map((policy) => (
-              <Box
+            {policies.map((policy) => (
+              <Card
                 aria-disabled={disabled || undefined}
                 draggable={!disabled}
                 key={`${policy.name}@${policy.version}`}
@@ -253,55 +321,52 @@ export function AvailablePoliciesPanel({
                   event.dataTransfer.setData(POLICY_DND_MIME, policy.name);
                 }}
                 sx={{
-                  alignItems: 'center',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
                   cursor: disabled ? 'default' : 'grab',
-                  display: 'flex',
-                  gap: 1,
                   opacity: disabled ? 0.6 : 1,
-                  p: 1.25,
                   ...(!disabled && {
                     '&:active': { cursor: 'grabbing' },
                     '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.light' },
                   }),
                 }}
               >
-                <Box sx={{ color: 'text.disabled', display: 'flex' }}>
-                  <GripVertical size={16} />
-                </Box>
-                <Avatar
-                  src={policy.iconUrl}
-                  sx={{ borderRadius: 0.75, height: 28, width: 28 }}
-                  variant="rounded"
+                <CardContent
+                  sx={{
+                    alignItems: 'center',
+                    display: 'flex',
+                    gap: 1,
+                    p: 1.25,
+                    '&:last-child': { pb: 1.25 },
+                  }}
                 >
-                  <Shield size={14} />
-                </Avatar>
-                <Typography noWrap sx={{ flex: 1, fontWeight: 600, minWidth: 0 }} variant="body2">
-                  {policy.displayName}
-                </Typography>
-                <Chip
-                  label={intl.formatMessage(messages.version, { version: policy.version })}
-                  size="small"
-                  variant="outlined"
-                />
-              </Box>
+                  <Box sx={{ color: 'text.disabled', display: 'flex' }}>
+                    <GripVertical size={16} />
+                  </Box>
+                  <Avatar
+                    src={policy.iconUrl}
+                    sx={{ borderRadius: 0.75, height: 28, width: 28 }}
+                    variant="rounded"
+                  >
+                    <Shield size={14} />
+                  </Avatar>
+                  <Typography noWrap sx={{ flex: 1, fontWeight: 600, minWidth: 0 }} variant="body2">
+                    {policy.displayName}
+                  </Typography>
+                  <Chip
+                    label={intl.formatMessage(messages.version, { version: policy.version })}
+                    size="small"
+                    variant="outlined"
+                  />
+                </CardContent>
+              </Card>
             ))}
+            {isFetchingNextPage &&
+              Array.from({ length: NEXT_PAGE_SKELETONS }, (_unused, index) => (
+                <PolicySkeletonCard key={`next-${index}`} />
+              ))}
+            <Box aria-hidden ref={sentinelRef} sx={{ height: 1 }} />
           </Stack>
         )}
       </Box>
-
-      {(page > 1 || hasMore) && (
-        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between', pt: 1.5 }}>
-          <Button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} size="small">
-            <FormattedMessage {...messages.previous} />
-          </Button>
-          <Button disabled={!hasMore} onClick={() => setPage((p) => p + 1)} size="small">
-            <FormattedMessage {...messages.next} />
-          </Button>
-        </Box>
-      )}
     </Box>
   );
 }

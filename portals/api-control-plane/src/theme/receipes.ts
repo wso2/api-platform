@@ -105,6 +105,64 @@ export const ambientGlowSx = {
 } as const;
 
 /**
+ * A square icon tile with a warm, primary-tinted gradient and a faint primary
+ * edge — the badge beside a card or section title. `size` is the side in pixels;
+ * colour comes from theme tokens and the corner radius scales with `size`.
+ */
+export const iconTileSx = (theme: Theme, size = 40) => {
+  const palette = theme.vars?.palette ?? theme.palette;
+  return {
+    alignItems: 'center',
+    background: `radial-gradient(ellipse at 30% 25%, color-mix(in srgb, ${palette.primary.main} 22%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 10%, ${palette.background.paper}) 70%, color-mix(in srgb, ${palette.primary.main} 7%, ${palette.background.paper}) 100%)`,
+    border: hairline(theme),
+    borderColor: `color-mix(in srgb, ${palette.primary.main} 35%, transparent)`,
+    // Proportional to the tile, so a larger or smaller badge keeps the same soft corner.
+    borderRadius: `${Math.round(size * 0.26)}px`,
+    color: `color-mix(in srgb, ${palette.primary.main} 80%, ${palette.text.secondary})`,
+    display: 'flex',
+    flexShrink: 0,
+    height: size,
+    justifyContent: 'center',
+    width: size,
+  } as const;
+};
+
+/**
+ * A compact chip with a soft primary (orange) glow radiating from the top-left corner into the surface and
+ * a hairline edge — a removable, editable item in a row of tags. Pass `highlighted`
+ * while it is a drop target.
+ */
+export const tintedPillSx = (theme: Theme, highlighted = false) => {
+  const palette = theme.vars?.palette ?? theme.palette;
+  return {
+    alignItems: 'center',
+    background: `radial-gradient(ellipse 120% 220% at 0% 0%, color-mix(in srgb, ${palette.primary.main} 11%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 4%, ${palette.background.paper}) 45%, ${palette.background.paper} 85%)`,
+    border: hairline(theme),
+    borderColor: highlighted
+      ? palette.primary.main
+      : `color-mix(in srgb, ${palette.primary.main} 12%, ${palette.divider})`,
+    borderRadius: 0.75,
+    display: 'flex',
+  } as const;
+};
+
+/**
+ * The chip for something inherited rather than owned: a dashed hairline on the bare
+ * surface, so it reads as present but not editable here.
+ */
+export const inheritedPillSx = (theme: Theme) => {
+  const palette = theme.vars?.palette ?? theme.palette;
+  return {
+    alignItems: 'center',
+    border: hairline(theme),
+    borderColor: palette.divider,
+    borderRadius: 0.75,
+    borderStyle: 'dashed',
+    display: 'flex',
+  } as const;
+};
+
+/**
  * Hover treatment for a card that behaves as a button (the whole surface
  * navigates). Deliberately NOT a global `MuiCard` override: non-interactive
  * cards — the tab shell, the save bar, the Explore More panel — must not lift
