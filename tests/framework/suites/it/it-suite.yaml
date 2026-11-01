@@ -883,6 +883,20 @@ blocks:
       - name: platform-api-builds
         features:
           - features/management-portal/builds/build_lifecycle.feature
+      # Deployment lifecycle once per artifact kind. GraphQL deployments need a gateway newer
+      # than 1.2.0, so gateways up to 1.2.0 skip the @graphql Examples rows.
+      - name: deployment-lifecycle
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/management-portal/deployments/lifecycle/undeploy.feature
+          - features/management-portal/deployments/lifecycle/restore.feature
+          - features/management-portal/deployments/lifecycle/delete.feature
+      - name: deployment-lifecycle-1.2.0
+        tags: "gateway-version<=1.2.0;~@graphql"
+        features:
+          - features/management-portal/deployments/lifecycle/undeploy.feature
+          - features/management-portal/deployments/lifecycle/restore.feature
+          - features/management-portal/deployments/lifecycle/delete.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
@@ -987,6 +1001,14 @@ blocks:
       - name: multigateway
         features:
           - features/management-portal/deployments/multigateway.feature
+      - name: deployment-list
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/management-portal/deployments/lifecycle/list.feature
+      - name: deployment-list-1.2.0
+        tags: "gateway-version<=1.2.0;~@graphql"
+        features:
+          - features/management-portal/deployments/lifecycle/list.feature
 
   # Control-plane tenant isolation: a second organization registered next to the default one,
   # with the second gateway connected to it. One runner at a time, so the window in which the

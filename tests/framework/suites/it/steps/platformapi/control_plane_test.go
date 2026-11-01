@@ -69,6 +69,7 @@ func TestArtifactPath(t *testing.T) {
 		{name: "proxy", kind: "LlmProxy", handle: "proxy-1", want: "/llm-proxies/proxy-1"},
 		{name: "mcp", kind: "Mcp", handle: "mcp-1", want: "/mcp-proxies/mcp-1"},
 		{name: "rest api", kind: "RestApi", handle: "api-1", want: "/rest-apis/api-1"},
+		{name: "graphql api", kind: "GraphQLApi", handle: "gql-1", want: "/graphql-apis/gql-1"},
 		{name: "gateway agent is an agent proxy", kind: "Agent", handle: "agent-1", want: "/agent-proxies/agent-1"},
 		{name: "control-plane kind is not a gateway kind", kind: "AgentProxy", handle: "x", wantErr: true},
 		{name: "unknown kind", kind: "WebSubApi", handle: "x", wantErr: true},
@@ -85,6 +86,23 @@ func TestArtifactPath(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestCreateDeployableRejectsAnUnknownKind(t *testing.T) {
+	err := (&Steps{}).createDeployable(context.Background(), "AgentProxy", "x", "p", "/x")
+	require.ErrorContains(t, err, `unknown deployable kind "AgentProxy"`)
+}
+
+func TestDeployableBase(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	_, ok := deployableBase(ctx, "proxy-1")
+	require.False(t, ok, "a proxy created without a base provider has none")
+	require.NoError(t, tcontext.Set(ctx, keyDeployableBase+"proxy-1", "proxy-1-base"))
+	provider, ok := deployableBase(ctx, "proxy-1")
+	require.True(t, ok)
+	require.Equal(t, "proxy-1-base", provider)
+	_, ok = deployableBase(ctx, "proxy-2")
+	require.False(t, ok, "the base provider belongs to its own proxy")
 }
 
 func TestDeploymentStatusMatches(t *testing.T) {
