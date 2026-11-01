@@ -126,6 +126,24 @@ blocks:
         features:
           - features/management_portal/tenant_isolation.feature
 
+  # Management Portal deployment lifecycle: the console against the real control plane and a
+  # real gateway, so each deployment's status follows the gateway's acknowledgement.
+  - name: management-portal-deploy
+    parallel: 2
+    components:
+      - name: platform-api
+      - name: platform-gateway
+        dependsOn: [platform-api]
+      - name: testbench
+      - name: api-control-plane
+        dependsOn: [platform-api]
+      - name: browser
+    runners:
+      - name: deployment-lifecycle
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/deployment_lifecycle.feature
+
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai
   # service is the LLM the journeys invoke), and the browser that drives it all — on the
