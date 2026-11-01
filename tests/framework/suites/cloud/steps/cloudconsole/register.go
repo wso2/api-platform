@@ -295,6 +295,9 @@ func (s *Steps) registerSecretSteps(sc stepRegistrar) {
 	sc.Step(`^the synthetic secret should be described by a hash$`, s.assertSecretHash)
 	sc.Step(`^the echoed request header "([^"]*)" should carry the synthetic secret's value$`, s.assertEchoedSecret)
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should echo the header "([^"]*)" with the rotated secret value$`, s.sendUntilEchoesRotated)
+	for _, step := range s.publicationStepDefinitions() {
+		sc.Step(step.pattern, step.handler)
+	}
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
@@ -325,6 +328,18 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindDefaultRestore, restoreDefaultDeleter(topo, client)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cleanup.KindGraphQLAPI, cloudDeleter(topo, client, "/graphql-apis", false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cleanup.KindSubscriptionPlan, cloudDeleter(topo, client, "/subscription-plans", false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cloudPublicationKind, cloudRequestDeleter(topo, client, unpublishRequest)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cloudDocumentKind, cloudRequestDeleter(topo, client, deleteDocumentRequest)); err != nil {
 		return err
 	}
 	if err := reg.RegisterDeleter(kindAPIPortal, portalDeleter(topo, client)); err != nil {
@@ -363,6 +378,40 @@ func emptyEnvironment(ctx context.Context, client *httpx.Client, base, bearer, e
 		}
 	}
 	return nil
+}
+
+// cloudRequestDeleter sends the request toRequest builds from a resource id, and accepts the
+// answers settled reports as leaving nothing behind.
+func cloudRequestDeleter(
+	topo *frameworkruntime.Topology, client *httpx.Client,
+	toRequest func(id string) (method, path string, settled func(*httpx.Response) bool, err error),
+) cleanup.Deleter {
+	return func(ctx context.Context, resource cleanup.Resource) error {
+		method, path, settled, err := toRequest(resource.ID)
+		if err != nil {
+			return err
+		}
+		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+		if err != nil {
+			return err
+		}
+		bearer, err := bearerToken(ctx)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(ctx, httpx.Request{
+			Method:  method,
+			URL:     cloudAPIURL(base, path),
+			Headers: map[string]string{"Authorization": "Bearer " + bearer},
+		}, 0, 0)
+		if err != nil {
+			return err
+		}
+		if !settled(resp) {
+			return responseError(resp)
+		}
+		return nil
+	}
 }
 
 func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collection string, waitForNotFound bool) cleanup.Deleter {
