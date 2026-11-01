@@ -36,7 +36,7 @@ import (
 
 // publicationTypes maps a gateway artifact kind to the apiType segment of the publication
 // endpoints.
-var publicationTypes = map[string]string{"RestApi": "rest-api"}
+var publicationTypes = map[string]string{"RestApi": "rest-api", "GraphQLApi": "graphql-api"}
 
 var (
 	platformPublicationKind = cleanup.Kind{Name: "platform-api-publication", Order: 45}
@@ -316,31 +316,36 @@ func (s *Steps) savePublishableDraft(
 	return s.saveDraftDefinition(ctx, kind, apiHandle, portalHandle)
 }
 
-// minimalOpenAPIDefinition returns the smallest OpenAPI document the control plane accepts as a
-// REST API definition.
-func minimalOpenAPIDefinition(title string) ([]byte, error) {
-	return json.Marshal(map[string]any{
+// minimalDefinition returns the smallest definition the control plane accepts for an API of the
+// kind, and its content type.
+func minimalDefinition(kind, title string) (body []byte, contentType string, err error) {
+	if kind == "GraphQLApi" {
+		return []byte("type Query { hello: String }"), "application/graphql", nil
+	}
+	body, err = json.Marshal(map[string]any{
 		"openapi": "3.0.3",
 		"info":    map[string]any{"title": title, "version": "1.0.0"},
 		"paths": map[string]any{"/ping": map[string]any{"get": map[string]any{
 			"responses": map[string]any{"200": map[string]any{"description": "ok"}},
 		}}},
 	})
+	return body, "application/json", err
 }
 
-// saveDraftDefinition stores a minimal OpenAPI definition on the saved draft, which publishing
-// requires and never takes from the API itself.
+// saveDraftDefinition stores a minimal definition on the saved draft, which publishing requires
+// and never takes from the API itself.
 func (s *Steps) saveDraftDefinition(ctx context.Context, kind, apiHandle, portalHandle string) error {
 	portal, api, apiType, err := publicationTarget(ctx, kind, apiHandle, portalHandle)
 	if err != nil {
 		return err
 	}
-	definition, err := minimalOpenAPIDefinition(api)
+	definition, contentType, err := minimalDefinition(kind, api)
 	if err != nil {
 		return err
 	}
 	resp, err := s.sendControlPlane(ctx, controlPlaneCall{
-		method: http.MethodPut, path: publicationPath(portal, apiType, api) + "/draft/definition", body: definition,
+		method: http.MethodPut, path: publicationPath(portal, apiType, api) + "/draft/definition",
+		headers: map[string]string{"Content-Type": contentType}, body: definition,
 	})
 	if err != nil {
 		return err

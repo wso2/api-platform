@@ -37,8 +37,7 @@ import (
 // registerPublication binds the steps that read a published API back from the portal.
 func registerPublication(sc *godog.ScenarioContext, s *Steps) {
 	sc.Step(`^the API Portal should list the API "([^"]*)" offering plan "([^"]*)"$`, s.listsAPIOfferingPlan)
-	sc.Step(`^the API Portal should list the API "([^"]*)" with status "([^"]*)"$`, s.listsAPIWithStatus)
-	sc.Step(`^the API Portal should list the API "([^"]*)" with display name "([^"]*)"$`, s.listsAPIWithDisplayName)
+	sc.Step(`^the API Portal should list the API "([^"]*)" with (status|display name|type) "([^"]*)"$`, s.listsAPIWithField)
 	sc.Step(`^the API Portal should not list the API "([^"]*)"$`, s.doesNotListAPI)
 	sc.Step(`^an application subscribes to the published API "([^"]*)" with plan "([^"]*)" in the API Portal and the subscription is stored as "([^"]*)"$`,
 		s.subscribeToPublishedAPI)
@@ -176,18 +175,16 @@ func (s *Steps) listsAPIOfferingPlan(ctx context.Context, apiHandle, planHandle 
 	return apiOffersPlan(body, api, plan)
 }
 
-// listsAPIWithStatus asserts the portal lists the API with the given status.
-func (s *Steps) listsAPIWithStatus(ctx context.Context, apiHandle, status string) error {
-	api, body, err := s.listedAPI(ctx, apiHandle)
-	if err != nil {
-		return err
-	}
-	return apiHasField(body, api, "status", status)
-}
+// listedAPIFields maps a step's field name to the field of the portal's API metadata.
+var listedAPIFields = map[string]string{"status": "status", "display name": "name", "type": "type"}
 
-// listsAPIWithDisplayName asserts the portal lists the API under the display name.
-func (s *Steps) listsAPIWithDisplayName(ctx context.Context, apiHandle, displayName string) error {
-	want, err := stepscommon.Expand(ctx, displayName)
+// listsAPIWithField asserts the portal lists the API with the given status, display name or type.
+func (s *Steps) listsAPIWithField(ctx context.Context, apiHandle, field, value string) error {
+	key, ok := listedAPIFields[field]
+	if !ok {
+		return fmt.Errorf("unsupported API Portal field %q", field)
+	}
+	want, err := stepscommon.Expand(ctx, value)
 	if err != nil {
 		return err
 	}
@@ -195,7 +192,7 @@ func (s *Steps) listsAPIWithDisplayName(ctx context.Context, apiHandle, displayN
 	if err != nil {
 		return err
 	}
-	return apiHasField(body, api, "name", want)
+	return apiHasField(body, api, key, want)
 }
 
 // doesNotListAPI asserts the portal has no listing for the API.
