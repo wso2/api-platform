@@ -30,7 +30,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Pencil, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Pencil, Plus, SearchX, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useMetersById } from '@/api/resources/meters';
@@ -43,6 +43,8 @@ import {
 } from '@/api/resources/subscriptionPlans';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { SubscriptionPlanIllustration } from '@/components/illustrations/SubscriptionPlanIllustration';
+import { EmptyResults } from '@/components/common/EmptyResults';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Can } from '@/permissions';
@@ -54,164 +56,168 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 const messages = defineMessages({
   activated: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.notification.activated',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.notification.activated',
     defaultMessage: 'Activated plan "{name}".',
   },
   columnActions: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.actions',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.actions',
     defaultMessage: 'Actions',
   },
   columnLimits: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.limits',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.limits',
     defaultMessage: 'Limits',
   },
   columnName: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.name',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.name',
     defaultMessage: 'Name',
   },
   columnPricing: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.pricing',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.pricing',
     defaultMessage: 'Pricing',
   },
   columnStatus: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.status',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.status',
     defaultMessage: 'Status',
   },
   createButton: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.create',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.create',
     defaultMessage: 'Create plan',
   },
   deactivated: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.notification.deactivated',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.notification.deactivated',
     defaultMessage: 'Deactivated plan "{name}".',
   },
   deleteAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.delete',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.delete',
     defaultMessage: 'Delete {name}',
     description: 'Accessible name of the per-row delete icon button; {name} is the plan.',
   },
   deleteBlockedMessage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.blockedMessage',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.blockedMessage',
     defaultMessage: '"{name}" is in use and can\'t be deleted.',
     description: 'Shown in the delete dialog, with Delete disabled, for a plan in use.',
   },
   deleteChecking: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.checking',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.checking',
     defaultMessage: 'Checking whether "{name}" is in use…',
     description:
       "Shown in the delete dialog while the plan's usage is read; Delete is disabled meanwhile.",
   },
   deleteConfirmAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmAction',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.confirmAction',
     defaultMessage: 'Delete',
   },
   deleteConfirmInputLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmInputLabel',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.confirmInputLabel',
     defaultMessage: 'Type the plan name to confirm',
   },
   deleteFailed: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.failed',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.failed',
     defaultMessage: 'Failed to delete the plan.',
   },
   deleteMessage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.message',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.message',
     defaultMessage: 'This permanently deletes "{name}". This can’t be undone.',
   },
   deleteSucceeded: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.succeeded',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.succeeded',
     defaultMessage: 'Deleted plan "{name}".',
   },
   deleteTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.title',
     defaultMessage: 'Delete plan',
   },
   editAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.edit',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.edit',
     defaultMessage: 'Edit {name}',
     description: 'Accessible name of the per-row edit icon button; {name} is the plan.',
   },
   emptyAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.action',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.action',
     defaultMessage: 'Create plan',
   },
   emptyDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.description',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.description',
     defaultMessage:
-      'Plans define how many requests an application can make in a time window. Create a plan, then enable it on the APIs you publish.',
+      'Plans define how many requests an app can make in a time window. Enable one on the APIs you publish.',
   },
   emptyTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.title',
     defaultMessage: 'Create your first subscription plan',
   },
   errorMessage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.error.message',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.error.message',
     defaultMessage: 'Unable to load subscription plans',
   },
   limitChip: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.limitChip',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.limitChip',
     defaultMessage:
       'req · {count} / {amount, plural, one {} other {# }}{unit, select, MINUTE {min} HOUR {hr} DAY {day} MONTH {mo} other {}}',
     description:
       'Compact monospace tag summarizing one throttling limit, e.g. "req · 1000 / hr" or "req · 100000 / 2 hr".',
   },
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.loading',
     defaultMessage: 'Loading subscription plans',
   },
   nextPage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.next',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.next',
     defaultMessage: 'Next page',
   },
+  clearSearch: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.SubscriptionPlansPage.clearSearch',
+    defaultMessage: 'Clear search',
+  },
   noMatchesDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.description',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.noMatches.description',
     defaultMessage: 'Try a different search term.',
   },
   noMatchesTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.noMatches.title',
     defaultMessage: 'No matching plans',
   },
   pageRange: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.range',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.range',
     defaultMessage: '{from}–{to} of {count, number}',
     description: 'Pager summary: the plan rows shown on this page out of the total.',
   },
   previousPage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.previous',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.previous',
     defaultMessage: 'Previous page',
   },
   rowsPerPage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.rowsPerPage',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.rowsPerPage',
     defaultMessage: 'Plans per page',
   },
   searchPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.searchPlaceholder',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.searchPlaceholder',
     defaultMessage: 'Search plans',
   },
   statusActive: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.active',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.status.active',
     defaultMessage: '{name}, active',
     description: 'Accessible name of the per-row status switch when the plan is active.',
   },
   statusInactive: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.inactive',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.status.inactive',
     defaultMessage: '{name}, inactive',
     description: 'Accessible name of the per-row status switch when the plan is inactive.',
   },
   subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.subtitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.subtitle',
     defaultMessage: 'Define the rate and quota tiers applications can subscribe to.',
   },
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.title',
     defaultMessage: 'Subscription Plans',
   },
   unlimitedChip: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.unlimitedChip',
     defaultMessage: 'req · ∞',
     description: 'Chip shown for a plan with no configured limits.',
   },
   updateFailed: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.update.failed',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.update.failed',
     defaultMessage: 'Failed to update the plan.',
   },
 });
@@ -233,7 +239,7 @@ const useLimitChipLabels = () => {
   };
 };
 
-export function SubscriptionPlansSettingsPage() {
+export function SubscriptionPlansPage() {
   const intl = useIntl();
   const { notify } = useNotifications();
   const [search, setSearch] = useState('');
@@ -327,7 +333,7 @@ export function SubscriptionPlansSettingsPage() {
   return (
     <>
       <PageTitle>
-        <PageTitle.Header variant="h5">
+        <PageTitle.Header>
           <FormattedMessage {...messages.title} />
         </PageTitle.Header>
         <PageTitle.SubHeader>
@@ -353,6 +359,7 @@ export function SubscriptionPlansSettingsPage() {
           actionIcon={<Plus size={18} />}
           actionLabel={intl.formatMessage(messages.emptyAction)}
           description={intl.formatMessage(messages.emptyDescription)}
+          illustration={<SubscriptionPlanIllustration />}
           onAction={() => setDialogTarget('create')}
           operationId="CreateSubscriptionPlan"
           title={intl.formatMessage(messages.emptyTitle)}
@@ -367,8 +374,11 @@ export function SubscriptionPlansSettingsPage() {
           />
 
           {plans.length === 0 ? (
-            <EmptyState
+            <EmptyResults
+              actionLabel={intl.formatMessage(messages.clearSearch)}
               description={intl.formatMessage(messages.noMatchesDescription)}
+              illustration={<SearchX size={34} strokeWidth={1.5} />}
+              onAction={() => setSearch('')}
               title={intl.formatMessage(messages.noMatchesTitle)}
             />
           ) : (

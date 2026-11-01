@@ -1,0 +1,314 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/* ---------- Card ---------- */
+.api-plan-animation {
+  --t: 7s;
+  text-align: left;
+}
+.api-plan-animation .mono {
+  font-family: ui-monospace, monospace;
+}
+
+/* ---------- Header ---------- */
+.api-plan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--plan-border);
+}
+.api-plan-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--plan-accent-base) 16%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.api-plan-name {
+  flex: 1;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.api-plan-rate {
+  font-size: 9.5px;
+  color: var(--plan-muted);
+}
+
+/* ---------- Usage + counter ---------- */
+.api-plan-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.api-plan-usage-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--plan-muted);
+}
+.api-plan-count {
+  font-size: 11px;
+  color: var(--plan-text);
+}
+.api-plan-odo {
+  display: inline-block;
+  height: 20px;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.api-plan-odo-inner {
+  display: flex;
+  flex-direction: column;
+  animation: api-plan-odo var(--t) cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+.api-plan-odo-inner span {
+  height: 20px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Bar ---------- */
+.api-plan-bar {
+  position: relative;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--plan-track);
+  overflow: hidden;
+}
+.api-plan-fill {
+  height: 100%;
+  border-radius: 5px;
+  animation: api-plan-bar var(--t) linear infinite;
+}
+.api-plan-ticks {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 1px;
+}
+.api-plan-ticks span {
+  width: 1px;
+  height: 100%;
+  background: color-mix(in srgb, var(--plan-text) 25%, transparent);
+}
+.api-plan-ticks span:first-child {
+  background: transparent;
+}
+
+/* ---------- 429 row ---------- */
+.api-plan-slot {
+  min-height: 24px;
+}
+.api-plan-blocked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--plan-error-base) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--plan-error-base) 40%, transparent);
+  font-size: 9.5px;
+  animation:
+    api-plan-blocked var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite,
+    api-plan-shake var(--t) linear infinite;
+}
+.api-plan-code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--plan-error-base) 18%, transparent);
+  color: var(--plan-error);
+  font-weight: 600;
+}
+.api-plan-msg {
+  color: inherit;
+}
+
+/* ---------- Footer ---------- */
+.api-plan-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--plan-border);
+  font-size: 9.5px;
+  color: var(--plan-muted);
+}
+.api-plan-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  font-size: 9.5px;
+  color: var(--plan-text);
+  border: 1px solid color-mix(in srgb, var(--plan-success-base) 45%, transparent);
+  background: color-mix(in srgb, var(--plan-success-base) 10%, transparent);
+  animation: var(--t) cubic-bezier(0.3, 1.6, 0.5, 1) infinite;
+}
+.api-plan-chip::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--plan-success);
+}
+.api-plan-chip-first {
+  animation-name: api-plan-chip1;
+}
+.api-plan-chip-second {
+  animation-name: api-plan-chip2;
+}
+
+/* ---------- Timeline (% of --t) ----------
+     8–52 requests fill to 100 · 54–59 limit hit (429) · 66–77 enabled on APIs · hold → 86 · reset 94 */
+@keyframes api-plan-odo {
+  0%,
+  8% {
+    transform: translateY(0);
+  }
+  19% {
+    transform: translateY(-20px);
+  }
+  30% {
+    transform: translateY(-40px);
+  }
+  41% {
+    transform: translateY(-60px);
+  }
+  52%,
+  86% {
+    transform: translateY(-80px);
+  }
+  94%,
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes api-plan-bar {
+  0%,
+  8% {
+    width: 0;
+    background: var(--plan-accent-base);
+  }
+  52% {
+    width: 100%;
+    background: var(--plan-accent-base);
+  }
+  56%,
+  86% {
+    width: 100%;
+    background: var(--plan-error-base);
+  }
+  94%,
+  100% {
+    width: 0;
+    background: var(--plan-accent-base);
+  }
+}
+@keyframes api-plan-blocked {
+  0%,
+  54% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  59%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes api-plan-shake {
+  0%,
+  54% {
+    translate: 0;
+  }
+  55% {
+    translate: -3px;
+  }
+  56% {
+    translate: 3px;
+  }
+  57% {
+    translate: -2px;
+  }
+  58%,
+  100% {
+    translate: 0;
+  }
+}
+@keyframes api-plan-chip1 {
+  0%,
+  66% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  72%,
+  86% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+@keyframes api-plan-chip2 {
+  0%,
+  71% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  77%,
+  86% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-plan-animation * {
+    animation: none !important;
+  }
+  .api-plan-odo-inner {
+    transform: translateY(-80px);
+  }
+  .api-plan-fill {
+    width: 100%;
+    background: var(--plan-error-base);
+  }
+}

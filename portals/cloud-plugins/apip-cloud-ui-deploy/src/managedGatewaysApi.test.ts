@@ -19,7 +19,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ApiFetch } from './hostPort';
-import { DEFAULT_GATEWAY_NAME, createManagedGatewaysClient } from './managedGatewaysApi';
+import {
+  DEFAULT_GATEWAY_NAME,
+  createManagedGatewaysClient,
+  defaultGatewayName,
+} from './managedGatewaysApi';
 
 describe('listGateways', () => {
   const listing = (list?: unknown[]) => {
@@ -92,7 +96,7 @@ describe('createDefaultGateway', () => {
       '/managed-gateways',
       {
         displayName: DEFAULT_GATEWAY_NAME,
-        description: 'Default API Platform Cloud Gateway',
+        description: 'Default cloud gateway',
         environment: 'dev',
         functionalityType: 'regular',
         isCritical: false,
@@ -111,7 +115,7 @@ describe('createDefaultGateway', () => {
     expect(calls[0]).toMatchObject([
       'POST',
       '/managed-gateways',
-      { displayName: 'Default AI Cloud Gateway', functionalityType: 'ai' },
+      { displayName: 'AI Cloud', functionalityType: 'ai' },
     ]);
   });
 
@@ -120,5 +124,17 @@ describe('createDefaultGateway', () => {
     await expect(createManagedGatewaysClient(apiFetch).createDefaultGateway('dev')).rejects.toThrow(
       /incomplete response/
     );
+  });
+});
+
+describe('default managed gateway names', () => {
+  it('names the regular and AI gateways apart', () => {
+    expect(defaultGatewayName('regular')).toBe('Cloud Gateway');
+    expect(defaultGatewayName('ai')).toBe('AI Cloud');
+  });
+
+  it('keeps each name under 15 characters', () => {
+    expect(defaultGatewayName('regular').length).toBeLessThan(15);
+    expect(defaultGatewayName('ai').length).toBeLessThan(15);
   });
 });

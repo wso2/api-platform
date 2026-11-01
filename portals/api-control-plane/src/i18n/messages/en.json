@@ -807,6 +807,12 @@
   "apiControlPlane.components.ImportApiIllustration.ready": {
     "defaultMessage": "API ready"
   },
+  "apiControlPlane.components.MeterIllustration.charged": {
+    "defaultMessage": "Charged in Gold plan"
+  },
+  "apiControlPlane.components.MeterIllustration.skipped": {
+    "defaultMessage": "skipped"
+  },
   "apiControlPlane.components.StateViews.forbiddenDescription": {
     "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
     "description": "Explanation under the forbidden heading. Names who can fix it, and deliberately not which scope is missing — that is meaningless to the reader and tells a probing caller what to look for."
@@ -814,6 +820,15 @@
   "apiControlPlane.components.StateViews.forbiddenTitle": {
     "defaultMessage": "You don't have permission to view this",
     "description": "Heading shown in place of a page the signed-in user lacks the scope to read."
+  },
+  "apiControlPlane.components.SubscriptionPlanIllustration.enabledOn": {
+    "defaultMessage": "Enabled on"
+  },
+  "apiControlPlane.components.SubscriptionPlanIllustration.tooManyRequests": {
+    "defaultMessage": "Too many requests"
+  },
+  "apiControlPlane.components.SubscriptionPlanIllustration.usage": {
+    "defaultMessage": "Mobile app · this minute"
   },
   "apiControlPlane.components.SwaggerOperationsView.PolicyIndicator.overflow": {
     "defaultMessage": "{count, plural, one {# more policy} other {# more policies}}: {names}",
@@ -864,6 +879,10 @@
     "defaultMessage": "gateways",
     "description": "Plural noun for gateways, used inside the limit-reached sentence."
   },
+  "apiControlPlane.hooks.useResourceLimits.componentPortals": {
+    "defaultMessage": "portals",
+    "description": "Plural noun for developer portals, used inside the limit-reached sentence."
+  },
   "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
     "defaultMessage": "APIs",
     "description": "Plural noun for APIs, used inside the limit-reached sentence."
@@ -907,22 +926,6 @@
   "apiControlPlane.navigation.usePageTitle.newProject": {
     "defaultMessage": "Create project",
     "description": "Browser tab title for the project creation page."
-  },
-  "apiControlPlane.navigation.usePageTitle.settings": {
-    "defaultMessage": "Settings",
-    "description": "Browser tab title for any Settings tab."
-  },
-  "apiControlPlane.navigation.useSettingsTabs.generalTab": {
-    "defaultMessage": "General",
-    "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
-  },
-  "apiControlPlane.navigation.useSettingsTabs.metersTab": {
-    "defaultMessage": "Meters",
-    "description": "Label for the built-in organization-level Settings tab listing the usage paid plans charge for."
-  },
-  "apiControlPlane.navigation.useSettingsTabs.subscriptionPlansTab": {
-    "defaultMessage": "Subscription Plans",
-    "description": "Label for the built-in organization-level Settings tab listing rate-limit tiers."
   },
   "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
     "defaultMessage": "APIs"
@@ -2436,6 +2439,27 @@
   "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.title": {
     "defaultMessage": "Insights"
   },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.MetersPage.clearSearch": {
+    "defaultMessage": "Clear search"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.SubscriptionPlansPage.clearSearch": {
+    "defaultMessage": "Clear search"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanPricingSection.comingSoon": {
+    "defaultMessage": "Coming soon"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.expiry.optional": {
+    "defaultMessage": "(optional)"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.limits.unlimited": {
+    "defaultMessage": "Unlimited requests"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.create": {
+    "defaultMessage": "Define usage limits and availability for this plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.edit": {
+    "defaultMessage": "Update usage limits and availability for this plan."
+  },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies": {
     "defaultMessage": "Attach and Manage Policies"
   },
@@ -3134,254 +3158,217 @@
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.owner": {
     "defaultMessage": "<muted>Owned by</muted> {owner}"
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.settings": {
-    "defaultMessage": "Project settings"
-  },
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.unknown": {
     "defaultMessage": "Unknown"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copyFailed": {
-    "defaultMessage": "Unable to copy the ID."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copyId": {
-    "defaultMessage": "Copy ID"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.copySucceeded": {
-    "defaultMessage": "ID copied to clipboard."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.created": {
-    "defaultMessage": "Created"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.loading": {
-    "defaultMessage": "Loading settings"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.organizationDetailsTitle": {
-    "defaultMessage": "Organization Details"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.organizationNotFound": {
-    "defaultMessage": "Organization not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectDetailsTitle": {
-    "defaultMessage": "Project Details"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.projectNotFound": {
-    "defaultMessage": "Project not found"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.region": {
-    "defaultMessage": "Region"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.action.create": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.create": {
     "defaultMessage": "Create meter"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.action.delete": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.delete": {
     "defaultMessage": "Delete {name}",
     "description": "Accessible name of the per-row delete icon button; {name} is the meter."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.action.edit": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.edit": {
     "defaultMessage": "Edit {name}",
     "description": "Accessible name of the per-row edit icon button; {name} is the meter."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.actions": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.actions": {
     "defaultMessage": "Actions"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.filters": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.filters": {
     "defaultMessage": "Filters",
     "description": "Column of the names of the properties the prices of each meter may filter on."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.name": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.name": {
     "defaultMessage": "Name"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.type": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.type": {
     "defaultMessage": "Type"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.blockedMessage": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.blockedMessage": {
     "defaultMessage": "\"{name}\" is in use and can't be deleted.",
     "description": "Shown in the delete dialog, with Delete disabled, for a meter that plans price."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.confirmAction": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.confirmAction": {
     "defaultMessage": "Delete"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.failed": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.failed": {
     "defaultMessage": "Failed to delete the meter."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.message": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.message": {
     "defaultMessage": "This permanently deletes \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.succeeded": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.succeeded": {
     "defaultMessage": "Deleted meter \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.title": {
     "defaultMessage": "Delete meter"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.empty.action": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.action": {
     "defaultMessage": "Create meter"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.empty.description": {
-    "defaultMessage": "A meter counts the usage a paid plan charges for, such as successful requests. Create a meter, then charge for it in a plan."
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.description": {
+    "defaultMessage": "A meter counts the usage a paid plan charges for. Create one, then charge for it in a plan."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.empty.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.title": {
     "defaultMessage": "Create your first meter"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.error.message": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.error.message": {
     "defaultMessage": "Unable to load meters"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.loading": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.loading": {
     "defaultMessage": "Loading meters"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noFilters": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noFilters": {
     "defaultMessage": "None",
     "description": "Filters cell of a meter whose prices cannot filter on any property."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noMatches.description": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noMatches.description": {
     "defaultMessage": "Try a different search term."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noMatches.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noMatches.title": {
     "defaultMessage": "No matching meters"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.next": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.next": {
     "defaultMessage": "Next page"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.previous": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.previous": {
     "defaultMessage": "Previous page"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.range": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.range": {
     "defaultMessage": "{from}–{to} of {count, number}",
     "description": "Pager summary: the meter rows shown on this page out of the total."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.rowsPerPage": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.rowsPerPage": {
     "defaultMessage": "Meters per page"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.searchPlaceholder": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.searchPlaceholder": {
     "defaultMessage": "Search meters"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.subtitle": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.subtitle": {
     "defaultMessage": "Define the usage that paid subscription plans charge for."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.title": {
     "defaultMessage": "Meters"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title": {
-    "defaultMessage": "Settings",
-    "description": "Heading of the Settings page."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.create": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.create": {
     "defaultMessage": "Create plan"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.delete": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.delete": {
     "defaultMessage": "Delete {name}",
     "description": "Accessible name of the per-row delete icon button; {name} is the plan."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.action.edit": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.edit": {
     "defaultMessage": "Edit {name}",
     "description": "Accessible name of the per-row edit icon button; {name} is the plan."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.actions": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.actions": {
     "defaultMessage": "Actions"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.limits": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.limits": {
     "defaultMessage": "Limits"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.name": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.name": {
     "defaultMessage": "Name"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.pricing": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.pricing": {
     "defaultMessage": "Pricing"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.column.status": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.status": {
     "defaultMessage": "Status"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.blockedMessage": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.blockedMessage": {
     "defaultMessage": "\"{name}\" is in use and can't be deleted.",
     "description": "Shown in the delete dialog, with Delete disabled, for a plan in use."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.checking": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.checking": {
     "defaultMessage": "Checking whether \"{name}\" is in use…",
     "description": "Shown in the delete dialog while the plan's usage is read; Delete is disabled meanwhile."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmAction": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.confirmAction": {
     "defaultMessage": "Delete"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.confirmInputLabel": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.confirmInputLabel": {
     "defaultMessage": "Type the plan name to confirm"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.failed": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.failed": {
     "defaultMessage": "Failed to delete the plan."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.message": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.message": {
     "defaultMessage": "This permanently deletes \"{name}\". This can’t be undone."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.succeeded": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.succeeded": {
     "defaultMessage": "Deleted plan \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.delete.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.title": {
     "defaultMessage": "Delete plan"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.action": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.action": {
     "defaultMessage": "Create plan"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.description": {
-    "defaultMessage": "Plans define how many requests an application can make in a time window. Create a plan, then enable it on the APIs you publish."
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.description": {
+    "defaultMessage": "Plans define how many requests an app can make in a time window. Enable one on the APIs you publish."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.empty.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.title": {
     "defaultMessage": "Create your first subscription plan"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.error.message": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.error.message": {
     "defaultMessage": "Unable to load subscription plans"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.limitChip": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.limitChip": {
     "defaultMessage": "req · {count} / {amount, plural, one {} other {# }}{unit, select, MINUTE {min} HOUR {hr} DAY {day} MONTH {mo} other {}}",
     "description": "Compact monospace tag summarizing one throttling limit, e.g. \"req · 1000 / hr\" or \"req · 100000 / 2 hr\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.loading": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.loading": {
     "defaultMessage": "Loading subscription plans"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.description": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.noMatches.description": {
     "defaultMessage": "Try a different search term."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.noMatches.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.noMatches.title": {
     "defaultMessage": "No matching plans"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.notification.activated": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.notification.activated": {
     "defaultMessage": "Activated plan \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.notification.deactivated": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.notification.deactivated": {
     "defaultMessage": "Deactivated plan \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.next": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.next": {
     "defaultMessage": "Next page"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.previous": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.previous": {
     "defaultMessage": "Previous page"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.range": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.range": {
     "defaultMessage": "{from}–{to} of {count, number}",
     "description": "Pager summary: the plan rows shown on this page out of the total."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.pagination.rowsPerPage": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.rowsPerPage": {
     "defaultMessage": "Plans per page"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.searchPlaceholder": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.searchPlaceholder": {
     "defaultMessage": "Search plans"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.active": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.status.active": {
     "defaultMessage": "{name}, active",
     "description": "Accessible name of the per-row status switch when the plan is active."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.status.inactive": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.status.inactive": {
     "defaultMessage": "{name}, inactive",
     "description": "Accessible name of the per-row status switch when the plan is inactive."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.subtitle": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.subtitle": {
     "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.title": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.title": {
     "defaultMessage": "Subscription Plans"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.unlimitedChip": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.unlimitedChip": {
     "defaultMessage": "req · ∞",
     "description": "Chip shown for a plan with no configured limits."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansSettingsPage.update.failed": {
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.update.failed": {
     "defaultMessage": "Failed to update the plan."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.addFilter": {
@@ -3732,7 +3719,7 @@
     "defaultMessage": "The plan stops accepting subscriptions after this date."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.label": {
-    "defaultMessage": "Expiry date (optional)"
+    "defaultMessage": "Expiry date"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.inUseNote": {
     "defaultMessage": "This plan is in use. To change its name or limit, create a new plan.",
@@ -3786,10 +3773,10 @@
     "defaultMessage": "Enter a display name"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.label": {
-    "defaultMessage": "Name"
+    "defaultMessage": "Plan name"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.placeholder": {
-    "defaultMessage": "Gold"
+    "defaultMessage": "e.g. Gold"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.createFailed": {
     "defaultMessage": "Failed to create the plan."
@@ -4486,9 +4473,6 @@
   },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"
-  },
-  "apiControlPlane.projects.ProjectQuickActions.inviteMember": {
-    "defaultMessage": "Invite a team member"
   },
   "apiControlPlane.projects.ProjectQuickActions.title": {
     "defaultMessage": "Quick actions"
@@ -5449,5 +5433,8 @@
   },
   "summary.card.see.more": {
     "defaultMessage": "See more"
+  },
+  "test.feature": {
+    "defaultMessage": "Compliance reporting"
   }
 }

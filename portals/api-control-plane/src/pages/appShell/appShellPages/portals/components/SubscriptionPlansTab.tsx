@@ -22,7 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useMetersById } from '@/api/resources/meters';
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
-import { pricingSummary, summaryMeterIds } from '../../settings/components/pricingFormat';
+import { pricingSummary, summaryMeterIds } from '../../orgManage/components/pricingFormat';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';

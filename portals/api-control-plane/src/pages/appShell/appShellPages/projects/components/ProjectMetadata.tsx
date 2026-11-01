@@ -21,21 +21,18 @@ import {
   Avatar,
   Box,
   Divider,
-  IconButton,
   RelativeTime,
   Stack,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { BoxIcon, Settings, Users } from '@wso2/oxygen-ui-icons-react';
+import { BoxIcon, Users } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { useNavigate } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
 import { TruncatedText } from '@/components/common/TruncatedText';
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { PageTitleAvatar } from '@/components/common/PageTitleAvatar';
-import { routes } from '@/routes/paths';
 import { relativeTime } from '@/utils/relativeTime';
 
 const messages = defineMessages({
@@ -55,10 +52,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.owner',
     defaultMessage: '<muted>Owned by</muted> {owner}',
   },
-  settings: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.settings',
-    defaultMessage: 'Project settings',
-  },
   unknown: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.unknown',
     defaultMessage: 'Unknown',
@@ -66,13 +59,11 @@ const messages = defineMessages({
 });
 
 type ProjectMetadataProps = {
-  orgHandle: string;
   project: Project;
 };
 
-export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
+export function ProjectMetadata({ project }: ProjectMetadataProps) {
   const intl = useIntl();
-  const navigate = useNavigate();
   const memberName = project.updatedBy;
   const memberCount = memberName ? 1 : 0;
   const owner = project.createdBy || intl.formatMessage(messages.unknown);
@@ -166,15 +157,6 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
           </Stack>
         </Stack>
 
-        <Tooltip title={intl.formatMessage(messages.settings)}>
-          <IconButton
-            aria-label={intl.formatMessage(messages.settings)}
-            onClick={() => navigate(routes.projectSettings(orgHandle, project.id))}
-            sx={{ flexShrink: 0 }}
-          >
-            <Settings size={20} />
-          </IconButton>
-        </Tooltip>
       </Stack>
     </Box>
   );

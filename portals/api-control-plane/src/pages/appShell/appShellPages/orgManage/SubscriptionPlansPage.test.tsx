@@ -34,7 +34,7 @@ import {
 import { server } from '@/test/server';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
-import { SubscriptionPlansSettingsPage } from './SubscriptionPlansSettingsPage';
+import { SubscriptionPlansPage } from './SubscriptionPlansPage';
 
 const ORG = 'api-platform-demo';
 const PLANS = '/subscription-plans';
@@ -78,10 +78,10 @@ const manyPlans = (count: number): SubscriptionPlanFixture[] =>
 function renderPage() {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
-      <SubscriptionPlansSettingsPage />
+      <SubscriptionPlansPage />
     </ApiScopeProvider>,
     {
-      route: `/organizations/${ORG}/settings/subscription-plans`,
+      route: `/organizations/${ORG}/subscription-plans`,
       scope: makeConsoleScope(),
     },
   );
@@ -94,7 +94,7 @@ beforeEach(() => {
   server.use(collection('/meters', []));
 });
 
-describe('SubscriptionPlansSettingsPage', () => {
+describe('SubscriptionPlansPage', () => {
   it('lists plans with their limit chips', async () => {
     server.use(collection(PLANS, plans, { record: requests }));
     renderPage();
@@ -193,6 +193,31 @@ describe('SubscriptionPlansSettingsPage', () => {
 
     expect(await screen.findByText('No matching plans')).toBeInTheDocument();
     expect(screen.queryByText('Create your first subscription plan')).not.toBeInTheDocument();
+  });
+
+  it('shows the plan illustration with the create prompt when there are no plans', async () => {
+    server.use(collection(PLANS, []));
+    const { container } = renderPage();
+
+    await screen.findByText('Create your first subscription plan');
+    expect(container.querySelector('.api-plan-animation')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create plan' })).toBeInTheDocument();
+  });
+
+  it('clears a search with no hits from the "No matching plans" prompt', async () => {
+    server.use(collection(PLANS, plans, { record: requests }));
+    const { user } = renderPage();
+
+    await screen.findByText('Bronze');
+    const search = screen.getByPlaceholderText('Search plans');
+    await user.type(search, 'platinum');
+    await screen.findByText('No matching plans');
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    expect(search).toHaveValue('');
+    expect(await screen.findByText('Bronze')).toBeInTheDocument();
+    expect(screen.queryByText('No matching plans')).not.toBeInTheDocument();
   });
 
   it("toggles a plan's status from the row switch, without resending its limits", async () => {
