@@ -26,8 +26,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cucumber/godog"
-
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -640,7 +638,7 @@ func (s *Steps) signOutConsumer(ctx context.Context) error {
 
 // registerPortalSignInSteps binds the steps that sign a consumer up, in and out of a managed API
 // Portal.
-func (s *Steps) registerPortalSignInSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerPortalSignInSteps(sc stepRegistrar) {
 	sc.Step(`^I open the sign-in page of the synthetic managed API Portal as a new visitor$`, s.openSignInAsVisitor)
 	sc.Step(`^the visitor should be sent to the portal's identity provider to sign in$`, s.assertSentToIdentityProvider)
 	sc.Step(`^I sign up on the synthetic managed API Portal as a new consumer$`, s.signUpConsumer)

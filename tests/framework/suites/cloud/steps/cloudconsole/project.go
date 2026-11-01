@@ -25,8 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cucumber/godog"
-
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
@@ -77,7 +75,7 @@ func handleDefectNames() string {
 
 // registerProjectSteps binds the steps that read the default project, probe projects that do not
 // exist, refuse a project, read and change a project's pipeline binding, and probe the quota.
-func (s *Steps) registerProjectSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerProjectSteps(sc stepRegistrar) {
 	sc.Step(`^I read the default APIP project$`, s.readDefaultProject)
 	sc.Step(`^I read an APIP project that does not exist$`, s.readAbsentProject)
 	sc.Step(`^I create the synthetic APIP project again under the same handle$`, s.createDuplicateProject)

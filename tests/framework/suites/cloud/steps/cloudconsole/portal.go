@@ -124,7 +124,7 @@ func portalRequestDefectNames() string {
 }
 
 // registerPortalSteps binds the steps that create, read, refuse and delete a managed API Portal.
-func (s *Steps) registerPortalSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerPortalSteps(sc stepRegistrar) {
 	sc.Step(`^I request a synthetic managed API Portal for the runner$`, s.requestRunnerPortal)
 	sc.Step(`^the synthetic managed API Portal should be accepted for provisioning$`, s.assertPortalAccepted)
 	sc.Step(`^the synthetic managed API Portal should become active$`, s.awaitPortalActive)

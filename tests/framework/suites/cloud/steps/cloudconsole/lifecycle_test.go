@@ -32,6 +32,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1671,8 +1674,8 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/projects":                    {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
+		"/rest-apis?projectId=default": {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
 		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
 		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
@@ -4751,4 +4754,116 @@ func TestEnsureActiveRunnerPortalBuildsOneWhenNoneWasRequested(t *testing.T) {
 	require.Len(t, platform.created, 1)
 	require.Len(t, local.List(keyPortalBuilds), 1)
 	require.Equal(t, platform.created, registeredPortals(registry))
+}
+
+var stepKeyword = regexp.MustCompile(`^(Given|When|Then|And|But|\*) (.+)$`)
+
+// featureSteps returns the text of every step a feature file runs, with each Scenario Outline
+// expanded once per Examples row.
+func featureSteps(t *testing.T, path string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var steps, block []string
+	var examples [][]string
+	inExamples := false
+	flush := func() {
+		if len(examples) == 0 {
+			steps = append(steps, block...)
+		}
+		for _, row := range examples[min(1, len(examples)):] {
+			for _, step := range block {
+				for i, name := range examples[0] {
+					step = strings.ReplaceAll(step, "<"+name+">", row[i])
+				}
+				steps = append(steps, step)
+			}
+		}
+		block, examples, inExamples = nil, nil, false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Background:"), strings.HasPrefix(line, "Scenario:"),
+			strings.HasPrefix(line, "Scenario Outline:"):
+			flush()
+		case strings.HasPrefix(line, "Examples:"):
+			inExamples = true
+		case strings.HasPrefix(line, "|") && inExamples:
+			cells := strings.Split(strings.Trim(line, "|"), "|")
+			for i := range cells {
+				cells[i] = strings.TrimSpace(cells[i])
+			}
+			examples = append(examples, cells)
+		default:
+			if match := stepKeyword.FindStringSubmatch(line); match != nil {
+				block = append(block, match[2])
+			}
+		}
+	}
+	flush()
+	return steps
+}
+
+// stepsWithoutFeature are defined and unit tested but no feature runs them yet.
+var stepsWithoutFeature = map[string]bool{
+	`^I rotate the synthetic secret$`:                               true,
+	`^I read the synthetic secret$`:                                 true,
+	`^I list the secrets$`:                                          true,
+	`^the response should not reveal the synthetic secret's value$`: true,
+	`^the synthetic secret should be described by a hash$`:          true,
+	`^a "([^"]*)" request to "([^"]*)" should echo the header "([^"]*)" with the rotated secret value$`: true,
+	`^I create synthetic APIP projects until the organisation refuses one$`:                             true,
+}
+
+func TestEveryFeatureStepMatchesExactlyOneDefinition(t *testing.T) {
+	definitions := (&Steps{}).stepDefinitions()
+	patterns := make([]*regexp.Regexp, len(definitions))
+	seen := map[string]bool{}
+	for i, definition := range definitions {
+		require.False(t, seen[definition.pattern], "duplicate step pattern %s", definition.pattern)
+		seen[definition.pattern] = true
+		patterns[i] = regexp.MustCompile(definition.pattern)
+	}
+	features, err := filepath.Glob(filepath.Join("..", "..", "features", "*.feature"))
+	require.NoError(t, err)
+	require.NotEmpty(t, features)
+	used := make([]bool, len(patterns))
+	for _, feature := range features {
+		for _, step := range featureSteps(t, feature) {
+			matches := 0
+			for i, pattern := range patterns {
+				if pattern.MatchString(step) {
+					matches++
+					used[i] = true
+				}
+			}
+			require.Equal(t, 1, matches, "%s: step %q matches %d definitions", filepath.Base(feature), step, matches)
+		}
+	}
+	for i, definition := range definitions {
+		require.True(t, used[i] || stepsWithoutFeature[definition.pattern], "step %s is used by no feature", definition.pattern)
+	}
+}
+
+func TestFeatureStepsExpandsOutlines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outline.feature")
+	require.NoError(t, os.WriteFile(path, []byte(`Feature: f
+  Background:
+    Given a start
+  Scenario Outline: o
+    When I <action> it
+      | key | value |
+    Then it is <status>
+
+    Examples:
+      | action | status |
+      | open   | 200    |
+      | close  | 409    |
+  Scenario: s
+    * a last step
+`), 0o600))
+	require.Equal(t, []string{
+		"a start", "I open it", "it is 200", "I close it", "it is 409", "a last step",
+	}, featureSteps(t, path))
 }
