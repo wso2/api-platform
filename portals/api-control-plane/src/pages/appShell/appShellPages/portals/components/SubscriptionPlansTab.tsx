@@ -43,7 +43,7 @@ const messages = defineMessages({
   },
   emptyDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription',
-    defaultMessage: 'Create subscription plans in Settings to choose from here.',
+    defaultMessage: 'Create subscription plans in Manage › Subscription Plans to choose from here.',
   },
   publishedEmptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedEmptyTitle',

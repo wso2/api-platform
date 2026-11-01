@@ -891,14 +891,13 @@ describe('SubscriptionPlanFormDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
   });
 
-  it.skip("shows an existing plan's pricing read-only, its name and limits still editable", async () => {
+  it("shows an existing plan's pricing read-only, its name and limits still editable", async () => {
     setup({ plan: aSubscriptionPlan({ pricing: aPlanPricing() }) });
 
     expect(
       screen.getByText("Pricing can't be updated once a plan is created."),
     ).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Paid plan' })).toBeChecked();
-    expect(screen.getByRole('switch', { name: 'Paid plan' })).toBeDisabled();
+    expect(screen.queryByRole('switch', { name: 'Paid plan' })).not.toBeInTheDocument();
     for (const name of ['Currency', 'Charge every', 'Pricing']) {
       const field = screen.getByRole('combobox', { name });
       expect(field.hasAttribute('disabled') || field.getAttribute('aria-disabled') === 'true').toBe(
@@ -955,6 +954,12 @@ describe('SubscriptionPlanFormDialog', () => {
 
     expect(within(priceAt(1)).getByText('Successful calls · POST')).toBeInTheDocument();
     expect(within(priceAt(2)).getByText('Successful calls · GET')).toBeInTheDocument();
+  });
+
+  it('shows no Paid plan switch for a saved free plan', () => {
+    setup({ plan: aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' }) });
+    expect(screen.getByText('Paid plan')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Paid plan' })).not.toBeInTheDocument();
   });
 
   it.skip("keeps a free plan free: its Paid plan switch can't be turned on", async () => {

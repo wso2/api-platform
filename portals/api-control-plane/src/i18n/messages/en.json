@@ -2997,7 +2997,7 @@
     "defaultMessage": "Clear all"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription": {
-    "defaultMessage": "Create subscription plans in Settings to choose from here."
+    "defaultMessage": "Create subscription plans in Manage › Subscription Plans to choose from here."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyTitle": {
     "defaultMessage": "No subscription plans"
