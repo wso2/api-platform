@@ -21,6 +21,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -194,4 +198,105 @@ func TestGatewayDeploymentID(t *testing.T) {
 	require.ErrorContains(t, err, "no deployment was made")
 	_, err = gatewayDeploymentID([]map[string]any{{"gatewayId": "gw-1"}}, "gw-1")
 	require.ErrorContains(t, err, "has no deploymentId")
+}
+
+var stepKeyword = regexp.MustCompile(`^(Given|When|Then|And|But|\*) (.+)$`)
+
+// featureSteps returns the text of every step a feature file runs, with each Scenario Outline
+// expanded once per Examples row.
+func featureSteps(t *testing.T, path string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var steps, block []string
+	var examples [][]string
+	inExamples := false
+	flush := func() {
+		if len(examples) == 0 {
+			steps = append(steps, block...)
+		}
+		for _, row := range examples[min(1, len(examples)):] {
+			for _, step := range block {
+				for i, name := range examples[0] {
+					step = strings.ReplaceAll(step, "<"+name+">", row[i])
+				}
+				steps = append(steps, step)
+			}
+		}
+		block, examples, inExamples = nil, nil, false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Background:"), strings.HasPrefix(line, "Scenario:"),
+			strings.HasPrefix(line, "Scenario Outline:"):
+			flush()
+		case strings.HasPrefix(line, "Examples:"):
+			inExamples = true
+		case strings.HasPrefix(line, "|") && inExamples:
+			cells := strings.Split(strings.Trim(line, "|"), "|")
+			for i := range cells {
+				cells[i] = strings.TrimSpace(cells[i])
+			}
+			examples = append(examples, cells)
+		default:
+			if match := stepKeyword.FindStringSubmatch(line); match != nil {
+				block = append(block, match[2])
+			}
+		}
+	}
+	flush()
+	return steps
+}
+
+func TestEveryFeatureStepMatchesExactlyOneDefinition(t *testing.T) {
+	definitions := (&Steps{}).stepDefinitions()
+	patterns := make([]*regexp.Regexp, len(definitions))
+	seen := map[string]bool{}
+	for i, definition := range definitions {
+		require.False(t, seen[definition.pattern], "duplicate step pattern %s", definition.pattern)
+		seen[definition.pattern] = true
+		patterns[i] = regexp.MustCompile(definition.pattern)
+	}
+	features, err := filepath.Glob(filepath.Join("..", "..", "features", "*.feature"))
+	require.NoError(t, err)
+	require.NotEmpty(t, features)
+	used := make([]bool, len(patterns))
+	for _, feature := range features {
+		for _, step := range featureSteps(t, feature) {
+			matches := 0
+			for i, pattern := range patterns {
+				if pattern.MatchString(step) {
+					matches++
+					used[i] = true
+				}
+			}
+			require.Equal(t, 1, matches, "%s: step %q matches %d definitions", filepath.Base(feature), step, matches)
+		}
+	}
+	for i, definition := range definitions {
+		require.True(t, used[i], "step %s is used by no feature", definition.pattern)
+	}
+}
+
+func TestFeatureStepsExpandsOutlines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outline.feature")
+	require.NoError(t, os.WriteFile(path, []byte(`Feature: f
+  Background:
+    Given a start
+  Scenario Outline: o
+    When I <action> it
+      | key | value |
+    Then it is <status>
+
+    Examples:
+      | action | status |
+      | open   | 200    |
+      | close  | 409    |
+  Scenario: s
+    * a last step
+`), 0o600))
+	require.Equal(t, []string{
+		"a start", "I open it", "it is 200", "I close it", "it is 409", "a last step",
+	}, featureSteps(t, path))
 }
