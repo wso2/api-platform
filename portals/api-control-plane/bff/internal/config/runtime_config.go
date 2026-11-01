@@ -45,6 +45,12 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		out["POLICY_HUB_BASE_URL"] = cfg.PolicyHub.BaseURL
 	}
 
+	// Address self-hosted gateways dial, shown in setup commands. Only emit it
+	// when configured so the SPA does not guess for gateways running elsewhere.
+	if cfg.Gateway.ControlPlaneHost != "" {
+		out["GATEWAY_CONTROL_PLANE_HOST"] = cfg.Gateway.ControlPlaneHost
+	}
+
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
 	// ProductActivation can call it (same-origin, via /proxy/billing/...)
 	// without ever knowing the real billing service URL. Absent (defaults

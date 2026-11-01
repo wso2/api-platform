@@ -29,6 +29,7 @@ import (
 	"log/slog"
 	"net/url"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -64,7 +65,11 @@ type Config struct {
 	// `type` discriminator, since this BFF serves both "regular" and "event"
 	// gateway types rather than AI Workspace's single "ai" type.
 	GatewayVersions []GatewayVersionEntry `koanf:"gateway_versions"`
-	GatewayRelay    GatewayRelayConfig    `koanf:"gateway_relay"`
+	// Gateway is what a self-hosted gateway's setup instructions need from this
+	// deployment ([api_control_plane.gateway]). Mirrors AI Workspace's own
+	// [ai_workspace.gateway] table.
+	Gateway      GatewayConfig      `koanf:"gateway"`
+	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
 
 	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
 
@@ -89,6 +94,20 @@ type GatewayVersionEntry struct {
 	// Channel is "STS" or "LTS".
 	Channel string `koanf:"channel" json:"channel"`
 }
+
+// GatewayConfig is [api_control_plane.gateway].
+type GatewayConfig struct {
+	// ControlPlaneHost is the self-hosted gateway controller's control-plane
+	// address, `host[:port][/path]` without a scheme, shown in setup commands.
+	// It varies by environment; empty means unset and uses a fallback or
+	// placeholder.
+	ControlPlaneHost string `koanf:"controlplane_host"`
+}
+
+// controlPlaneHostPattern validates the `host[:port][/path]` format before the
+// value is used in shell and Helm commands.
+var controlPlaneHostPattern = regexp.MustCompile(
+	`^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~-]+)*$`)
 
 // GatewayRelayConfig configures the bounded relay for the Test page's Swagger console.
 type GatewayRelayConfig struct {
@@ -474,6 +493,7 @@ func (c *Config) normalize() {
 	if c.PolicyHub.BaseURL == "" {
 		c.PolicyHub.BaseURL = defaultPolicyHubBaseURL
 	}
+	c.Gateway.ControlPlaneHost = strings.TrimRight(strings.TrimSpace(c.Gateway.ControlPlaneHost), "/")
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
@@ -566,6 +586,9 @@ func (c *Config) validate() error {
 		if gv.Channel != "STS" && gv.Channel != "LTS" {
 			return fmt.Errorf("[[gateway_versions]] entry %d has invalid channel %q: must be \"STS\" or \"LTS\"", i, gv.Channel)
 		}
+	}
+	if h := c.Gateway.ControlPlaneHost; h != "" && !controlPlaneHostPattern.MatchString(h) {
+		return fmt.Errorf("[gateway] controlplane_host %q is invalid: must be host[:port][/path] with no scheme, e.g. \"cp.example.com:443\"", h)
 	}
 	seen := map[string]bool{}
 	for _, u := range c.ControlPlane.Upstreams {
