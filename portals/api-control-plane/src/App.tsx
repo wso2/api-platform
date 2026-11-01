@@ -36,6 +36,7 @@ import {
   type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from './extensions';
+import { ResourceLimitsProvider } from './hooks/useResourceLimits';
 import { I18nProvider } from './i18n';
 import { useIntl } from 'react-intl';
 
@@ -119,9 +120,14 @@ export default function App({ brandLogo, extensions = [] }: AppProps) {
                     <PermissionProvider>
                       <ProductActivation />
                       <OrganizationBootstrap />
-                      <ExtensionsProvider extensions={extensions}>
-                        <AppRoutes extensions={navExtensions} />
-                      </ExtensionsProvider>
+                      {/* Above the shell, so AppLayout can read the value and
+                        hand it to extensions through the Port — the supplier
+                        that fills it is itself an extension, mounted inside. */}
+                      <ResourceLimitsProvider>
+                        <ExtensionsProvider extensions={extensions}>
+                          <AppRoutes extensions={navExtensions} />
+                        </ExtensionsProvider>
+                      </ResourceLimitsProvider>
                     </PermissionProvider>
                   </AuthProvider>
                 </BrowserRouter>

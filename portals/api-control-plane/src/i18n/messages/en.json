@@ -856,6 +856,22 @@
     "defaultMessage": "Open {name}",
     "description": "Accessible name of a card or row that opens what it describes."
   },
+  "apiControlPlane.hooks.useResourceLimits.componentGateways": {
+    "defaultMessage": "gateways",
+    "description": "Plural noun for gateways, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
+    "defaultMessage": "APIs",
+    "description": "Plural noun for APIs, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.limitReached": {
+    "defaultMessage": "You cannot create more {component} because your organization has reached the maximum of {max}.",
+    "description": "Tooltip on a create action disabled because a limit is reached. {component} is a plural noun such as \"APIs\"; {max} is the ceiling."
+  },
+  "apiControlPlane.hooks.useResourceLimits.readOnlyDefault": {
+    "defaultMessage": "Your organization is read-only, so nothing can be created or changed.",
+    "description": "Shown when something reports the organization as read-only but gives no reason of its own."
+  },
   "apiControlPlane.navigation.usePageTitle.admin": {
     "defaultMessage": "Admin",
     "description": "Browser tab title for the API admin page."

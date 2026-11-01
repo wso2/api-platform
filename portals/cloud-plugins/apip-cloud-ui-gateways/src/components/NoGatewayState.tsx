@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState, type FC, type ReactNode } from 'react';
-import { Box, Button, Card, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Card, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Cloud, Globe, Server } from '@wso2/oxygen-ui-icons-react';
 import { getActiveColorScheme, subscribeToColorSchemeChanges } from '../utils/colorScheme';
 import type { GatewayHosting } from '../types';
@@ -34,6 +34,10 @@ const useActiveColorScheme = () => {
 export type NoGatewayStateProps = {
   /** Opens the Add Gateway form with the chosen hosting already selected. */
   onAdd: (hosting: GatewayHosting) => void;
+  /** The organization's gateway quota is full — both buttons are disabled. */
+  disabled?: boolean;
+  /** Why creating is blocked; shown on hover over a disabled button. */
+  disabledMessage?: string;
 };
 
 // One 6s loop: the empty slot (ghost) is replaced by the gateway block, its bars
@@ -147,9 +151,21 @@ type OptionProps = {
   action: string;
   primary?: boolean;
   onClick: () => void;
+  /** Quota is full — the button is disabled and explains why on hover. */
+  disabled?: boolean;
+  disabledMessage?: string;
 };
 
-const Option: FC<OptionProps> = ({ icon, title, description, action, primary, onClick }) => (
+const Option: FC<OptionProps> = ({
+  icon,
+  title,
+  description,
+  action,
+  primary,
+  onClick,
+  disabled,
+  disabledMessage,
+}) => (
   <Box
     sx={{
       display: 'flex',
@@ -183,25 +199,30 @@ const Option: FC<OptionProps> = ({ icon, title, description, action, primary, on
         {description}
       </Typography>
     </Box>
-    <Button
-      variant={primary ? 'contained' : 'outlined'}
-      onClick={onClick}
-      sx={{
-        flexShrink: 0,
-        borderRadius: 999,
-        textTransform: 'none',
-        ...(primary
-          ? {
-              color: '#fff',
-              border: 0,
-              background: 'linear-gradient(90deg, #f0903f, #e0553d)',
-              '&:hover': { background: 'linear-gradient(90deg, #f7a066, #ea6a4f)' },
-            }
-          : { color: ACCENT, borderColor: ACCENT, '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(247,136,47,.08)' } }),
-      }}
-    >
-      {action}
-    </Button>
+    <Tooltip title={disabled ? disabledMessage ?? '' : ''}>
+      <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+        <Button
+          variant={primary ? 'contained' : 'outlined'}
+          onClick={onClick}
+          disabled={disabled}
+          sx={{
+            flexShrink: 0,
+            borderRadius: 999,
+            textTransform: 'none',
+            ...(primary
+              ? {
+                  color: '#fff',
+                  border: 0,
+                  background: 'linear-gradient(90deg, #f0903f, #e0553d)',
+                  '&:hover': { background: 'linear-gradient(90deg, #f7a066, #ea6a4f)' },
+                }
+              : { color: ACCENT, borderColor: ACCENT, '&:hover': { borderColor: ACCENT, bgcolor: 'rgba(247,136,47,.08)' } }),
+          }}
+        >
+          {action}
+        </Button>
+      </span>
+    </Tooltip>
   </Box>
 );
 
@@ -210,7 +231,7 @@ const Option: FC<OptionProps> = ({ icon, title, description, action, primary, on
  * gateway into an environment, and the two ways to add the first one. Each button
  * opens the Add Gateway form with that hosting already chosen.
  */
-const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd }) => (
+const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd, disabled, disabledMessage }) => (
   <Box sx={{ maxWidth: 640, mx: 'auto', pt: 6, textAlign: 'center' }}>
     <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
       <GatewayFlow />
@@ -229,6 +250,8 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd }) => (
         description="Run the gateway in your own infrastructure with full control over network, data and scaling."
         action="Add self-hosted gateway"
         onClick={() => onAdd('self-hosted')}
+        disabled={disabled}
+        disabledMessage={disabledMessage}
       />
       <Option
         icon={<Cloud size={20} />}
@@ -236,6 +259,8 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd }) => (
         description="A gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
         action="Add Cloud gateway"
         onClick={() => onAdd('managed')}
+        disabled={disabled}
+        disabledMessage={disabledMessage}
       />
     </Card>
   </Box>

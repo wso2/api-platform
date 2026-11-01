@@ -44,7 +44,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
 import { matchesApiType, type ApiTypeFilter } from './apiTypeFilter';
-import { Can } from '@/permissions/Can';
+import { CanCreate } from '@/permissions/CanCreate';
 
 type ViewMode = 'grid' | 'list';
 
@@ -244,9 +244,16 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
   return (
     <>
       {isFirstRun ? (
+        /*
+          Same `restApis` verdict as the populated list's create button below:
+          an empty project says nothing about the organization's quota, which
+          is counted across every project, so a capped organization reaches
+          its first-run prompt here with no room to act on it.
+        */
         <EmptyState
           actionIcon={<Plus />}
           actionLabel={intl.formatMessage(messages.emptyAction)}
+          component="restApis"
           description={intl.formatMessage(messages.emptyDescription)}
           illustration={<ImportApiIllustration />}
           onAction={createApi}
@@ -289,11 +296,18 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
                 sx={{ minWidth: 320 }}
                 value={search}
               />
-              <Can do="CreateRESTAPI" denied="hide">
+              {/*
+                One gate for the whole wizard, not one per API type: the type
+                picker runs at step 1, *after* this button, so the button cannot
+                know what will be created. A single verdict covering everything
+                the wizard can produce is the only coherent choice — and a
+                deployment that caps nothing leaves it enabled exactly as before.
+              */}
+              <CanCreate component="restApis" denied="hide" do="CreateRESTAPI">
                 <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
                   <FormattedMessage {...messages.createApiButton} />
                 </Button>
-              </Can>
+              </CanCreate>
               <ToggleButtonGroup
                 exclusive
                 onChange={(_event, value: ViewMode | null) => {

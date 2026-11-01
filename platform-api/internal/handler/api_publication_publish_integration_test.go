@@ -91,9 +91,9 @@ func TestPublicationHandler_Publish_CreatesFromDraft(t *testing.T) {
 	if published["displayName"] != "My Listing" || published["status"] != "PUBLISHED" {
 		t.Fatalf("POST publish: unexpected body: %v", published)
 	}
-	plans, _ := published["subscriptionPlanIds"].([]any)
-	if len(plans) != 1 || plans[0] != "gold" {
-		t.Fatalf("POST publish: want subscriptionPlanIds [gold], got %v", published["subscriptionPlanIds"])
+	plans, _ := published["subscriptionPlans"].([]any)
+	if len(plans) != 1 || plans[0].(map[string]any)["id"] != "gold" {
+		t.Fatalf("POST publish: want subscriptionPlans [gold], got %v", published["subscriptionPlans"])
 	}
 
 	// GET publication shows it.

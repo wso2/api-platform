@@ -56,6 +56,8 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 import ExploreMoreCard from './components/ExploreMoreCard';
 import { Can } from '@/permissions/Can';
+import { CanCreate } from '@/permissions/CanCreate';
+import type { LimitedComponent } from '@/hooks/useResourceLimits';
 
 const messages = defineMessages({
   apiAction: {
@@ -201,6 +203,8 @@ type OverviewCardProps = {
   onAction: () => void;
   title: string;
   operationId: string;
+  /** What this card creates, for the quota check. Omit if nothing caps it. */
+  component?: LimitedComponent;
 };
 
 function OverviewCard({
@@ -211,6 +215,7 @@ function OverviewCard({
   onAction,
   title,
   operationId = '',
+  component,
 }: OverviewCardProps) {
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -262,7 +267,7 @@ function OverviewCard({
         </Stack>
       </CardContent>
       <Divider />
-      <Can do={operationId} denied="hide">
+      <CanCreate component={component} do={operationId} denied="hide">
         <ButtonBase onClick={onAction} sx={{ textAlign: 'left', width: '100%' }}>
           <Box
             sx={{
@@ -281,7 +286,7 @@ function OverviewCard({
             <ArrowRight size={16} />
           </Box>
         </ButtonBase>
-      </Can>
+      </CanCreate>
     </Card>
   );
 }
@@ -410,6 +415,7 @@ function OrganizationHomePageContent() {
               onAction={createApi}
               title={intl.formatMessage(messages.apiTitle)}
               operationId="CreateRESTAPI"
+              component="restApis"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -425,6 +431,7 @@ function OrganizationHomePageContent() {
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
               operationId="CreateGateway"
+              component="gateways"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -443,6 +450,7 @@ function OrganizationHomePageContent() {
               onAction={() => navigate(routes.managedApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
               operationId="CreateApiPortal"
+              component="portals"
             />
           </Grid>
         </Grid>

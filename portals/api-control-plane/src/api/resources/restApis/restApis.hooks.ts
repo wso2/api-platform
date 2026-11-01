@@ -24,6 +24,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { useResourceLimits } from '../../../hooks/useResourceLimits';
 import type { ApiError } from '../../core/errors';
 import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
@@ -239,6 +240,7 @@ export const useImportOpenApi = (
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateRestApis(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<RestApi, ApiError, FormData>({
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
@@ -249,6 +251,9 @@ export const useImportOpenApi = (
       }
       invalidate();
     },
+    // This, not `useCreateRestApi`, is what the creation wizard actually
+    // calls, so without it a create never asks for the counts to be re-read.
+    onSettled: () => refreshResourceLimits(),
   });
 };
 
@@ -262,6 +267,7 @@ export const useCreateRestApi = (
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateRestApis(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<RestApi, ApiError, CreateRestApiBody>({
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
@@ -275,6 +281,13 @@ export const useCreateRestApi = (
       }
       invalidate();
     },
+    // Whatever the outcome, the counts the create limits were read from may
+    // have moved, so ask whoever supplies them to re-read. Deliberately on
+    // settle rather than success: a refused create is the case that needs it
+    // most, since being refused is evidence the local count was stale-low.
+    // Says only "something changed" — no limit, quota or billing vocabulary
+    // crosses into this layer, and it is inert with no supplier mounted.
+    onSettled: () => refreshResourceLimits(),
   });
 };
 
@@ -324,6 +337,7 @@ export const useDeleteRestApi = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateRestApis(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<void, ApiError, { restApiId: string }>({
     mutationFn: ({ restApiId }) => deleteRestApi(restApiId, { orgId }),
@@ -335,6 +349,10 @@ export const useDeleteRestApi = (overrides: { orgId?: string } = {}) => {
         queryClient.removeQueries({ queryKey: restApiKeys.detail(org, restApiId) });
       }
       invalidate();
+      // A delete frees budget. Without this the supplied counts stay as they
+      // were last read, so a user who deletes an API keeps seeing the old
+      // number until the tab is refocused or the backstop fires.
+      refreshResourceLimits();
     },
   });
 };

@@ -33,6 +33,10 @@
 import { createContext, useContext, type ReactNode } from 'react';
 
 import type { BillingOrganization } from './billing/organization';
+import type {
+  LimitedComponent,
+  ResourceLimitSet,
+} from './hooks/useResourceLimits';
 import { runtimeConfig, type GatewayVersionEntry } from './config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './contexts/auth/authConstants';
 
@@ -63,6 +67,86 @@ export type BillingPort = {
   organization: () => Promise<BillingOrganization | null>;
 };
 
+/**
+ * The organization's component creation limits, as an extension reads and
+ * writes them.
+ *
+ * The host holds the limits and knows nothing about where they come from; a
+ * cloud extension mounted on `APP_GATE_SLOT` is what supplies them, via `set`.
+ * `canCreate`/`limitMessage` are here for extensions that read rather than
+ * write — a plugin-owned page gating its own create button.
+ *
+ * Every field is inert in a deployment with no supplier: `canCreate` answers
+ * `true`, `readOnly` is `false`, and the setters do nothing. See
+ * `hooks/useResourceLimits`, which owns the shape and that default.
+ */
+export type ResourceLimitsPort = {
+  canCreate: (component: LimitedComponent) => boolean;
+  limitMessage: (component: LimitedComponent) => string;
+  set: (limits: ResourceLimitSet | null) => void;
+  /**
+   * True when the organization may not create or update anything at all.
+   * `canCreate` already answers `false` for every component while this holds;
+   * read this one to gate an edit or an update, which no count covers.
+   */
+  readOnly: boolean;
+  /** Why the organization is read-only; '' when it is not. */
+  readOnlyMessage: string;
+  /**
+   * The banner's content when the supplier provides one — its own markup, so
+   * the wording and any link stay on that side.
+   */
+  readOnlyBanner: ReactNode;
+  /** Supply the read-only verdict. The supplying extension calls this. */
+  setReadOnly: (readOnly: boolean, reason?: string, banner?: ReactNode) => void;
+  /**
+   * Ask the supplier to re-read the limits, after something that may have
+   * changed a count. A no-op when no supplier is mounted.
+   */
+  refresh: () => void;
+  /**
+   * Bumped by `refresh`; the supplier watches it to know a re-read was asked
+   * for. Readers of `canCreate` have no use for it.
+   */
+  refreshSignal: number;
+};
+
+/**
+ * The inert `resourceLimits` a deployment with no supplier holds: nothing
+ * capped, nothing read-only, every setter a no-op. Exported so a test (or any
+ * caller assembling a Port outside the shell) states the standalone default
+ * rather than re-spelling it, and so that default lives in one place.
+ */
+export const NO_RESOURCE_LIMITS: ResourceLimitsPort = {
+  canCreate: () => true,
+  limitMessage: () => '',
+  set: () => {},
+  readOnly: false,
+  readOnlyMessage: '',
+  readOnlyBanner: null,
+  setReadOnly: () => {},
+  refresh: () => {},
+  refreshSignal: 0,
+};
+
+/**
+ * Resource kinds an extension can report as changed. Names, not query keys:
+ * the host owns the keys, so the cache layout can change without touching a
+ * plugin.
+ */
+export type InvalidatableResource = 'gateways' | 'apiPortals';
+
+/**
+ * How an extension reports that it changed data the host also caches. The
+ * host's own mutations invalidate React Query; one writing through `apiFetch`
+ * bypasses that, leaving stale counts (an Overview card) until the entry
+ * expires on its own.
+ */
+export type ResourcesPort = {
+  /** Drop every cached list, detail and child of `resource` for this org. */
+  invalidate: (resource: InvalidatableResource) => void;
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -76,6 +160,8 @@ export type CloudHostPort = {
   gatewayVersions?: GatewayVersionEntry[];
   /** `host:port` a self-hosted gateway's controller dials, from the console's runtime config. */
   gatewayControlPlaneHost?: string;
+  resourceLimits: ResourceLimitsPort;
+  resources: ResourcesPort;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

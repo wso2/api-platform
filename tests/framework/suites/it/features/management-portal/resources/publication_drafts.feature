@@ -56,7 +56,7 @@ Feature: API publication drafts are prepared and validated before anything reach
       """
     Then the response status code should be 200
     And the JSON response field "displayName" should be "${CTX:apiName} listing"
-    And the JSON response field "subscriptionPlanIds[0]" should be "${CTX:plan}"
+    And the JSON response field "subscriptionPlans[0].id" should be "${CTX:plan}"
     And the JSON response field "hasLandingPage" should be false
     When I send a "PUT" request to the control plane at "/api-portals/${CTX:portal}/apis/rest-api/${CTX:api}/draft/definition" with body:
       """
@@ -87,7 +87,7 @@ Feature: API publication drafts are prepared and validated before anything reach
     When I send a "GET" request to the control plane at "/api-portals/${CTX:portal}/apis/rest-api/${CTX:api}/draft"
     Then the response status code should be 200
     And the JSON response field "displayName" should be "${CTX:apiName} renamed"
-    And the JSON response array field "subscriptionPlanIds" should have 0 items
+    And the JSON response array field "subscriptionPlans" should have 0 items
     And the JSON response field "hasLandingPage" should be true
 
   Scenario Outline: A draft naming something that does not exist is rejected
@@ -132,7 +132,7 @@ Feature: API publication drafts are prepared and validated before anything reach
     And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
     When I send a "GET" request to the control plane at "/api-portals/${CTX:portal}/apis/rest-api/${CTX:api}/draft"
     Then the response status code should be 200
-    And the JSON response field "subscriptionPlanIds[0]" should be "${CTX:plan}"
+    And the JSON response field "subscriptionPlans[0].id" should be "${CTX:plan}"
 
   Scenario: Publishing needs a definition, and an unreachable portal leaves the draft unpublished
     When I send a "POST" request to the control plane at "/api-portals/${CTX:portal}/apis/rest-api/${CTX:api}/publish"

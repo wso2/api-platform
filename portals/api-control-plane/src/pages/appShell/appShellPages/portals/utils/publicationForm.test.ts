@@ -18,7 +18,14 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { aGateway, aPublication, aPublicationDraftDetails, aRestApi } from '@/test/msw';
+import {
+  aGateway,
+  aPublication,
+  aPublicationDraftDetails,
+  aRestApi,
+  publicationSelections,
+  type PublicationSelectionFixture,
+} from '@/test/msw';
 import {
   buildProductionUrlOptions,
   deletedDocumentsOf,
@@ -74,12 +81,12 @@ describe('resolveDraftFormValues', () => {
   });
 
   it('reads the selected documents from the draft, then the publication', () => {
-    const draft = aPublicationDraftDetails({ docIds: ['guide'] });
-    const publication = aPublication({ docIds: ['faq'] });
+    const draft = aPublicationDraftDetails({ documents: publicationSelections('guide') });
+    const publication = aPublication({ documents: publicationSelections('faq') });
 
     expect(resolveDraftFormValues(draft, publication, api).docIds).toEqual(['guide']);
     expect(resolveDraftFormValues(undefined, publication, api).docIds).toEqual(['faq']);
-    expect(resolveDraftFormValues(aPublicationDraftDetails({ docIds: undefined }), undefined, api).docIds).toEqual([]);
+    expect(resolveDraftFormValues(aPublicationDraftDetails({ documents: undefined }), undefined, api).docIds).toEqual([]);
   });
 
   it('defaults the Production URL to the given gateway URL', () => {
@@ -104,27 +111,21 @@ describe('resolveDraftFormValues', () => {
 });
 
 describe('deleted plans', () => {
-  const selections = [
-    { deleted: false, displayName: 'Gold', edited: false, id: 'gold' },
-    { deleted: true, displayName: 'Platinum', edited: false, id: 'platinum' },
+  const selections: PublicationSelectionFixture[] = [
+    { displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' },
+    { displayName: 'Platinum', id: 'platinum', sourceStatus: 'DELETED' },
   ];
 
   it('leaves a deleted plan out of the form, whichever tier it is read from', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
-    const publication = aPublication({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
+    const draft = aPublicationDraftDetails({ subscriptionPlans: selections });
+    const publication = aPublication({ subscriptionPlans: selections });
 
     expect(resolveDraftFormValues(draft, undefined, undefined).subscriptionPlanIds).toEqual(['gold']);
     expect(resolveDraftFormValues(undefined, publication, undefined).subscriptionPlanIds).toEqual(['gold']);
   });
 
-  it('reads the plan ids as they are when the server sends no plan details', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: undefined });
-
-    expect(resolveDraftFormValues(draft, undefined, undefined).subscriptionPlanIds).toEqual(['gold', 'platinum']);
-  });
-
   it('lists the deleted plans with their stored names', () => {
-    const draft = aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'platinum'], subscriptionPlans: selections });
+    const draft = aPublicationDraftDetails({ subscriptionPlans: selections });
 
     expect(deletedPlansOf(draft)).toEqual([{ displayName: 'Platinum', id: 'platinum' }]);
     expect(deletedPlansOf(undefined)).toEqual([]);
@@ -135,9 +136,9 @@ describe('edited plans', () => {
   it('lists the plans edited since they were saved, leaving out deleted ones', () => {
     const draft = aPublicationDraftDetails({
       subscriptionPlans: [
-        { deleted: false, displayName: 'Gold', edited: true, id: 'gold' },
-        { deleted: false, displayName: 'Silver', edited: false, id: 'silver' },
-        { deleted: true, displayName: 'Platinum', edited: true, id: 'platinum' },
+        { displayName: 'Gold', id: 'gold', sourceStatus: 'UPDATED' },
+        { displayName: 'Silver', id: 'silver', sourceStatus: 'UNCHANGED' },
+        { displayName: 'Platinum', id: 'platinum', sourceStatus: 'DELETED' },
       ],
     });
 
@@ -147,24 +148,18 @@ describe('edited plans', () => {
 });
 
 describe('deleted and edited documents', () => {
-  const selections = [
-    { deleted: false, displayName: 'Guide', edited: true, id: 'guide' },
-    { deleted: true, displayName: 'Old guide', edited: true, id: 'gone' },
-    { deleted: false, displayName: 'FAQ', edited: false, id: 'faq' },
+  const selections: PublicationSelectionFixture[] = [
+    { displayName: 'Guide', id: 'guide', sourceStatus: 'UPDATED' },
+    { displayName: 'Old guide', id: 'gone', sourceStatus: 'DELETED' },
+    { displayName: 'FAQ', id: 'faq', sourceStatus: 'UNCHANGED' },
   ];
 
   it('leaves a deleted document out of the form, whichever tier it is read from', () => {
-    const draft = aPublicationDraftDetails({ docIds: ['guide', 'gone', 'faq'], documents: selections });
-    const publication = aPublication({ docIds: ['guide', 'gone', 'faq'], documents: selections });
+    const draft = aPublicationDraftDetails({ documents: selections });
+    const publication = aPublication({ documents: selections });
 
     expect(resolveDraftFormValues(draft, undefined, undefined).docIds).toEqual(['guide', 'faq']);
     expect(resolveDraftFormValues(undefined, publication, undefined).docIds).toEqual(['guide', 'faq']);
-  });
-
-  it('reads the document ids as they are when the server sends no document details', () => {
-    const draft = aPublicationDraftDetails({ docIds: ['guide', 'gone'], documents: undefined });
-
-    expect(resolveDraftFormValues(draft, undefined, undefined).docIds).toEqual(['guide', 'gone']);
   });
 
   it('lists deleted documents with their stored names and the edited ones, leaving out deleted', () => {
