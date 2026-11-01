@@ -297,7 +297,9 @@ export function LoginPage() {
   const from = state.returnToUrl || state.from?.pathname || '/';
   const isInvitation = Boolean(state.confirmationOrg && state.confirmationKey);
   const isBrowserSupported = isSupportedBrowser();
-  const isOidcMode = runtimeConfig.authMode === 'oidc';
+  // Redirect sign-in (oidc, or a gateway/proxy in external mode) hands over to
+  // the sign-in endpoint; form sign-in (basic) shows the credential fields.
+  const isRedirectLogin = runtimeConfig.authContract.loginStyle === 'redirect';
   const autoRedirectStarted = useRef(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -316,10 +318,10 @@ export function LoginPage() {
     !isBrowserSupported || (isInvitation && state.displayOrgName) || oidcError || auth.error,
   );
 
-  const shouldAutoRedirect = !auth.isAuthenticated && isOidcMode && !isInvitation && !oidcError;
+  const shouldAutoRedirect = !auth.isAuthenticated && isRedirectLogin && !isInvitation && !oidcError;
 
-  // Redirect to the IdP in OIDC mode unless showing an invitation or OIDC
-  // error. Use an effect because auth.login() navigates and mutates a ref.
+  // Redirect to the sign-in endpoint unless showing an invitation or a
+  // sign-in error. Use an effect because auth.login() navigates and mutates a ref.
   useEffect(() => {
     if (!shouldAutoRedirect || autoRedirectStarted.current) return;
     autoRedirectStarted.current = true;
@@ -513,7 +515,7 @@ export function LoginPage() {
                 </Stack>
               )}
 
-              {isOidcMode ? (
+              {isRedirectLogin ? (
                 <Button
                   endIcon={<ArrowRight size={18} />}
                   fullWidth

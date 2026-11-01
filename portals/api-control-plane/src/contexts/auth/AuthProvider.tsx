@@ -18,16 +18,15 @@
 
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
+import { buildLoginUrl, withAppBasePath, type SessionFormat } from '../../config/authContract';
 import { runtimeConfig } from '../../config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './authConstants';
 import { AuthStateContext } from './AuthStateContext';
 import type { AuthState, AuthStatus, AuthUser } from './authTypes';
+import { hasScopeClaim, userFromClaims } from './userFromClaims';
 import { onSessionExpired } from '../../api/core/sessionEvents';
 
-const SESSION_URL = '/api/session';
-const LOGIN_URL = '/api/login';
-const LOGOUT_URL = '/api/logout';
-const OIDC_LOGIN_URL = '/api/auth/login';
+const contract = runtimeConfig.authContract;
 
 type SessionResponse = {
   authenticated: boolean;
@@ -48,17 +47,94 @@ const mutatingHeaders: HeadersInit = {
   [CSRF_HEADER]: CSRF_HEADER_VALUE,
 };
 
+type SessionCheck = { status: Exclude<AuthStatus, 'loading'>; user?: AuthUser };
+
+const SIGNED_OUT: SessionCheck = { status: 'unauthenticated' };
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
 /**
- * The BFF owns authentication: it holds the session server-side in an
- * HttpOnly cookie, and the browser never sees a token. This provider only
- * ever talks to the BFF's own same-origin auth endpoints — never an IdP
- * SDK — so there is exactly one implementation regardless of auth mode.
+ * This portal's BFF: `{authenticated, user}` with the user already resolved,
+ * and a 401 with `reason: 'expired'` for a session that has expired.
+ */
+async function readBffSession(response: Response): Promise<SessionCheck> {
+  const body = (await response.json().catch(() => ({}))) as SessionResponse;
+  if (!response.ok) {
+    return { status: body.reason === 'expired' ? 'expired' : 'unauthenticated' };
+  }
+  return { status: body.authenticated ? 'authenticated' : 'unauthenticated', user: body.user };
+}
+
+/**
+ * A gateway or auth proxy that answers with the signed-in user's claims, and
+ * with a non-2xx when nobody is signed in (it can't say "expired"). Scopes
+ * come from the scope claim. Without one they stay unknown, not "none
+ * granted": PermissionProvider then offers every action and leaves the
+ * decision to the Platform API.
+ */
+async function readClaimsSession(response: Response): Promise<SessionCheck> {
+  const claims: unknown = response.ok ? await response.json().catch(() => undefined) : undefined;
+  if (!isObject(claims)) return SIGNED_OUT;
+  const user = userFromClaims(claims, contract.claimMappings);
+  if (!hasScopeClaim(claims, contract.claimMappings.scope)) delete user.scopes;
+  return { status: 'authenticated', user };
+}
+
+/**
+ * The ThunderID SDK's backend-mode session, as the gateway's `oauth2-session`
+ * policy answers it: `{isSignedIn, user, expiresAt, scope}`, or
+ * `{isSignedIn: false}` (or a non-2xx) when nobody is signed in. `user` holds
+ * the ID token's claims. The granted scopes come beside it in `scope`,
+ * space-separated as in a token response; the SDK's getGrantedPermissions()
+ * reads the same field. Without `scope` they stay unknown, as above.
+ */
+async function readSdkSession(response: Response): Promise<SessionCheck> {
+  const body: unknown = response.ok ? await response.json().catch(() => undefined) : undefined;
+  if (!isObject(body) || body.isSignedIn !== true) return SIGNED_OUT;
+  const user = userFromClaims(isObject(body.user) ? body.user : {}, contract.claimMappings);
+  if (typeof body.scope === 'string') {
+    user.scopes = body.scope.split(' ').filter((scope) => scope !== '');
+  } else {
+    delete user.scopes;
+  }
+  return { status: 'authenticated', user };
+}
+
+const SESSION_READERS: Record<SessionFormat, (response: Response) => Promise<SessionCheck>> = {
+  bff: readBffSession,
+  claims: readClaimsSession,
+  sdk: readSdkSession,
+};
+
+/** Asks the session endpoint who is signed in. Never throws: a failed request reads as signed out. */
+async function checkSession(): Promise<SessionCheck> {
+  try {
+    const response = await fetch(contract.sessionUrl, { credentials: 'same-origin' });
+    return await SESSION_READERS[contract.sessionFormat](response);
+  } catch {
+    return SIGNED_OUT;
+  }
+}
+
+/**
+ * Something in front of the console owns authentication — this portal's BFF,
+ * or a gateway or auth proxy acting as the BFF — and holds the session
+ * server-side behind an HttpOnly cookie; the browser never sees a token. This
+ * provider only ever talks to that component's same-origin endpoints — never
+ * an IdP SDK — so there is exactly one implementation for every auth mode.
+ * Which endpoints, and how they answer, is `runtimeConfig.authContract`
+ * (see config/authContract.ts):
  *
- *   - basic mode: loginWithCredentials() posts to /api/login directly.
- *   - oidc mode: login() redirects to /api/auth/login, which runs the whole
- *     code exchange server-side and redirects back with the session cookie
- *     already set — this provider only needs to (re-)hydrate from
+ *   - basic mode: loginWithCredentials() posts to the BFF's /api/login.
+ *   - oidc mode: login() redirects to the BFF's /api/auth/login, which runs
+ *     the whole code exchange server-side and redirects back with the session
+ *     cookie already set — this provider only needs to (re-)hydrate from
  *     /api/session afterwards, same as on first load.
+ *   - external mode: the same redirect, to the gateway's or proxy's sign-in
+ *     URL. The session endpoint answers with the user's claims, directly
+ *     (`claims` format) or in the ThunderID SDK's backend-mode session
+ *     (`sdk`), and userFromClaims() resolves them exactly as the BFF would.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -66,20 +142,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string>();
 
   const hydrate = useCallback(async () => {
-    try {
-      const response = await fetch(SESSION_URL, { credentials: 'same-origin' });
-      const body = (await response.json().catch(() => ({}))) as SessionResponse;
-      if (!response.ok) {
-        setUser(undefined);
-        setStatus(body.reason === 'expired' ? 'expired' : 'unauthenticated');
-        return;
-      }
-      setUser(body.user);
-      setStatus(body.authenticated ? 'authenticated' : 'unauthenticated');
-    } catch {
-      setStatus('unauthenticated');
-      setUser(undefined);
-    }
+    const session = await checkSession();
+    setUser(session.user);
+    setStatus(session.status);
   }, []);
 
   useEffect(() => {
@@ -91,8 +156,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    *
    * Without this, an expired session surfaced only as individual failed
    * requests: the user sat on a screen where nothing worked and nothing
-   * explained why. Re-hydrating asks the BFF what is actually true; it may
-   * have renewed the session server-side, in which case the answer is
+   * explained why. Re-hydrating asks the session endpoint what is actually
+   * true; it may have renewed the session server-side, in which case the answer is
    * "still authenticated" and nothing further happens; otherwise `status`
    * becomes unauthenticated (or `expired`) and `ProtectedRoute` redirects.
    *
@@ -103,15 +168,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   useEffect(() => onSessionExpired(() => void hydrate()), [hydrate]);
 
-  const login = useCallback((returnTo = window.location.pathname) => {
-    window.location.assign(`${OIDC_LOGIN_URL}?return=${encodeURIComponent(returnTo)}`);
+  // Every sign-in endpoint redirects back to a path from the host root, while
+  // callers pass a path inside the app; add the base path the app is mounted
+  // under (App.tsx's router basename) so a console under a sub-path comes back
+  // to itself.
+  const login = useCallback((returnTo?: string) => {
+    const target =
+      returnTo === undefined
+        ? window.location.pathname
+        : withAppBasePath(returnTo, runtimeConfig.appBasePath);
+    window.location.assign(buildLoginUrl(contract, target));
   }, []);
 
   const loginWithCredentials = useCallback(
     async (username: string, password: string) => {
       setError(undefined);
       try {
-        const response = await fetch(LOGIN_URL, {
+        const response = await fetch(contract.credentialsUrl, {
           method: 'POST',
           credentials: 'same-origin',
           headers: mutatingHeaders,
@@ -135,10 +208,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    // A gateway or proxy ends the session on a plain navigation and redirects
+    // on its own. Leave without touching local state, for the same reason as
+    // the IDP case below.
+    if (contract.logoutStyle === 'navigate') {
+      window.location.assign(contract.logoutUrl);
+      return;
+    }
     void (async () => {
       let logoutUrl: string | undefined;
       try {
-        const response = await fetch(LOGOUT_URL, {
+        const response = await fetch(contract.logoutUrl, {
           method: 'POST',
           credentials: 'same-origin',
           headers: mutatingHeaders,

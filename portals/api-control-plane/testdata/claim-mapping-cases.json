@@ -1,0 +1,104 @@
+{
+  "_comment": "Shared cases for the claim-to-user mapping. Run by the BFF (bff/internal/session/claims_shared_test.go, UserFromClaims) and by the console (src/contexts/auth/userFromClaims.test.ts), so the two implementations cannot drift. 'mappings' overrides the default claim names; 'expected' is the user as /api/session serializes it.",
+  "cases": [
+    {
+      "name": "default claim names",
+      "claims": {
+        "sub": "u-1",
+        "username": "alice",
+        "email": "alice@example.com",
+        "roles": ["ap_admin", "ap_developer"],
+        "scope": "ap:api:read ap:api:write",
+        "organization": "org-1",
+        "org_name": "Acme",
+        "org_handle": "acme",
+        "picture": "https://cdn.example.com/alice.png"
+      },
+      "expected": {
+        "name": "alice",
+        "email": "alice@example.com",
+        "role": "ap_admin ap_developer",
+        "scopes": ["ap:api:read", "ap:api:write"],
+        "org": { "id": "org-1", "name": "Acme", "handle": "acme" },
+        "picture": "https://cdn.example.com/alice.png"
+      }
+    },
+    {
+      "name": "Thunder claim names, as WSO2 Cloud maps them",
+      "mappings": { "username": "name", "organization": "ouId", "org_name": "ouName", "org_handle": "ouHandle" },
+      "claims": {
+        "sub": "6c1f",
+        "name": "Bob Builder",
+        "email": "bob@example.com",
+        "scope": "openid ap:api:read",
+        "ouId": "436e4321",
+        "ouName": "Bob's Org",
+        "ouHandle": "bobs-org"
+      },
+      "expected": {
+        "name": "Bob Builder",
+        "email": "bob@example.com",
+        "scopes": ["openid", "ap:api:read"],
+        "org": { "id": "436e4321", "name": "Bob's Org", "handle": "bobs-org" }
+      }
+    },
+    {
+      "name": "display name falls back to email",
+      "claims": { "sub": "u-2", "email": "carol@example.com" },
+      "expected": { "name": "carol@example.com", "email": "carol@example.com", "scopes": [] }
+    },
+    {
+      "name": "display name falls back to the subject when there is no username or email",
+      "claims": { "sub": "u-3" },
+      "expected": { "name": "u-3", "email": "", "scopes": [] }
+    },
+    {
+      "name": "a non-string username claim is ignored",
+      "claims": { "sub": "u-4", "username": 42, "email": "dave@example.com" },
+      "expected": { "name": "dave@example.com", "email": "dave@example.com", "scopes": [] }
+    },
+    {
+      "name": "scope as an array",
+      "claims": { "sub": "u-5", "scope": ["a", "b"] },
+      "expected": { "name": "u-5", "email": "", "scopes": ["a", "b"] }
+    },
+    {
+      "name": "scopes fall back to the flat scp claim when the configured claim is missing",
+      "claims": { "sub": "u-6", "scp": "x y" },
+      "expected": { "name": "u-6", "email": "", "scopes": ["x", "y"] }
+    },
+    {
+      "name": "scopes from a configured dotted path",
+      "mappings": { "scope": "authz.scopes" },
+      "claims": { "sub": "u-7", "authz": { "scopes": ["p", "q"] } },
+      "expected": { "name": "u-7", "email": "", "scopes": ["p", "q"] }
+    },
+    {
+      "name": "roles from a dotted path, Keycloak style",
+      "mappings": { "roles": "realm_access.roles" },
+      "claims": { "sub": "u-8", "realm_access": { "roles": ["admin", "", "viewer"] } },
+      "expected": { "name": "u-8", "email": "", "role": "admin viewer", "scopes": [] }
+    },
+    {
+      "name": "roles as a space-delimited string",
+      "claims": { "sub": "u-9", "roles": "admin  viewer" },
+      "expected": { "name": "u-9", "email": "", "role": "admin viewer", "scopes": [] }
+    },
+    {
+      "name": "organization with a handle only uses the handle as its name",
+      "claims": { "sub": "u-10", "org_handle": "solo" },
+      "expected": { "name": "u-10", "email": "", "scopes": [], "org": { "id": "", "name": "solo", "handle": "solo" } }
+    },
+    {
+      "name": "an organization name alone is not an organization",
+      "claims": { "sub": "u-11", "org_name": "Nameless" },
+      "expected": { "name": "u-11", "email": "", "scopes": [] }
+    },
+    {
+      "name": "a dotted path through a non-object finds nothing",
+      "mappings": { "email": "contact.email" },
+      "claims": { "sub": "u-12", "contact": "not-an-object" },
+      "expected": { "name": "u-12", "email": "", "scopes": [] }
+    }
+  ]
+}
