@@ -20,7 +20,13 @@ scenarios:
     title: Undeploy a deployed artifact; 200, the deployment becomes UNDEPLOYED and the gateway stops serving it.
     priority: P0
     ui:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3900
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page"
     it:
       status: automated
       refs:
@@ -30,7 +36,13 @@ scenarios:
     title: Restore an undeployed deployment; it becomes DEPLOYED again and the gateway serves the same build.
     priority: P0
     ui:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3900
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page"
     it:
       status: automated
       refs:
@@ -40,7 +52,12 @@ scenarios:
     title: Restore a deployment that is currently deployed; 409 DEPLOYMENT_RESTORE_CONFLICT and nothing changes.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's live deployment can be neither deleted nor restored over itself"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's live deployment can be neither deleted nor restored over itself"
     it:
       status: automated
       refs:
@@ -50,7 +67,12 @@ scenarios:
     title: Delete a deployment that is currently deployed; 409 DEPLOYMENT_ACTIVE, and it remains listed and served.
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's live deployment can be neither deleted nor restored over itself"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's live deployment can be neither deleted nor restored over itself"
     it:
       status: automated
       refs:
@@ -60,7 +82,13 @@ scenarios:
     title: Delete an undeployed deployment, then get and list; 204, get returns 404 and the list no longer has it. Includes REST APIs.
     priority: P1
     ui:
-      status: planned
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3900
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page"
     it:
       status: automated
       refs:

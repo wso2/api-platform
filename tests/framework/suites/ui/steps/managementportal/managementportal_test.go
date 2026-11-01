@@ -81,3 +81,16 @@ func TestGeneratedHandlesAreControlPlaneHandlesAndExpandAsContextValues(t *testi
 
 	require.ErrorContains(t, generateHandle(context.Background(), "x", "k"), "without runner context")
 }
+
+func TestDeploymentStartedToastNamesTheDeployment(t *testing.T) {
+	match := deploymentStartedToast.FindStringSubmatch(`Deployment "it-gateway_2026-11-01_4" started.`)
+	require.Equal(t, []string{`Deployment "it-gateway_2026-11-01_4" started.`, "it-gateway_2026-11-01_4"}, match)
+	require.Nil(t, deploymentStartedToast.FindStringSubmatch(`Stopping "it-gateway_2026-11-01_4".`))
+}
+
+func TestEveryDeploymentConfirmationNamesTheDeployment(t *testing.T) {
+	for action, format := range confirmations {
+		require.Contains(t, format, `"%s"`, action)
+	}
+	require.Len(t, confirmations, 3)
+}
