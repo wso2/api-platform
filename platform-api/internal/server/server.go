@@ -1301,9 +1301,8 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 	return service.NewHTTPPortalPublisher(authRegistry, lightClient, listingClient, contentClient, cfg.PlanListingBudget()), nil
 }
 
-// newAPIInvokeHandler builds the gateway relay behind the Test console's invoke
-// route. An invalid allow_hosts entry fails startup rather than leaving the
-// relay with a policy other than the one configured.
+// newAPIInvokeHandler builds the gateway relay behind the invoke route. An
+// invalid allow_hosts entry fails startup.
 func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
 	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
 	if err != nil {

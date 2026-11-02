@@ -25,10 +25,9 @@ import type { TestCallMode } from '../../utils/callMode';
 import { splitAgainstBase } from './swaggerRequest';
 
 /**
- * Routes the console's test requests through the Platform API's invoke
- * operation (`POST /rest-apis/{restApiId}/gateways/{gatewayId}/invoke`) rather
- * than directly to the gateway, without modifying the request displayed by the
- * console.
+ * Routes the console's test requests through the Platform API's
+ * `POST /gateway-relay/invoke` rather than directly to the gateway, without
+ * modifying the request displayed by the console.
  *
  * ## Why a relay at all
  *
@@ -150,7 +149,7 @@ const messages = defineMessages({
   },
 });
 
-/** Maps each Platform API error code of the invoke operation, and the console's own, to its wording. */
+/** The invoke operation's error codes, and the console's own, mapped to their wording. */
 const ERROR_MESSAGES: Record<string, (typeof messages)[keyof typeof messages]> = {
   REST_API_NOT_FOUND: messages.apiNotFound,
   REST_API_INVOKE_GATEWAY_NOT_DEPLOYED: messages.gatewayNotDeployed,
@@ -499,9 +498,9 @@ export const createRelayFetch =
     let parsed: unknown;
     try {
       parsed = await context.invoke({
-        restApiId: context.restApiId,
-        gatewayId: context.gatewayId,
         body: {
+          restApiId: context.restApiId,
+          gatewayId: context.gatewayId,
           method: request.method ?? 'GET',
           path: split.path,
           query: split.query.map(([name, value]) => ({ name, value })),

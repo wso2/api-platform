@@ -530,9 +530,8 @@ max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
 # ---------------------------------------------------------------------------
 # Gateway relay — the Test console's requests to a deployed REST API
 # ---------------------------------------------------------------------------
-# POST /rest-apis/{restApiId}/gateways/{gatewayId}/invoke sends the console's
-# test request to a gateway the REST API is deployed to and returns the
-# gateway's response as data. The caller names the REST API and the gateway,
+# POST /gateway-relay/invoke sends the console's test request to a gateway the
+# REST API is deployed to and returns the gateway's response as data. The caller names the REST API and the gateway,
 # never a URL; the target is that gateway's endpoint plus the API's context.
 [platform_api.gateway_relay]
 request_timeout    = "30s"     # one relayed call, end to end; must stay below server.timeouts.write

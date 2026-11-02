@@ -653,11 +653,9 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 	return response, nil
 }
 
-// GetAPIInvokeTarget returns the context of the REST API and the endpoints of
-// the gateway it is deployed to, for sending a test request through that
-// gateway. A gateway the API is only associated with is refused like one it has
-// nothing to do with: the console offers deployed gateways only, and accepting
-// any associated one would let a caller aim the request at it.
+// GetAPIInvokeTarget returns the REST API's context and the endpoints of the
+// gateway it is deployed to. A gateway it is only associated with is refused, or
+// a caller could aim a test request at any associated gateway.
 func (s *APIService) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (apiContext string, endpoints []string, err error) {
 	apiUUID, err := s.getAPIUUIDByHandle(apiHandle, orgID)
 	if err != nil {

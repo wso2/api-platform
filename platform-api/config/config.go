@@ -219,24 +219,18 @@ type AgentCardCache struct {
 	MaxBytes int64 `koanf:"max_bytes"`
 }
 
-// GatewayRelay configures POST /rest-apis/{restApiId}/gateways/{gatewayId}/invoke,
-// which sends the Test console's request to a gateway the REST API is deployed
-// to and returns the gateway's response. It has its own outbound client rather
-// than the shared one: it never follows redirects, and Egress decides which
-// gateway addresses it may dial at all.
+// GatewayRelay configures POST /gateway-relay/invoke.
+// Its client is not the shared one: it never follows redirects, and Egress
+// decides which gateway addresses it may dial.
 type GatewayRelay struct {
-	// RequestTimeout bounds one relayed call, from dialing to reading the
-	// response. It must stay below server.timeouts.write.
+	// RequestTimeout bounds one relayed call; it must stay below server.timeouts.write.
 	RequestTimeout time.Duration `koanf:"request_timeout"`
-	// MaxRequestBytes bounds the decoded request body. The JSON request may be
-	// larger, since a binary body travels base64-encoded.
+	// MaxRequestBytes bounds the decoded request body.
 	MaxRequestBytes int64 `koanf:"max_request_bytes"`
-	// MaxResponseBytes bounds the gateway's response body. A longer body is
-	// truncated and flagged rather than failing the call.
+	// MaxResponseBytes bounds the response body; a longer one is truncated, not failed.
 	MaxResponseBytes int64 `koanf:"max_response_bytes"`
-	// MaxConcurrent is how many relayed calls may be in flight at once, per
-	// replica, and MaxPending how many may wait for a slot before new ones are
-	// refused with 503.
+	// MaxConcurrent calls run at once per replica, MaxPending more may wait; the
+	// rest get 503.
 	MaxConcurrent int `koanf:"max_concurrent"`
 	MaxPending    int `koanf:"max_pending"`
 	// CAFile is a PEM bundle to trust for gateway certificates. TLSSkipVerify
@@ -248,9 +242,7 @@ type GatewayRelay struct {
 }
 
 // GatewayRelayEgress is [gateway_relay.egress]: nothing is reachable unless an
-// AllowHosts entry matches it, so an empty list refuses every target. Each
-// entry is "[scheme://]host[:port]", and "*" may appear anywhere in host. See
-// internal/gatewayrelay/egress.
+// AllowHosts entry ("[scheme://]host[:port]", "*" allowed in host) matches.
 type GatewayRelayEgress struct {
 	AllowHosts []string `koanf:"allow_hosts"`
 }
@@ -1092,10 +1084,8 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 	return nil
 }
 
-// validateGatewayRelayConfig rejects a relay without bounds, and a timeout that
-// would let the server cut the response off before the relay reports a failure.
-// The allow_hosts entries are parsed, and rejected if invalid, when the relay is
-// built at startup.
+// validateGatewayRelayConfig rejects a relay without bounds, or one the server's
+// write timeout would cut off. allow_hosts is parsed when the relay is built.
 func validateGatewayRelayConfig(cfg *GatewayRelay, writeTimeout time.Duration) error {
 	if cfg.RequestTimeout <= 0 {
 		return fmt.Errorf("gateway_relay.request_timeout must be greater than zero (got %s)", cfg.RequestTimeout)

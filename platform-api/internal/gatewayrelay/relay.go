@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -33,14 +34,12 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
 )
 
-// ErrBusy is returned when the relay is already at its concurrency ceiling and
-// its pending queue is full. Surfaced as 503 rather than queued indefinitely:
-// an unbounded queue in front of a bounded pool is only delayed memory growth.
+// ErrBusy means every slot is taken and the pending queue is full. The queue is
+// bounded: an unbounded one in front of a bounded pool only delays memory growth.
 var ErrBusy = errors.New("gateway relay is at capacity")
 
-// RelayOptions configures the relay. Everything here has a validated,
-// non-zero default in the config package; New does not invent one, so a
-// zero-valued option is a programming error rather than a silent "unbounded".
+// RelayOptions configures the relay. The config package supplies validated
+// defaults, so a zero bound here is a wiring mistake, not "unbounded".
 type RelayOptions struct {
 	RequestTimeout   time.Duration
 	MaxRequestBytes  int64
@@ -51,25 +50,19 @@ type RelayOptions struct {
 	CAFile        string
 	TLSSkipVerify bool
 
-	// Egress bounds where the relay may connect. Required: a nil policy is a
-	// wiring mistake, not "no restrictions", and NewRelay refuses it rather
-	// than dialing anywhere the resolver happens to name.
+	// Egress bounds where the relay may connect. Required: nil is refused, never
+	// read as "no restrictions".
 	Egress *egress.Policy
 }
 
-// Relay sends one sanitized request to a resolved gateway target and reads a
-// bounded response back.
-//
-// It holds no reference to the caller's request or token. The only headers it
-// sets are the ones handed to Do, which is what makes it structurally
-// impossible for this path to leak the caller's bearer token to a
-// tenant-controlled gateway, rather than merely unlikely.
+// Relay sends one sanitized request to a gateway and reads a bounded response.
+// It never sees the caller's request or token, so it cannot leak the token to a
+// tenant-controlled gateway.
 type Relay struct {
 	client *http.Client
 	opts   RelayOptions
 
-	// inFlight counts running *and* waiting calls, so the ceiling below bounds
-	// the queue as well as the pool.
+	// inFlight counts running and waiting calls, so the ceiling bounds the queue too.
 	inFlight atomic.Int64
 	slots    chan struct{}
 }
@@ -86,24 +79,16 @@ func NewRelay(opts RelayOptions) (*Relay, error) {
 
 	cfg := httpclient.DefaultConfig()
 	cfg.Timeouts.Overall = opts.RequestTimeout
-	// The relay does its own bounded read so it can *truncate* a large response
-	// instead of failing it. httpkit's ceiling stays on as a hard backstop, set
-	// above the relay's own limit so the relay's friendlier behaviour is what
-	// callers normally meet.
+	// Do truncates a long response itself; httpkit's limit is a backstop above it.
 	cfg.Timeouts.MaxResponseBytes = opts.MaxResponseBytes * 2
-	// cfg.SSRF stays off, and the guard is supplied as the dial function
-	// instead. httpclient's own SSRF mode installs netguard.DialContext,
-	// which covers the address categories but reports a refusal without
-	// naming the address — see egress.Policy.DialContext, which logs the
-	// address and reason while still running every categorical check through
-	// netguard rather than restating it.
+	// The egress policy's dialer runs netguard's checks itself and also logs the
+	// refused address, which httpclient's own SSRF mode does not.
 	dial := opts.Egress.DialContext(cfg.Timeouts.Dial)
 	cfg.TLS = httpclient.TLSConfig{
 		MinVersion: "TLS1_2",
 		MaxVersion: "TLS1_3",
-		// Prefer the FIPS 203 ML-KEM-768 hybrid group, keeping the classical
-		// curves after it so a gateway build that does not offer the hybrid
-		// group still completes its handshake instead of failing closed.
+		// The ML-KEM-768 hybrid first, classical curves after it for gateways
+		// without it.
 		CurvePreferences:               "X25519MLKEM768,X25519,P-256,P-384",
 		RootCAFile:                     opts.CAFile,
 		InsecureSkipVerify:             opts.TLSSkipVerify,
@@ -114,9 +99,8 @@ func NewRelay(opts RelayOptions) (*Relay, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gatewayrelay: build relay client: %w", err)
 	}
-	// Never follow a redirect. A 3xx is a result the tester wants to see, and
-	// chasing it would send the caller's headers, the test key among them, to
-	// a location the resolved target chose rather than the one authorized here.
+	// A 3xx is a result to show, and following it would send the test request's
+	// headers to a location the gateway chose.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
@@ -128,17 +112,11 @@ func NewRelay(opts RelayOptions) (*Relay, error) {
 	}, nil
 }
 
-// Do relays one request and returns the gateway's response as data.
-//
-// The returned error means the relay itself failed. A gateway that answered at
-// all, with any status, is a successful relay and comes back in Relayed.
+// Do relays one request. An error means the relay failed; a gateway answer with
+// any status is a successful relay.
 func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, error) {
-	// Host and port are properties of the URL and do not depend on DNS, so
-	// they are settled here rather than in the dialer: this is where a
-	// refusal can still be reported as "this target is not allowed" with the
-	// reason attached, instead of surfacing later as a generic unreachable
-	// gateway. The address checks stay at dial time, where rebinding
-	// requires them to be.
+	// Scheme, host and port need no DNS, so they are checked here, where a refusal
+	// can still say "not allowed". The address checks stay at dial time (rebinding).
 	if err := r.opts.Egress.CheckTarget(target.URL); err != nil {
 		return Relayed{}, err
 	}
@@ -162,14 +140,13 @@ func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, er
 	if err != nil {
 		return Relayed{}, err
 	}
-	if r.opts.MaxRequestBytes > 0 && int64(len(body)) > r.opts.MaxRequestBytes {
+	if int64(len(body)) > r.opts.MaxRequestBytes {
 		return Relayed{}, ErrBodyTooLarge
 	}
 
 	u := *target.URL
 	u.Path = decodedPath
-	// RawPath is only consulted by Go when it is a valid alternative encoding
-	// of Path; setting it when the two agree would be noise.
+	// RawPath matters only when it differs from Path's own encoding.
 	if escapedPath != decodedPath {
 		u.RawPath = escapedPath
 	} else {
@@ -190,9 +167,7 @@ func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, er
 	if err != nil {
 		return Relayed{}, err
 	}
-	// The sanitized list is the complete set of headers on the wire. Assigning
-	// rather than merging is deliberate: nothing the Platform API holds may
-	// reach a gateway, so there is no base set to merge into.
+	// Assigned, not merged: the sanitized headers are all that go on the wire.
 	outbound.Header = headers
 	outbound.ContentLength = int64(len(body))
 
@@ -203,10 +178,8 @@ func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, er
 	}
 	defer res.Body.Close()
 
-	// Bound the read one byte past the ceiling so hitting it is detectable.
-	// This counts *decompressed* bytes: Go's transport transparently inflates a
-	// gzip response it negotiated itself, so the ceiling applies to what the
-	// relay would actually hold in memory, not to the compressed size.
+	// One byte past the limit shows the body was longer. Go inflates a gzip body it
+	// negotiated, so this bounds what is held in memory, not the compressed size.
 	limited := io.LimitReader(res.Body, r.opts.MaxResponseBytes+1)
 	raw, readErr := io.ReadAll(limited)
 	if readErr != nil {
@@ -229,8 +202,7 @@ func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, er
 	}, nil
 }
 
-// acquire takes a concurrency slot, rejecting immediately once running plus
-// waiting calls would exceed the pool and its bounded queue together.
+// acquire takes a slot, refusing at once when the pool and its queue are both full.
 func (r *Relay) acquire(ctx context.Context) (func(), error) {
 	ceiling := int64(r.opts.MaxConcurrent + r.opts.MaxPending)
 	if r.inFlight.Add(1) > ceiling {
@@ -249,14 +221,8 @@ func (r *Relay) acquire(ctx context.Context) (func(), error) {
 	}
 }
 
-// trimToRuneBoundary drops a partial UTF-8 sequence from the end of a
-// truncated body.
-//
-// Without it, cutting a text response at an arbitrary byte has a good chance of
-// landing mid-rune, which makes the whole body invalid UTF-8 — and EncodeBody
-// would then hand the console base64 for what is plainly text. Dropping up to
-// three trailing bytes keeps a truncated JSON or XML response readable, which
-// is the entire point of truncating rather than failing.
+// trimToRuneBoundary drops a partial UTF-8 sequence from the end of a truncated
+// body, which would otherwise turn a text response into base64.
 func trimToRuneBoundary(b []byte) []byte {
 	for i := 0; i < utf8.UTFMax && len(b) > 0; i++ {
 		if r, size := utf8.DecodeLastRune(b); r != utf8.RuneError || size > 1 {
@@ -267,34 +233,17 @@ func trimToRuneBoundary(b []byte) []byte {
 	return b
 }
 
-// statusText returns the gateway's own reason phrase, falling back to the
-// canonical one when the response carries none.
+// statusText returns the gateway's own reason phrase, or the standard one.
 func statusText(res *http.Response) string {
-	if _, phrase, ok := cutStatusLine(res.Status); ok && phrase != "" {
+	if _, phrase, ok := strings.Cut(res.Status, " "); ok && phrase != "" {
 		return phrase
 	}
 	return http.StatusText(res.StatusCode)
 }
 
-// cutStatusLine splits "404 Not Found" into code and reason phrase.
-func cutStatusLine(status string) (code, phrase string, ok bool) {
-	for i := 0; i < len(status); i++ {
-		if status[i] == ' ' {
-			return status[:i], status[i+1:], true
-		}
-	}
-	return status, "", false
-}
-
-// flattenHeaders renders the response headers as an ordered list.
-//
-// A list, and sorted, for two reasons: a response may repeat a header name
-// (Set-Cookie routinely does) and a map would drop all but one, and a stable
-// order keeps the console's rendering from reshuffling between identical calls.
-//
-// These travel as inert JSON strings. None of them is ever written onto the
-// Platform API's own response, so a gateway cannot set a cookie on the console
-// origin or talk the browser into rendering its body as HTML there.
+// flattenHeaders lists the response headers, keeping repeated names and sorted
+// for a stable display. They are returned as data, never set on the Platform
+// API's own response, so a gateway cannot set a cookie on the console origin.
 func flattenHeaders(h http.Header) []Header {
 	out := make([]Header, 0, len(h))
 	for name, values := range h {

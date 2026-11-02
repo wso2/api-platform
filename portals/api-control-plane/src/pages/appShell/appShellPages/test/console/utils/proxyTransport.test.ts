@@ -96,8 +96,7 @@ beforeEach(() => {
 
 describe('createRelayFetch — what reaches the Platform API', () => {
   it('names the API and gateway rather than a URL', async () => {
-    // The browser naming a URL would make the Platform API an open proxy; it
-    // names the API and gateway instead, and the address is resolved there.
+    // A browser-supplied URL would make the Platform API an open proxy.
     respondWith(relayed());
 
     await createRelayFetch(contextRef())('ignored', {
@@ -107,9 +106,9 @@ describe('createRelayFetch — what reaches the Platform API', () => {
     });
 
     expect(sent).toEqual({
-      restApiId: 'api-1',
-      gatewayId: 'gw-prod',
       body: {
+        restApiId: 'api-1',
+        gatewayId: 'gw-prod',
         method: 'GET',
         path: '/order',
         query: [{ name: 'size', value: 'L' }],
@@ -157,8 +156,7 @@ describe('createRelayFetch — what reaches the Platform API', () => {
   });
 
   it('refuses a request aimed at another origin', async () => {
-    // Not this API's request. Relaying it would point the request somewhere
-    // the console never offered.
+    // Not this API's request, so it is not relayed anywhere.
     respondWith(relayed());
 
     await expect(
@@ -194,7 +192,7 @@ describe('createRelayFetch — what reaches the Platform API', () => {
       method: 'GET',
     });
 
-    expect(sent?.gatewayId).toBe('gw-staging');
+    expect(sent?.body.gatewayId).toBe('gw-staging');
   });
 });
 

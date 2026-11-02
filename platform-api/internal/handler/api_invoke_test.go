@@ -40,7 +40,7 @@ import (
 
 const (
 	invokeOrg  = "org-uuid-1"
-	invokePath = "/api/v0.9/rest-apis/pizza-api/gateways/prod-gw/invoke"
+	invokePath = "/api/v0.9/gateway-relay/invoke"
 )
 
 // fakeInvokeTargets answers GetAPIInvokeTarget from fixed values.
@@ -99,6 +99,14 @@ func serveInvoke(t *testing.T, targets invokeTargets, relay relayer, contentType
 	return rec
 }
 
+// invokeBody is a request naming pizza-api on prod-gw, plus fields (JSON members, or "").
+func invokeBody(fields string) string {
+	if fields == "" {
+		return `{"restApiId": "pizza-api", "gatewayId": "prod-gw"}`
+	}
+	return `{"restApiId": "pizza-api", "gatewayId": "prod-gw", ` + fields + `}`
+}
+
 func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
 	t.Helper()
 	var body struct {
@@ -125,6 +133,8 @@ func TestInvokeRelaysTheRequestAndReturnsTheGatewayResponse(t *testing.T) {
 
 	targets := &fakeInvokeTargets{apiContext: "/pizza/v1", endpoints: []string{gateway.URL}}
 	rec := serveInvoke(t, targets, newRelay(t, "*"), "application/json", `{
+		"restApiId": "pizza-api",
+		"gatewayId": "prod-gw",
 		"method": "post",
 		"path": "/orders",
 		"query": [{"name": "dryRun", "value": "true"}],
@@ -175,17 +185,16 @@ func TestInvokeReturnsAGatewayErrorStatusAsASuccessfulRelay(t *testing.T) {
 	defer gateway.Close()
 
 	rec := serveInvoke(t, &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}},
-		newRelay(t, "*"), "application/json", `{"path": "/"}`)
+		newRelay(t, "*"), "application/json", invokeBody(`"path": "/"`))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"status":500`)
 }
 
 func TestInvokeRefusesARequestThatIsNotJSON(t *testing.T) {
-	// Without a JSON content type a page on another site could send this as a
-	// simple request, with no CORS preflight.
+	// Otherwise a page on another site could send it with no CORS preflight.
 	for _, contentType := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
-		rec := serveInvoke(t, &fakeInvokeTargets{}, failingRelay{}, contentType, `{"path": "/"}`)
+		rec := serveInvoke(t, &fakeInvokeTargets{}, failingRelay{}, contentType, invokeBody(`"path": "/"`))
 		assert.Equal(t, http.StatusUnsupportedMediaType, rec.Code, "Content-Type %q", contentType)
 	}
 }
@@ -196,11 +205,12 @@ func TestInvokeRefusesAMalformedOrOversizedBody(t *testing.T) {
 		status int
 		code   string
 	}{
-		"unknown field":        {`{"url": "https://evil.example.com"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"unknown field":        {invokeBody(`"url": "https://evil.example.com"`), http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"no gateway named":     {`{"restApiId": "pizza-api"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
 		"not JSON":             {`not json`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
-		"over the limit":       {`{"body": "` + strings.Repeat("a", 64<<10) + `"}`, http.StatusRequestEntityTooLarge, apperror.CodeCommonPayloadTooLarge},
-		"forbidden header":     {`{"headers": [{"name": "Cookie", "value": "a=1"}]}`, http.StatusBadRequest, apperror.CodeRESTAPIInvokeRequestInvalid},
-		"path escapes the API": {`{"path": "/../admin"}`, http.StatusBadRequest, apperror.CodeRESTAPIInvokeRequestInvalid},
+		"over the limit":       {invokeBody(`"body": "` + strings.Repeat("a", 64<<10) + `"`), http.StatusRequestEntityTooLarge, apperror.CodeCommonPayloadTooLarge},
+		"forbidden header":     {invokeBody(`"headers": [{"name": "Cookie", "value": "a=1"}]`), http.StatusBadRequest, apperror.CodeRESTAPIInvokeRequestInvalid},
+		"path escapes the API": {invokeBody(`"path": "/../admin"`), http.StatusBadRequest, apperror.CodeRESTAPIInvokeRequestInvalid},
 	} {
 		t.Run(name, func(t *testing.T) {
 			targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}}
@@ -239,7 +249,7 @@ func TestInvokeMapsTargetFailures(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			rec := serveInvoke(t, tc.targets, failingRelay{}, "application/json", `{"path": "/"}`)
+			rec := serveInvoke(t, tc.targets, failingRelay{}, "application/json", invokeBody(`"path": "/"`))
 			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
 			assert.Equal(t, tc.code, errorCode(t, rec))
 		})
@@ -248,7 +258,7 @@ func TestInvokeMapsTargetFailures(t *testing.T) {
 
 func TestInvokeRefusesATargetOutsideTheAllowList(t *testing.T) {
 	targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://internal.example.com:9443"}}
-	rec := serveInvoke(t, targets, newRelay(t, "https://gw.example.com"), "application/json", `{"path": "/"}`)
+	rec := serveInvoke(t, targets, newRelay(t, "https://gw.example.com"), "application/json", invokeBody(`"path": "/"`))
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Equal(t, apperror.CodeRESTAPIInvokeTargetNotAllowed, errorCode(t, rec))
@@ -267,7 +277,7 @@ func TestInvokeMapsRelayFailures(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}}
-			rec := serveInvoke(t, targets, failingRelay{err: tc.err}, "application/json", `{"path": "/"}`)
+			rec := serveInvoke(t, targets, failingRelay{err: tc.err}, "application/json", invokeBody(`"path": "/"`))
 			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
 			assert.Equal(t, tc.code, errorCode(t, rec))
 			assert.NotContains(t, rec.Body.String(), "10.0.0.7")

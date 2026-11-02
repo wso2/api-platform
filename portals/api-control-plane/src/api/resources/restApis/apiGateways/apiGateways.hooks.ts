@@ -111,8 +111,6 @@ export const useRestApiGatewayOptions = (
 };
 
 export type InvokeRestApiOnGatewayVariables = {
-  restApiId: string;
-  gatewayId: string;
   body: InvokeRestApiOnGatewayBody;
   signal?: AbortSignal;
 };
@@ -126,8 +124,7 @@ export const useInvokeRestApiOnGateway = (overrides: { orgId?: string } = {}) =>
   const { orgId } = useApiScope(overrides);
 
   return useMutation<InvokeRestApiOnGatewayResponse, ApiError, InvokeRestApiOnGatewayVariables>({
-    mutationFn: ({ restApiId, gatewayId, body, signal }) =>
-      invokeRestApiOnGateway(restApiId, gatewayId, body, { orgId, signal }),
+    mutationFn: ({ body, signal }) => invokeRestApiOnGateway(body, { orgId, signal }),
     meta: HANDLED_LOCALLY,
     retry: false,
   });

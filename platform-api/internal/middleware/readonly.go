@@ -55,12 +55,12 @@ import (
 // is still a registered route, so a renamed or removed route cannot leave a
 // stale exemption behind unnoticed.
 var readOnlyExemptRoutes = map[string]struct{}{
-	"POST " + constants.APIBasePath + "/rest-apis/validate-openapi":                        {},
-	"POST " + constants.APIBasePath + "/mcp-proxies/fetch-server-info":                     {},
-	"POST " + constants.APIBasePath + "/agent-proxies/fetch-agent-card":                    {},
-	"POST " + constants.APIBasePath + "/rest-apis/{restApiId}/gateways/{gatewayId}/invoke": {},
-	"POST /api/internal/v1/deployments/fetch-batch":                                        {},
-	"POST /api/internal/v1/artifacts/exists":                                               {},
+	"POST " + constants.APIBasePath + "/rest-apis/validate-openapi":     {},
+	"POST " + constants.APIBasePath + "/mcp-proxies/fetch-server-info":  {},
+	"POST " + constants.APIBasePath + "/agent-proxies/fetch-agent-card": {},
+	"POST " + constants.APIBasePath + "/gateway-relay/invoke":           {},
+	"POST /api/internal/v1/deployments/fetch-batch":                     {},
+	"POST /api/internal/v1/artifacts/exists":                            {},
 }
 
 // ReadOnlyGuardConfig holds the dependencies of ReadOnlyGuard.

@@ -5482,6 +5482,9 @@ type RESTAPIInvokeRequest struct {
 	// BodyEncoding How `body` is written; `base64` carries binary data
 	BodyEncoding *RESTAPIInvokeBodyEncoding `json:"bodyEncoding,omitempty" yaml:"bodyEncoding,omitempty"`
 
+	// GatewayId Handle of a gateway the REST API is deployed to
+	GatewayId string `json:"gatewayId" yaml:"gatewayId"`
+
 	// Headers At most 50 headers, 16 KiB across all names and values
 	Headers *[]RESTAPIInvokeHeader `json:"headers,omitempty" yaml:"headers,omitempty"`
 
@@ -5492,6 +5495,9 @@ type RESTAPIInvokeRequest struct {
 	// REST API's context, or carry a query or fragment.
 	Path  *string                `json:"path,omitempty" yaml:"path,omitempty"`
 	Query *[]RESTAPIInvokeHeader `json:"query,omitempty" yaml:"query,omitempty"`
+
+	// RestApiId Handle of the REST API to test
+	RestApiId string `json:"restApiId" yaml:"restApiId"`
 }
 
 // RESTAPIInvokeResponse defines model for RESTAPIInvokeResponse.
@@ -7230,6 +7236,9 @@ type AddApplicationAPIKeysJSONRequestBody = AddApplicationAPIKeysRequest
 // AddApplicationAssociationsJSONRequestBody defines body for AddApplicationAssociations for application/json ContentType.
 type AddApplicationAssociationsJSONRequestBody = AddApplicationAssociationsRequest
 
+// InvokeRESTAPIOnGatewayJSONRequestBody defines body for InvokeRESTAPIOnGateway for application/json ContentType.
+type InvokeRESTAPIOnGatewayJSONRequestBody = RESTAPIInvokeRequest
+
 // CreateGatewayJSONRequestBody defines body for CreateGateway for application/json ContentType.
 type CreateGatewayJSONRequestBody = CreateGatewayRequest
 
@@ -7358,9 +7367,6 @@ type DeployAPIJSONRequestBody = DeployRequest
 
 // AddGatewaysToAPIJSONRequestBody defines body for AddGatewaysToAPI for application/json ContentType.
 type AddGatewaysToAPIJSONRequestBody = AddGatewaysToAPIJSONBody
-
-// InvokeRESTAPIOnGatewayJSONRequestBody defines body for InvokeRESTAPIOnGateway for application/json ContentType.
-type InvokeRESTAPIOnGatewayJSONRequestBody = RESTAPIInvokeRequest
 
 // UpdateRESTAPISpecMultipartRequestBody defines body for UpdateRESTAPISpec for multipart/form-data ContentType.
 type UpdateRESTAPISpecMultipartRequestBody = OpenAPISpecFileRequest

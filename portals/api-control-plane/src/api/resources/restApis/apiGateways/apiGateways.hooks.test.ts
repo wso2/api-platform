@@ -26,11 +26,9 @@ import { isApiError } from '../../../core/errors';
 import { resetHttpClient } from '../../../core/http';
 import { useInvokeRestApiOnGateway } from './apiGateways.hooks';
 
-const INVOKE = '/rest-apis/pizza-shack/gateways/prod-gw/invoke';
+const INVOKE = '/gateway-relay/invoke';
 const variables = {
-  restApiId: 'pizza-shack',
-  gatewayId: 'prod-gw',
-  body: { method: 'GET', path: '/orders' },
+  body: { restApiId: 'pizza-shack', gatewayId: 'prod-gw', method: 'GET', path: '/orders' },
 };
 
 let requests: Recorder;

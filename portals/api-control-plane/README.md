@@ -118,7 +118,7 @@ the gateway renews the token itself, so the console doesn't use it.
 ### The Test console's requests
 
 The Test console sends its requests to a deployed gateway through the Platform
-API, `POST /rest-apis/{restApiId}/gateways/{gatewayId}/invoke`, on the same path
+API, `POST /gateway-relay/invoke`, on the same path
 as every other Platform API call: the BFF's proxy, or the gateway's
 `oauth2-session-proxy`. The Platform API decides which gateway addresses it may
 reach, under `[platform_api.gateway_relay]` in its own config. There is nothing

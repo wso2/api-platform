@@ -113,7 +113,7 @@ const (
 	CodeRESTAPIAPIKeyForbidden            = "REST_API_API_KEY_FORBIDDEN"
 
 	// Sending a test request to a REST API through a gateway it is deployed to
-	// (POST /rest-apis/{restApiId}/gateways/{gatewayId}/invoke).
+	// (POST /gateway-relay/invoke).
 	CodeRESTAPIInvokeGatewayNotDeployed       = "REST_API_INVOKE_GATEWAY_NOT_DEPLOYED"
 	CodeRESTAPIInvokeGatewayNoEndpoint        = "REST_API_INVOKE_GATEWAY_NO_ENDPOINT"
 	CodeRESTAPIInvokeGatewayUnsupportedScheme = "REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME"

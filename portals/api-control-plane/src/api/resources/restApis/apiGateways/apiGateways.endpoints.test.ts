@@ -163,7 +163,8 @@ describe('failures', () => {
 });
 
 describe('invokeRestApiOnGateway', () => {
-  const INVOKE = `${COLLECTION}/prod-gw/invoke`;
+  const INVOKE = '/gateway-relay/invoke';
+  const target = { restApiId: API_ID, gatewayId: 'prod-gw' };
   const relayed = {
     outcome: 'response',
     response: {
@@ -177,20 +178,20 @@ describe('invokeRestApiOnGateway', () => {
     },
   };
 
-  it('POSTs the test request to the gateway it names', async () => {
+  it('POSTs the test request, naming the API and gateway in the body', async () => {
     server.use(accepts('post', INVOKE, relayed, { record: requests, status: 200 }));
 
-    await invokeRestApiOnGateway(API_ID, 'prod-gw', { method: 'GET', path: '/orders' });
+    await invokeRestApiOnGateway({ ...target, method: 'GET', path: '/orders' });
 
     expect(requests.last()?.method).toBe('POST');
-    expect(requests.last()?.url.pathname).toBe('/api/v0.9/rest-apis/pizza-shack/gateways/prod-gw/invoke');
-    expect(JSON.parse(requests.last()!.body)).toEqual({ method: 'GET', path: '/orders' });
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/gateway-relay/invoke');
+    expect(JSON.parse(requests.last()!.body)).toEqual({ ...target, method: 'GET', path: '/orders' });
   });
 
   it('resolves with a gateway error status: the relay itself succeeded', async () => {
     server.use(accepts('post', INVOKE, relayed, { status: 200 }));
 
-    const result = await invokeRestApiOnGateway(API_ID, 'prod-gw', { method: 'GET', path: '/' });
+    const result = await invokeRestApiOnGateway({ ...target, method: 'GET', path: '/' });
 
     expect(result.response.status).toBe(502);
   });
@@ -198,7 +199,7 @@ describe('invokeRestApiOnGateway', () => {
   it('rejects with the code when the request was not relayed', async () => {
     server.use(failure('post', INVOKE, 403, 'REST_API_INVOKE_TARGET_NOT_ALLOWED'));
 
-    const error = await invokeRestApiOnGateway(API_ID, 'prod-gw', { method: 'GET', path: '/' }).catch((e: unknown) => e);
+    const error = await invokeRestApiOnGateway({ ...target, method: 'GET', path: '/' }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).code).toBe('REST_API_INVOKE_TARGET_NOT_ALLOWED');

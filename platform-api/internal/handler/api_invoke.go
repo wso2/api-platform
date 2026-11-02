@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -34,22 +35,21 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/router"
 )
 
-// invokeRequestStructuralBytes is the JSON around the request body: method,
-// path, query and headers. Added to the base64-inflated body limit to bound
-// the whole request.
+// invokeRequestStructuralBytes allows for the JSON around the body: ids,
+// method, path, query and headers.
 const invokeRequestStructuralBytes = 32 << 10
 
-// invokeTargets finds where a test request goes (see APIService.GetAPIInvokeTarget).
+// invokeTargets finds where a test request goes (APIService.GetAPIInvokeTarget).
 type invokeTargets interface {
 	GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (apiContext string, endpoints []string, err error)
 }
 
-// relayer sends the request (see gatewayrelay.Relay).
+// relayer sends the request (gatewayrelay.Relay).
 type relayer interface {
 	Do(ctx context.Context, target gatewayrelay.Target, req gatewayrelay.Request) (gatewayrelay.Relayed, error)
 }
 
-// APIInvokeHandler serves POST /rest-apis/{restApiId}/gateways/{gatewayId}/invoke.
+// APIInvokeHandler serves POST /gateway-relay/invoke.
 type APIInvokeHandler struct {
 	targets      invokeTargets
 	relay        relayer
@@ -69,7 +69,7 @@ func NewAPIInvokeHandler(targets invokeTargets, relay relayer, maxRequestBytes i
 	}
 }
 
-// InvokeAPI handles POST /api/v0.9/rest-apis/{restApiId}/gateways/{gatewayId}/invoke.
+// InvokeAPI handles POST /api/v0.9/gateway-relay/invoke.
 func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) error {
 	// The answer describes one caller's gateway; nothing on the way may cache it.
 	w.Header().Set("Cache-Control", "no-store")
@@ -79,26 +79,22 @@ func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) err
 		return apperror.Unauthorized.New().
 			WithLogMessage("organization claim not found in token")
 	}
-	apiID := r.PathValue("restApiId")
-	gatewayID := r.PathValue("gatewayId")
 
-	req, err := h.decodeRequest(w, r)
+	apiID, gatewayID, req, err := h.decodeRequest(w, r)
 	if err != nil {
 		return err
 	}
 
 	apiContext, endpoints, err := h.targets.GetAPIInvokeTarget(apiID, gatewayID, orgID)
 	if err != nil {
-		return serviceError(err, "failed to resolve the gateway to invoke REST API "+apiID+" on")
+		return serviceError(err, fmt.Sprintf("failed to resolve gateway %s for REST API %s in org %s", gatewayID, apiID, orgID))
 	}
 	target, err := gatewayrelay.BuildTarget(gatewayID, endpoints, apiContext)
-	switch {
-	case errors.Is(err, gatewayrelay.ErrGatewayNoEndpoint):
-		return apperror.RESTAPIInvokeGatewayNoEndpoint.New()
-	case errors.Is(err, gatewayrelay.ErrUnsupportedScheme):
+	if errors.Is(err, gatewayrelay.ErrUnsupportedScheme) {
 		return apperror.RESTAPIInvokeGatewayUnsupportedScheme.New()
-	case err != nil:
-		return serviceError(err, "failed to build the invoke URL of gateway "+gatewayID)
+	}
+	if err != nil {
+		return apperror.RESTAPIInvokeGatewayNoEndpoint.New()
 	}
 
 	relayed, err := h.relay.Do(r.Context(), target, req)
@@ -106,10 +102,12 @@ func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) err
 		return relayError(err, apiID, gatewayID)
 	}
 
+	// The relay accepted the method, so this is its normalized form, not raw input.
+	method, _ := gatewayrelay.NormalizeMethod(req.Method)
 	h.slogger.Info("Relayed a test request to a gateway",
 		"restApiId", apiID,
 		"gatewayId", gatewayID,
-		"method", req.Method,
+		"method", method,
 		"upstreamStatus", relayed.Status,
 		"durationMs", relayed.DurationMs,
 		"truncated", relayed.Truncated)
@@ -118,16 +116,16 @@ func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) err
 	return nil
 }
 
-// decodeRequest reads the bounded JSON request. Content-Type must say JSON: a
-// page on another site can send a form or text without a CORS preflight, but
-// not application/json.
-func (h *APIInvokeHandler) decodeRequest(w http.ResponseWriter, r *http.Request) (gatewayrelay.Request, error) {
+// decodeRequest reads the bounded JSON request: the REST API and gateway to
+// invoke, and the request to send. Content-Type must be JSON, which a page on
+// another site cannot send without a CORS preflight.
+func (h *APIInvokeHandler) decodeRequest(w http.ResponseWriter, r *http.Request) (apiID, gatewayID string, req gatewayrelay.Request, err error) {
 	if r.Header.Get("Content-Type") == "" {
-		return gatewayrelay.Request{}, apperror.UnsupportedMediaType.New().
+		return "", "", req, apperror.UnsupportedMediaType.New().
 			WithLogMessage("invoke request without a Content-Type")
 	}
 	if err := requireJSONContentType(r); err != nil {
-		return gatewayrelay.Request{}, err
+		return "", "", req, err
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
@@ -136,15 +134,18 @@ func (h *APIInvokeHandler) decodeRequest(w http.ResponseWriter, r *http.Request)
 	var body api.RESTAPIInvokeRequest
 	if err := dec.Decode(&body); err != nil {
 		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-			return gatewayrelay.Request{}, apperror.PayloadTooLarge.New("The request body exceeds the maximum allowed size.")
+			return "", "", req, apperror.PayloadTooLarge.New("The request body exceeds the maximum allowed size.")
 		}
-		return gatewayrelay.Request{}, apperror.ValidationFailed.Wrap(err, "The request body is not a valid invoke request.")
+		return "", "", req, apperror.ValidationFailed.Wrap(err, "The request body is not a valid invoke request.")
+	}
+	if body.RestApiId == "" || body.GatewayId == "" {
+		return "", "", req, apperror.ValidationFailed.New("restApiId and gatewayId are required.")
 	}
 
-	req := gatewayrelay.Request{
-		Method: deref(body.Method),
-		Path:   deref(body.Path),
-		Body:   deref(body.Body),
+	req = gatewayrelay.Request{
+		Method: strOrEmpty(body.Method),
+		Path:   strOrEmpty(body.Path),
+		Body:   strOrEmpty(body.Body),
 	}
 	if body.BodyEncoding != nil {
 		req.BodyEncoding = string(*body.BodyEncoding)
@@ -155,13 +156,13 @@ func (h *APIInvokeHandler) decodeRequest(w http.ResponseWriter, r *http.Request)
 	if body.Headers != nil {
 		req.Headers = toRelayHeaders(*body.Headers)
 	}
-	return req, nil
+	return body.RestApiId, body.GatewayId, req, nil
 }
 
-// relayError maps a failed relay to its response. The resolved address and the
-// check that refused a request go to the log only, never to the caller.
+// relayError maps a failed relay to its response. The address and the check
+// that refused the request go to the log only.
 func relayError(err error, apiID, gatewayID string) error {
-	logCtx := "invoking REST API " + apiID + " on gateway " + gatewayID
+	logCtx := fmt.Sprintf("invoking REST API %s on gateway %s", apiID, gatewayID)
 	switch {
 	case errors.Is(err, egress.ErrTargetNotAllowed),
 		errors.Is(err, egress.ErrNoTargetHost),
@@ -232,15 +233,7 @@ func toInvokeResponse(r gatewayrelay.Relayed) api.RESTAPIInvokeResponse {
 	}
 }
 
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // RegisterRoutes registers the invoke route.
 func (h *APIInvokeHandler) RegisterRoutes(mux router.Router) {
-	mux.HandleFunc("POST "+constants.APIBasePath+"/rest-apis/{restApiId}/gateways/{gatewayId}/invoke",
-		middleware.MapErrors(h.slogger, h.InvokeAPI))
+	mux.HandleFunc("POST "+constants.APIBasePath+"/gateway-relay/invoke", middleware.MapErrors(h.slogger, h.InvokeAPI))
 }

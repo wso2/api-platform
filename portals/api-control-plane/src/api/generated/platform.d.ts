@@ -313,7 +313,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/rest-apis/{restApiId}/gateways/{gatewayId}/invoke": {
+    "/gateway-relay/invoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -324,24 +324,15 @@ export interface paths {
         put?: never;
         /**
          * Send a test request to a REST API through a gateway
-         * @description Sends one request to the REST API as deployed on the given gateway, and returns the
-         *     gateway's response as data. This is what the console's Test console uses, since a
-         *     browser often cannot call a gateway directly (CORS, mixed content, or a gateway its
-         *     network cannot reach).
+         * @description Sends one request to the REST API (`restApiId`) as deployed on the gateway (`gatewayId`),
+         *     for the console's Test console, and returns the gateway's response as data. The request goes to the gateway's
+         *     endpoint plus the REST API's context, only if the REST API is deployed there and the
+         *     endpoint is on the control plane's allow list (`gateway_relay.egress.allow_hosts`).
+         *     Redirects are not followed, and the caller's own credentials never reach the gateway.
          *
-         *     The caller names the REST API and the gateway, never a URL: the request goes to the
-         *     gateway's endpoint plus the REST API's context, only if the REST API is deployed to that
-         *     gateway, and only if the endpoint matches the control plane's configured allow list
-         *     (`gateway_relay.egress.allow_hosts`). Redirects are not followed. Only the headers in the
-         *     request body are sent; the caller's own credentials never reach the gateway.
-         *
-         *     Any answer from the gateway, whatever its status, is a successful relay: the response is
-         *     `200` and carries the gateway's status, headers and body. An error status here means the
-         *     request was not relayed. A response body longer than `gateway_relay.max_response_bytes`
-         *     is truncated and flagged.
-         *
-         *     Access needs the same scopes as reading this REST API's gateways: testing it sends no more
-         *     than the caller could send to the gateway directly.
+         *     Any answer from the gateway is a `200` carrying its status, headers and body; an error
+         *     status means the request was not relayed. Access needs the same scopes as reading the
+         *     REST API's gateways, since a test sends no more than the caller could send directly.
          */
         post: operations["InvokeRESTAPIOnGateway"];
         delete?: never;
@@ -4200,6 +4191,16 @@ export interface components {
          *     refused; `Authorization` is allowed, for the API under test.
          */
         RESTAPIInvokeRequest: {
+            /**
+             * @description Handle of the REST API to test
+             * @example pizza-api
+             */
+            restApiId: string;
+            /**
+             * @description Handle of a gateway the REST API is deployed to
+             * @example prod-gateway-01
+             */
+            gatewayId: string;
             /**
              * @description One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case
              * @default GET
@@ -9239,12 +9240,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
-                restApiId: components["parameters"]["apiId"];
-                /** @description Handle of a gateway the REST API is deployed to */
-                gatewayId: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {

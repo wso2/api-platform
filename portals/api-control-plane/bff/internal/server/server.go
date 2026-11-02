@@ -194,16 +194,8 @@ const nonStreamingWriteDeadline = 30 * time.Second
 // the per-request deadline http.ResponseController exposes — the reverse
 // proxy handler is intentionally never wrapped with this.
 func withWriteDeadline(next http.HandlerFunc) http.HandlerFunc {
-	return withWriteDeadlineOf(nonStreamingWriteDeadline, next)
-}
-
-// withWriteDeadlineOf is withWriteDeadline for a handler whose own bound is not
-// the generic one; the gateway relay, which already bounds itself by its
-// configured request timeout and needs an outer deadline sized just above that
-// rather than a fixed default that could be either far looser or far tighter.
-func withWriteDeadlineOf(d time.Duration, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(nonStreamingWriteDeadline))
 		next.ServeHTTP(w, r)
 	}
 }

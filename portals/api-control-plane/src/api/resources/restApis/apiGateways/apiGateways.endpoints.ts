@@ -72,19 +72,17 @@ export const addGatewaysToApi = async (
 };
 
 /**
- * Sends one test request to the REST API as deployed on the gateway. Any answer
- * from the gateway, whatever its status, resolves: it is carried in `response`.
- * A rejection means the request was not relayed.
+ * Sends one test request to the REST API (`body.restApiId`) as deployed on the
+ * gateway (`body.gatewayId`). Any answer from the gateway, whatever its status,
+ * resolves: it is carried in `response`. A rejection means the request was not
+ * relayed.
  */
 export const invokeRestApiOnGateway = async (
-  restApiId: string,
-  gatewayId: string,
   body: InvokeRestApiOnGatewayBody,
   options?: RequestOptions,
 ): Promise<InvokeRestApiOnGatewayResponse> => {
-  return http.post<InvokeRestApiOnGatewayResponse>(
-    `${collectionPath(restApiId)}/${encodeURIComponent(gatewayId)}/invoke`,
-    body,
-    { ...options, operationName: 'InvokeRESTAPIOnGateway' },
-  );
+  return http.post<InvokeRestApiOnGatewayResponse>('/gateway-relay/invoke', body, {
+    ...options,
+    operationName: 'InvokeRESTAPIOnGateway',
+  });
 };
