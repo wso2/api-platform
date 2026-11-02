@@ -48,8 +48,10 @@ spec:
           spec:
             description: |-
               SubscriptionSpec mirrors the management-API SubscriptionCreateRequest
-              payload. The gateway-controller issues a UUID id which the controller
-              persists to .status.id for subsequent PUT/DELETE.
+              payload. The gateway-controller issues a UUID id (or uses externalRefId when
+              set) which the controller persists to .status.id for subsequent PUT/DELETE.
+              subscriptionToken, subscriptionPlanId and status can be changed after the
+              subscription is deployed; the other fields are immutable.
             properties:
               apiId:
                 description: ApiId is the API identifier (deployment id or handle).
@@ -64,6 +66,15 @@ spec:
                 description: BillingSubscriptionId is an optional billing subscription
                   identifier.
                 type: string
+              externalRefId:
+                description: |-
+                  ExternalRefId is an optional caller-supplied reference ID. When set, the
+                  gateway uses it as the subscription id instead of generating one.
+                  Must be unique on the gateway. Immutable once deployed.
+                maxLength: 64
+                minLength: 1
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
+                type: string
               status:
                 description: |-
                   Status is the lifecycle state for this subscription. Mirrors the
@@ -71,15 +82,16 @@ spec:
                 type: string
               subscriptionPlanId:
                 description: |-
-                  SubscriptionPlanId is an optional plan UUID. When the plan is also
-                  managed via SubscriptionPlan CR, set this to the SubscriptionPlan's
-                  .status.id once it has been deployed.
+                  SubscriptionPlanId is an optional plan UUID, or the name of a
+                  SubscriptionPlan CR in the same namespace. Changing it moves the
+                  subscription to the new plan in place; removing it removes the plan.
                 type: string
               subscriptionToken:
                 description: |-
                   SubscriptionToken is the opaque token used to invoke the API. The
                   token is sent as plaintext to the gateway which stores only its hash;
-                  inline in the CR or supplied via valueFrom.
+                  inline in the CR or supplied via valueFrom. Changing it (or the
+                  referenced Secret data) rotates the token on the gateway in place.
                 properties:
                   value:
                     description: |-
@@ -240,8 +252,10 @@ spec:
           spec:
             description: |-
               SubscriptionSpec mirrors the management-API SubscriptionCreateRequest
-              payload. The gateway-controller issues a UUID id which the controller
-              persists to .status.id for subsequent PUT/DELETE.
+              payload. The gateway-controller issues a UUID id (or uses externalRefId when
+              set) which the controller persists to .status.id for subsequent PUT/DELETE.
+              subscriptionToken, subscriptionPlanId and status can be changed after the
+              subscription is deployed; the other fields are immutable.
             properties:
               apiId:
                 description: ApiId is the API identifier (deployment id or handle).
@@ -256,6 +270,15 @@ spec:
                 description: BillingSubscriptionId is an optional billing subscription
                   identifier.
                 type: string
+              externalRefId:
+                description: |-
+                  ExternalRefId is an optional caller-supplied reference ID. When set, the
+                  gateway uses it as the subscription id instead of generating one.
+                  Must be unique on the gateway. Immutable once deployed.
+                maxLength: 64
+                minLength: 1
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
+                type: string
               status:
                 description: |-
                   Status is the lifecycle state for this subscription. Mirrors the
@@ -263,15 +286,16 @@ spec:
                 type: string
               subscriptionPlanId:
                 description: |-
-                  SubscriptionPlanId is an optional plan UUID. When the plan is also
-                  managed via SubscriptionPlan CR, set this to the SubscriptionPlan's
-                  .status.id once it has been deployed.
+                  SubscriptionPlanId is an optional plan UUID, or the name of a
+                  SubscriptionPlan CR in the same namespace. Changing it moves the
+                  subscription to the new plan in place; removing it removes the plan.
                 type: string
               subscriptionToken:
                 description: |-
                   SubscriptionToken is the opaque token used to invoke the API. The
                   token is sent as plaintext to the gateway which stores only its hash;
-                  inline in the CR or supplied via valueFrom.
+                  inline in the CR or supplied via valueFrom. Changing it (or the
+                  referenced Secret data) rotates the token on the gateway in place.
                 properties:
                   value:
                     description: |-
