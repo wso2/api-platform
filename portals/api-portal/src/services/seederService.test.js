@@ -35,7 +35,6 @@ const PATHS = {
     labelDao: r('../dao/labelDao.js'),
     viewDao: r('../dao/viewDao.js'),
     planDao: r('../dao/subscriptionPlanDao.js'),
-    whDao: r('../dao/webhookSubscriberDao.js'),
     configLoader: r('../config/configLoader.js'),
     orgContext: r('../utils/orgContext.js'),
     logger: r('../config/logger.js'),
@@ -48,7 +47,7 @@ function duplicateKeyError() {
 }
 
 /** `orgRows` is the mutable "table"; `onCreate` decides what create() does. */
-function loadSeeder({ orgRows, onCreate, orgContext = {}, configLoader, whDao }) {
+function loadSeeder({ orgRows, onCreate, orgContext = {} }) {
     const calls = { create: 0, label: 0, view: 0 };
     const stubs = {
         orgDao: {
@@ -65,15 +64,10 @@ function loadSeeder({ orgRows, onCreate, orgContext = {}, configLoader, whDao })
         },
         viewDao: { update: async () => { calls.view++; return { uuid: 'view-1' }; } },
         planDao: { createMany: async () => {} },
-        configLoader: configLoader || { config: { organization: { autoCreateSubscriptionPlans: false } } },
+        configLoader: { config: { organization: { autoCreateSubscriptionPlans: false } } },
         orgContext,
         logger: { error: () => {}, warn: () => {}, info: () => {} },
         driver: { isDuplicateKeyError: (e) => !!e.duplicate },
-        whDao: whDao || {
-            get: async () => null,
-            create: async () => { throw new Error('whDao.create called unexpectedly'); },
-            update: async () => { throw new Error('whDao.update called unexpectedly'); },
-        },
     };
     for (const [k, exports] of Object.entries(stubs)) {
         require.cache[PATHS[k]] = { id: PATHS[k], filename: PATHS[k], loaded: true, exports };

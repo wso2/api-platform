@@ -21,7 +21,6 @@ const orgDao = require('../dao/organizationDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
-const whDao = require('../dao/webhookSubscriberDao');
 const { config } = require('../config/configLoader');
 const orgContext = require('../utils/orgContext');
 const { planIdpOrgIdReconcile } = require('../utils/idpOrgIdPolicy');
@@ -254,7 +253,4 @@ async function seedDefaultOrg() {
     logger.info('Org: organization seeded ✓', { handle: orgName });
 }
 
-module.exports = {
-    seedDefaultOrg,
-    seedOrg,
-};
+module.exports = { seedDefaultOrg, seedOrg };
