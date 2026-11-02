@@ -52,6 +52,12 @@ type SessionCheck = { status: Exclude<AuthStatus, 'loading'>; user?: AuthUser };
 const SIGNED_OUT: SessionCheck = { status: 'unauthenticated' };
 const UNAVAILABLE: SessionCheck = { status: 'unavailable' };
 
+/**
+ * How long a session check may take. Above the gateway's own upstream timeout,
+ * so its 504 normally arrives first; this covers a connection that hangs.
+ */
+const SESSION_CHECK_TIMEOUT_MS = 15_000;
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -108,11 +114,8 @@ const SESSION_READERS: Record<SessionFormat, (response: Response) => Promise<Ses
   sdk: readSdkSession,
 };
 
-/**
- * Asks a session endpoint who is signed in. Never throws. A 5xx or no answer
- * is `unavailable`, not signed out: the session may well be alive.
- */
-async function checkSession(url: string): Promise<SessionCheck> {
+/** Asks a session endpoint who is signed in. Never throws. */
+async function askSession(url: string): Promise<SessionCheck> {
   let response: Response;
   try {
     response = await fetch(url, { credentials: 'same-origin' });
@@ -124,6 +127,22 @@ async function checkSession(url: string): Promise<SessionCheck> {
     return await SESSION_READERS[contract.sessionFormat](response);
   } catch {
     return SIGNED_OUT;
+  }
+}
+
+/**
+ * Asks with a time limit. A 5xx, no answer or no answer in time is
+ * `unavailable`, not signed out: the session may well be alive.
+ */
+async function checkSession(url: string): Promise<SessionCheck> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<SessionCheck>((resolve) => {
+    timer = setTimeout(() => resolve(UNAVAILABLE), SESSION_CHECK_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([askSession(url), timedOut]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -158,10 +177,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // sign-in and cancel the logout's own navigation.
   const leaving = useRef(false);
 
-  /** Takes `url`'s answer and resolves whether the session is alive. */
+  // Only the newest check may set state: an older one answering late would
+  // undo it.
+  const latestCheck = useRef(0);
+
+  /**
+   * Takes `url`'s answer and resolves whether the session is alive. Each caller
+   * gets its own check's answer, even when a newer check set the state.
+   */
   const hydrate = useCallback(async (url: string = contract.sessionUrl) => {
+    const id = ++latestCheck.current;
     const session = await checkSession(url);
     if (leaving.current) return false;
+    if (id !== latestCheck.current) return session.status === 'authenticated';
     if (session.status === 'unavailable') {
       setStatus((current) => (current === 'authenticated' ? current : 'unavailable'));
       return false;
@@ -247,6 +275,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    // A second sign-out could navigate to /login and cancel the first one's
+    // navigation to the IDP.
+    if (leaving.current) return;
     leaving.current = true;
     // A gateway or proxy ends the session on a plain navigation and redirects
     // on its own. Leave without touching local state, for the same reason as

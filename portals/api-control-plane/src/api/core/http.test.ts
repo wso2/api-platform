@@ -32,7 +32,18 @@ import {
   http,
   resetHttpClient,
 } from './http';
-import { onForbidden, onUnauthorized, resetForbiddenNotice } from './sessionEvents';
+import {
+  notifyUnauthorized,
+  onForbidden,
+  onUnauthorized,
+  resetForbiddenNotice,
+} from './sessionEvents';
+
+// Passes through, so a test can tell when a request has joined the session check.
+vi.mock('./sessionEvents', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./sessionEvents')>();
+  return { ...actual, notifyUnauthorized: vi.fn(actual.notifyUnauthorized) };
+});
 
 /**
  * Transport-level behaviour, exercised through MSW rather than by stubbing
@@ -561,20 +572,19 @@ describe('a 401', () => {
   });
 
   it('shares one session check among parallel 401s, so a dashboard asks once', async () => {
-    const bodies = answerInTurn('get', '/rest-apis', [401]);
+    const bodies = answerInTurn('get', '/rest-apis', [...Array(8).fill(401), 200]);
     let answer: (alive: boolean) => void = () => undefined;
     const check = registerCheck(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+    vi.mocked(notifyUnauthorized).mockClear();
 
-    // The first 401 starts the check; the rest arrive while it is still open.
-    const first = http.get('/rest-apis').catch(() => undefined);
-    await vi.waitFor(() => expect(check).toHaveBeenCalled());
-    const others = Array.from({ length: 7 }, () => http.get('/rest-apis').catch(() => undefined));
-    await vi.waitFor(() => expect(bodies).toHaveLength(8));
-    answer(false);
-    await Promise.all([first, ...others]);
+    const requests = Array.from({ length: 8 }, () => http.get('/rest-apis'));
+    // Answer only once every 401 has joined the open check.
+    await vi.waitFor(() => expect(notifyUnauthorized).toHaveBeenCalledTimes(8));
+    answer(true);
 
+    await expect(Promise.all(requests)).resolves.toHaveLength(8);
     expect(check).toHaveBeenCalledTimes(1);
-    expect(bodies).toHaveLength(8);
+    expect(bodies).toHaveLength(16);
   });
 
   it('is not sent again once the caller has cancelled it', async () => {
@@ -585,8 +595,9 @@ describe('a 401', () => {
       return true;
     });
 
-    await http.get('/rest-apis', { signal: controller.signal }).catch(() => undefined);
+    const error = await rejection(http.get('/rest-apis', { signal: controller.signal }));
 
+    expect(error.kind).toBe('aborted');
     expect(bodies).toHaveLength(1);
   });
 

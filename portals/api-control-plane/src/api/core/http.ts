@@ -455,13 +455,17 @@ async function send(
     deadline.release();
   }
 
-  if (
-    response.status === 401 &&
-    !retried &&
-    (await notifyUnauthorized()) &&
-    !options.signal?.aborted
-  ) {
-    return send(method, path, options, responseType, true);
+  if (response.status === 401 && !retried) {
+    const alive = await notifyUnauthorized();
+    if (options.signal?.aborted) {
+      throw platformErrorFromTransport(
+        options.signal.reason,
+        'aborted',
+        requestId,
+        options.operationName
+      );
+    }
+    if (alive) return send(method, path, options, responseType, true);
   }
 
   if (response.status >= 400) {

@@ -170,13 +170,16 @@ export const DEFAULT_CHECK_SESSION_INTERVAL = 30;
 /** Shorter intervals are raised to this. */
 export const MIN_CHECK_SESSION_INTERVAL = 5;
 
+/** Longer intervals are lowered to this: setInterval fires at once past 2^31-1 ms. */
+export const MAX_CHECK_SESSION_INTERVAL = 2_147_483;
+
 /** Seconds between session checks; the default for anything but a positive number. */
 export const parseCheckSessionInterval = (value: string | number | undefined): number => {
   const seconds = typeof value === 'string' ? Number(value.trim()) : value;
   if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
     return DEFAULT_CHECK_SESSION_INTERVAL;
   }
-  return Math.max(seconds, MIN_CHECK_SESSION_INTERVAL);
+  return Math.min(Math.max(seconds, MIN_CHECK_SESSION_INTERVAL), MAX_CHECK_SESSION_INTERVAL);
 };
 
 /**

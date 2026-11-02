@@ -27,7 +27,7 @@ let unmountPage: (() => void) | undefined;
 // providers fresh so they share one module graph (and one auth context).
 async function renderLoginPage(
   runtimeConfig: Record<string, string>,
-  preset: 'unauthenticated' | 'unavailable' = 'unauthenticated',
+  preset: 'unauthenticated' | 'unavailable' | 'loading' = 'unauthenticated',
 ) {
   window.__RUNTIME_CONFIG__ = runtimeConfig;
   vi.resetModules();
@@ -82,6 +82,18 @@ describe('LoginPage', { timeout: 30_000 }, () => {
     );
 
     expect(await screen.findByText('Server error')).toBeInTheDocument();
+    expect(authState.login).not.toHaveBeenCalled();
+  });
+
+  // Opened directly (a bookmark, a refresh): the session may be alive, or its
+  // endpoint down.
+  it('waits for the session check before handing over to the gateway', async () => {
+    const { authState, screen } = await renderLoginPage(
+      { authMode: 'external', authLoginUrl: '/api-platform/auth/login' },
+      'loading',
+    );
+
+    expect(await screen.findByText('Signing you in')).toBeInTheDocument();
     expect(authState.login).not.toHaveBeenCalled();
   });
 

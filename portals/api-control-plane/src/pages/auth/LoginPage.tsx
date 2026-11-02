@@ -319,10 +319,16 @@ export function LoginPage() {
     !isBrowserSupported || (isInvitation && state.displayOrgName) || oidcError || auth.error,
   );
 
-  // Not while the session endpoint is down: sign-in is behind the same server.
+  // Not before the session check has answered, nor while the session endpoint
+  // is down: sign-in is behind the same server.
   const isUnavailable = auth.status === 'unavailable';
   const shouldAutoRedirect =
-    !auth.isAuthenticated && isRedirectLogin && !isInvitation && !oidcError && !isUnavailable;
+    !auth.isAuthenticated &&
+    !auth.isLoading &&
+    isRedirectLogin &&
+    !isInvitation &&
+    !oidcError &&
+    !isUnavailable;
 
   // Redirect to the sign-in endpoint unless showing an invitation or a
   // sign-in error. Use an effect because auth.login() navigates and mutates a ref.
@@ -340,7 +346,7 @@ export function LoginPage() {
   // below would only appear for the instant before the browser leaves — which reads
   // as the console asking for credentials it is not going to take. Show that
   // something is happening instead, as the AI Workspace does.
-  if (shouldAutoRedirect) {
+  if (shouldAutoRedirect || (isRedirectLogin && auth.isLoading)) {
     return <LoadingState fullScreen label={intl.formatMessage(messages.redirecting)} />;
   }
 
