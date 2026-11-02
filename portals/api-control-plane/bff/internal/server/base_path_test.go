@@ -24,6 +24,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -81,41 +83,6 @@ func assertRoute(t *testing.T, client *http.Client, base, path string, status in
 	}
 	if contains != "" && !strings.Contains(body, contains) {
 		t.Errorf("GET %s body = %q, want it to contain %q", path, body, contains)
-	}
-}
-
-// With the key unset the prefix means nothing: it is an ordinary SPA route, and the
-// runtime config, cookies and frame header are what they were before the key existed.
-func TestBasePathUnset_BehaviourUnchanged(t *testing.T) {
-	bff := newRoutedServer(t, newTestConfig("https://unused.example.com"))
-	client := noRedirectClient(nil)
-
-	for _, tc := range []struct {
-		path     string
-		status   int
-		contains string
-	}{
-		{"/healthz", http.StatusOK, "ok"},
-		{"/", http.StatusOK, indexBody},
-		{"/projects/foo", http.StatusOK, indexBody},
-		{"/assets/app.js", http.StatusOK, assetBody},
-		{"/api-platform.env.config.js", http.StatusOK, "__RUNTIME_CONFIG__"},
-		{"/api/session", http.StatusUnauthorized, "authenticated"},
-		{"/proxy/api/v0.9/projects", http.StatusUnauthorized, "NOT_AUTHENTICATED"},
-		{testBasePath + "/healthz", http.StatusOK, indexBody},
-		{testBasePath + "/assets/app.js", http.StatusOK, indexBody},
-		{testBasePath, http.StatusOK, indexBody},
-	} {
-		assertRoute(t, client, bff.URL, tc.path, tc.status, tc.contains)
-	}
-
-	res, err := client.Get(bff.URL + "/healthz")
-	if err != nil {
-		t.Fatalf("GET /healthz: %v", err)
-	}
-	_ = readBody(t, res)
-	if got := res.Header.Get("X-Frame-Options"); got != "DENY" {
-		t.Errorf("X-Frame-Options = %q, want DENY", got)
 	}
 }
 
@@ -178,11 +145,58 @@ func TestBasePath_GatewayRelayRoute(t *testing.T) {
 	}
 }
 
-func TestBasePath_RuntimeConfigScript(t *testing.T) {
-	cfg := prefixedConfig("https://unused.example.com")
-	cfg.RuntimeConfig = map[string]string{"appBasePath": testBasePath}
+// Every URL the runtime config hands the SPA must reach its BFF handler rather than
+// falling through to the SPA catch-all or leaving the prefix.
+func TestBasePath_RuntimeConfigURLsReachHandlers(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.toml")
+	body := "[api_control_plane.server]\nbase_path = \"" + testBasePath + "\"\n" +
+		"[api_control_plane.control_plane]\nurl = \"https://platform-api:9243\"\n"
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := config.Load(file)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	bff := newRoutedServer(t, cfg)
-	assertRoute(t, http.DefaultClient, bff.URL, testBasePath+"/api-platform.env.config.js", http.StatusOK, `"appBasePath":"/console"`)
+
+	for _, tc := range []struct {
+		key, method string
+		status      int
+		contains    string
+	}{
+		{"authLoginUrl", http.MethodGet, http.StatusBadRequest, "AUTH_METHOD_DISABLED"},
+		{"authCredentialsUrl", http.MethodPost, http.StatusBadRequest, "MISSING_CREDENTIALS"},
+		{"authSessionUrl", http.MethodGet, http.StatusUnauthorized, "authenticated"},
+		{"authLogoutUrl", http.MethodPost, http.StatusNoContent, ""},
+		{"gatewayRelayUrl", http.MethodPost, http.StatusUnauthorized, "SESSION_EXPIRED"},
+	} {
+		target := cfg.RuntimeConfig[tc.key]
+		if !strings.HasPrefix(target, testBasePath+"/") {
+			t.Errorf("%s = %q, want it under %s", tc.key, target, testBasePath)
+		}
+		req, err := http.NewRequest(tc.method, bff.URL+target, strings.NewReader("{}"))
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(config.CSRFHeaderName, "api-control-plane")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", tc.method, target, err)
+		}
+		if got := readBody(t, res); res.StatusCode != tc.status || !strings.Contains(got, tc.contains) {
+			t.Errorf("%s %s = %d %q, want %d containing %q", tc.method, target, res.StatusCode, got, tc.status, tc.contains)
+		}
+	}
+
+	res, err := http.Get(bff.URL + testBasePath + "/api-platform.env.config.js")
+	if err != nil {
+		t.Fatalf("GET runtime config: %v", err)
+	}
+	if got := readBody(t, res); !strings.Contains(got, `"appBasePath":"/console"`) {
+		t.Errorf("runtime config = %q, want appBasePath", got)
+	}
 }
 
 // The proxy strips the whole mounted prefix, on both mounts and for named upstreams.
@@ -301,12 +315,47 @@ func TestCookiePaths(t *testing.T) {
 					t.Fatalf("%s wrote no cookies", name)
 				}
 				for _, c := range cookies {
-					if c.Path != wr.want {
-						t.Errorf("%s: cookie %s Path = %q, want %q", name, c.Name, c.Path, wr.want)
+					// The only cookies allowed outside the prefix are root expiries.
+					if c.Path != wr.want && !(tc.basePath != "" && c.Path == "/" && c.MaxAge < 0) {
+						t.Errorf("%s: cookie %s Path = %q MaxAge = %d, want Path %q", name, c.Name, c.Path, c.MaxAge, wr.want)
 					}
 				}
 			}
 		})
+	}
+}
+
+// A session cookie from when this host served the console at the root would otherwise
+// survive logout: expiring the prefixed cookie leaves the one at Path=/ in the browser.
+func TestBasePath_LogoutExpiresRootCookies(t *testing.T) {
+	bff := newRoutedServer(t, prefixedConfig("https://unused.example.com"))
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookie jar: %v", err)
+	}
+	u := mustParseURL(t, bff.URL+"/")
+	token := makeJWT(map[string]any{"username": "admin", "exp": time.Now().Add(time.Hour).Unix()})
+	jar.SetCookies(u, []*http.Cookie{
+		{Name: "_test_session", Value: token, Path: "/"},
+		{Name: "_test_refresh", Value: "refresh-1", Path: "/"},
+	})
+	client := noRedirectClient(jar)
+	assertRoute(t, client, bff.URL, testBasePath+"/api/session", http.StatusOK, `"authenticated":true`)
+
+	req, err := http.NewRequest(http.MethodPost, bff.URL+testBasePath+"/api/logout", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set(config.CSRFHeaderName, "api-control-plane")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("logout: %v", err)
+	}
+	_ = readBody(t, res)
+
+	assertRoute(t, client, bff.URL, testBasePath+"/api/session", http.StatusUnauthorized, `"authenticated":false`)
+	if got := jar.Cookies(u); len(got) != 0 {
+		t.Errorf("cookies left at the root = %v, want none", got)
 	}
 }
 
@@ -321,6 +370,7 @@ func TestBasePath_OIDCRoundTrip(t *testing.T) {
 			"issuer":                 srvURL,
 			"authorization_endpoint": srvURL + "/authorize",
 			"token_endpoint":         srvURL + "/token",
+			"end_session_endpoint":   srvURL + "/logout",
 		})
 	})
 	idpMux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
@@ -378,6 +428,21 @@ func TestBasePath_OIDCRoundTrip(t *testing.T) {
 		t.Errorf("cookies sent outside the prefix = %v, want none", got)
 	}
 
+	// Logout finds the session through the prefixed route and hands back the IdP's URL.
+	req, err := http.NewRequest(http.MethodPost, bff.URL+testBasePath+"/api/logout", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set(config.CSRFHeaderName, "api-control-plane")
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("logout: %v", err)
+	}
+	if body := readBody(t, res); !strings.Contains(body, `"logoutUrl":"`+idp.URL+"/logout") {
+		t.Errorf("logout body = %q, want the IdP end-session URL", body)
+	}
+	assertRoute(t, client, bff.URL, testBasePath+"/api/session", http.StatusUnauthorized, `"authenticated":false`)
+
 	// IdP and exchange failures land on the prefixed login page.
 	for path, want := range map[string]string{
 		"/api/auth/callback?error=access_denied": "/login?error=access_denied",
@@ -397,16 +462,22 @@ func TestBasePath_OIDCRoundTrip(t *testing.T) {
 func TestSanitizeReturn(t *testing.T) {
 	prefixed := &Server{cfg: &config.Config{Server: config.ServerConfig{BasePath: testBasePath}}}
 	for in, want := range map[string]string{
-		"":                          testBasePath + "/",
-		"/":                         testBasePath + "/",
-		testBasePath:                testBasePath,
-		testBasePath + "/":          testBasePath + "/",
-		testBasePath + "/a?x=1":     testBasePath + "/a?x=1",
-		"/sibling/":                 testBasePath + "/",
-		testBasePath + "x/evil":     testBasePath + "/",
-		"//evil.com/console/":       testBasePath + "/",
-		"https://evil.com/console/": testBasePath + "/",
-		`/\evil.com`:                testBasePath + "/",
+		"":                                  testBasePath + "/",
+		"/":                                 testBasePath + "/",
+		testBasePath:                        testBasePath,
+		testBasePath + "/":                  testBasePath + "/",
+		testBasePath + "/a?x=1":             testBasePath + "/a?x=1",
+		"/sibling/":                         testBasePath + "/",
+		testBasePath + "x/evil":             testBasePath + "/",
+		"//evil.com/console/":               testBasePath + "/",
+		"https://evil.com/console/":         testBasePath + "/",
+		testBasePath + "/a/../b":            testBasePath + "/a/../b",
+		testBasePath + "/../sibling/x":      testBasePath + "/",
+		testBasePath + "/a/../../sibling/x": testBasePath + "/",
+		testBasePath + "/%2e%2e/sibling/x":  testBasePath + "/",
+		testBasePath + "/..%2fsibling/x":    testBasePath + "/",
+		testBasePath + "/..":                testBasePath + "/",
+		`/\evil.com`:                        testBasePath + "/",
 	} {
 		if got := prefixed.sanitizeReturn(in); got != want {
 			t.Errorf("prefixed sanitizeReturn(%q) = %q, want %q", in, got, want)

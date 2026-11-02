@@ -36,8 +36,10 @@ import (
 // forced to the configured proxy prefix (under the base path), never the
 // upstream's real URL.
 //
-// appBasePath is emitted only when a base path is configured, so the SPA's own
-// build-time fallback (VITE_APP_BASE_PATH) still applies for a root deployment.
+// The base-path keys are emitted only when a base path is configured, so the SPA's
+// own defaults still apply for a root deployment: appBasePath falls back to
+// VITE_APP_BASE_PATH, and the auth and relay URLs to root-absolute BFF routes, which
+// under a prefix would send credentials outside the console and miss its cookies.
 func buildRuntimeConfig(cfg *Config) map[string]string {
 	out := map[string]string{
 		"authMode":           cfg.Auth.Mode,
@@ -45,6 +47,11 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 	}
 	if cfg.Server.BasePath != "" {
 		out["appBasePath"] = cfg.Server.BasePath
+		out["authLoginUrl"] = cfg.Server.BasePath + "/api/auth/login"
+		out["authCredentialsUrl"] = cfg.Server.BasePath + "/api/login"
+		out["authSessionUrl"] = cfg.Server.BasePath + "/api/session"
+		out["authLogoutUrl"] = cfg.Server.BasePath + "/api/logout"
+		out["gatewayRelayUrl"] = cfg.Server.BasePath + "/api/gateway-relay/invoke"
 	}
 
 	// The public Policy Hub needs no credentials and is called directly by the SPA.

@@ -167,6 +167,15 @@ type SanitizeHTMLDocsConfig struct {
 	AdditionalAllowedAttributes any `koanf:"additional_allowed_attributes"`
 }
 
+// UpstreamPrefix returns the path an additional upstream is mounted at: its explicit
+// prefix, or one derived from its name under the primary proxy prefix.
+func (c ControlPlaneConfig) UpstreamPrefix(u UpstreamConfig) string {
+	if u.Prefix != "" {
+		return u.Prefix
+	}
+	return c.ProxyPrefix + "/" + u.Name
+}
+
 // X-Frame-Options values accepted by [server] x_frame_options.
 const (
 	XFrameDeny       = "DENY"
@@ -186,8 +195,8 @@ type ServerConfig struct {
 	// assets absolutely.
 	BasePath string `koanf:"base_path"`
 	// XFrameOptions is the X-Frame-Options response header: "DENY" (the default) or
-	// "SAMEORIGIN". An SPA that signs in silently loads its own redirect page in a
-	// hidden iframe, which needs SAMEORIGIN.
+	// "SAMEORIGIN". Browsers that honour the CSP frame-ancestors directive this BFF also
+	// sends ignore this header, so it only matters to browsers that don't.
 	XFrameOptions string        `koanf:"x_frame_options"`
 	HTTP          HTTPListener  `koanf:"http"`
 	HTTPS         HTTPSListener `koanf:"https"`
@@ -663,9 +672,10 @@ func normalizeBasePath(p string) string {
 
 // validateBasePath accepts only a plain "/segment[/segment...]" of URL-safe
 // characters, because the value is composed into mux patterns (where "{" would
-// declare a wildcard), cookie Paths and redirect targets. A base path equal to a
-// proxy prefix is rejected too: both would claim the same mux subtree, which panics
-// at startup.
+// declare a wildcard), cookie Paths and redirect targets. Every proxy is mounted at
+// its prefix and again under the base path, so any two of those mounts or the base
+// path itself being equal is rejected too: they would claim the same mux subtree,
+// which panics at startup.
 func (c *Config) validateBasePath() error {
 	p := c.Server.BasePath
 	if p == "" {
@@ -682,12 +692,17 @@ func (c *Config) validateBasePath() error {
 			}
 		}
 	}
-	if p == c.ControlPlane.ProxyPrefix {
-		return fmt.Errorf("[server] base_path %q must differ from [control_plane] proxy_prefix", p)
-	}
+	seen := map[string]bool{p: true}
+	mounts := []string{c.ControlPlane.ProxyPrefix}
 	for _, u := range c.ControlPlane.Upstreams {
-		if p == u.Prefix || (u.Prefix == "" && p == c.ControlPlane.ProxyPrefix+"/"+u.Name) {
-			return fmt.Errorf("[server] base_path %q must differ from the proxy prefix of upstream %q", p, u.Name)
+		mounts = append(mounts, c.ControlPlane.UpstreamPrefix(u))
+	}
+	for _, m := range mounts {
+		for _, mounted := range []string{m, p + m} {
+			if seen[mounted] {
+				return fmt.Errorf("[server] base_path %q makes proxy mount %q collide with another route", p, mounted)
+			}
+			seen[mounted] = true
 		}
 	}
 	return nil

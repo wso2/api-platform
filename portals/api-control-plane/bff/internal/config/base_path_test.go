@@ -42,6 +42,11 @@ func TestLoad_BasePathDefaultsToRoot(t *testing.T) {
 	if got := cfg.RuntimeConfig["platformApiBaseUrl"]; got != "/proxy" {
 		t.Errorf("platformApiBaseUrl = %q, want /proxy", got)
 	}
+	for _, key := range []string{"authLoginUrl", "authCredentialsUrl", "authSessionUrl", "authLogoutUrl", "gatewayRelayUrl"} {
+		if _, ok := cfg.RuntimeConfig[key]; ok {
+			t.Errorf("%s must not be emitted for a root deployment", key)
+		}
+	}
 }
 
 func TestLoad_BasePathNormalizedAndExposed(t *testing.T) {
@@ -56,8 +61,17 @@ func TestLoad_BasePathNormalizedAndExposed(t *testing.T) {
 		if got := cfg.RuntimeConfig["appBasePath"]; got != "/console" {
 			t.Errorf("appBasePath = %q, want /console", got)
 		}
-		if got := cfg.RuntimeConfig["platformApiBaseUrl"]; got != "/console/proxy" {
-			t.Errorf("platformApiBaseUrl = %q, want /console/proxy", got)
+		for key, want := range map[string]string{
+			"platformApiBaseUrl": "/console/proxy",
+			"authLoginUrl":       "/console/api/auth/login",
+			"authCredentialsUrl": "/console/api/login",
+			"authSessionUrl":     "/console/api/session",
+			"authLogoutUrl":      "/console/api/logout",
+			"gatewayRelayUrl":    "/console/api/gateway-relay/invoke",
+		} {
+			if got := cfg.RuntimeConfig[key]; got != want {
+				t.Errorf("%s = %q, want %q", key, got, want)
+			}
 		}
 	}
 }
@@ -80,20 +94,36 @@ func TestLoad_BasePathRejectsUnsafeValues(t *testing.T) {
 	}
 }
 
-// A base path claiming a proxy's mux subtree would panic at startup, so it fails
-// validation with a readable error instead.
-func TestLoad_BasePathRejectsProxyPrefixCollision(t *testing.T) {
-	upstream := `
+// A mount collision would panic in the mux at startup, so it fails validation with a
+// readable error instead. Mounts are compared as composed with the base path.
+func TestLoad_BasePathRejectsMountCollisions(t *testing.T) {
+	const billing = `
 [[api_control_plane.control_plane.upstreams]]
 name = "billing"
 url  = "https://billing:8443"
 `
-	for _, in := range []string{"/proxy", "/proxy/billing"} {
-		body := "[api_control_plane.server]\nbase_path = \"" + in + "\"\n" + minimalControlPlane + upstream
+	const nested = `
+[[api_control_plane.control_plane.upstreams]]
+name   = "nested"
+url    = "https://nested:8443"
+prefix = "/console/proxy"
+`
+	cases := []struct{ basePath, upstream string }{
+		{"/proxy", billing},
+		{"/proxy/billing", billing},
+		{"/console", nested},
+	}
+	for _, tc := range cases {
+		body := "[api_control_plane.server]\nbase_path = \"" + tc.basePath + "\"\n" + minimalControlPlane + tc.upstream
 		_, err := Load(writeConfig(t, body))
-		if err == nil || !strings.Contains(err.Error(), "must differ") {
-			t.Errorf("Load(base_path=%q) err = %v, want a collision error", in, err)
+		if err == nil || !strings.Contains(err.Error(), "collide") {
+			t.Errorf("Load(base_path=%q) err = %v, want a collision error", tc.basePath, err)
 		}
+	}
+	// A distinct upstream under the same base path is fine.
+	body := "[api_control_plane.server]\nbase_path = \"/console\"\n" + minimalControlPlane + billing
+	if _, err := Load(writeConfig(t, body)); err != nil {
+		t.Errorf("Load: %v", err)
 	}
 }
 

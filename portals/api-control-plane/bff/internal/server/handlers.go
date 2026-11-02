@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -544,8 +545,9 @@ func isBodyTooLarge(err error) bool {
 
 // sanitizeReturn confines a post-login return target to this console: a local path
 // (see sanitizeLocalPath) that also sits under the base path, so a console sharing an
-// origin cannot be used to bounce the user into a sibling app. Anything else falls
-// back to the console's own root.
+// origin cannot be used to bounce the user into a sibling app. The path is cleaned
+// before the check because a browser resolves dot segments, including "%2e%2e", when
+// it follows the redirect. Anything else falls back to the console's own root.
 func (s *Server) sanitizeReturn(p string) string {
 	clean := sanitizeLocalPath(p)
 	base := s.cfg.Server.BasePath
@@ -553,7 +555,10 @@ func (s *Server) sanitizeReturn(p string) string {
 		return clean
 	}
 	u, err := url.Parse(clean)
-	if err != nil || (u.Path != base && !strings.HasPrefix(u.Path, base+"/")) {
+	if err != nil {
+		return s.path("/")
+	}
+	if cleaned := path.Clean(u.Path); cleaned != base && !strings.HasPrefix(cleaned, base+"/") {
 		return s.path("/")
 	}
 	return clean

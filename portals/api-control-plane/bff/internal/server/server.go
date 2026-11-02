@@ -128,11 +128,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse url for upstream %q: %w", u.Name, err)
 		}
-		prefix := u.Prefix
-		if prefix == "" {
-			prefix = cfg.ControlPlane.ProxyPrefix + "/" + u.Name
-		}
-		mount(prefix, target, upstreamTransport)
+		mount(cfg.ControlPlane.UpstreamPrefix(u), target, upstreamTransport)
 	}
 
 	s := &Server{
@@ -263,8 +259,10 @@ func (s *Server) routes() http.Handler {
 	base := s.cfg.Server.BasePath
 
 	// Every BFF route answers at the origin root and, when configured, under the base
-	// path: probes dial the pod directly, bypassing the edge that routes the prefix,
-	// and a bundle built for the prefix also loads through a hostname with no prefix.
+	// path: probes dial the pod directly, bypassing the edge that routes the prefix, and
+	// a bundle built for the prefix still loads through a hostname with no prefix, since
+	// it calls the prefixed routes there too. Cookies are scoped to the prefix, so a
+	// session only works through the prefixed routes.
 	handle := func(method, route string, h http.HandlerFunc) {
 		mux.HandleFunc(method+" "+route, h)
 		if base != "" {
