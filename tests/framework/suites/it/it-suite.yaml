@@ -275,7 +275,11 @@ blocks:
           - features/mtls_hostnames_all_connections_required.feature
 
   # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
-  # asks for a certificate, which is state of the whole gateway, so runners take turns.
+  # asks for a certificate, which is state of the whole gateway, so runners take turns. Also
+  # hosts the outbound block (its mtls.toml settings already coexisted on the two-controller
+  # gateway-mtls-ha overlay): outbound identities and trust certificates never a client
+  # authority, and the overlay's present_default_identity=false also covers the
+  # default-identity-off scenario.
   - name: gateway-mtls
     parallel: 1
     components:
@@ -284,6 +288,7 @@ blocks:
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: tls-backend
     runners:
       - name: mtls-auth
         tags: "gateway-version>1.2.0"
@@ -305,6 +310,14 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/mtls_header_relay.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity_off.feature
 
   # The relayed client certificate header is believed from any connection here, a gateway-wide
   # setting the other mutual TLS blocks must not see.
@@ -341,28 +354,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/mtls_default_identity.feature
-
-  # Outbound mutual TLS adds gateway identities and trust certificates and never a client
-  # authority, so it has its own gateway and runs beside the inbound block. Its overlay already
-  # sets present_default_identity=false, covering the default-identity-off scenario too.
-  - name: gateway-mtls-outbound-identity
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mtls-outbound.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: tls-backend
-    runners:
-      - name: mtls-outbound
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_outbound.feature
-      - name: mtls-default-identity-off
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_default_identity_off.feature
 
   # The mutual TLS scenarios on a gateway with two controllers sharing one PostgreSQL
   # database. One serves the management API; the other alone feeds the runtime, so every
