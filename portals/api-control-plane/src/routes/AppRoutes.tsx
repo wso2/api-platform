@@ -17,6 +17,7 @@
  */
 
 import { lazy, type ReactNode } from 'react';
+import { AppPage } from '../components/AppPage';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 
 import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
@@ -40,7 +41,6 @@ import {
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GATEWAYS_SLOT,
-  settingsTabExtensions,
   type ApiControlPlaneExtension,
   type ApiControlPlaneExtensionChild,
   type RenderableExtension,
@@ -241,24 +241,14 @@ const PortalPublishPage = lazy(() =>
     default: m.PortalPublishPage,
   })),
 );
-const SettingsLayout = lazy(() =>
-  import('../pages/appShell/appShellPages/settings/SettingsLayout').then((m) => ({
-    default: m.SettingsLayout,
+const MetersPage = lazy(() =>
+  import('../pages/appShell/appShellPages/orgManage/MetersPage').then((m) => ({
+    default: m.MetersPage,
   })),
 );
-const GeneralSettingsPage = lazy(() =>
-  import('../pages/appShell/appShellPages/settings/GeneralSettingsPage').then((m) => ({
-    default: m.GeneralSettingsPage,
-  })),
-);
-const MetersSettingsPage = lazy(() =>
-  import('../pages/appShell/appShellPages/settings/MetersSettingsPage').then((m) => ({
-    default: m.MetersSettingsPage,
-  })),
-);
-const SubscriptionPlansSettingsPage = lazy(() =>
-  import('../pages/appShell/appShellPages/settings/SubscriptionPlansSettingsPage').then((m) => ({
-    default: m.SubscriptionPlansSettingsPage,
+const SubscriptionPlansPage = lazy(() =>
+  import('../pages/appShell/appShellPages/orgManage/SubscriptionPlansPage').then((m) => ({
+    default: m.SubscriptionPlansPage,
   })),
 );
 
@@ -414,20 +404,7 @@ function GatewaysRoute() {
 }
 
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
-  // Extensions registered against a `settings.<level>.tabs` slot render nested
-  // under the matching Settings layout, at a path relative to it — so the tab's
-  // own route and the sub-nav entry `useSettingsTabs` builds stay in step.
-  const settingsTabRoutes = (level: NavigationLevel) =>
-    settingsTabExtensions(extensions, level).map((extension) => (
-      <Route
-        key={extension.id}
-        path={extension.routePath.replace(/^settings\//, '')}
-        element={<ExtensionRoute render={extension.render} />}
-      />
-    ));
-
-  // Only `sidebar.*` entries become top-level routes; a Settings tab extension
-  // is routed by `settingsTabRoutes` above, nested under the Settings layout.
+  // Only `sidebar.*` entries become top-level routes.
   //
   // A parent's `children` are pages in their own right, so each is routed here
   // too — under the parent's path and at the parent's level. Without this the
@@ -577,23 +554,24 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(apiScopedPaths(routes.apiManageMonetize), <MonetizePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiManageLifecycle), <LifeCyclePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}
-          {/* Two entry points, one page, no scope requirement either way. The
-              index route renders the same content as `general`, so `/settings`
-              is never a blank pane. */}
-          <Route path={routes.settings()} element={<SettingsLayout level="organization" />}>
-            <Route index element={<GeneralSettingsPage />} />
-            <Route path="general" element={<GeneralSettingsPage />} />
-            {/* Organization-scoped only — platform-api has no project-level
-                subscription-plan endpoint, so this isn't registered below. */}
-            <Route path="subscription-plans" element={<SubscriptionPlansSettingsPage />} />
-            <Route path="meters" element={<MetersSettingsPage />} />
-            {settingsTabRoutes('organization')}
-          </Route>
-          <Route path={routes.projectSettings()} element={<SettingsLayout level="project" />}>
-            <Route index element={<GeneralSettingsPage />} />
-            <Route path="general" element={<GeneralSettingsPage />} />
-            {settingsTabRoutes('project')}
-          </Route>
+          {/* Organization-level only — platform-api has no project- or API-level
+              subscription-plan or meter endpoint, so these have no scoped routes. */}
+          <Route
+            path={routes.subscriptionPlans()}
+            element={
+              <AppPage>
+                <SubscriptionPlansPage />
+              </AppPage>
+            }
+          />
+          <Route
+            path={routes.meters()}
+            element={
+              <AppPage>
+                <MetersPage />
+              </AppPage>
+            }
+          />
           {extensionRoutes}
           <Route path="*" element={<NotFoundPage />} />
         </Route>

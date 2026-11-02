@@ -29,12 +29,9 @@ import { renderWithProviders, screen } from '../test/utils';
  */
 const LAZY_ROUTE_TIMEOUT = { timeout: 5000 };
 
-// Covers the org-level Settings page (mirrors ai-workspace, which mounts the
-// same Settings feature at both org and project scope) and the sidebar's
-// pinned-to-bottom Settings link, which must show exactly one link at a
-// time — organization-level while browsing the org, project-level once a
-// project is selected — never both at once.
-describe('Org-level Settings', () => {
+// Covers the org-level Subscription Plans and Meters pages and the sidebar's
+// Manage menu, which replaced the Settings link.
+describe('Org-level Manage pages', () => {
   // The scope hooks always go to the real transport — `VITE_USE_MOCK_API` only
   // governs the legacy client — so the endpoints `ConsoleScopeProvider` resolves
   // the org and project from are stubbed at the network layer.
@@ -53,44 +50,44 @@ describe('Org-level Settings', () => {
       resource('/projects/:projectId', project),
       collection('/rest-apis', []),
       collection('/graphql-apis', []),
+      collection('/subscription-plans', []),
+      collection('/meters', []),
     );
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it('renders the org-level Settings page', async () => {
+  it.each([
+    ['subscription-plans', 'Subscription Plans'],
+    ['meters', 'Meters'],
+  ])('renders the org-level %s page with no Settings chrome', async (path, heading) => {
     renderWithProviders(<AppRoutes />, {
-      route: '/organizations/api-platform-demo/settings',
+      route: `/organizations/api-platform-demo/${path}`,
       authState: authStatePresets.authenticated(),
     });
 
     expect(
-      await screen.findByRole('heading', { name: 'Settings' }, LAZY_ROUTE_TIMEOUT),
+      await screen.findByRole('heading', { name: heading }, LAZY_ROUTE_TIMEOUT),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Settings' })).not.toBeInTheDocument();
   });
 
-  it('shows one org-scoped pinned Settings link while browsing the org', async () => {
+  it('replaces the Settings link with a Manage menu while browsing the org', async () => {
     renderWithProviders(<AppRoutes />, {
       route: '/organizations/api-platform-demo/home',
       authState: authStatePresets.authenticated(),
     });
 
-    const settingsLinks = await screen.findAllByRole('link', { name: /settings/i });
-    expect(settingsLinks).toHaveLength(1);
-    expect(settingsLinks[0]).toHaveAttribute('href', '/organizations/api-platform-demo/settings');
+    expect(await screen.findByText('Manage')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^settings$/i })).not.toBeInTheDocument();
   });
 
-  it('shows one project-scoped pinned Settings link inside a project, not both', async () => {
+  it('keeps the Manage menu, not a project Settings link, inside a project', async () => {
     renderWithProviders(<AppRoutes />, {
       route: '/organizations/api-platform-demo/projects/retail-apis/home',
       authState: authStatePresets.authenticated(),
     });
 
-    // The org-level Settings link must be hidden here — never both at once.
-    const settingsLinks = await screen.findAllByRole('link', { name: /settings/i });
-    expect(settingsLinks).toHaveLength(1);
-    expect(settingsLinks[0]).toHaveAttribute(
-      'href',
-      '/organizations/api-platform-demo/projects/retail-apis/settings',
-    );
+    expect(await screen.findByText('Manage')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^settings$/i })).not.toBeInTheDocument();
   });
 });

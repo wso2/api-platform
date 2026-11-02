@@ -32,7 +32,6 @@ import {
   Divider,
   Form,
   FormControl,
-  FormControlLabel,
   FormHelperText,
   FormLabel,
   IconButton,
@@ -43,7 +42,7 @@ import {
   Switch,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Plus, X } from '@wso2/oxygen-ui-icons-react';
+import { Infinity as InfinityIcon, Plus, X } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { isErrorCode } from '@/api/core/errors';
@@ -184,7 +183,23 @@ const messages = defineMessages({
   },
   expiryLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.label',
-    defaultMessage: 'Expiry date (optional)',
+    defaultMessage: 'Expiry date',
+  },
+  expiryOptional: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.expiry.optional',
+    defaultMessage: '(optional)',
+  },
+  limitsUnlimited: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.limits.unlimited',
+    defaultMessage: 'Unlimited requests',
+  },
+  subtitleCreate: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.create',
+    defaultMessage: 'Define usage limits and availability for this plan.',
+  },
+  subtitleEdit: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.edit',
+    defaultMessage: 'Update usage limits and availability for this plan.',
   },
   inUseNote: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.inUseNote',
@@ -248,11 +263,11 @@ const messages = defineMessages({
   },
   nameLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.label',
-    defaultMessage: 'Name',
+    defaultMessage: 'Plan name',
   },
   namePlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.placeholder',
-    defaultMessage: 'Gold',
+    defaultMessage: 'e.g. Gold',
   },
   nameRequired: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.required',
@@ -537,7 +552,12 @@ export function SubscriptionPlanFormDialog({
       <DialogTitle>
         <Stack alignItems="flex-start" direction="row" spacing={1.5}>
           <Box sx={{ flex: 1 }}>
-            <FormattedMessage {...(isEdit ? messages.editTitle : messages.titleCreate)} />
+            <Typography sx={{ fontWeight: 700 }} variant="h6">
+              <FormattedMessage {...(isEdit ? messages.editTitle : messages.titleCreate)} />
+            </Typography>
+            <Typography color="text.secondary" sx={{ opacity: 0.7 }} variant="body2">
+              <FormattedMessage {...(isEdit ? messages.subtitleEdit : messages.subtitleCreate)} />
+            </Typography>
           </Box>
           <IconButton
             aria-label={intl.formatMessage(messages.close)}
@@ -549,6 +569,7 @@ export function SubscriptionPlanFormDialog({
           </IconButton>
         </Stack>
       </DialogTitle>
+      <Divider />
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <DialogContent>
           <Form.Stack spacing={3}>
@@ -593,12 +614,18 @@ export function SubscriptionPlanFormDialog({
             </FormControl>
 
             <Stack spacing={1.5}>
-              <Stack alignItems="center" direction="row" justifyContent="space-between">
-                <Form.Header sx={{ fontWeight: 600, typography: 'body2' }}>
-                  <FormattedMessage {...messages.limitsLabel} />
-                </Form.Header>
+              <Stack alignItems="flex-start" direction="row" justifyContent="space-between">
+                <Box>
+                  <Form.Header sx={{ fontWeight: 600, typography: 'body2' }}>
+                    <FormattedMessage {...messages.limitsLabel} />
+                  </Form.Header>
+                  <Typography color="text.secondary" sx={{ display: 'block', opacity: 0.7 }} variant="caption">
+                    <FormattedMessage {...messages.limitsHelper} />
+                  </Typography>
+                </Box>
                 {form.limits.length === 0 && !inUse && (
                   <Button
+                    color="secondary"
                     onClick={addLimit}
                     size="small"
                     startIcon={<Plus size={16} />}
@@ -608,6 +635,27 @@ export function SubscriptionPlanFormDialog({
                   </Button>
                 )}
               </Stack>
+
+              {form.limits.length === 0 && (
+                <Stack
+                  alignItems="center"
+                  direction="row"
+                  spacing={1.5}
+                  sx={{
+                    border: '1px dashed',
+                    borderColor: 'divider',
+                    borderRadius: '10px',
+                    color: 'text.secondary',
+                    px: 2,
+                    py: 2,
+                  }}
+                >
+                  <InfinityIcon size={16} />
+                  <Typography variant="body2">
+                    <FormattedMessage {...messages.limitsUnlimited} />
+                  </Typography>
+                </Stack>
+              )}
 
               {form.limits.map((limit, index) => (
                 <Box
@@ -697,35 +745,38 @@ export function SubscriptionPlanFormDialog({
                   <FormattedMessage {...messages.limitError} />
                 </Typography>
               )}
-              <Typography color="text.secondary" variant="caption">
-                <FormattedMessage {...messages.limitsHelper} />
-              </Typography>
             </Stack>
 
-            <Divider />
-
-            <FormControl fullWidth>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={form.stopOnQuotaReach}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, stopOnQuotaReach: event.target.checked }))
-                    }
-                  />
+            <Stack
+              alignItems="center"
+              direction="row"
+              justifyContent="space-between"
+              spacing={2}
+              sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '10px', px: 2, py: 1.5 }}
+            >
+              <Box>
+                <Typography sx={{ fontWeight: 600 }} variant="body1">
+                  <FormattedMessage {...messages.stopLabel} />
+                </Typography>
+                <Typography color="text.secondary" sx={{ opacity: 0.7 }} variant="body2">
+                  <FormattedMessage {...messages.stopHelper} />
+                </Typography>
+              </Box>
+              <Switch
+                checked={form.stopOnQuotaReach}
+                slotProps={{ input: { role: 'switch', 'aria-label': intl.formatMessage(messages.stopLabel) } }}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, stopOnQuotaReach: event.target.checked }))
                 }
-                label={<FormattedMessage {...messages.stopLabel} />}
-                labelPlacement="start"
-                sx={{ justifyContent: 'space-between', ml: 0 }}
               />
-              <FormHelperText>
-                <FormattedMessage {...messages.stopHelper} />
-              </FormHelperText>
-            </FormControl>
+            </Stack>
 
             <FormControl error={hasExpiryError} fullWidth>
               <FormLabel htmlFor={EXPIRY_FIELD}>
-                <FormattedMessage {...messages.expiryLabel} />
+                <FormattedMessage {...messages.expiryLabel} />{' '}
+                <Typography color="text.secondary" component="span" variant="inherit">
+                  <FormattedMessage {...messages.expiryOptional} />
+                </Typography>
               </FormLabel>
               <DatePickers.LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DatePickers.DatePicker
@@ -751,7 +802,6 @@ export function SubscriptionPlanFormDialog({
               </FormHelperText>
             </FormControl>
 
-            <Divider />
             <PlanPricingSection
               disabled={busy}
               hasMeters={hasMeters}

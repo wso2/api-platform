@@ -19,10 +19,9 @@ import {
   Autocomplete,
   Box,
   Button,
+  Chip,
   Form,
   FormControl,
-  FormControlLabel,
-  FormHelperText,
   FormLabel,
   IconButton,
   InputAdornment,
@@ -30,11 +29,10 @@ import {
   OutlinedInput,
   Select,
   Stack,
-  Switch,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ArrowRight, Plus, X } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, CreditCard, Plus, X } from '@wso2/oxygen-ui-icons-react';
 import { useMemo } from 'react';
 import {
   defineMessages,
@@ -196,6 +194,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidHelper',
     defaultMessage:
       'Subscribers pay through each API Portal the plan is published to. An API Portal gets this pricing when the plan is first published there.',
+  },
+  comingSoon: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanPricingSection.comingSoon',
+    defaultMessage: 'Coming soon',
   },
   paidLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidLabel',
@@ -909,28 +911,69 @@ export function PlanPricingSection({
 
   return (
     <Stack spacing={2}>
-      <FormControl fullWidth>
-        <FormControlLabel
-          control={
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{
+          bgcolor: (theme) =>
+            `color-mix(in srgb, ${theme.palette.primary.main} 6%, transparent)`,
+          border: '1px solid',
+          borderColor: (theme) =>
+            `color-mix(in srgb, ${theme.palette.primary.main} 30%, ${theme.palette.divider})`,
+          borderRadius: '10px',
+          px: 2,
+          py: 1.5,
+        }}
+      >
+        <Box
+          aria-hidden
+          sx={{
+            alignItems: 'center',
+            bgcolor: (theme) =>
+              `color-mix(in srgb, ${theme.palette.primary.main} 14%, transparent)`,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: '10px',
+            color: 'primary.main',
+            display: 'flex',
+            flexShrink: 0,
+            height: 40,
+            justifyContent: 'center',
+            width: 40,
+          }}
+        >
+          <CreditCard size={20} />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack alignItems="center" direction="row" spacing={1}>
+            <Typography sx={{ fontWeight: 600 }} variant="body1">
+              <FormattedMessage {...messages.paidLabel} />
+            </Typography>
+            <Chip
+              color="primary"
+              label={<FormattedMessage {...messages.comingSoon} />}
+              size="small"
+              variant="outlined"
+            />
+            {/* Hidden while paid plans are coming soon; the pricing form below is kept.
             <Switch
               checked={value.paid}
               disabled={disabled}
               onChange={(event) => set({ paid: event.target.checked })}
+              slotProps={{ input: { role: 'switch', 'aria-label': intl.formatMessage(messages.paidLabel) } }}
             />
-          }
-          label={<FormattedMessage {...messages.paidLabel} />}
-          labelPlacement="start"
-          sx={{ justifyContent: 'space-between', ml: 0 }}
-        />
-        <FormHelperText>
-          <FormattedMessage {...(readOnly ? messages.lockedHint : messages.paidHelper)} />
-        </FormHelperText>
-        {value.paid && !readOnly && (
-          <FormHelperText>
-            <FormattedMessage {...messages.createHint} />
-          </FormHelperText>
-        )}
-      </FormControl>
+            */}
+          </Stack>
+          <Typography color="text.secondary" sx={{ opacity: 0.7 }} variant="body2">
+            <FormattedMessage {...(readOnly ? messages.lockedHint : messages.paidHelper)} />
+          </Typography>
+          {value.paid && !readOnly && (
+            <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="caption">
+              <FormattedMessage {...messages.createHint} />
+            </Typography>
+          )}
+        </Box>
+      </Stack>
 
       {value.paid && (
         <Stack spacing={2}>

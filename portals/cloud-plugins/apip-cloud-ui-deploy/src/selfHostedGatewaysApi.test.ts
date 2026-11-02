@@ -23,6 +23,7 @@ import {
   DEFAULT_SELF_HOSTED_NAME,
   PENDING_ENDPOINT,
   createSelfHostedGatewaysClient,
+  defaultSelfHostedName,
   deriveHandleName,
   latestRegularVersion,
   latestVersionFor,
@@ -76,8 +77,8 @@ describe('createDefaultGateway', () => {
       path: '/self-hosted-gateways',
       body: {
         displayName: DEFAULT_SELF_HOSTED_NAME,
-        handle: 'default-self-hosted-gateway',
-        description: 'Default API Platform Self-Hosted Gateway',
+        handle: 'self-hosted',
+        description: 'Default self-hosted gateway',
         environment: 'dev',
         endpoints: [PENDING_ENDPOINT],
         functionalityType: 'regular',
@@ -99,25 +100,25 @@ describe('createDefaultGateway', () => {
     const handle = (calls[0].body as { handle: string }).handle;
     expect(`${environment}-${handle}`.length).toBeLessThanOrEqual(40);
     expect(handle.endsWith('-')).toBe(false);
-    expect(handle.startsWith('default-')).toBe(true);
+    expect(handle.startsWith('ai-')).toBe(true);
   });
 
   it('keeps shortened names of different gateways distinct', () => {
     const environment = 'production-eu-west';
-    expect(deriveHandleName('Default Self-Hosted Gateway', environment)).not.toBe(
-      deriveHandleName('Default AI Self-Hosted Gateway', environment)
+    expect(deriveHandleName('Self-Hosted', environment)).not.toBe(
+      deriveHandleName('AI Self-Hosted', environment)
     );
   });
 
   it('leaves a name that fits as its plain slug', () => {
-    expect(deriveHandleName('Default Self-Hosted Gateway', 'dev')).toBe('default-self-hosted-gateway');
+    expect(deriveHandleName('Self-Hosted', 'dev')).toBe('self-hosted');
   });
 
   it('registers an AI gateway, named for its type, when asked for one', async () => {
     const { client, calls } = recording(ok);
     await client.createDefaultGateway('dev', '1.0', 'ai');
     expect(calls[0].body).toMatchObject({
-      displayName: 'Default AI Self-Hosted Gateway',
+      displayName: 'AI Self-Hosted',
       functionalityType: 'ai',
       version: '1.0',
     });
@@ -188,5 +189,25 @@ describe('hasActiveToken', () => {
       list: [{ id: 't0', status: 'revoked' }],
     })) as ApiFetch);
     expect(await client.hasActiveToken('g')).toBe(false);
+  });
+});
+
+describe('default self-hosted gateway names', () => {
+  it('names the regular and AI gateways apart', () => {
+    expect(defaultSelfHostedName('regular')).toBe('Self-Hosted');
+    expect(defaultSelfHostedName('ai')).toBe('AI Self-Hosted');
+  });
+
+  it('keeps each name, and so its handle, under 15 characters', () => {
+    for (const type of ['regular', 'ai'] as const) {
+      const name = defaultSelfHostedName(type);
+      expect(name.length).toBeLessThan(15);
+      expect(deriveHandleName(name, 'dev').length).toBeLessThan(15);
+    }
+  });
+
+  it('gives the regular and AI gateways different handles', () => {
+    expect(deriveHandleName(defaultSelfHostedName('regular'), 'dev')).toBe('self-hosted');
+    expect(deriveHandleName(defaultSelfHostedName('ai'), 'dev')).toBe('ai-self-hosted');
   });
 });

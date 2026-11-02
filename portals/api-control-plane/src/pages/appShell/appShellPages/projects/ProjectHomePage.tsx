@@ -39,7 +39,7 @@ export function ProjectHomePage() {
 
 function ProjectHomePageContent() {
   const [apiTypeFilter, setApiTypeFilter] = useState<ApiTypeFilter | null>(null);
-  const { orgHandle = '', projectHandler = '' } = useParams();
+  const { projectHandler = '' } = useParams();
   const projectQuery = useProject(projectHandler);
 
   if (projectQuery.isLoading) return <LoadingState label="Loading project" />;
@@ -52,7 +52,7 @@ function ProjectHomePageContent() {
     <>
       <Grid container spacing={3} sx={{ m: 0, width: '100%' }}>
         <Grid size={{ xs: 12 }}>
-          <ProjectMetadata orgHandle={orgHandle} project={project} />
+          <ProjectMetadata project={project} />
         </Grid>
 
         <Grid size={{ xs: 12 }} sx={{ mt: -1 }}>

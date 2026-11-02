@@ -27,12 +27,14 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Pencil, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Pencil, Plus, SearchX, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useDeleteMeter, useMeters, type Meter } from '@/api/resources/meters';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { MeterIllustration } from '@/components/illustrations/MeterIllustration';
+import { EmptyResults } from '@/components/common/EmptyResults';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Can } from '@/permissions';
@@ -44,132 +46,136 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 const messages = defineMessages({
   columnActions: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.actions',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.actions',
     defaultMessage: 'Actions',
   },
   columnFilters: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.filters',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.filters',
     defaultMessage: 'Filters',
     description: 'Column of the names of the properties the prices of each meter may filter on.',
   },
   columnName: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.name',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.name',
     defaultMessage: 'Name',
   },
   columnType: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.column.type',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.type',
     defaultMessage: 'Type',
   },
   createButton: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.action.create',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.create',
     defaultMessage: 'Create meter',
   },
   deleteAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.action.delete',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.delete',
     defaultMessage: 'Delete {name}',
     description: 'Accessible name of the per-row delete icon button; {name} is the meter.',
   },
   deleteConfirmAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.confirmAction',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.confirmAction',
     defaultMessage: 'Delete',
   },
   deleteFailed: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.failed',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.failed',
     defaultMessage: 'Failed to delete the meter.',
   },
   deleteMessage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.message',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.message',
     defaultMessage: 'This permanently deletes "{name}".',
   },
   deleteSucceeded: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.succeeded',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.succeeded',
     defaultMessage: 'Deleted meter "{name}".',
   },
   deleteBlockedMessage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.blockedMessage',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.blockedMessage',
     defaultMessage: '"{name}" is in use and can\'t be deleted.',
     description: 'Shown in the delete dialog, with Delete disabled, for a meter that plans price.',
   },
   deleteTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.delete.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.title',
     defaultMessage: 'Delete meter',
   },
   editAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.action.edit',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.edit',
     defaultMessage: 'Edit {name}',
     description: 'Accessible name of the per-row edit icon button; {name} is the meter.',
   },
   emptyAction: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.empty.action',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.action',
     defaultMessage: 'Create meter',
   },
   emptyDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.empty.description',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.description',
     defaultMessage:
-      'A meter counts the usage a paid plan charges for, such as successful requests. Create a meter, then charge for it in a plan.',
+      'A meter counts the usage a paid plan charges for. Create one, then charge for it in a plan.',
   },
   emptyTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.empty.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.title',
     defaultMessage: 'Create your first meter',
   },
   errorMessage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.error.message',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.error.message',
     defaultMessage: 'Unable to load meters',
   },
   loading: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.loading',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.loading',
     defaultMessage: 'Loading meters',
   },
   nextPage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.next',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.next',
     defaultMessage: 'Next page',
   },
   noFilters: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noFilters',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noFilters',
     defaultMessage: 'None',
     description: 'Filters cell of a meter whose prices cannot filter on any property.',
   },
+  clearSearch: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.MetersPage.clearSearch',
+    defaultMessage: 'Clear search',
+  },
   noMatchesDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noMatches.description',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noMatches.description',
     defaultMessage: 'Try a different search term.',
   },
   noMatchesTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.noMatches.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noMatches.title',
     defaultMessage: 'No matching meters',
   },
   pageRange: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.range',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.range',
     defaultMessage: '{from}–{to} of {count, number}',
     description: 'Pager summary: the meter rows shown on this page out of the total.',
   },
   previousPage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.previous',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.previous',
     defaultMessage: 'Previous page',
   },
   rowsPerPage: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.pagination.rowsPerPage',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.rowsPerPage',
     defaultMessage: 'Meters per page',
   },
   searchPlaceholder: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.searchPlaceholder',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.searchPlaceholder',
     defaultMessage: 'Search meters',
   },
   subtitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.subtitle',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.subtitle',
     defaultMessage: 'Define the usage that paid subscription plans charge for.',
   },
   title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersSettingsPage.title',
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.title',
     defaultMessage: 'Meters',
   },
 });
 
 /**
- * Settings › Meters: what paid plans charge for, a page at a time, with a search
+ * Meters: what paid plans charge for, a page at a time, with a search
  * on name and id. Meters are kept in the Platform API, and a meter reaches an API
  * Portal only when a plan that charges for it is published there.
  */
-export function MetersSettingsPage() {
+export function MetersPage() {
   const intl = useIntl();
   const { notify } = useNotifications();
   const [search, setSearch] = useState('');
@@ -308,7 +314,7 @@ export function MetersSettingsPage() {
   return (
     <>
       <PageTitle>
-        <PageTitle.Header variant="h5">
+        <PageTitle.Header>
           <FormattedMessage {...messages.title} />
         </PageTitle.Header>
         <PageTitle.SubHeader>
@@ -334,6 +340,7 @@ export function MetersSettingsPage() {
           actionIcon={<Plus size={18} />}
           actionLabel={intl.formatMessage(messages.emptyAction)}
           description={intl.formatMessage(messages.emptyDescription)}
+          illustration={<MeterIllustration />}
           onAction={() => setDialogTarget('create')}
           operationId="CreateMeter"
           title={intl.formatMessage(messages.emptyTitle)}
@@ -348,8 +355,11 @@ export function MetersSettingsPage() {
           />
 
           {meters.length === 0 ? (
-            <EmptyState
+            <EmptyResults
+              actionLabel={intl.formatMessage(messages.clearSearch)}
               description={intl.formatMessage(messages.noMatchesDescription)}
+              illustration={<SearchX size={34} strokeWidth={1.5} />}
+              onAction={() => setSearch('')}
               title={intl.formatMessage(messages.noMatchesTitle)}
             />
           ) : (

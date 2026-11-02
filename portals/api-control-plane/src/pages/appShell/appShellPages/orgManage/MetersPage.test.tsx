@@ -32,7 +32,7 @@ import {
 import { server } from '@/test/server';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen, userEvent, waitFor, within } from '@/test/utils';
-import { MetersSettingsPage } from './MetersSettingsPage';
+import { MetersPage } from './MetersPage';
 
 const ORG = 'api-platform-demo';
 
@@ -93,10 +93,10 @@ async function addProperty(user: User, name: string | RegExp) {
 function renderPage() {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
-      <MetersSettingsPage />
+      <MetersPage />
     </ApiScopeProvider>,
     {
-      route: `/organizations/${ORG}/settings/meters`,
+      route: `/organizations/${ORG}/meters`,
       scope: makeConsoleScope(),
     },
   );
@@ -107,7 +107,7 @@ beforeEach(() => {
   resetHttpClient();
 });
 
-describe('MetersSettingsPage', () => {
+describe('MetersPage', () => {
   it('lists meters with their type and the names of the properties their prices can filter on', async () => {
     server.use(
       collection('/meters', [
@@ -671,5 +671,30 @@ describe('MetersSettingsPage', () => {
     await user.clear(screen.getByPlaceholderText('Search meters'));
     await user.type(screen.getByPlaceholderText('Search meters'), 'nothing like it');
     expect(await screen.findByText('No matching meters')).toBeInTheDocument();
+  });
+
+  it('shows the meter illustration with the create prompt when there are no meters', async () => {
+    server.use(collection('/meters', []));
+    const { container } = renderPage();
+
+    await screen.findByText('Create your first meter');
+    expect(container.querySelector('.api-meter-animation')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create meter' })).toBeInTheDocument();
+  });
+
+  it('clears a search with no hits from the "No matching meters" prompt', async () => {
+    server.use(collection('/meters', [aMeter({ displayName: 'All calls', id: 'all-calls' })]));
+    renderPage();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await screen.findByText('All calls');
+    const search = screen.getByPlaceholderText('Search meters');
+    await user.type(search, 'nothing like it');
+    await screen.findByText('No matching meters');
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    expect(search).toHaveValue('');
+    expect(await screen.findByText('All calls')).toBeInTheDocument();
   });
 });
