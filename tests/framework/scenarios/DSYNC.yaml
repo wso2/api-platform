@@ -1,0 +1,60 @@
+# Scenario sheet: Deployment Sync with Disconnected Gateways (DSYNC).
+#
+# One entry per sheet row. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs run in CI and assert the sheet's expected result
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+# `make standards-check` keeps this file, the scenario tags and the `sheet check`
+# steps in agreement; `go run ./cmd/sheetreport` turns a run into sheet columns.
+sheet: DSYNC
+title: Deployment Sync with Disconnected Gateways
+scenarios:
+  - id: DSYNC-001
+    title: Deploy a REST API while the gateway's controller is stopped and wait past the deployment timeout, then start the controller; the deployment is DEPLOYING, then FAILED, and once the gateway reconnects it serves the API and the deployment is DEPLOYED.
+    priority: P0
+    ui:
+      status: exempt
+      reason: The scenario is a gateway outage, which no console action can cause; how the console shows deployment status is covered by DEPLC.
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4016
+      refs:
+        - feature: suites/it/features/management-portal/deployments/sync/deployment_sync.feature
+          scenario: A deploy made while the controller is stopped times out, then is served and deployed once it reconnects
+  - id: DSYNC-002
+    title: Undeploy a served REST API while the gateway's controller is stopped, then start the controller; once the gateway reconnects it stops serving the API (404) and the deployment is UNDEPLOYED.
+    priority: P0
+    ui:
+      status: exempt
+      reason: The scenario is a gateway outage, which no console action can cause; how the console shows deployment status is covered by DEPLC.
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4016
+      refs:
+        - feature: suites/it/features/management-portal/deployments/sync/deployment_sync.feature
+          scenario: An undeploy made while the controller is stopped takes the API off the gateway once it reconnects
+  - id: DSYNC-003
+    title: With a REST API deployed from build A and build B prepared, deploy build B while the gateway's controller is stopped, then start the controller; the gateway serves build B and build B's deployment is DEPLOYED.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The scenario is a gateway outage, which no console action can cause; how the console shows deployment status is covered by DEPLC.
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4016
+      refs:
+        - feature: suites/it/features/management-portal/deployments/sync/deployment_sync.feature
+          scenario: A new build deployed while the controller is stopped is served and deployed once it reconnects
+  - id: DSYNC-004
+    title: With several REST APIs deployed and served, restart the gateway controller without changing any deployment; every API is still served, no deployment changes status and none is duplicated.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The scenario is a gateway outage, which no console action can cause; how the console shows deployment status is covered by DEPLC.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/sync/deployment_sync.feature
+          scenario: Restarting the controller with nothing changed keeps every API served, deployed and listed once

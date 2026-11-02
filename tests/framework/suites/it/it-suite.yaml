@@ -635,6 +635,26 @@ blocks:
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
 
+  # Deployment sync with a disconnected gateway: every scenario stops or restarts
+  # gateway-controller, so the block hosts them alone. A 30s deployment timeout keeps the
+  # wait for a timed-out deployment short.
+  - name: deployment-sync
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-deployment-timeout.toml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: deployment-sync
+        tags: "~@known-issue"
+        features:
+          - features/management-portal/deployments/sync/deployment_sync.feature
+
   - name: gateway-metrics
     parallel: 1
     components:
