@@ -96,9 +96,13 @@ export function useManagedPortalList() {
   // refetch, and the poll's response resolves first). Only the response whose
   // seq is still the latest gets to commit into state.
   const requestSeq = useRef(0);
+  // Only refetch sets isLoading, so only the latest refetch clears it, even
+  // when a poll that started meanwhile superseded its result.
+  const loadingSeq = useRef(0);
 
   const refetch = useCallback(async () => {
     const seq = ++requestSeq.current;
+    const loading = ++loadingSeq.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -109,7 +113,7 @@ export function useManagedPortalList() {
       if (seq !== requestSeq.current) return;
       setError(err instanceof Error ? err : new Error('Failed to load portals'));
     } finally {
-      if (seq === requestSeq.current) setIsLoading(false);
+      if (loading === loadingSeq.current) setIsLoading(false);
     }
   }, [port]);
 
