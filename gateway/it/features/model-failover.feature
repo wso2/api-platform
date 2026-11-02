@@ -883,3 +883,131 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
     When I delete the LLM provider "mf-iso-shared-provider"
     Then the response status code should be 200
+
+  # ====================================================================
+  # FR-012c — a body mutation survives into the attempt that serves
+  # ====================================================================
+
+  Scenario: PII redacted downstream stays redacted on the fallback attempt
+    # The downstream chain runs ONCE and the upstream chain runs per attempt. If
+    # the upstream position read a snapshot of the body taken before the
+    # downstream chain mutated it, the first attempt would carry redacted data and
+    # every retry would carry the ORIGINAL -- so a fallback provider receives the
+    # raw PII that was redacted precisely so it would not.
+    #
+    # That failure is silent. The client gets its 200 from the fallback either
+    # way, the redaction policy reports success either way, and the only place the
+    # difference exists is in the bytes the second provider received. So this
+    # asserts on those bytes, not on policy logs.
+    #
+    # Redaction rather than masking deliberately: masking restores the original
+    # value on the response, which would put the raw email back into what this
+    # scenario reads and hide the very thing it is looking for.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-pii-dead-provider
+      spec:
+        displayName: MF PII Dead
+        version: v1.0
+        template: openai
+        context: /mf-pii-dead-ctx
+        upstream:
+          url: http://mf-pii-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-pii-alive-provider
+      spec:
+        displayName: MF PII Alive
+        version: v1.0
+        template: openai
+        context: /mf-pii-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/pii-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Redaction runs downstream, once. Failover walks the chain.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-pii-proxy
+      spec:
+        displayName: MF PII Proxy
+        version: v1.0
+        context: /mf-pii-proxy
+        provider:
+          id: mf-pii-dead-provider
+        additionalProviders:
+          - id: mf-pii-alive-provider
+            as: alive
+        operationPolicies:
+          - name: pii-masking-regex
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  customPIIEntities:
+                    - piiEntity: "EMAIL"
+                      piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+                  jsonPath: ""
+                  redactPII: true
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-pii-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "contact me at leak-probe@example.com please"}]}
+      """
+    # The first target failed and the SECOND served it.
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/pii-alive-upstream"
+
+    # THE assertion. This is the body the fallback provider received, echoed back.
+    # The raw address appearing here would mean the retry was built from a
+    # pre-redaction snapshot and the redaction was undone by the failover.
+    And the response body should not contain "leak-probe@example.com"
+
+    # And the body reached it INTACT, with only the address taken out. Without
+    # these two, the assertion above would pass just as well on an empty body or
+    # a dropped field -- proving the address was absent rather than that it was
+    # redacted from a body that otherwise arrived whole.
+    And the response body should contain "contact me at"
+    And the response body should contain "please"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-pii-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-pii-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-pii-alive-provider"
+    Then the response status code should be 200

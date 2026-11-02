@@ -1459,6 +1459,22 @@ Not fixed. The integration scenario asserts the header as it actually behaves,
 with a comment pointing here, so the day someone scopes it properly that line
 fails and is updated deliberately rather than silently drifting.
 
+### The value is never wrong, and the upstream side crosses too
+
+What crosses is the header's PRESENCE, not its value. Same run, same vhost,
+consecutive requests: API A reported `2` and API B reported `1`. Envoy's attempt
+counter is per-request stream state; the virtual-host flag only decides whether
+that per-request number is emitted. A shared switch, not a shared counter.
+
+The failover policy reads the header off its own response context, and API B has
+no failover policy at all, so nothing grades anything for B.
+
+`IncludeRequestAttemptCount` is enabled on the same virtual host and is required
+— it is how the per-attempt chain learns which attempt it is serving. So B's
+UPSTREAM also receives an `x-envoy-attempt-count` header it would not otherwise
+see. Same character as the response side: informational, correct value, on a
+request that never retries.
+
 ### What the scenario still proves
 
 The isolation that matters holds. API B's request carried its own policy's
