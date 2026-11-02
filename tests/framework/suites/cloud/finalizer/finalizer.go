@@ -48,7 +48,8 @@ type Leftover struct {
 type Collection struct {
 	// Name identifies the collection in diagnostics and in the removed list.
 	Name string
-	// List returns the entries of the collection.
+	// List returns the entries of the collection. When it fails part way it may return the
+	// entries it read together with the error; those are still swept and the error is reported.
 	List func(ctx context.Context) ([]Leftover, error)
 	// Delete removes one entry by its ID. An entry that is already gone is not an error.
 	Delete func(ctx context.Context, id string) error
@@ -140,11 +141,11 @@ func (t *Tracker) sweepCollection(ctx context.Context, collection Collection, su
 		defer cancel()
 	}
 	items, err := collection.List(listCtx)
-	if err != nil {
-		return nil, []error{fmt.Errorf("listing %s: %w", collection.Name, err)}
-	}
 	var removed []string
 	var errs []error
+	if err != nil {
+		errs = append(errs, fmt.Errorf("listing %s: %w", collection.Name, err))
+	}
 	for _, item := range items {
 		if !OwnedBy(item.Names, suffixes) {
 			continue
@@ -177,6 +178,17 @@ func (t *Tracker) deleteWithin(ctx context.Context, collection Collection, id st
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	return collection.Delete(ctx, id)
+}
+
+// Owns reports whether any of the names carries the suffix of a tracked runner.
+func (t *Tracker) Owns(names []string) bool {
+	t.mu.Lock()
+	suffixes := make([]string, 0, len(t.suffixes))
+	for suffix := range t.suffixes {
+		suffixes = append(suffixes, suffix)
+	}
+	t.mu.Unlock()
+	return OwnedBy(names, suffixes)
 }
 
 // OwnedBy reports whether any name carries one of the suffixes as a whole name segment, so an

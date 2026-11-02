@@ -50,7 +50,9 @@ const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
 // order: a gateway goes before the environment it runs in, a project before the pipeline it
-// is bound to, and an LLM proxy before its provider, which goes before the secret it uses. idFields name the list-item fields that identify a resource in its own route.
+// is bound to, and an LLM proxy before its provider, which goes before the secret it uses.
+// idFields name the list-item fields that identify a resource in its own route. REST APIs are
+// listed per project, so restAPISweep reads them and runs ahead of these.
 var finalizerCollections = []struct {
 	collection string
 	idFields   []string
@@ -140,7 +142,7 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 	var removed []string
 	var errs []error
 	for _, base := range bases {
-		got, err := f.finals.Sweep(ctx, cloudSweeps(f.client, base, token))
+		got, err := f.finals.Sweep(ctx, cloudSweeps(f.client, base, token, f.finals.Owns))
 		removed = append(removed, got...)
 		if err != nil {
 			errs = append(errs, err)
@@ -149,9 +151,11 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 	return removed, errors.Join(errs...)
 }
 
-// cloudSweeps describes the organisation's collections to the framework's finalizer.
-func cloudSweeps(client *httpx.Client, base, token string) []finalizer.Collection {
-	sweeps := make([]finalizer.Collection, 0, len(finalizerCollections))
+// cloudSweeps describes the organisation's collections to the framework's finalizer. owns reports
+// whether a resource's names belong to a tracked run.
+func cloudSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
+	sweeps := make([]finalizer.Collection, 0, len(finalizerCollections)+1)
+	sweeps = append(sweeps, restAPISweep(client, base, token, owns))
 	for _, entry := range finalizerCollections {
 		sweeps = append(sweeps, finalizer.Collection{
 			Name:    entry.collection,
@@ -163,14 +167,7 @@ func cloudSweeps(client *httpx.Client, base, token string) []finalizer.Collectio
 					slog.Default().Warn("the platform does not serve this collection; skipping it", "collection", entry.collection)
 					return nil, nil
 				}
-				if err != nil {
-					return nil, err
-				}
-				leftovers := make([]finalizer.Leftover, 0, len(items))
-				for _, item := range items {
-					leftovers = append(leftovers, finalizer.Leftover{ID: firstString(item, entry.idFields), Names: namesOf(item)})
-				}
-				return leftovers, nil
+				return leftoversOf(items, entry.idFields), err
 			},
 			Delete: func(ctx context.Context, id string) error {
 				return deleteLeftover(ctx, client, base, token, entry.collection, id, entry.wait)
@@ -180,22 +177,87 @@ func cloudSweeps(client *httpx.Client, base, token string) []finalizer.Collectio
 	return sweeps
 }
 
+// restAPISweep describes the REST APIs of the organisation. The platform lists them per project,
+// so it reads the default project and every project a tracked run created. It runs first: an API
+// goes before the gateway it is deployed to and the project it belongs to.
+func restAPISweep(client *httpx.Client, base, token string, owns func(names []string) bool) finalizer.Collection {
+	const collection = "/rest-apis"
+	return finalizer.Collection{
+		Name:    collection,
+		Timeout: finalizerCollectionBudget,
+		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+			projects, err := listCollection(ctx, client, base, token, "/projects")
+			if errors.Is(err, errCollectionNotServed) {
+				return nil, nil
+			}
+			var errs []error
+			if err != nil {
+				errs = append(errs, fmt.Errorf("listing the projects that hold REST APIs: %w", err))
+			}
+			scopes := []string{defaultProjectID}
+			for _, project := range projects {
+				if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) {
+					scopes = append(scopes, id)
+				}
+			}
+			var leftovers []finalizer.Leftover
+			for _, project := range scopes {
+				items, err := listCollectionQuery(ctx, client, base, token, collection, url.Values{"projectId": {project}})
+				if errors.Is(err, errCollectionNotServed) {
+					continue
+				}
+				leftovers = append(leftovers, leftoversOf(items, []string{"id"})...)
+				if err != nil {
+					errs = append(errs, fmt.Errorf("project %s: %w", project, err))
+				}
+			}
+			return leftovers, errors.Join(errs...)
+		},
+		Delete: func(ctx context.Context, id string) error {
+			return deleteLeftover(ctx, client, base, token, collection, id, false)
+		},
+	}
+}
+
+// leftoversOf turns list items into the finalizer's entries.
+func leftoversOf(items []map[string]any, idFields []string) []finalizer.Leftover {
+	leftovers := make([]finalizer.Leftover, 0, len(items))
+	for _, item := range items {
+		leftovers = append(leftovers, finalizer.Leftover{ID: firstString(item, idFields), Names: namesOf(item)})
+	}
+	return leftovers
+}
+
 // errCollectionNotServed marks a collection whose list route the platform answers with 404.
 var errCollectionNotServed = errors.New("the platform does not serve this collection")
 
 // maxListPages bounds how many pages one collection is read through.
 const maxListPages = 100
 
-// listCollection reads every page of a collection. The first request carries no paging
-// parameters; when the platform reports that more items exist, the next pages are read with the
-// limit and offset it advertises.
+// listCollection reads every page of a collection.
 func listCollection(ctx context.Context, client *httpx.Client, base, token, collection string) ([]map[string]any, error) {
+	return listCollectionQuery(ctx, client, base, token, collection, nil)
+}
+
+// listCollectionQuery reads every page of a collection with extra query parameters. The first
+// request carries no paging parameters; when the platform reports that more items exist, the next
+// pages are read with the limit and offset it advertises. A failure part way returns the items of
+// the pages already read together with the error.
+func listCollectionQuery(ctx context.Context, client *httpx.Client, base, token, collection string, query url.Values) ([]map[string]any, error) {
 	var all []map[string]any
 	offset, limit := 0, 0
 	for page := 0; page < maxListPages; page++ {
-		target := cloudAPIURL(base, collection)
+		params := url.Values{}
+		for key, values := range query {
+			params[key] = values
+		}
 		if page > 0 {
-			target += "?" + url.Values{"limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}}.Encode()
+			params.Set("limit", strconv.Itoa(limit))
+			params.Set("offset", strconv.Itoa(offset))
+		}
+		target := cloudAPIURL(base, collection)
+		if len(params) > 0 {
+			target += "?" + params.Encode()
 		}
 		resp, err := client.Do(ctx, httpx.Request{
 			Method:  http.MethodGet,
@@ -203,17 +265,17 @@ func listCollection(ctx context.Context, client *httpx.Client, base, token, coll
 			Headers: map[string]string{"Authorization": "Bearer " + token},
 		}, 0, 0)
 		if err != nil {
-			return nil, err
+			return all, err
 		}
 		if resp.StatusCode == http.StatusNotFound && page == 0 {
 			return nil, errCollectionNotServed
 		}
 		if resp.StatusCode != http.StatusOK {
-			return nil, responseError(resp)
+			return all, responseError(resp)
 		}
 		items, err := listItems(resp)
 		if err != nil {
-			return nil, err
+			return all, err
 		}
 		all = append(all, items...)
 
@@ -222,7 +284,7 @@ func listCollection(ctx context.Context, client *httpx.Client, base, token, coll
 			return all, nil
 		}
 		if page > 0 && paging.Offset != nil && *paging.Offset != offset {
-			return nil, fmt.Errorf("%s did not honour offset %d, it answered from offset %d", collection, offset, *paging.Offset)
+			return all, fmt.Errorf("%s did not honour offset %d, it answered from offset %d", collection, offset, *paging.Offset)
 		}
 		offset += len(items)
 		if paging.Total == nil || offset >= *paging.Total {
@@ -233,7 +295,7 @@ func listCollection(ctx context.Context, client *httpx.Client, base, token, coll
 			limit = *paging.Limit
 		}
 	}
-	return nil, fmt.Errorf("%s holds more than %d pages; refusing to read further", collection, maxListPages)
+	return all, fmt.Errorf("%s holds more than %d pages; the rest were not read", collection, maxListPages)
 }
 
 // pageInfo is the paging block of a list response. A field the platform leaves out is nil.

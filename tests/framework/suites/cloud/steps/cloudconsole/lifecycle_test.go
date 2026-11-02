@@ -2126,6 +2126,8 @@ type leftoverStub struct {
 	lists   map[string][]map[string]any
 	failing map[string]int
 	deleted []string
+	// listedProjects records the project of each REST API listing.
+	listedProjects []string
 }
 
 func (s *leftoverStub) handler(w http.ResponseWriter, r *http.Request) {
@@ -2136,11 +2138,21 @@ func (s *leftoverStub) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		if status, bad := s.failing[r.URL.Path]; bad {
+		key := r.URL.Path
+		if r.URL.Path == "/rest-apis" {
+			project := r.URL.Query().Get("projectId")
+			if project == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"code": "validation_failed", "message": "projectId query parameter is required"})
+				return
+			}
+			s.listedProjects = append(s.listedProjects, project)
+			key += "?projectId=" + project
+		}
+		if status, bad := s.failing[key]; bad {
 			w.WriteHeader(status)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": s.lists[r.URL.Path]})
+		writeJSON(w, http.StatusOK, map[string]any{"list": s.lists[key]})
 		return
 	}
 	if status, bad := s.failing[r.URL.Path]; bad {
@@ -2164,12 +2176,15 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":      {{"id": "default"}, {"id": "syn-project-abcde234-2"}},
-		"/llm-proxies":   {{"id": "syn-llm-proxy-abcde234-1"}},
-		"/llm-providers": {{"id": "syn-llm-provider-abcde234-1"}, {"id": "ops-provider"}},
-		"/secrets":       {{"handle": "syn-secret-abcde234-1"}, {"handle": "ops-secret"}},
-		"/pipelines":     {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
-		"/environments":  {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
+		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
+		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
+		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
+		"/llm-proxies":                                {{"id": "syn-llm-proxy-abcde234-1"}},
+		"/llm-providers":                              {{"id": "syn-llm-provider-abcde234-1"}, {"id": "ops-provider"}},
+		"/secrets":                                    {{"handle": "syn-secret-abcde234-1"}, {"handle": "ops-secret"}},
+		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
+		"/environments":                               {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
 	}}
 }
 
@@ -2178,7 +2193,7 @@ func sweepLeftovers(ctx context.Context, base string, timeout time.Duration) ([]
 	finals := finalizer.NewTracker(slog.Default())
 	finals.Track("abcde234")
 	client := httpx.NewClient(httpx.Options{Timeout: timeout})
-	return finals.Sweep(ctx, cloudSweeps(client, base, "console-token"))
+	return finals.Sweep(ctx, cloudSweeps(client, base, "console-token", finals.Owns))
 }
 
 func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
@@ -2190,6 +2205,8 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []string{
+		"rest-apis/syn-api-abcde234-1",
+		"rest-apis/syn-api-abcde234-2",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
@@ -2198,14 +2215,63 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"secrets/syn-secret-abcde234-1",
 		"pipelines/syn-pipeline-abcde234-1",
 		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:8])
-	require.Len(t, removed, 8)
+	}, stub.deleted[:10])
+	require.Len(t, removed, 10)
+	require.ElementsMatch(t, []string{"default", "syn-project-abcde234-2"}, stub.listedProjects,
+		"REST APIs are listed for the default project and the run's projects only")
 	for _, id := range stub.deleted {
 		require.NotContains(t, id, "default")
 		require.NotContains(t, id, "zzzzz222")
 		require.NotContains(t, id, "ops-secret")
 		require.NotContains(t, id, "ops-provider")
+		require.NotContains(t, id, "ops-api")
+		require.NotContains(t, id, "syn-api-abcde234-9")
 	}
+}
+
+func TestCloudSweepsStillSweepTheDefaultProjectWhenTheProjectsCannotBeListed(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.failing["/projects"] = http.StatusInternalServerError
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
+	require.ErrorContains(t, err, "listing the projects that hold REST APIs")
+	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-1", "the default project is still swept")
+	require.NotContains(t, removed, "/rest-apis/syn-api-abcde234-2")
+}
+
+func TestListCollectionKeepsThePagesItReadWhenALaterPageFails(t *testing.T) {
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		if offset >= 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "a"}, {"id": "b"}},
+			"pagination": map[string]any{"total": 6, "offset": offset, "limit": 2}})
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	items, err := listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/projects")
+	require.Error(t, err)
+	require.Len(t, items, 2, "the items of the pages already read are returned with the error")
+}
+
+func TestListCollectionKeepsTheItemsWhenThePageCapIsReached(t *testing.T) {
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "item-" + strconv.Itoa(offset)}},
+			"pagination": map[string]any{"total": 100000, "offset": offset, "limit": 1}})
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	items, err := listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/projects")
+	require.ErrorContains(t, err, "the rest were not read")
+	require.Len(t, items, maxListPages)
 }
 
 func TestListCollectionReadsEveryAdvertisedPage(t *testing.T) {

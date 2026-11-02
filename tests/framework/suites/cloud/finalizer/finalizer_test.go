@@ -220,3 +220,27 @@ func TestSweepTriesEveryLeftoverAfterTheCollectionBudgetIsSpent(t *testing.T) {
 	require.Equal(t, []string{"a", "b", "c"}, attempts)
 	require.Equal(t, []string{"/slow/b", "/slow/c"}, removed, "a spent budget must not leave later leftovers with an expired context")
 }
+
+func TestSweepDeletesFromAPartialListingAndReportsItsError(t *testing.T) {
+	collection := Collection{
+		Name: "/partial",
+		List: func(context.Context) ([]Leftover, error) {
+			return []Leftover{{ID: "a", Names: []string{"x-abcde234"}}}, errors.New("page 2 refused")
+		},
+		Delete: func(context.Context, string) error { return nil },
+	}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{collection})
+	require.Equal(t, []string{"/partial/a"}, removed)
+	require.ErrorContains(t, err, "listing /partial: page 2 refused")
+}
+
+func TestOwnsMatchesTheTrackedSuffixes(t *testing.T) {
+	tracker := NewTracker(nil)
+	require.False(t, tracker.Owns([]string{"syn-api-abcde234-1"}), "nothing is tracked yet")
+	tracker.Track("abcde234")
+	require.True(t, tracker.Owns([]string{"default", "syn-api-abcde234-1"}))
+	require.False(t, tracker.Owns([]string{"default", "ops-api"}))
+}
