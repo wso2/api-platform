@@ -18,7 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { http, HttpResponse, type JsonBodyType } from 'msw';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { act, fireEvent, render, renderWithProviders, screen, waitFor } from '../../test/utils';
 import { server } from '../../test/server';
@@ -148,6 +148,15 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       await waitForStatus('unauthenticated');
       expect(screen.getByTestId('user')).toHaveTextContent('');
     });
+
+    // A misrouted session URL serving the console's page: signed out would
+    // send the browser round the sign-in loop.
+    it('is unavailable, not signed out, on a 2xx that is not JSON', async () => {
+      server.use(http.get(URL, () => HttpResponse.html('<!doctype html><title>Console</title>')));
+      await renderProvider(EXTERNAL_CONFIG);
+
+      await waitForStatus('unavailable');
+    });
   });
 
   describe('with the SDK session format', () => {
@@ -276,6 +285,28 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       expect(screen.getByTestId('status').textContent).toBe('authenticated');
     });
 
+    it('signs out once, however often logout is pressed', async () => {
+      answer(SDK_CONFIG.authSessionUrl, { isSignedIn: true, user: { name: 'Alice' } });
+      let posts = 0;
+      server.use(
+        http.post('/api-platform/auth/logout', () => {
+          posts++;
+          return HttpResponse.json({ redirectUrl: 'https://idp.example.com/oauth2/logout' });
+        }),
+      );
+      const assign = vi.fn();
+      vi.stubGlobal('location', { ...window.location, assign });
+      await renderProvider({ ...SDK_CONFIG, authLogoutStyle: 'post-json' });
+      await waitForStatus('authenticated');
+
+      fireEvent.click(screen.getByText('logout'));
+      fireEvent.click(screen.getByText('logout'));
+
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('https://idp.example.com/oauth2/logout'));
+      expect(posts).toBe(1);
+      expect(assign).toHaveBeenCalledTimes(1);
+    });
+
     // A check answering mid-logout must not redirect to sign-in and cancel the logout.
     it('ignores session checks once logout has started', async () => {
       let signedIn = true;
@@ -346,6 +377,119 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       expect(alive).toBe(false);
       expect(screen.getByTestId('status').textContent).toBe('authenticated');
       expect(screen.getByTestId('user')).toHaveTextContent('Alice');
+    });
+
+    it('stays signed in, with no retry, when the answer breaks off', async () => {
+      const alive = await renderAndCheck([
+        signedIn,
+        () => new HttpResponse('{"isSignedIn": tr', { headers: { 'Content-Type': 'application/json' } }),
+      ]);
+
+      expect(alive).toBe(false);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+      expect(screen.getByTestId('user')).toHaveTextContent('Alice');
+    });
+  });
+
+  // The first load's check answers after a 401's check has signed the browser
+  // back in: the older answer must not sign it out again.
+  it('lets only the newest session check set the state', async () => {
+    let calls = 0;
+    let answerFirst: () => void = () => undefined;
+    server.use(
+      http.get(SDK_CONFIG.authSessionUrl, async () => {
+        if (++calls === 1) {
+          await new Promise<void>((resolve) => {
+            answerFirst = resolve;
+          });
+          return HttpResponse.json({ isSignedIn: false });
+        }
+        return HttpResponse.json({ isSignedIn: true, user: { name: 'Alice' } });
+      }),
+    );
+    // Nothing on screen marks the older answer landing, so mark when its body
+    // has been read. From there to the state update is promise steps only.
+    let firstRead: Promise<unknown> | undefined;
+    let fetches = 0;
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (...args) => {
+      const first = ++fetches === 1;
+      const response = await realFetch(...args);
+      if (first) {
+        const json = response.json.bind(response);
+        response.json = () => (firstRead = json());
+      }
+      return response;
+    });
+    onTestFinished(() => fetchSpy.mockRestore());
+    await renderProvider(SDK_CONFIG);
+    await vi.waitFor(() => expect(calls).toBe(1));
+    const { notifyUnauthorized } = await import('../../api/core/sessionEvents');
+
+    await expect(act(() => notifyUnauthorized())).resolves.toBe(true);
+    await waitForStatus('authenticated');
+    await act(async () => {
+      answerFirst();
+      await vi.waitFor(() => expect(firstRead).toBeDefined());
+      await firstRead;
+      // One timer tick runs every promise step queued behind the read.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.getByTestId('status').textContent).toBe('authenticated');
+    expect(calls).toBe(2);
+  });
+
+  describe('when the session endpoint does not answer in time', () => {
+    /** Holds back the session check's timeout, to fire it when the test says. */
+    function holdCheckTimeout() {
+      const held: Array<() => void> = [];
+      const realSetTimeout = globalThis.setTimeout;
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+        callback: () => void,
+        ms?: number,
+        ...args: unknown[]
+      ) => (ms === 15_000 ? held.push(callback) : realSetTimeout(callback, ms, ...args))) as typeof setTimeout);
+      return {
+        held: () => held.length,
+        fire: () => held.splice(0).forEach((callback) => callback()),
+      };
+    }
+    afterEach(() => vi.restoreAllMocks());
+
+    it('is unavailable, not stuck loading, on the first load', async () => {
+      const timeout = holdCheckTimeout();
+      server.use(http.get(SDK_CONFIG.authSessionUrl, () => new Promise<Response>(() => undefined)));
+      await renderProvider(SDK_CONFIG);
+      await vi.waitFor(() => expect(timeout.held()).toBe(1));
+
+      act(() => timeout.fire());
+
+      await waitForStatus('unavailable');
+    });
+
+    it('answers a 401 and stays signed in when the body stops arriving', async () => {
+      const timeout = holdCheckTimeout();
+      let calls = 0;
+      server.use(
+        http.get(SDK_CONFIG.authSessionUrl, () => {
+          if (++calls === 1) return HttpResponse.json({ isSignedIn: true, user: { name: 'Alice' } });
+          const stalled = new ReadableStream({
+            start: (controller) => controller.enqueue(new TextEncoder().encode('{"isSignedIn":')),
+          });
+          return new HttpResponse(stalled, { headers: { 'Content-Type': 'application/json' } });
+        }),
+      );
+      await renderProvider(SDK_CONFIG);
+      await waitForStatus('authenticated');
+      const { notifyUnauthorized } = await import('../../api/core/sessionEvents');
+
+      const alive = act(() => notifyUnauthorized());
+      await vi.waitFor(() => expect(timeout.held()).toBe(2));
+      timeout.fire();
+
+      await expect(alive).resolves.toBe(false);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
     });
   });
 

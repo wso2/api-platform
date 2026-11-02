@@ -155,6 +155,7 @@ describe('parseCheckSessionInterval', () => {
     [' 45 ', 45],
     [120, 120],
     ['1', 5],
+    ['99999999', 2_147_483],
   ] as const)('%s → %i seconds', (value, expected) => {
     expect(parseCheckSessionInterval(value)).toBe(expected);
   });
