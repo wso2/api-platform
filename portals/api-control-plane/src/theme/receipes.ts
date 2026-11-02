@@ -104,6 +104,9 @@ export const ambientGlowSx = {
   position: 'absolute',
 } as const;
 
+/** Wraps styles that need `color-mix()`; a nested `@supports` keeps the plain base as the fallback. */
+const COLOR_MIX_SUPPORT = '@supports (background: color-mix(in srgb, red, blue))';
+
 /**
  * A square icon tile with a warm, primary-tinted gradient and a faint primary
  * edge — the badge beside a card or section title. `size` is the side in pixels;
@@ -113,36 +116,49 @@ export const iconTileSx = (theme: Theme, size = 40) => {
   const palette = theme.vars?.palette ?? theme.palette;
   return {
     alignItems: 'center',
-    background: `radial-gradient(ellipse at 30% 25%, color-mix(in srgb, ${palette.primary.main} 22%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 10%, ${palette.background.paper}) 70%, color-mix(in srgb, ${palette.primary.main} 7%, ${palette.background.paper}) 100%)`,
+    // The base style needs no `color-mix()`, so a browser without it still gets a tile;
+    // the tinted gradient is layered on only where it is supported.
+    background: palette.background.paper,
     border: hairline(theme),
-    borderColor: `color-mix(in srgb, ${palette.primary.main} 35%, transparent)`,
+    borderColor: palette.primary.main,
     // Proportional to the tile, so a larger or smaller badge keeps the same soft corner.
     borderRadius: `${Math.round(size * 0.26)}px`,
-    color: `color-mix(in srgb, ${palette.primary.main} 80%, ${palette.text.secondary})`,
+    color: palette.primary.main,
     display: 'flex',
     flexShrink: 0,
     height: size,
     justifyContent: 'center',
     width: size,
+    [COLOR_MIX_SUPPORT]: {
+      background: `radial-gradient(ellipse at 30% 25%, color-mix(in srgb, ${palette.primary.main} 22%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 10%, ${palette.background.paper}) 70%, color-mix(in srgb, ${palette.primary.main} 7%, ${palette.background.paper}) 100%)`,
+      borderColor: `color-mix(in srgb, ${palette.primary.main} 35%, transparent)`,
+      color: `color-mix(in srgb, ${palette.primary.main} 80%, ${palette.text.secondary})`,
+    },
   } as const;
 };
 
 /**
- * A compact chip with a soft primary (orange) glow radiating from the top-left corner into the surface and
- * a hairline edge — a removable, editable item in a row of tags. Pass `highlighted`
- * while it is a drop target.
+ * A compact chip with a soft primary (orange) glow radiating from the top-left corner into
+ * the surface and a hairline edge — a removable, editable item in a row of tags. Pass
+ * `highlighted` while it is a drop target.
  */
 export const tintedPillSx = (theme: Theme, highlighted = false) => {
   const palette = theme.vars?.palette ?? theme.palette;
   return {
     alignItems: 'center',
-    background: `radial-gradient(ellipse 120% 220% at 0% 0%, color-mix(in srgb, ${palette.primary.main} 11%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 4%, ${palette.background.paper}) 45%, ${palette.background.paper} 85%)`,
+    background: palette.background.paper,
     border: hairline(theme),
-    borderColor: highlighted
-      ? palette.primary.main
-      : `color-mix(in srgb, ${palette.primary.main} 12%, ${palette.divider})`,
+    borderColor: highlighted ? palette.primary.main : palette.divider,
     borderRadius: 0.75,
     display: 'flex',
+    // Without `color-mix()` the chip keeps the plain surface and divider above, which
+    // still reads as a solid chip next to the dashed inherited ones.
+    [COLOR_MIX_SUPPORT]: {
+      background: `radial-gradient(ellipse 120% 220% at 0% 0%, color-mix(in srgb, ${palette.primary.main} 11%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 4%, ${palette.background.paper}) 45%, ${palette.background.paper} 85%)`,
+      ...(highlighted
+        ? null
+        : { borderColor: `color-mix(in srgb, ${palette.primary.main} 12%, ${palette.divider})` }),
+    },
   } as const;
 };
 

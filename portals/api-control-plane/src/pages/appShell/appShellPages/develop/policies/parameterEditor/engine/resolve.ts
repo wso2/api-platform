@@ -30,7 +30,7 @@ import type {
 } from './types';
 import { fieldAtConfigPath, withDefaults } from './state';
 import { matches, validate } from './validate';
-import { deepEqual, isEmpty, pathKey } from './utils';
+import { configKey, deepEqual, isEmpty, pathKey, setOwn } from './utils';
 
 interface Out {
   has: boolean;
@@ -84,7 +84,7 @@ export function resolve(model: PolicyFormModel, state: FormState): Resolution {
     let p = e.path.slice();
     let key: string | undefined;
     while (true) {
-      key = w.pathMap.get(pathKey(p));
+      key = w.pathMap.get(configKey(p));
       if (key !== undefined || p.length === 0) break;
       p = p.slice(0, -1);
     }
@@ -159,7 +159,7 @@ function walkField(
   const node = nodeOf(field, path, value, visible, required);
   if (!visible) return [node, { has: false, compactHas: false }];
   w.nodes.set(node.pathKey, node);
-  w.pathMap.set(pathKey(cfgPath), node.pathKey);
+  w.pathMap.set(configKey(cfgPath), node.pathKey);
 
   switch (field.kind) {
     case 'object':
@@ -343,7 +343,7 @@ function walkList(
       compact.push(out.compact ?? out.full ?? {});
     } else {
       // blank row: not part of the config, so don't let it claim this config index
-      w.pathMap.delete(pathKey([...cfgPath, cfgIndex]));
+      w.pathMap.delete(configKey([...cfgPath, cfgIndex]));
     }
   });
   node.items = items;
@@ -385,8 +385,8 @@ function walkMap(
       keyErrors.push('Duplicate name');
     } else {
       seen.add(key);
-      full[key] = out.has ? out.full : '';
-      compact[key] = out.has ? out.compact : '';
+      setOwn(full, key, out.has ? out.full : '');
+      setOwn(compact, key, out.has ? out.compact : '');
     }
     keyErrors.forEach((m) =>
       w.local.push({ pathKey: pathKey(keyPath), path: keyPath, message: m }),

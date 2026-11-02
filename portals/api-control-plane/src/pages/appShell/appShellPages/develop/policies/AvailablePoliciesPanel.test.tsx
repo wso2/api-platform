@@ -130,4 +130,63 @@ describe('AvailablePoliciesPanel', () => {
     // Typing was debounced into one request, not one per keystroke.
     expect(requests.filter((query) => query.get('search')).length).toBe(1);
   });
+
+  it('keeps the loaded policies and offers a retry when a later page fails', async () => {
+    let secondPageCalls = 0;
+    serveCatalog([]);
+    server.use(
+      http.get(`${hub}/policies`, ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        const offset = Number(query.get('offset') ?? 0);
+        const limit = Number(query.get('limit') ?? 20);
+        if (offset > 0) {
+          secondPageCalls += 1;
+          if (secondPageCalls === 1) return new HttpResponse(null, { headers: cors, status: 500 });
+        }
+        const data = Array.from({ length: TOTAL }, (_unused, index) => entry(index + 1)).slice(
+          offset,
+          offset + limit,
+        );
+        return HttpResponse.json(
+          { data, pagination: { limit, offset, total: TOTAL } },
+          { headers: cors },
+        );
+      }),
+    );
+    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    await screen.findByText('Policy 20');
+
+    observerCallbacks.at(-1)?.([{ isIntersecting: true }]);
+    expect(
+      await screen.findByText('Unable to load policies from the Policy Hub.'),
+    ).toBeInTheDocument();
+    // The first twenty are still there to drag and pick.
+    expect(screen.getByText('Policy 01')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Policy 25')).toBeInTheDocument();
+  });
+
+  it('offers a retry when the first page fails', async () => {
+    let calls = 0;
+    server.use(
+      http.get(`${hub}/policies/categories`, () =>
+        HttpResponse.json({ data: [] }, { headers: cors }),
+      ),
+      http.get(`${hub}/policies`, () => {
+        calls += 1;
+        return calls === 1
+          ? new HttpResponse(null, { headers: cors, status: 500 })
+          : HttpResponse.json(
+              { data: [entry(1)], pagination: { limit: 20, offset: 0, total: 1 } },
+              { headers: cors },
+            );
+      }),
+    );
+    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Policy 01')).toBeInTheDocument();
+  });
 });

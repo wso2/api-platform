@@ -266,6 +266,18 @@ const ChildrenWithAdvanced: React.FC<ChildrenWithAdvancedProps> = ({ parent, dep
   }, [parent]);
 
   const hasAdvanced = advancedChildren.length > 0;
+
+  // An error in a hidden advanced field would otherwise block submit with nothing on
+  // screen to fix, so the section reopens whenever a new advanced error is shown.
+  const advancedErrorKey = ctx.showErrors
+    ? advancedChildren
+        .filter(hasErrorsDeep)
+        .map((child) => child.pathKey)
+        .join('|')
+    : '';
+  useEffect(() => {
+    if (advancedErrorKey) setShowAdvanced(true);
+  }, [advancedErrorKey]);
   const advancedOpen = showAdvanced ?? (ctx.showErrors && advancedChildren.some(hasErrorsDeep));
 
   return (

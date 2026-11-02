@@ -42,6 +42,7 @@ import {
   createPolicyForm,
   type PolicyDefinition as EngineDefinition,
   type Resolution,
+  type ViewNode,
 } from './engine';
 import SchemaTree from './SchemaTree';
 import { MAX_DESCRIPTION_LINES, useStyles } from './styles';
@@ -230,6 +231,21 @@ interface PolicyParameterEditorProps {
   readOnly?: boolean;
 }
 
+/** The view node with this `pathKey`, searched through fields, list items and map values. */
+function findNode(node: ViewNode, key: string): ViewNode | undefined {
+  if (node.pathKey === key) return node;
+  const below = [
+    ...(node.children ?? []),
+    ...(node.items ?? []),
+    ...(node.entries ?? []).map((entry) => entry.node),
+  ];
+  for (const child of below) {
+    const found = findNode(child, key);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 /**
  * Mirrors the old "level one" check that keeps Add/Update disabled: every
  * required top-level field has a value (a required list has at least one item)
@@ -318,21 +334,30 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
   const [panelOpen, setPanelOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to a field named by a problem in the panel and put the cursor in it.
-  const goToField = useCallback((path: Array<string | number>) => {
-    setShowErrors(true);
-    const id = path.join('.');
-    const root = rootRef.current;
-    // Matched by attribute value, not through a selector string: a property name from
-    // the policy definition may contain quotes or brackets.
-    const byTestId = (testId: string) =>
-      Array.from(root?.querySelectorAll<HTMLElement>('[data-testid]') ?? []).find(
-        (element) => element.dataset.testid === testId,
-      );
-    const target = byTestId(`field-${id}`) ?? byTestId(`node-${id}`);
-    target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    target?.focus?.();
-  }, []);
+  // Scroll to the field a problem is about and put the cursor in it. The error's
+  // `pathKey` names the node it was attached to; its config path can differ from where
+  // the input is drawn (a named map value is drawn under its row index).
+  const goToField = useCallback(
+    (error: Resolution['errors'][number]) => {
+      setShowErrors(true);
+      const owner = findNode(resolution.view, error.pathKey);
+      const id = (owner?.path ?? error.path).join('.');
+      // Wait a frame so a collapsed section (Advanced settings) has opened first.
+      window.requestAnimationFrame(() => {
+        const root = rootRef.current;
+        // Matched by attribute value, not through a selector string: a property name
+        // from the policy definition may contain quotes or brackets.
+        const byTestId = (testId: string) =>
+          Array.from(root?.querySelectorAll<HTMLElement>('[data-testid]') ?? []).find(
+            (element) => element.dataset.testid === testId,
+          );
+        const target = byTestId(`field-${id}`) ?? byTestId(`node-${id}`);
+        target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        target?.focus?.();
+      });
+    },
+    [resolution.view],
+  );
 
   return (
     <Box
@@ -412,7 +437,7 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
                 </Typography>
                 <Button
                   color="inherit"
-                  onClick={() => goToField(error.path)}
+                  onClick={() => goToField(error)}
                   size="small"
                   sx={classes.goToFieldButton}
                   variant="text"

@@ -79,6 +79,11 @@ const messages = defineMessages({
     description:
       'Shown in the category dropdown when several categories are selected. {count} is a number.',
   },
+  retry: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.retry',
+    defaultMessage: 'Retry',
+    description: 'Loads the policy catalog again after a failed request. Verb.',
+  },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.subtitle',
     defaultMessage: 'Drag onto Global policies or a resource',
@@ -163,7 +168,8 @@ export function AvailablePoliciesPanel({
 
   const categoriesQuery = usePolicyHubCategories();
   const policiesQuery = usePolicyHubInfinitePolicies(PAGE_SIZE, debouncedSearch, activeCategories);
-  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = policiesQuery;
+  const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError, refetch } =
+    policiesQuery;
 
   const policies = useMemo(
     () => policiesQuery.data?.pages.flatMap((page) => page.policies) ?? [],
@@ -288,11 +294,21 @@ export function AvailablePoliciesPanel({
               <PolicySkeletonCard key={index} />
             ))}
           </Stack>
-        ) : policiesQuery.error ? (
+        ) : policiesQuery.error && policies.length === 0 ? (
           // The hub's own wording is deliberately not shown: `ApiError.message`
           // for a hub failure is a sterile client-side string, and echoing an
           // upstream message risks naming internal hosts.
-          <ErrorState message={intl.formatMessage(messages.loadError)} />
+          <Stack spacing={1}>
+            <ErrorState message={intl.formatMessage(messages.loadError)} />
+            <Button
+              disabled={policiesQuery.isFetching}
+              onClick={() => void refetch()}
+              size="small"
+              sx={{ alignSelf: 'center' }}
+            >
+              <FormattedMessage {...messages.retry} />
+            </Button>
+          </Stack>
         ) : policies.length === 0 ? (
           <EmptyState
             title={intl.formatMessage(messages.emptyTitle)}
@@ -363,6 +379,20 @@ export function AvailablePoliciesPanel({
               Array.from({ length: NEXT_PAGE_SKELETONS }, (_unused, index) => (
                 <PolicySkeletonCard key={`next-${index}`} />
               ))}
+            {isFetchNextPageError && (
+              // The policies already loaded stay usable; only the next page is missing.
+              <Stack spacing={1}>
+                <ErrorState message={intl.formatMessage(messages.loadError)} />
+                <Button
+                  disabled={isFetchingNextPage}
+                  onClick={() => void fetchNextPage()}
+                  size="small"
+                  sx={{ alignSelf: 'center' }}
+                >
+                  <FormattedMessage {...messages.retry} />
+                </Button>
+              </Stack>
+            )}
             <Box aria-hidden ref={sentinelRef} sx={{ height: 1 }} />
           </Stack>
         )}

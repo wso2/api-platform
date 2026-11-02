@@ -140,7 +140,10 @@ export function SaveBar({
           <Box sx={{ alignItems: 'center', color: 'primary.main', display: 'flex', gap: 1 }}>
             <Circle fill="currentColor" size={8} />
             <Typography color="text.primary" variant="body2">
-              {changeCount === undefined ? (
+              {!dirty ? (
+                // Saving, with the edits already reverted: there is nothing left to count.
+                <FormattedMessage {...messages.saving} />
+              ) : changeCount === undefined ? (
                 <FormattedMessage {...messages.unsaved} />
               ) : (
                 <FormattedMessage {...messages.unsavedCount} values={{ count: changeCount }} />

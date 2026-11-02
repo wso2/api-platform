@@ -99,7 +99,8 @@ export function toState(field: FieldNode, value: unknown): unknown {
         value: toState(field.valueField!, v),
       }));
     case 'json':
-      return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      // Always encoded, so a saved string `hello` shows as the JSON text `"hello"` that parses back.
+      return JSON.stringify(value, null, 2);
     default:
       return value;
   }

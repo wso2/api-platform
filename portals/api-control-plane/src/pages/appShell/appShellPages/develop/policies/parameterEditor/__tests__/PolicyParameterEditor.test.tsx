@@ -130,7 +130,7 @@ describe('PolicyParameterEditor', () => {
     expect(panel).toHaveTextContent('Needs attention');
     expect(panel).toHaveTextContent('tokenEndpoint');
     await user.click(screen.getAllByRole('button', { name: 'Go to field' })[0]);
-    expect(screen.getByTestId('field-tokenEndpoint')).toHaveFocus();
+    await waitFor(() => expect(screen.getByTestId('field-tokenEndpoint')).toHaveFocus());
   });
 
   it('keeps advanced fields inside the expandable section', async () => {
@@ -172,5 +172,53 @@ describe('PolicyParameterEditor', () => {
     expect(byTestId('policy-param-submit')).not.toBeInTheDocument();
     expect(screen.getByTestId('policy-param-cancel')).toHaveTextContent('Close');
     expect(screen.getByText('https://a.example.com')).toBeInTheDocument();
+  });
+
+  it('goes to the input of a named map value, which is drawn under its row index', async () => {
+    const { user } = renderEditor('cors', {
+      existingValues: { labels: { scope: 'BAD' } },
+      policyDefinition: {
+        name: 'labelled',
+        parameters: {
+          properties: {
+            labels: {
+              additionalProperties: { pattern: '^[a-z]+$', type: 'string' },
+              type: 'object',
+            },
+          },
+          type: 'object',
+        },
+        version: '1.0',
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Show or hide the list of problems' }));
+    await user.click(screen.getByRole('button', { name: 'Go to field' }));
+
+    await waitFor(() => expect(screen.getByTestId('field-labels.0.value')).toHaveFocus());
+  });
+
+  it('opens Advanced Settings when a hidden advanced field has an error', async () => {
+    const { user } = renderEditor('cors', {
+      existingValues: { extra: 'a', name: 'ok' },
+      policyDefinition: {
+        name: 'advanced',
+        parameters: {
+          properties: {
+            extra: { minLength: 3, type: 'string', 'x-wso2-policy-advanced-param': true },
+            name: { type: 'string' },
+          },
+          required: ['name'],
+          type: 'object',
+        },
+        version: '1.0',
+      },
+    });
+    const toggle = screen.getByRole('button', { name: 'Advanced Settings' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(submit());
+
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-expanded', 'true'));
   });
 });

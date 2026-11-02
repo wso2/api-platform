@@ -222,37 +222,50 @@ export function AttachedPolicyList({
           ))}
           {ownChips(inheritedPolicies.length)}
         </Box>
-        <Box
-          sx={{ alignItems: 'center', color: 'text.secondary', display: 'flex', gap: 1, mt: 1.25 }}
-        >
-          {inheritedPolicies.length > 0 && (
-            <>
-              <Box
-                sx={(theme) => ({
-                  border: hairline(theme),
-                  borderColor: 'divider',
-                  borderRadius: 0.5,
-                  borderStyle: 'dashed',
-                  height: 14,
-                  width: 14,
-                })}
-              />
-              <Typography sx={{ opacity: 0.7 }} variant="caption">
-                <FormattedMessage {...messages.inheritedFromGlobal} />
-              </Typography>
-              <Typography sx={{ opacity: 0.7 }} variant="caption">
-                {SEPARATOR}
-              </Typography>
-            </>
-          )}
-          <Typography sx={{ opacity: 0.7 }} variant="caption">
-            {policies.length === 0 && editable ? (
-              emptyLabel
-            ) : (
-              <FormattedMessage {...messages.reorderHint} />
+        {(inheritedPolicies.length > 0 || editable) && (
+          <Box
+            sx={{
+              alignItems: 'center',
+              color: 'text.secondary',
+              display: 'flex',
+              gap: 1,
+              mt: 1.25,
+            }}
+          >
+            {inheritedPolicies.length > 0 && (
+              <>
+                <Box
+                  sx={(theme) => ({
+                    border: hairline(theme),
+                    borderColor: 'divider',
+                    borderRadius: 0.5,
+                    borderStyle: 'dashed',
+                    height: 14,
+                    width: 14,
+                  })}
+                />
+                <Typography sx={{ opacity: 0.7 }} variant="caption">
+                  <FormattedMessage {...messages.inheritedFromGlobal} />
+                </Typography>
+                {editable && (
+                  <Typography sx={{ opacity: 0.7 }} variant="caption">
+                    {SEPARATOR}
+                  </Typography>
+                )}
+              </>
             )}
-          </Typography>
-        </Box>
+            {/* Dragging is the only way to reorder, so a read-only list has no hint for it. */}
+            {editable && (
+              <Typography sx={{ opacity: 0.7 }} variant="caption">
+                {policies.length === 0 ? (
+                  emptyLabel
+                ) : (
+                  <FormattedMessage {...messages.reorderHint} />
+                )}
+              </Typography>
+            )}
+          </Box>
+        )}
       </Box>
     );
   }

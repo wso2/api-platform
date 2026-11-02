@@ -257,4 +257,28 @@ describe('PolicyPanel — resources', () => {
 
     expect(await screen.findByTestId('field-key')).toBeInTheDocument();
   });
+
+  it('attaches a clicked catalog policy to the resource that is open, and says so', async () => {
+    const { user } = renderPanel();
+    await user.click(screen.getByRole('button', { name: 'Show details for GET /orders' }));
+
+    await user.click(await screen.findByText('API Key Auth'));
+
+    expect(await screen.findByText('Applies to GET /orders')).toBeInTheDocument();
+    await user.type(await screen.findByTestId('field-key'), 'X-Key');
+    await user.click(screen.getByTestId('policy-param-submit'));
+
+    // The chip lands in the resource's own list, which says how to reorder it.
+    expect(await screen.findByText(/Drag to reorder/)).toBeInTheDocument();
+    expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Edit policy')).toHaveLength(1);
+  });
+
+  it('targets Global policies when no resource is open', async () => {
+    const { user } = renderPanel();
+
+    await user.click(await screen.findByText('API Key Auth'));
+
+    expect(await screen.findByText('Applies to Global policies')).toBeInTheDocument();
+  });
 });

@@ -1979,6 +1979,10 @@
     "defaultMessage": "Policy Hub",
     "description": "Link opening the Policy Hub website. Product name — leave untranslated."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.retry": {
+    "defaultMessage": "Retry",
+    "description": "Loads the policy catalog again after a failed request. Verb."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.searchPlaceholder": {
     "defaultMessage": "Search policies"
   },
@@ -2022,6 +2026,10 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyChip.removeLabel": {
     "defaultMessage": "Remove policy",
     "description": "Accessible label for the remove button on one attached policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.appliesTo": {
+    "defaultMessage": "Applies to {target}",
+    "description": "Under the drawer heading, naming where the policy attaches. {target} is \"Global policies\" or a resource such as \"GET /orders\"; resources are not translated."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy": {
     "defaultMessage": "Attach policy",

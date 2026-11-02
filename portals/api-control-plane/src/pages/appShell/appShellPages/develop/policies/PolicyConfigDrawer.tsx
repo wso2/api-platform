@@ -28,6 +28,7 @@ import {
   type PolicySummary,
 } from '@/api/resources/policyHub';
 import type { Policy } from '@/api/resources/restApis';
+import { SecondaryText } from '@/components/common/SecondaryText';
 import { ErrorState } from '@/components/StateViews';
 import { versionLabel } from '@/utils/versionLabel';
 import { usePolicyDisplayName } from './PolicyChip';
@@ -75,6 +76,12 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.savePolicy',
     defaultMessage: 'Save policy',
     description: 'Confirms edits to an already-attached policy. Verb phrase.',
+  },
+  appliesTo: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.appliesTo',
+    defaultMessage: 'Applies to {target}',
+    description:
+      'Under the drawer heading, naming where the policy attaches. {target} is "Global policies" or a resource such as "GET /orders"; resources are not translated.',
   },
   readyToAttach: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.readyToAttach',
@@ -130,6 +137,7 @@ export function PolicyConfigDrawer({
   open,
   mode = 'add',
   initialValues,
+  targetLabel,
   onBack,
   onClose,
   onConfirm,
@@ -138,6 +146,8 @@ export function PolicyConfigDrawer({
   open: boolean;
   mode?: 'add' | 'edit';
   initialValues?: Record<string, unknown>;
+  /** Where the policy applies, already translated: "Global policies", or a resource. */
+  targetLabel?: string;
   onBack?: () => void;
   onClose: () => void;
   onConfirm: (policy: Policy) => void;
@@ -253,17 +263,24 @@ export function PolicyConfigDrawer({
           >
             <SlidersHorizontal size={18} />
           </Box>
-          <Box sx={{ alignItems: 'center', display: 'flex', flex: 1, gap: 1, minWidth: 0 }}>
-            <Typography noWrap variant="h6">
-              <FormattedMessage {...messages.title} values={{ policyName: titleName }} />
-            </Typography>
-            {policy?.version && (
-              <Chip
-                label={versionLabel(resolvedVersion ?? policy.version)}
-                size="small"
-                sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}
-                variant="outlined"
-              />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ alignItems: 'center', display: 'flex', gap: 1, minWidth: 0 }}>
+              <Typography noWrap variant="h6">
+                <FormattedMessage {...messages.title} values={{ policyName: titleName }} />
+              </Typography>
+              {policy?.version && (
+                <Chip
+                  label={versionLabel(resolvedVersion ?? policy.version)}
+                  size="small"
+                  sx={{ color: 'text.secondary', fontFamily: 'monospace', fontSize: '0.7rem' }}
+                  variant="outlined"
+                />
+              )}
+            </Box>
+            {targetLabel && (
+              <SecondaryText noWrap sx={{ display: 'block' }} variant="caption">
+                <FormattedMessage {...messages.appliesTo} values={{ target: targetLabel }} />
+              </SecondaryText>
             )}
           </Box>
           <IconButton

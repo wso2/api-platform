@@ -237,4 +237,35 @@ describe('AttachedPolicyList', () => {
 
     expect(screen.getByText('Drop here')).toBeInTheDocument();
   });
+
+  it('leaves out the reorder hint on a read-only resource, keeping the inherited legend', () => {
+    renderWithProviders(
+      <AttachedPolicyList
+        {...baseProps()}
+        inheritedPolicies={[{ name: 'global-a', version: 'v1' }]}
+        policies={[{ name: 'own-policy', version: 'v1' }]}
+        readOnly
+        variant="resource"
+      />,
+    );
+
+    expect(screen.getByText('Inherited from global')).toBeInTheDocument();
+    expect(screen.queryByText(/Drag to reorder/)).not.toBeInTheDocument();
+    expect(screen.queryByText('·')).not.toBeInTheDocument();
+  });
+
+  it('shows no caption at all on a read-only resource with nothing inherited', () => {
+    renderWithProviders(
+      <AttachedPolicyList
+        {...baseProps()}
+        policies={[{ name: 'own-policy', version: 'v1' }]}
+        readOnly
+        variant="resource"
+      />,
+    );
+
+    expect(screen.getByText('own-policy')).toBeInTheDocument();
+    expect(screen.queryByText(/Drag to reorder/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Inherited from global')).not.toBeInTheDocument();
+  });
 });

@@ -82,4 +82,11 @@ describe('SaveBar', () => {
 
     expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
   });
+
+  it('does not count changes once they are all reverted mid-save', () => {
+    renderBar({ changeCount: 0, dirty: false, saving: true });
+
+    expect(screen.queryByText(/unsaved change/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Saving…')).toHaveLength(2);
+  });
 });

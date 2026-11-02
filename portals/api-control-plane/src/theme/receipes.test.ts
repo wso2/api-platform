@@ -21,6 +21,9 @@ import { describe, expect, it } from 'vitest';
 
 import { iconTileSx, inheritedPillSx, tintedPillSx } from './receipes';
 
+/** The block the recipes put their `color-mix()` styles in. */
+const SUPPORTS = '@supports (background: color-mix(in srgb, red, blue))' as const;
+
 /** Just enough of a theme for the recipes: palette, hairline and radius tokens. */
 const theme = {
   border: { style: 'solid', width: '1px' },
@@ -39,9 +42,12 @@ describe('iconTileSx', () => {
 
     expect(sx.height).toBe(36);
     expect(sx.width).toBe(36);
-    expect(sx.background).toContain('radial-gradient');
-    expect(sx.background).toContain('var(--primary)');
-    expect(sx.color).toContain('var(--muted)');
+    // A plain base, then the tint only where `color-mix()` exists.
+    expect(sx.background).toBe('var(--paper)');
+    const tinted = sx[SUPPORTS];
+    expect(tinted.background).toContain('radial-gradient');
+    expect(tinted.background).toContain('var(--primary)');
+    expect(tinted.color).toContain('var(--muted)');
   });
 
   it('rounds its corners in proportion to its size', () => {
@@ -59,22 +65,33 @@ describe('iconTileSx', () => {
       vars: { palette: { ...theme.palette, primary: { main: 'var(--vars-primary)' } } },
     } as unknown as Theme;
 
-    expect(iconTileSx(withVars).background).toContain('var(--vars-primary)');
+    expect(iconTileSx(withVars)[SUPPORTS].background).toContain('var(--vars-primary)');
   });
 });
 
 describe('tintedPillSx', () => {
-  it('draws a hairline edge, a touch of primary over the divider, at rest', () => {
+  it('is a solid, plain-surface chip with a divider edge before any tint is applied', () => {
     const sx = tintedPillSx(theme);
 
     expect(sx.border).toBe('1px solid');
-    expect(sx.borderColor).toContain('var(--primary)');
-    expect(sx.borderColor).toContain('var(--divider)');
-    expect(sx.background).toContain('radial-gradient');
+    expect(sx.background).toBe('var(--paper)');
+    expect(sx.borderColor).toBe('var(--divider)');
+  });
+
+  it('adds the orange glow and a primary-tinted edge only where color-mix() is supported', () => {
+    const tinted = tintedPillSx(theme)[SUPPORTS];
+
+    expect(tinted.background).toContain('radial-gradient');
+    expect(tinted.background).toContain('var(--primary)');
+    expect(tinted.borderColor).toContain('var(--primary)');
+    expect(tinted.borderColor).toContain('var(--divider)');
   });
 
   it('switches the edge to the primary colour while it is a drop target', () => {
-    expect(tintedPillSx(theme, true).borderColor).toBe('var(--primary)');
+    const sx = tintedPillSx(theme, true);
+
+    expect(sx.borderColor).toBe('var(--primary)');
+    expect('borderColor' in sx[SUPPORTS]).toBe(false);
   });
 });
 

@@ -53,6 +53,8 @@ export type SwaggerResourceRowProps = {
   /** The body panel's content. Supplying it is what makes the row expandable. */
   children?: ReactNode;
   defaultExpanded?: boolean;
+  /** Called with the new state whenever the row is opened or closed. */
+  onExpandedChange?: (expanded: boolean) => void;
   /** The operation's summary line. Omitted, the row stays a single line. */
   description?: string;
   /** Dims the row and blocks its controls — a staged deletion, or a pending save. */
@@ -75,6 +77,7 @@ export function SwaggerResourceRow({
   description,
   disabled = false,
   method,
+  onExpandedChange,
   path,
   pathVariant = 'code',
 }: SwaggerResourceRowProps) {
@@ -82,7 +85,11 @@ export function SwaggerResourceRow({
   const bodyId = useId();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const expandable = Boolean(children);
-  const toggle = () => setExpanded((open) => !open);
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    onExpandedChange?.(next);
+  };
   const toggleLabel = intl.formatMessage(expanded ? messages.collapse : messages.expand, {
     method,
     path,

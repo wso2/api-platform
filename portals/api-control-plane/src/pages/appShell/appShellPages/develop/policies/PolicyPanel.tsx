@@ -223,6 +223,9 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const [activeZone, setActiveZone] = useState<string | null>(null);
   const [resourceSearch, setResourceSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('all');
+  // The resource row the user has open: a click on a catalog policy attaches there, which
+  // gives keyboard and pointer users a way to target a resource without dragging.
+  const [openResource, setOpenResource] = useState<number | null>(null);
 
   // Only the fields `save` actually submits count towards "unsaved" — not the
   // resource search/filter or which config drawer is open.
@@ -279,7 +282,11 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const pickFromCatalog = (policy: PolicySummary) => {
     if (readOnly) return;
     setEditing(null);
-    setScope((current) => current ?? { kind: 'api' });
+    setScope(
+      (current) =>
+        current ??
+        (openResource === null ? { kind: 'api' } : { kind: 'operation', index: openResource }),
+    );
     setPicked(policy);
   };
 
@@ -343,6 +350,13 @@ export function PolicyPanel({ api }: { api: RestApi }) {
       },
     );
   };
+
+  const targetLabel =
+    scope === null
+      ? undefined
+      : scope.kind === 'api'
+        ? intl.formatMessage(messages.globalPolicies)
+        : `${operations[scope.index].method} ${operations[scope.index].path || '/'}`;
 
   const configRef: PolicyRef | null = editing
     ? {
@@ -483,6 +497,11 @@ export function PolicyPanel({ api }: { api: RestApi }) {
                         description={op.description || op.name}
                         key={index}
                         method={op.method}
+                        onExpandedChange={(open) =>
+                          setOpenResource((current) =>
+                            open ? index : current === index ? null : current,
+                          )
+                        }
                         path={displayPath}
                       >
                         <DropZone
@@ -555,6 +574,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
         onConfirm={confirmPolicy}
         open={Boolean(configRef)}
         policy={configRef}
+        targetLabel={targetLabel}
       />
     </Stack>
   );

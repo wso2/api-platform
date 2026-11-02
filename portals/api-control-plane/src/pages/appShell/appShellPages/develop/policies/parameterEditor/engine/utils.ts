@@ -116,6 +116,27 @@ export function pathKey(path: Path): string {
   return out;
 }
 
+/**
+ * A collision-free key for a config path. `pathKey` joins segments with `.`, so the map
+ * entries `a` -> `b` and `a.b` both read `m.a.b`; encoding the segments keeps them apart.
+ */
+export function configKey(path: Path): string {
+  return JSON.stringify(path);
+}
+
+/**
+ * Sets an own property even for a key like `__proto__`, which a plain assignment would turn
+ * into a prototype change and so drop from the object.
+ */
+export function setOwn(target: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
 export function typeOf(v: unknown): string {
   if (v === null) return 'null';
   if (Array.isArray(v)) return 'array';
