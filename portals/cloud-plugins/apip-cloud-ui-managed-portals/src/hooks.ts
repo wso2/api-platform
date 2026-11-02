@@ -117,7 +117,12 @@ export function useManagedPortalList() {
   // toggling isLoading (which would flicker skeletons every tick). Errors are
   // swallowed too - a transient BFF hiccup during background polling should
   // not tear down the whole list view; the next tick recovers.
+  // A tick while the previous poll is still out is skipped: starting another
+  // would supersede it, and a list slower than the interval would then never land.
+  const pollInFlight = useRef(false);
   const silentRefetch = useCallback(async () => {
+    if (pollInFlight.current) return;
+    pollInFlight.current = true;
     const seq = ++requestSeq.current;
     try {
       const result = await port.list();
@@ -125,6 +130,8 @@ export function useManagedPortalList() {
       setPortals(result);
     } catch {
       // ignore
+    } finally {
+      pollInFlight.current = false;
     }
   }, [port]);
 
