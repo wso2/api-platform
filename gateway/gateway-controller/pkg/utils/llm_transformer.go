@@ -466,8 +466,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	// Append because the proxy may already hold an api-level host-header policy (see Step 3).
 	if proxy.Spec.GlobalPolicies != nil && len(*proxy.Spec.GlobalPolicies) > 0 {
-		gp := make([]api.Policy, len(*proxy.Spec.GlobalPolicies))
-		copy(gp, *proxy.Spec.GlobalPolicies)
+		gp := withGlobalTemplateParams(*proxy.Spec.GlobalPolicies, tmpl)
 		if spec.Policies == nil {
 			spec.Policies = &gp
 		} else {
@@ -870,8 +869,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
 	// applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	if provider.Spec.GlobalPolicies != nil && len(*provider.Spec.GlobalPolicies) > 0 {
-		gp := make([]api.Policy, len(*provider.Spec.GlobalPolicies))
-		copy(gp, *provider.Spec.GlobalPolicies)
+		gp := withGlobalTemplateParams(*provider.Spec.GlobalPolicies, tmpl)
 		if spec.Policies == nil {
 			spec.Policies = &gp
 		} else {
@@ -1115,6 +1113,30 @@ func buildTemplateParams(template *models.StoredLLMProviderTemplate, resourcePat
 	}
 
 	return templateParams, nil
+}
+
+// withGlobalTemplateParams copies global (api-level) policies and gives each the template's
+// base-spec extraction params (requestModel, promptTokens, ...), merged the same way as for
+// operation-level policies. A global policy spans every resource, so no resource mapping applies.
+// Without them, a policy that needs one, such as a model router, fails to instantiate and the
+// policy engine skips every route of the API.
+func withGlobalTemplateParams(policies []api.Policy, template *models.StoredLLMProviderTemplate) []api.Policy {
+	templateParams := make(map[string]interface{})
+	if template != nil {
+		applyExtractionFieldsFromBaseSpec(templateParams, &template.Configuration.Spec)
+	}
+	out := make([]api.Policy, len(policies))
+	for i, pol := range policies {
+		if len(templateParams) > 0 {
+			var params map[string]interface{}
+			if pol.Params != nil {
+				params = *pol.Params
+			}
+			pol.Params = mergeParams(params, templateParams)
+		}
+		out[i] = pol
+	}
+	return out
 }
 
 func applyExtractionFieldsFromBaseSpec(templateParams map[string]interface{}, spec *api.LLMProviderTemplateData) {
