@@ -132,4 +132,80 @@ describe('ApiCreationProgress', () => {
     );
     expect(screen.getByText('We could not create this GraphQL API')).toBeInTheDocument();
   });
+
+  // Only the last step reflects real work; the first three are paced by the
+  // clock and short, so a quick create is not held back.
+  describe('steps', () => {
+    const stepsList = () => screen.getByRole('list');
+    const doneSteps = () => stepsList().querySelectorAll('svg.lucide-check').length;
+
+    it('completes the first three steps on a short timer, then waits on the server', () => {
+      renderWithProviders(
+        <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="creating" />,
+      );
+
+      expect(doneSteps()).toBe(0);
+      expect(screen.getByText('Validating API definition', { selector: 'li p' })).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(3_000);
+      });
+
+      expect(doneSteps()).toBe(3);
+      expect(screen.getByText('Deploying proxy', { selector: 'li p' })).toBeInTheDocument();
+
+      // However long the server takes, the last step stays open.
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(doneSteps()).toBe(3);
+    });
+
+    it('finishes every step the moment the server answers, even mid-pacing', () => {
+      const { rerender } = renderWithProviders(
+        <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="creating" />,
+      );
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      rerender(
+        <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="created" />,
+      );
+
+      expect(doneSteps()).toBe(4);
+      expect(screen.getByText('API Proxy created. Taking you there…')).toBeInTheDocument();
+    });
+
+    it('names the last step for a GraphQL API', () => {
+      renderWithProviders(
+        <ApiCreationProgress
+          apiKind="graphql"
+          onBack={noop}
+          onComplete={noop}
+          onRetry={noop}
+          status="creating"
+        />,
+      );
+
+      expect(screen.getByText('Deploying GraphQL API', { selector: 'li p' })).toBeInTheDocument();
+    });
+
+    it('starts a retry from the first step again', () => {
+      const { rerender } = renderWithProviders(
+        <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="creating" />,
+      );
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      rerender(
+        <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="failed" />,
+      );
+      rerender(
+        <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="creating" />,
+      );
+
+      expect(doneSteps()).toBe(0);
+    });
+  });
 });

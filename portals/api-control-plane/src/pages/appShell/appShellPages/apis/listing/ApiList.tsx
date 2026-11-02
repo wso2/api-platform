@@ -42,6 +42,7 @@ import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
+import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
 import { matchesApiType, type ApiTypeFilter } from './apiTypeFilter';
 import { CanCreate } from '@/permissions/CanCreate';
 
@@ -289,6 +290,7 @@ export function ApiList({
         ? routes.graphqlApi(orgHandle, projectHandler, api.id ?? '')
         : routes.api(orgHandle, projectHandler, api.id ?? ''),
     );
+  useEffect(preloadApiCreationWizard, []);
   const createApi = () => navigate(routes.newApi(orgHandle, projectHandler));
 
   const layoutSx = {
