@@ -274,51 +274,6 @@ blocks:
         features:
           - features/mtls_hostnames_all_connections_required.feature
 
-  # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
-  # asks for a certificate, which is state of the whole gateway, so runners take turns. Also
-  # hosts the outbound block (its mtls.toml settings already coexisted on the two-controller
-  # gateway-mtls-ha overlay): outbound identities and trust certificates never a client
-  # authority, and the overlay's present_default_identity=false also covers the
-  # default-identity-off scenario.
-  - name: gateway-mtls
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mtls.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: tls-backend
-    runners:
-      - name: mtls-auth
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_auth.feature
-      - name: mtls-client-ca-pool
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_client_ca_pool.feature
-      - name: mtls-pool-references
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_pool_references.feature
-      - name: mtls-listener
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_listener.feature
-      - name: mtls-header-relay
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_header_relay.feature
-      - name: mtls-outbound
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_outbound.feature
-      - name: mtls-default-identity-off
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_default_identity_off.feature
-
   # The relayed client certificate header is believed from any connection here, a gateway-wide
   # setting the other mutual TLS blocks must not see.
   - name: gateway-mtls-trust-any
@@ -407,6 +362,7 @@ blocks:
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
+      - name: tls-backend
     wiring:
       platform-gateway:
         signingKeys: true
@@ -608,6 +564,34 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity_off.feature
 
   # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
@@ -742,19 +726,9 @@ blocks:
         features:
           - features/gateway/observability/mcp_analytics.feature
 
-  - name: ai-workspace-cli
-    components:
-      - name: platform-api
-        db: sqlite
-      - name: platform-gateway
-        dependsOn: [platform-api]
-        db: sqlite
-    runners:
-      - name: ai-workspace-cli
-        tags: "gateway-version>1.1.0"
-        features:
-          - features/ai-workspace-gateway/cli/ai_workspace_cli.feature
-
+  # Also hosts the AI Workspace CLI smoke test: it is only version-gated, not database-gated,
+  # so it now runs across every db.matrix combination below rather than a dedicated sqlite-only
+  # boot.
   - name: platform-api-core
     parallel: 2
     components:
@@ -769,6 +743,10 @@ blocks:
       - name: testbench
       - name: a2a-trip-planner
     runners:
+      - name: ai-workspace-cli
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/ai-workspace-gateway/cli/ai_workspace_cli.feature
       - name: dp-to-cp
         tags: "gateway-version>=1.2.0"
         features:

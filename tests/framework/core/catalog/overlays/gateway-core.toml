@@ -39,3 +39,21 @@ default = "*.wso2.com"
 
 [router.vhosts.sandbox]
 default = "*-sandbox.wso2.com"
+
+# Mutual TLS scenarios. The key manager lets a scenario require a client certificate and a
+# token on the same API. Outbound scenarios assert what a backend sees from an API that names
+# no identity: nothing, which also satisfies the default-identity-off scenario since it is the
+# same setting. JSON access logs carry the upstream TLS failure of each request.
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
+
+[router.upstream.tls]
+present_default_identity = false
+
+[router.access_logs]
+enabled = true
+format = "json"
