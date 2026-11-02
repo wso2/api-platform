@@ -17,9 +17,9 @@
 # --------------------------------------------------------------------
 
 @platform-api-gateway-api-portal
-Feature: Publishing a REST API to an API Portal through the control plane
+Feature: Publishing an API to an API Portal through the control plane
   As an API publisher
-  I want to publish a deployed REST API to an API Portal from the control plane
+  I want to publish a REST or GraphQL API to an API Portal from the control plane
   So that API consumers can discover it and its subscription plans in the portal
 
   Background:
@@ -193,3 +193,48 @@ Feature: Publishing a REST API to an API Portal through the control plane
     When I publish the "RestApi" "${CTX:idleHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 201
     And the API Portal should list the API "${CTX:idleHandle}" with status "PUBLISHED"
+
+  Scenario: A GraphQL API is published, deprecated and unpublished through the control plane
+    Given I generate a unique resource name from "publish-graphql" and store it as "graphqlHandle"
+    And I generate a unique API context from "/publish-graphql" and store it as "graphqlContext"
+    And I create a GraphQL API "${CTX:graphqlHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:graphqlContext}"
+    And I save a publishable draft of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:graphqlHandle}  |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    When I publish the "GraphQLApi" "${CTX:graphqlHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 201
+    And the publication of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" should have status "PUBLISHED"
+    And the API Portal should list the API "${CTX:graphqlHandle}" with type "GRAPHQL"
+    And the API Portal should list the API "${CTX:graphqlHandle}" with status "PUBLISHED"
+    And the API Portal should list the API "${CTX:graphqlHandle}" offering plan "${CTX:planHandle}"
+    When I deprecate the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the API Portal should list the API "${CTX:graphqlHandle}" with status "DEPRECATED"
+    When I unpublish the "GraphQLApi" "${CTX:graphqlHandle}" from the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 204
+    And the API Portal should not list the API "${CTX:graphqlHandle}"
+    When I read the draft of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "${CTX:graphqlHandle}"
+
+  @type:negative
+  Scenario: A GraphQL draft is published only through its own type, and only with a GraphQL definition
+    Given I generate a unique resource name from "publish-graphql" and store it as "graphqlHandle"
+    And I generate a unique API context from "/publish-graphql" and store it as "graphqlContext"
+    And I create a GraphQL API "${CTX:graphqlHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:graphqlContext}"
+    And I save a publication draft of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:graphqlHandle}  |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I send a "PUT" request to the control plane at "/api-portals/${CTX:portalHandle}/apis/graphql-api/${CTX:graphqlHandle}/draft/definition" with body:
+      """
+      {"openapi": "3.0.3", "info": {"title": "${CTX:graphqlHandle}", "version": "1.0.0"}, "paths": {}}
+      """
+    When I publish the "RestApi" "${CTX:graphqlHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 404
+    And the JSON response field "code" should be "API_NOT_FOUND"
+    When I publish the "GraphQLApi" "${CTX:graphqlHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 400
+    And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
+    And the API Portal should not list the API "${CTX:graphqlHandle}"
