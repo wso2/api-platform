@@ -43,6 +43,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock3, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import UnexpectedErrorState from './components/UnexpectedErrorState';
 import type { NotifySeverity } from './hostPort';
 import type { Environment, EnvironmentPort } from './types';
 
@@ -127,6 +128,23 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
       setDeleting(false);
     }
   };
+
+  // Nothing to show underneath yet, so the whole page gives way to the
+  // illustrated state rather than a banner over an empty table. A refetch
+  // failure with environments already on screen keeps the lighter inline
+  // Alert below instead, so existing data never disappears because of a
+  // transient reload error.
+  if (loadError && environments.length === 0) {
+    return (
+      <PageContent fullWidth>
+        <UnexpectedErrorState
+          description="We couldn't load your environments. This is usually temporary - try again in a moment."
+          detail={loadError}
+          onRetry={refetch}
+        />
+      </PageContent>
+    );
+  }
 
   return (
     <PageContent fullWidth>

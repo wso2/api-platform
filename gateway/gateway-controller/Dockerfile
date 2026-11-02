@@ -1,6 +1,6 @@
 # Stage 1: Build the Go application
 # Using Debian-based image for better cross-compilation support
-FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
@@ -84,7 +84,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage: debug (select with --target debug; NOT part of the default build)
 # Full Go image needed to install dlv via go install; acceptable for dev-only use.
 # Runs as root — dlv requires ptrace; container security settings handle isolation.
-FROM golang:1.26.5-bookworm AS debug
+FROM golang:1.26.10-bookworm AS debug
 WORKDIR /app
 
 # Install dlv (Delve debugger)
@@ -138,13 +138,15 @@ COPY default-llm-provider-templates /app/default-llm-provider-templates
 RUN mkdir -p /app/data && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage; fi
 
+# Writable paths are owned by the root group with group perms matching the owner,
+# so OpenShift's arbitrary UID (always in GID 0) can write to them.
 RUN groupadd -r -g 10001 wso2 && \
     useradd -r -u 10001 -g wso2 -s /usr/sbin/nologin -c "WSO2 Application User" wso2 && \
-    chown -R wso2:wso2 /app/data && \
-    chmod -R 755 /app/data && \
+    chown -R wso2:0 /app/data && \
+    chmod -R 775 /app/data && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        chown -R wso2:wso2 /coverage && \
-        chmod -R 755 /coverage; \
+        chown -R wso2:0 /coverage && \
+        chmod -R 775 /coverage; \
     fi
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)

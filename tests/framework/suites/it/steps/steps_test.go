@@ -84,6 +84,19 @@ func TestJSONStringField(t *testing.T) {
 	}
 }
 
+func TestSizedJSONBody(t *testing.T) {
+	for _, size := range []int{11, 12, 6 << 20} {
+		body, err := sizedJSONBody(size)
+		require.NoError(t, err)
+		require.Len(t, body, size)
+		var decoded map[string]string
+		require.NoError(t, json.Unmarshal(body, &decoded))
+		require.Len(t, decoded["data"], size-11)
+	}
+	_, err := sizedJSONBody(10)
+	require.ErrorContains(t, err, "at least 11 bytes")
+}
+
 func TestNewRejectsInvalidPlatformAPICA(t *testing.T) {
 	_, err := newSuite(nil, []byte("not a PEM certificate"), nil)
 	require.ErrorContains(t, err, "loading the generated Platform API CA certificate")
@@ -268,6 +281,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"llm-proxy.yaml":             "LlmProxy",
 		"mcp.yaml":                   "Mcp",
 		"rest-api.yaml":              "RestApi",
+		"subscription.yaml":          "Subscription",
 	}
 	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
 	controlPlaneProtocols := map[string]string{
@@ -739,4 +753,32 @@ func TestNormalizeErrorResponsePinsRateLimitHeaders(t *testing.T) {
 	without, err := normalizeErrorResponse(429, missing, nil, "")
 	require.NoError(t, err)
 	require.NotEqual(t, got, without, "a dropped Retry-After must change the expected error response")
+}
+
+// TestRESTAPIVersionsFeatureStepsAreDefined resolves the feature's steps without running them,
+// as TestMTLSFeatureStepsAreDefined does, so a typo is caught before a block is provisioned.
+func TestRESTAPIVersionsFeatureStepsAreDefined(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	require.True(t, ok)
+	featureRoot := filepath.Join(filepath.Dir(source), "..")
+	path := filepath.Join(featureRoot, "features", "apiportal", "core", "rest_api_versions.feature")
+	_, err := os.Stat(path)
+	require.NoError(t, err)
+
+	suite, err := New(&frameworkruntime.Topology{}, featureRoot)
+	require.NoError(t, err)
+
+	var events bytes.Buffer
+	godog.TestSuite{
+		ScenarioInitializer: func(sc *godog.ScenarioContext) {
+			suite.Register(sc)
+			sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
+				return ctx, errors.New("steps are matched, not run")
+			})
+		},
+		Options: &godog.Options{Format: "events", Output: &events, NoColors: true, Strict: true, Paths: []string{path}},
+	}.Run()
+
+	require.NotZero(t, events.Len(), "godog wrote no events")
+	require.Empty(t, unresolvedSteps(t, events.Bytes()), "steps that match no pattern or more than one")
 }

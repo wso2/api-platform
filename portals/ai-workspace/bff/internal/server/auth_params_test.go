@@ -24,19 +24,23 @@ import (
 
 // The login link is attacker-reachable — anyone can hand a user a URL pointing at this
 // endpoint — so what it is willing to forward to the IDP is the whole of its security
-// surface. These pin both halves: the two parameters that make the provider chooser
-// skippable, and the refusal of everything else.
+// surface. These pin both halves: the three parameters that make the provider chooser
+// skippable (and an enterprise sign-in resolvable), and the refusal of everything else.
 func TestForwardableAuthParams(t *testing.T) {
-	t.Run("forwards the two supported parameters", func(t *testing.T) {
+	t.Run("forwards the supported parameters", func(t *testing.T) {
 		got := forwardableAuthParams(url.Values{
 			"fidp":       {"google"},
 			"login_hint": {"someone@example.com"},
+			"username":   {"someone@example.com"},
 		})
 		if got.Get("fidp") != "google" {
 			t.Errorf("fidp = %q, want google", got.Get("fidp"))
 		}
 		if got.Get("login_hint") != "someone@example.com" {
 			t.Errorf("login_hint = %q, want someone@example.com", got.Get("login_hint"))
+		}
+		if got.Get("username") != "someone@example.com" {
+			t.Errorf("username = %q, want someone@example.com", got.Get("username"))
 		}
 	})
 
@@ -59,24 +63,29 @@ func TestForwardableAuthParams(t *testing.T) {
 	})
 
 	t.Run("rejects values that could break out of the redirect", func(t *testing.T) {
-		for name, value := range map[string]string{
-			"CR injection":    "google\r\nLocation: https://evil.example.com",
-			"LF injection":    "google\nSet-Cookie: a=b",
-			"query injection": "google&scope=admin",
-			"fragment":        "google#x",
-			"space":           "goo gle",
-			"quote":           `google"`,
-			"over length":     strings.Repeat("a", 257),
-		} {
-			got := forwardableAuthParams(url.Values{"fidp": {value}})
-			if got.Get("fidp") != "" {
-				t.Errorf("%s: forwarded %q, want it dropped", name, got.Get("fidp"))
+		// Checked on both a provider-shaped and an address-shaped parameter: the same
+		// validator guards every forwarded name, and username is the one an attacker
+		// would most plausibly fill with something other than an email.
+		for _, param := range []string{"fidp", "username"} {
+			for name, value := range map[string]string{
+				"CR injection":    "google\r\nLocation: https://evil.example.com",
+				"LF injection":    "google\nSet-Cookie: a=b",
+				"query injection": "google&scope=admin",
+				"fragment":        "google#x",
+				"space":           "goo gle",
+				"quote":           `google"`,
+				"over length":     strings.Repeat("a", 257),
+			} {
+				got := forwardableAuthParams(url.Values{param: {value}})
+				if got.Get(param) != "" {
+					t.Errorf("%s via %s: forwarded %q, want it dropped", name, param, got.Get(param))
+				}
 			}
 		}
 	})
 
 	t.Run("ignores blank and whitespace-only values", func(t *testing.T) {
-		got := forwardableAuthParams(url.Values{"fidp": {"   "}, "login_hint": {""}})
+		got := forwardableAuthParams(url.Values{"fidp": {"   "}, "login_hint": {""}, "username": {" "}})
 		if len(got) != 0 {
 			t.Errorf("forwarded %v, want nothing", got)
 		}

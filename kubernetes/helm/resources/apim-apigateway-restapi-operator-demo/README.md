@@ -118,9 +118,9 @@ kubectl get restapi hello-normal-api-apim -n apigateway-demo-apim -o yaml
 kubectl get llmprovidertemplate,llmprovider,llmproxy,mcp,managedsecret,certificate,apikey,subscriptionplan,subscription -n apigateway-demo-apim
 ```
 
-### LLM upstream mock (integration-test parity)
+### LLM upstream mock
 
-Integration tests define **`http://mock-openapi:4010/openai/v1`** in **`gateway/it/docker-compose.test.yaml`** as **`mock-openapi`** (Prism + `gateway/it/mock-api` on **4010**) fronted by **`mock-openapi-https`** (nginx TLS on **9443**→**8443**, see `gateway/it/mock-api/nginx.conf`).
+The LLM upstream is an OpenAI-compatible mock: **`mock-openapi`** (Stoplight Prism on **4010**) fronted by **`mock-openapi-https`** (nginx TLS on container **8443**).
 
 Apply **`05b0-mock-openapi-https.yaml`** in **`apigateway-demo-apim`** before **`05b-llm-resources.yaml`**. The mock **Service** uses port **9449** (nginx still listens on container **8443**) to avoid clashes with Rancher on **9443**. The companion standard demo uses the same manifest shape under **`apigateway-demo`**; optional full OpenAPI tree image: **`kubernetes/helm/resources/apigateway-restapi-operator-demo/llm-mock-openapi-it/Dockerfile`**.
 

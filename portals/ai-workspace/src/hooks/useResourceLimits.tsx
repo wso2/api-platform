@@ -45,6 +45,17 @@ export interface ResourceLimit {
 }
 
 /** Shown when a supplier reports read-only but gives no reason of its own. */
+/**
+ * A link offered alongside the read-only message — "Subscribe to a plan" and
+ * wherever that lives. Supplied whole by whatever reports the verdict, so no
+ * part of the destination (a billing console, a plan, an organization id) is
+ * assembled, configured or known here.
+ */
+export type ReadOnlyAction = {
+  href: string;
+  label: string;
+};
+
 const DEFAULT_READ_ONLY_MESSAGE =
   'Your organization is read-only, so nothing can be created or changed.';
 
@@ -94,10 +105,20 @@ export interface ResourceLimitsContextType {
   /** Why the workspace is read-only; '' when it is not. */
   readOnlyMessage: string;
   /**
+   * The banner's content, when the supplier wants more than a sentence — a
+   * phrase in bold, a link to wherever write access is restored. `null` when it
+   * gave none, and the plain `readOnlyMessage` is shown instead.
+   *
+   * A node rather than a string because the whole point is markup the supplier
+   * controls: the portal has no opinion about plans, prices or consoles, and
+   * assembles no part of what this says or where it points.
+   */
+  readOnlyBanner: ReactNode;
+  /**
    * Supply the read-only verdict. Called by the same extension that supplies the
    * limits — nothing in the portal itself calls it.
    */
-  setReadOnly: (readOnly: boolean, reason?: string) => void;
+  setReadOnly: (readOnly: boolean, reason?: string, banner?: ReactNode) => void;
   /**
    * Bumped every time something asks for the limits to be re-read. The supplier
    * watches it; nothing else should.
@@ -139,6 +160,7 @@ const NOOP_SET = () => {
 const NO_LIMITS: ResourceLimitsContextType = {
   readOnly: false,
   readOnlyMessage: '',
+  readOnlyBanner: null,
   setReadOnly: NOOP_SET,
   refreshSignal: 0,
   refresh: NOOP_SET,
@@ -168,7 +190,8 @@ export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
   const [readOnlyState, setReadOnlyState] = useState<{
     readOnly: boolean;
     message: string;
-  }>({ readOnly: false, message: '' });
+    banner: ReactNode;
+  }>({ readOnly: false, message: '', banner: null });
 
   const setResourceLimits = useCallback(
     (next: ResourceLimitSet | null) => setLimits(next),
@@ -178,13 +201,14 @@ export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(() => setRefreshSignal((n) => n + 1), []);
 
   const setReadOnly = useCallback(
-    (readOnly: boolean, reason?: string) =>
+    (readOnly: boolean, reason?: string, banner?: ReactNode) =>
       setReadOnlyState({
         readOnly,
         // A supplier that reports read-only with a blank or whitespace-only reason
         // still owes the user an explanation, so fall back to the default message
         // rather than rendering an empty tooltip.
         message: readOnly ? reason?.trim() || DEFAULT_READ_ONLY_MESSAGE : '',
+        banner: readOnly ? (banner ?? null) : null,
       }),
     []
   );
@@ -195,6 +219,7 @@ export function ResourceLimitsProvider({ children }: { children: ReactNode }) {
     return {
       readOnly: readOnlyState.readOnly,
       readOnlyMessage: readOnlyState.message,
+      readOnlyBanner: readOnlyState.banner,
       setReadOnly,
       refreshSignal,
       refresh,

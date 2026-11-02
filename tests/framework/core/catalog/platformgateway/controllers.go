@@ -50,17 +50,24 @@ func (w *PlatformGatewayWiring) Validate() error {
 	return nil
 }
 
-// applyPlatformGatewayWiring selects the two-controller gateway for controllers: 2 and
-// keeps the registered definition otherwise.
+// applyPlatformGatewayWiring selects the two-controller gateway for controllers: 2, adds the
+// gateway signing keys for signingKeys: true, and keeps the registered definition otherwise.
 func applyPlatformGatewayWiring(def *components.Definition, wiring any) (*components.Definition, error) {
 	w, ok := wiring.(*PlatformGatewayWiring)
 	if !ok {
 		return nil, fmt.Errorf("platform-gateway wiring must be %T, got %T", &PlatformGatewayWiring{}, wiring)
 	}
-	if w.Controllers < 2 {
-		return def, nil
+	out := def
+	if w.Controllers >= 2 {
+		var err error
+		if out, err = withXDSController(out); err != nil {
+			return nil, err
+		}
 	}
-	return withXDSController(def)
+	if w.SigningKeys {
+		return withSigningKeys(out)
+	}
+	return out, nil
 }
 
 // withXDSController returns a copy of def that runs a second controller on the same

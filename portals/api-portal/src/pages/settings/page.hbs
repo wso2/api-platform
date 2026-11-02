@@ -24,12 +24,19 @@
 {{!-- Before settings-apis.js and settings-keymanagers.js: both build their chip
       inputs from window.cfgChipInput at load. --}}
 <script src='{{basePath}}/technical-scripts/cfg-chip-input.js' defer></script>
+{{!-- Before settings-plans.js and settings-meters.js: both build their suggestion boxes from
+      window.cfgSuggestCombo at load. --}}
+<script src='{{basePath}}/technical-scripts/cfg-suggest-combo.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-apis.js' defer></script>
 <script src='{{basePath}}/technical-scripts/paginate.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-labels.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-organization.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-views.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-plans.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-meters.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-billing.js' defer></script>
+<script src='{{basePath}}/technical-scripts/revenue-totals.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-revenue.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-webhooks.js' defer></script>
 <script src='{{basePath}}/technical-scripts/settings-keymanagers.js' defer></script>
 {{/pageScripts}}
@@ -83,6 +90,12 @@
       {{> cfg-mcps-panel}}
 
       {{> cfg-plans-panel}}
+
+      {{> cfg-billing-panel}}
+
+      {{> cfg-meters-panel}}
+
+      {{> cfg-revenue-panel}}
 
       {{> cfg-webhooks-panel}}
 

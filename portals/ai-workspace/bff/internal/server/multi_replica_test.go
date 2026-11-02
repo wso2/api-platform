@@ -252,7 +252,7 @@ func replicaOIDC(t *testing.T, issuer string, sealer *secure.Sealer) *auth.OIDC 
 	t.Helper()
 	o, err := auth.NewOIDC(context.Background(), http.DefaultClient,
 		issuer, "client-id", testSealMaterial,
-		"https://portal.example.com/ai-workspace/api/auth/callback", "", "openid",
+		"https://portal.example.com/ai-workspace/api/auth/callback", "", "openid", true,
 		session.DefaultClaimMapping(), 8*time.Hour, sealer)
 	if err != nil {
 		t.Fatalf("NewOIDC: %v", err)

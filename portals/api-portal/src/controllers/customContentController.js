@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
+const { redactUrl } = require('../utils/logRedaction');
 const logger = require('../config/logger');
 
 
@@ -39,7 +40,7 @@ const loadCustomContent = async (req, res, next) => {
             orgName,
             viewName,
             filePath,
-            originalUrl: req.originalUrl
+            originalUrl: redactUrl(req.originalUrl)
         });
         res.status(404).send('Not found');
         return;

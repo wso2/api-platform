@@ -1,0 +1,256 @@
+name: token-based-ratelimit
+version: v1.1.2
+description: |
+  Enforces token-based rate limits for LLM traffic by resolving token extraction
+  paths from provider templates and delegating enforcement to the
+  advanced-ratelimit engine.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    promptTokenLimits:
+      type: array
+      x-wso2-policy-advanced-param: false
+      description: Specifies rate limits for prompt (input) tokens.
+      default: []
+      items:
+        type: object
+        x-wso2-policy-advanced-param: false
+        required: ["count", "duration"]
+        properties:
+          count:
+            type: integer
+            x-wso2-policy-advanced-param: false
+            description: Specifies the maximum number of tokens allowed in the
+              configured duration.
+            minimum: 1
+          duration:
+            type: string
+            x-wso2-policy-advanced-param: false
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
+            pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+    completionTokenLimits:
+      type: array
+      x-wso2-policy-advanced-param: false
+      description: Specifies rate limits for completion (output) tokens.
+      default: []
+      items:
+        type: object
+        x-wso2-policy-advanced-param: false
+        required: ["count", "duration"]
+        properties:
+          count:
+            type: integer
+            x-wso2-policy-advanced-param: false
+            description: Specifies the maximum number of tokens allowed in the
+              configured duration.
+            minimum: 1
+          duration:
+            type: string
+            x-wso2-policy-advanced-param: false
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
+            pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+    totalTokenLimits:
+      type: array
+      x-wso2-policy-advanced-param: false
+      description: Specifies rate limits for total tokens (prompt + completion).
+      default: []
+      items:
+        type: object
+        x-wso2-policy-advanced-param: false
+        required: ["count", "duration"]
+        properties:
+          count:
+            type: integer
+            x-wso2-policy-advanced-param: false
+            description: Specifies the maximum number of tokens allowed in the
+              configured duration.
+            minimum: 1
+          duration:
+            type: string
+            x-wso2-policy-advanced-param: false
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
+            pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+    consumerBased:
+      type: boolean
+      x-wso2-policy-advanced-param: false
+      description: |
+        When true, rate limits are applied per consumer (GenAI application) identified
+        by the x-wso2-application-id metadata key set by the api-key-auth policy.
+        Each application gets its own independent token counter.
+        When false (default), a single shared limit applies across all consumers.
+      default: false
+  oneOf:
+    - required: ["promptTokenLimits"]
+      not:
+        anyOf:
+          - required: ["completionTokenLimits"]
+          - required: ["totalTokenLimits"]
+    - required: ["completionTokenLimits"]
+      not:
+        anyOf:
+          - required: ["promptTokenLimits"]
+          - required: ["totalTokenLimits"]
+    - required: ["totalTokenLimits"]
+      not:
+        anyOf:
+          - required: ["promptTokenLimits"]
+          - required: ["completionTokenLimits"]
+    - required: ["promptTokenLimits", "completionTokenLimits"]
+      not:
+        required: ["totalTokenLimits"]
+    - required: ["promptTokenLimits", "totalTokenLimits"]
+      not:
+        required: ["completionTokenLimits"]
+    - required: ["completionTokenLimits", "totalTokenLimits"]
+      not:
+        required: ["promptTokenLimits"]
+    - required: ["promptTokenLimits", "completionTokenLimits", "totalTokenLimits"]
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties:
+    algorithm:
+      type: string
+      description: |
+        Rate limiting algorithm to use:
+        - gcra: Generic Cell Rate Algorithm.
+        - fixed-window: Simple fixed time window counter (default).
+      enum: ["gcra", "fixed-window"]
+      default: "fixed-window"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.algorithm}"
+
+    backend:
+      type: string
+      description: |
+        Rate limit storage backend. 'memory' for in-memory storage (single-instance),
+        'redis' for exact distributed rate limiting (one Redis call per request), or
+        'redis-local-async' for distributed rate limiting with a local-first hot path
+        that reconciles with Redis asynchronously (lower latency and Redis load, with
+        bounded overshoot).
+      enum: ["memory", "redis", "redis-local-async"]
+      default: "memory"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.backend}"
+
+    redis:
+      type: object
+      description: Redis configuration (used when backend=redis or backend=redis-local-async)
+      additionalProperties: false
+      properties:
+        host:
+          type: string
+          default: "localhost"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.host}"
+        port:
+          type: integer
+          default: 6379
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.port}"
+        password:
+          type: string
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.password}"
+        username:
+          type: string
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.username}"
+        db:
+          type: integer
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.db}"
+        keyPrefix:
+          type: string
+          default: "ratelimit:v1:"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.keyprefix}"
+        failureMode:
+          type: string
+          enum: ["open", "closed"]
+          default: "open"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.failuremode}"
+        connectionTimeout:
+          type: string
+          description: Redis connection timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
+          default: "5s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.connectiontimeout}"
+        readTimeout:
+          type: string
+          description: Redis read timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.readtimeout}"
+        writeTimeout:
+          type: string
+          description: Redis write timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.writetimeout}"
+        poolSize:
+          type: integer
+          description: |
+            Redis connection pool size for the shared client. 0 = go-redis default
+            (10 × GOMAXPROCS). One pool is shared per distinct Redis endpoint config.
+          minimum: 0
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.pool_size}"
+
+    memory:
+      type: object
+      description: In-memory storage configuration (only used when backend=memory)
+      additionalProperties: false
+      properties:
+        maxEntries:
+          type: integer
+          default: 10000
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.maxentries}"
+        cleanupInterval:
+          type: string
+          description: Interval for cleaning up expired in-memory entries as a
+            Go duration string, for example "1s", "1m", "1h", or "24h". Use
+            "0" to disable cleanup.
+          default: "5m"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.cleanupinterval}"
+
+    local:
+      type: object
+      description: Configures the local-first hot path when backend is redis-local-async.
+      additionalProperties: false
+      properties:
+        syncInterval:
+          type: string
+          description: |
+            Specifies how often locally counted requests are flushed to Redis and the
+            authoritative count is read back. Lower values tighten accuracy (less
+            overshoot) at the cost of more Redis operations. Supports units ns, us, µs,
+            ms, s, m, h, including composite and fractional values (for example "500ms",
+            "1.5s", "1m30s").
+          default: "50ms"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.local.sync_interval}"
+        flushWorkers:
+          type: integer
+          description: |
+            Number of background flush workers shared by all redis-local-async limiters
+            in the process. 0 = auto (GOMAXPROCS/2, capped at 8). Only the first
+            registrant's value takes effect; a restart is required to change it.
+          minimum: 0
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.local.flush_workers}"
+        maxPipelineCommands:
+          type: integer
+          description: |
+            Maximum INCRBYs issued in a single Redis pipeline per flush; excess dirty keys
+            spill to the next flush tick.
+          minimum: 0
+          default: 5000
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.local.max_pipeline_commands}"
+        maxLocalEntries:
+          type: integer
+          description: |
+            Maximum local key-state entries per limiter before eviction (carrying any
+            unflushed delta to Redis). Bounds memory under high/adversarial key
+            cardinality.
+          minimum: 0
+          default: 100000
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.local.max_local_entries}"

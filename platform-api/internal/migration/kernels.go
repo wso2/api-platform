@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 	"github.com/wso2/api-platform/platform-api/internal/vault"
 )
@@ -83,8 +84,9 @@ func NewKernels(cfg *Config, log *slog.Logger, cp *Checkpoint) (*Kernels, error)
 
 // migrationActorIdpID is the readable idp_id seeded for the synthetic migration
 // actor, so v2 audit resolution (GetSubByUUID) renders a stable name for NEW
-// audit columns that had no v1 source.
-const migrationActorIdpID = "platform-api-migration"
+// audit columns that had no v1 source. platform-api itself recognises it
+// (constants.MigrationActorSub) to tell migrated rows apart.
+const migrationActorIdpID = constants.MigrationActorSub
 
 // actorSeedEpoch is the FIXED timestamp used for every deterministic actor UUID.
 // Using a constant (not the row's created_at) makes the "one uuid per distinct

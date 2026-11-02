@@ -28,7 +28,6 @@ import (
 
 	"github.com/cucumber/godog"
 
-	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
@@ -188,16 +187,7 @@ func (g *Gateway) queryStoredConfiguration(ctx context.Context, table, kind, han
 	}
 	defer func() { _ = closeDB() }()
 
-	// SQLite accepts "?"; Postgres requires "$N"; SQL Server requires "@pN" unless the
-	// driver's query-text preprocessing is enabled, which sql.Open("sqlserver", ...) does not
-	// do (see go-mssqldb's NewConnectorWithProcessQueryText doc comment).
-	p1, p2 := "?", "?"
-	switch store.Type {
-	case components.Postgres:
-		p1, p2 = "$1", "$2"
-	case components.SQLServer:
-		p1, p2 = "@p1", "@p2"
-	}
+	p1, p2 := sqlPlaceholders(store.Type)
 	query := fmt.Sprintf(
 		"SELECT t.configuration FROM %s t JOIN artifacts a ON t.uuid = a.uuid AND t.gateway_id = a.gateway_id WHERE a.kind = %s AND a.handle = %s",
 		table, p1, p2)

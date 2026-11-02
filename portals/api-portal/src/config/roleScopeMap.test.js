@@ -190,7 +190,7 @@ test('the shipped role-to-scope-mapping.yaml validates against the shipped OpenA
     );
 });
 
-test('the shipped platform-api-system role grants exactly the six publish + self-registration scopes', () => {
+test('the shipped platform-api-system role grants exactly the seven publish + self-registration scopes', () => {
     // Pinned scope list, not just presence: this role is granted to Platform API's
     // outbound publish caller, so silently widening it (accidentally adding
     // application/subscription scopes, say) would hand a service identity powers
@@ -202,7 +202,9 @@ test('the shipped platform-api-system role grants exactly the six publish + self
     // register itself as a webhook subscriber to receive subscription/apikey
     // events (POST /webhook-subscribers) - the shared-key identity is the same
     // actor already making publish calls, so keeping the grant on this role
-    // avoids introducing a second service credential.
+    // avoids introducing a second service credential. dp:meter:manage is here because, when it
+    // publishes an API, the Platform API creates here the meters its plans' prices use (made in
+    // the Management Portal), and removes them again if the publish fails.
     const map = roleScopeMap.loadRoleScopeMap(SHIPPED_MAPPING_PATH, SPEC_PATH);
     assert.deepEqual(map.get('platform-api-system'), [
         'dp:api:manage',
@@ -211,6 +213,7 @@ test('the shipped platform-api-system role grants exactly the six publish + self
         'dp:mcp_server_content:manage',
         'dp:subscription_plan:manage',
         'dp:webhook_subscriber:manage',
+        'dp:meter:manage',
     ]);
 });
 
@@ -320,7 +323,7 @@ test('role mode is usable by the shipped local-auth quickstart out of the box', 
 //
 // Why guard the reach set explicitly:
 //
-//   - Silent widening. Adding one of the five dp:*:manage scopes to a new
+//   - Silent widening. Adding one of the six dp:*:manage scopes to a new
 //     operation's `security` block (a copy-paste from a neighbouring op, say)
 //     hands that operation to the shared-key caller without any code change
 //     visible in a review of sharedKeyAuth.js or role-to-scope-mapping.yaml.
@@ -335,8 +338,8 @@ test('role mode is usable by the shipped local-auth quickstart out of the box', 
 //     "does one of the role's scopes match one of the operation's declared
 //     scopes." This test is the equivalent guard for that model.
 //
-// The pinned set below reflects the intent that these five scopes carry
-// *manage* over the five publish-touching resources — which today means the
+// The pinned set below reflects the intent that these six scopes carry
+// *manage* over the six publish-touching resources — which today means the
 // full CRUD surface on each (list, get, create, update, delete, plus the
 // content-blob variants). If a review-approved change alters the set, update
 // this list in the same commit; that is the whole point of the guard.
@@ -370,7 +373,7 @@ test('the shipped platform-api-system role reaches exactly the pinned publish-op
     reachable.sort();
 
     // Update in lockstep with any intentional widening / narrowing of the
-    // five dp:*:manage grants OR the operation `security` blocks. Deliberately
+    // six dp:*:manage grants OR the operation `security` blocks. Deliberately
     // exhaustive rather than a count check, so a rename or a swap between two
     // operations still tripping the same count is caught.
     assert.deepEqual(reachable, [
@@ -395,12 +398,13 @@ test('the shipped platform-api-system role reaches exactly the pinned publish-op
         'deleteMcpServerContentFile',
         'getMcpServerContentFile',
         'replaceMcpServerContent',
-        // Subscription plans (dp:subscription_plan:manage)
+        // Subscription plans and their pricing (dp:subscription_plan:manage)
         'addSubscriptionPlans',
         'deleteSubscriptionPlan',
         'getSubscriptionPlan',
         'listSubscriptionPlans',
         'putSubscriptionPlans',
+        'getPlanPricing',
         // Webhook subscribers (dp:webhook_subscriber:manage) - Platform API
         // registers itself as a subscriber to receive apikey/subscription events.
         'createWebhookSubscriber',
@@ -409,5 +413,11 @@ test('the shipped platform-api-system role reaches exactly the pinned publish-op
         'getWebhookSubscriberDeliveries',
         'getWebhookSubscribers',
         'updateWebhookSubscriber',
+        // Meters (dp:meter:manage), which the Platform API creates here when it publishes
+        'createMeter',
+        'deleteMeter',
+        'getMeter',
+        'listMeters',
+        'updateMeter',
     ].sort());
 });

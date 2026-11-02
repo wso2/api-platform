@@ -71,6 +71,7 @@ export function AppHeader() {
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
+  const userPicture = auth.user?.picture || undefined;
 
   const { orgHandle } = getRouteParamsFromPathname(location.pathname);
   const goToOrganizationHome = () => {
@@ -78,7 +79,18 @@ export function AppHeader() {
   };
 
   return (
-    <Header>
+    // `position`/`zIndex` are load-bearing, not cosmetic. The header is an
+    // `AppBar`, and the theme's `MuiPaper` override gives every Paper a
+    // `backdrop-filter` — which makes the header a stacking context. Its own
+    // `position: static` nullifies `AppBar`'s `zIndex`, so that context sits at
+    // `auto`, before the main content in DOM order. Anything rendered inside
+    // the header that must float over the page — the trial badge's usage panel
+    // uses `disablePortal`, so it renders here rather than at the body — is
+    // trapped below the page whatever z-index it asks for. Positioning the
+    // header lets its `appBar` level apply, lifting the whole context above
+    // the content. Portalled surfaces (menus, modals, tooltips) sit higher
+    // still and are unaffected.
+    <Header sx={{ position: 'relative', zIndex: 'appBar' }}>
       <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
       <Header.Brand
         aria-label={intl.formatMessage({
@@ -130,8 +142,8 @@ export function AppHeader() {
           </IconButton>
         </Tooltip> */}
         <UserMenu>
-          <UserMenu.Trigger name={userName} />
-          <UserMenu.Header name={userName} email={userEmail} />
+          <UserMenu.Trigger name={userName} avatar={userPicture} />
+          <UserMenu.Header name={userName} email={userEmail} avatar={userPicture} />
           <UserMenu.Divider />
           <UserMenu.Item
             icon={<LogOut />}

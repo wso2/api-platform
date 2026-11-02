@@ -2481,16 +2481,20 @@ func preserveUpstreamAuthValue(existing, updated *model.UpstreamConfig) *model.U
 	if updated.Main == nil {
 		return existing
 	}
-	if existing.Main == nil || existing.Main.Auth == nil {
-		return updated
-	}
-	if updated.Main.Auth == nil {
-		return updated
-	}
-	if updated.Main.Auth.Value == "" {
-		updated.Main.Auth.Value = existing.Main.Auth.Value
-	}
+	preserveEndpointAuthValue(existing.Main, updated.Main)
+	preserveEndpointAuthValue(existing.Sandbox, updated.Sandbox)
 	return updated
+}
+
+// preserveEndpointAuthValue keeps the stored credential when the update sends
+// an auth block with an empty value, as reads never return it.
+func preserveEndpointAuthValue(existing, updated *model.UpstreamEndpoint) {
+	if existing == nil || existing.Auth == nil || updated == nil || updated.Auth == nil {
+		return
+	}
+	if updated.Auth.Value == "" {
+		updated.Auth.Value = existing.Auth.Value
+	}
 }
 
 func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *model.UpstreamAuth {

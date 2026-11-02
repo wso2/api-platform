@@ -1,7 +1,9 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $tls := $controller.tls -}}
-{{- if and $controller.deployment.enabled $tls.enabled (eq $tls.certificateProvider "cert-manager") }}
-{{- if and (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer }}
+{{- $restApiTls := $controller.restApiTls -}}
+{{- $listenerNeedsIssuer := and $tls.enabled (eq $tls.certificateProvider "cert-manager") (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer -}}
+{{- $restApiNeedsIssuer := and (dig "server" "tls" "enabled" false .Values.gateway.config.controller) (eq $restApiTls.certificateProvider "cert-manager") $restApiTls.certManager.create (not $restApiTls.certManager.issuerRef.name) -}}
+{{- if and $controller.deployment.enabled (or $listenerNeedsIssuer $restApiNeedsIssuer) }}
 ---
 # This is a sample self-signed Issuer for development/testing purposes
 # In production, replace this with a proper CA issuer (Let's Encrypt, corporate CA, etc.)
@@ -17,5 +19,4 @@ metadata:
   {{- end }}
 spec:
   selfSigned: {}
-{{- end }}
 {{- end }}

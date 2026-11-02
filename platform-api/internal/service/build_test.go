@@ -195,6 +195,7 @@ func newBuildTestService(apiRepo *buildTestAPIRepo, depRepo *buildTestDeployment
 			artifactRepo,
 			depRepo,
 			NewArtifactDefinitions(NewRestAPIDefinition(apiRepo, apiUtil)),
+			newTestIdentityService(),
 			&testConfig,
 			slog.Default(),
 		),
@@ -303,6 +304,91 @@ func TestCreateBuild_NoDescriptionReportsNone(t *testing.T) {
 	}
 	if build.Description != nil {
 		t.Errorf("description = %v, want none", *build.Description)
+	}
+}
+
+// Audit columns hold the internal user UUID. Every build the service returns, to the
+// REST handlers and to plugins alike, names whoever prepared it by their identity
+// instead, and a build whose creator has no identity left names the deleted user.
+func TestBuilds_ReportWhoPreparedThemByIdentity(t *testing.T) {
+	const actorUUID = "actor-uuid"
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+	service.builds.identity = NewIdentityService(mappingIdentityRepo{subs: map[string]string{actorUUID: "alice"}})
+
+	created, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, actorUUID, "", nil)
+	if err != nil {
+		t.Fatalf("CreateBuild: %v", err)
+	}
+	if created.CreatedBy == nil || *created.CreatedBy != "alice" {
+		t.Errorf("created build createdBy = %q, want alice", utils.ValueOrEmpty(created.CreatedBy))
+	}
+	if depRepo.createdBuild.CreatedBy != actorUUID {
+		t.Errorf("stored createdBy = %q, want the internal UUID %q", depRepo.createdBuild.CreatedBy, actorUUID)
+	}
+
+	depRepo.build = &model.Build{BuildID: "2026-01-01-1", CreatedBy: actorUUID}
+	got, err := service.GetBuild(buildTestAPIUUID, "2026-01-01-1", buildTestOrgUUID)
+	if err != nil {
+		t.Fatalf("GetBuild: %v", err)
+	}
+	if got.CreatedBy == nil || *got.CreatedBy != "alice" {
+		t.Errorf("build createdBy = %q, want alice", utils.ValueOrEmpty(got.CreatedBy))
+	}
+
+	depRepo.builds = []*model.Build{
+		{BuildID: "2026-01-01-2", CreatedBy: actorUUID},
+		{BuildID: "2026-01-01-1", CreatedBy: "removed-user-uuid"},
+	}
+	list, err := service.GetBuilds(buildTestAPIUUID, buildTestOrgUUID, 20)
+	if err != nil {
+		t.Fatalf("GetBuilds: %v", err)
+	}
+	if len(list.List) != 2 {
+		t.Fatalf("list has %d builds, want 2", len(list.List))
+	}
+	if by := list.List[0].CreatedBy; by == nil || *by != "alice" {
+		t.Errorf("first listed build createdBy = %q, want alice", utils.ValueOrEmpty(by))
+	}
+	if by := list.List[1].CreatedBy; by == nil || *by != constants.DeletedUser {
+		t.Errorf("second listed build createdBy = %q, want %s", utils.ValueOrEmpty(by), constants.DeletedUser)
+	}
+}
+
+// The creator is resolved before the build is stored, so a failed lookup refuses the
+// request without leaving a build behind that a retry would duplicate.
+func TestCreateBuild_UnresolvableCreatorStoresNothing(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+	service.builds.identity = NewIdentityService(failingIdentityRepo{})
+
+	if _, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "actor-uuid", "", nil); err == nil {
+		t.Fatal("CreateBuild succeeded although the creator could not be resolved")
+	}
+	if depRepo.createdBuild != nil {
+		t.Errorf("build %s was stored before the request failed", depRepo.createdBuild.BuildID)
+	}
+}
+
+// The description is bounded in characters, as the schema's maxLength is, so a note
+// in a multi-byte script is not refused early and an over-long one is a validation
+// failure instead of whatever the database makes of an oversized column.
+func TestCreateBuild_DescriptionLengthIsBoundedInCharacters(t *testing.T) {
+	depRepo := &buildTestDeploymentRepo{}
+	service := newBuildTestService(&buildTestAPIRepo{apiModel: buildTestAPI()}, depRepo)
+
+	atLimit := strings.Repeat("é", 1023)
+	if _, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", atLimit, nil); err != nil {
+		t.Fatalf("CreateBuild with a 1023-character description: %v", err)
+	}
+
+	depRepo.createdBuild = nil
+	_, err := service.CreateBuild(buildTestAPIUUID, buildTestOrgUUID, "tester", atLimit+"é", nil)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("error = %v, want ValidationFailed", err)
+	}
+	if depRepo.createdBuild != nil {
+		t.Error("an over-long description must not store a build")
 	}
 }
 

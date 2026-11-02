@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, PageTitle, TextField, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
@@ -72,6 +72,13 @@ const messages = defineMessages({
     defaultMessage: 'Add Gateway',
     description: 'Empty-state action opening the gateway creation page. Verb phrase.',
   },
+  gatewayManaged: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.gatewayManaged',
+    defaultMessage:
+      'This API was created from a gateway. You can view its deployments, but deploy, redeploy, restore and undeploy actions are managed by the gateway and are unavailable in the API Control Plane.',
+    description:
+      'Info banner on the Deploy page of a read-only API, i.e. one that a gateway pushed to the control plane.',
+  },
 });
 
 /** The deploy and deployment-lifecycle mutations, adapted per API kind. */
@@ -96,6 +103,11 @@ export type ApiDeployViewProps = {
   onRefreshDeployments: () => void;
   mutations: DeployMutationHooks;
   orgHandle: string;
+  /**
+   * A gateway-created API. Its deployments are shown, but the gateway owns them,
+   * so every action that would change them is disabled.
+   */
+  readOnly?: boolean;
 };
 
 /**
@@ -114,6 +126,7 @@ export function ApiDeployView({
   mutations,
   onRefreshDeployments,
   orgHandle,
+  readOnly = false,
 }: ApiDeployViewProps) {
   const intl = useIntl();
   const navigate = useNavigate();
@@ -180,6 +193,14 @@ export function ApiDeployView({
         </PageTitle.SubHeader>
       </PageTitle>
 
+      {readOnly && (
+        <Box sx={{ pb: 1, pt: 3 }}>
+          <Alert severity="info">
+            <FormattedMessage {...messages.gatewayManaged} />
+          </Alert>
+        </Box>
+      )}
+
       {sortedGateways.length === 0 ? (
         <EmptyState
           actionLabel={intl.formatMessage(messages.addGateway)}
@@ -217,6 +238,7 @@ export function ApiDeployView({
                   key={gateway.id}
                   onRefresh={onRefreshDeployments}
                   onToggleExpand={(expanded) => toggleExpand(gateway.id ?? '', expanded)}
+                  readOnly={readOnly}
                   refreshing={deploymentsFetching}
                   useDelete={mutations.useDelete}
                   useDeploy={mutations.useDeploy}

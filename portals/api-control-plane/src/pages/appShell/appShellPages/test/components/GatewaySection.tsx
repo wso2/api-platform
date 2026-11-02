@@ -73,19 +73,19 @@ type GatewaySectionProps = {
 };
 
 /**
- * Picks which deployed gateway the console targets, and shows the resulting
- * invoke URL.
+ * Renders the gateway selector, request transport controls, and invoke URL.
  *
- * A section rather than a card: this and `TestKeySection` describe one thing
- * between them — where a request goes and what it carries — and two bordered
- * boxes side by side read as two unrelated settings. The page seats both in a
- * single card, which is why nothing here draws a border or a background of its
- * own beyond the endpoint well.
+ * This component is rendered as a section within the page card. Together with
+ * `TestKeySection`, it describes the request destination and credentials
+ * without introducing an additional card boundary.
  *
- * There is no health badge, and the "Deployed" one this used to carry went with
- * the redesign. `Gateway` has no health or status field to read, and deployment
- * is already implied: the page renders its deploy-first empty state instead of
- * this card when the API is deployed nowhere.
+ * The proxy/direct transport control is colocated with the endpoint because it
+ * specifies how that endpoint is reached. The endpoint caption describes the
+ * effect of the selected transport mode.
+ *
+ * The component does not render a health or deployment-status indicator.
+ * Deployment availability is represented by the page-level empty state when
+ * no gateways are deployed.
  */
 export function GatewaySection({
   endpoint,
@@ -99,13 +99,21 @@ export function GatewaySection({
   return (
     <Box sx={{ px: 2, py: 2 }}>
       <Stack spacing={1.5}>
-        <Stack alignItems="center" direction="row" spacing={1}>
-          <Box sx={{ color: 'primary.main', display: 'flex' }}>
-            <Server size={18} />
-          </Box>
-          <Typography variant="subtitle2">
-            <FormattedMessage {...messages.title} />
-          </Typography>
+        <Stack
+          alignItems="center"
+          direction="row"
+          justifyContent="space-between"
+          spacing={1}
+          sx={{ minHeight: 36 }}
+        >
+          <Stack alignItems="center" direction="row" spacing={1}>
+            <Box sx={{ color: 'primary.main', display: 'flex' }}>
+              <Server size={18} />
+            </Box>
+            <Typography variant="subtitle2">
+              <FormattedMessage {...messages.title} />
+            </Typography>
+          </Stack>
         </Stack>
 
         {gateways.length === 0 ? (

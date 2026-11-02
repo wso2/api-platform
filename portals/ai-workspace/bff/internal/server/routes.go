@@ -22,6 +22,18 @@ import (
 	"ai-workspace-bff/internal/paths"
 )
 
+// AnalyticsHopPrefixes are the browser-facing names the optional Moesif
+// analytics hop answers on, under <base>/proxy. They are aliases for one
+// upstream (control_plane.moesif_url), not separate backends.
+//
+// "/cloud" is the original contract and the one the shared Insights plugin in
+// this repo uses, matching the api-control-plane BFF's "cloud" named upstream;
+// "/moesif" is the name apim-saas's copy calls. Both are kept so neither
+// consumer breaks when the other changes. Anything added here must be a prefix
+// no other route claims, since these are registered ahead of the catch-all
+// /proxy/.
+var AnalyticsHopPrefixes = []string{"/cloud", "/moesif"}
+
 // routes builds the mux and wraps it with the global middleware chain. Every route
 // below is registered under paths.Base via s.path, so an ingress can route one
 // prefix here without rewriting paths and an all-in-one deployment can host several
@@ -70,16 +82,27 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+s.path("/api/mcp-proxies"), s.handleCreateMCPServer)
 	mux.HandleFunc("POST "+s.path("/api/api-portals/{apiPortalId}/mcp-proxies/{mcpProxyId}/publish"), s.handlePublishMCPProxy)
 
-	// Same-origin reverse proxy to the Platform API. The Moesif hop is more
-	// specific (/proxy/moesif/) and must be registered before the catch-all
-	// /proxy/.
+	// Same-origin reverse proxy to the Platform API. The analytics hop is more
+	// specific (/proxy/cloud/, /proxy/moesif/) and must be registered before the
+	// catch-all /proxy/.
+	//
+	// Two names, one upstream, because two consumers already call it by two
+	// different names: the Insights plugin in this repo
+	// (portals/cloud-plugins/apip-cloud-ui-insights) asks for
+	// <base>/proxy/cloud/analytics/id-token — the same prefix the
+	// api-control-plane BFF mounts its "cloud" named upstream on — while
+	// apim-saas calls <base>/proxy/moesif/. Accepting both here is what lets
+	// either move at its own pace instead of needing a synchronised release
+	// across three repos. See AnalyticsHopPrefixes for the list.
 	//
 	// Registered unconditionally, even when moesif_url is unset: left to the
-	// catch-all, a Moesif call would be forwarded to the CONTROL PLANE as
-	// /moesif/... and come back 404 from there, which reads as "the BFF has no
-	// such route" and sends whoever is debugging it in the wrong direction. The
-	// handler answers for itself instead.
-	mux.HandleFunc(s.path(paths.Proxy)+"/moesif/", s.handleMoesifProxy)
+	// catch-all, the call would be forwarded to the CONTROL PLANE as /cloud/...
+	// and come back 404 from there, which reads as "the BFF has no such route"
+	// and sends whoever is debugging it in the wrong direction. The handler
+	// answers for itself instead.
+	for _, hop := range AnalyticsHopPrefixes {
+		mux.HandleFunc(s.path(paths.Proxy)+hop+"/", s.handleMoesifProxy(hop))
+	}
 	if s.billingProxy != nil {
 		mux.HandleFunc(s.path(paths.Proxy)+"/billing/", s.handleBillingProxy)
 	}

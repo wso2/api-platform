@@ -25,7 +25,8 @@ import (
 	"strings"
 )
 
-// maxPartitionKeyLen bounds the block key path segment.
+// maxPartitionKeyLen bounds the block key path segment. Duplicated as
+// topology.maxPartitionKeyLen (core/topology/validate.go), which checks it at suite load.
 const maxPartitionKeyLen = 64
 
 type partitionCtxKey struct{}

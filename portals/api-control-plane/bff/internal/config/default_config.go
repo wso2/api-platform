@@ -63,6 +63,26 @@ func defaultConfig() *Config {
 				SameSite: "lax",
 			},
 		},
+		// The gateway relay ships ON: the Test page's console is unusable
+		// without it in any deployment where the gateway is a different origin
+		// from the portal, which is every deployment. The bounds below are what
+		// make that safe by default; an operator turns the feature off rather
+		// than tuning them away.
+		//
+		// Egress ships closed: production refuses private, loopback, CGNAT and
+		// IP-literal targets, and an empty allow_hosts reaches nothing. A
+		// deployment lists its gateway targets in allow_hosts, and selects
+		// "development" only where gateways genuinely live on private space.
+		GatewayRelay: GatewayRelayConfig{
+			Enabled:          true,
+			RequestTimeout:   30 * time.Second,
+			MaxRequestBytes:  2 << 20, // 2 MiB
+			MaxResponseBytes: 8 << 20, // 8 MiB
+			MaxConcurrent:    32,
+			MaxPending:       64,
+			ResolveCacheTTL:  60 * time.Second,
+			ResolveCacheSize: 1024,
+		},
 		Auth: AuthConfig{
 			Mode: "basic",
 			OIDC: OIDCConfig{
@@ -86,6 +106,31 @@ func defaultConfig() *Config {
 			// never mentions [auth.authorization] keeps reading the scope claim.
 			Authorization: AuthorizationConfig{
 				Mode: AuthzModeScope,
+			},
+		},
+		// "regular" mirrors AI Workspace's own released catalog (config.env.ts's
+		// PLATFORM_GATEWAY_VERSIONS), newest first so the first entry per type is what the
+		// SPA offers as "Latest". There is deliberately no default "event" entry: no event
+		// gateway distribution is published to build a download link from, so a deployment
+		// that has one lists it under [[gateway_versions]]. The "ai" type is AI Workspace's
+		// own catalog, not api-control-plane's.
+		GatewayVersions: []GatewayVersionEntry{
+			{
+				Type:    "regular",
+				Version: "2026.05.13",
+				Channel: "STS",
+			},
+			{
+				Type:          "regular",
+				Version:       "1.1",
+				LatestVersion: "v1.1.0",
+				Channel:       "LTS",
+			},
+			{
+				Type:          "regular",
+				Version:       "1.0",
+				LatestVersion: "v1.0.0",
+				Channel:       "LTS",
 			},
 		},
 	}

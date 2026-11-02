@@ -21,6 +21,9 @@ import (
 	"context"
 	"testing"
 
+	catalogapiportal "github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
+	"github.com/wso2/api-platform/tests/framework/core/components"
+	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -80,5 +83,23 @@ func TestPortalListingMatches(t *testing.T) {
 				t.Fatalf("portalListingMatches() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBillingWebhookBaseNamesTheBlocksOwnPortal(t *testing.T) {
+	portals := components.NewSet()
+	inst, err := components.NewInstance(catalogapiportal.APIPortal(), 0, 1, "127.0.0.1", nil)
+	if err != nil {
+		t.Fatalf("NewInstance() returned an error: %v", err)
+	}
+	if err := portals.Add(inst); err != nil {
+		t.Fatalf("Add() returned an error: %v", err)
+	}
+	steps := &Steps{topo: &frameworkruntime.Topology{Instances: portals}}
+
+	// Every block's portal answers to the plain alias on the shared testbench's networks, so a
+	// topology without its block network has no address to give Stripe.
+	if got, err := steps.billingWebhookBase(); err == nil {
+		t.Fatalf("billingWebhookBase() = %q, want an error without the block's network", got)
 	}
 }

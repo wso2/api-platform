@@ -3203,6 +3203,9 @@ func (s *sqlStore) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
 		plan.ID, s.gatewayId,
 	)
 	if err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: subscription plan name already exists", ErrConflict)
+		}
 		return fmt.Errorf("failed to update subscription plan: %w", err)
 	}
 	rows, err := result.RowsAffected()
@@ -3216,9 +3219,16 @@ func (s *sqlStore) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
 }
 
 // DeleteSubscriptionPlan removes a subscription plan by ID and gateway.
+// It returns ErrConflict while any subscription still references the plan.
 func (s *sqlStore) DeleteSubscriptionPlan(id, gatewayID string) error {
-	query := `DELETE FROM subscription_plans WHERE uuid = ? AND gateway_id = ?`
-	result, err := s.exec(query, id, s.gatewayId)
+	query := `
+		DELETE FROM subscription_plans
+		WHERE uuid = ? AND gateway_id = ?
+			AND NOT EXISTS (
+				SELECT 1 FROM subscriptions WHERE gateway_id = ? AND subscription_plan_id = ?
+			)
+	`
+	result, err := s.exec(query, id, s.gatewayId, s.gatewayId, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete subscription plan: %w", err)
 	}
@@ -3227,7 +3237,11 @@ func (s *sqlStore) DeleteSubscriptionPlan(id, gatewayID string) error {
 		return fmt.Errorf("failed to get rows affected when deleting subscription plan: %w", err)
 	}
 	if rows == 0 {
-		return fmt.Errorf("%w: subscription plan not found: %s", ErrNotFound, id)
+		// Nothing was deleted: either the plan doesn't exist or a subscription still uses it.
+		if _, err := s.GetSubscriptionPlanByID(id, ""); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: subscription plan is in use by one or more subscriptions: %s", ErrConflict, id)
 	}
 	return nil
 }
@@ -3415,6 +3429,9 @@ func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
 		sub.SubscriptionPlanID, sub.BillingCustomerID, sub.BillingSubscriptionID,
 		string(sub.Status), sub.UpdatedAt, sub.ID, s.gatewayId)
 	if err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: subscription token already exists for this API", ErrConflict)
+		}
 		return fmt.Errorf("failed to update subscription: %w", err)
 	}
 	rows, err := result.RowsAffected()

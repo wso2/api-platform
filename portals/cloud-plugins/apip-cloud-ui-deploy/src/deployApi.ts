@@ -27,20 +27,6 @@ import { managedGatewaysPath, toEnvironments, type ManagedGatewayDTO, type Stage
 export type ArtifactKind = 'RestApi' | 'Mcp' | 'LlmProxy' | 'LlmProvider' | 'AgentProxy' | 'GraphQLApi';
 
 /**
- * Each kind's own path on the platform API. The pipeline routes are shared, but a
- * few calls go straight to the artifact's own resource — deleting a build, reading
- * an API's backend URL — and those are split by kind.
- */
-const NATIVE_PATH: Record<ArtifactKind, string> = {
-  RestApi: 'rest-apis',
-  GraphQLApi: 'graphql-apis',
-  Mcp: 'mcp-proxies',
-  LlmProxy: 'llm-proxies',
-  LlmProvider: 'llm-providers',
-  AgentProxy: 'agent-proxies',
-};
-
-/**
  * The kinds of gateway each artifact kind runs on. A gateway's kind decides what
  * its runtime can serve, so this is the same mapping the server enforces the deploy
  * against — kept here only to narrow the gateways the page asks for, never as the
@@ -53,6 +39,20 @@ export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
   LlmProxy: ['ai'],
   LlmProvider: ['ai'],
   AgentProxy: ['ai'],
+};
+
+/** The gateway type to create for a kind: the first type its pipeline accepts. */
+export const gatewayTypeForKind = (kind: ArtifactKind): 'regular' | 'ai' =>
+  GATEWAY_TYPES_FOR_KIND[kind]?.[0] === 'ai' ? 'ai' : 'regular';
+
+/** The platform-api resource each kind is stored under, for reading its display name. */
+const ARTIFACT_RESOURCE: Record<ArtifactKind, string> = {
+  RestApi: 'rest-apis',
+  GraphQLApi: 'graphql-apis',
+  Mcp: 'mcp-proxies',
+  LlmProxy: 'llm-proxies',
+  LlmProvider: 'llm-providers',
+  AgentProxy: 'agent-proxies',
 };
 
 /**
@@ -92,7 +92,10 @@ type BuildDTO = {
  * an endpoint of its own.
  */
 type RestApiDTO = {
+  name?: string;
   upstream?: { main?: { url?: string } };
+  /** True when a gateway created the API; its deployments are then the gateway's to manage. */
+  readOnly?: boolean;
 };
 
 /**
@@ -151,32 +154,40 @@ export function createDeployClient(
      * Deletes one of the API's builds, which is how room is made once an API is at
      * its build limit and deploying is refused.
      *
-     * This goes straight to the API's own resource rather than through the project
-     * path: a build belongs to the API, not to a pipeline, and the platform already
-     * scopes the call to the caller's organization. Refused with 409 while a gateway
-     * is serving the build; undeploying releases it. Deployments that ran the build
-     * survive and stay redeployable from their own artifact, but stop reporting it,
-     * so they can no longer be promoted onward.
+     * Goes through the project path like the page's other calls, so preparing,
+     * listing, deploying and deleting are governed by the same deployment
+     * permissions. Refused with 409 while a gateway is serving the build;
+     * undeploying releases it. Deployments that ran the build survive and stay
+     * redeployable from their own artifact, but stop reporting it, so they can no
+     * longer be promoted onward.
      */
     async deleteBuild(buildId: string): Promise<void> {
-      await apiFetch(
-        'DELETE',
-        `/${NATIVE_PATH[kind]}/${encodeURIComponent(apiHandle)}/builds/${encodeURIComponent(buildId)}`
-      );
+      await apiFetch('DELETE', withKind(`${base}/builds/${encodeURIComponent(buildId)}`));
     },
 
     /**
-     * The backend URL the API is defined against, which the deploy and promote
-     * forms start from so a first deployment does not have to be typed out.
-     * Absent when the API declares its upstream by reference rather than by URL.
+     * What the page needs from the API itself: the backend URL the deploy and
+     * promote forms start from (absent when the upstream is declared by reference
+     * rather than by URL), and whether the API is read-only because a gateway
+     * created it.
      */
-    async readApiEndpointUrl(): Promise<string | undefined> {
-      // Only REST APIs declare a backend URL this form can start from; the other
-      // kinds either have none or shape it differently, so the field is simply left
-      // empty for them rather than guessed at.
-      if (kind !== 'RestApi') return undefined;
+    async readApi(): Promise<{ name?: string; endpointUrl?: string; readOnly: boolean }> {
+      if (kind !== 'RestApi') {
+        // Only the display name is wanted for the other kinds: they have no backend URL
+        // here and are never read-only. A failed read must not lock the page's actions,
+        // so it leaves the name empty and the caller falls back to the handle.
+        try {
+          const artifact = await apiFetch<{ name?: string; displayName?: string }>(
+            'GET',
+            `/${ARTIFACT_RESOURCE[kind]}/${encodeURIComponent(apiHandle)}`
+          );
+          return { name: artifact?.name ?? artifact?.displayName, readOnly: false };
+        } catch {
+          return { readOnly: false };
+        }
+      }
       const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
-      return api?.upstream?.main?.url;
+      return { name: api?.name, endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
     },
 
     /**

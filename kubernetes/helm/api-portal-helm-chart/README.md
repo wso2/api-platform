@@ -287,6 +287,9 @@ list for each component is in that component's README and `values.yaml`:
   vs OIDC login, authorization and page-role gating, organization, artifact types, uploads,
   the "Try It" console, TLS, persistence, HPA.
 
+On OpenShift, each component creates its own Route when `<component>.openshift.enabled=true`
+(`platform-api.openshift.*` and `api-portal-ui.openshift.*`).
+
 Common umbrella-level settings:
 
 | Key | Description |

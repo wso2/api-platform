@@ -69,10 +69,13 @@ var (
 	KindMCPServer  = Kind{Name: "mcp-server", Order: 55}
 	// An Agent proxy can hold its upstream credential as a {{ secret "handle" }}
 	// placeholder, so it deletes before KindSecret.
-	KindAgentProxy  = Kind{Name: "agent-proxy", Order: 56}
-	KindPolicy      = Kind{Name: "policy", Order: 60}
-	KindSharedScope = Kind{Name: "shared-scope", Order: 70}
-	KindCertificate = Kind{Name: "certificate", Order: 80}
+	KindAgentProxy = Kind{Name: "agent-proxy", Order: 56}
+	// A gateway subscription plan is referenced by its subscriptions and, by name, by the APIs
+	// that enable it, so it deletes after both.
+	KindSubscriptionPlan = Kind{Name: "subscription-plan", Order: 57}
+	KindPolicy           = Kind{Name: "policy", Order: 60}
+	KindSharedScope      = Kind{Name: "shared-scope", Order: 70}
+	KindCertificate      = Kind{Name: "certificate", Order: 80}
 	// LLMProxy and LLMProvider both delete before Secret: either can hold a credential as a
 	// {{ secret "handle" }} placeholder, and platform-api refuses to delete a secret still
 	// referenced by one (409 SECRET_IN_USE). LLMProxy also deletes before LLMProvider, since

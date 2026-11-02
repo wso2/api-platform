@@ -1,0 +1,77 @@
+{{- $route := .Values.openshift.routes.managementApi -}}
+{{- if and .Values.openshift.enabled $route.enabled .Values.gateway.controller.deployment.enabled }}
+{{- $tls := default (dict) $route.tls -}}
+{{- $termination := default "edge" $tls.termination -}}
+{{- $serverTls := dig "server" "tls" "enabled" false .Values.gateway.config.controller -}}
+{{- if and (not $serverTls) (ne $termination "edge") -}}
+{{- fail (printf "openshift.routes.managementApi: the management API serves plain HTTP, so tls.termination must be edge (got %q). Enable gateway.config.controller.server.tls to use passthrough or reencrypt." $termination) -}}
+{{- end }}
+{{- if and $serverTls (not (has $termination (list "passthrough" "reencrypt"))) -}}
+{{- fail (printf "openshift.routes.managementApi: the management API serves HTTPS (gateway.config.controller.server.tls.enabled=true), so tls.termination must be passthrough or reencrypt (got %q)" $termination) -}}
+{{- end }}
+{{- /* The chart's self-signed Issuer mints a certificate the router cannot trust, and its CA only exists
+       after install, so reencrypt cannot work with it. Other sources (a real issuer, or a Secret from
+       the OpenShift service CA) may already be trusted by the router without destinationCACertificate. */}}
+{{- $restApiTls := .Values.gateway.controller.restApiTls -}}
+{{- if and $serverTls (eq $termination "reencrypt") (not $tls.destinationCACertificate) (eq $restApiTls.certificateProvider "cert-manager") (not $restApiTls.certManager.issuerRef.name) -}}
+{{- fail "openshift.routes.managementApi: reencrypt cannot verify the controller certificate issued by the chart's self-signed Issuer. Set gateway.controller.restApiTls.certManager.issuerRef to a real issuer (and destinationCACertificate if the router does not already trust it), use a Secret signed by the OpenShift service CA, or use passthrough." -}}
+{{- end }}
+{{- /* The Route publishes the management API outside the cluster, so refuse it while the API would
+       accept the chart's default password, or every request (no basic auth users and no IDP). */}}
+{{- $auth := default (dict) .Values.gateway.config.controller.auth -}}
+{{- $basic := default (dict) $auth.basic -}}
+{{- $basicUsers := list -}}
+{{- if $basic.enabled -}}
+{{- $basicUsers = default (list) $basic.users -}}
+{{- end -}}
+{{- if not (or $basicUsers (dig "idp" "enabled" false $auth)) -}}
+{{- fail "openshift.routes.managementApi: the management API would accept every request, because basic auth has no users and IDP auth is off. Configure gateway.config.controller.auth before enabling this Route." -}}
+{{- end -}}
+{{- range $user := $basicUsers -}}
+{{- if and (not $user.password_hashed) (eq (toString $user.password) "admin") -}}
+{{- fail (printf "openshift.routes.managementApi: basic auth user %q still has the chart's default password. Set a new one before enabling this Route, preferably a bcrypt hash with password_hashed: true, or a password read from a Secret through a file or env token." (toString $user.username)) -}}
+{{- end -}}
+{{- end }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-management-api
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "controller" $route.labels) | nindent 4 }}
+  {{- with (include "gateway-operator.annotations" (list . $route.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $route.hostname }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "gateway-operator.fullname" . }}-controller
+    weight: 100
+  port:
+    targetPort: {{ if $serverTls }}rest-tls{{ else }}rest{{ end }}
+  tls:
+    termination: {{ $termination }}
+    {{- with $tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ . }}
+    {{- end }}
+    {{- if ne $termination "passthrough" }}
+    {{- with $tls.certificate }}
+    certificate: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.key }}
+    key: {{ . | toJson }}
+    {{- end }}
+    {{- with $tls.caCertificate }}
+    caCertificate: {{ . | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- if eq $termination "reencrypt" }}
+    {{- with $tls.destinationCACertificate }}
+    destinationCACertificate: {{ . | toJson }}
+    {{- end }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}

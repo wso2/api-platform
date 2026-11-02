@@ -19,8 +19,10 @@
 package shared
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"os"
 	"path/filepath"
@@ -121,6 +123,54 @@ func TestGatewayListenerTLSIsOneCertificateValidForLocalhost(t *testing.T) {
 	require.Error(t, err)
 }
 
+// The portal serves its certificate and the steps trust it, so the two must be one certificate,
+// valid for the name containers reach the portal by and distinct from the control plane's.
+func TestAPIPortalTLSIsItsOwnCertificateValidForThePortalHost(t *testing.T) {
+	pair := APIPortalTLS()
+
+	require.Same(t, pair, APIPortalTLS())
+	_, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+	require.NoError(t, err, "the certificate and key must belong together")
+	require.NotEqual(t, ControlPlaneCrypto()["certs/cert.pem"], pair.CertPEM,
+		"the portal must not borrow the control plane's certificate")
+
+	block, _ := pem.Decode(pair.CertPEM)
+	require.NotNil(t, block)
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	roots := x509.NewCertPool()
+	roots.AddCert(certificate)
+	for _, name := range []string{APIPortalHost, "localhost"} {
+		_, err := certificate.Verify(x509.VerifyOptions{DNSName: name, Roots: roots})
+		require.NoError(t, err, name)
+	}
+	_, err = certificate.Verify(x509.VerifyOptions{DNSName: "platform-api", Roots: roots})
+	require.Error(t, err)
+}
+
+func TestAPIPortalSharedKeyIsGeneratedOnceAndItsHashMatches(t *testing.T) {
+	key := APIPortalSharedKey()
+
+	require.Regexp(t, "^[0-9a-f]{64}$", key)
+	require.Equal(t, key, APIPortalSharedKey())
+	sum := sha256.Sum256([]byte(key))
+	require.Equal(t, hex.EncodeToString(sum[:]), APIPortalSharedKeyHash())
+	require.NotEqual(t, key, APIPortalSharedKeyHash())
+}
+
+func TestAPIPortalClientTLSTrustsOnlyThePortalCertificate(t *testing.T) {
+	config := APIPortalClientTLS()
+	require.Equal(t, APIPortalHost, config.ServerName)
+	require.True(t, config.RootCAs.Equal(portalOnlyPool(t)), "the pool must hold the portal certificate and nothing else")
+}
+
+func portalOnlyPool(t *testing.T) *x509.CertPool {
+	t.Helper()
+	pool := x509.NewCertPool()
+	require.True(t, pool.AppendCertsFromPEM(APIPortalTLS().CertPEM))
+	return pool
+}
+
 func TestGatewayEncryptionKeyIsA32ByteKeyAndEachCallGetsACopy(t *testing.T) {
 	key := GatewayEncryptionKey()
 
@@ -128,4 +178,18 @@ func TestGatewayEncryptionKeyIsA32ByteKeyAndEachCallGetsACopy(t *testing.T) {
 	require.NotEqual(t, make([]byte, 32), key)
 	key[0] ^= 0xff
 	require.NotEqual(t, key, GatewayEncryptionKey(), "mutating a returned key must not change the next one")
+}
+
+func TestAPIPortalCertificateCoversEveryPortalInstance(t *testing.T) {
+	block, _ := pem.Decode(APIPortalTLS().CertPEM)
+	require.NotNil(t, block)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+
+	for _, host := range []string{
+		APIPortalHost, APIPortalMultiOrganizationHost, APIPortalOtherOrgHost, "localhost",
+	} {
+		require.NoError(t, cert.VerifyHostname(host), host)
+	}
+	require.Error(t, cert.VerifyHostname("some-other-host"))
 }

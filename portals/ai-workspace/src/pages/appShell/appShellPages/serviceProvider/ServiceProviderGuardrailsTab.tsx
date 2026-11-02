@@ -80,6 +80,7 @@ import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import {
   DisabledActionTooltip,
 } from '../../../../utils/readOnlyArtifacts';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 type ResourceItem = {
   method: string;
@@ -227,7 +228,10 @@ export default function ServiceProviderGuardrailsTab() {
   // because the caller lacks the update scope; both disable the same controls.
   const { hasPermission } = useAppAuth();
   const canEditProvider = hasPermission(SCOPES.LLM_PROVIDER_UPDATE);
-  const isReadOnlyProvider = Boolean(provider?.readOnly) || !canEditProvider;
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProvider = useOrgReadOnly() || Boolean(provider?.readOnly) || !canEditProvider;
   const lockedActionTooltip = canEditProvider ? undefined : NO_PERMISSION_TOOLTIP;
   const {
     guardrails: availableGuardrails = [],

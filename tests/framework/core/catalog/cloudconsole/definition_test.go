@@ -30,7 +30,7 @@ func TestCloudConsoleDefinition(t *testing.T) {
 	require.True(t, definition.IsExternal())
 	require.False(t, definition.IsCompose())
 	require.Empty(t, definition.Image.Ref)
-	require.Equal(t, []string{EndpointAPIPBML}, definition.ExternalEndpointNames())
+	require.Equal(t, []string{EndpointAPIPPlatformAPI}, definition.ExternalEndpointNames())
 }
 
 func TestLoadEnvironmentConfig(t *testing.T) {
@@ -84,8 +84,8 @@ func TestResolveEndpoints(t *testing.T) {
 	endpoints, err := resolveEndpoints(root, map[string]string{EnvironmentParameter: "sample"})
 	require.NoError(t, err)
 	require.Equal(t,
-		"https://sample-wso2cloud.gateway.example.test/apip-bml-apip-bml-endpoint/api/v0.9",
-		endpoints[EndpointAPIPBML])
+		"https://sample-wso2cloud.gateway.example.test/apip-platform-api-apip-platform-api-endpoint/api/v0.9",
+		endpoints[EndpointAPIPPlatformAPI])
 }
 
 func TestResolveEndpointsRejectsMissingInputs(t *testing.T) {

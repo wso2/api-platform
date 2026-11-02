@@ -40,6 +40,9 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { buildOrgPath } from '../../../../utils/projectRouting';
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from '../../../../Components/common/ReadOnlyTooltip';
 import type {
   ProviderTemplate,
   UpdateProviderTemplateRequest,
@@ -54,6 +57,9 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
   const { currentOrganization } = useAppShell();
   const { updateTemplate } = useProviderTemplates();
   const showSnackbar = useAIWorkspaceSnackbar();
+  // A read-only organization may not update anything; the control plane refuses
+  // the update, so the form must not offer to send it.
+  const isOrgReadOnly = useOrgReadOnly();
 
   const overviewPath = `${buildOrgPath(
     currentOrganization,
@@ -180,24 +186,26 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
                 defaultMessage={'Cancel'}
               />
             </Button>
-            <Button
-              variant="contained"
-              type="submit"
-              disabled={isSubmitting || !isFormValid}
-              data-cyid="edit-provider-template-submit"
-            >
-              {isSubmitting ? (
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.EditProviderTemplate.saving"
-                  defaultMessage={'Updating...'}
-                />
-              ) : (
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.EditProviderTemplate.save"
-                  defaultMessage={'Update'}
-                />
-              )}
-            </Button>
+            <ReadOnlyTooltip>
+              <Button
+                variant="contained"
+                type="submit"
+                disabled={isSubmitting || isOrgReadOnly || !isFormValid}
+                data-cyid="edit-provider-template-submit"
+              >
+                {isSubmitting ? (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.EditProviderTemplate.saving"
+                    defaultMessage={'Updating...'}
+                  />
+                ) : (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.EditProviderTemplate.save"
+                    defaultMessage={'Update'}
+                  />
+                )}
+              </Button>
+            </ReadOnlyTooltip>
           </Box>
         </Box>
       </Box>

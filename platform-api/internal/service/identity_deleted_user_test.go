@@ -417,3 +417,38 @@ func TestAPIService_UpdateAPI_PreservesCreatedByAcrossDifferentActor(t *testing.
 		t.Fatalf("expected a subsequent GET to also resolve createdBy to sub-creator, got %v", reGet.CreatedBy)
 	}
 }
+
+// DisplayIdentity is what a plugin uses to show an audit field, so it must give the same
+// answer ResolveIdentityField does: the mapped identity, the deleted-user marker once the
+// mapping is gone, and nothing for a field that never recorded a user.
+func TestIdentityService_DisplayIdentity(t *testing.T) {
+	db, identity, cleanup := setupIdentityTestDB(t)
+	t.Cleanup(cleanup)
+
+	userUUID, err := identity.ToInternalUUID("sub-display")
+	if err != nil {
+		t.Fatalf("ToInternalUUID failed: %v", err)
+	}
+	shown, err := identity.DisplayIdentity(userUUID)
+	if err != nil {
+		t.Fatalf("DisplayIdentity failed: %v", err)
+	}
+	field := &userUUID
+	if err := identity.ResolveIdentityField(&field); err != nil {
+		t.Fatalf("ResolveIdentityField failed: %v", err)
+	}
+	if shown != "sub-display" || shown != *field {
+		t.Fatalf("DisplayIdentity = %q, ResolveIdentityField = %q, want both %q", shown, *field, "sub-display")
+	}
+
+	if _, err := db.Exec(`DELETE FROM user_idp_references WHERE idp_id = 'sub-display'`); err != nil {
+		t.Fatalf("failed to delete user_idp_references row: %v", err)
+	}
+	if shown, err = identity.DisplayIdentity(userUUID); err != nil || shown != constants.DeletedUser {
+		t.Fatalf("DisplayIdentity after the mapping is gone = %q, %v; want %q", shown, err, constants.DeletedUser)
+	}
+
+	if shown, err = identity.DisplayIdentity(""); err != nil || shown != "" {
+		t.Fatalf("DisplayIdentity(\"\") = %q, %v; want an empty result", shown, err)
+	}
+}

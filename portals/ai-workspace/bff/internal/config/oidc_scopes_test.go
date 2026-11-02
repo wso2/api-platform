@@ -106,6 +106,7 @@ var excludedScopeResources = []string{
 	"ap:rest_api:",
 	"ap:subscription:",
 	"ap:subscription_plan:",
+	"ap:meter:",
 	"ap:websub_api:",
 	"ap:webbroker_api:",
 	// Publishing a REST API to a portal, unlike the type-agnostic draft/publication

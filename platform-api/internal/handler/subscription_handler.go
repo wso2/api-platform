@@ -193,9 +193,22 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to resolve subscription creator identities in org %s", orgId))
 	}
+	subUUIDs := make([]string, 0, len(list))
+	for _, sub := range list {
+		subUUIDs = append(subUUIDs, sub.UUID)
+	}
+	billingMap, err := h.subscriptionService.GetBillingMany(subUUIDs, orgId)
+	if err != nil {
+		h.slogger.Warn("Failed to read subscription billing for list", "organizationId", orgId, "error", err)
+		billingMap = nil
+	}
 	items := make([]map[string]any, 0, len(list))
 	for _, sub := range list {
-		items = append(items, h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap, createdByMap))
+		item := h.toSubscriptionResponseWithMaps(sub, orgId, artifactMetaMap, planNameMap, createdByMap)
+		if b := billingMap[sub.UUID]; b != nil {
+			item["billing"] = billingResponse(b)
+		}
+		items = append(items, item)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"list":  items,
@@ -370,6 +383,7 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	if sub.SubscriptionToken != "" {
 		resp["subscriptionToken"] = sub.SubscriptionToken
 	}
+	h.addBilling(resp, sub, orgId)
 	return resp, nil
 }
 
@@ -414,4 +428,26 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 		resp["subscriptionToken"] = sub.SubscriptionToken
 	}
 	return resp
+}
+
+// billingResponse is the read-only `billing` of a paid subscription.
+func billingResponse(b *model.SubscriptionBilling) map[string]any {
+	return map[string]any{
+		"status":         b.Status,
+		"customerId":     b.CustomerID,
+		"subscriptionId": b.SubscriptionID,
+	}
+}
+
+// addBilling adds `billing` to a subscription response when the subscription is paid. A read
+// failure leaves it out rather than failing the response.
+func (h *SubscriptionHandler) addBilling(resp map[string]any, sub *model.Subscription, orgID string) {
+	billing, err := h.subscriptionService.GetBillingMany([]string{sub.UUID}, orgID)
+	if err != nil {
+		h.slogger.Warn("Failed to read subscription billing", "subscriptionId", sub.UUID, "error", err)
+		return
+	}
+	if b := billing[sub.UUID]; b != nil {
+		resp["billing"] = billingResponse(b)
+	}
 }

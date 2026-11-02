@@ -146,6 +146,9 @@ type PlatformGatewayWiring struct {
 	// PostgreSQL database and alone feeds the runtime over xDS, so every change reaches the
 	// runtime through the event path between the controllers.
 	Controllers int `yaml:"controllers"`
+	// SigningKeys gives the runtime the fixed integration-test signing keys at
+	// /secrets/gateway-runtime/signing. The block's overlay configures them under [signing].
+	SigningKeys bool `yaml:"signingKeys"`
 }
 
 // gatewayGeneratedFiles returns the key material every gateway stack mounts. It is generated
@@ -159,5 +162,8 @@ func gatewayGeneratedFiles() map[string][]byte {
 		"listener-certs/default-listener.key":  listener.PrivateKeyPEM,
 		"certificates/default-listener.crt":    listener.CertPEM,
 		"aesgcm-keys/default-aesgcm256-v1.bin": shared.GatewayEncryptionKey(),
+		// The testbench Jev service's certificate, which the runtime trusts through
+		// SSL_CERT_DIR so a Jev policy can call the mock over HTTPS.
+		"testbench-ca/jev.pem": shared.JevTLS().CertPEM,
 	}
 }

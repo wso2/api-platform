@@ -133,6 +133,12 @@ func (s *Steps) registerMultiOrganizationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the seeded API Portal rows "([^"]*)" should stay untouched$`, s.assertSeededRowsUntouched)
 }
 
+// newPortalClient returns the process's one client for the API Portal. It verifies the portal's
+// certificate by the host name it is issued for, whatever address the test process dials.
+var newPortalClient = sync.OnceValue(func() *httpx.Client {
+	return httpx.NewClient(httpx.Options{Timeout: 30 * time.Second, TLSClientConfig: shared.APIPortalClientTLS()})
+})
+
 // newIdentityProviderClient returns a client that verifies the testbench identity provider's
 // certificate by the host name it is issued for, whatever address the test process dials.
 func newIdentityProviderClient() (*httpx.Client, error) {

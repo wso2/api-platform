@@ -571,6 +571,40 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	return count > 0, nil
 }
 
+// GetAPIVersionsByDisplayName returns every REST API sharing the given display name in an
+// organization, ordered by version.
+func (r *APIRepo) GetAPIVersionsByDisplayName(orgUUID, displayName string) ([]*model.API, error) {
+	query := `
+		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
+			project_uuid, organization_uuid, lifecycle_status, configuration, origin, data_version, created_at, updated_at
+		FROM rest_apis
+		WHERE organization_uuid = ? AND display_name = ?`
+	args := []interface{}{orgUUID, displayName}
+
+	// Fixed sort columns - no caller input reaches the identifier position.
+	query += " ORDER BY version ASC, handle ASC"
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		apiModel, err := r.scanAPI(rows)
+		if err != nil {
+			return nil, err
+		}
+		apis = append(apis, apiModel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return apis, nil
+}
+
 // CreateAPIAssociation creates a gateway-API association in artifact_gateway_mappings.
 // Delegates to the kind-agnostic createArtifactGatewayAssociation helper — see that
 // function's doc comment (this method exists only to satisfy APIRepository).
@@ -683,6 +717,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 			g.properties,
 			g.is_critical,
 			g.gateway_functionality_type as functionality_type,
+			g.version,
 			g.is_active,
 			g.created_at,
 			g.updated_at,
@@ -714,6 +749,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 		var deployedAt sql.NullTime
 		var deploymentId, endpointURL sql.NullString
 		var id, organizationID, name, handle, description, functionalityType string
+		var version sql.NullString
 		var createdAt, updatedAt, associatedAt, associationUpdatedAt time.Time
 		var isDeployed bool
 
@@ -726,6 +762,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 			&propertiesBytes,
 			&isCritical,
 			&functionalityType,
+			&version,
 			&isActive,
 			&createdAt,
 			&updatedAt,
@@ -750,6 +787,7 @@ func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID strin
 				Description:          description,
 				IsCritical:           isCritical != 0,
 				FunctionalityType:    functionalityType,
+				Version:              version.String,
 				IsActive:             isActive != 0,
 				CreatedAt:            createdAt,
 				UpdatedAt:            updatedAt,

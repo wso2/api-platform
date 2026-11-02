@@ -21,10 +21,12 @@
  * Tag: MCP Server Content
  */
 const mcpServerService = require('../../../services/mcpServerService');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
-    createMcpServerContent: mcpServerService.createMcpServerContent,
-    replaceMcpServerContent: mcpServerService.replaceMcpServerContent,
+    createMcpServerContent: compose(requireCsrfForMutatingApi, mcpServerService.createMcpServerContent),
+    replaceMcpServerContent: compose(requireCsrfForMutatingApi, mcpServerService.replaceMcpServerContent),
     getMcpServerContentFile: mcpServerService.getMcpServerContentFile,
-    deleteMcpServerContentFile: mcpServerService.deleteMcpServerContentFile,
+    deleteMcpServerContentFile: compose(requireCsrfForMutatingApi, mcpServerService.deleteMcpServerContentFile),
 };

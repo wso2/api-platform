@@ -162,6 +162,17 @@ export const aPublicationSummary = (
   ...overrides,
 });
 
+export type PublicationSelectionFixture = Schema<'PublicationSelection'>;
+
+/** Selected plans or documents that still exist and are unchanged; a bare id is named after itself. */
+export const publicationSelections = (
+  ...items: (string | Pick<PublicationSelectionFixture, 'displayName' | 'id'>)[]
+): PublicationSelectionFixture[] =>
+  items.map((item) => {
+    const { displayName, id } = typeof item === 'string' ? { displayName: item, id: item } : item;
+    return { displayName, id, sourceStatus: 'UNCHANGED' };
+  });
+
 export type PublicationDraftDetailsFixture = Schema<'PublicationDraftDetails'>;
 
 export const aPublicationDraftDetails = (
@@ -192,6 +203,8 @@ export type ApplicationFixture = Schema<'Application'>;
 export type SubscriptionFixture = Schema<'Subscription'>;
 export type SubscriptionPlanFixture = Schema<'SubscriptionPlan'>;
 export type SecretFixture = Schema<'SecretSummary'>;
+export type MeterFixture = Schema<'Meter'>;
+export type PlanPricingFixture = Schema<'SubscriptionPlanPricing'>;
 export type CustomPolicyFixture = Schema<'CustomPolicyResponse'>;
 
 export const anApplication = (
@@ -222,6 +235,38 @@ export const aSubscriptionPlan = (
   id: 'gold',
   displayName: 'Gold',
   status: 'ACTIVE',
+  ...overrides,
+});
+
+export const aMeter = (overrides: Partial<MeterFixture> = {}): MeterFixture => ({
+  id: 'successful-calls',
+  displayName: 'Successful calls',
+  type: 'REQUEST_COUNT',
+  typeKey: null,
+  filterFields: [
+    { field: 'Status code', eventKey: 'response.status' },
+    { field: 'HTTP method', eventKey: 'request.verb' },
+    { field: 'Resource', eventKey: 'request.route' },
+  ],
+  ...overrides,
+});
+
+export const aPlanPricing = (overrides: Partial<PlanPricingFixture> = {}): PlanPricingFixture => ({
+  subscriptionPlanId: 'gold',
+  pricingType: 'USAGE_BASED',
+  currency: 'USD',
+  billingPeriod: 'MONTH',
+  flatAmount: null,
+  prices: [
+    {
+      meterId: 'successful-calls',
+      filters: [{ field: 'Status code', operator: 'IN', values: ['200'] }],
+      pricingModel: 'PER_UNIT',
+      unitAmount: '0.01',
+      unitQuantity: 1,
+      tiers: null,
+    },
+  ],
   ...overrides,
 });
 

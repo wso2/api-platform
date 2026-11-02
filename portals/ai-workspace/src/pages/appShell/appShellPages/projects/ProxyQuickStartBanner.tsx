@@ -43,7 +43,7 @@ import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
 import * as proxyApis from '../../../../apis/proxyApis';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import type { ProjectBase, Proxy } from '../../../../utils/types';
 import {
@@ -124,7 +124,7 @@ export default function ProxyQuickStartBanner() {
     userName,
     userEmail,
   } = useAppShell();
-  const { hasPermission } = useAppAuth();
+  const { hasPermission } = useAppAuthScopes();
   const organizationId = currentOrganization?.uuid ?? '';
   const isDeveloper = !hasPermission(SCOPES.LLM_PROVIDER_MANAGE);
   const welcomeName =

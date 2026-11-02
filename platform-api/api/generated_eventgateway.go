@@ -221,7 +221,7 @@ type WebBrokerAPI struct {
 	// Example: CREATED
 	LifeCycleStatus *WebBrokerAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 
-	// ProjectId UUID of the project this API belongs to
+	// ProjectId Handle of the project this API belongs to (the project UUID is also accepted)
 	//
 	// Example: 550e8400-e29b-41d4-a716-446655440000
 	ProjectId string `json:"projectId" yaml:"projectId"`
@@ -405,7 +405,7 @@ type WebSubAPI struct {
 	// Example: CREATED
 	LifeCycleStatus *WebSubAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 
-	// ProjectId UUID of the project this API belongs to
+	// ProjectId Handle of the project this API belongs to (the project UUID is also accepted)
 	//
 	// Example: 550e8400-e29b-41d4-a716-446655440000
 	ProjectId string `json:"projectId" yaml:"projectId"`

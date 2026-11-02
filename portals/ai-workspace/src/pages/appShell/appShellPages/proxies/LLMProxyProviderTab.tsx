@@ -64,6 +64,7 @@ import TransformerDrawer from "../../../../Components/Transformer/TransformerDra
 import ProviderSettingsDrawer from "../../../../Components/Transformer/ProviderSettingsDrawer";
 import { useAppAuth } from "../../../../contexts/AppAuthContext";
 import { SCOPES } from "../../../../auth/permissions";
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 /**
  * Providers tab — the list of providers this proxy routes to, and what
@@ -110,7 +111,10 @@ export default function LLMProxyProviderTab({
     reload: reloadTransformerPolicies,
   } = useTransformerPolicies();
 
-  const isReadOnlyProxy = Boolean(proxy?.readOnly);
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProxy = useOrgReadOnly() || Boolean(proxy?.readOnly);
   const providerOptions = providersResponse.list;
   // Every provider the proxy is attached to, in the order it holds them. The
   // single legacy field is deliberately not read: it names only the primary, so

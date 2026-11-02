@@ -1,0 +1,109 @@
+/* The Invoices page; its layout, filters and tables come from usage-page.css and
+   subscriptions-page.css. */
+
+/* Sections, notices and buttons set their own display, which would show them while hidden. */
+.billing-page [hidden] {
+  display: none;
+}
+
+.billing-more {
+  display: flex;
+  justify-content: center;
+}
+
+/* The invoices shown: dimmed under a spinner while another period is read, until replaced. */
+.billing-results {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  transition: opacity 0.15s ease;
+}
+
+.billing-results.is-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.billing-results.is-loading::after {
+  content: "";
+  position: absolute;
+  top: 3rem;
+  left: 50%;
+  width: 2rem;
+  height: 2rem;
+  margin-left: -1rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: usage-spin 0.7s linear infinite;
+}
+
+/* Reading the next page: a small spinner in the Load more button. */
+.billing-manage-btn.is-loading::before {
+  content: "";
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: usage-spin 0.7s linear infinite;
+}
+
+.billing-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+/* The period stays on the right, with or without the button. */
+.billing-period {
+  margin-left: auto;
+}
+
+.billing-toolbar .billing-manage-btn {
+  min-height: 2.5rem;
+}
+
+.billing-manage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.billing-manage-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.billing-manage-btn[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.billing-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.billing-links {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.billing-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--danger);
+}

@@ -50,13 +50,13 @@ func newTestHTTPPortalPublisher(t *testing.T, sharedKey string) *HTTPPortalPubli
 	return newTestHTTPPortalPublisherWithPolicies(t, sharedKey, cfg, cfg)
 }
 
-func newTestHTTPPortalPublisherWithPolicies(t *testing.T, sharedKey string, light, push client.RetryConfig) *HTTPPortalPublisher {
+func newTestHTTPPortalPublisherWithPolicies(t *testing.T, sharedKey string, light, content client.RetryConfig) *HTTPPortalPublisher {
 	t.Helper()
 	lightClient, err := client.NewRetryableHTTPClient(light)
 	if err != nil {
 		t.Fatalf("NewRetryableHTTPClient: %v", err)
 	}
-	pushClient, err := client.NewRetryableHTTPClient(push)
+	contentClient, err := client.NewRetryableHTTPClient(content)
 	if err != nil {
 		t.Fatalf("NewRetryableHTTPClient: %v", err)
 	}
@@ -71,7 +71,7 @@ func newTestHTTPPortalPublisherWithPolicies(t *testing.T, sharedKey string, ligh
 		InternalAuthKey: encryptedKey,
 	}}
 	authRegistry := NewAPIPortalAuthRegistry(portalRepo, testVault)
-	return &HTTPPortalPublisher{client: lightClient, pushClient: pushClient, authRegistry: authRegistry, plansListingTimeout: time.Minute}
+	return &HTTPPortalPublisher{client: lightClient, listingClient: lightClient, contentClient: contentClient, authRegistry: authRegistry, plansListingTimeout: time.Minute}
 }
 
 // assertMultipartParts drains r's multipart body against boundary, returning
@@ -242,6 +242,48 @@ func TestHTTPPortalPublisher_Unpublish_ConflictReasonFromKnownCode(t *testing.T)
 	}
 	if conflict.Reason != "active subscriptions are removed" {
 		t.Fatalf("want the curated ERR_SUB_EXIST reason, got %q", conflict.Reason)
+	}
+}
+
+// TestHTTPPortalPublisher_Publish_ConflictReasonForRefusedPaidPlan verifies that a publish the
+// API Portal refuses because the billing provider would not create one of the API's paid plans
+// (ERR_BILLING_CATALOG) resolves to its pre-approved reason, not the provider's raw text.
+func TestHTTPPortalPublisher_Publish_ConflictReasonForRefusedPaidPlan(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"status":"error","code":"CONFLICT","message":"ERR_BILLING_CATALOG",` +
+			`"errors":[{"message":"Moesif could not create the paid plan \"Gold\" for Weather API v1.0: Client error."}]}`))
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	portal := &model.APIPortal{URL: srv.URL}
+
+	err := p.Publish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", &model.Publication{}, nil)
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("want *PortalConflictError, got %v", err)
+	}
+	if conflict.Reason != "its paid plans can be created with the billing provider" {
+		t.Fatalf("want the curated ERR_BILLING_CATALOG reason, got %q", conflict.Reason)
+	}
+}
+
+// A publish that takes a plan off the API while it has subscriptions there (ERR_PLAN_SUB_EXIST)
+// says so, without the portal's own text.
+func TestHTTPPortalPublisher_Publish_ConflictReasonForSubscribedPlan(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"status":"error","code":"CONFLICT","message":"ERR_PLAN_SUB_EXIST",` +
+			`"errors":[{"message":"The plan Gold has 1 subscription to this API. It can be removed from the API once that subscription has ended."}]}`))
+	}))
+	defer srv.Close()
+
+	err := newTestHTTPPortalPublisher(t, "test-shared-key").Publish(context.Background(), &model.APIPortal{URL: srv.URL},
+		constants.PublicationAPITypeRestAPI, "my-api", &model.Publication{}, nil)
+	var conflict *PortalConflictError
+	if !errors.As(err, &conflict) || conflict.Reason != "the subscriptions to the plans being removed from the API have ended" {
+		t.Fatalf("want the ERR_PLAN_SUB_EXIST reason, got %v", err)
 	}
 }
 
@@ -848,7 +890,7 @@ func TestPortalURLsIncludeTheRESTBase(t *testing.T) {
 func TestHTTPPortalPublisher_AttemptLimitsByCall(t *testing.T) {
 	const portalDelay = 150 * time.Millisecond
 	light := client.RetryConfig{AttemptTimeout: portalDelay / 3}
-	push := client.RetryConfig{AttemptTimeout: portalDelay * 10}
+	content := client.RetryConfig{AttemptTimeout: portalDelay * 10}
 
 	slowPortal := func(status int) *httptest.Server {
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -861,30 +903,13 @@ func TestHTTPPortalPublisher_AttemptLimitsByCall(t *testing.T) {
 	}
 	pub := &model.Publication{DisplayName: "X", Version: "1.0", AgentVisibility: "VISIBLE"}
 
-	t.Run("push calls use the push limit", func(t *testing.T) {
-		srv := slowPortal(http.StatusOK)
+	t.Run("content push uses the content limit", func(t *testing.T) {
+		srv := slowPortal(http.StatusCreated)
 		defer srv.Close()
-		p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, push)
+		p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, content)
 
-		if err := p.Deprecate(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api", pub); err != nil {
-			t.Fatalf("Deprecate: %v", err)
-		}
-	})
-
-	t.Run("publish push uses the push limit", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodGet {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			time.Sleep(portalDelay)
-			w.WriteHeader(http.StatusCreated)
-		}))
-		defer srv.Close()
-		p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, push)
-
-		if err := p.Publish(context.Background(), &model.APIPortal{URL: srv.URL}, constants.PublicationAPITypeRestAPI, "my-api", pub, nil); err != nil {
-			t.Fatalf("Publish: %v", err)
+		if err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, "my-api", &PortalContent{Archive: []byte("zip")}); err != nil {
+			t.Fatalf("PublishContent: %v", err)
 		}
 	})
 
@@ -895,18 +920,35 @@ func TestHTTPPortalPublisher_AttemptLimitsByCall(t *testing.T) {
 		{"existence check", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
 			return p.Publish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil)
 		}},
+		{"listing push", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
+			return p.Publish(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil)
+		}},
+		{"deprecate", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
+			return p.Deprecate(context.Background(), portal, constants.PublicationAPITypeRestAPI, "my-api", pub)
+		}},
 		{"unpublish", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
 			return p.Unpublish(context.Background(), portal, "my-api")
 		}},
 		{"plan listing", func(p *HTTPPortalPublisher, portal *model.APIPortal) error {
-			return p.CreateMissingPlans(context.Background(), portal, []*model.SubscriptionPlan{{Handle: "gold"}})
+			return syncPlansWithoutMeters(context.Background(), p, portal, []*model.SubscriptionPlan{{Handle: "gold"}}, nil)
 		}},
 	}
 	for _, tc := range lightCalls {
 		t.Run(tc.name+" uses the request limit", func(t *testing.T) {
-			srv := slowPortal(http.StatusNotFound)
+			// Answers the existence check at once so the listing push is the slow call.
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.name == "listing push" && r.Method == http.MethodGet {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				select {
+				case <-time.After(portalDelay):
+					w.WriteHeader(http.StatusNotFound)
+				case <-r.Context().Done():
+				}
+			}))
 			defer srv.Close()
-			p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, push)
+			p := newTestHTTPPortalPublisherWithPolicies(t, "key", light, content)
 
 			err := tc.call(p, &model.APIPortal{URL: srv.URL})
 			if !errors.Is(err, context.DeadlineExceeded) {
@@ -938,5 +980,117 @@ func TestHTTPPortalPublisher_StopsAtTheContextDeadline(t *testing.T) {
 	}
 	if hits.Load() < 2 {
 		t.Fatalf("want the call retried within the deadline, got %d attempts", hits.Load())
+	}
+}
+
+func TestHTTPPortalPublisher_PublishContent_SendsTheArchive(t *testing.T) {
+	var gotMethod, gotPath, gotAuth, gotPartName, gotFileName string
+	var gotArchive []byte
+	var parts int
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil {
+			t.Fatalf("ParseMediaType: %v", err)
+		}
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatalf("NextPart: %v", err)
+			}
+			parts++
+			gotPartName, gotFileName = part.FormName(), part.FileName()
+			gotArchive, _ = io.ReadAll(part)
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, "my-api", &PortalContent{Archive: []byte("zip-bytes")})
+	if err != nil {
+		t.Fatalf("PublishContent: %v", err)
+	}
+	if gotMethod != http.MethodPut || gotPath != portalRESTBase+"/apis/my-api/assets" {
+		t.Fatalf("want PUT .../apis/my-api/assets, got %s %s", gotMethod, gotPath)
+	}
+	if gotAuth != "SharedKey test-shared-key" {
+		t.Fatalf("want the shared-key Authorization header, got %q", gotAuth)
+	}
+	if parts != 1 || gotPartName != "content" || gotFileName != "content.zip" || string(gotArchive) != "zip-bytes" {
+		t.Fatalf("want one content part named content.zip carrying the archive, got %d parts: %q %q %q", parts, gotPartName, gotFileName, gotArchive)
+	}
+}
+
+func TestHTTPPortalPublisher_PublishContent_ErrorMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		wantReject bool
+		wantAuth   bool
+	}{
+		{"too large", http.StatusRequestEntityTooLarge, true, false},
+		{"validation failure", http.StatusBadRequest, true, false},
+		{"listing missing", http.StatusNotFound, true, false},
+		{"rejected credential", http.StatusUnauthorized, false, true},
+		{"server error", http.StatusInternalServerError, false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+			}))
+			defer srv.Close()
+			p := newTestHTTPPortalPublisher(t, "key")
+
+			err := p.PublishContent(context.Background(), &model.APIPortal{URL: srv.URL}, "my-api", &PortalContent{Archive: []byte("zip")})
+			var conflict *PortalConflictError
+			if got := errors.As(err, &conflict); got != tc.wantReject {
+				t.Fatalf("want rejection=%v, got %v (%v)", tc.wantReject, got, err)
+			}
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if tc.wantReject && conflict.Reason != defaultPortalConflictReason {
+				t.Fatalf("want the generic reason, got %q", conflict.Reason)
+			}
+		})
+	}
+}
+
+func TestHTTPPortalPublisher_PublishContent_FailuresBeforeAResponseAreNotRejections(t *testing.T) {
+	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closed.Close()
+
+	tests := []struct {
+		name    string
+		portal  *model.APIPortal
+		setup   func(*HTTPPortalPublisher)
+		wantMsg string
+	}{
+		{"credential cannot be resolved", &model.APIPortal{URL: closed.URL}, func(p *HTTPPortalPublisher) {
+			p.authRegistry = NewAPIPortalAuthRegistry(&mockAPIPortalRepository{getErr: errors.New("db down")}, newTestVault(t))
+		}, "failed to resolve API Portal auth"},
+		{"portal URL is malformed", &model.APIPortal{URL: "http://[::1"}, nil, "failed to build portal content request"},
+		{"portal is unreachable", &model.APIPortal{URL: closed.URL}, nil, "portal content push failed"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newTestHTTPPortalPublisher(t, "key")
+			if tc.setup != nil {
+				tc.setup(p)
+			}
+
+			err := p.PublishContent(context.Background(), tc.portal, "my-api", &PortalContent{Archive: []byte("zip")})
+			var conflict *PortalConflictError
+			if err == nil || errors.As(err, &conflict) || !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("want a plain error containing %q, got %v", tc.wantMsg, err)
+			}
+		})
 	}
 }

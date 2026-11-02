@@ -140,20 +140,25 @@ func actorCredentials(who string) (actor.Credentials, error) {
 	}
 }
 
-// controlPlaneCall is one publisher-API request made through the funnel.
+// controlPlaneCall is one publisher-API request made through the funnel. headers are extra
+// request headers, their values expanded. bearer, when set, replaces the actor's login token;
+// an empty one sends no Authorization header.
 type controlPlaneCall struct {
-	method string
-	path   string
-	who    string
-	header string
-	value  string
-	body   []byte
+	method  string
+	path    string
+	who     string
+	headers map[string]string
+	bearer  *string
+	body    []byte
 }
 
 func (s *Steps) sendControlPlaneStep(
 	ctx context.Context, method, path, who, header, value string, body *godog.DocString,
 ) error {
-	call := controlPlaneCall{method: method, path: path, who: who, header: header, value: value}
+	call := controlPlaneCall{method: method, path: path, who: who}
+	if strings.TrimSpace(header) != "" {
+		call.headers = map[string]string{header: value}
+	}
 	if body != nil {
 		content, err := stepscommon.Expand(ctx, body.Content)
 		if err != nil {
@@ -187,20 +192,13 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 	if err != nil {
 		return nil, err
 	}
-	bearer, err := controlplane.ControlPlaneLogin(ctx, base, credentials.Username, credentials.Password)
+	token, err := s.callToken(ctx, base, call, credentials)
 	if err != nil {
-		return nil, fmt.Errorf("authenticating to the control plane as %q: %w", credentials.Username, err)
+		return nil, err
 	}
-	headers := map[string]string{"Authorization": "Bearer " + bearer}
-	if call.body != nil {
-		headers["Content-Type"] = "application/json"
-	}
-	if name := strings.TrimSpace(call.header); name != "" {
-		value, expandErr := stepscommon.Expand(ctx, call.value)
-		if expandErr != nil {
-			return nil, expandErr
-		}
-		headers[name] = value
+	headers, err := callHeaders(ctx, call, token)
+	if err != nil {
+		return nil, err
 	}
 	resp, err := s.funnel.Send(ctx, httpx.Request{
 		Method: method, URL: base + apiBase + path, Headers: headers, Body: call.body,
@@ -208,21 +206,54 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
-	if err := s.trackAgentProxyResource(ctx, method, call.body, resp); err != nil {
+	if err := s.trackControlPlaneResource(ctx, method, call.body, resp); err != nil {
 		return resp, err
 	}
 	return resp, nil
 }
 
-// trackAgentProxyResource registers what a successful create produced and deregisters what a
+// callToken is the bearer token a request carries: the call's own when it sets one, otherwise a
+// fresh login as the actor.
+func (s *Steps) callToken(ctx context.Context, base string, call controlPlaneCall, credentials actor.Credentials) (string, error) {
+	if call.bearer != nil {
+		return *call.bearer, nil
+	}
+	token, err := controlplane.ControlPlaneLogin(ctx, base, credentials.Username, credentials.Password)
+	if err != nil {
+		return "", fmt.Errorf("authenticating to the control plane as %q: %w", credentials.Username, err)
+	}
+	return token, nil
+}
+
+// callHeaders builds a request's headers. An empty token sends no Authorization header.
+func callHeaders(ctx context.Context, call controlPlaneCall, token string) (map[string]string, error) {
+	headers := map[string]string{}
+	if token != "" {
+		headers["Authorization"] = "Bearer " + token
+	}
+	if call.body != nil {
+		headers["Content-Type"] = "application/json"
+	}
+	for name, raw := range call.headers {
+		value, err := stepscommon.Expand(ctx, raw)
+		if err != nil {
+			return nil, err
+		}
+		headers[strings.TrimSpace(name)] = value
+	}
+	return headers, nil
+}
+
+// trackControlPlaneResource registers what a successful create produced and deregisters what a
 // successful delete removed, so cleanup follows the product's own answer rather than the
 // scenario's expectation of it.
-func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
+func (s *Steps) trackControlPlaneResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
 	switch {
 	case method == http.MethodPost && resp.StatusCode == http.StatusCreated:
-		match := agentProxyLocationPattern.FindStringSubmatch(locationPath(resp.Headers.Get("Location")))
+		location := locationPath(resp.Headers.Get("Location"))
+		match := agentProxyLocationPattern.FindStringSubmatch(location)
 		if match == nil {
-			return nil
+			return s.trackCreatedPlatformResource(ctx, location, body)
 		}
 		handle, sub, id := match[1], match[2], match[3]
 		switch sub {
@@ -246,7 +277,10 @@ func (s *Steps) trackAgentProxyResource(ctx context.Context, method string, body
 			}, s.registerAgentAPIKeyDeleter)
 		}
 	case method == http.MethodDelete && resp.StatusCode == http.StatusNoContent:
-		return deregisterDeleted(ctx, resp.URL)
+		if err := deregisterDeleted(ctx, resp.URL); err != nil {
+			return err
+		}
+		return deregisterDeletedPlatformResource(ctx, resp.URL)
 	}
 	return nil
 }

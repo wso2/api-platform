@@ -19,6 +19,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -40,14 +41,43 @@ type PortalPublisher interface {
 	// Errors follow the same contract as Publish.
 	Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error
 
-	// CreateMissingPlans creates on portal the plans it does not already have,
-	// matched by exact handle; plans it already has are left untouched. Errors
-	// follow the same contract as Publish.
-	CreateMissingPlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan) error
+	// SyncPlans makes the portal's copy of each plan in sync.Plans (matched by
+	// exact handle) match the plan here:
+	//   - A plan the portal lacks is created there with its pricing from
+	//     sync.Pricing, since the portal takes a plan's pricing only when it
+	//     creates the plan. The meters in sync.Meters that its prices charge for
+	//     and that the portal lacks are created first.
+	//   - A copy whose name or request limit differs is updated. A plan here
+	//     changes those only while nothing offers or uses it, so such a copy is
+	//     on no API.
+	//   - A plan copy priced differently, or a meter with other settings, cannot
+	//     be changed: nothing is written, and a *PortalPlanPricingConflictError
+	//     or *PortalMeterConflictError is returned.
+	//
+	// When a later write fails, what this sync created is removed again. The
+	// result names what it created, for UndoPlanSync. Other errors follow the
+	// same contract as Publish.
+	SyncPlans(ctx context.Context, portal *model.APIPortal, sync PlanSync) (PlanSyncResult, error)
+
+	// UndoPlanSync removes from the portal what a SyncPlans created: its plans,
+	// then its meters. One the portal already removed is not an error. One it
+	// refuses to remove (a plan an API offers, a meter a plan prices) is left,
+	// and the error says so.
+	UndoPlanSync(ctx context.Context, portal *model.APIPortal, created PlanSyncResult) error
+
+	// PublishContent adds the files in content to apiHandle's listing on portal, replacing
+	// any with the same path; nothing else is removed. Errors follow the same contract as
+	// Publish.
+	PublishContent(ctx context.Context, portal *model.APIPortal, apiHandle string, content *PortalContent) error
 
 	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live
 	// with only the status changed. Errors follow the same contract as Publish.
 	Deprecate(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, live *model.Publication) error
+}
+
+// PortalContent is what PublishContent pushes: a ZIP in the layout the portal reads.
+type PortalContent struct {
+	Archive []byte
 }
 
 // PortalConflictError signals that the API Portal rejected a request and will
@@ -61,3 +91,43 @@ type PortalConflictError struct {
 }
 
 func (e *PortalConflictError) Error() string { return e.Message }
+
+// PlanSync is what a publish needs the API Portal to have: the plans the listing
+// offers, the pricing of the paid ones (by plan UUID; a plan without an entry is
+// free), and the meters made here that their prices charge for (by handle).
+type PlanSync struct {
+	Plans   []*model.SubscriptionPlan
+	Pricing map[string]*model.SubscriptionPlanPricing
+	Meters  map[string]*model.Meter
+}
+
+// PlanSyncResult names the plans and meters (by handle) a SyncPlans created in
+// the API Portal, so that a publish whose listing push then fails can remove
+// them again.
+type PlanSyncResult struct {
+	Plans  []string
+	Meters []string
+}
+
+// PortalMeterConflictError signals that the API Portal already has a meter with
+// this Handle, with settings that differ from the meter a published plan charges
+// for. A meter a plan prices cannot change, so publishing the plan there needs a
+// meter with another id.
+type PortalMeterConflictError struct {
+	Handle string
+}
+
+func (e *PortalMeterConflictError) Error() string {
+	return fmt.Sprintf("the API Portal has a meter %s with different settings", e.Handle)
+}
+
+// PortalPlanPricingConflictError signals that the API Portal already has a plan
+// with this Handle, priced differently from the plan being published. The portal
+// cannot change a plan's pricing, so publishing it there needs a new handle.
+type PortalPlanPricingConflictError struct {
+	Handle string
+}
+
+func (e *PortalPlanPricingConflictError) Error() string {
+	return fmt.Sprintf("the API Portal has a plan %s with different pricing", e.Handle)
+}

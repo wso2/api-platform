@@ -21,11 +21,13 @@
  * Tag: Views
  */
 const apiMetadataService = require('../../../services/apiMetadataService');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
-    addView: apiMetadataService.addView,
+    addView: compose(requireCsrfForMutatingApi, apiMetadataService.addView),
     getView: apiMetadataService.getView,
     getAllViews: apiMetadataService.getAllViews,
-    updateView: apiMetadataService.updateView,
-    deleteView: apiMetadataService.deleteView,
+    updateView: compose(requireCsrfForMutatingApi, apiMetadataService.updateView),
+    deleteView: compose(requireCsrfForMutatingApi, apiMetadataService.deleteView),
 };

@@ -54,13 +54,17 @@ type Server struct {
 	store  session.Store
 	// stateCodec is set exactly when store is the cookie store: it seals/opens the
 	// session-state cookies that carry what used to be process-local state.
-	stateCodec   *session.CookieCodec
-	fileBased    *auth.FileBased
-	oidc         *auth.OIDC
-	proxy        *httputil.ReverseProxy
-	moesifProxy  *httputil.ReverseProxy
-	billingProxy *httputil.ReverseProxy
-	handler      http.Handler
+	stateCodec *session.CookieCodec
+	fileBased  *auth.FileBased
+	oidc       *auth.OIDC
+	proxy      *httputil.ReverseProxy
+	// moesifProxies is the analytics hop, one entry per browser-facing prefix it
+	// answers on (see AnalyticsHopPrefixes). Each prefix needs its own
+	// ReverseProxy because the prefix is what gets stripped before the path is
+	// joined onto MoesifURL. Nil/empty when moesif_url is unset.
+	moesifProxies map[string]*httputil.ReverseProxy
+	billingProxy  *httputil.ReverseProxy
+	handler       http.Handler
 
 	// exchanger is non-nil exactly when cfg.Auth.TokenExchangeEnabled().
 	exchanger *auth.Exchanger
@@ -167,7 +171,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Strip <base>/proxy/moesif so /analytics/id-token joins onto MoesifURL.
+		// Strip <base>/proxy/<hop> so /analytics/id-token joins onto MoesifURL.
 		// A deployment whose Moesif upstream publishes those routes under other
 		// names (Choreo's moesif-key API serves the viewer token at /id_token)
 		// supplies moesif_path_mappings; without it this hop forwards unchanged.
@@ -175,7 +179,13 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if mapPath := cfg.ControlPlane.MoesifPathMapper(); mapPath != nil {
 			moesifOpts = append(moesifOpts, proxy.WithPathMapper(mapPath))
 		}
-		s.moesifProxy = proxy.ReverseProxy(moesifTarget, paths.Base+paths.Proxy+"/moesif", moesifTransport, moesifOpts...)
+		// One proxy per accepted prefix: they share a target, a transport and a
+		// path mapper, and differ only in what is stripped off the front.
+		s.moesifProxies = make(map[string]*httputil.ReverseProxy, len(AnalyticsHopPrefixes))
+		for _, hop := range AnalyticsHopPrefixes {
+			s.moesifProxies[hop] = proxy.ReverseProxy(
+				moesifTarget, paths.Base+paths.Proxy+hop, moesifTransport, moesifOpts...)
+		}
 	}
 
 	if cfg.ControlPlane.BillingURL != "" {
@@ -231,6 +241,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			ctx, upstream,
 			cfg.Auth.OIDC.Issuer, cfg.Auth.OIDC.ClientID, cfg.Auth.OIDC.ClientSecret,
 			cfg.Auth.OIDC.RedirectURL, cfg.Auth.OIDC.PostLogoutRedirectURL, cfg.Auth.OIDC.Scopes,
+			cfg.Auth.OIDC.RequireHTTPS,
 			claims, cfg.Session.AbsoluteTTL, txSealer,
 		)
 		if err != nil {

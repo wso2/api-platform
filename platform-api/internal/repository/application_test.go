@@ -16,7 +16,11 @@
 
 package repository
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wso2/api-platform/platform-api/internal/model"
+)
 
 func TestGetAPIKeyByNameAndArtifactHandleResolvesKeyHandle(t *testing.T) {
 	db, cleanup := setupTestDB(t)
@@ -136,5 +140,57 @@ func TestListMappedAPIKeysReturnsKeyHandle(t *testing.T) {
 	}
 	if keys[0].Name != keyID {
 		t.Fatalf("mapped API key handle = %q, want %q", keys[0].Name, keyID)
+	}
+}
+
+// TestLifecycle_ApplicationByIDOrHandle exercises GetApplicationByIDOrHandle,
+// whose `ORDER BY CASE … FetchFirstClause(1)` query was part of the LIMIT-1 fix
+// (a single-row lookup that resolves by UUID or handle).
+func TestLifecycle_ApplicationByIDOrHandle(t *testing.T) {
+	tdb := openSchemaDB(t)
+	orgRepo := NewOrganizationRepo(tdb.db)
+	projectRepo := NewProjectRepo(tdb.db)
+	appRepo := NewApplicationRepo(tdb.db, NewArtifactTableRegistry())
+
+	org := &model.Organization{ID: id(), Handle: "ap-" + id()[:8], Name: "app org", Region: "us"}
+	if err := orgRepo.CreateOrganization(org); err != nil {
+		t.Fatalf("create org failed: %v", err)
+	}
+	projID := id()
+	projName := "p-" + projID[:6]
+	proj := &model.Project{ID: projID, Handle: projName, Name: projName, OrganizationID: org.ID}
+	if err := projectRepo.CreateProject(proj); err != nil {
+		t.Fatalf("create project failed: %v", err)
+	}
+	app := &model.Application{
+		UUID: id(), Handle: "app-" + id()[:8], ProjectUUID: proj.ID,
+		OrganizationUUID: org.ID, Name: "app", Type: "standard",
+	}
+	if err := appRepo.CreateApplication(app); err != nil {
+		t.Fatalf("create application failed: %v", err)
+	}
+
+	byUUID, err := appRepo.GetApplicationByIDOrHandle(app.UUID, org.ID)
+	if err != nil {
+		t.Fatalf("GetApplicationByIDOrHandle(uuid) failed: %v", err)
+	}
+	if byUUID == nil || byUUID.UUID != app.UUID {
+		t.Fatalf("lookup by uuid: want %s, got %+v", app.UUID, byUUID)
+	}
+
+	byHandle, err := appRepo.GetApplicationByIDOrHandle(app.Handle, org.ID)
+	if err != nil {
+		t.Fatalf("GetApplicationByIDOrHandle(handle) failed: %v", err)
+	}
+	if byHandle == nil || byHandle.UUID != app.UUID {
+		t.Fatalf("lookup by handle: want %s, got %+v", app.UUID, byHandle)
+	}
+
+	missing, err := appRepo.GetApplicationByIDOrHandle("does-not-exist-"+id(), org.ID)
+	if err != nil {
+		t.Fatalf("GetApplicationByIDOrHandle(missing) failed: %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("lookup of missing app: want nil, got %+v", missing)
 	}
 }

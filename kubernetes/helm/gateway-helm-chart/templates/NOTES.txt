@@ -11,7 +11,9 @@ To learn more about the release, try:
 
 Gateway Controller has been deployed:
   - Service: {{ include "gateway-operator.fullname" . }}-controller
-  - REST API Port: {{ .Values.gateway.controller.service.ports.rest }}
+{{- $restTls := dig "server" "tls" "enabled" false .Values.gateway.config.controller }}
+{{- $restPort := ternary .Values.gateway.controller.service.ports.restTls .Values.gateway.controller.service.ports.rest $restTls }}
+  - REST API Port: {{ $restPort }}{{ if $restTls }} (HTTPS){{ end }}
   - xDS Port: {{ .Values.gateway.controller.service.ports.xds }}
   - Policy xDS Port: {{ .Values.gateway.controller.service.ports.policy }}
 {{- if .Values.gateway.controller.service.expose.admin }}
@@ -29,9 +31,9 @@ Gateway Controller has been deployed:
 {{- end }}
 
 To access the Controller REST API:
-  $ kubectl port-forward svc/{{ include "gateway-operator.fullname" . }}-controller {{ .Values.gateway.controller.service.ports.rest }}:{{ .Values.gateway.controller.service.ports.rest }} -n {{ .Release.Namespace }}
+  $ kubectl port-forward svc/{{ include "gateway-operator.fullname" . }}-controller {{ $restPort }}:{{ $restPort }} -n {{ .Release.Namespace }}
 
-Then visit: http://localhost:{{ .Values.gateway.controller.service.ports.rest }}
+Then visit: {{ if $restTls }}https{{ else }}http{{ end }}://localhost:{{ $restPort }}
 {{- end }}
 
 {{- if .Values.gateway.gatewayRuntime.deployment.enabled }}

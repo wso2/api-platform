@@ -11,3 +11,4 @@ a2a-sdk[http-server]==1.1.0
 
 # ASGI server.
 uvicorn==0.51.0
+certifi>=2026.10.19

@@ -184,7 +184,8 @@ describe('ProjectListPage', () => {
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    const card = screen.getByRole('button', { name: 'Open Retail APIs' });
+    // The card is Oxygen's `ListingCard` action area, named by its content.
+    const card = screen.getByRole('button', { name: /^Retail APIs/ });
     card.focus();
     await user.keyboard('{Enter}');
 
@@ -196,7 +197,7 @@ describe('ProjectListPage', () => {
     const { user } = renderPage();
 
     await screen.findByText('Retail APIs');
-    const row = screen.getByRole('button', { name: 'Open Retail APIs' });
+    const row = screen.getByRole('button', { name: /^Retail APIs/ });
     row.focus();
     await user.keyboard(' ');
 
@@ -237,5 +238,57 @@ describe('ProjectListPage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toMatch(/\/projects\/retail$/);
+  });
+});
+
+describe('ProjectListPage — cards and empty search', () => {
+  it('shows a project card with its description and when it last changed', async () => {
+    server.use(
+      collection('/projects', [
+        aProject({
+          id: 'retail',
+          displayName: 'Retail APIs',
+          description: 'Storefront and checkout',
+          updatedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        }),
+      ]),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Retail APIs')).toBeInTheDocument();
+    expect(screen.getByText('Storefront and checkout')).toBeInTheDocument();
+    expect(screen.getByText(/^Updated .*ago$/)).toBeInTheDocument();
+  });
+
+  it('says so when a project has never been updated', async () => {
+    server.use(collection('/projects', projectFixtures));
+    renderPage();
+
+    await screen.findByText('Retail APIs');
+    expect(screen.getAllByText('Not updated yet')).toHaveLength(projectFixtures.length);
+  });
+
+  it('offers to clear the search when nothing matches, and brings the projects back', async () => {
+    server.use(collection('/projects', projectFixtures));
+    const { user } = renderPage();
+
+    await screen.findByText('Retail APIs');
+    await user.type(screen.getByPlaceholderText('Search projects'), 'zzz');
+
+    expect(await screen.findByText('No matching projects')).toBeInTheDocument();
+    expect(screen.queryByText('Retail APIs')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+
+    expect(screen.getByPlaceholderText('Search projects')).toHaveValue('');
+    expect(await screen.findByText('Retail APIs')).toBeInTheDocument();
+  });
+
+  it('does not offer to clear the search for an organization with no projects', async () => {
+    server.use(collection('/projects', []));
+    renderPage();
+
+    await screen.findByText('Create your first Project');
+    expect(screen.queryByRole('button', { name: 'Clear search' })).not.toBeInTheDocument();
   });
 });

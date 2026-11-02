@@ -266,6 +266,8 @@ func copySubscriptionFields(dst, src *models.Subscription) {
 	dst.SubscriptionToken = src.SubscriptionToken
 	dst.SubscriptionTokenHash = src.SubscriptionTokenHash
 	dst.SubscriptionPlanID = src.SubscriptionPlanID
+	dst.BillingCustomerID = src.BillingCustomerID
+	dst.BillingSubscriptionID = src.BillingSubscriptionID
 	dst.Status = src.Status
 	dst.UpdatedAt = src.UpdatedAt
 }

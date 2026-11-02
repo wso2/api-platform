@@ -200,3 +200,34 @@ func TestInitPlugins_ExternalTierWithoutMiddlewareContributesNone(t *testing.T) 
 			len(wiring.preChain), len(wiring.postChain))
 	}
 }
+
+// externalToolPlugin implements pdk.MCPToolProvider.
+type externalToolPlugin struct {
+	*fakeExternalPlugin
+	tools []pdk.MCPTool
+}
+
+func (f *externalToolPlugin) MCPTools() []pdk.MCPTool { return f.tools }
+
+func TestInitPlugins_ExternalTierContributesMCPTools(t *testing.T) {
+	ext := &externalToolPlugin{
+		fakeExternalPlugin: &fakeExternalPlugin{name: "api-cloud", spec: specWithScopes},
+		tools:              []pdk.MCPTool{{Name: "list_things"}},
+	}
+
+	wiring, err := initPlugins(testLogger(), http.NewServeMux(), emptyRegistry(t),
+		&plugin.Deps{}, &pdk.Deps{}, nil, []pdk.Plugin{ext})
+	if err != nil {
+		t.Fatalf("initPlugins: unexpected error: %v", err)
+	}
+	if len(wiring.mcpTools) != 1 || wiring.mcpTools[0].Name != "list_things" {
+		t.Fatalf("expected list_things, got %+v", wiring.mcpTools)
+	}
+}
+
+func TestExternalPlugin_MCPToolsIsNilWithoutAProvider(t *testing.T) {
+	wrapped := &externalPlugin{p: &fakeExternalPlugin{name: "api-cloud", spec: specWithScopes}}
+	if tools := wrapped.MCPTools(); tools != nil {
+		t.Fatalf("expected no tools, got %v", tools)
+	}
+}

@@ -25,3 +25,5 @@ export type {
   InsightsScopeLevel,
 } from './types';
 export { isInsightsMoesifConfigured } from './config/runtimeConfig';
+export { default as ComingSoon } from './components/ComingSoon';
+export type { ComingSoonProps } from './components/ComingSoon';

@@ -360,7 +360,7 @@ func (v *AgentValidator) validateContext(context *string) []ValidationError {
 			Message: fmt.Sprintf("Context must be 1-%d characters", maxAgentContextLength),
 		})
 	}
-	errors = append(errors, validateNotReservedHealthPath("spec.context", *context)...)
+	errors = append(errors, validateNotReservedGatewayPath("spec.context", *context)...)
 	return errors
 }
 
@@ -542,7 +542,7 @@ func (v *AgentValidator) validateTransports(context string, contextUsable bool, 
 			// generated routes, which is where an overlap actually exists.
 			basePath = JoinAgentPath(context, prefix)
 			if contextUsable {
-				errors = append(errors, validateNotReservedHealthPath(prefixField, basePath)...)
+				errors = append(errors, validateNotReservedGatewayPath(prefixField, basePath)...)
 			}
 		}
 
@@ -690,7 +690,7 @@ func (v *AgentValidator) validateAgentCard(
 	if pathOK {
 		resolved.path = JoinAgentPath(context, public.Path)
 		if contextUsable {
-			errors = append(errors, validateNotReservedHealthPath(publicCardField+".path", resolved.path)...)
+			errors = append(errors, validateNotReservedGatewayPath(publicCardField+".path", resolved.path)...)
 		}
 	}
 

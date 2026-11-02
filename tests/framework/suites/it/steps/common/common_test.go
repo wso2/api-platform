@@ -333,6 +333,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"llm-proxy.yaml":             "LlmProxy",
 		"mcp.yaml":                   "Mcp",
 		"rest-api.yaml":              "RestApi",
+		"subscription.yaml":          "Subscription",
 	}
 	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
 	controlPlaneProtocols := map[string]string{

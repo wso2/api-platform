@@ -21,6 +21,7 @@ import { ChevronDown, ChevronUp } from '@wso2/oxygen-ui-icons-react';
 import { useId, useState, type ReactNode } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 
+import { SecondaryText } from '@/components/common/SecondaryText';
 import { hairline } from '@/theme/receipes';
 import { MethodBadge } from './MethodBadge';
 import { methodPalette } from './methodPalette';
@@ -52,6 +53,8 @@ export type SwaggerResourceRowProps = {
   /** The body panel's content. Supplying it is what makes the row expandable. */
   children?: ReactNode;
   defaultExpanded?: boolean;
+  /** Called with the new state whenever the row is opened or closed. */
+  onExpandedChange?: (expanded: boolean) => void;
   /** The operation's summary line. Omitted, the row stays a single line. */
   description?: string;
   /** Dims the row and blocks its controls — a staged deletion, or a pending save. */
@@ -74,6 +77,7 @@ export function SwaggerResourceRow({
   description,
   disabled = false,
   method,
+  onExpandedChange,
   path,
   pathVariant = 'code',
 }: SwaggerResourceRowProps) {
@@ -81,7 +85,11 @@ export function SwaggerResourceRow({
   const bodyId = useId();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const expandable = Boolean(children);
-  const toggle = () => setExpanded((open) => !open);
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    onExpandedChange?.(next);
+  };
   const toggleLabel = intl.formatMessage(expanded ? messages.collapse : messages.expand, {
     method,
     path,
@@ -125,9 +133,9 @@ export function SwaggerResourceRow({
             </Typography>
           )}
           {description && (
-            <Typography color="text.secondary" noWrap variant="body2">
+            <SecondaryText noWrap variant="body2">
               {description}
-            </Typography>
+            </SecondaryText>
           )}
         </Box>
 

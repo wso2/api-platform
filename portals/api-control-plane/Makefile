@@ -83,12 +83,17 @@ test: ## Run frontend and BFF tests
 	$(MAKE) bff-test
 
 build: ## Build the production Docker image
-	docker build -t $(IMAGE_NAME):$(VERSION) -t api-control-plane:$(VERSION) .
+	docker buildx build \
+		--build-context httpkit=../../httpkit \
+		-t $(IMAGE_NAME):$(VERSION) -t api-control-plane:$(VERSION) \
+		--load \
+		.
 
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch api-control-plane Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
+		--build-context httpkit=../../httpkit \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \

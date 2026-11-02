@@ -23,6 +23,18 @@
  * an environment can list every gateway it has rather than only the deployed
  * ones.
  */
+/**
+ * Who manages an API's deployments, as far as this page knows.
+ * - `checking`: the API has not been read yet.
+ * - `control-plane`: the control plane owns the API; every action is available.
+ * - `gateway`: a gateway created the API and manages its deployments.
+ * - `unverified`: the API could not be read, so ownership is unknown.
+ *
+ * Only `control-plane` enables deploy, promote and stop. Every other state
+ * keeps them disabled, so an unanswered or failed check never opens them up.
+ */
+export type ApiOwnership = 'checking' | 'control-plane' | 'gateway' | 'unverified';
+
 export type DeploymentStatus =
   | 'DEPLOYED'
   | 'DEPLOYING'

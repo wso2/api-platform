@@ -181,7 +181,7 @@ func newExchangeHarness(t *testing.T, cfgMut func(*config.TokenExchangeConfig)) 
 	oidcClient, err := auth.NewOIDC(
 		context.Background(), idp.Client(),
 		idp.URL, "c", "s",
-		"https://localhost:9643"+paths.Base+"/api/auth/callback", "", "openid",
+		"https://localhost:9643"+paths.Base+"/api/auth/callback", "", "openid", true,
 		session.DefaultClaimMapping(), 8*time.Hour, testTxSealer(),
 	)
 	if err != nil {

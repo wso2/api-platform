@@ -109,7 +109,7 @@ func newPerPortalReceiver(t *testing.T, cfg config.Webhook, prov PortalKeyProvid
 		perPortalTestOrgHandle:  &model.Organization{ID: perPortalTestPortalOrg, Handle: perPortalTestOrgHandle},
 		perPortalTestOtherOrgHd: &model.Organization{ID: perPortalTestOtherOrg, Handle: perPortalTestOtherOrgHd},
 	}
-	r, err := NewReceiver(cfg, prov, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r, err := NewReceiver(cfg, prov, nil, nil, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewReceiver: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestReceiver_PerPortalRouteNotMountedWhenRegistryNil(t *testing.T) {
 	cfg.LegacySharedSecret = true
 	cfg.Secret = "legacy-only"
 	// Without a keyRegistry, RegisterRoutes should mount only the legacy path.
-	r, err := NewReceiver(cfg, nil, nil, nil, nil, fakeOrgResolver{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r, err := NewReceiver(cfg, nil, nil, nil, nil, nil, nil, fakeOrgResolver{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewReceiver: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestReceiver_LegacyRouteAcceptsValidSignatureWhenFlagOn(t *testing.T) {
 	orgs := fakeOrgResolver{
 		perPortalTestOrgHandle: &model.Organization{ID: perPortalTestPortalOrg, Handle: perPortalTestOrgHandle},
 	}
-	r, err := NewReceiver(cfg, nil, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	r, err := NewReceiver(cfg, nil, nil, nil, nil, nil, nil, orgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewReceiver: %v", err)
 	}

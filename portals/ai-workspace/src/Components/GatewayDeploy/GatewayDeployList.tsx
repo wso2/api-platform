@@ -16,7 +16,7 @@ import { Alert, Box, Button, TextField, Typography } from '@wso2/oxygen-ui';
 import { useNavigate } from 'react-router-dom';
 import type { Gateway } from '../../apis/gateway/types';
 import { useGatewayDeploy } from '../../contexts/GatewayDeployContext';
-import { useAppAuth } from '../../contexts/AppAuthContext';
+import { useAppAuthScopes } from '../../contexts/AppAuthContext';
 import { SCOPES } from '../../auth/permissions';
 import { useAppShell } from '../../contexts/AppShellContext';
 import { buildOrgPath } from '../../utils/projectRouting';
@@ -41,7 +41,7 @@ export default function GatewayDeployList({
   onConfigureAndDeploy,
 }: GatewayDeployListProps) {
   const { gateways } = useGatewayDeploy();
-  const { hasPermission } = useAppAuth();
+  const { hasPermission } = useAppAuthScopes();
   const { currentOrganization } = useAppShell();
   const navigate = useNavigate();
 

@@ -107,6 +107,7 @@ type Config struct {
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
 	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
+	Signing              SigningConfig          `koanf:"signing"`
 }
 
 // CollectorConfig holds the data-collection ("collector") configuration. The
@@ -1440,6 +1441,9 @@ func defaultConfig() *Config {
 			SendRequestBody:      false,
 			SendResponseBody:     false,
 		},
+		Signing: SigningConfig{
+			JWKSCacheMaxAge: DefaultJWKSCacheMaxAge,
+		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
 			Endpoint:           "otel-collector:4317",
@@ -1661,6 +1665,9 @@ func (c *Config) Validate() error {
 		if err := c.validateAnalyticsConfig(); err != nil {
 			return fmt.Errorf("analytics configuration validation failed: %v", err)
 		}
+	}
+	if err := c.validateSigningConfig(); err != nil {
+		return err
 	}
 	if c.TracingConfig.Enabled {
 		if c.TracingConfig.Endpoint == "" {

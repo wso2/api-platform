@@ -24,13 +24,16 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	api "github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -38,14 +41,22 @@ import (
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
-// maxPlanUpdateBodyBytes caps the PUT body; a plan is a few hundred bytes.
-const maxPlanUpdateBodyBytes = 64 << 10
+// maxPlanBodyBytes caps a plan create or update body; a plan is a few hundred bytes, and its pricing
+// a few kilobytes at most.
+const maxPlanBodyBytes = 64 << 10
 
 // SubscriptionPlanHandler handles subscription plan CRUD
 type SubscriptionPlanHandler struct {
 	planService *service.SubscriptionPlanService
 	identity    *service.IdentityService
 	slogger     *slog.Logger
+	// pricingRepo reads plan pricing for the read-only `pricing` of a paid plan. Nil leaves it out.
+	pricingRepo repository.SubscriptionPlanPricingRepository
+}
+
+// SetPricingRepository makes plan responses carry the plan's pricing.
+func (h *SubscriptionPlanHandler) SetPricingRepository(repo repository.SubscriptionPlanPricingRepository) {
+	h.pricingRepo = repo
 }
 
 // NewSubscriptionPlanHandler creates a new subscription plan handler
@@ -137,13 +148,15 @@ func firstLimit(limits []SubscriptionPlanLimitRequest) *SubscriptionPlanLimitReq
 	return &l
 }
 
-// CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans
+// CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans. Pricing, a
+// SubscriptionPlanPricingRequest, makes the plan paid; the service checks it.
 type CreateSubscriptionPlanRequest struct {
 	Id          string                         `json:"id" binding:"required"`
 	DisplayName string                         `json:"displayName" binding:"required"`
 	Limits      []SubscriptionPlanLimitRequest `json:"limits,omitempty"`
 	ExpiryTime  *string                        `json:"expiryTime,omitempty"`
 	Status      string                         `json:"status,omitempty"`
+	Pricing     json.RawMessage                `json:"pricing,omitempty"`
 }
 
 // CreateSubscriptionPlan handles POST /api/v0.9/subscription-plans
@@ -154,14 +167,31 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 			WithLogMessage("organization claim not found in token")
 	}
 
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxPlanBodyBytes))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return apperror.PayloadTooLarge.New("request body exceeds the maximum allowed size")
+		}
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
+			WithLogMessage(fmt.Sprintf("failed to read create subscription plan request body for org %s", orgId))
+	}
 	var req CreateSubscriptionPlanRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(body, &req); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
 			WithLogMessage(fmt.Sprintf("invalid create subscription plan request body for org %s", orgId))
+	}
+	// A null pricing is a free plan, as is none.
+	var pricing []byte
+	if len(req.Pricing) > 0 && string(req.Pricing) != "null" {
+		pricing = req.Pricing
 	}
 
 	if req.Id == "" {
 		return apperror.ValidationFailed.New("id is required")
+	}
+	if utf8.RuneCountInString(req.Id) > model.MaxSubscriptionPlanHandleChars {
+		return apperror.ValidationFailed.New(fmt.Sprintf("id must be at most %d characters", model.MaxSubscriptionPlanHandleChars))
 	}
 	if req.DisplayName == "" {
 		return apperror.ValidationFailed.New("displayName is required")
@@ -210,7 +240,7 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to resolve user identity")
 	}
-	created, err := h.planService.CreatePlan(orgId, actor, plan)
+	created, err := h.planService.CreatePlan(orgId, actor, plan, pricing)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -238,14 +268,18 @@ func (h *SubscriptionPlanHandler) ListSubscriptionPlans(w http.ResponseWriter, r
 	}
 
 	opts := parseListOptions(r)
+	status := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("status")))
+	if status != "" && status != string(model.SubscriptionPlanStatusActive) && status != string(model.SubscriptionPlanStatusInactive) {
+		return apperror.ValidationFailed.New("status must be ACTIVE or INACTIVE")
+	}
 
-	total, err := h.planService.CountPlans(orgId, opts.Search)
+	total, err := h.planService.CountPlans(orgId, opts.Search, status)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to count subscription plans for org %s", orgId))
 	}
 
-	list, err := h.planService.ListPlans(orgId, opts)
+	list, err := h.planService.ListPlans(orgId, opts, status)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to list subscription plans for org %s", orgId))
@@ -298,6 +332,21 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to resolve subscription plan identity for plan %s in org %s", planId, orgId))
 	}
+	// What offers or uses the plan, so a client can show a delete, or a change of name or limit, as
+	// refused before it is tried. Only a single plan's read carries it: working it out reads every
+	// REST API of the organization.
+	usage, err := h.planService.GetUsage(plan)
+	if err != nil {
+		return apperror.Internal.Wrap(err).
+			WithLogMessage(fmt.Sprintf("failed to read the usage of subscription plan %s in org %s", planId, orgId))
+	}
+	resp["usage"] = map[string]any{
+		"inUse":         usage.InUse(),
+		"restApis":      usage.RESTAPIs,
+		"drafts":        usage.Drafts,
+		"publications":  usage.Publications,
+		"subscriptions": usage.Subscriptions,
+	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
 }
@@ -315,23 +364,31 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.ValidationFailed.New("Plan ID is required")
 	}
 
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxPlanUpdateBodyBytes))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxPlanBodyBytes))
 	if err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
 			WithLogMessage(fmt.Sprintf("failed to read update subscription plan request body for plan %s in org %s", planId, orgId))
+	}
+	// Two fields are read from the raw body, where the typed request would lose the difference:
+	//   - expiryTime: an explicit null clears the expiry, while an omitted one leaves it unchanged
+	//     (*time.Time cannot tell the two apart);
+	//   - pricing: refused even when null, since pricing is set only when a plan is created.
+	var presence struct {
+		ExpiryTime json.RawMessage `json:"expiryTime"`
+		Pricing    json.RawMessage `json:"pricing"`
+	}
+	if err := json.Unmarshal(body, &presence); err != nil {
+		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
+			WithLogMessage(fmt.Sprintf("invalid update subscription plan request body for plan %s in org %s", planId, orgId))
+	}
+	if presence.Pricing != nil {
+		return apperror.SubscriptionPlanPricingLocked.New()
 	}
 	var req api.SubscriptionPlan
 	if err := json.Unmarshal(body, &req); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
 			WithLogMessage(fmt.Sprintf("invalid update subscription plan request body for plan %s in org %s", planId, orgId))
 	}
-	// *time.Time cannot tell an omitted expiryTime from an explicit null, so probe
-	// the raw body: null clears the expiry, omission leaves it unchanged. The body
-	// already parsed above, so this cannot fail.
-	var presence struct {
-		ExpiryTime json.RawMessage `json:"expiryTime"`
-	}
-	_ = json.Unmarshal(body, &presence)
 
 	if err := utils.ValidateHandleImmutable(planId, req.Id); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "The plan id is immutable and cannot be changed")
@@ -481,6 +538,15 @@ func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.Subscri
 	resp["limits"] = limits
 	if plan.ExpiryTime != nil {
 		resp["expiryTime"] = plan.ExpiryTime
+	}
+	if h.pricingRepo != nil {
+		// A read failure leaves pricing out rather than failing the plan read.
+		pricing, err := h.pricingRepo.GetByPlan(plan.UUID, plan.OrganizationUUID)
+		if err != nil {
+			h.slogger.Warn("Failed to read subscription plan pricing", "plan", plan.Handle, "error", err)
+		} else if pricing != nil {
+			resp["pricing"] = pricingResponse(plan.Handle, pricing)
+		}
 	}
 	return resp, nil
 }

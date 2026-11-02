@@ -37,7 +37,8 @@ import (
 func budgetTestLimits() config.APIPortalPublication {
 	limits := config.APIPortalPublication{
 		RequestTimeout:        40 * time.Millisecond,
-		ListingRequestTimeout: 120 * time.Millisecond,
+		ListingRequestTimeout: 40 * time.Millisecond,
+		ContentRequestTimeout: 120 * time.Millisecond,
 		MaxRetries:            1,
 		RetryBackoff:          10 * time.Millisecond,
 	}
@@ -49,7 +50,7 @@ func newBudgetTestPublisher(t *testing.T, limits config.APIPortalPublication) *H
 	t.Helper()
 	p := newTestHTTPPortalPublisherWithPolicies(t, "key",
 		client.RetryConfig{MaxRetries: limits.MaxRetries, AttemptTimeout: limits.RequestTimeout, Backoff: limits.RetryBackoff},
-		client.RetryConfig{MaxRetries: limits.MaxRetries, AttemptTimeout: limits.ListingRequestTimeout, Backoff: limits.RetryBackoff})
+		client.RetryConfig{MaxRetries: limits.MaxRetries, AttemptTimeout: limits.ContentRequestTimeout, Backoff: limits.RetryBackoff})
 	p.plansListingTimeout = limits.PlanListingBudget()
 	return p
 }
@@ -102,18 +103,21 @@ func TestHTTPPortalPublisher_WorstCasePublishFitsTheStatedBudget(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), limits.OverallTimeout)
 	defer cancel()
 	started := time.Now()
-	if err := p.CreateMissingPlans(ctx, portal, []*model.SubscriptionPlan{{Handle: "gold"}}); err != nil {
-		t.Fatalf("CreateMissingPlans: %v", err)
+	if err := syncPlansWithoutMeters(ctx, p, portal, []*model.SubscriptionPlan{{Handle: "gold"}}, nil); err != nil {
+		t.Fatalf("SyncPlans: %v", err)
 	}
 	if err := p.Publish(ctx, portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil); err != nil {
 		t.Fatalf("Publish: %v", err)
+	}
+	if err := p.PublishContent(ctx, portal, "my-api", &PortalContent{Archive: []byte("zip")}); err != nil {
+		t.Fatalf("PublishContent: %v", err)
 	}
 	took := time.Since(started)
 
 	if took > limits.PublishWorstCase()+100*time.Millisecond {
 		t.Fatalf("a worst-case publish took %s, more than the stated worst case %s", took, limits.PublishWorstCase())
 	}
-	if floor := 3*limits.RequestTimeout + limits.ListingRequestTimeout; took < floor {
+	if floor := 4*limits.RequestTimeout + limits.ContentRequestTimeout; took < floor {
 		t.Fatalf("every first attempt must run to its limit: took %s, want at least %s", took, floor)
 	}
 }
@@ -129,7 +133,7 @@ func TestHTTPPortalPublisher_PortalDownFailsAfterOneCall(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), limits.OverallTimeout)
 	defer cancel()
 	started := time.Now()
-	err := p.CreateMissingPlans(ctx, &model.APIPortal{URL: srv.URL}, []*model.SubscriptionPlan{{Handle: "gold"}})
+	err := syncPlansWithoutMeters(ctx, p, &model.APIPortal{URL: srv.URL}, []*model.SubscriptionPlan{{Handle: "gold"}}, nil)
 	took := time.Since(started)
 
 	if !apperror.APIPublicationPortalUnavailable.Is(portalPushError(err)) {

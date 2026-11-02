@@ -42,6 +42,32 @@ const SESSION_URL = `${BASE_PATH}/api/session`;
 const LOGOUT_URL = `${BASE_PATH}/api/logout`;
 const OIDC_LOGIN_URL = `${BASE_PATH}/api/auth/login`;
 
+/**
+ * Builds the BFF login link for an OIDC sign-in. `login()` below is the only runtime
+ * caller; it is exported so the URL it produces can be pinned by a unit test.
+ *
+ * `returnTo` is where the BFF sends the user after the callback. `fidp` and `loginHint`
+ * are forwarded to the IDP by the BFF, which allowlists them. Passing a provider lets a
+ * login page offer "Continue with Google" and send the user straight there, instead of
+ * to the IDP's own provider chooser; omitting it keeps the original behaviour, where the
+ * IDP asks.
+ *
+ * The account hint goes under two names. `login_hint` is OIDC's own; WSO2 Identity
+ * Server / Asgardeo federated authenticators (the EnterpriseIDP connection, which picks
+ * an organization's IDP by the address's domain) read it from `username` instead. Any
+ * other IDP ignores the name it does not know (RFC 6749 §3.1), so sending both costs
+ * nothing and the login page needs no per-IDP setting.
+ */
+export function oidcLoginUrl(returnTo: string, options?: LoginOptions): string {
+  const params = new URLSearchParams({ return: returnTo });
+  if (options?.fidp) params.set('fidp', options.fidp);
+  if (options?.loginHint) {
+    params.set('login_hint', options.loginHint);
+    params.set('username', options.loginHint);
+  }
+  return `${OIDC_LOGIN_URL}?${params.toString()}`;
+}
+
 interface SessionResponse {
   authenticated: boolean;
   // The full JWT minted/obtained by the BFF. The BFF still injects this same
@@ -169,16 +195,10 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (options?: LoginOptions) => {
     if (AUTH_MODE === 'oidc') {
-      const params = new URLSearchParams({
-        return: window.location.pathname + window.location.search,
-      });
-      // Forwarded to the IDP by the BFF, which allowlists them. Passing a provider
-      // lets a login page offer "Continue with Google" and send the user straight
-      // there, instead of to the IDP's own provider chooser; omitting it keeps the
-      // original behaviour, where the IDP asks.
-      if (options?.fidp) params.set('fidp', options.fidp);
-      if (options?.loginHint) params.set('login_hint', options.loginHint);
-      window.location.href = `${OIDC_LOGIN_URL}?${params.toString()}`;
+      window.location.href = oidcLoginUrl(
+        window.location.pathname + window.location.search,
+        options
+      );
     }
     // Basic mode: the login page calls POST /api/login and reloads on success.
   }, []);

@@ -860,6 +860,27 @@ function validateArtifactConfig(artifacts) {
 
 validateArtifactConfig(config.artifacts);
 
+/**
+ * Fail-closed startup check: the billing settings below must be whole numbers of at least 1.
+ */
+function validateBillingConfig(billing) {
+    const settings = {
+        'billing.stripe.webhook_signature_tolerance_sec': billing?.stripe?.webhookSignatureToleranceSec,
+        'billing.moesif.max_parallel_prices': billing?.moesif?.maxParallelPrices,
+    };
+    for (const [name, value] of Object.entries(settings)) {
+        if (!Number.isInteger(value) || value < 1) {
+            process.stderr.write(
+                `[FATAL] ${name} must be a whole number of at least 1, got ${JSON.stringify(value)}. ` +
+                'Refusing to start with an invalid billing setting.\n'
+            );
+            process.exit(1);
+        }
+    }
+}
+
+validateBillingConfig(config.billing);
+
 // ---------------------------------------------------------------------------
 // Authorization config (auth.authorization)
 // ---------------------------------------------------------------------------

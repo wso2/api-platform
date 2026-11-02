@@ -82,7 +82,7 @@ describe('GraphqlPublishPage', () => {
       apiId: API,
       apiType: 'graphql-api',
     });
-    expect(screen.getByRole('link', { name: 'Go to publish' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Go to Publish' })).toHaveAttribute(
       'href',
       `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${API}/publish/partner-portal`,
     );

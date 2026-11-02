@@ -33,10 +33,19 @@ In [multi-organization mode](multi-organization.md#webhooks) one portal delivers
 | `subscription.updated` | A subscription's status changed (ACTIVE ↔ INACTIVE) | — |
 | `subscription.plan_changed` | A subscription's plan was changed in-place | — |
 | `subscription.token_regenerated` | A subscription token was regenerated | New subscription token (`token`) |
+| `subscription.billing_updated` | The billing status of a paid subscription changed (Stripe confirmed or failed a payment, or ended the subscription) | — |
 | `subscription.deleted` | A developer unsubscribed | — |
 | `application.created` | A developer created an application | — |
 | `application.updated` | An application was renamed or its details changed | — |
 | `application.deleted` | An application was deleted | — |
+| `subscription_plan.created` | An administrator created a subscription plan | — |
+| `subscription_plan.updated` | A subscription plan's name, description or limits changed | — |
+| `subscription_plan.deleted` | A subscription plan was deleted | — |
+| `meter.created` | An administrator created a meter | — |
+| `meter.updated` | A meter's name, description, type, event key or filter fields changed | — |
+| `meter.deleted` | A meter was deleted | — |
+
+The `subscription_plan.*` and `meter.*` events are not sent for a change the Platform API made in the portal (a request with its shared key): the Platform API already has the plan or meter it sent, so it would only get its own change back.
 
 For events that carry a sensitive field, the value is **encrypted with AES-256-GCM** under a key derived from the subscriber's shared secret, and placed directly in `data` under its field name (e.g. `data.key`, `data.token`). It is never included in plaintext. The top-level `encrypted_fields` array always lists which `data` fields are encrypted.
 
@@ -316,6 +325,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 - `status` is the subscription's current state (`ACTIVE` / `INACTIVE`) — present on every subscription event, not only `subscription.updated`
 - `token` decrypts to the subscription token — the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement
 - `token` and its entry in `encrypted_fields` are present only when a secret is configured for the subscriber; if no secret is configured, the token is not delivered
+- `billing` is present for a subscription to a paid plan, which is created only after Stripe confirms the checkout: `{ "status": "ACTIVE", "customer_id": "cus_...", "subscription_id": "sub_..." }`. `customer_id` is the Stripe customer, which the gateway also reports usage to Moesif under. See [`subscription.billing_updated`](#subscriptionbilling_updated) for the statuses
 
 ### `subscription.updated`
 
@@ -411,6 +421,27 @@ Fired when a developer regenerates a subscription token. The old token is immedi
 - `token` and its entry in `encrypted_fields` are present only when a secret is configured for the subscriber; if no secret is configured, the new token is not delivered via webhook
 - This is the only event that carries a new token secret after creation — if decryption fails, the developer must regenerate again
 
+### `subscription.billing_updated`
+
+Fired when the billing status of a paid subscription changes. The portal reads the status from Stripe after each payment, failed payment or subscription change, and fires this only when the status is different. `data` is the same subscription object as `subscription.created`, without `token`, with the new `billing`.
+
+```json
+{
+  "event_type": "subscription.billing_updated",
+  "encrypted_fields": [],
+  "data": {
+    "subscription_id": "sub-uuid",
+    "subscriber_id": "user@example.com",
+    "status": "ACTIVE",
+    "subscription_plan": { "ref_id": "gold", "name": "Gold" },
+    "api": { "name": "Order API", "version": "v1.0", "ref_id": "cp-api-uuid", "type": "RestApi" },
+    "billing": { "status": "UNPAID", "customer_id": "cus_...", "subscription_id": "sub_..." }
+  }
+}
+```
+
+`billing.status` is `ACTIVE`, `PAST_DUE` (a payment failed and Stripe is retrying it; calls are still served), `UNPAID` (Stripe's retries ended without payment) or `CANCELLED`. Gateways refuse calls while the status is `UNPAID` or `CANCELLED`. Use the event's `occurred_at` to ignore an event older than one already applied.
+
 ### `subscription.deleted`
 
 Fired when a developer unsubscribes. Your subscriber should revoke access for the corresponding subscription.
@@ -498,6 +529,148 @@ Fired when a developer deletes an application, after the application has been re
 ```
 
 Your subscriber identifies the affected application via `application_id`. If the application had API keys associated with it, one [`apikey.application_updated`](#apikeyapplication_updated) event (with `application: null`) is fired per associated key alongside this event.
+
+### `subscription_plan.created` / `subscription_plan.updated`
+
+Fired when a subscription plan is created or changed in the portal. The Platform API uses these events to keep the plan and send it to the gateways, so the Platform API subscriber should include `subscription_plan.*`.
+
+Both events carry the plan's [`pricing`](#pricing), or `null` for a free plan. Pricing is given only when a plan is created and never changes after that, so every event of a plan carries the same pricing, and a subscriber that missed the created event gets it with the next update.
+
+```json
+{
+  "event_type": "subscription_plan.created",
+  "encrypted_fields": [],
+  "data": {
+    "handle": "gold",
+    "display_name": "Gold",
+    "description": "Allows 5000 requests per minute",
+    "limits": [
+      { "limit_type": "REQUEST_COUNT", "limit_count": 5000, "time_unit": "MINUTE", "time_amount": 1 }
+    ],
+    "pricing": null
+  }
+}
+```
+
+`handle` is the plan's Platform API handle: the plan's `refId` when it has one, otherwise its portal handle, which then becomes its `refId`. `limit_count` is `-1` for an unlimited limit.
+
+#### Pricing
+
+The `pricing` of a paid plan, as the plan events carry it:
+
+```json
+{
+  "pricing": {
+    "pricing_type": "USAGE_BASED",
+    "currency": "USD",
+    "billing_period": "MONTH",
+    "flat_amount": null,
+    "prices": [
+      {
+        "meter_handle": "llm-input",
+        "filters": [
+          { "field": "API type", "operator": "EQUALS", "values": ["LlmProvider"] }
+        ],
+        "pricing_model": "PER_UNIT",
+        "unit_amount": "2.50",
+        "unit_quantity": 1000000,
+        "tiers": null
+      },
+      {
+        "meter_handle": "llm-input",
+        "filters": [
+          { "field": "API type", "operator": "EQUALS", "values": ["LlmProxy"] }
+        ],
+        "pricing_model": "PER_UNIT",
+        "unit_amount": "0.15",
+        "unit_quantity": 1000000,
+        "tiers": null
+      },
+      {
+        "meter_handle": "api-calls",
+        "filters": [
+          { "field": "Status code", "operator": "IN", "values": ["200", "201"] },
+          { "field": "Resource", "operator": "STARTS_WITH", "values": ["/orders"] }
+        ],
+        "pricing_model": "GRADUATED",
+        "unit_amount": null,
+        "unit_quantity": null,
+        "tiers": [
+          { "up_to": 10000, "unit_amount": "0", "flat_amount": null },
+          { "up_to": null, "unit_amount": "0.001", "flat_amount": null }
+        ]
+      }
+    ]
+  }
+}
+```
+
+A paid plan is either a flat rate or usage based. Amounts are decimal strings in the currency's main unit.
+
+- `pricing_type` is `FLAT_RATE` or `USAGE_BASED`. `billing_period` is `MONTH` or `YEAR`.
+- A flat rate plan has `flat_amount`, the amount charged every billing period, and an empty `prices`.
+- A usage based plan has `flat_amount` null and 1 to 20 `prices`, in order. Each price is on the meter `meter_handle` and counts the requests of that meter that match all its `filters` (everything the meter counts when `filters` is empty). A request that no price counts is not charged.
+- A meter may have several prices in a plan, but two prices on one meter never count the same request: they differ on a property that either filters on.
+- A price has no name of its own: subscribers see the meter's name followed by its filters, such as "LLM input tokens · LlmProvider", "API calls · not DELETE, OPTIONS", "API calls · /orders…" or "LLM input tokens · Prompt tokens > 333".
+- A price is sold on every API its plan is offered on, whatever its filters.
+- Each filter names one of the meter's properties (see `filter_fields` under [`meter.created`](#metercreated--meterupdated)) in its `field`, with the meter's spelling, and reads that property's event key. A filter has no `event_key` of its own. `filters` has at most 20 filters.
+- Any operator works on any property. `EQUALS`, `NOT_EQUALS` and `STARTS_WITH` filters have one text value; `IN` and `NOT_IN` filters have 1 to 20. Text values are matched exactly as written, case included, and `STARTS_WITH` is a plain text prefix (`/orders` also matches `/orders-archive`). `NOT_EQUALS` and `NOT_IN` count only the requests that have the property.
+- `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN` and `LESS_THAN_OR_EQUAL` compare the property as a number with one whole number from 0 to 1000000000000, written without leading zeros: `{ "field": "Prompt tokens", "operator": "GREATER_THAN", "values": ["333"] }`.
+- On one property, a price has either one filter with `EQUALS`, `NOT_EQUALS`, `IN`, `NOT_IN` or `STARTS_WITH`, or one or two comparisons that can all be true together, such as more than 100 and at most 500.
+- Values are not checked against what the property holds. A filter that can't match the event field, such as text on a number field, counts nothing. Our gateway's API types are `RestApi`, `WebSubApi`, `LlmProvider`, `LlmProxy`, `Mcp` and `Agent`, and an MCP method is a JSON-RPC method such as `tools/call`.
+- `pricing_model` is `PER_UNIT`, `VOLUME` or `GRADUATED`. `PER_UNIT` charges `unit_amount` per `unit_quantity` units. The tiered models carry `tiers` as `[{ "up_to", "unit_amount", "flat_amount" }]`, with `up_to` null on the last tier; `VOLUME` prices all the units at the tier their total falls in, and `GRADUATED` prices the units in each tier at that tier's price.
+
+### `subscription_plan.deleted`
+
+Fired when a subscription plan is deleted. `data` carries only `handle`.
+
+### `meter.created` / `meter.updated`
+
+Fired when a meter is created or changed. A meter defines what a paid plan charges for. The Platform API keeps a copy, so the Platform API subscriber should include `meter.*`.
+
+```json
+{
+  "event_type": "meter.created",
+  "encrypted_fields": [],
+  "data": {
+    "handle": "llm-input",
+    "display_name": "LLM input tokens",
+    "description": null,
+    "type": "TOKENS",
+    "type_key": "metadata.aiTokenUsage.promptTokens",
+    "filter_fields": [
+      { "field": "API type", "event_key": "metadata.apiType" },
+      { "field": "Prompt tokens", "event_key": "metadata.aiTokenUsage.promptTokens" }
+    ]
+  }
+}
+```
+
+`type` is `REQUEST_COUNT` (requests: each request counts 1) or `TOKENS` (the tokens of AI API requests). A `TOKENS` meter adds up the number in each event at `type_key`; it is null for `REQUEST_COUNT`. The meter's name says what it counts, such as "Input tokens". A meter has no conditions: each plan price on it picks the requests it counts with its own `filters` (see [Pricing](#pricing)), on the properties that `filter_fields` lists.
+
+Each of `filter_fields` is a property: a name the administrator chooses (`field`, 1 to 40 characters, unique within the meter ignoring case) and the event field it reads (`event_key`, unique within the meter). A meter has at most 10. A property may read the meter's own `type_key`, so prices can compare the number the meter adds up. `filter_fields` is empty when the meter's prices cannot filter.
+
+Event keys are set by the administrator as full paths in the Moesif event, 1 to 255 characters with no spaces, so a meter also works with a gateway that names its analytics fields differently. The meter forms offer our gateway's properties, with names and keys that can be changed:
+
+| Property | Event key |
+|---|---|
+| Status code | `response.status` |
+| HTTP method | `request.verb` |
+| Resource | `request.route` |
+| API type | `metadata.apiType` |
+| MCP method | `metadata.mcpAnalytics.jsonRpcMethod` |
+| Tool | `metadata.mcpAnalytics.capabilityName` |
+| Prompt tokens | `metadata.aiTokenUsage.promptTokens` |
+| Completion tokens | `metadata.aiTokenUsage.completionTokens` |
+| Total tokens | `metadata.aiTokenUsage.totalTokens` |
+
+Resource is the route Moesif records for each call: the request path, with the API's context, and its IDs as `:id`, such as `/shop/v1.0/items/:id`.
+
+A new `TOKENS` meter is offered `metadata.aiTokenUsage.promptTokens` as its `type_key`.
+
+### `meter.deleted`
+
+Fired when a meter is deleted. `data` carries only `handle`.
 
 ---
 

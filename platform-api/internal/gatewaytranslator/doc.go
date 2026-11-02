@@ -42,7 +42,9 @@
 // # Package map
 //
 //	gatewaytranslator        this facade: Translate, EnsureKindSupported, the
-//	                         kind-name map, data versions
+//	                         kind-name map, data versions, and KeyEventActor
+//	                         (the identity an API key revoke/update event must
+//	                         carry for a gateway release)
 //	gatewaytranslator/gwversion   gateway version parsing and the release at
 //	                         which each capability appeared — the only place
 //	                         a gateway version literal may be written

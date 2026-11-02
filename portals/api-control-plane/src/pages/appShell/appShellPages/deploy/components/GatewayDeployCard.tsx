@@ -102,6 +102,8 @@ type GatewayDeployCardProps = {
   onToggleExpand: (expanded: boolean) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  /** Gateway-created API: deployments are shown, but no action may change them. */
+  readOnly?: boolean;
   /** The caller's own deploy/undeploy/restore/delete mutations, adapted to a
    * uniform shape — REST's and GraphQL's hooks each expect a differently
    * keyed variables object. `useUndeploy`/`useRestore` are forwarded to
@@ -127,6 +129,7 @@ export function GatewayDeployCard({
   onToggleExpand,
   onRefresh,
   refreshing,
+  readOnly = false,
   useDeploy,
   useUndeploy,
   useRestore,
@@ -253,7 +256,7 @@ export function GatewayDeployCard({
             <Can do="DeployAPI" denied="disable">
               <Button
                 color="primary"
-                disabled={!isActive || deployMutation.isPending}
+                disabled={readOnly || !isActive || deployMutation.isPending}
                 onClick={handleDeploy}
                 size="small"
                 startIcon={
@@ -287,6 +290,7 @@ export function GatewayDeployCard({
               deployments={gatewayDeployments}
               gateway={gateway}
               isGatewayActive={isActive}
+              readOnly={readOnly}
               useRestore={useRestore}
               useUndeploy={useUndeploy}
             />

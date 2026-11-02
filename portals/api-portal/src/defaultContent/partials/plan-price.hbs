@@ -1,0 +1,63 @@
+{{!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+--}}
+{{!-- The price on a plan card of an API or MCP server page: a paid plan's price, billing period and pricing
+      details, or "Free" beside paid plans. --}}
+{{#if paid}}
+<div class="aov-plan-price">
+  {{#if pricePrefix}}<span class="aov-plan-price-prefix">{{pricePrefix}}</span>{{/if}}
+  <span class="aov-plan-price-amount">{{priceAmount}}</span>
+  {{#if priceUnit}}<span class="aov-plan-price-unit">{{priceUnit}}</span>{{/if}}
+</div>
+{{#if billingNote}}<div class="aov-plan-billing">{{billingNote}}</div>{{/if}}
+{{#if priceItems.length}}
+{{!-- The prices behind the headline, collapsed; the subscribe dialog lists them from here (plan-checkout.js). --}}
+<details class="aov-plan-pricing">
+  <summary class="aov-plan-pricing-toggle">Pricing details<i class="bi bi-chevron-down" aria-hidden="true"></i></summary>
+  <div class="aov-plan-pricing-body">
+    {{#each priceItems}}
+    <div class="aov-plan-price-item"{{#if name}} data-name="{{name}}"{{/if}} data-text="{{text}}">
+      <div class="aov-plan-price-head">
+        {{#if name}}
+        <span class="aov-plan-price-name">{{name}}</span>
+        <span class="aov-plan-price-text">{{text}}</span>
+        {{else}}
+        <span class="aov-plan-price-name">{{text}}</span>
+        {{/if}}
+      </div>
+      {{#if tiers}}
+      <table class="aov-plan-tier-table">
+        <thead><tr>{{#each tiers.headers}}<th scope="col">{{this}}</th>{{/each}}</tr></thead>
+        <tbody>
+          {{#each tiers.rows}}
+          <tr class="aov-plan-tier" data-label="{{label}}" data-amounts="{{amounts}}">{{#each cells}}<td>{{this}}</td>{{/each}}</tr>
+          {{/each}}
+        </tbody>
+      </table>
+      {{#if hint}}<p class="aov-plan-price-hint">{{hint}}</p>{{/if}}
+      {{/if}}
+    </div>
+    {{/each}}
+  </div>
+</details>
+{{/if}}
+{{else if @root.hasPaidPlans}}
+<div class="aov-plan-price">
+  <span class="aov-plan-price-amount">Free</span>
+</div>
+{{/if}}

@@ -205,6 +205,9 @@ module.exports = {
             '**/oauth2-keys',
             '**/oauth2-keys?**',
             '**/subscriptions',
+            '**/usage',
+            '**/billing',
+            '**/billing/**',
             '/*/settings',
             // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
             '/*/views/*/llms-config',
@@ -218,6 +221,9 @@ module.exports = {
             '**/oauth2-keys',
             '**/oauth2-keys?**',
             '**/subscriptions',
+            '**/usage',
+            '**/billing',
+            '**/billing/**',
             '/*/settings',
             // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
             '/*/views/*/llms-config',
@@ -363,6 +369,8 @@ module.exports = {
         WEBHOOK_SUBSCRIBER_NOT_FOUND: "Webhook subscriber not found",
         ERR_SUB_EXIST: "ERR_SUB_EXIST",
         ERR_KEY_EXIST: "ERR_KEY_EXIST",
+        ERR_BILLING_CATALOG: "ERR_BILLING_CATALOG",
+        ERR_PLAN_SUB_EXIST: "ERR_PLAN_SUB_EXIST",
         ERR_WORKFLOW_EXIST: "ERR_WORKFLOW_EXIST",
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",

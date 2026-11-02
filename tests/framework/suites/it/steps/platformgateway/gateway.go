@@ -1162,7 +1162,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until the response body does not contain "([^"]*)"$`,
 		g.serviceRequestUntilBodyNotContains)
-	sc.Step(`^I resolve the "([^"]*)" service URL at "([^"]*)" and store it as "([^"]*)"$`,
+	sc.Step(`^I resolve the "([^"]*)" service( host)? URL at "([^"]*)" and store it as "([^"]*)"$`,
 		g.resolveServiceURLAndStore)
 	sc.Step(`^I register the "([^"]*)" "([^"]*)" for cleanup$`, g.registerAdminResourceForCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
@@ -1179,6 +1179,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
+	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
@@ -1189,6 +1190,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsResponseStatusForAPIContext)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
+	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
+		g.analyticsCompanyID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
 	sc.Step(`^the lazy resources should contain template "([^"]*)" of type "([^"]*)"$`, g.lazyTemplatePresent)
 	sc.Step(`^the lazy resources should not contain template "([^"]*)"$`, g.lazyTemplateAbsent)
@@ -1255,6 +1258,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		func(ctx context.Context, kind, handle string, literal *godog.DocString) error {
 			return g.assertStoredConfiguration(ctx, kind, handle, literal, false)
 		})
+	sc.Step(`^the gateway should record control-plane sync status "(pending|success|failed)" for the "([^"]*)" artifact "([^"]*)"$`,
+		g.assertCPSyncStatus)
+	sc.Step(`^the gateway should record a control-plane artifact id for the "([^"]*)" artifact "([^"]*)"$`,
+		g.assertCPArtifactID)
 
 	g.registerTimeoutSteps(sc)
 }
@@ -1648,6 +1655,18 @@ var serviceEndpoints = map[string]struct {
 	"analytics":                    {component: "testbench", endpoint: "analytics", partitioned: true},
 	"capture":                      {component: "testbench", endpoint: "capture", partitioned: true},
 	"oauth2":                       {component: "testbench", endpoint: "oauth2", partitioned: true},
+	// The TypeSafe Jev API. Not block-partitioned here: a scenario addresses its own partition
+	// as the first path segment, so request counts are scoped to the scenario.
+	"jev":     {component: "testbench", endpoint: "jev"},
+	"jev-tls": {component: "testbench", endpoint: "jev-tls"},
+	// The scripted MCP server, addressed like jev: a scenario names its own partition.
+	"mcp-scripted": {component: "testbench", endpoint: "mcp-scripted"},
+	// The Stripe and Moesif services the API Portal bills through; their /test endpoints act
+	// as the customer and as the provider.
+	"stripe": {component: "testbench", endpoint: "stripe", partitioned: true},
+	"moesif": {component: "testbench", endpoint: "moesif", partitioned: true},
+	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
+	"mcp": {component: "testbench", endpoint: "mcp"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.
@@ -1728,11 +1747,17 @@ func (g *Gateway) serviceBasePath(service, defaultPath string) string {
 	}
 }
 
-// resolveServiceURLAndStore resolves a testbench service's URL and stores it in local scope, for
-// use as an upstream target elsewhere in the scenario — most notably a partitioned service like
-// "capture", whose address includes a block key a feature cannot know in advance.
-func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, path, key string) error {
-	url, err := g.serviceUpstreamURL(ctx, service, path)
+// resolveServiceURLAndStore resolves a service's URL and stores it in local scope. By default it
+// is the address inside the block network, for use as an upstream target elsewhere in the
+// scenario — most notably a partitioned service like "capture", whose address includes a block
+// key a feature cannot know in advance. The "host" form is the host-mapped address, for a client
+// that runs outside the block network, such as the ap CLI.
+func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, host, path, key string) error {
+	resolve := g.serviceUpstreamURL
+	if host != "" {
+		resolve = g.serviceURL
+	}
+	url, err := resolve(ctx, service, path)
 	if err != nil {
 		return err
 	}
@@ -1749,8 +1774,10 @@ var adminResourceKinds = map[string]struct {
 	kind       cleanup.Kind
 	collection string
 }{
-	"certificate": {cleanup.KindCertificate, "/certificates"},
-	"secret":      {cleanup.KindSecret, "/secrets"},
+	"certificate":       {cleanup.KindCertificate, "/certificates"},
+	"secret":            {cleanup.KindSecret, "/secrets"},
+	"subscription":      {cleanup.KindSubscription, "/subscriptions"},
+	"subscription-plan": {cleanup.KindSubscriptionPlan, "/subscription-plans"},
 }
 
 // registerAdminResourceForCleanup registers a resource managed through the gateway-controller
@@ -2152,8 +2179,9 @@ type analyticsEvent struct {
 		Status  int                 `json:"status"`
 		Headers map[string][]string `json:"headers"`
 	} `json:"response"`
-	Metadata map[string]any `json:"metadata"`
-	UserID   string         `json:"user_id"`
+	Metadata  map[string]any `json:"metadata"`
+	UserID    string         `json:"user_id"`
+	CompanyID string         `json:"company_id"`
 	// A2A is the event's first-class A2A dimension block, a sibling of metadata. It is decoded
 	// as a map because the assertions are about the published document: a typed mirror would
 	// let a renamed or relocated field compile and pass.
@@ -2371,6 +2399,20 @@ func (g *Gateway) waitForAnalyticsToSettle(ctx context.Context) error {
 	return err
 }
 
+// waitForAnalyticsEvent waits until the collector holds an event for path with the response
+// status, such as a readiness call's, so a settle and reset that follow can't run before it lands.
+func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status int) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	_, err = g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("path %q with response status %d", resolved, status),
+		func(event *analyticsEvent) bool {
+			return analyticsEventMatchesPath(event.Request.URI, resolved) && event.Response.Status == status
+		})
+	return err
+}
+
 // analyticsEventForPath resolves path's placeholders and returns the event latestAnalyticsEvent
 // finds for it. Filtering by the path a scenario already knows it requested is what makes this
 // robust: the events array's arrival order at the collector doesn't necessarily match request
@@ -2437,6 +2479,43 @@ func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want 
 	}
 	if got := fmt.Sprintf("%v", value); got != resolved {
 		return fmt.Errorf("latest analytics event metadata field %q is %q, want %q", field, got, resolved)
+	}
+	return nil
+}
+
+// analyticsCompanyID checks the company an event is attributed to. The gateway sets it to the
+// billing customer of a paid subscription, which is how Moesif bills that customer's usage.
+func (g *Gateway) analyticsCompanyID(ctx context.Context, path, mode, want string) error {
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	return companyIDAssert(event, path, mode, resolved)
+}
+
+// companyIDAssert checks an event's company id: "have" a given one, or "not have" one at all.
+func companyIDAssert(event *analyticsEvent, path, mode, want string) error {
+	switch mode {
+	case "have":
+		if want == "" {
+			return fmt.Errorf("a company id assertion needs the expected value")
+		}
+		if event.CompanyID != want {
+			return fmt.Errorf("analytics event for %q has company id %q, want %q", path, event.CompanyID, want)
+		}
+	case "not have":
+		if want != "" {
+			return fmt.Errorf("a missing company id assertion takes no value, got %q", want)
+		}
+		if event.CompanyID != "" {
+			return fmt.Errorf("analytics event for %q has company id %q, want none", path, event.CompanyID)
+		}
+	default:
+		return fmt.Errorf("unsupported company id assertion %q", mode)
 	}
 	return nil
 }

@@ -21,9 +21,11 @@
  * Tag: Application Keys
  */
 const apiPortalController = require('../../../controllers/apiPortalController');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
-    generateApplicationKeys: apiPortalController.generateKeys,
-    generateOAuthKeys: apiPortalController.generateOAuthKeys,
-    revokeOAuthKeys: apiPortalController.revokeOAuthKeys,
+    generateApplicationKeys: compose(requireCsrfForMutatingApi, apiPortalController.generateKeys),
+    generateOAuthKeys: compose(requireCsrfForMutatingApi, apiPortalController.generateOAuthKeys),
+    revokeOAuthKeys: compose(requireCsrfForMutatingApi, apiPortalController.revokeOAuthKeys),
 };

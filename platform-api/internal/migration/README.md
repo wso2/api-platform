@@ -147,6 +147,24 @@ migration with a fresh `--checkpoint-file`.
 they are emitted inline while each artifact's inline credential is externalized
 (§B.10); the `secrets` step is a verify-only integrity check.
 
+## Application associations are derived, not copied
+
+v1's `application_artifacts` is **not read**. v1 only fills it through
+`POST /applications/{id}/associations`, which AI Workspace v1 never calls, so the
+table is empty or stale (dev dump: 2 rows against 10 derivable pairs) and older v1
+schemas do not have it. v2's Associations tab lists an application's artifacts from
+`application_artifact_mappings` and resolves its keys per association, so the
+`application_artifact_mappings` step derives one row per distinct
+`(application_uuid, artifact_uuid)` from `application_api_keys ⋈ api_keys`, with
+`created_at` = the earliest of those key mappings and `created_by` NULL (what v2's own
+insert leaves). It follows v2's own association rule
+(`validateAssociationTargetForApplication`): only applications of type `genai` (the
+Gen AI apps that have the tab), only keys of LLM providers and LLM proxies in the
+application's organization, and an LLM proxy only from the application's project. A
+key mapping outside that rule is still migrated as a key mapping but yields no
+association and is reported as a WARN naming the rule it breaks. Verify compares the
+v2 count with the same derivation. The step is not reversible (SKIP in reverse).
+
 ## NULL vs empty string
 
 A v2 column that is nullable in the schema is not necessarily nullable to v2's code: the
@@ -159,6 +177,18 @@ v2 itself leaves NULL — foreign keys such as `mcp_proxies.project_uuid` and po
 such as `gateway_custom_policies.display_name`/`description`, `api_keys.issuer`,
 `deployment_status.status_reason` — keep `nullOrString`. When adding a column, check the v2
 model field type before choosing between the two.
+
+## API key names and gateway state
+
+A gateway identifies an API key by the name the control plane first sent it — the v1 name — and v2
+addresses it by the v2 handle. The client mints `api_keys.handle` from the v1 name (v2's column is
+`VARCHAR(40)`, v1 names go up to 63 characters; uniqueness may add a suffix). A key whose name does
+not survive the mint is still migrated, but the gateways that hold it can neither re-sync nor
+revoke it from v2: the report lists every such key as a WARN (`api_key <uuid> on artifact <uuid>:
+v1 name … becomes handle …`) so it can be recreated after cut-over or revoked before.
+
+`gateways.is_active` is not carried over: v2 sets it when the gateway connects and clears it when
+it disconnects, and a migrated gateway has not connected to v2 yet.
 
 ## Reverse migration (§13)
 

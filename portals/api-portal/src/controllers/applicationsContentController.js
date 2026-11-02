@@ -226,7 +226,7 @@ const loadApplications = async (req, res, next) => {
         if (layoutResponse === "") {
             html = renderTemplate('../pages/applications/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
-            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
+            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent, orgId);
         }
     } catch (error) {
         logger.error("Error occurred while loading Applications", {
@@ -273,7 +273,7 @@ const loadApplication = async (req, res, next) => {
         if (layoutResponse === "") {
             html = renderTemplate('../pages/application/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
         } else {
-            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
+            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent, data.orgId);
         }
     } catch (error) {
         logger.error("Error occurred while loading application", {

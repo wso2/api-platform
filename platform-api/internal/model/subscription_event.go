@@ -19,28 +19,32 @@ package model
 
 // SubscriptionCreatedEvent represents the payload for a subscription.created event.
 type SubscriptionCreatedEvent struct {
-	ApiId              string `json:"apiId"`
-	SubscriptionId     string `json:"subscriptionId"`
-	ApplicationId      string `json:"applicationId,omitempty"`
-	SubscriptionToken  string `json:"subscriptionToken"`
-	SubscriptionPlanId string `json:"subscriptionPlanId,omitempty"`
-	Status             string `json:"status"`
+	ApiId                 string `json:"apiId"`
+	SubscriptionId        string `json:"subscriptionId"`
+	ApplicationId         string `json:"applicationId,omitempty"`
+	SubscriptionToken     string `json:"subscriptionToken"`
+	SubscriptionPlanId    string `json:"subscriptionPlanId,omitempty"`
+	Status                string `json:"status"`
+	BillingCustomerId     string `json:"billingCustomerId,omitempty"`
+	BillingSubscriptionId string `json:"billingSubscriptionId,omitempty"`
 }
 
 // SubscriptionUpdatedEvent represents the payload for a subscription.updated event.
 type SubscriptionUpdatedEvent struct {
-	ApiId              string `json:"apiId"`
-	SubscriptionId     string `json:"subscriptionId"`
-	ApplicationId      string `json:"applicationId,omitempty"`
-	SubscriptionToken  string `json:"subscriptionToken"`
-	SubscriptionPlanId string `json:"subscriptionPlanId,omitempty"`
-	Status             string `json:"status"`
+	ApiId                 string `json:"apiId"`
+	SubscriptionId        string `json:"subscriptionId"`
+	ApplicationId         string `json:"applicationId,omitempty"`
+	SubscriptionToken     string `json:"subscriptionToken"`
+	SubscriptionPlanId    string `json:"subscriptionPlanId,omitempty"`
+	Status                string `json:"status"`
+	BillingCustomerId     string `json:"billingCustomerId,omitempty"`
+	BillingSubscriptionId string `json:"billingSubscriptionId,omitempty"`
 }
 
 // SubscriptionDeletedEvent represents the payload for a subscription.deleted event.
 type SubscriptionDeletedEvent struct {
-	ApiId              string `json:"apiId"`
-	SubscriptionId     string `json:"subscriptionId"`
-	ApplicationId      string `json:"applicationId,omitempty"`
-	SubscriptionToken  string `json:"subscriptionToken"`
+	ApiId             string `json:"apiId"`
+	SubscriptionId    string `json:"subscriptionId"`
+	ApplicationId     string `json:"applicationId,omitempty"`
+	SubscriptionToken string `json:"subscriptionToken"`
 }

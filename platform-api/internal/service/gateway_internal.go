@@ -55,6 +55,7 @@ type GatewayInternalAPIService struct {
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	billingRepo          repository.SubscriptionBillingRepository
 }
 
 // NewGatewayInternalAPIService creates a new gateway internal API service.
@@ -291,9 +292,21 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 		}
 	}
 
+	billing := map[string]*model.SubscriptionBilling{}
+	if s.billingRepo != nil {
+		ids := make([]string, len(subs))
+		for i, sub := range subs {
+			ids[i] = sub.UUID
+		}
+		if billing, err = s.billingRepo.GetMany(ids, orgID); err != nil {
+			return nil, fmt.Errorf("failed to read subscription billing for API %s: %w", apiID, err)
+		}
+	}
+
 	items := make([]dto.GatewaySubscriptionInfo, len(subs))
 	for i, sub := range subs {
-		items[i] = dto.GatewaySubscriptionInfo{
+		updatedAt := sub.UpdatedAt
+		item := dto.GatewaySubscriptionInfo{
 			ID:                 sub.UUID,
 			APIID:              sub.ArtifactUUID,
 			ApplicationID:      sub.ApplicationID,
@@ -301,9 +314,19 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 			SubscriptionPlanID: sub.SubscriptionPlanID,
 			Status:             string(sub.Status),
 			CreatedAt:          sub.CreatedAt,
-			UpdatedAt:          sub.UpdatedAt,
-			Etag:               utils.GenerateDeterministicUUIDv7(sub.UUID, sub.UpdatedAt),
 		}
+		if b := billing[sub.UUID]; b != nil {
+			item.BillingCustomerID = b.CustomerID
+			item.BillingSubscriptionID = b.SubscriptionID
+			item.Status = model.GatewayStatus(sub.Status, b)
+			// A billing change can change the enforced status, so the gateway's etag must move too.
+			if b.UpdatedAt.After(updatedAt) {
+				updatedAt = b.UpdatedAt
+			}
+		}
+		item.UpdatedAt = updatedAt
+		item.Etag = utils.GenerateDeterministicUUIDv7(sub.UUID, updatedAt)
+		items[i] = item
 	}
 	return items, nil
 }
@@ -318,7 +341,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 	const pageSize = 1000
 	var plans []*model.SubscriptionPlan
 	for offset := 0; ; offset += pageSize {
-		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, repository.ListOptions{Limit: pageSize, Offset: offset})
+		page, err := s.subscriptionPlanRepo.ListByOrganization(orgID, repository.ListOptions{Limit: pageSize, Offset: offset}, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to list subscription plans for org %s: %w", orgID, err)
 		}
@@ -626,4 +649,9 @@ func (s *GatewayInternalAPIService) CheckArtifactsExist(orgID string, artifactID
 		return nil, nil
 	}
 	return s.artifactRepo.ExistsByUUIDs(artifactIDs, orgID)
+}
+
+// SetBillingRepository adds paid subscriptions' billing state to the subscriptions gateways pull.
+func (s *GatewayInternalAPIService) SetBillingRepository(repo repository.SubscriptionBillingRepository) {
+	s.billingRepo = repo
 }

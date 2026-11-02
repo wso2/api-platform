@@ -52,6 +52,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/a2ax"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
@@ -61,6 +62,26 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 )
+
+func TestArtifactColumnQuery(t *testing.T) {
+	for engine, want := range map[components.DBType]string{
+		components.SQLite:    "SELECT cp_sync_status FROM artifacts WHERE kind = ? AND handle = ?",
+		components.Postgres:  "SELECT cp_sync_status FROM artifacts WHERE kind = $1 AND handle = $2",
+		components.SQLServer: "SELECT cp_sync_status FROM artifacts WHERE kind = @p1 AND handle = @p2",
+	} {
+		got, err := artifactColumnQuery(engine, cpSyncStatusColumn)
+		require.NoError(t, err)
+		require.Equal(t, want, got, engine)
+	}
+	got, err := artifactColumnQuery(components.SQLite, cpArtifactIDColumn)
+	require.NoError(t, err)
+	require.Equal(t, "SELECT cp_artifact_id FROM artifacts WHERE kind = ? AND handle = ?", got)
+
+	for _, column := range []string{"", "configuration", "cp_sync_status; DROP TABLE artifacts"} {
+		_, err := artifactColumnQuery(components.SQLite, column)
+		require.ErrorContains(t, err, "unsupported artifacts column", column)
+	}
+}
 
 func TestAwaitMappedTestbenchServiceProbesMappedEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3907,6 +3928,28 @@ func TestManagementEndpointDeleteSweepsAResourceThroughTheManagementAPI(t *testi
 	require.Error(t, endpoint.delete(t.Context(), client, "/llm-proxies", "stuck"))
 }
 
+func TestSubscriptionsAndPlansRegisterForCleanupInDeletionOrder(t *testing.T) {
+	ctx := tcontext.WithLocal(tcontext.WithShared(context.Background(), tcontext.NewShared("block")), tcontext.NewLocal("runner"))
+	require.NoError(t, cleanup.Install(ctx, cleanup.NewRegistry(nil)))
+	g := &Gateway{}
+
+	require.NoError(t, g.registerAdminResourceForCleanup(ctx, "subscription-plan", "plan-1"))
+	require.NoError(t, g.registerAdminResourceForCleanup(ctx, "subscription", "sub-ref-1"))
+	require.ErrorContains(t, g.registerAdminResourceForCleanup(ctx, "subscriptions", "sub-ref-2"), "unknown cleanup resource kind")
+
+	registry, err := cleanup.Of(ctx)
+	require.NoError(t, err)
+	pending := registry.Pending()
+	require.Len(t, pending, 2)
+	require.Equal(t, cleanup.KindSubscription.Name, pending[0].Kind.Name, "a subscription deletes before the plan it references")
+	require.Equal(t, "sub-ref-1", pending[0].ID)
+	require.Equal(t, cleanup.KindSubscriptionPlan.Name, pending[1].Kind.Name)
+	require.Equal(t, "plan-1", pending[1].ID)
+
+	require.Equal(t, "/subscriptions", managementCollections[cleanup.KindSubscription])
+	require.Equal(t, "/subscription-plans", managementCollections[cleanup.KindSubscriptionPlan])
+}
+
 func TestManagementEndpointDeleteWaitsOutCertificateConflicts(t *testing.T) {
 	var calls atomic.Int32
 	rest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -3962,4 +4005,186 @@ func TestManagementEndpointDeleteWaitsForTheControllerOnReleasesWithTheRace(t *t
 
 	require.NoError(t, endpoint.delete(t.Context(), httpx.NewClient(httpx.Options{MaxRetries: 1}), "/rest-apis", "api-1"))
 	require.GreaterOrEqual(t, dumps.Load(), int32(2), "the sweep returned before the controller applied the deletion")
+}
+
+// controllerTopology is a running platform gateway of a release, with its management and admin
+// endpoints mapped to host ports.
+func controllerTopology(t *testing.T, version string) *frameworkruntime.Topology {
+	t.Helper()
+	definition := &components.Definition{
+		Name:  "platform-gateway",
+		Alias: "platform-gateway",
+		Endpoints: []components.Endpoint{
+			{Name: "rest", Port: 9090, Scheme: "http"},
+			{Name: "admin", Port: 9092, Scheme: "http"},
+		},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{9090: 49090, 9092: 49092})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+	return &frameworkruntime.Topology{
+		Instances: instances,
+		Block: &topology.ResolvedBlock{
+			Name:       "cli",
+			Components: []topology.ResolvedComponent{{Def: definition, Version: version}},
+		},
+	}
+}
+
+func TestControllerEndpointsFollowTheGatewayRelease(t *testing.T) {
+	management, admin, err := ControllerEndpoints(controllerTopology(t, "1.2.0"))
+	require.NoError(t, err)
+	require.Equal(t, "http://127.0.0.1:49090"+ManagementBasePath, management)
+	require.Equal(t, "http://127.0.0.1:49092"+adminBasePath, admin)
+
+	management, admin, err = ControllerEndpoints(controllerTopology(t, "1.1.0"))
+	require.NoError(t, err)
+	require.Equal(t, "http://127.0.0.1:49090"+managementBasePathV11, management)
+	require.Equal(t, "http://127.0.0.1:49092"+adminBasePathV11, admin)
+
+	_, _, err = ControllerEndpoints(nil)
+	require.ErrorContains(t, err, "topology is required")
+	_, _, err = ControllerEndpoints(&frameworkruntime.Topology{Instances: components.NewSet()})
+	require.Error(t, err, "a topology without a platform gateway has no controller")
+}
+
+func TestCleanupKindForResource(t *testing.T) {
+	for kind, want := range map[string]cleanup.Kind{
+		"API":         cleanup.KindAPI,
+		"MCP proxy":   cleanup.KindMCPProxy,
+		"LLM proxy":   cleanup.KindLLMProxy,
+		"GraphQL API": cleanup.KindGraphQLAPI,
+	} {
+		got, err := CleanupKindForResource(kind)
+		require.NoError(t, err, kind)
+		require.Equal(t, want, got, kind)
+	}
+	_, err := CleanupKindForResource("Widget")
+	require.ErrorContains(t, err, "unknown resource kind")
+	_, err = CleanupKindForResource("")
+	require.Error(t, err)
+}
+
+func TestRenderResourceTemplateUsesTheContractOfTheRelease(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	values := valueTable(t,
+		"apiVersion", "gateway.api-platform.wso2.com/v1",
+		"name", "orders-api",
+		"spec.context", "/orders",
+	)
+	definition, err := RenderResourceTemplate(ctx, controllerTopology(t, "1.2.0"), t.TempDir(),
+		"API", "resources/templates/rest-api.yaml", values)
+	require.NoError(t, err)
+	require.Contains(t, definition, "kind: RestApi")
+	require.Contains(t, definition, "name: orders-api")
+	require.Contains(t, definition, "context: /orders")
+
+	_, err = RenderResourceTemplate(ctx, nil, t.TempDir(), "API", "resources/templates/rest-api.yaml", values)
+	require.ErrorContains(t, err, "topology is required")
+	_, err = RenderResourceTemplate(ctx, controllerTopology(t, "1.2.0"), t.TempDir(), "Widget",
+		"resources/templates/rest-api.yaml", values)
+	require.ErrorContains(t, err, "unknown resource kind")
+	_, err = RenderResourceTemplate(ctx, controllerTopology(t, "1.2.0"), t.TempDir(), "API",
+		"resources/templates/missing.yaml", values)
+	require.Error(t, err)
+}
+
+func TestMCPServiceResolvesToTheTestbenchMCPEndpoint(t *testing.T) {
+	spec, ok := serviceEndpoints["mcp"]
+	require.True(t, ok)
+	require.Equal(t, "testbench", spec.component)
+	require.Equal(t, "mcp", spec.endpoint)
+	require.False(t, spec.partitioned, "the MCP server is stateless, so it is not partitioned")
+}
+
+func TestResolveServiceURLAndStoreChoosesTheNetworkOfTheClient(t *testing.T) {
+	definition := &components.Definition{
+		Name:      "testbench",
+		Alias:     "testbench",
+		Endpoints: []components.Endpoint{{Name: "mcp", Port: 3009, Scheme: "http"}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{3009: 43009})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+	gateway := &Gateway{topo: &frameworkruntime.Topology{Instances: instances}}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+
+	require.NoError(t, gateway.resolveServiceURLAndStore(ctx, "mcp", "", "/mcp", "upstream"))
+	upstream, err := tcontext.ResolveString(ctx, "upstream")
+	require.NoError(t, err)
+	require.Equal(t, "http://testbench:3009/mcp", upstream, "the default form is the in-network address")
+
+	require.NoError(t, gateway.resolveServiceURLAndStore(ctx, "mcp", " host", "/mcp", "fromHost"))
+	fromHost, err := tcontext.ResolveString(ctx, "fromHost")
+	require.NoError(t, err)
+	require.Equal(t, "http://127.0.0.1:43009/mcp", fromHost, "the host form is the host-mapped address")
+
+	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "mcp", " host", "/mcp", " "))
+	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "unknown", " host", "/mcp", "x"))
+}
+
+func TestAnalyticsCompanyIDAssertions(t *testing.T) {
+	var paid analyticsEvent
+	require.NoError(t, json.Unmarshal([]byte(`{"company_id":"cus-1","metadata":{}}`), &paid))
+	free := &analyticsEvent{}
+
+	require.NoError(t, companyIDAssert(&paid, "/p", "have", "cus-1"))
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "have", "cus-2"), `company id "cus-1", want "cus-2"`)
+	require.ErrorContains(t, companyIDAssert(free, "/p", "have", "cus-1"), `company id "", want "cus-1"`)
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "have", ""), "needs the expected value")
+	require.NoError(t, companyIDAssert(free, "/p", "not have", ""))
+	require.ErrorContains(t, companyIDAssert(&paid, "/p", "not have", ""), "want none")
+	require.ErrorContains(t, companyIDAssert(free, "/p", "not have", "x"), "takes no value")
+	require.ErrorContains(t, companyIDAssert(free, "/p", "count", ""), "unsupported")
+}
+
+// A readiness call's event is what a scenario waits for before resetting the collector: an event
+// for the path with another status doesn't count, so the step keeps polling until the wanted one
+// arrives, and fails when it never does.
+func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
+	var mu sync.Mutex
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/analytics-block/test/events", r.URL.Path)
+		mu.Lock()
+		polls++
+		n := polls
+		mu.Unlock()
+		events := `[{"request":{"uri":"/items/42"},"response":{"status":403}}]`
+		if n >= 2 {
+			events = `[{"request":{"uri":"/items/42"},"response":{"status":403}},` +
+				`{"request":{"uri":"/items/42"},"response":{"status":200}}]`
+		}
+		_, _ = io.WriteString(w, events)
+	}))
+	t.Cleanup(server.Close)
+	parsed, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	serverPort, err := strconv.Atoi(parsed.Port())
+	require.NoError(t, err)
+	definition := &components.Definition{
+		Name: "testbench", Alias: "testbench",
+		Endpoints: []components.Endpoint{{Name: "analytics", Port: 3008, Scheme: "http"}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{3008: serverPort})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+	gateway := &Gateway{
+		topo:   &frameworkruntime.Topology{Instances: instances, Block: &topology.ResolvedBlock{Name: "analytics-block"}},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, time.Millisecond),
+		base:   stubBase{},
+	}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+
+	require.NoError(t, gateway.waitForAnalyticsEvent(ctx, "/shop/v1.0/items/42", 200))
+	mu.Lock()
+	require.GreaterOrEqual(t, polls, 2, "a 403 event for the path is not the readiness call's 200")
+	mu.Unlock()
+
+	short, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
 }

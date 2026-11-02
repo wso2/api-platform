@@ -16,9 +16,7 @@
  * under the License.
  */
 
-
 import { useMemo } from 'react';
-
 import { AppPage } from '@/components/AppPage';
 import { REST_API_TYPE } from '@/api/resources/apiPublications';
 import { useRestApi } from '@/api/resources/restApis';
@@ -28,10 +26,10 @@ import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGate
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { useCan } from '@/permissions/useCan';
 import { ApiOverviewHeader } from './ApiOverviewHeader';
 import { OverviewTab } from './OverviewTab';
 import { ProgressBanner } from './ProgressBanner';
+import { useCan } from '@/permissions/useCan';
 
 // No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
 // degrades to a shallower tier rather than linking here without an API.

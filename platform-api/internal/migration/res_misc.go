@@ -22,6 +22,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 )
 
 func init() {
@@ -29,7 +31,7 @@ func init() {
 	register(&deploymentsMigrator{baseMigrator{name: "deployments", dependsOn: []string{"artifacts", "gateways"}}})
 	register(&deploymentStatusMigrator{baseMigrator{name: "deployment_status", dependsOn: []string{"artifacts", "gateways"}}})
 	register(&artifactGatewayMappingsMigrator{baseMigrator{name: "artifact_gateway_mappings", dependsOn: []string{"artifacts", "gateways"}}})
-	register(&appArtifactMappingsMigrator{baseMigrator{name: "application_artifact_mappings", dependsOn: []string{"applications", "artifacts"}}})
+	register(&appArtifactMappingsMigrator{baseMigrator{name: "application_artifact_mappings", dependsOn: []string{"applications", "api_keys"}}})
 	register(&appAPIKeyMappingsMigrator{baseMigrator{name: "application_api_key_mappings", dependsOn: []string{"applications", "api_keys"}}})
 }
 
@@ -96,6 +98,14 @@ func (m *apiKeysMigrator) Migrate(ctx context.Context, rc *RunContext) (*Resourc
 			rc.handleExistsChecker(ctx, "api_keys", "artifact_uuid", r.artifactUUID))
 		if err != nil {
 			return err
+		}
+		if handle != r.name {
+			// A gateway identifies a key by the name the control plane first sent it,
+			// the v1 name; v2 addresses it by the handle. A key whose name does not
+			// survive the mint (longer than 40 chars, or suffixed for uniqueness) can
+			// then neither be re-synced nor revoked on the gateways that hold it.
+			rep.warn("api_key %s on artifact %s: v1 name %q becomes handle %q; gateways keep it under the v1 name, so it cannot be revoked from v2 — recreate it after cut-over (or revoke it before)",
+				r.uuid, r.artifactUUID, r.name, handle)
 		}
 		actor, err := rc.Kernels.resolveActor(ctx, q, nullToString(r.createdBy))
 		if err != nil {
@@ -367,7 +377,17 @@ func (m *artifactGatewayMappingsMigrator) Verify(ctx context.Context, rc *RunCon
 }
 
 // ---------------------------------------------------------------------------
-// application_artifact_mappings (from v1 application_artifacts) — carry created_at
+// application_artifact_mappings — DERIVED from application_api_keys ⋈ api_keys,
+// not copied from v1 application_artifacts. v1 fills that table only through
+// POST /applications/{id}/associations, which AI Workspace v1 never calls, so it
+// is empty or stale (the dev dump: 2 rows against 10 derivable pairs) and older
+// v1 schemas do not have it at all. v2's Associations tab lists an application's
+// artifacts from this table and resolves its keys per association, so every
+// (application, artifact) pair a genai application holds a key for gets one
+// row; created_at is the earliest such key mapping. The derivation follows
+// v2's own association rules (service/application.go): only genai applications
+// have the tab, and only LLM providers and LLM proxies can be associated — key
+// mappings outside those rules are reported and skipped.
 // ---------------------------------------------------------------------------
 
 type appArtifactMappingsMigrator struct{ baseMigrator }
@@ -377,30 +397,122 @@ type appArtifactRow struct {
 	createdAt                     sql.NullTime
 }
 
+// genaiApplicationType is the applications.type whose associations are derived
+// (api.Genai; the Gen AI apps of AI Workspace).
+const genaiApplicationType = "genai"
+
+// appArtifactRuleSQL is v2's association rule (service/application.go
+// validateAssociationTargetForApplication) as a predicate over v1 rows: a genai
+// application; a key of an LLM provider or LLM proxy (v1 artifacts.kind) in the
+// application's organization; and an LLM proxy only from the application's project.
+const appArtifactRuleSQL = `a.type = '` + genaiApplicationType + `'
+	AND art.organization_uuid = a.organization_uuid
+	AND art.kind IN ('` + constants.LLMProvider + `', '` + constants.LLMProxy + `')
+	AND (art.kind <> '` + constants.LLMProxy + `' OR EXISTS (
+		SELECT 1 FROM llm_proxies p WHERE p.uuid = art.uuid AND p.project_uuid = a.project_uuid))`
+
+// appArtifactSkipReasonSQL names the first rule a skipped key mapping breaks.
+const appArtifactSkipReasonSQL = `CASE
+	WHEN a.type <> '` + genaiApplicationType + `' THEN 'not a genai application'
+	WHEN art.organization_uuid <> a.organization_uuid THEN 'the artifact belongs to another organization'
+	WHEN art.kind NOT IN ('` + constants.LLMProvider + `', '` + constants.LLMProxy + `') THEN 'v2 associates only LLM providers and LLM proxies'
+	ELSE 'the LLM proxy is in a different project than the application'
+	END`
+
+// appArtifactPairsQuery lists every key mapping that satisfies the rule with the
+// artifact its key belongs to, oldest first, so the first row seen per pair
+// carries the earliest created_at.
+const appArtifactPairsQuery = `SELECT m.application_uuid, k.artifact_uuid, m.created_at
+	FROM application_api_keys m
+	INNER JOIN applications a ON a.uuid = m.application_uuid
+	INNER JOIN api_keys k ON k.uuid = m.api_key_id
+	INNER JOIN artifacts art ON art.uuid = k.artifact_uuid
+	WHERE ` + appArtifactRuleSQL + `
+	ORDER BY m.created_at, m.application_uuid, k.artifact_uuid`
+
+// appArtifactPairsCountQuery counts the distinct pairs the query above yields.
+const appArtifactPairsCountQuery = `SELECT COUNT(*) FROM (
+	SELECT DISTINCT m.application_uuid, k.artifact_uuid
+	FROM application_api_keys m
+	INNER JOIN applications a ON a.uuid = m.application_uuid
+	INNER JOIN api_keys k ON k.uuid = m.api_key_id
+	INNER JOIN artifacts art ON art.uuid = k.artifact_uuid
+	WHERE ` + appArtifactRuleSQL + `) p`
+
+// appArtifactSkippedQuery lists the key mappings the rule excludes, for the report.
+const appArtifactSkippedQuery = `SELECT a.handle, a.type, k.name, art.handle, art.kind, ` + appArtifactSkipReasonSQL + `
+	FROM application_api_keys m
+	INNER JOIN applications a ON a.uuid = m.application_uuid
+	INNER JOIN api_keys k ON k.uuid = m.api_key_id
+	INNER JOIN artifacts art ON art.uuid = k.artifact_uuid
+	WHERE NOT (` + appArtifactRuleSQL + `)
+	ORDER BY a.handle, k.name`
+
+// warnSkippedAppArtifactMappings reports every key mapping that yields no
+// association because v2 would refuse one, naming the rule it breaks.
+func warnSkippedAppArtifactMappings(ctx context.Context, src queryer, rep *ResourceReport) error {
+	rows, err := src.QueryContext(ctx, appArtifactSkippedQuery)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var appHandle, appType, keyName, artHandle, artKind, reason string
+		if err := rows.Scan(&appHandle, &appType, &keyName, &artHandle, &artKind, &reason); err != nil {
+			return err
+		}
+		rep.warn("application %s (type %s) maps key %q of %s %s: no association derived — %s; the key mapping itself is migrated",
+			appHandle, appType, keyName, artKind, artHandle, reason)
+	}
+	return rows.Err()
+}
+
+// deriveAppArtifactPairs keeps one row per (application, artifact) in first-seen
+// order; rows must arrive oldest first for created_at to be the earliest mapping.
+func deriveAppArtifactPairs(rows []appArtifactRow) []appArtifactRow {
+	seen := make(map[[2]string]struct{}, len(rows))
+	out := make([]appArtifactRow, 0, len(rows))
+	for _, r := range rows {
+		key := [2]string{r.applicationUUID, r.artifactUUID}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, r)
+	}
+	return out
+}
+
 func (m *appArtifactMappingsMigrator) Migrate(ctx context.Context, rc *RunContext) (*ResourceReport, error) {
 	rep := newReport(m.name)
 	if rc.Direction == DirectionReverse {
 		return m.migrateReverse(ctx, rc, rep)
 	}
-	rows, err := rc.Src.QueryContext(ctx, `SELECT application_uuid, artifact_uuid, created_at FROM application_artifacts`)
+	rows, err := rc.Src.QueryContext(ctx, appArtifactPairsQuery)
 	if err != nil {
 		return nil, err
 	}
-	var items []appArtifactRow
+	var mappings []appArtifactRow
 	for rows.Next() {
 		var r appArtifactRow
 		if err := rows.Scan(&r.applicationUUID, &r.artifactUUID, &r.createdAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		items = append(items, r)
+		mappings = append(mappings, r)
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
 		return nil, err
 	}
 	rows.Close()
+	items := deriveAppArtifactPairs(mappings)
 	rep.SrcCount = int64(len(items))
+	rc.Log.Info("application artifact associations derived from API key mappings",
+		"keyMappings", len(mappings), "associations", len(items))
+	if err := warnSkippedAppArtifactMappings(ctx, rc.Src, rep); err != nil {
+		return nil, err
+	}
 
 	err = runResource(ctx, rc, items, func(ctx context.Context, q queryer, r appArtifactRow) error {
 		if q == nil {
@@ -416,7 +528,7 @@ func (m *appArtifactMappingsMigrator) Migrate(ctx context.Context, rc *RunContex
 
 func (m *appArtifactMappingsMigrator) Verify(ctx context.Context, rc *RunContext) (*ResourceReport, error) {
 	rep := newReport(m.name)
-	verifyRowCounts(ctx, rc, rep, "SELECT COUNT(*) FROM application_artifacts", "SELECT COUNT(*) FROM application_artifact_mappings", false)
+	verifyRowCounts(ctx, rc, rep, appArtifactPairsCountQuery, "SELECT COUNT(*) FROM application_artifact_mappings", false)
 	return rep, nil
 }
 

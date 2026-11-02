@@ -33,11 +33,17 @@ import {
   resetHttpClient,
 } from './http';
 import {
+  notifyUnauthorized,
   onForbidden,
-  onSessionExpired,
+  onUnauthorized,
   resetForbiddenNotice,
-  resetSessionExpiryNotice,
 } from './sessionEvents';
+
+// Passes through, so a test can tell when a request has joined the session check.
+vi.mock('./sessionEvents', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./sessionEvents')>();
+  return { ...actual, notifyUnauthorized: vi.fn(actual.notifyUnauthorized) };
+});
 
 /**
  * Transport-level behaviour, exercised through MSW rather than by stubbing
@@ -493,56 +499,132 @@ describe('cancellation and deadlines', () => {
   });
 });
 
-describe('session expiry', () => {
-  // The notification is debounced across a few seconds of real time, so without
-  // clearing that window each test would be suppressed by whichever earlier
-  // test happened to trigger a 401 first.
-  beforeEach(resetSessionExpiryNotice);
+describe('a 401', () => {
+  const unauthorized = () =>
+    HttpResponse.json(
+      { status: 'error', code: 'UNAUTHORIZED', message: 'Session expired.' },
+      { status: 401 }
+    );
 
-  const failWith401 = () =>
+  /** Answers `path` with each status in turn (the last repeats) and records the bodies. */
+  const answerInTurn = (method: 'get' | 'post', path: string, statuses: number[]) => {
+    const bodies: string[] = [];
     server.use(
-      mswHttp.get(`${BASE}/rest-apis`, () =>
-        HttpResponse.json(
-          { status: 'error', code: 'UNAUTHORIZED', message: 'Session expired.' },
-          { status: 401 }
-        )
-      )
+      mswHttp[method](`${BASE}${path}`, async ({ request }) => {
+        bodies.push(await request.clone().text());
+        const status = statuses[Math.min(bodies.length, statuses.length) - 1];
+        return status === 401 ? unauthorized() : HttpResponse.json({ ok: true }, { status });
+      })
     );
+    return bodies;
+  };
 
-  it('notifies subscribers when the BFF reports the session is gone', async () => {
-    failWith401();
-    const notified = vi.fn();
-    const unsubscribe = onSessionExpired(notified);
-
-    await http.get('/rest-apis').catch(() => undefined);
-
-    expect(notified).toHaveBeenCalledTimes(1);
-    unsubscribe();
+  let unregister: (() => void) | undefined;
+  const registerCheck = (alive: boolean | (() => Promise<boolean>)) => {
+    const check = vi.fn(typeof alive === 'boolean' ? () => Promise.resolve(alive) : alive);
+    unregister = onUnauthorized(check);
+    return check;
+  };
+  afterEach(() => {
+    unregister?.();
+    unregister = undefined;
   });
 
-  it('notifies once for a burst of parallel 401s, so a dashboard triggers one redirect', async () => {
-    // Eight widgets loading against a dead session must not queue eight
-    // redirects to the login page.
-    failWith401();
-    const notified = vi.fn();
-    const unsubscribe = onSessionExpired(notified);
+  it('is sent once more when the session check finds the session alive', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [401, 200]);
+    const check = registerCheck(true);
 
-    await Promise.all(
-      Array.from({ length: 8 }, () => http.get('/rest-apis').catch(() => undefined))
-    );
+    await expect(http.get('/rest-apis')).resolves.toEqual({ ok: true });
 
-    expect(notified).toHaveBeenCalledTimes(1);
-    unsubscribe();
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(bodies).toHaveLength(2);
   });
 
-  it('stops notifying a subscriber that has unsubscribed', async () => {
-    failWith401();
-    const notified = vi.fn();
-    onSessionExpired(notified)();
+  it('fails without a second attempt when the session check finds it gone', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [401, 200]);
+    const check = registerCheck(false);
 
-    await http.get('/rest-apis').catch(() => undefined);
+    const error = await rejection(http.get('/rest-apis'));
 
-    expect(notified).not.toHaveBeenCalled();
+    expect(error.status).toBe(401);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(bodies).toHaveLength(1);
+  });
+
+  it('is retried at most once: a second 401 is final', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [401]);
+    const check = registerCheck(true);
+
+    const error = await rejection(http.get('/rest-apis'));
+
+    expect(error.status).toBe(401);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(bodies).toHaveLength(2);
+  });
+
+  it('sends a POST again with the same body', async () => {
+    const bodies = answerInTurn('post', '/rest-apis', [401, 201]);
+    registerCheck(true);
+
+    await http.post('/rest-apis', { name: 'pizza-shack' });
+
+    expect(bodies).toEqual(['{"name":"pizza-shack"}', '{"name":"pizza-shack"}']);
+  });
+
+  it('shares one session check among parallel 401s, so a dashboard asks once', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [...Array(8).fill(401), 200]);
+    let answer: (alive: boolean) => void = () => undefined;
+    const check = registerCheck(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+    vi.mocked(notifyUnauthorized).mockClear();
+
+    const requests = Array.from({ length: 8 }, () => http.get('/rest-apis'));
+    // Answer only once every 401 has joined the open check.
+    await vi.waitFor(() => expect(notifyUnauthorized).toHaveBeenCalledTimes(8));
+    answer(true);
+
+    await expect(Promise.all(requests)).resolves.toHaveLength(8);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(bodies).toHaveLength(16);
+  });
+
+  it('is not sent again once the caller has cancelled it', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [401, 200]);
+    const controller = new AbortController();
+    registerCheck(async () => {
+      controller.abort();
+      return true;
+    });
+
+    const error = await rejection(http.get('/rest-apis', { signal: controller.signal }));
+
+    expect(error.kind).toBe('aborted');
+    expect(bodies).toHaveLength(1);
+  });
+
+  // TanStack Query cancels a query on unmount: it shouldn't wait out the check.
+  it('fails as cancelled at once, without waiting for the session check', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [401, 200]);
+    const controller = new AbortController();
+    let answer: (alive: boolean) => void = () => undefined;
+    const check = registerCheck(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+
+    const request = rejection(http.get('/rest-apis', { signal: controller.signal }));
+    await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    expect((await request).kind).toBe('aborted');
+    answer(true);
+    expect(bodies).toHaveLength(1);
+  });
+
+  it('fails as it is when nothing checks the session, or the check throws', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [401]);
+
+    expect((await rejection(http.get('/rest-apis'))).status).toBe(401);
+
+    registerCheck(() => Promise.reject(new Error('session endpoint down')));
+    expect((await rejection(http.get('/rest-apis'))).status).toBe(401);
+    expect(bodies).toHaveLength(2);
   });
 });
 
@@ -603,14 +685,14 @@ describe('forbidden operations', () => {
     unsubscribe();
   });
 
-  it('does not announce a 403 as a dead session', async () => {
+  it('does not treat a 403 as a dead session', async () => {
     failWith403('/projects');
-    const expired = vi.fn();
-    const unsubscribe = onSessionExpired(expired);
+    const check = vi.fn(() => Promise.resolve(true));
+    const unregister = onUnauthorized(check);
 
     await http.get('/projects', { operationName: 'ListProjects' }).catch(() => undefined);
 
-    expect(expired).not.toHaveBeenCalled();
-    unsubscribe();
+    expect(check).not.toHaveBeenCalled();
+    unregister();
   });
 });

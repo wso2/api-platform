@@ -20,6 +20,11 @@ package platformgateway
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -746,4 +751,128 @@ func TestBuildVersionedWithPoliciesRepullsOnlyTheMovingLatestTag(t *testing.T) {
 	for _, command := range release {
 		require.NotContains(t, command.Args, "--pull")
 	}
+}
+
+func TestPlatformGatewayWiringSigningKeys(t *testing.T) {
+	spec := PlatformGateway().Wiring
+	for _, ok := range []string{"{signingKeys: true}", "{signingKeys: false}", "{signingKeys: true, controllers: 2}"} {
+		var node yaml.Node
+		require.NoError(t, yaml.Unmarshal([]byte(ok), &node))
+		_, err := spec.Decode(node.Content[0])
+		require.NoError(t, err, ok)
+	}
+	var node yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte("{signingKeys: maybe}"), &node))
+	_, err := spec.Decode(node.Content[0])
+	require.Error(t, err)
+}
+
+func TestSigningKeysGatewayDefinition(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	registered := PlatformGateway().WithImageVersion("current")
+	got, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{SigningKeys: true})
+	require.NoError(t, err)
+	require.NoError(t, got.Validate())
+
+	require.Equal(t, []string{signingKeysComposeFile}, got.Compose.ComposeOverrideFiles)
+	require.Equal(t, signingKeyActivePEM, got.Compose.ProjectEnv[envSigningKeyActive])
+	require.Equal(t, signingKeyPreviousPEM, got.Compose.ProjectEnv[envSigningKeyPrevious])
+	require.Equal(t, registered.Compose.Env, got.Compose.Env, "the keys must not reach the services' env file")
+	require.Equal(t, registered.Compose.Services, got.Compose.Services)
+	require.Equal(t, registered.DB, got.DB)
+
+	require.Empty(t, registered.Compose.ComposeOverrideFiles, "the registered definition must not change")
+	require.Empty(t, registered.Compose.ProjectEnv)
+
+	unchanged, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{SigningKeys: false})
+	require.NoError(t, err)
+	require.Same(t, registered, unchanged)
+}
+
+func TestSigningKeysComposeWithTwoControllers(t *testing.T) {
+	registered := PlatformGateway()
+	got, err := registered.ApplyWiring(registered, &PlatformGatewayWiring{Controllers: 2, SigningKeys: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{xdsControllerComposeFile, signingKeysComposeFile}, got.Compose.ComposeOverrideFiles)
+	require.Contains(t, got.Compose.Services, svcXDSController)
+	require.Equal(t, signingKeyActivePEM, got.Compose.ProjectEnv[envSigningKeyActive])
+	require.Equal(t, []components.DBType{components.Postgres}, got.DB.Supported)
+}
+
+func TestSigningKeysRejectWhatTheyCannotApply(t *testing.T) {
+	_, err := withSigningKeys(nil)
+	require.Error(t, err)
+	noCompose := *PlatformGateway()
+	noCompose.Compose = nil
+	_, err = withSigningKeys(&noCompose)
+	require.ErrorContains(t, err, "compose-backed")
+
+	once, err := withSigningKeys(PlatformGateway())
+	require.NoError(t, err)
+	_, err = withSigningKeys(once)
+	require.ErrorContains(t, err, "already holds the gateway signing keys")
+
+	got, err := withSigningKeys(PlatformGateway())
+	require.NoError(t, err)
+	require.Len(t, got.Compose.ProjectEnv, 2)
+}
+
+// TestSigningKeysComposeOverride verifies that the override copies each key to the path the
+// gateway-signing overlay configures, owned by the runtime user and unreadable by others.
+func TestSigningKeysComposeOverride(t *testing.T) {
+	doc := composeFileNamed(t, filepath.Base(signingKeysComposeFile))
+	services, ok := doc["services"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, []string{svcRuntime}, keysOf(services))
+
+	sources, ok := doc["configs"].(map[string]any)
+	require.True(t, ok)
+	envBySource := map[string]string{}
+	for name, raw := range sources {
+		source, ok := raw.(map[string]any)
+		require.True(t, ok, name)
+		require.NotContains(t, source, "file", "a file-backed config is bind-mounted without its owner and mode")
+		envBySource[name], _ = source["environment"].(string)
+	}
+
+	targets := map[string]string{}
+	for _, raw := range services[svcRuntime].(map[string]any)["configs"].([]any) {
+		mount := raw.(map[string]any)
+		require.Equal(t, "10001", mount["uid"])
+		require.Equal(t, "10001", mount["gid"])
+		require.EqualValues(t, 0o400, mount["mode"])
+		targets[envBySource[mount["source"].(string)]] = mount["target"].(string)
+	}
+	require.Equal(t, map[string]string{
+		envSigningKeyActive:   "/secrets/gateway-runtime/signing/active.pem",
+		envSigningKeyPrevious: "/secrets/gateway-runtime/signing/previous.pem",
+	}, targets)
+
+	raw, err := os.ReadFile(filepath.Join(unitRepoRoot(t), "tests/framework/core/catalog/overlays/gateway-signing.toml"))
+	require.NoError(t, err)
+	overlay, err := koanftoml.Parser().Unmarshal(raw)
+	require.NoError(t, err)
+	var paths []string
+	for _, key := range overlay["signing"].(map[string]any)["keys"].([]any) {
+		paths = append(paths, key.(map[string]any)["path"].(string))
+	}
+	require.ElementsMatch(t, []string{targets[envSigningKeyActive], targets[envSigningKeyPrevious]}, paths)
+}
+
+func TestSigningKeysAreTheExpectedKeyTypes(t *testing.T) {
+	parse := func(name, content string) any {
+		block, rest := pem.Decode([]byte(content))
+		require.NotNil(t, block, name)
+		require.Empty(t, strings.TrimSpace(string(rest)), "%s holds one PEM block", name)
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		require.NoError(t, err, name)
+		return key
+	}
+	active, ok := parse("active", signingKeyActivePEM).(*ecdsa.PrivateKey)
+	require.True(t, ok, "the active key is EC")
+	require.Equal(t, elliptic.P256(), active.Curve)
+
+	previous, ok := parse("previous", signingKeyPreviousPEM).(*rsa.PrivateKey)
+	require.True(t, ok, "the previous key is RSA")
+	require.Equal(t, 2048, previous.N.BitLen())
 }

@@ -120,10 +120,17 @@ export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
 );
 
 // API Base URLs
-export const DEV_PORTAL_BASE_URL = getEnvOrDefault(
-  'APIP_AIW_DEV_PORTAL_BASE_URL',
-  ''
-);
+/**
+ * Address of the API Portal this deployment publishes to.
+ *
+ * Used as the fallback for "View in API Portal" when the organization's own API
+ * Portal registration carries no `url` — see `resolveApiPortalUrl`. Empty means
+ * no fallback, and a deployment with neither shows no link.
+ *
+ * Replaces `APIP_AIW_DEV_PORTAL_BASE_URL`, which named the same portal in the
+ * older spelling; it had no consumer left when this was renamed.
+ */
+export const API_PORTAL_URL = getEnvOrDefault('APIP_AIW_API_PORTAL_URL', '');
 
 // Whether MCP proxy publish/unpublish to the API Portal (MCP Hub) is enabled.
 // See configs/config-template.toml.
@@ -151,6 +158,7 @@ export function isFeatureEnabled(feature: FeatureId): boolean {
 // The single API Portal MCP proxies publish to. Hardcoded stand-in until
 // proper Dev Portal selection support is added — not yet operator-configurable.
 export const DEFAULT_API_PORTAL_ID = 'default';
+
 
 export const API_BASE_URLS = {
   policyHubApi: getEnvOrDefault(
@@ -214,9 +222,16 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 // Control-plane host shown in gateway setup instructions (host:port).
 // Distinct from the BFF proxy base URLs in ./paths — this is a host:port an
 // externally deployed gateway dials, not a path this browser calls.
+/**
+ * What `CONTROLPLANE_HOST` is when the deployment does not set it: the address a gateway
+ * container on the same machine uses to reach a locally running control plane. A gateway
+ * anywhere else cannot use it.
+ */
+export const DEFAULT_CONTROLPLANE_HOST = 'host.docker.internal:9243';
+
 export const CONTROLPLANE_HOST = getEnvOrDefault(
   'APIP_AIW_GATEWAY_CONTROLPLANE_HOST',
-  'host.docker.internal:9243'
+  DEFAULT_CONTROLPLANE_HOST
 );
 
 

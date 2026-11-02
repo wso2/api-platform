@@ -16,20 +16,31 @@
  * under the License.
  */
 
-import { Fragment, useState, type FC } from 'react';
-import { Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Fragment, useEffect, useState, type FC } from 'react';
+import { Alert, Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import BuildAreaCard from './components/BuildAreaCard';
 import EnvironmentCard from './components/EnvironmentCard';
 import PipelineConnector from './components/PipelineConnector';
+import NoGatewayState from './components/NoGatewayState';
 import DeployDialog from './components/DeployDialog';
 import { undeletableBuildReasons } from './utils/status';
-import type { Build, Environment } from './types';
+import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployPageProps = {
   /** Pipeline environments in promotion order, as the server returns them. */
   environments: Environment[];
   /** The API's builds, newest first. */
   builds: Build[];
+  /** Display name of the API, shown when there is no gateway to deploy to. */
+  apiName: string;
+  /** Creates the self-hosted gateway in the named environment. */
+  onAddGateway: (environment: string) => void;
+  /** Creates the managed gateway in the named environment. */
+  onAddCloudGateway: (environment: string) => void;
+  /** Set while that gateway is being built and until it is active. */
+  provisioning?: { startedAt: number; environment: string };
+  /** Set while the self-hosted gateway registration request is in flight. */
+  selfHostedPending?: { startedAt: number };
   /** The backend URL the API is defined against; the deploy form starts from it. */
   apiEndpointUrl?: string;
   /**
@@ -38,6 +49,11 @@ export type DeployPageProps = {
    * per-gateway to ask for.
    */
   takesEndpoint: boolean;
+  /**
+   * Who manages this API's deployments. Its pipeline is always shown, but deploy,
+   * promote and stop are enabled only once the control plane is confirmed to own it.
+   */
+  ownership: ApiOwnership;
   busy: boolean;
   /**
    * Deploys to `target`; `from` is set when this is a promotion. Every gateway
@@ -61,6 +77,14 @@ export type DeployPageProps = {
  * being arranged here, so the view cannot imply a promotion the pipeline does
  * not allow.
  */
+/** Why the deploy actions are disabled in each ownership state that disables them. */
+const LOCKED_REASONS: Record<ApiOwnership, string | undefined> = {
+  checking: 'Checking whether this API can be deployed from here.',
+  'control-plane': undefined,
+  gateway: 'This API was created from a gateway, which manages its deployments.',
+  unverified: "Couldn't confirm who manages this API's deployments, so deploy actions are disabled.",
+};
+
 type DialogState = {
   targetIndex: number;
   sourceIndex?: number;
@@ -71,14 +95,27 @@ type DialogState = {
 const DeployPage: FC<DeployPageProps> = ({
   environments,
   builds,
+  apiName,
+  onAddGateway,
+  onAddCloudGateway,
+  provisioning,
+  selfHostedPending,
   apiEndpointUrl,
   takesEndpoint,
+  ownership,
   busy,
   onDeploy,
   onStopGateway,
   onDeleteBuild,
 }) => {
   const [dialog, setDialog] = useState<DialogState>(null);
+  // Why deploy, promote and stop are unavailable; undefined when they are allowed.
+  const lockedReason = LOCKED_REASONS[ownership];
+
+  // A dialog opened before the actions were locked must not stay usable.
+  useEffect(() => {
+    if (lockedReason) setDialog(null);
+  }, [lockedReason]);
 
   const target = dialog ? (environments[dialog.targetIndex] ?? null) : null;
   const source =
@@ -88,9 +125,13 @@ const DeployPage: FC<DeployPageProps> = ({
     gateways: { gatewayId: string; endpointUrl?: string }[],
     buildId?: string
   ) => {
-    if (target) onDeploy(target, gateways, source, buildId);
+    if (target && !lockedReason) onDeploy(target, gateways, source, buildId);
     setDialog(null);
   };
+
+  // Environments exist but none has a gateway, so there is nowhere to deploy yet.
+  const hasNoGateways =
+    environments.length > 0 && environments.every((environment) => environment.gateways.length === 0);
 
   return (
     <PageContent fullWidth>
@@ -98,7 +139,45 @@ const DeployPage: FC<DeployPageProps> = ({
         <PageTitle.Header>Deploy</PageTitle.Header>
       </PageTitle>
 
-      {environments.length === 0 ? (
+      {ownership === 'gateway' && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          This API was created from a gateway. You can view its deployments, but deploy,
+          promote and stop actions are managed by the gateway and are unavailable here.
+        </Alert>
+      )}
+      {ownership === 'unverified' && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {LOCKED_REASONS.unverified} Reload the page to try again.
+        </Alert>
+      )}
+
+      {hasNoGateways && !lockedReason ? (
+        <>
+          <NoGatewayState
+            apiName={apiName}
+            environments={environments.map((environment) => environment.name)}
+            onAddSelfHosted={onAddGateway}
+            onAddCloud={onAddCloudGateway}
+            provisioning={provisioning}
+            selfHostedPending={selfHostedPending}
+          />
+          {/* Builds belong to no gateway yet, so they can still be deleted to free a slot;
+              deploying stays off until a gateway is active. */}
+          {builds.length > 0 && (
+            <Box sx={{ maxWidth: 640, mx: 'auto', mt: 4 }}>
+              <BuildAreaCard
+                builds={builds}
+                targetEnvironment={environments[0]}
+                undeletableBuilds={undeletableBuildReasons(environments)}
+                busy={busy}
+                lockedReason="Add a gateway to deploy."
+                onDeployClick={() => undefined}
+                onDeleteBuild={onDeleteBuild}
+              />
+            </Box>
+          )}
+        </>
+      ) : environments.length === 0 ? (
         <Box
           sx={{
             border: '1px dashed',
@@ -154,6 +233,7 @@ const DeployPage: FC<DeployPageProps> = ({
               targetEnvironment={environments[0]}
               undeletableBuilds={undeletableBuildReasons(environments)}
               busy={busy}
+              lockedReason={lockedReason}
               onDeployClick={(buildId, createBuild) =>
                 setDialog({ targetIndex: 0, buildId, createBuild })
               }
@@ -167,6 +247,7 @@ const DeployPage: FC<DeployPageProps> = ({
                   environment={environment}
                   nextEnvironment={environments[index + 1]}
                   busy={busy}
+                  lockedReason={lockedReason}
                   takesEndpoint={takesEndpoint}
                   onPromoteClick={() =>
                     setDialog({ targetIndex: index + 1, sourceIndex: index })

@@ -102,7 +102,7 @@ describe('GraphqlDevelopPoliciesPage', () => {
     renderPage();
 
     expect(await screen.findByText('cors')).toBeInTheDocument();
-    expect(screen.getByText('Policies cannot be changed here')).toBeInTheDocument();
+    expect(screen.getByText(/This API was created from a gateway/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Edit policy')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Remove policy')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Save/ })).not.toBeInTheDocument();
