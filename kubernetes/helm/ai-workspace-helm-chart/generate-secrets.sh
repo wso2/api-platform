@@ -43,7 +43,7 @@
 #   Platform API ([platform_api.*], APIP_CP_*)
 #     APIP_CP_ADMIN_USERNAME             File-mode admin username (default: admin).
 #     APIP_CP_DATABASE_PASSWORD          Database password (postgres/sqlserver).
-#     APIP_CP_WEBHOOK_SECRET             HMAC secret for the webhook receiver.
+#     APIP_CP_WEBHOOK_SECRET             Shared webhook secret, legacy route only.
 #
 #   AI Workspace BFF ([ai_workspace.*], APIP_AIW_*)
 #     APIP_AIW_AUTH_OIDC_CLIENT_SECRET   OIDC client secret (OIDC mode only).

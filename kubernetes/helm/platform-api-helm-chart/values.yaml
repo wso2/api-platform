@@ -286,10 +286,15 @@ config:
   # --- Webhook receiver (signed events from the API Portal) ---
   webhook:
     enabled: false
-    # Shared secret (required when enabled) comes from the Secret via
-    # APIP_CP_WEBHOOK_SECRET (secrets.keys.webhookSecret). It both verifies
-    # request signatures and decrypts encrypted payload fields, so it must match
-    # the secret set on the API Portal's webhook subscriber.
+    # Each portal signs with its own secret, minted by
+    # POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret and registered on
+    # the portal's subscriber. rotationGrace is how long a rotated-out secret
+    # still verifies.
+    rotationGrace: 10m
+    # Legacy: also mount /webhook/events, verified with one shared secret from
+    # the Secret via APIP_CP_WEBHOOK_SECRET (secrets.keys.webhookSecret), for
+    # portals not yet moved to their own secret. Off by default.
+    legacySharedSecret: false
     signatureTolerance: 5m
     maxBodySize: 1048576
     signatureHeader: X-Api-Portal-Signature
@@ -306,7 +311,7 @@ configToml: ""
 # must always hold APIP_CP_ENCRYPTION_KEY; the rest are conditional, and a key
 # the chart doesn't reference for your settings can simply be absent:
 #   APIP_CP_DATABASE_PASSWORD  — every non-sqlite3 driver (postgres/sqlserver)
-#   APIP_CP_WEBHOOK_SECRET     — config.webhook.enabled only
+#   APIP_CP_WEBHOOK_SECRET     — config.webhook.enabled with legacySharedSecret only
 #   jwt_public.pem             — auth.mode internal_token or file only, and not
 #                                when auth.internalToken.skipValidation is true
 #   jwt_private.pem            — auth.mode file only
@@ -325,7 +330,7 @@ secrets:
   keys:
     encryptionKey: APIP_CP_ENCRYPTION_KEY
     databasePassword: APIP_CP_DATABASE_PASSWORD      # any non-sqlite3 driver (postgres/sqlserver)
-    webhookSecret: APIP_CP_WEBHOOK_SECRET            # config.webhook.enabled only
+    webhookSecret: APIP_CP_WEBHOOK_SECRET            # config.webhook.enabled with legacySharedSecret only
     jwtPublicKey: jwt_public.pem                     # mounted file → config.auth.jwt.publicKeyFile (internal_token/file modes; not internal_token + skipValidation)
     jwtPrivateKey: jwt_private.pem                   # mounted file → config.auth.jwt.privateKeyFile (file mode)
     adminUsername: APIP_CP_ADMIN_USERNAME            # auth.mode=file only

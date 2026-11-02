@@ -44,7 +44,7 @@
 #   Platform API ([platform_api.*], APIP_CP_*)
 #     APIP_CP_ADMIN_USERNAME             File-mode admin username (default: admin).
 #     APIP_CP_DATABASE_PASSWORD          Database password (postgres/sqlserver).
-#     APIP_CP_WEBHOOK_SECRET             HMAC secret for the webhook receiver.
+#     APIP_CP_WEBHOOK_SECRET             Shared webhook secret, legacy route only.
 #
 #   API Portal ([api_portal.*], APIP_AP_*)
 #     APIP_AP_DATABASE_PASSWORD          Database password (postgres/mssql).

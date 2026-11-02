@@ -107,7 +107,7 @@ unset APIP_AP_DATABASE_PASSWORD APIP_AP_AUTH_IDP_CLIENT_SECRET
 | --- | --- |
 | `APIP_CP_ADMIN_USERNAME` | File-mode admin username (default `admin`) |
 | `APIP_CP_DATABASE_PASSWORD` | Platform API database password (`postgres` / `sqlserver`) |
-| `APIP_CP_WEBHOOK_SECRET` | Platform API webhook receiver HMAC secret (must match the portal's webhook subscriber) |
+| `APIP_CP_WEBHOOK_SECRET` | Platform API's shared webhook secret, for the legacy `/webhook/events` route only (`legacySharedSecret`). Portals normally sign with their own secret |
 | `APIP_AP_DATABASE_PASSWORD` | API Portal database password (`postgres` / `mssql`) |
 | `APIP_AP_AUTH_IDP_CLIENT_SECRET` | API Portal OIDC client secret. Also sets `hasIdpClientSecret: true` in `values-secrets.yaml` |
 | `API_PORTAL=false` | Skip the API Portal Secret |

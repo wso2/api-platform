@@ -139,7 +139,7 @@ spec:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.databasePassword }}
             {{- end }}
-            {{- if $pa.config.webhook.enabled }}
+            {{- if and $pa.config.webhook.enabled $pa.config.webhook.legacySharedSecret }}
             - name: APIP_CP_WEBHOOK_SECRET
               valueFrom:
                 secretKeyRef:

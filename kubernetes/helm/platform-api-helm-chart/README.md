@@ -73,7 +73,7 @@ The chart never creates or embeds secret values. The render **fails** unless
 | `jwt_private.pem` | `auth.mode=file` |
 | `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` | `auth.mode=file` (bcrypt hash; there is no `admin/admin` default) |
 | `APIP_CP_DATABASE_PASSWORD` | `config.database.driver` is `postgres` / `sqlserver` |
-| `APIP_CP_WEBHOOK_SECRET` | `config.webhook.enabled=true` |
+| `APIP_CP_WEBHOOK_SECRET` | `config.webhook.enabled=true` with `config.webhook.legacySharedSecret=true` |
 
 Each value is written to its own file in a private temporary directory. The directory is
 passed with `--from-file`, which turns each file name into a Secret key. Secret values never
@@ -231,7 +231,8 @@ every key below with `platform-api.`.
     origins only, never `*`), and WebSocket limits.
   - `config.gateway.*`, `config.deployments.*`, `config.eventHub.*`, `config.webhook.*` —
     gateway registration checks, deployment limits/timeouts, EventHub polling, and the signed
-    webhook receiver for API Portal events.
+    webhook receiver for API Portal events (`rotationGrace` for per-portal secrets, and
+    `legacySharedSecret` for the old shared-secret route, off by default).
 - `configToml` — raw TOML appended to the generated config, for keys not modeled above. It's
   a ConfigMap, so use `{{ env "NAME" }}` tokens plus `deployment.extraEnv` for secret values.
 - `secrets.existingSecret` / `secrets.keys.*` — the required Secret and the key names inside

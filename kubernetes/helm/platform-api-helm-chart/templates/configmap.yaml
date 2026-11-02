@@ -193,7 +193,11 @@ data:
     [platform_api.webhook]
     enabled = {{ $cfg.webhook.enabled }}
     {{- if $cfg.webhook.enabled }}
+    rotation_grace = {{ $cfg.webhook.rotationGrace | quote }}
+    legacy_shared_secret = {{ $cfg.webhook.legacySharedSecret }}
+    {{- if $cfg.webhook.legacySharedSecret }}
     secret = {{ `'{{ env "APIP_CP_WEBHOOK_SECRET" }}'` }}
+    {{- end }}
     signature_tolerance = {{ $cfg.webhook.signatureTolerance | quote }}
     max_body_size = {{ $cfg.webhook.maxBodySize | int }}
     signature_header = {{ $cfg.webhook.signatureHeader | quote }}

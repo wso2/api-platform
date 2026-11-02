@@ -520,15 +520,26 @@ retention_period = "1h"    # how long delivered events are retained
 # ---------------------------------------------------------------------------
 # Webhook — control-plane webhook receiver
 # ---------------------------------------------------------------------------
-# The API Portal delivers signed events (API key / subscription
-# changes) to this endpoint.
+# The API Portal delivers signed events (API key / subscription changes) to
+# POST /api/internal/v0.9/webhook/portals/{portalUUID}/events. Each portal signs
+# with its own secret, which also derives the AES key that decrypts encrypted
+# payload fields (API key generate/regenerate, subscription token). To set a
+# portal up:
+#   1. POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret (scope
+#      ap:api_portal:manage). It returns { secret, receiverPath } once; calling
+#      it again rotates the secret.
+#   2. Register a subscriber on the portal (POST /webhook-subscribers) with that
+#      secret and targetUrl = <URL the portal reaches Platform API at> + receiverPath.
 [platform_api.webhook]
 enabled = false
-# Shared secret with the API Portal, used both to verify request
-# signatures (HMAC-SHA256) and to derive the AES key that decrypts encrypted
-# payload fields (API key generate/regenerate, subscription token). Must match
-# the secret configured on the API Portal's webhook subscriber. REQUIRED
-# when enabled. The "" default below is only ever read while enabled = false.
+# How long a rotated-out secret still verifies, so deliveries signed before the
+# portal's subscriber is updated with the new secret are not rejected.
+rotation_grace = "10m"
+# Legacy: also mount POST /api/internal/v0.9/webhook/events, verified with the
+# single shared `secret` below, for portals not yet moved to their own secret.
+# Off by default. Startup fails if this is true while `secret` is empty.
+legacy_shared_secret = false
+# Shared secret for the legacy route only; read only while legacy_shared_secret = true.
 secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)

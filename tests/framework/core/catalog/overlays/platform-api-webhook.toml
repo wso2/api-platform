@@ -1,4 +1,7 @@
 # Enables the platform-api webhook receiver for API Portal integration tests.
 [platform_api.webhook]
 enabled = true
+# The scenarios register the portal's subscriber with one shared secret on the
+# legacy /webhook/events route, which is off by default.
+legacy_shared_secret = true
 secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'

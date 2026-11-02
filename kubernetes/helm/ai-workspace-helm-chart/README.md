@@ -107,7 +107,7 @@ unset APIP_CP_DATABASE_PASSWORD APIP_AIW_AUTH_OIDC_CLIENT_SECRET
 | --- | --- |
 | `APIP_CP_ADMIN_USERNAME` | File-mode admin username (default `admin`) |
 | `APIP_CP_DATABASE_PASSWORD` | Platform API database password (`postgres` / `sqlserver`) |
-| `APIP_CP_WEBHOOK_SECRET` | Platform API webhook receiver HMAC secret |
+| `APIP_CP_WEBHOOK_SECRET` | Platform API's shared webhook secret, for the legacy `/webhook/events` route only (`legacySharedSecret`) |
 | `APIP_AIW_AUTH_OIDC_CLIENT_SECRET` | AI Workspace UI OIDC client secret (`auth.mode=oidc`) |
 
 If you pass a release name as the second argument, use the **same** release name in
