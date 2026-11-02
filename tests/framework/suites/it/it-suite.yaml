@@ -336,8 +336,9 @@ blocks:
           - features/mtls_header_bypass.feature
 
   # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
-  # certificate gauges and its own JSON access log lines, so runners take turns.
-  - name: gateway-mtls-observability
+  # certificate gauges and its own JSON access log lines, so runners take turns. The overlay never
+  # touches present_default_identity, which also covers the on/default-identity scenario.
+  - name: gateway-mtls-observability-default-identity
     parallel: 1
     components:
       - name: platform-gateway
@@ -350,10 +351,15 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/mtls_observability.feature
+      - name: mtls-default-identity-on
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity.feature
 
   # Outbound mutual TLS adds gateway identities and trust certificates and never a client
-  # authority, so it has its own gateway and runs beside the inbound block.
-  - name: gateway-mtls-outbound
+  # authority, so it has its own gateway and runs beside the inbound block. Its overlay already
+  # sets present_default_identity=false, covering the default-identity-off scenario too.
+  - name: gateway-mtls-outbound-identity
     parallel: 1
     components:
       - name: platform-gateway
@@ -367,6 +373,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/mtls_outbound.feature
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity_off.feature
 
   # The mutual TLS scenarios on a gateway with two controllers sharing one PostgreSQL
   # database. One serves the management API; the other alone feeds the runtime, so every
@@ -412,42 +422,11 @@ blocks:
         features:
           - features/mtls_outbound.feature
 
-  # The default client certificate to backends. The switch is gateway configuration (on by
-  # default; the off block sets it false) and the default identity is gateway-wide state, so
-  # each block runs its scenarios one at a time.
-  - name: gateway-mtls-default-identity-off
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mtls-default-identity-off.toml
-        db: sqlite
-      - name: testbench
-      - name: tls-backend
-    runners:
-      - name: mtls-default-identity-off
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_default_identity_off.feature
-
-  - name: gateway-mtls-default-identity-on
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mtls-default-identity.toml
-        db: sqlite
-      - name: testbench
-      - name: tls-backend
-    runners:
-      - name: mtls-default-identity-on
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_default_identity.feature
-
   - name: gateway-core
-    parallel: 7
+    parallel: 8
     components:
       - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/gateway-signing.toml
+        overlay: tests/framework/core/catalog/overlays/gateway-core.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
@@ -623,18 +602,16 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-
-  - name: config-dump
-    parallel: 1
-    components:
-      - name: platform-gateway
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
       - name: config-dump
         features:
           - features/gateway/core/config_dump.feature
+      - name: metrics
+        features:
+          - features/gateway/observability/metrics.feature
+      - name: request-body-size
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_body_size.feature
 
   # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
@@ -664,19 +641,6 @@ blocks:
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
 
-  - name: gateway-metrics
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/metrics.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: metrics
-        features:
-          - features/gateway/observability/metrics.feature
-
   - name: gateway-request-id-disabled
     parallel: 1
     components:
@@ -694,22 +658,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/security/jwks_disabled.feature
-
-  # Buffered bodies above gRPC's 4 MiB default reach the policy engine only on Gateways whose
-  # ext_proc server sizes its message limits from the body ceilings; released 1.2.0 does not.
-  - name: gateway-request-body-size
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/request-body-size.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: request-body-size
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/core/request_body_size.feature
 
   - name: vhost-routing-single
     parallel: 1
@@ -743,9 +691,11 @@ blocks:
 
   # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
   # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
-  # Gateway 1.2.0.
-  - name: mcp-policies
-    parallel: 2
+  # Gateway 1.2.0. Also hosts the analytics runners, which use the identical overlay and
+  # components; serialized (parallel: 1) since their counters must not see concurrent traffic
+  # from the other runners sharing this gateway.
+  - name: mcp-agent-policies-analytics
+    parallel: 1
     components:
       - name: platform-gateway
         overlay: tests/framework/core/catalog/overlays/mcp-jwt-auth.toml
@@ -782,17 +732,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/graphql_policies.feature
-
-  - name: analytics
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mcp-jwt-auth.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-      - name: a2a-trip-planner
-    runners:
       - name: agent-analytics
         tags: "gateway-version>1.2.0"
         features:

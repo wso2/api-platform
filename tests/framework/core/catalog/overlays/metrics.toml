@@ -1,5 +1,0 @@
-[controller.metrics]
-enabled = true
-
-[policy_engine.metrics]
-enabled = true
