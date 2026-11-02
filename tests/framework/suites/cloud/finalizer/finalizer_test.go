@@ -244,3 +244,22 @@ func TestOwnsMatchesTheTrackedSuffixes(t *testing.T) {
 	require.True(t, tracker.Owns([]string{"default", "syn-api-abcde234-1"}))
 	require.False(t, tracker.Owns([]string{"default", "ops-api"}))
 }
+
+func TestSweepDeletesAnIDListedTwiceOnce(t *testing.T) {
+	var deletes int
+	collection := Collection{
+		Name: "/repeated",
+		List: func(context.Context) ([]Leftover, error) {
+			leftover := Leftover{ID: "a", Names: []string{"x-abcde234"}}
+			return []Leftover{leftover, leftover}, nil
+		},
+		Delete: func(context.Context, string) error { deletes++; return nil },
+	}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{collection})
+	require.NoError(t, err)
+	require.Equal(t, []string{"/repeated/a"}, removed)
+	require.Equal(t, 1, deletes)
+}

@@ -259,11 +259,7 @@ func listCollectionQuery(ctx context.Context, client *httpx.Client, base, token,
 		if len(params) > 0 {
 			target += "?" + params.Encode()
 		}
-		resp, err := client.Do(ctx, httpx.Request{
-			Method:  http.MethodGet,
-			URL:     target,
-			Headers: map[string]string{"Authorization": "Bearer " + token},
-		}, 0, 0)
+		resp, err := getListPage(ctx, client, target, token)
 		if err != nil {
 			return all, err
 		}
@@ -277,14 +273,14 @@ func listCollectionQuery(ctx context.Context, client *httpx.Client, base, token,
 		if err != nil {
 			return all, err
 		}
-		all = append(all, items...)
-
 		paging := listPaging(resp)
+		if page > 0 && paging != nil && paging.Offset != nil && *paging.Offset != offset {
+			// A page from the wrong offset can repeat items already read, so it is not kept.
+			return all, fmt.Errorf("%s did not honour offset %d, it answered from offset %d", collection, offset, *paging.Offset)
+		}
+		all = append(all, items...)
 		if paging == nil || len(items) == 0 {
 			return all, nil
-		}
-		if page > 0 && paging.Offset != nil && *paging.Offset != offset {
-			return all, fmt.Errorf("%s did not honour offset %d, it answered from offset %d", collection, offset, *paging.Offset)
 		}
 		offset += len(items)
 		if paging.Total == nil || offset >= *paging.Total {
@@ -296,6 +292,28 @@ func listCollectionQuery(ctx context.Context, client *httpx.Client, base, token,
 		}
 	}
 	return all, fmt.Errorf("%s holds more than %d pages; the rest were not read", collection, maxListPages)
+}
+
+// getListPage reads one page of a list. A transport error, a 5xx or a 429 is retried, since a
+// listing that is missed leaves the run's resources in the organisation for good. Any other answer
+// is returned for the caller to judge.
+func getListPage(ctx context.Context, client *httpx.Client, target, token string) (*httpx.Response, error) {
+	return retry.Until(ctx, retry.Options{Fast: true},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, err := client.Do(ctx, httpx.Request{
+				Method:  http.MethodGet,
+				URL:     target,
+				Headers: map[string]string{"Authorization": "Bearer " + token},
+			}, 0, 0)
+			if err != nil {
+				return nil, retry.Transient(err)
+			}
+			if resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusTooManyRequests {
+				return nil, retry.Transient(responseError(resp))
+			}
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool { return resp != nil })
 }
 
 // pageInfo is the paging block of a list response. A field the platform leaves out is nil.

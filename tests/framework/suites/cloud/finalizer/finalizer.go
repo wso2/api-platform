@@ -146,10 +146,15 @@ func (t *Tracker) sweepCollection(ctx context.Context, collection Collection, su
 	if err != nil {
 		errs = append(errs, fmt.Errorf("listing %s: %w", collection.Name, err))
 	}
+	handled := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		if !OwnedBy(item.Names, suffixes) {
 			continue
 		}
+		if _, seen := handled[item.ID]; seen && item.ID != "" {
+			continue
+		}
+		handled[item.ID] = struct{}{}
 		if item.ID == "" {
 			errs = append(errs, fmt.Errorf("%s holds a leftover with no id to delete it by", collection.Name))
 			continue

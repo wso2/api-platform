@@ -2231,7 +2231,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 
 func TestCloudSweepsStillSweepTheDefaultProjectWhenTheProjectsCannotBeListed(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/projects"] = http.StatusInternalServerError
+	stub.failing["/projects"] = http.StatusForbidden
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
@@ -2246,7 +2246,7 @@ func TestListCollectionKeepsThePagesItReadWhenALaterPageFails(t *testing.T) {
 	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
 		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 		if offset >= 2 {
-			w.WriteHeader(http.StatusInternalServerError)
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "a"}, {"id": "b"}},
@@ -2321,13 +2321,60 @@ func TestListCollectionRefusesAPlatformThatIgnoresTheOffset(t *testing.T) {
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
 
-	_, err = listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/projects")
+	items, err := listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/projects")
 	require.ErrorContains(t, err, "did not honour offset")
+	require.Len(t, items, 2, "the page from the wrong offset is dropped, so nothing is listed twice")
+}
+
+func TestListCollectionRetriesATransientFailure(t *testing.T) {
+	for name, fail := range map[string]func(w http.ResponseWriter){
+		"a 5xx answer": func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) },
+		"a 429 answer": func(w http.ResponseWriter) { w.WriteHeader(http.StatusTooManyRequests) },
+		"a dropped connection": func(w http.ResponseWriter) {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				_ = conn.Close()
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			requests := 0
+			topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+				requests++
+				if requests == 1 {
+					fail(w)
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "a"}}})
+			})
+			base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+			require.NoError(t, err)
+
+			items, err := listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/secrets")
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+			require.Equal(t, 2, requests)
+		})
+	}
+}
+
+func TestListCollectionDoesNotRetryAClientError(t *testing.T) {
+	requests := 0
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusForbidden)
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	_, err = listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/secrets")
+	require.Error(t, err)
+	require.Equal(t, 1, requests)
 }
 
 func TestCloudSweepsCarryOnPastAListingThatFails(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/projects"] = http.StatusInternalServerError
+	stub.failing["/projects"] = http.StatusForbidden
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
