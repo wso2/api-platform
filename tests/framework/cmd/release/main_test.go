@@ -78,6 +78,47 @@ func TestRunNextVersionBootstrapsWhenNoReleaseExists(t *testing.T) {
 	require.Equal(t, "0.0.1\n", stdout.String())
 }
 
+func TestRunLatestVersionPrintsTheHighestExistingRelease(t *testing.T) {
+	dir := gitRepoWithTags(t, "tests/framework/v0.4.2", "tests/framework/v0.10.0", "tests/framework/v0.9.9")
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"latest-version", "-repo", dir}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Equal(t, "0.10.0\n", stdout.String())
+}
+
+func TestRunLatestVersionFailsWhenNoReleaseExists(t *testing.T) {
+	dir := gitRepoWithTags(t)
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"latest-version", "-repo", dir}, &stdout, &stderr)
+
+	require.Equal(t, 1, code)
+	require.Empty(t, stdout.String())
+	require.Contains(t, stderr.String(), "no release exists yet")
+}
+
+func TestRunFloatingTagsForAnAlreadyReleasedLatestVersionKeepsEveryFloatingTag(t *testing.T) {
+	dir := gitRepoWithTags(t, "tests/framework/v0.4.1", "tests/framework/v0.4.2")
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"floating-tags", "-repo", dir, "-released", "0.4.2"}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Equal(t, "0.4 0 latest\n", stdout.String())
+}
+
+func TestRunFloatingTagsForAnAlreadyReleasedOlderVersionGetsNoFloatingTagItNoLongerOwns(t *testing.T) {
+	dir := gitRepoWithTags(t, "tests/framework/v0.4.1", "tests/framework/v0.4.2")
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"floating-tags", "-repo", dir, "-released", "0.4.1"}, &stdout, &stderr)
+
+	require.Equal(t, 0, code)
+	require.Equal(t, "\n", stdout.String())
+}
+
 func TestRunFloatingTagsForTheHighestOverallRelease(t *testing.T) {
 	dir := gitRepoWithTags(t, "tests/framework/v0.4.0")
 	var stdout, stderr bytes.Buffer

@@ -47,12 +47,14 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "release: missing subcommand (next-version, floating-tags, retain)")
+		fmt.Fprintln(stderr, "release: missing subcommand (next-version, latest-version, floating-tags, retain)")
 		return 2
 	}
 	switch args[0] {
 	case "next-version":
 		return runNextVersion(args[1:], stdout, stderr)
+	case "latest-version":
+		return runLatestVersion(args[1:], stdout, stderr)
 	case "floating-tags":
 		return runFloatingTags(args[1:], stdout, stderr)
 	case "retain":
@@ -76,6 +78,27 @@ func runNextVersion(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintln(stdout, release.NextVersion(tags))
+	return 0
+}
+
+func runLatestVersion(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("latest-version", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	repo := flags.String("repo", ".", "git checkout to read release tags from")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	tags, err := releaseTags(*repo)
+	if err != nil {
+		fmt.Fprintln(stderr, "release:", err)
+		return 1
+	}
+	latest, ok := release.Highest(release.ParseVersions(tags))
+	if !ok {
+		fmt.Fprintln(stderr, "release: no release exists yet")
+		return 1
+	}
+	fmt.Fprintln(stdout, latest)
 	return 0
 }
 
