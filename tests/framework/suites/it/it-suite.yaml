@@ -233,22 +233,8 @@ blocks:
 
   # Which hostnames the HTTPS listener asks for a client certificate. What it asks is state of
   # the whole gateway, so runners take turns, and each block sets its own downstream_tls
-  # settings. The settings do not depend on the database, so only the default block repeats
-  # on every engine.
-  - name: gateway-mtls-hostnames
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/mtls-event-hub.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: mtls-hostnames
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_hostnames.feature
-
+  # settings. The settings do not depend on the database, so these three repeat on one engine
+  # only; the default (no flag set) case lives in gateway-core, which sweeps every engine.
   - name: gateway-mtls-hostnames-required
     parallel: 1
     components:
@@ -423,7 +409,7 @@ blocks:
           - features/mtls_outbound.feature
 
   - name: gateway-core
-    parallel: 8
+    parallel: 12
     components:
       - name: platform-gateway
         overlay: tests/framework/core/catalog/overlays/gateway-core.toml
@@ -612,6 +598,25 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/request_body_size.feature
+      - name: mtls-hostnames
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames.feature
+      - name: vhost-routing-single
+        features:
+          - features/gateway/routes/vhost_routing_single.feature
+      - name: upstream-connect-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/upstream_connect_timeout.feature
+      - name: backend-route-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/backend_timeout.feature
+      - name: llm-backend-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
 
   # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
@@ -658,19 +663,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/security/jwks_disabled.feature
-
-  - name: vhost-routing-single
-    parallel: 1
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/vhost-routing-single.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: vhost-routing-single
-        features:
-          - features/gateway/routes/vhost_routing_single.feature
 
   - name: vhost-routing-multi
     parallel: 1
@@ -758,28 +750,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/observability/mcp_analytics.feature
-
-  - name: backend-timeout
-    parallel: 2
-    components:
-      - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/backend-timeout.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: upstream-connect-timeout
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes/upstream_connect_timeout.feature
-      - name: backend-route-timeout
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes/backend_timeout.feature
-      - name: llm-backend-timeout
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
 
   - name: ai-workspace-cli
     components:
@@ -936,34 +906,15 @@ blocks:
         features:
           - features/management-portal/deployments/multigateway.feature
 
-  - name: devportal-webhook
-    parallel: 1
-    components:
-      - name: platform-api
-        overlay: tests/framework/core/catalog/overlays/platform-api-webhook.toml
-        db: postgres
-      - name: api-portal
-        dependsOn: [platform-api]
-        db: postgres
-        overlay: tests/framework/core/catalog/overlays/api-portal-webhook.toml
-      - name: platform-gateway
-        dependsOn: [platform-api]
-        db: postgres
-      - name: testbench
-    runners:
-      - name: devportal-webhook
-        features:
-          - features/apiportal/webhooks/devportal_webhook.feature
-      - name: devportal-monetization-webhook
-        features:
-          - features/apiportal/webhooks/monetization_webhook.feature
-
   # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
   # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
   # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
   # of the key platform-api publishes with. The portal stages its product role file, which grants
   # the platform-api-system role the publishing calls are authorized as; the shared IT role files
-  # do not. The outage runner stops the portal, so runners must not overlap: keep parallel at 1.
+  # do not. Also hosts the devportal webhook runners, which use the same components with their
+  # webhook settings folded into these overlays; they too run authorized as that staged role,
+  # not the shared IT role the devportal-webhook block ran them as before this merge. The outage
+  # runner stops the portal, so runners must not overlap: keep parallel at 1.
   - name: platform-api-gateway-api-portal
     parallel: 1
     components:
@@ -995,6 +946,12 @@ blocks:
         features:
           - features/apiportal/publishing/publication_content.feature
         tags: "~@known-issue"
+      - name: devportal-webhook
+        features:
+          - features/apiportal/webhooks/devportal_webhook.feature
+      - name: devportal-monetization-webhook
+        features:
+          - features/apiportal/webhooks/monetization_webhook.feature
       - name: publication-outage
         features:
           - features/apiportal/publishing/publication_outage.feature

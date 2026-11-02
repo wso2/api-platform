@@ -24,5 +24,18 @@ enabled = true
 [router.http_listener]
 per_connection_buffer_limit_bytes = 16777216
 
+[router.http_listener.timeouts]
+request_headers_timeout = "5s"
+
 [policy_engine.request_body]
 max_decompressed_bytes = 16777216
+
+# The controller propagates a change to the runtime when it next polls the event hub.
+[controller.event_hub]
+poll_interval = "200ms"
+
+[router.vhosts.main]
+default = "*.wso2.com"
+
+[router.vhosts.sandbox]
+default = "*-sandbox.wso2.com"
