@@ -105,11 +105,21 @@ before changing one — most encode a failure mode that presents as a passing te
 ## Using the framework from another repository
 
 The framework is a Go module, `github.com/wso2/api-platform/tests/framework`, released with the
-tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow. Every dispatch cuts a
-real release (tag, embedded-snapshots commit, and an immutable
+tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow, which has a required
+`mode` input.
+
+`release` cuts a real release (tag, embedded-snapshots commit, and a
 `ghcr.io/wso2/api-platform/testbench:X.Y.Z` image): the `version` input is optional, and left
 empty the workflow auto-increments the patch of the highest existing release; give it an explicit
 version to start a new minor/major or to backport a fix onto an older line.
+
+`rebuild-testbench` republishes the testbench image of the latest release with the testbench code
+on `main`, without a new version: the `version` input is ignored, and the
+build uses that release's tagged tree, replacing only `testbench/`, `core/util/testpki/`, `go.mod`
+and `go.sum` with the ones on `main`. No tag is created or moved, so `go get` still resolves the
+same framework version; the rebuild overwrites `:X.Y.Z` and re-pushes only the floating tags
+that release already owns. It fails when the `main` testbench no longer compiles or passes its
+tests against the released `core/`.
 
 The testbench image also gets whichever floating tags that release is the newest of: `:latest`
 only when it's the highest release overall, the bare `:MAJOR` only when it's the highest within

@@ -21,8 +21,15 @@ name: Tests Framework Release
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'release: publish a new framework version with the current code. rebuild-testbench: rebuild the latest release''s testbench image with the current testbench code, without releasing a new version.'
+        required: true
+        type: choice
+        options:
+          - release
+          - rebuild-testbench
       version:
-        description: 'Version to release (MAJOR.MINOR.PATCH, e.g. 0.5.0). Leave empty to auto-increment the latest patch.'
+        description: 'release: version to publish (MAJOR.MINOR.PATCH, e.g. 0.5.0); empty auto-increments the latest patch. rebuild-testbench: ignored, the latest release is always rebuilt.'
         required: false
         type: string
 
@@ -35,11 +42,12 @@ env:
 jobs:
   release:
     name: Release
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'release'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Serializes releases: two in-flight runs could otherwise both pass the staleness check
-    # below against a moving main, then race to publish.
+    # below against a moving main, then race to publish. Shared with rebuild-testbench, which
+    # rewrites the same image tags.
     concurrency:
       group: tests-framework-release
     permissions:
@@ -181,3 +189,116 @@ jobs:
             -package "${TESTBENCH_PACKAGE}" \
             -released "${VERSION}" \
             -keep "${RETAIN_KEEP}"
+
+  # Rebuilds an existing release's testbench image with the testbench code on main, without
+  # cutting a new version: no release tag is created or moved, so `go get` still resolves the
+  # same framework version. The image keeps the tags it already owns, so consumers pinned to
+  # that version pick up the new testbench.
+  rebuild-testbench:
+    name: Rebuild testbench
+    if: github.ref == 'refs/heads/main' && inputs.mode == 'rebuild-testbench'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    concurrency:
+      group: tests-framework-release
+    permissions:
+      contents: read
+      packages: write
+    defaults:
+      run:
+        working-directory: tests/framework
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: tests/framework/go.sum
+
+      # Always the highest existing release: a given `version` input is ignored, so a rebuild
+      # can never touch an older release's image.
+      - name: Determine the version to rebuild
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION}" ]; then
+            echo "::notice::rebuild-testbench ignores the version input (${INPUT_VERSION}) and rebuilds the latest release"
+          fi
+          VERSION="$(go run ./cmd/release latest-version -repo .)"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # The floating tags the latest release owns; a rebuild re-pushes them unchanged.
+      - name: Determine which floating tags this version owns
+        id: floating
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tags="$(go run ./cmd/release floating-tags -repo . -released "${VERSION}")"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+      # The released version's tree, with only the testbench and what it imports (plus the
+      # module's dependency files) taken from main. The framework code, its generated snapshots
+      # and everything else stay exactly as they were released.
+      - name: Assemble the build context
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          release_root="${RUNNER_TEMP}/framework-release"
+          git worktree add --detach "${release_root}" "tests/framework/v${VERSION}"
+          src="${GITHUB_WORKSPACE}/tests/framework"
+          dst="${release_root}/tests/framework"
+          rm -rf "${dst}/testbench" "${dst}/core/util/testpki"
+          mkdir -p "${dst}/core/util"
+          cp -R "${src}/testbench" "${dst}/testbench"
+          cp -R "${src}/core/util/testpki" "${dst}/core/util/testpki"
+          cp "${src}/go.mod" "${src}/go.sum" "${dst}/"
+          echo "BUILD_CONTEXT=${dst}" >> "$GITHUB_ENV"
+
+      # GOWORK=off: the released tree's go.work pins an older Go than the go.mod taken from main,
+      # and the image build (whose context is this module only) never sees a go.work either.
+      - name: Run the testbench unit tests against the released framework
+        working-directory: ${{ env.BUILD_CONTEXT }}
+        env:
+          GOWORK: 'off'
+        run: go test ./testbench/... -count=1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Rebuild and push the testbench image
+        working-directory: ${{ env.BUILD_CONTEXT }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          FLOATING_TAGS: ${{ steps.floating.outputs.tags }}
+        run: |
+          set -euo pipefail
+          tags=(-t "${TESTBENCH_REPOSITORY}:${VERSION}")
+          for tag in ${FLOATING_TAGS}; do
+            tags+=(-t "${TESTBENCH_REPOSITORY}:${tag}")
+          done
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -f testbench/Dockerfile \
+            "${tags[@]}" \
+            --push .
