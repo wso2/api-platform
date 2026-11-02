@@ -19,9 +19,9 @@
 import { AppShell, Box, Footer, NotificationPanel } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Fragment, Suspense, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 
-import { useApiScope } from '../../api/core/scope';
+import { useInvalidateApiPortals } from '../../api/resources/apiPortals';
+import { useInvalidateGateways } from '../../api/resources/gateways';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { getBillingOrganization } from '../../billing/organization';
@@ -37,8 +37,6 @@ import { usePageTitle } from '../../navigation/usePageTitle';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
 import { APP_GATE_SLOT, type ApiControlPlaneAppGate } from '../../extensions';
-import { gatewayKeys } from '../../api/resources/gateways/gateways.queries';
-import { apiPortalKeys } from '../../api/resources/apiPortals/apiPortals.queries';
 import {
   extensionApiFetch,
   PortProvider,
@@ -109,21 +107,19 @@ export default function AppLayout() {
   const appGates = useSlot<ApiControlPlaneAppGate>(APP_GATE_SLOT);
 
   // An extension writing through its own client cannot reach this cache, so it
-  // names what changed and the host maps that to keys. `all(org)`, not the
-  // list: a create or delete moves counts and pagination elsewhere too.
-  const queryClient = useQueryClient();
-  // The org *id* the queries are keyed on, not the URL handle — keying on the
-  // handle would invalidate a key nothing uses.
-  const { org } = useApiScope();
+  // names what changed and the host maps that to the resource's invalidation
+  // hook, which clears the whole org root: a create or delete moves counts
+  // and pagination elsewhere too.
+  const invalidateGateways = useInvalidateGateways();
+  const invalidateApiPortals = useInvalidateApiPortals();
   const resources = useMemo(
     () => ({
       invalidate: (resource: InvalidatableResource) => {
-        if (!org) return;
-        const keys = resource === 'gateways' ? gatewayKeys : apiPortalKeys;
-        void queryClient.invalidateQueries({ queryKey: keys.all(org) });
+        if (resource === 'gateways') invalidateGateways();
+        else invalidateApiPortals();
       },
     }),
-    [org, queryClient]
+    [invalidateGateways, invalidateApiPortals]
   );
 
   // Built once per render from this portal's own hooks, then handed down as
