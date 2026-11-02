@@ -17,11 +17,19 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
-import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import { GATEWAY_OPERATIONS, GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
-import { LogsFeature, MetricsPanel, ScopedLogsNotice } from '@wso2-enterprise/apip-cloud-ui-logs';
-import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import {
+  LOG_OPERATIONS,
+  LogsFeature,
+  MetricsPanel,
+  ScopedLogsNotice,
+} from '@wso2-enterprise/apip-cloud-ui-logs';
+import {
+  ManagedPortalsPage,
+  PORTAL_OPERATIONS,
+} from '@wso2-enterprise/apip-cloud-ui-managed-portals';
 import {
   EntitlementsGate,
   TrialStatusFeature,
@@ -213,6 +221,10 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         ),
         label: 'Gateways',
         level: 'organization',
+        // What the cloud spec accepts for listing managed gateways — which is
+        // `ap:gateway:create`/`:manage`, not `:read`. Gates the nav placement
+        // this override carries; the page gates itself the same way.
+        requiredScopes: GATEWAY_OPERATIONS.ListManagedGateways,
       },
     ],
   }),
@@ -279,6 +291,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // The page used to live at /logs, and that URL is in bookmarks and
         // runbooks.
         aliases: ['logs'],
+        // Logs are read under the gateway scopes. A user without them gets the
+        // built-in Observability item back, as for any claim that stands down.
+        requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
         label: 'Observability',
         icon: <Activity size={20} />,
         // Organization, not project: the observability API scopes a log query
@@ -296,6 +311,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             id: 'observability-logs',
             routePath: 'logs',
             render: (port) => <LogsFeature port={port} />,
+            requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
             label: 'Logs',
             icon: <Logs size={20} />,
           },
@@ -317,6 +333,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'project-observability',
         slot: 'sidebar.project',
         claims: 'observability',
+        // The notice points at the organization's logs, so it is for those who
+        // may read them.
+        requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
         group: 'operate',
         order: 70,
         routePath: 'observability',
@@ -366,6 +385,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         order: 120,
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
+        requiredScopes: PORTAL_OPERATIONS.ListManagedApiPortals,
         label: 'Portals',
         icon: <PanelsTopLeft size={20} />,
         level: 'organization',

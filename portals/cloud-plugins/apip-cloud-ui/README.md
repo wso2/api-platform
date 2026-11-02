@@ -24,3 +24,16 @@ import { aiWorkspaceCloudExtensions } from '@wso2-enterprise/apip-cloud-ui';
 To add another AI Workspace plugin, create a sibling package in
 `portals/cloud-plugins`, add it as a dependency here, and register its extension in
 `src/hosts/ai-workspace.tsx`.
+
+## Scopes
+
+Each host Port carries `permissions.canAny(scopes)`, answered by the host's own
+permission check (`useAppAuth().hasPermission` in AI Workspace,
+`usePermissions().hasScope` in the console). A feature passes it an operation's
+accepted-scope list — copied from the cloud plugin's OpenAPI `security` block into
+the package's `permissions.ts`, `:manage` scopes included, and exported as
+`*_OPERATIONS` — and disables the control, or shows a no-permission notice in
+place of the page, when none is held. The host registries declare
+`requiredScopes` on each nav entry from the same lists, so an entry whose page
+the user may not read is left out of the sidebar. None of this is a security
+boundary: platform-api still decides, and a refused call is still reported.

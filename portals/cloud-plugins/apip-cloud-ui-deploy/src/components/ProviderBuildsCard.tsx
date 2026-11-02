@@ -32,6 +32,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import { relativeTime } from '../utils/time';
 import type { Build } from '../types';
 
@@ -41,6 +42,8 @@ export type ProviderBuildsCardProps = {
   /** Why a build cannot be deleted, by build id; absent means it can. */
   undeletableBuilds: Record<string, string>;
   busy: boolean;
+  /** Whether the user holds a scope that deletes builds; every delete is disabled otherwise. */
+  canDeleteBuild: boolean;
   onDeleteBuild: (buildId: string) => void;
 };
 
@@ -59,6 +62,7 @@ const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
   builds,
   undeletableBuilds,
   busy,
+  canDeleteBuild,
   onDeleteBuild,
 }) => {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -110,12 +114,14 @@ const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
                           </Box>
                         ) : null}
                       </Box>
-                      <Tooltip title={blockedReason || 'Delete this build'}>
+                      <Tooltip
+                        title={!canDeleteBuild ? NO_PERMISSION_TOOLTIP : blockedReason || 'Delete this build'}
+                      >
                         <span>
                           <IconButton
                             size="small"
                             aria-label={`Delete build ${build.buildId}`}
-                            disabled={busy || Boolean(blockedReason)}
+                            disabled={busy || !canDeleteBuild || Boolean(blockedReason)}
                             onClick={() => setPendingDelete(build.buildId)}
                           >
                             <Trash2 size={15} />

@@ -17,11 +17,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import ProviderDeployPage from './ProviderDeployPage';
 import { createProviderDeployClient, withValuePrefix, type ProviderUpstream } from './providerDeployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
+import { PROVIDER_BUILD_OPERATIONS, PROVIDER_DEPLOYMENT_OPERATIONS } from './permissions';
 import type { Build, Environment } from './types';
 
 export type ProviderDeployFeatureProps = {
@@ -51,8 +52,23 @@ const errorMessage = (error: unknown, fallback: string) =>
  * deploys to by default.
  */
 const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactHandle }) => {
-  const { apiFetch, apiHandle, notify } = port;
+  const { apiFetch, apiHandle, notify, permissions } = port;
   const handle = artifactHandle ?? apiHandle;
+
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused. Builds are
+  // the provider's own resource, so they come under its scopes rather than the
+  // deployment ones, and a reader without them still gets the environments.
+  const canView = permissions.canAny(
+    PROVIDER_DEPLOYMENT_OPERATIONS.ListLlmProviderEnvironmentDeployments
+  );
+  const canDeploy = permissions.canAny(PROVIDER_DEPLOYMENT_OPERATIONS.DeployLlmProviderToEnvironment);
+  const canUndeploy = permissions.canAny(
+    PROVIDER_DEPLOYMENT_OPERATIONS.UndeployLlmProviderFromEnvironment
+  );
+  const canListBuilds = permissions.canAny(PROVIDER_BUILD_OPERATIONS.GetLLMProviderBuilds);
+  const canDeleteBuild = permissions.canAny(PROVIDER_BUILD_OPERATIONS.DeleteLLMProviderBuild);
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
@@ -74,12 +90,15 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
 
   const load = useCallback(
     async (options: { quiet?: boolean } = {}) => {
-      if (!client) return;
+      if (!client || !canView) {
+        if (!options.quiet) setLoading(false);
+        return;
+      }
       if (!options.quiet) setLoading(true);
       try {
         const [stages, prepared] = await Promise.all([
           client.listEnvironments(),
-          client.listBuilds(),
+          canListBuilds ? client.listBuilds() : Promise.resolve([]),
         ]);
         setEnvironments(stages);
         setBuilds(prepared);
@@ -90,7 +109,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
         if (!options.quiet) setLoading(false);
       }
     },
-    [client]
+    [canListBuilds, canView, client]
   );
 
   useEffect(() => {
@@ -100,9 +119,9 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
   // Read once per provider rather than on every settling poll: how it authenticates is
   // not deployment state, and failing to read it must leave the rest of the page working.
   useEffect(() => {
-    if (!client) return;
+    if (!client || !canView) return;
     void client.readUpstream().then(setUpstream, () => setUpstream({}));
-  }, [client]);
+  }, [canView, client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
   // while anything is in flight and stop as soon as everything has settled.
@@ -232,6 +251,17 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
     );
   }
 
+  if (!canView) {
+    return (
+      <PageContent fullWidth sx={{ minWidth: 0 }}>
+        <PageTitle sx={{ mb: 2 }}>
+          <PageTitle.Header>Deploy</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view deployments.</Alert>
+      </PageContent>
+    );
+  }
+
   if (loading) {
     return (
       <PageContent fullWidth sx={{ minWidth: 0 }}>
@@ -277,6 +307,9 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
       environments={environments}
       builds={builds}
       upstream={upstream}
+      canDeploy={canDeploy}
+      canUndeploy={canUndeploy}
+      canDeleteBuild={canDeleteBuild}
       busy={busy}
       onDeleteBuild={handleDeleteBuild}
       onDeploy={handleDeploy}

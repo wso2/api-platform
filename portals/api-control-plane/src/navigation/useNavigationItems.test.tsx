@@ -22,6 +22,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { RestApi } from '@/api/resources/restApis';
 import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
+import {
+  decideAnyOperation,
+  decideOperation,
+  decideScope,
+  type PermissionInput,
+} from '../permissions/evaluate';
+import { PermissionContext, type PermissionState } from '../permissions/PermissionContext';
 import { routes } from '@/routes/paths';
 import { ConsoleScopeContext, type ConsoleScope } from '../scope/ConsoleScopeContext';
 import { makeConsoleScope } from '@/test/mockScope';
@@ -478,5 +485,64 @@ describe('host-injected sidebar extensions', () => {
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('claims "no-such-item"'));
     warn.mockRestore();
+  });
+});
+
+/*
+ * An entry that names the scopes its page needs is shown only to a user holding
+ * one of them. Permission state is injected straight through the context, the
+ * way `PermissionContext`'s own comment invites, so the test stands up no auth.
+ */
+const permissionStateFor = (granted: readonly string[]): PermissionState => {
+  const input: PermissionInput = { status: 'ready', granted: new Set(granted), mode: 'enforce' };
+  return {
+    mode: 'enforce',
+    isLoading: false,
+    grantedScopes: input.granted,
+    input,
+    can: (operation) => decideOperation(operation, input).allowed,
+    canAny: (operations) => decideAnyOperation(operations, input).allowed,
+    hasScope: (scope) => decideScope(scope, input).allowed,
+    decide: (operation) => decideOperation(operation, input),
+    decideAny: (operations) => decideAnyOperation(operations, input),
+    decideScope: (scope) => decideScope(scope, input),
+  };
+};
+
+const gatedExtension: ApiControlPlaneExtension = {
+  ...sidebarExtension,
+  id: 'environments-gated',
+  requiredScopes: ['ap:environment:read', 'ap:environment:manage'],
+};
+
+const itemIdsHolding = (granted: readonly string[]) => {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <MemoryRouter initialEntries={[`${PROJECT_BASE}/environments`]}>
+      <PermissionContext.Provider value={permissionStateFor(granted)}>
+        <ConsoleScopeContext.Provider value={atProject()}>
+          <ExtensionsProvider extensions={[gatedExtension]}>{children}</ExtensionsProvider>
+        </ConsoleScopeContext.Provider>
+      </PermissionContext.Provider>
+    </MemoryRouter>
+  );
+  const { result } = renderHook(() => useNavigationItems(), { wrapper });
+  return result.current.map((entry) => entry.id);
+};
+
+describe('permission-gated sidebar extensions', () => {
+  it('is hidden from a user holding none of its required scopes', () => {
+    expect(itemIdsHolding(['ap:project:read'])).not.toContain(gatedExtension.id);
+  });
+
+  it('is shown to a user holding any one of its required scopes', () => {
+    expect(itemIdsHolding(['ap:environment:manage'])).toContain(gatedExtension.id);
+  });
+
+  it('is shown when no permission state is mounted, so nothing is gated', () => {
+    const ids = itemsWithExtensions(atProject(), `${PROJECT_BASE}/environments`, [
+      gatedExtension,
+    ]).map((entry) => entry.id);
+
+    expect(ids).toContain(gatedExtension.id);
   });
 });
