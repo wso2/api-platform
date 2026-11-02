@@ -268,8 +268,8 @@ roles:
       - dp:label:read
 
   # Auditor — read-only across both components. Grants no mutating scope
-  # (the two POSTs it can reach, mcp-proxies/fetch-server-info and
-  # agent-proxies/fetch-agent-card, are reads the spec models as POSTs).
+  # (the one POST it can reach, agent-proxies/fetch-agent-card, is a read the spec models as
+  # a POST).
   - name: ap_viewer
     scopes:
       # Platform API

@@ -6177,7 +6177,6 @@ paths:
       operationId: fetchMCPProxyServerInfo
       security:
         - OAuth2Security:
-            - ap:mcp_proxy:read
             - ap:mcp_proxy:manage
       tags:
         - MCP Proxies

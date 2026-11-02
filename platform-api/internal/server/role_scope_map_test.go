@@ -199,6 +199,59 @@ func TestShippedSampleRolesValidateAgainstShippedSpec(t *testing.T) {
 	}
 }
 
+// MCP server introspection populates a proxy on create or refetch, so it takes the same scope
+// those operations take.
+func TestMCPProxyServerInfoFetchTakesTheManageScope(t *testing.T) {
+	reg, err := middleware.LoadScopeRegistry("../../resources/openapi.yaml")
+	if err != nil {
+		t.Fatalf("loading the shipped OpenAPI spec: %v", err)
+	}
+	m, err := middleware.LoadRoleScopeMap("../../resources/role-to-scope-mapping.yaml")
+	if err != nil {
+		t.Fatalf("loading the shipped role-to-scope-mapping.yaml: %v", err)
+	}
+
+	reaches := func(role string, accepted []string) bool {
+		for _, held := range m[role] {
+			for _, want := range accepted {
+				if held == want {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	const fetchPath = "/api/v0.9/mcp-proxies/fetch-server-info"
+	accepted, ok := reg.Lookup("POST", fetchPath)
+	if !ok {
+		t.Fatalf("%s is not in the scope registry", fetchPath)
+	}
+	for _, s := range accepted {
+		if s == "ap:mcp_proxy:read" {
+			t.Fatalf("introspection must not accept the read scope, got %v", accepted)
+		}
+	}
+	if !reaches("ap_admin", accepted) || !reaches("ap_publisher", accepted) {
+		t.Fatalf("ap_admin and ap_publisher must reach introspection; accepted %v", accepted)
+	}
+	for _, role := range []string{"ap_operator", "ap_subscriber", "ap_viewer"} {
+		if reaches(role, accepted) {
+			t.Errorf("%s must not reach introspection — it cannot create or update an MCP proxy", role)
+		}
+	}
+
+	listed, ok := reg.Lookup("GET", "/api/v0.9/mcp-proxies")
+	if !ok {
+		t.Fatal("GET /api/v0.9/mcp-proxies is not in the scope registry")
+	}
+	for _, role := range []string{"ap_operator", "ap_subscriber", "ap_viewer"} {
+		if !reaches(role, listed) {
+			t.Errorf("%s must still reach the MCP proxy listing", role)
+		}
+	}
+}
+
 // A deployment runs a build, so a shipped role that may deploy a kind must be able
 // to prepare and list that kind's builds, and one that may read its deployments must
 // be able to read the builds they name. Each build operation also accepts the

@@ -654,7 +654,7 @@ export const OPERATION_SCOPES = {
   deprecateGraphQLApiOnApiPortal: ['ap:api_portal:graphql_api:manage'],
   deprecateRestApiOnApiPortal: ['ap:api_portal:rest_api:manage'],
   fetchAgentCard: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
-  fetchMCPProxyServerInfo: ['ap:mcp_proxy:manage', 'ap:mcp_proxy:read'],
+  fetchMCPProxyServerInfo: ['ap:mcp_proxy:manage'],
   getAgentProxy: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   getAgentProxyBuild: [
     'ap:agent_proxy:build:manage',
