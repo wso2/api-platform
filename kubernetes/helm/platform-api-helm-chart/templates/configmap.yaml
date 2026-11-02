@@ -193,8 +193,9 @@ data:
     [platform_api.webhook]
     enabled = {{ $cfg.webhook.enabled }}
     {{- if $cfg.webhook.enabled }}
-    rotation_grace = {{ $cfg.webhook.rotationGrace | quote }}
-    legacy_shared_secret = {{ $cfg.webhook.legacySharedSecret }}
+    {{- /* Defaults keep a values set from before these keys (helm upgrade --reuse-values) rendering valid TOML. */}}
+    rotation_grace = {{ $cfg.webhook.rotationGrace | default "10m" | quote }}
+    legacy_shared_secret = {{ $cfg.webhook.legacySharedSecret | default false }}
     {{- if $cfg.webhook.legacySharedSecret }}
     secret = {{ `'{{ env "APIP_CP_WEBHOOK_SECRET" }}'` }}
     {{- end }}

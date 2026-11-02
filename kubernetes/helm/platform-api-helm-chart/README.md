@@ -149,6 +149,16 @@ helm upgrade platform-api ./platform-api-helm-chart -n platform-api \
   --set secrets.existingSecret=platform-api-secrets -f custom-values.yaml
 ```
 
+**Webhook receiver, per-portal secrets.** If `config.webhook.enabled=true` and your
+API Portals sign with the shared `APIP_CP_WEBHOOK_SECRET`, they deliver to
+`/api/internal/v0.9/webhook/events`. That route is now off by default, so after the
+upgrade those deliveries get `404`. Before upgrading, either move each portal to its
+own secret (`POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret`, then point the
+portal's `platform-api` subscriber at the returned `receiverPath` with that secret), or
+set `config.webhook.legacySharedSecret=true` to keep the shared-secret route while you
+migrate. The Secret's `APIP_CP_WEBHOOK_SECRET` key is read only while
+`legacySharedSecret` is on.
+
 ## Verifying the Installation
 
 ```bash
