@@ -90,8 +90,9 @@ const answer = (url: string, body: JsonBodyType | null, status = 200) =>
     ),
   );
 
+// Exact, so waiting for "authenticated" doesn't stop at "unauthenticated".
 const waitForStatus = (status: string) =>
-  waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent(status));
+  waitFor(() => expect(screen.getByTestId('status').textContent).toBe(status));
 
 afterEach(() => {
   delete window.__RUNTIME_CONFIG__;
