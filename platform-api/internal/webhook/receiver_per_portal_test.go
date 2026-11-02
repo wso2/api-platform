@@ -357,3 +357,48 @@ func TestReceiver_LegacyRouteNotMountedWhenFlagOff(t *testing.T) {
 		t.Fatalf("legacy path should be mounted only when LegacySharedSecret && Secret!=\"\"; got status %d", rec.Code)
 	}
 }
+
+// TestReceiver_PerPortalKeyLoadFailureReturns503 keeps an infrastructure fault
+// (repository, vault) from looking like a bad signature.
+func TestReceiver_PerPortalKeyLoadFailureReturns503(t *testing.T) {
+	cfg := perPortalReceiverCfg()
+	prov := fakeKeyProvider{errOnGet: errors.New("database is unavailable")}
+	r := newPerPortalReceiver(t, cfg, prov)
+
+	err := r.ReceivePerPortalEvent(httptest.NewRecorder(), signedPerPortalRequest(cfg, perPortalTestCurrent, perPortalTestOrgHandle))
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected apperror, got %v", err)
+	}
+	if appErr.Code != apperror.CodeCommonServiceUnavailable {
+		t.Fatalf("expected service unavailable for a key-load failure, got %q", appErr.Code)
+	}
+}
+
+// TestDecryptorFor_PrefersTheRequestDecryptor pins the per-request routing of
+// payload decryption: a per-portal delivery uses the decryptor its own secret
+// built; any other request falls back to the receiver's legacy decryptor.
+func TestDecryptorFor_PrefersTheRequestDecryptor(t *testing.T) {
+	legacy, err := NewDecryptor("legacy-secret-legacy-secret-legacy-secret-0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	perPortal, err := NewDecryptor(perPortalTestCurrent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Receiver{decryptor: legacy}
+
+	if got := r.decryptorFor(contextWithDecryptor(context.Background(), perPortal)); got != perPortal {
+		t.Error("per-portal request did not get its own decryptor")
+	}
+	if got := r.decryptorFor(context.Background()); got != legacy {
+		t.Error("request without a per-portal decryptor did not fall back to the legacy one")
+	}
+	if ctx := contextWithDecryptor(context.Background(), nil); r.decryptorFor(ctx) != legacy {
+		t.Error("a nil per-portal decryptor must not shadow the legacy one")
+	}
+	if got := (&Receiver{}).decryptorFor(context.Background()); got != nil {
+		t.Error("with the legacy route off and no per-portal decryptor there is nothing to decrypt with")
+	}
+}

@@ -136,3 +136,114 @@ func TestAPIPortalWebhookSecretRepo_CascadeOnPortalDelete(t *testing.T) {
 		t.Fatalf("FR-018: expected secret row to cascade-delete with the parent portal, got %+v", after)
 	}
 }
+
+func newWebhookSecretTestPortal(t *testing.T, orgUUID, portalUUID string) (APIPortalRepository, APIPortalWebhookSecretRepository, func()) {
+	t.Helper()
+	db, cleanup := setupTestDB(t)
+	createTestAPIPortalOrg(t, db, orgUUID)
+	portalRepo := NewAPIPortalRepo(db)
+	if err := portalRepo.Create(newTestAPIPortal(portalUUID, orgUUID, portalUUID+"-handle")); err != nil {
+		cleanup()
+		t.Fatalf("Create portal: %v", err)
+	}
+	return portalRepo, NewAPIPortalWebhookSecretRepo(db), cleanup
+}
+
+func TestAPIPortalRepo_GetByUUIDAny(t *testing.T) {
+	portalRepo, _, cleanup := newWebhookSecretTestPortal(t, "org-any", "portal-any")
+	defer cleanup()
+
+	got, err := portalRepo.GetByUUIDAny("portal-any")
+	if err != nil {
+		t.Fatalf("GetByUUIDAny: %v", err)
+	}
+	if got == nil || got.ID != "portal-any" || got.OrganizationID != "org-any" {
+		t.Fatalf("GetByUUIDAny = %+v, want portal-any in org-any", got)
+	}
+
+	missing, err := portalRepo.GetByUUIDAny("no-such-portal")
+	if err != nil {
+		t.Fatalf("GetByUUIDAny(missing): %v", err)
+	}
+	if missing != nil {
+		t.Fatalf("GetByUUIDAny(missing) = %+v, want nil", missing)
+	}
+}
+
+func TestAPIPortalWebhookSecretRepo_MissingRowIsNil(t *testing.T) {
+	_, repo, cleanup := newWebhookSecretTestPortal(t, "org-missing", "portal-missing")
+	defer cleanup()
+
+	got, err := repo.GetByPortalUUID("portal-missing")
+	if err != nil {
+		t.Fatalf("GetByPortalUUID: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("GetByPortalUUID = %+v, want nil before any secret is stored", got)
+	}
+}
+
+// TestAPIPortalWebhookSecretRepo_DuplicateInsertIsUniqueViolation pins what the
+// service relies on to settle two concurrent first calls: the losing Insert
+// fails with an error IsUniqueViolation recognises.
+func TestAPIPortalWebhookSecretRepo_DuplicateInsertIsUniqueViolation(t *testing.T) {
+	_, repo, cleanup := newWebhookSecretTestPortal(t, "org-dup", "portal-dup")
+	defer cleanup()
+
+	if err := repo.Insert("portal-dup", []byte("first")); err != nil {
+		t.Fatalf("first Insert: %v", err)
+	}
+	err := repo.Insert("portal-dup", []byte("second"))
+	if err == nil {
+		t.Fatal("second Insert succeeded, want a primary-key violation")
+	}
+	if !IsUniqueViolation(err) {
+		t.Fatalf("IsUniqueViolation(%v) = false, want true", err)
+	}
+}
+
+func TestAPIPortalWebhookSecretRepo_RotateAndClearExpiredPrevious(t *testing.T) {
+	_, repo, cleanup := newWebhookSecretTestPortal(t, "org-rot", "portal-rot")
+	defer cleanup()
+
+	if err := repo.Insert("portal-rot", []byte("old")); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	validUntil := time.Now().UTC().Add(10 * time.Minute).Truncate(time.Second)
+	if err := repo.Rotate("portal-rot", []byte("new"), validUntil); err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+	row, err := repo.GetByPortalUUID("portal-rot")
+	if err != nil || row == nil {
+		t.Fatalf("GetByPortalUUID after Rotate: row=%v err=%v", row, err)
+	}
+	if string(row.SecretEnc) != "new" || string(row.PreviousSecretEnc) != "old" {
+		t.Fatalf("after Rotate current=%q previous=%q, want new/old", row.SecretEnc, row.PreviousSecretEnc)
+	}
+	if !row.PreviousValidUntil.Valid || !row.PreviousValidUntil.Time.Equal(validUntil) {
+		t.Fatalf("PreviousValidUntil = %+v, want %v", row.PreviousValidUntil, validUntil)
+	}
+	if !row.RotatedAt.Valid {
+		t.Fatal("RotatedAt not set by Rotate")
+	}
+
+	// Inside the grace window the previous slot stays.
+	if err := repo.ClearExpiredPrevious("portal-rot", validUntil.Add(-time.Minute)); err != nil {
+		t.Fatalf("ClearExpiredPrevious (inside grace): %v", err)
+	}
+	if row, _ = repo.GetByPortalUUID("portal-rot"); len(row.PreviousSecretEnc) == 0 {
+		t.Fatal("previous secret cleared inside its grace window")
+	}
+
+	// At or past the deadline it is cleared; the current secret is untouched.
+	if err := repo.ClearExpiredPrevious("portal-rot", validUntil.Add(time.Second)); err != nil {
+		t.Fatalf("ClearExpiredPrevious (after grace): %v", err)
+	}
+	row, _ = repo.GetByPortalUUID("portal-rot")
+	if len(row.PreviousSecretEnc) != 0 || row.PreviousValidUntil.Valid {
+		t.Fatalf("previous slot after grace = %q / %+v, want cleared", row.PreviousSecretEnc, row.PreviousValidUntil)
+	}
+	if string(row.SecretEnc) != "new" {
+		t.Fatalf("current secret = %q after cleanup, want new", row.SecretEnc)
+	}
+}

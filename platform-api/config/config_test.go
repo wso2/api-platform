@@ -25,11 +25,14 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 )
 
 // validInlineKey is a valid 32-byte AES key encoded as 64 hex chars, used for the
@@ -862,4 +865,19 @@ func TestValidateWebhookConfig(t *testing.T) {
 func TestWebhookLegacySharedSecretDefaultsOff(t *testing.T) {
 	assert.False(t, defaultConfig().Webhook.LegacySharedSecret,
 		"legacy_shared_secret must default to false so the shared-secret route is opt-in")
+}
+
+// The per-portal webhook route is authenticated by each portal's HMAC
+// signature, not a token, so the default auth skip-paths must cover it.
+// Without it, the token check rejects every per-portal delivery.
+func TestDefaultAuthSkipPathsCoverWebhookRoutes(t *testing.T) {
+	skips := defaultConfig().Auth.SkipPaths
+	for _, want := range []string{
+		"/api/internal/" + constants.APIVersion + "/webhook/events",
+		"/api/internal/" + constants.APIVersion + "/webhook/portals",
+	} {
+		if !slices.Contains(skips, want) {
+			t.Errorf("default auth skip-paths miss %s", want)
+		}
+	}
 }
