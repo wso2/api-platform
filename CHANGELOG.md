@@ -74,6 +74,14 @@ release notes.
 - **Platform API config `platform_api.webhook`.** New keys: `legacy_shared_secret`
   (bool, default `true` in this release) and `rotation_grace` (duration, default
   `10m` — operator-configurable; negative values refuse to start).
+- **Per-portal receiver's in-memory key cache now expires after 60 seconds**
+  (previously held until an explicit rotation on the same replica). This
+  bounds how long a rotation performed on one replica takes to be honoured
+  on every other replica, so a rotated-out secret cannot keep being accepted
+  on a stale replica past the grace deadline. Each portal's row is also
+  lazy-cleared of the previous slot once the grace window has passed, so
+  `previous_secret_enc` does not carry ciphertext for a rotated-out secret
+  indefinitely.
 
 ### Upgrade notes
 
