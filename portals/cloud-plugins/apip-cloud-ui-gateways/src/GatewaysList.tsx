@@ -46,23 +46,28 @@ import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from './util
 import NoGatewayState from './components/NoGatewayState';
 import type { AIWorkspaceHostPort } from './hostPort';
 import { hostingBlocked } from './utils/limits';
+import { NO_PERMISSION_TOOLTIP } from './permissions';
 import type { Environment, Gateway, GatewayHosting } from './types';
 
 /**
- * Create button, disabled with the host's message when NO hosting kind has
- * room left. `gateways` is the generic verdict for exactly this case: the
+ * Create button, disabled with the no-permission tooltip when the user holds no
+ * scope that creates gateways, or with the host's message when NO hosting kind
+ * has room left. `gateways` is the generic verdict for exactly this case: the
  * button only opens the form, where each kind is gated on its own quota, so
  * blocking it because one kind is full would hide the kind that is not.
  *
  * The span is required: a disabled MUI button sets `pointer-events: none`, so
  * a Tooltip on it never fires.
  */
-const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> = ({
-  port,
-  onClick,
-}) => {
+const AddGatewayButton: FC<{
+  port: AIWorkspaceHostPort;
+  /** Whether the user holds a scope that creates gateways. */
+  canCreate: boolean;
+  onClick: () => void;
+}> = ({ port, canCreate, onClick }) => {
   const limits = port.resourceLimits;
-  const blocked = limits?.canCreate ? !limits.canCreate('gateways') : false;
+  const quotaFull = limits?.canCreate ? !limits.canCreate('gateways') : false;
+  const blocked = !canCreate || quotaFull;
   const button = (
     <Button
       variant="contained"
@@ -75,7 +80,7 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
   );
   if (!blocked) return button;
   return (
-    <Tooltip title={limits?.limitMessage?.('gateways') ?? ''}>
+    <Tooltip title={!canCreate ? NO_PERMISSION_TOOLTIP : (limits?.limitMessage?.('gateways') ?? '')}>
       <span style={{ display: 'inline-flex' }}>{button}</span>
     </Tooltip>
   );
@@ -83,6 +88,7 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
 
 /**
  * Wraps a control that writes to an existing gateway, disabling it with the
+ * no-permission tooltip when the user lacks the scope it needs, or with the
  * host's explanation while the organization is read-only.
  *
  * Deliberately not `canCreate('gateways')`: that answers whether there is room
@@ -93,12 +99,19 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
  */
 const WhenWritable: FC<{
   port: AIWorkspaceHostPort;
+  /** Whether the user holds the scope this control needs; `false` disables it. */
+  allowed?: boolean;
   children: ReactElement<{ disabled?: boolean }>;
-}> = ({ port, children }) => {
+}> = ({ port, allowed = true, children }) => {
   const limits = port.resourceLimits;
-  if (!limits?.readOnly) return children;
+  const reason = !allowed
+    ? NO_PERMISSION_TOOLTIP
+    : limits?.readOnly
+      ? (limits.readOnlyMessage ?? '')
+      : null;
+  if (reason === null) return children;
   return (
-    <Tooltip title={limits.readOnlyMessage ?? ''}>
+    <Tooltip title={reason}>
       <span style={{ display: 'inline-flex' }}>
         {cloneElement(children, { disabled: true })}
       </span>
@@ -111,6 +124,16 @@ export type GatewaysListProps = {
   environments: Environment[];
   /** Passed through to the configuration drawer, which calls platform-api itself. */
   port: AIWorkspaceHostPort;
+  /** Whether the user holds a scope that creates gateways; Add Gateway is disabled otherwise. */
+  canCreate: boolean;
+  /** Whether the user holds a scope that updates gateways; every Edit is disabled otherwise. */
+  canUpdate: boolean;
+  /** Whether the user holds a scope that deletes gateways; every Delete is disabled otherwise. */
+  canDelete: boolean;
+  /** Whether the user may open a gateway's configuration; Configure is disabled otherwise. */
+  canReadConfiguration: boolean;
+  /** Whether the user may change a gateway's configuration; the drawer is read-only otherwise. */
+  canWriteConfiguration: boolean;
   /** Opens the Add Gateway form; `hosting` preselects its Hosting option. */
   onAddClick: (hosting?: GatewayHosting) => void;
   onEditClick: (gatewayId: string) => void;
@@ -353,6 +376,11 @@ const GatewaysList: FC<GatewaysListProps> = ({
   gateways,
   environments,
   port,
+  canCreate,
+  canUpdate,
+  canDelete,
+  canReadConfiguration,
+  canWriteConfiguration,
   onAddClick,
   onEditClick,
   onViewClick,
@@ -424,9 +452,12 @@ const GatewaysList: FC<GatewaysListProps> = ({
     }
   };
 
+  // A gateway being deleted is on its way out: there is nothing left to edit,
+  // configure or delete again. Each action is also wrapped so its tooltip can say
+  // why it is disabled — a disabled button fires no events.
   const renderActions = (gateway: Gateway) => (
     <>
-      <WhenWritable port={port}>
+      <WhenWritable port={port} allowed={canUpdate}>
         <IconButton
           size="small"
           onClick={() => onEditClick(gateway.id)}
@@ -437,7 +468,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
         </IconButton>
       </WhenWritable>
       {gateway.hosting === 'managed' ? (
-        <WhenWritable port={port}>
+        <WhenWritable port={port} allowed={canReadConfiguration}>
           <IconButton
             size="small"
             onClick={() => setSettingsGateway(gateway)}
@@ -448,15 +479,21 @@ const GatewaysList: FC<GatewaysListProps> = ({
           </IconButton>
         </WhenWritable>
       ) : null}
-      <IconButton
-        size="small"
-        color="error"
-        onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
-        disabled={gateway.status === 'deleting'}
-        aria-label={`Delete ${gateway.name}`}
-      >
-        <Trash2 size={16} />
-      </IconButton>
+      {/* Not `WhenWritable`: deletion stays available while the organization is
+          read-only, so a stuck gateway can still be removed; only the scope gates it. */}
+      <Tooltip title={canDelete ? '' : NO_PERMISSION_TOOLTIP}>
+        <span style={{ display: 'inline-flex' }}>
+          <IconButton
+            size="small"
+            color="error"
+            onClick={() => setDeleteTarget({ id: gateway.id, name: gateway.name })}
+            disabled={gateway.status === 'deleting' || !canDelete}
+            aria-label={`Delete ${gateway.name}`}
+          >
+            <Trash2 size={16} />
+          </IconButton>
+        </span>
+      </Tooltip>
     </>
   );
 
@@ -472,7 +509,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
             <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
               {gateways.length > 0 ? (
-                <AddGatewayButton onClick={() => onAddClick()} port={port} />
+                <AddGatewayButton onClick={() => onAddClick()} port={port} canCreate={canCreate} />
               ) : null}
             </Stack>
           </Box>
@@ -480,7 +517,15 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
         {gateways.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <NoGatewayState onAdd={onAddClick} blocked={hostingBlocked(port)} />
+            {/* No create scope blocks both kinds; otherwise each kind answers for its own quota. */}
+            <NoGatewayState
+              onAdd={onAddClick}
+              blocked={
+                canCreate
+                  ? hostingBlocked(port)
+                  : { managed: NO_PERMISSION_TOOLTIP, 'self-hosted': NO_PERMISSION_TOOLTIP }
+              }
+            />
           </Grid>
         ) : (
           <Grid size={{ xs: 12 }}>
@@ -569,6 +614,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
         onClose={() => setSettingsGateway(null)}
         gateway={settingsGateway}
         port={port}
+        canWrite={canWriteConfiguration}
       />
     </PageContent>
   );

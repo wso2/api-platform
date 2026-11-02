@@ -8,11 +8,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type FC } from 'react';
-import { Box, CircularProgress } from '@wso2/oxygen-ui';
+import { Alert, Box, CircularProgress, PageContent, PageTitle } from '@wso2/oxygen-ui';
 import PipelineCreatePage from './PipelineCreatePage';
 import PipelinesListPage from './PipelinesListPage';
 import UnexpectedErrorState from './components/UnexpectedErrorState';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { PIPELINE_OPERATIONS } from './permissions';
 import type { CreatePipelineInput, Environment, Pipeline } from './types';
 import {
   assembleEnvironments,
@@ -39,7 +40,15 @@ type PipelineListDTO = { count?: number; list?: PipelineDTO[] };
  * `apiFetch` is the only transport — the component never sees a token or a URL.
  */
 const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
-  const { apiFetch } = port;
+  const { apiFetch, permissions } = port;
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused.
+  const canList = permissions.canAny(PIPELINE_OPERATIONS.ListPipelines);
+  const canReadEnvironments = permissions.canAny(PIPELINE_OPERATIONS.ListEnvironments);
+  const canCreate = permissions.canAny(PIPELINE_OPERATIONS.CreatePipeline);
+  const canUpdate = permissions.canAny(PIPELINE_OPERATIONS.UpdatePipeline);
+  const canDelete = permissions.canAny(PIPELINE_OPERATIONS.DeletePipeline);
 
   const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
   const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null);
@@ -52,13 +61,22 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
   const submittingRef = useRef(false);
 
   const load = useCallback(async () => {
+    if (!canList) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       // Independent of each other, so they go together rather than one after the
       // other: the page waits for the slower of the two instead of their sum.
+      // Environments are only asked for when the user may read them: the stage
+      // cards fall back to the names a pipeline already carries, so a role that
+      // reads pipelines but not environments still gets its list, not a 403.
       const [environmentList, pipelineList] = await Promise.all([
-        apiFetch<EnvironmentListDTO>('GET', '/environments'),
+        canReadEnvironments
+          ? apiFetch<EnvironmentListDTO>('GET', '/environments')
+          : Promise.resolve(undefined),
         apiFetch<PipelineListDTO>('GET', '/pipelines'),
       ]);
       const assembledEnvironments = assembleEnvironments(environmentList?.list ?? []);
@@ -82,7 +100,7 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
     } finally {
       setLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, canList, canReadEnvironments]);
 
   useEffect(() => {
     void load();
@@ -130,6 +148,17 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
     setView('edit');
   };
 
+  if (!canList) {
+    return (
+      <PageContent fullWidth>
+        <PageTitle sx={{ mb: 2 }}>
+          <PageTitle.Header>Continuous Deployment Pipelines</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view deployment pipelines.</Alert>
+      </PageContent>
+    );
+  }
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -169,6 +198,9 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
     <PipelinesListPage
       pipelines={pipelines}
       environments={environments}
+      canCreate={canCreate}
+      canUpdate={canUpdate}
+      canDelete={canDelete}
       onCreateClick={() => setView('create')}
       onEditClick={handleEditClick}
       onDelete={handleDelete}

@@ -67,6 +67,16 @@ export type GatewayVersionEntry = {
  */
 export type GatewayLimitComponent = 'gateways' | 'managedGateways' | 'selfHostedGateways';
 
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the cloud spec's any-of list, `:manage`
+ * scopes included — and says whether the user may be offered it. Mirrors the
+ * host's `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -112,4 +122,5 @@ export type AIWorkspaceHostPort = {
     /** Why the organization is read-only; the host supplies the wording. */
     readOnlyMessage?: string;
   };
+  permissions: PermissionsPort;
 };

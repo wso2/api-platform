@@ -40,6 +40,7 @@ import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_SIDEBAR_SLOT,
+  isExtensionPermitted,
   type AIWorkspaceExtension,
   type AIWorkspacePageOverride,
 } from '../../extensions';
@@ -86,8 +87,13 @@ export default function AppSidebar({
                 path: override.path ?? 'gateways',
               }))
           : []),
-      ].sort((a, b) => a.order - b.order),
-    [sidebarExtensions, gatewayOverrides, canReadGateways]
+      ]
+        // An entry that names the scopes its page needs is shown only to a user
+        // holding one of them — the gate the built-in items below apply with
+        // `hasPermission`, declared by the extension rather than hard-coded here.
+        .filter((entry) => isExtensionPermitted(entry, hasPermission))
+        .sort((a, b) => a.order - b.order),
+    [sidebarExtensions, gatewayOverrides, canReadGateways, hasPermission]
   );
 
   const orgHomePath = buildOrgPath(currentOrganization, '/home');

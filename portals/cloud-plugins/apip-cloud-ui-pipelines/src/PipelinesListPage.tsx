@@ -34,12 +34,19 @@ import {
   Trash2,
 } from '@wso2/oxygen-ui-icons-react';
 import PipelineStageCard from './components/PipelineStageCard';
+import { NO_PERMISSION_TOOLTIP } from './permissions';
 import type { Environment, Pipeline } from './types';
 import { isLinearPipeline, orderEnvironments } from './utils';
 
 export type PipelinesListPageProps = {
   pipelines: Pipeline[];
   environments: Environment[];
+  /** Whether the user holds a scope that creates pipelines; the Create button is disabled otherwise. */
+  canCreate: boolean;
+  /** Whether the user holds a scope that updates pipelines; every Edit is disabled otherwise. */
+  canUpdate: boolean;
+  /** Whether the user holds a scope that deletes pipelines; every Delete is disabled otherwise. */
+  canDelete: boolean;
   onCreateClick: () => void;
   onEditClick: (id: string) => void;
   /** Returning a promise lets the confirm dialog stay open, and busy, until the delete settles. */
@@ -52,6 +59,9 @@ const findEnvironment = (environments: Environment[], name: string) =>
 const PipelinesListPage: FC<PipelinesListPageProps> = ({
   pipelines,
   environments,
+  canCreate,
+  canUpdate,
+  canDelete,
   onCreateClick,
   onEditClick,
   onDelete,
@@ -91,9 +101,20 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
       <PageTitle sx={{ mb: 2 }}>
         <PageTitle.Header>Continuous Deployment Pipelines</PageTitle.Header>
         <PageTitle.Actions>
-          <Button variant="contained" size="small" startIcon={<Plus size={16} />} onClick={onCreateClick}>
-            Create Pipeline
-          </Button>
+          <Tooltip title={canCreate ? '' : NO_PERMISSION_TOOLTIP}>
+            {/* Wrapped: a disabled button fires no events, so the tooltip explaining why would never open. */}
+            <span>
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<Plus size={16} />}
+                disabled={!canCreate}
+                onClick={onCreateClick}
+              >
+                Create Pipeline
+              </Button>
+            </span>
+          </Tooltip>
         </PageTitle.Actions>
       </PageTitle>
 
@@ -168,9 +189,11 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <Tooltip
                       title={
-                        editable
-                          ? 'Edit pipeline'
-                          : 'This pipeline has a branching promotion graph and cannot be edited here yet.'
+                        !canUpdate
+                          ? NO_PERMISSION_TOOLTIP
+                          : editable
+                            ? 'Edit pipeline'
+                            : 'This pipeline has a branching promotion graph and cannot be edited here yet.'
                       }
                     >
                       <span>
@@ -178,14 +201,20 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
                           size="small"
                           aria-label={`Edit ${pipeline.name}`}
                           onClick={() => onEditClick(pipeline.id)}
-                          disabled={!editable}
+                          disabled={!editable || !canUpdate}
                         >
                           <Pencil size={16} />
                         </IconButton>
                       </span>
                     </Tooltip>
                     <Tooltip
-                      title={pipeline.isDefault ? "The default pipeline can't be deleted." : ''}
+                      title={
+                        !canDelete
+                          ? NO_PERMISSION_TOOLTIP
+                          : pipeline.isDefault
+                            ? "The default pipeline can't be deleted."
+                            : ''
+                      }
                     >
                       <span>
                         <IconButton
@@ -193,7 +222,7 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
                           color="error"
                           aria-label={`Delete ${pipeline.name}`}
                           onClick={() => setPendingDelete(pipeline)}
-                          disabled={pipeline.isDefault}
+                          disabled={pipeline.isDefault || !canDelete}
                         >
                           <Trash2 size={16} />
                         </IconButton>

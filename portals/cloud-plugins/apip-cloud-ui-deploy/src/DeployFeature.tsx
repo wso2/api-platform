@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import DeployPage from './DeployPage';
 import { createDeployClient, gatewayTypeForKind, takesEndpointUrl, type ArtifactKind } from './deployApi';
 import { createManagedGatewaysClient } from './managedGatewaysApi';
@@ -30,6 +30,7 @@ import SelfHostedSetupDrawer from './components/SelfHostedSetupDrawer';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { isSettling } from './utils/status';
 import type { CloudHostPort, GatewayVersionEntry } from './hostPort';
+import { API_DEPLOYMENT_OPERATIONS } from './permissions';
 import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployFeatureProps = {
@@ -67,8 +68,19 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost } = port;
+  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost, permissions } =
+    port;
   const handle = artifactHandle ?? apiHandle;
+
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused.
+  const canView =
+    permissions.canAny(API_DEPLOYMENT_OPERATIONS.ListApiDeployments) &&
+    permissions.canAny(API_DEPLOYMENT_OPERATIONS.ListApiBuilds);
+  const canDeploy = permissions.canAny(API_DEPLOYMENT_OPERATIONS.DeployApi);
+  const canUndeploy = permissions.canAny(API_DEPLOYMENT_OPERATIONS.UndeployApi);
+  const canDeleteBuild = permissions.canAny(API_DEPLOYMENT_OPERATIONS.DeleteApiBuild);
   // The gateway type this artifact kind deploys to: AI artifacts need AI gateways.
   const gatewayType = gatewayTypeForKind(kind);
   // Identifies the artifact this page is showing. A create that was started for another
@@ -137,7 +149,10 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
 
   const load = useCallback(
     async (options: { quiet?: boolean } = {}) => {
-      if (!client) return;
+      if (!client || !canView) {
+        if (!options.quiet) setLoading(false);
+        return;
+      }
       // `DeployFeature` stays mounted when the route moves to another artifact, so a read
       // that was started for the last one can resolve after the next is showing. It must
       // not write its pipeline, builds or error over the new artifact's.
@@ -162,7 +177,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         if (!options.quiet && !isStale()) setLoading(false);
       }
     },
-    [client]
+    [canView, client]
   );
 
   useEffect(() => {
@@ -173,7 +188,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   // backend URL nor its ownership is pipeline state. A failed read leaves the
   // pipeline viewable, but ownership unverified, so the actions stay disabled.
   useEffect(() => {
-    if (!client) return undefined;
+    if (!client || !canView) return undefined;
     let cancelled = false;
     setOwnership('checking');
     void client.readApi().then(
@@ -193,7 +208,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [canView, client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
   // while anything is in flight and stop as soon as everything has settled.
@@ -412,6 +427,17 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     );
   }
 
+  if (!canView) {
+    return (
+      <PageContent fullWidth sx={{ minWidth: 0 }}>
+        <PageTitle sx={{ mb: 2 }}>
+          <PageTitle.Header>Deploy</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view deployments.</Alert>
+      </PageContent>
+    );
+  }
+
   if (loading) {
     return (
       <PageContent fullWidth sx={{ minWidth: 0 }}>
@@ -466,6 +492,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       selfHostedPending={selfHostedPending ?? undefined}
       takesEndpoint={takesEndpoint}
       ownership={ownership}
+      canDeploy={canDeploy}
+      canUndeploy={canUndeploy}
+      canDeleteBuild={canDeleteBuild}
       busy={busy}
       onDeploy={handleDeploy}
       onStopGateway={handleStop}

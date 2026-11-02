@@ -32,6 +32,12 @@ export type ProviderDeployPageProps = {
   builds: Build[];
   /** What the provider itself uses, which each gateway's fields start from. */
   upstream: ProviderUpstream;
+  /** Whether the user holds a scope that deploys; every Deploy is disabled otherwise. */
+  canDeploy: boolean;
+  /** Whether the user holds a scope that undeploys; every Stop is disabled otherwise. */
+  canUndeploy: boolean;
+  /** Whether the user holds a scope that deletes the provider's builds; every delete is disabled otherwise. */
+  canDeleteBuild: boolean;
   busy: boolean;
   onDeploy: (
     target: Environment,
@@ -60,6 +66,9 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
   environments,
   builds,
   upstream,
+  canDeploy,
+  canUndeploy,
+  canDeleteBuild,
   busy,
   onDeploy,
   onStopGateway,
@@ -100,6 +109,7 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
           builds={builds}
           undeletableBuilds={undeletableBuildReasons(environments)}
           busy={busy}
+          canDeleteBuild={canDeleteBuild}
           onDeleteBuild={onDeleteBuild}
         />
 
@@ -159,6 +169,8 @@ const ProviderDeployPage: FC<ProviderDeployPageProps> = ({
                     )
                   }
                   busy={busy}
+                  canDeploy={canDeploy}
+                  canStop={canUndeploy}
                   onDeployClick={() => setTarget(environment)}
                   onStopGateway={(gatewayId) => onStopGateway(environment, gatewayId)}
                 />

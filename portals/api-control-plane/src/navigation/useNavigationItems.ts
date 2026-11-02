@@ -29,6 +29,7 @@ import {
 import {
   buildScopedExtensionPath,
   childRoutePath,
+  isExtensionPermitted,
   isPageOverride,
   isSidebarExtension,
   useExtensions,
@@ -90,14 +91,16 @@ const isScopeSatisfied = (
  * Built-in ids that a *visible* sidebar extension has claimed (see
  * `ApiControlPlaneExtension.claims`).
  *
- * Gated on the claimant's own visibility, so an entry that stands down in some
- * scope hands the built-in back rather than removing both. Applied where the two
- * registries are merged: by resolution time a claim and its target can share an
- * id, and the rule could no longer tell them apart.
+ * Gated on the claimant's own visibility and permission, so an entry that
+ * stands down in some scope, or for a user who holds none of its
+ * `requiredScopes`, hands the built-in back rather than removing both. Applied
+ * where the two registries are merged: by resolution time a claim and its
+ * target can share an id, and the rule could no longer tell them apart.
  */
 const claimedBuiltinIds = (
   extensions: readonly ApiControlPlaneExtension[],
-  scope: ConsoleScope
+  scope: ConsoleScope,
+  hasScope: (scope: string) => boolean
 ) =>
   new Set(
     extensions
@@ -105,7 +108,8 @@ const claimedBuiltinIds = (
         (extension) =>
           isSidebarExtension(extension) &&
           extension.claims &&
-          (extension.isVisible?.(scope) ?? true)
+          (extension.isVisible?.(scope) ?? true) &&
+          isExtensionPermitted(extension, hasScope)
       )
       .map((extension) => extension.claims as string)
   );
@@ -143,7 +147,7 @@ export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
   const location = useLocation();
   const extensions = useExtensions();
-  const { decide } = usePermissions();
+  const { decide, hasScope } = usePermissions();
 
   return useMemo(() => {
     // Host-injected extensions are converted to the same NavigationDefinition
@@ -158,6 +162,7 @@ export const useNavigationItems = (): NavigationItem[] => {
         id: string;
         isVisible?: ApiControlPlaneExtension['isVisible'];
         label: string;
+        requiredScopes?: readonly string[];
         routePath: string;
       },
       level: NavigationLevel,
@@ -182,7 +187,10 @@ export const useNavigationItems = (): NavigationItem[] => {
         group,
         icon: entry.icon,
         id: entry.id,
-        isVisible: entry.isVisible,
+        // An entry naming the scopes its page needs is shown only to a user
+        // holding one of them, on top of whatever its own `isVisible` says.
+        isVisible: (current) =>
+          (entry.isVisible?.(current) ?? true) && isExtensionPermitted(entry, hasScope),
         label: entry.label,
         level,
         match: (pathname) =>
@@ -241,7 +249,7 @@ export const useNavigationItems = (): NavigationItem[] => {
         : definition;
     });
     warnOnRegistryConflicts(extensions);
-    const claimed = claimedBuiltinIds(extensions, scope);
+    const claimed = claimedBuiltinIds(extensions, scope, hasScope);
     const combinedRegistry = [
       ...registryWithOverrides.filter((definition) => !claimed.has(definition.id)),
       ...extensionDefinitions,
@@ -303,7 +311,7 @@ export const useNavigationItems = (): NavigationItem[] => {
           combinedRegistry.find((item) => item.id === right?.id)?.order ?? 0;
         return leftOrder - rightOrder;
       }) as NavigationItem[];
-  }, [location.pathname, scope, extensions, decide]);
+  }, [location.pathname, scope, extensions, decide, hasScope]);
 };
 
 /**
