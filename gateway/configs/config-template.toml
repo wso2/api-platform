@@ -339,12 +339,12 @@ format = "text"
 
 # Health check behaviour. Every key is optional; the values shown are the defaults.
 # allowed_clients lists the clients (IP addresses or CIDR ranges) that the admin health
-# endpoints answer; any other client gets 403. The default allows loopback only
-# (127.0.0.1 and ::1). Add ranges, comma-separated in the environment variable (for
-# example "127.0.0.1,::1,10.0.0.0/8"), for probes from other hosts, or use "*" alone to
-# allow every client.
+# endpoints answer. The default, "*", allows every client. To restrict access, list
+# addresses or ranges, comma-separated in the environment variable (for example
+# "127.0.0.1,::1,10.0.0.0/8"); any other client then gets 403. Keep the addresses your
+# probes call from.
 [controller.health]
-allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # cache_ttl     = '{{ env "APIP_GW_CONTROLLER_HEALTH_CACHE_TTL" "3s" }}'    # how long an evaluated health result is reused
 
 # The database check decides from the outcomes of the controller's own database
@@ -528,12 +528,12 @@ idle_timeout = "1h"
 # The gateway's own readiness and liveness routes (/_gateway-health/ready and
 # /_gateway-health/healthy) on every traffic listener. allowed_clients lists the clients
 # (IP addresses or CIDR ranges) Envoy lets reach them, judged by the connection's peer
-# address; any other client gets 403. The default allows loopback only (127.0.0.1 and
-# ::1). Add ranges, comma-separated in the environment variable (for example
-# "127.0.0.1,::1,10.0.0.0/8"), for probes from other hosts, or use "*" alone to allow
-# every client.
+# address. The default, "*", allows every client. To restrict access, list addresses or
+# ranges, comma-separated in the environment variable (for example
+# "127.0.0.1,::1,10.0.0.0/8"); any other client then gets 403. Keep the addresses your
+# probes and load balancers call from.
 [router.health]
-allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 
 [router.policy_engine]
 host = "policy-engine"

@@ -119,10 +119,11 @@ This runs in the foreground — keep that terminal open and use a second one for
 curl -s http://localhost:8080/_gateway-health/ready
 ```
 
-Health endpoints answer only allowed clients (`allowed_clients`, loopback by default), so the call above
-returns `403` until the caller's network is added. A call from the host through a published port
-arrives from the Docker network. To allow it, add these lines to `api-platform.env` and restart the
-stack (the controller reads both, because it builds the runtime's health routes):
+Health endpoints answer every client by default (`allowed_clients`), so the call above works as is.
+To restrict them, list the allowed IPs or CIDRs; any other caller gets `403`. A call from the host
+through a published port arrives from the Docker network, so keep that network in the list. For
+example, add these lines to `api-platform.env` and restart the stack (the controller reads both,
+because it builds the runtime's health routes):
 
 ```bash
 APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7

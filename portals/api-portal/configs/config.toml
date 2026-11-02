@@ -17,9 +17,9 @@ driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
 path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
 
 [api_portal.health]
-# Clients allowed to call /health and /ready: IP addresses or CIDR ranges,
-# comma-separated, or "*" alone for every client. Loopback only by default.
-allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+# Clients allowed to call /health and /ready. "*" (the default) allows every client;
+# list IP addresses or CIDR ranges, comma-separated, to restrict it.
+allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "*" }}'
 
 # [api_portal.health.database]
 # check_timeout   = "2s"

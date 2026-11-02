@@ -171,8 +171,8 @@ kubectl logs -l app.kubernetes.io/component=api-portal -n api-portal
   supported values. On SQL Server, anything else would connect unencrypted.
 - **`deployment.replicaCount > 1 requires an external database` / HPA render failure** —
   switch `config.database.driver` to `postgres` or `mssql`.
-- **Probes fail with 403** — the kubelet's address is outside `config.health.allowedClients`.
-  Add the node range, or the probing address, to the list.
+- **Probes fail with 403** — `config.health.allowedClients` was narrowed without the
+  kubelet's address. Add the node range, or the probing address, to the list.
 - **Pages return 403 for valid users** — `config.auth.authorization.pageRoleValidation=true`
   gates pages on `portalRoles.admin` / `portalRoles.subscriber`. Those role names must
   appear in the token's `roles` claim.
@@ -211,11 +211,11 @@ every key below with `api-portal-ui.`.
   pool tuning also live here.
 - `config.health.*` — the `/health` and `/ready` endpoints (also under `/api-portal`).
   `cacheTtl` sets how long an evaluated result is reused. `allowedClients` lists the IPs
-  or CIDRs allowed to call them; others get 403, and a single `"*"` allows every client.
+  or CIDRs allowed to call them; when the list is set, others get 403.
   Only the connection's peer address counts, never `X-Forwarded-For`. The default is
-  loopback plus the private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
-  `fc00::/7`) so kubelet probes from node addresses pass. Narrow it to the cluster's pod and
-  node ranges, and add external load balancers, or clients whose address is preserved
+  `["*"]`, which allows every client, so kubelet probes pass even with an older config that
+  has no setting; an empty list does the same. If you narrow it, keep the cluster's pod and
+  node ranges (kubelet probes come from node addresses), and add external load balancers, or clients whose address is preserved
   (`externalTrafficPolicy: Local`), that call the health endpoints.
   `config.health.database.*` tunes the database check, which judges the database by the
   outcomes of the portal's own queries and runs its own `SELECT 1` only after `idlePeriod`

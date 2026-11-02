@@ -137,7 +137,7 @@ test('a forged X-Forwarded-For is ignored, even with trust proxy on', async (t) 
     const res = await fetch(`${app.base}/ready`, { headers: { 'X-Forwarded-For': '10.1.2.3' } });
     assert.equal(res.status, 403);
 
-    const loopbackOnly = await start({ trustProxy: true });
+    const loopbackOnly = await start({ allowed: ['127.0.0.1', '::1'], trustProxy: true });
     t.after(loopbackOnly.close);
     const allowed = await fetch(`${loopbackOnly.base}/ready`, { headers: { 'X-Forwarded-For': '203.0.113.7' } });
     assert.equal(allowed.status, 200);

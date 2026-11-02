@@ -337,10 +337,10 @@ GET /health   # liveness:  GET http://localhost:9092/api/admin/v1/health
 GET /ready    # readiness: GET http://localhost:9092/api/admin/v1/ready
 ```
 
-Health endpoints answer only allowed clients (`[controller.health] allowed_clients`, loopback by
-default) and return `403` to any other caller. A call from the host through a published Docker port
-arrives from the Docker network (or Docker Desktop's VM), so add the caller's network, for example
-with `APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7`.
+Health endpoints answer every client by default (`[controller.health] allowed_clients`). If you list
+IPs or CIDRs, any other caller gets `403`. A call from the host through a published Docker port
+arrives from the Docker network (or Docker Desktop's VM), so keep the caller's network in the list,
+for example with `APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7`.
 
 Response:
 ```json

@@ -36,15 +36,12 @@ type AllowedClients struct {
 }
 
 // ParseAllowedClients parses the allowed clients configured in a health section. Each
-// entry is an IP address or a CIDR range. No entries means loopback only (127.0.0.1 and
-// ::1). "*" as the only entry allows every client and is returned as nil. section names
-// the configuration section in error messages.
+// entry is an IP address or a CIDR range. No entries, or "*" as the only entry, allows
+// every client and is returned as nil, so a config file that predates the setting keeps
+// answering probes. section names the configuration section in error messages.
 func ParseAllowedClients(section string, entries []string) (*AllowedClients, error) {
 	if len(entries) == 0 {
-		return &AllowedClients{prefixes: []netip.Prefix{
-			netip.PrefixFrom(netip.AddrFrom4([4]byte{127, 0, 0, 1}), 32),
-			netip.PrefixFrom(netip.IPv6Loopback(), 128),
-		}}, nil
+		return nil, nil
 	}
 	prefixes := make([]netip.Prefix, 0, len(entries))
 	for i, entry := range entries {

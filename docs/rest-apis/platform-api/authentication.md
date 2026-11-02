@@ -202,8 +202,8 @@ authenticate with a gateway token instead). Setting this key **replaces** the bu
 list, so keep any entries you still need.
 
 Both health endpoints, `/health` (liveness) and `/ready` (readiness), bypass authentication. Instead,
-they answer only the clients listed in `[platform_api.health] allowed_clients` (loopback by default)
-and return `403` to any other caller.
+they answer every client by default. When `[platform_api.health] allowed_clients` lists IPs or CIDRs,
+they answer only those clients and return `403` to any other caller.
 
 ## Error Responses
 

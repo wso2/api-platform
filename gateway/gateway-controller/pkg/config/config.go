@@ -658,7 +658,7 @@ type RouterConfig struct {
 // traffic listeners.
 type RouterHealthConfig struct {
 	// AllowedClients are the peer addresses (IPs or CIDR ranges) Envoy lets reach the
-	// health routes. Empty means loopback only; "*" alone means every client.
+	// health routes. Empty, or "*" alone, means every client.
 	AllowedClients ClientList `koanf:"allowed_clients"`
 }
 
@@ -883,7 +883,7 @@ type LoggingConfig struct {
 type HealthConfig struct {
 	CacheTTL time.Duration `koanf:"cache_ttl"` // How long an evaluated health result is reused
 	// AllowedClients are the peer addresses (IPs or CIDR ranges) answered by the admin
-	// health endpoints. Empty means loopback only; "*" alone means every client.
+	// health endpoints. Empty, or "*" alone, means every client.
 	AllowedClients ClientList `koanf:"allowed_clients"`
 	// Database holds the settings of the database check.
 	Database HealthDatabaseConfig `koanf:"database"`

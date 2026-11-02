@@ -175,17 +175,11 @@ func TestNewHealthChecker(t *testing.T) {
 		return errors.New("connection refused")
 	}), time.Second))
 
-	refused := httptest.NewRequest(http.MethodGet, "/api/admin/v1/health", nil)
-	refused.RemoteAddr = "203.0.113.7:4000"
+	// Nothing configured allows every client, so a probe from outside the pod is answered.
+	external := httptest.NewRequest(http.MethodGet, "/api/admin/v1/health", nil)
+	external.RemoteAddr = "203.0.113.7:4000"
 	rec := httptest.NewRecorder()
-	checker.Handler().ServeHTTP(rec, refused)
-	assert.Equal(t, http.StatusForbidden, rec.Code, "only loopback is allowed by default")
-	assert.Empty(t, logs.String(), "a refused request runs no check")
-
-	allowed := httptest.NewRequest(http.MethodGet, "/api/admin/v1/health", nil)
-	allowed.RemoteAddr = "127.0.0.1:4000"
-	rec = httptest.NewRecorder()
-	checker.Handler().ServeHTTP(rec, allowed)
+	checker.Handler().ServeHTTP(rec, external)
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	assert.NotContains(t, rec.Body.String(), "component")
 	assert.Equal(t, 1, strings.Count(logs.String(), `msg="health check failed" check=database`),

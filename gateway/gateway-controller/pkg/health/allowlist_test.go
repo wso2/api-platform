@@ -26,20 +26,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseAllowedClientsDefaultsToLoopback(t *testing.T) {
+// No entries allows every client, so a config file that predates the setting keeps
+// answering probes from outside the pod.
+func TestParseAllowedClientsDefaultsToEveryClient(t *testing.T) {
 	for _, entries := range [][]string{nil, {}} {
 		a, err := ParseAllowedClients("controller.health", entries)
 		require.NoError(t, err)
-		require.NotNil(t, a)
-		assert.Equal(t, []netip.Prefix{
-			netip.MustParsePrefix("127.0.0.1/32"),
-			netip.MustParsePrefix("::1/128"),
-		}, a.Prefixes())
-		assert.True(t, a.Allows("127.0.0.1:1234"))
-		assert.True(t, a.Allows("[::1]:1234"))
-		assert.False(t, a.Allows("127.0.0.2:1234"))
-		assert.False(t, a.Allows("10.0.0.1:1234"))
+		assert.Nil(t, a)
+		assert.True(t, a.Allows("10.0.0.1:1234"))
+		assert.True(t, a.Allows("203.0.113.9:443"))
 	}
+}
+
+func TestParseAllowedClientsLoopbackOnly(t *testing.T) {
+	a, err := ParseAllowedClients("controller.health", []string{"127.0.0.1", "::1"})
+	require.NoError(t, err)
+	require.NotNil(t, a)
+	assert.Equal(t, []netip.Prefix{
+		netip.MustParsePrefix("127.0.0.1/32"),
+		netip.MustParsePrefix("::1/128"),
+	}, a.Prefixes())
+	assert.True(t, a.Allows("127.0.0.1:1234"))
+	assert.True(t, a.Allows("[::1]:1234"))
+	assert.False(t, a.Allows("127.0.0.2:1234"))
+	assert.False(t, a.Allows("10.0.0.1:1234"))
 }
 
 func TestParseAllowedClientsWildcard(t *testing.T) {
@@ -124,7 +134,7 @@ func TestAllowsMappedLoopback(t *testing.T) {
 }
 
 func TestAllowsRefusesMalformedRemoteAddr(t *testing.T) {
-	a, err := ParseAllowedClients("controller.health", nil)
+	a, err := ParseAllowedClients("controller.health", []string{"127.0.0.1", "::1"})
 	require.NoError(t, err)
 	for _, remote := range []string{"", "127.0.0.1", "localhost:80", "[::1", "::1", "garbage:80"} {
 		assert.False(t, a.Allows(remote), remote)

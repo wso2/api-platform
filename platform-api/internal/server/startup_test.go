@@ -526,6 +526,7 @@ func TestStartServingRejectsInvalidAllowedClients(t *testing.T) {
 
 func TestHealthCheckerServesOnlyAllowedClients(t *testing.T) {
 	cfg := servingConfig(t, sqliteDatabase(t))
+	cfg.Health.AllowedClients = []string{"127.0.0.1", "::1"}
 	checker, err := newHealthChecker(cfg, discardLogger())
 	if err != nil {
 		t.Fatalf("newHealthChecker: %v", err)

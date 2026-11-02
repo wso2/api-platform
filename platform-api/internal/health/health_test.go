@@ -191,10 +191,13 @@ func TestEvaluateContextAwareCheckTimesOut(t *testing.T) {
 func TestEvaluateChecksTimeOutAtTheirOwnDeadlines(t *testing.T) {
 	c := NewChecker(testOptions())
 	var mu sync.Mutex
+	var recorded sync.WaitGroup
 	ended := make(map[string]time.Duration)
 	start := time.Now()
 	hang := func(name string) CheckFunc {
+		recorded.Add(1)
 		return func(ctx context.Context) error {
+			defer recorded.Done()
 			<-ctx.Done()
 			mu.Lock()
 			ended[name] = time.Since(start)
@@ -212,6 +215,9 @@ func TestEvaluateChecksTimeOutAtTheirOwnDeadlines(t *testing.T) {
 	assert.Equal(t, "timed out after 400ms", res.Checks["cache"].Error)
 	assert.GreaterOrEqual(t, elapsed, 400*time.Millisecond)
 	assert.Less(t, elapsed, 900*time.Millisecond)
+	// Evaluate returns at a check's deadline without waiting for the check itself, so
+	// wait until both checks have recorded when they ended.
+	recorded.Wait()
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Less(t, ended["database"], 400*time.Millisecond, "the short check must end at its own deadline")

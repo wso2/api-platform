@@ -4433,8 +4433,8 @@ func TestTranslator_TranslateConfigs_HealthRouteRBAC(t *testing.T) {
 		want    []*core.CidrRange
 	}{
 		{
-			name:    "default loopback",
-			allowed: nil,
+			name:    "loopback only",
+			allowed: config.ClientList{"127.0.0.1", "::1"},
 			want: []*core.CidrRange{
 				{AddressPrefix: "127.0.0.1", PrefixLen: wrapperspb.UInt32(32)},
 				{AddressPrefix: "::1", PrefixLen: wrapperspb.UInt32(128)},
@@ -4491,14 +4491,17 @@ func TestTranslator_TranslateConfigs_HealthRouteRBAC(t *testing.T) {
 		})
 	}
 
-	t.Run("wildcard emits no RBAC config", func(t *testing.T) {
-		for _, vh := range translate(t, config.ClientList{"*"}) {
-			for _, r := range vh.GetRoutes() {
-				assert.NotContains(t, r.GetTypedPerFilterConfig(), constants.RBACFilterName,
-					"route %q on %q", r.GetName(), vh.GetName())
+	// The default (nothing configured) allows every client, the same as "*".
+	for name, allowed := range map[string]config.ClientList{"wildcard": {"*"}, "default": nil} {
+		t.Run(name+" emits no RBAC config", func(t *testing.T) {
+			for _, vh := range translate(t, allowed) {
+				for _, r := range vh.GetRoutes() {
+					assert.NotContains(t, r.GetTypedPerFilterConfig(), constants.RBACFilterName,
+						"route %q on %q", r.GetName(), vh.GetName())
+				}
 			}
-		}
-	})
+		})
+	}
 
 	t.Run("invalid allowed clients fail translation", func(t *testing.T) {
 		routerCfg := testRouterConfig()

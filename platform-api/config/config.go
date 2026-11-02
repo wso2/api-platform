@@ -99,7 +99,7 @@ type Health struct {
 	// CacheTTL is how long an evaluated health result is reused before it is re-evaluated.
 	CacheTTL time.Duration `koanf:"cache_ttl"`
 	// AllowedClients lists the IP addresses and CIDR ranges allowed to call the health
-	// endpoints. Empty means loopback only; "*" as the only entry allows every client.
+	// endpoints. Empty, or "*" as the only entry, allows every client.
 	AllowedClients []string `koanf:"allowed_clients"`
 	// Database configures the database check.
 	Database HealthDatabase `koanf:"database"`

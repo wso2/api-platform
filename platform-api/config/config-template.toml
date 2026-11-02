@@ -86,9 +86,11 @@ format = "text"   # text | json
 # Health check behaviour (/health and /ready). Every key is optional; the values shown are
 # the defaults.
 [platform_api.health]
-# Clients allowed to call the health endpoints. The default is loopback only; add IP
-# addresses or CIDR ranges, comma-separated, or set "*" alone to allow every client.
-allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+# Clients allowed to call the health endpoints. The default, "*", allows every client.
+# To restrict access, list IP addresses or CIDR ranges, comma-separated, for example
+# "127.0.0.1,::1,10.0.0.0/8"; any other client then gets 403. Keep the addresses your
+# probes and load balancers call from.
+allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # cache_ttl = "3s"    # how long an evaluated health result is reused
 
 # The database check decides from the outcomes of the platform's own database operations

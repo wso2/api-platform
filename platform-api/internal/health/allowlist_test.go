@@ -24,18 +24,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseAllowedClientsDefaultsToLoopback(t *testing.T) {
+// No entries allows every client, so a config file that predates the setting keeps
+// answering probes from outside the pod.
+func TestParseAllowedClientsDefaultsToEveryClient(t *testing.T) {
 	for _, entries := range [][]string{nil, {}} {
 		set, err := ParseAllowedClients("platform_api.health", entries)
 		require.NoError(t, err)
 
 		assert.True(t, set.Allows("127.0.0.1:41000"))
 		assert.True(t, set.Allows("[::1]:41000"))
-		assert.True(t, set.Allows("[::ffff:127.0.0.1]:41000"))
-		assert.False(t, set.Allows("127.0.0.2:41000"))
-		assert.False(t, set.Allows("10.0.0.5:41000"))
-		assert.False(t, set.Allows("[fd00::5]:41000"))
+		assert.True(t, set.Allows("10.0.0.5:41000"))
+		assert.True(t, set.Allows("203.0.113.9:443"))
+		assert.True(t, set.Allows("[fd00::5]:41000"))
 	}
+}
+
+func TestParseAllowedClientsLoopbackOnly(t *testing.T) {
+	set, err := ParseAllowedClients("platform_api.health", []string{"127.0.0.1", "::1"})
+	require.NoError(t, err)
+
+	assert.True(t, set.Allows("127.0.0.1:41000"))
+	assert.True(t, set.Allows("[::1]:41000"))
+	assert.True(t, set.Allows("[::ffff:127.0.0.1]:41000"))
+	assert.False(t, set.Allows("127.0.0.2:41000"))
+	assert.False(t, set.Allows("10.0.0.5:41000"))
+	assert.False(t, set.Allows("[fd00::5]:41000"))
 }
 
 func TestParseAllowedClientsWildcardAllowsEveryone(t *testing.T) {
@@ -90,7 +103,7 @@ func TestAllowedClientsIgnoresZone(t *testing.T) {
 }
 
 func TestAllowedClientsRefusesMalformedRemoteAddr(t *testing.T) {
-	set, err := ParseAllowedClients("platform_api.health", nil)
+	set, err := ParseAllowedClients("platform_api.health", []string{"127.0.0.1", "::1"})
 	require.NoError(t, err)
 
 	for _, remoteAddr := range []string{"", "127.0.0.1", "::1", "localhost:80", "[::1", "127.0.0.1:80:90"} {

@@ -3029,7 +3029,7 @@ func TestLoadConfig_ShippedHealthExampleIsValid(t *testing.T) {
 	cfg, err := LoadConfig(configPath)
 	require.NoError(t, err)
 	want := defaultConfig().Controller.Health
-	want.AllowedClients = ClientList{"127.0.0.1", "::1"}
+	want.AllowedClients = ClientList{"*"}
 	assert.Equal(t, want, cfg.Controller.Health)
 
 	env := map[string]string{
@@ -3084,10 +3084,10 @@ func TestLoadConfig_ShippedRouterHealthSectionIsValid(t *testing.T) {
 
 	cfg, err := LoadConfig(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
+	assert.Equal(t, ClientList{"*"}, cfg.Router.Health.AllowedClients)
 
-	t.Setenv("APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS", "*")
+	t.Setenv("APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS", "127.0.0.1,::1")
 	cfg, err = LoadConfig(configPath)
 	require.NoError(t, err)
-	assert.Equal(t, ClientList{"*"}, cfg.Router.Health.AllowedClients)
+	assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
 }

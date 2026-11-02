@@ -73,7 +73,7 @@ Verify the Platform API is ready:
 curl -fk https://localhost:9243/ready
 ```
 
-Health endpoints answer only allowed clients (`allowed_clients`, loopback by default), and a call from the host through a published port arrives from the Docker network. To allow it, add `APIP_CP_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` to `api-platform.env` and restart the stack.
+Health endpoints answer every client by default (`allowed_clients`). To restrict them, list the allowed IPs or CIDRs; any other caller gets `403`. A call from the host through a published port arrives from the Docker network, so keep that network in the list, for example `APIP_CP_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` in `api-platform.env` (restart the stack after a change).
 
 Open the API Portal in a browser at `https://localhost:9543/api-portal/default/views/default` and log in with the admin credentials printed by `setup.sh`.
 

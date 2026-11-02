@@ -23,19 +23,28 @@ const { parseAllowedClients } = require('./allowedClients');
 
 const SECTION = 'api_portal.health';
 
-test('no entries allows loopback only', () => {
+// No entries allows every client, so a config file that predates the setting keeps
+// answering probes from outside the pod.
+test('no entries allows every client', () => {
     for (const entries of [undefined, []]) {
         const set = parseAllowedClients(SECTION, entries);
-        assert.equal(set.allowsAll, false);
-        assert.equal(set.allows('127.0.0.1'), true);
-        assert.equal(set.allows('::1'), true);
-        assert.equal(set.allows('127.0.0.2'), false);
-        assert.equal(set.allows('10.0.0.1'), false);
+        assert.equal(set.allowsAll, true);
+        assert.equal(set.allows('10.0.0.1'), true);
+        assert.equal(set.allows('203.0.113.9'), true);
     }
 });
 
+test('a loopback-only list allows loopback only', () => {
+    const set = parseAllowedClients(SECTION, ['127.0.0.1', '::1']);
+    assert.equal(set.allowsAll, false);
+    assert.equal(set.allows('127.0.0.1'), true);
+    assert.equal(set.allows('::1'), true);
+    assert.equal(set.allows('127.0.0.2'), false);
+    assert.equal(set.allows('10.0.0.1'), false);
+});
+
 test('an IPv4-mapped peer address matches its IPv4 entry', () => {
-    const set = parseAllowedClients(SECTION, []);
+    const set = parseAllowedClients(SECTION, ['127.0.0.1', '::1']);
     assert.equal(set.allows('::ffff:127.0.0.1'), true);
     assert.equal(set.allows('::ffff:10.0.0.1'), false);
 });

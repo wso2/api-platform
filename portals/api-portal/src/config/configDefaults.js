@@ -127,8 +127,8 @@ const DEFAULTS = {
     // each one.
     health: {
         cacheTtl: '3s',           // how long an evaluated result is reused
-        // Peer addresses (IP or CIDR) allowed to call the endpoints. Empty means
-        // loopback only; "*" alone allows every client. A comma-separated string
+        // Peer addresses (IP or CIDR) allowed to call the endpoints. Empty, or "*"
+        // alone, allows every client. A comma-separated string
         // is accepted too, so one env var can carry the list.
         allowedClients: [],
         database: {

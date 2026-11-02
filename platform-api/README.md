@@ -341,8 +341,8 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
 The paths that bypass authentication and scope enforcement — the health probes (`/health` for
-liveness and `/ready` for readiness, which answer only `[platform_api.health] allowed_clients`,
-loopback by default), metrics probes, the login endpoint, and the internal routes authenticated by
+liveness and `/ready` for readiness, which answer every client unless `[platform_api.health] allowed_clients`
+narrows them), metrics probes, the login endpoint, and the internal routes authenticated by
 a gateway token instead of a user JWT — are not configurable: the list is a property of the
 product's own routing, and a wrong entry in it is an auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
 validated at startup. Use `auth.authorization.enabled` to control authorization enforcement.

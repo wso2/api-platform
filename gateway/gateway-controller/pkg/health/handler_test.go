@@ -214,10 +214,10 @@ func serveFrom(c *Checker, method, remoteAddr string, header http.Header) *httpt
 	return rec
 }
 
-// loopbackOptions returns test options that allow only the default loopback clients.
+// loopbackOptions returns test options that allow only loopback clients.
 func loopbackOptions(t *testing.T) Options {
 	t.Helper()
-	allowed, err := ParseAllowedClients("controller.health", nil)
+	allowed, err := ParseAllowedClients("controller.health", []string{"127.0.0.1", "::1"})
 	require.NoError(t, err)
 	opts := testOptions()
 	opts.AllowedClients = allowed

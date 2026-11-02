@@ -251,10 +251,10 @@ every key below with `platform-api.`.
   failureThreshold 12, ~2 min) restarts it only after a long outage. The startup probe allows
   6 minutes, above `config.health.database.startupWait` (5m); set it to `null` to disable it.
 - `config.health.*` — `cacheTtl` and `allowedClients`, the IPs or CIDRs allowed to
-  call `/health` and `/ready` (others get 403; a single `"*"` allows every client). The
-  default is loopback plus the private ranges (`10.0.0.0/8`, `172.16.0.0/12`,
-  `192.168.0.0/16`, `fc00::/7`) so kubelet probes from node addresses pass. Narrow it to the
-  cluster's pod and node ranges, and add external load balancers, or clients whose address
+  call `/health` and `/ready` (when the list is set, others get 403). The default is
+  `["*"]`, which allows every client, so kubelet probes pass even with an older config that
+  has no setting; an empty list does the same. If you narrow it, keep the cluster's pod and
+  node ranges (kubelet probes come from node addresses), and add external load balancers, or clients whose address
   is preserved (`externalTrafficPolicy: Local`), that call the health endpoints. Health
   events go to stdout: one line when a check starts failing and one when it recovers.
 - `config.health.database.*` — the database check, rendered to

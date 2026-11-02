@@ -70,7 +70,7 @@ curl -fk https://localhost:9243/ready     # Platform API
 curl -fk https://localhost:9643/healthz   # AI Workspace
 ```
 
-The Platform API's health endpoints answer only allowed clients (`allowed_clients`, loopback by default), and a call from the host through a published port arrives from the Docker network. To allow it, add `APIP_CP_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` to `api-platform.env` and restart the stack.
+The Platform API's health endpoints answer every client by default (`allowed_clients`). To restrict them, list the allowed IPs or CIDRs; any other caller gets `403`. A call from the host through a published port arrives from the Docker network, so keep that network in the list, for example `APIP_CP_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` in `api-platform.env` (restart the stack after a change).
 
 Open the AI Workspace in a browser at `https://localhost:9643/ai-workspace` and log in with the admin credentials printed by `setup.sh`. (The UI is served under the `/ai-workspace` path prefix so one host can front several portals; the origin root just redirects there.)
 

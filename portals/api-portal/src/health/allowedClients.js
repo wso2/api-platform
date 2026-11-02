@@ -22,9 +22,6 @@ const ipaddr = require('ipaddr.js');
 // The allowed_clients entry that lets every client through.
 const ALLOW_ALL = '*';
 
-// The allowed set used when none is configured.
-const LOOPBACK = [ipaddr.parseCIDR('127.0.0.1/32'), ipaddr.parseCIDR('::1/128')];
-
 /**
  * Parses one address the way the Go components do: IPv4 only in dotted-quad form
  * (ipaddr.js would also take octal, hex and shortened forms), IPv6 without a zone.
@@ -71,8 +68,8 @@ function unmap(addr) {
 
 /**
  * Builds the set of clients that may call the health endpoints from configured entries,
- * each an IP address or a CIDR range. No entries means loopback only; "*" as the only
- * entry allows every client. `section` names the config section in error messages,
+ * each an IP address or a CIDR range. No entries, or "*" as the only entry, allows every
+ * client, so a config file that predates the setting keeps answering probes. `section` names the config section in error messages,
  * which match the Go components' wording.
  *
  * @returns {{ allowsAll: boolean, allows: (address: string) => boolean }}
@@ -80,7 +77,7 @@ function unmap(addr) {
 function parseAllowedClients(section, entries) {
     const list = entries || [];
     if (list.length === 0) {
-        return createSet(false, LOOPBACK);
+        return createSet(true, []);
     }
     const ranges = [];
     for (let i = 0; i < list.length; i++) {

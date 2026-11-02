@@ -50,9 +50,10 @@ from a second terminal:
 curl http://localhost:9094/api/admin/v1/ready
 ```
 
-Health endpoints answer only allowed clients (`allowed_clients`, loopback by default), and a call from
-the host through a published port arrives from the Docker network, so add that network first. For
-example, add these lines to `api-platform.env` and restart the stack:
+Health endpoints answer every client by default (`allowed_clients`). To restrict them, list the
+allowed IPs or CIDRs; any other caller gets `403`. A call from the host through a published port
+arrives from the Docker network, so keep that network in the list. For example, add these lines to
+`api-platform.env` and restart the stack:
 
 ```bash
 APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7

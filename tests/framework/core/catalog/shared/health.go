@@ -19,7 +19,8 @@
 package shared
 
 // HealthAllowedClients is the client allow-list the test stacks give every health endpoint.
-// Health endpoints answer only loopback by default. The framework calls them from the host
-// through published ports, which arrive from the Docker network, so the private ranges are
-// added.
+// Health endpoints answer every client by default. The framework sets an explicit list of
+// loopback plus the private ranges, so its stacks run with access narrowed the way an operator
+// would. Calls from the host through published ports arrive from the Docker network, which the
+// private ranges cover.
 const HealthAllowedClients = "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"

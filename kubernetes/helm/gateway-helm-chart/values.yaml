@@ -341,19 +341,15 @@ gateway:
       # recovers.
       health:
         cache_ttl: 3s           # how long an evaluated health result is reused
-        # Clients (IPs or CIDRs) allowed to call the admin health and ready endpoints;
-        # others get 403. A single "*" allows every client. The default covers private
-        # ranges so kubelet probes from node addresses pass. Narrow it to the cluster's pod
-        # and node ranges, and add the addresses of external load balancers, or of clients
-        # whose address is preserved (externalTrafficPolicy: Local), that call these
-        # endpoints.
+        # Clients (IPs or CIDRs) allowed to call the admin health and ready endpoints. The
+        # default, "*", allows every client. To restrict access, list addresses or ranges; any
+        # other client then gets 403. Keep the cluster's pod and node ranges in the list, or
+        # kubelet probes are refused and the pods never become Ready, and add external load
+        # balancers (or clients whose address is preserved, externalTrafficPolicy: Local). For
+        # example:
+        #   ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
         allowed_clients:
-          - "127.0.0.1"
-          - "::1"
-          - "10.0.0.0/8"
-          - "172.16.0.0/12"
-          - "192.168.0.0/16"
-          - "fc00::/7"
+          - "*"
         # Database check. It decides from the outcomes of the controller's own database
         # operations and pings the database only after idle_period without activity.
         # Unknown keys in this table fail startup.
@@ -552,18 +548,14 @@ gateway:
       # Access to the gateway health routes (/_gateway-health/healthy and
       # /_gateway-health/ready) on the traffic listeners.
       health:
-        # Clients (IPs or CIDRs) allowed to call the health routes; others get 403.
-        # A single "*" allows every client. The default covers private ranges so kubelet
-        # probes from node addresses pass. Narrow it to the cluster's pod and node ranges,
-        # and add the addresses of external load balancers, or of clients whose address is
-        # preserved (externalTrafficPolicy: Local), that call the readiness route.
+        # Clients (IPs or CIDRs) allowed to call the health routes. The default, "*", allows
+        # every client. To restrict access, list addresses or ranges; any other client then
+        # gets 403. Keep the cluster's pod and node ranges in the list, or kubelet probes are
+        # refused and the pods never become Ready, and add external load balancers (or clients
+        # whose address is preserved, externalTrafficPolicy: Local). For example:
+        #   ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
         allowed_clients:
-          - "127.0.0.1"
-          - "::1"
-          - "10.0.0.0/8"
-          - "172.16.0.0/12"
-          - "192.168.0.0/16"
-          - "fc00::/7"
+          - "*"
 
     policy_engine:
       # Service name reported to the tracing backend

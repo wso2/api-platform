@@ -1135,15 +1135,15 @@ func shippedHealthSection(t *testing.T, path string, uncomment bool) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// The shipped health section loads as is, with the allowed clients defaulting to
-// loopback and overridable from the environment, and still loads once its commented
-// keys are enabled.
+// The shipped health section loads as is, with the allowed clients defaulting to every
+// client and overridable from the environment, and still loads once its commented keys
+// are enabled.
 func TestLoadConfig_ShippedHealthExampleIsValid(t *testing.T) {
 	section := shippedHealthSection(t, "config.toml", false)
 
 	cfg, err := loadWithKeys(t, section)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"127.0.0.1", "::1"}, cfg.Health.AllowedClients)
+	assert.Equal(t, []string{"*"}, cfg.Health.AllowedClients)
 
 	t.Setenv("APIP_CP_HEALTH_ALLOWED_CLIENTS", "127.0.0.1,::1,10.0.0.0/8,fc00::/7")
 	cfg, err = loadWithKeys(t, section)
@@ -1178,5 +1178,5 @@ func TestLoadConfig_TemplateHealthExampleIsValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, defaultConfig().Health.Database, cfg.Health.Database)
 	assert.Equal(t, 3*time.Second, cfg.Health.CacheTTL)
-	assert.Equal(t, []string{"127.0.0.1", "::1"}, cfg.Health.AllowedClients)
+	assert.Equal(t, []string{"*"}, cfg.Health.AllowedClients)
 }

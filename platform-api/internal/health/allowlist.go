@@ -27,12 +27,6 @@ import (
 // allowAll is the allowed_clients entry that lets every client through.
 const allowAll = "*"
 
-// loopback is the allowed set used when none is configured.
-var loopback = []netip.Prefix{
-	netip.MustParsePrefix("127.0.0.1/32"),
-	netip.MustParsePrefix("::1/128"),
-}
-
 // AllowedClients is the set of client addresses that may call the health endpoints. A
 // nil set allows every client.
 type AllowedClients struct {
@@ -41,11 +35,12 @@ type AllowedClients struct {
 }
 
 // ParseAllowedClients builds the allowed set from configured entries, each an IP
-// address or a CIDR range. No entries means loopback only; "*" as the only entry allows
-// every client. section names the config section in error messages.
+// address or a CIDR range. No entries, or "*" as the only entry, allows every client, so
+// a config file that predates the setting keeps answering probes. section names the
+// config section in error messages.
 func ParseAllowedClients(section string, entries []string) (*AllowedClients, error) {
 	if len(entries) == 0 {
-		return &AllowedClients{prefixes: loopback}, nil
+		return &AllowedClients{all: true}, nil
 	}
 	set := &AllowedClients{}
 	for i, raw := range entries {

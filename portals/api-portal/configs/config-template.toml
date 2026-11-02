@@ -189,13 +189,13 @@ pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeo
 [api_portal.health]
 cache_ttl = "3s"                # how long an evaluated result is reused
 # Clients allowed to call the endpoints: IP addresses or CIDR ranges, as a list
-# or a comma-separated string. Empty means loopback only (127.0.0.1, ::1); "*"
-# alone allows every client. Only the connection's peer address is checked —
+# or a comma-separated string. Empty, or "*" alone, allows every client; listing
+# addresses or ranges restricts access to them. Only the connection's peer address is checked —
 # X-Forwarded-For and trust-proxy settings are never consulted — so a probe that
 # reaches the portal through a proxy or a published container port arrives from
 # that hop's address. Refused clients get 403 {"status":"forbidden"}.
-allowed_clients = []
-# allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+allowed_clients = ["*"]
+# allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1,10.0.0.0/8" }}'
 
 # The database check judges the database by the outcomes of the portal's own
 # queries rather than querying it on every probe. Only connection-class failures

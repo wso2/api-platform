@@ -201,10 +201,10 @@ func TestRenderBody(t *testing.T) {
 	assert.NotContains(t, string(got), "component")
 }
 
-// loopbackOnly returns options that serve only loopback clients, the default allowed set.
+// loopbackOnly returns options that serve only loopback clients.
 func loopbackOnly(t *testing.T) Options {
 	t.Helper()
-	set, err := ParseAllowedClients("platform_api.health", nil)
+	set, err := ParseAllowedClients("platform_api.health", []string{"127.0.0.1", "::1"})
 	require.NoError(t, err)
 	opts := testOptions()
 	opts.AllowedClients = set
