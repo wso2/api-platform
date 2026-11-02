@@ -27,7 +27,10 @@ const stubFetch = () => {
 };
 
 describe('fetchEntitlementSummary', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
 
   it('reads through the proxy at the root when no base path is configured', async () => {
     vi.stubGlobal('window', { __RUNTIME_CONFIG__: {} });
@@ -38,6 +41,18 @@ describe('fetchEntitlementSummary', () => {
 
   it('reads through the proxy under the console base path', async () => {
     vi.stubGlobal('window', { __RUNTIME_CONFIG__: { appBasePath: '/console' } });
+    const fetchMock = stubFetch();
+    await fetchEntitlementSummary();
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(
+      /^\/console\/proxy\/billing-entitlement\/summary\?/,
+    );
+  });
+
+  // The server does not emit appBasePath, so the build-time value is the only
+  // one that reaches a real deployment.
+  it('falls back to the base path Vite built the bundle with', async () => {
+    vi.stubGlobal('window', { __RUNTIME_CONFIG__: {} });
+    vi.stubEnv('VITE_APP_BASE_PATH', '/console/');
     const fetchMock = stubFetch();
     await fetchEntitlementSummary();
     expect(fetchMock.mock.calls[0]?.[0]).toMatch(
