@@ -24,6 +24,7 @@
 type WindowConfig = Partial<{
   APIP_ACP_BILLING_CONSOLE_URL: string;
   billingConsoleUrl: string;
+  appBasePath: string;
 }>;
 
 const fromWindow = (): WindowConfig => {
@@ -36,6 +37,11 @@ const fromWindow = (): WindowConfig => {
     ...(globalWindow.config ?? {}),
   };
 };
+
+/** The console's serving prefix, e.g. "/api-platform"; empty when served at the root. */
+export function appBasePath(): string {
+  return (fromWindow().appBasePath ?? '').replace(/\/$/, '');
+}
 
 /**
  * The organization's upgrade page in the billing console.

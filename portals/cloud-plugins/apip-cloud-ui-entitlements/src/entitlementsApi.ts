@@ -18,6 +18,7 @@
 
 import { PRODUCT } from './entitlementLimits';
 import type { EntitlementSummary } from './entitlementTypes';
+import { appBasePath } from './runtimeConfig';
 
 /**
  * Same-origin path the BFF proxies to billing's Entitlement API, mirroring how
@@ -25,7 +26,8 @@ import type { EntitlementSummary } from './entitlementTypes';
  * the prefix and joins the rest onto the configured upstream base, so the real
  * billing URL never reaches the browser.
  */
-const SUMMARY_PATH = `/proxy/billing-entitlement/summary?product=${PRODUCT}`;
+const summaryPath = () =>
+  `${appBasePath()}/proxy/billing-entitlement/summary?product=${PRODUCT}`;
 
 /**
  * Read the organization's entitlement summary.
@@ -41,7 +43,7 @@ const SUMMARY_PATH = `/proxy/billing-entitlement/summary?product=${PRODUCT}`;
  */
 export async function fetchEntitlementSummary(): Promise<EntitlementSummary | null> {
   try {
-    const response = await fetch(SUMMARY_PATH, {
+    const response = await fetch(summaryPath(), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     });
