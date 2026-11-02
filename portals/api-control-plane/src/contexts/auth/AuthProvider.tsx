@@ -81,7 +81,8 @@ async function readBffSession(response: Response): Promise<SessionCheck> {
  * decision to the Platform API.
  */
 async function readClaimsSession(response: Response): Promise<SessionCheck> {
-  const claims: unknown = response.ok ? await response.json().catch(() => undefined) : undefined;
+  if (!response.ok) return SIGNED_OUT;
+  const claims: unknown = await response.json();
   if (!isObject(claims)) return SIGNED_OUT;
   const user = userFromClaims(claims, contract.claimMappings);
   if (!hasScopeClaim(claims, contract.claimMappings.scope)) delete user.scopes;
@@ -97,7 +98,8 @@ async function readClaimsSession(response: Response): Promise<SessionCheck> {
  * reads the same field. Without `scope` they stay unknown, as above.
  */
 async function readSdkSession(response: Response): Promise<SessionCheck> {
-  const body: unknown = response.ok ? await response.json().catch(() => undefined) : undefined;
+  if (!response.ok) return SIGNED_OUT;
+  const body: unknown = await response.json();
   if (!isObject(body) || body.isSignedIn !== true) return SIGNED_OUT;
   const user = userFromClaims(isObject(body.user) ? body.user : {}, contract.claimMappings);
   if (typeof body.scope === 'string') {
@@ -126,7 +128,10 @@ async function askSession(url: string): Promise<SessionCheck> {
   try {
     return await SESSION_READERS[contract.sessionFormat](response);
   } catch {
-    return SIGNED_OUT;
+    // A 2xx whose body breaks off or isn't JSON is no answer either. Signed
+    // out would send a signed-in browser to sign-in, and in a loop when a
+    // misrouted session URL serves a page instead.
+    return UNAVAILABLE;
   }
 }
 

@@ -601,6 +601,22 @@ describe('a 401', () => {
     expect(bodies).toHaveLength(1);
   });
 
+  // TanStack Query cancels a query on unmount: it shouldn't wait out the check.
+  it('fails as cancelled at once, without waiting for the session check', async () => {
+    const bodies = answerInTurn('get', '/rest-apis', [401, 200]);
+    const controller = new AbortController();
+    let answer: (alive: boolean) => void = () => undefined;
+    const check = registerCheck(() => new Promise<boolean>((resolve) => { answer = resolve; }));
+
+    const request = rejection(http.get('/rest-apis', { signal: controller.signal }));
+    await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    expect((await request).kind).toBe('aborted');
+    answer(true);
+    expect(bodies).toHaveLength(1);
+  });
+
   it('fails as it is when nothing checks the session, or the check throws', async () => {
     const bodies = answerInTurn('get', '/rest-apis', [401]);
 

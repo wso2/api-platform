@@ -18,7 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { http, HttpResponse, type JsonBodyType } from 'msw';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import { act, fireEvent, render, renderWithProviders, screen, waitFor } from '../../test/utils';
 import { server } from '../../test/server';
@@ -147,6 +147,15 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
 
       await waitForStatus('unauthenticated');
       expect(screen.getByTestId('user')).toHaveTextContent('');
+    });
+
+    // A misrouted session URL serving the console's page: signed out would
+    // send the browser round the sign-in loop.
+    it('is unavailable, not signed out, on a 2xx that is not JSON', async () => {
+      server.use(http.get(URL, () => HttpResponse.html('<!doctype html><title>Console</title>')));
+      await renderProvider(EXTERNAL_CONFIG);
+
+      await waitForStatus('unavailable');
     });
   });
 
@@ -369,6 +378,17 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       expect(screen.getByTestId('status').textContent).toBe('authenticated');
       expect(screen.getByTestId('user')).toHaveTextContent('Alice');
     });
+
+    it('stays signed in, with no retry, when the answer breaks off', async () => {
+      const alive = await renderAndCheck([
+        signedIn,
+        () => new HttpResponse('{"isSignedIn": tr', { headers: { 'Content-Type': 'application/json' } }),
+      ]);
+
+      expect(alive).toBe(false);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+      expect(screen.getByTestId('user')).toHaveTextContent('Alice');
+    });
   });
 
   // The first load's check answers after a 401's check has signed the browser
@@ -387,16 +407,33 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
         return HttpResponse.json({ isSignedIn: true, user: { name: 'Alice' } });
       }),
     );
+    // Nothing on screen marks the older answer landing, so mark when its body
+    // has been read. From there to the state update is promise steps only.
+    let firstRead: Promise<unknown> | undefined;
+    let fetches = 0;
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (...args) => {
+      const first = ++fetches === 1;
+      const response = await realFetch(...args);
+      if (first) {
+        const json = response.json.bind(response);
+        response.json = () => (firstRead = json());
+      }
+      return response;
+    });
+    onTestFinished(() => fetchSpy.mockRestore());
     await renderProvider(SDK_CONFIG);
     await vi.waitFor(() => expect(calls).toBe(1));
     const { notifyUnauthorized } = await import('../../api/core/sessionEvents');
 
     await expect(act(() => notifyUnauthorized())).resolves.toBe(true);
     await waitForStatus('authenticated');
-    // Nothing on screen marks the older answer landing, so give it time to.
     await act(async () => {
       answerFirst();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await vi.waitFor(() => expect(firstRead).toBeDefined());
+      await firstRead;
+      // One timer tick runs every promise step queued behind the read.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     expect(screen.getByTestId('status').textContent).toBe('authenticated');

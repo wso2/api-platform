@@ -174,6 +174,21 @@ const attachRequestContext = (
 //   });
 // };
 
+/**
+ * Waits for `promise`, or until `signal` aborts, whichever is first. A
+ * cancelled caller stops waiting; the promise itself, which other callers may
+ * share, carries on.
+ */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T | undefined> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.resolve(undefined);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve(undefined);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* Deadline composed with the caller's signal                                  */
 /* -------------------------------------------------------------------------- */
@@ -456,7 +471,7 @@ async function send(
   }
 
   if (response.status === 401 && !retried) {
-    const alive = await notifyUnauthorized();
+    const alive = await untilAborted(notifyUnauthorized(), options.signal);
     if (options.signal?.aborted) {
       throw platformErrorFromTransport(
         options.signal.reason,

@@ -35,9 +35,22 @@ async function renderLoginPage(
   const { authStatePresets } = await import('../../test/mockAuthState');
   const { LoginPage } = await import('./LoginPage');
 
+  const { AuthStateContext } = await import('../../contexts/auth/AuthStateContext');
+
   const authState = authStatePresets[preset]();
-  unmountPage = renderWithProviders(<LoginPage />, { route: '/login', authState }).unmount;
-  return { authState, screen };
+  const page = (state: typeof authState) => (
+    <AuthStateContext.Provider value={state}>
+      <LoginPage />
+    </AuthStateContext.Provider>
+  );
+  const { rerender, unmount } = renderWithProviders(page(authState), { route: '/login', authState });
+  unmountPage = unmount;
+  /** Moves the page on to another auth state, as the session check does. */
+  const changeAuthState = (next: keyof typeof authStatePresets) => {
+    const state = { ...authStatePresets[next](), login: authState.login };
+    rerender(page(state));
+  };
+  return { authState, changeAuthState, screen };
 }
 
 afterEach(() => {
@@ -95,6 +108,19 @@ describe('LoginPage', { timeout: 30_000 }, () => {
 
     expect(await screen.findByText('Signing you in')).toBeInTheDocument();
     expect(authState.login).not.toHaveBeenCalled();
+  });
+
+  it('hands over to the gateway once the session check finds nobody signed in', async () => {
+    const { authState, changeAuthState, screen } = await renderLoginPage(
+      { authMode: 'external', authLoginUrl: '/api-platform/auth/login' },
+      'loading',
+    );
+    expect(await screen.findByText('Signing you in')).toBeInTheDocument();
+
+    changeAuthState('unauthenticated');
+
+    await vi.waitFor(() => expect(authState.login).toHaveBeenCalledWith('/'));
+    expect(authState.login).toHaveBeenCalledTimes(1);
   });
 
   it('shows the credential form when a deployment forces form sign-in', async () => {
