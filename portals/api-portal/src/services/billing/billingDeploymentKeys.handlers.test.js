@@ -22,9 +22,10 @@
  * collector_application_id and management_key), against a real database, with Stripe and Moesif
  * replaced by in-memory test clients.
  *
- * Two runs share the database and the test Stripe account: the first sets billing up with the keys
- * of one Moesif application; the second starts with another application's keys in config and
- * removes billing.
+ * Three runs share the database and the test Stripe account: the first sets billing up with the keys
+ * of one Moesif application; the second starts with another application's keys in config, removes
+ * billing and sets it up again; the third starts with a third application's keys and creates a paid
+ * plan, which moves billing to that application, then removes billing.
  */
 
 const test = require('node:test');
@@ -45,6 +46,7 @@ const PORTAL = 'test-portal';
 const collectorId = (app) => Buffer.from(JSON.stringify({ app, ver: '2.0' })).toString('base64url');
 const FIRST_KEYS = { moesifCollectorApplicationId: collectorId('6447:123'), moesifManagementKey: 'moesif-key-first-app-0000' };
 const SECOND_KEYS = { moesifCollectorApplicationId: collectorId('6447:999'), moesifManagementKey: 'moesif-key-second-app-0000' };
+const THIRD_KEYS = { moesifCollectorApplicationId: collectorId('6447:555'), moesifManagementKey: 'moesif-key-third-app-0000' };
 const STRIPE_KEYS = { stripeApiKey: 'rk_test_51Habcdefghijk4f2a', stripePublishableKey: 'pk_test_51Habcdefghij0000' };
 
 let tmpDir;
@@ -88,23 +90,29 @@ const Database = require(${JSON.stringify(SQLITE)});
 const out = {};
 
 const STATE_FILE = process.env.STATE_FILE;
-const state = fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : { endpoints: [], partner: null };
+const state = fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) : { endpoints: [], partners: {} };
 const moesifCalls = [];
 let moesifRefuses = false;
+let stripeRefusesEndpoints = false;
+let stripeRefusesDelete = () => false;
 
 stripeConnector.clients.stripe = () => ({
     async listWebhookEndpoints() { return state.endpoints.map((e) => ({ ...e })); },
     async createWebhookEndpoint({ url, events }) {
+        if (stripeRefusesEndpoints) throw new BillingProviderError('Stripe', 400, 'Stripe: refused');
         const e = { id: 'we_' + crypto.randomBytes(4).toString('hex'), url, enabled_events: events, status: 'enabled',
             secret: 'whsec_' + crypto.randomBytes(8).toString('hex') };
         state.endpoints.push(e);
         return { ...e };
     },
     async updateWebhookEndpoint(id) { return { ...state.endpoints.find((x) => x.id === id) }; },
-    async deleteWebhookEndpoint(id) { state.endpoints = state.endpoints.filter((x) => x.id !== id); },
+    async deleteWebhookEndpoint(id) {
+        if (stripeRefusesDelete(id)) throw new BillingProviderError('Stripe', 400, 'Stripe: refused');
+        state.endpoints = state.endpoints.filter((x) => x.id !== id);
+    },
     async expireCheckoutSession(id) { return { id, status: 'expired' }; },
 });
-// Each call is recorded with the key it was made with.
+// Each call is recorded with the key it was made with; each key's application has its own connection to Stripe.
 moesifConnector.clients.moesif = (key) => ({
     async listCatalogPlans() {
         if (moesifRefuses) throw new BillingProviderError('Moesif', 401, 'Moesif: Unauthorized');
@@ -118,10 +126,10 @@ moesifConnector.clients.moesif = (key) => ({
     async deleteCatalogPrice() { moesifCalls.push(['delete-price', key]); },
     async deleteBillingMeter() { moesifCalls.push(['delete-meter', key]); },
     async getPartnerAccount() {
-        return state.partner && state.partner.key === key ? { partner_account: { credentials: { state: 'enabled' } } } : {};
+        return state.partners[key] ? { partner_account: { credentials: { state: 'enabled' } } } : {};
     },
-    async savePartnerAccount() { moesifCalls.push(['connect', key]); state.partner = { key }; },
-    async deletePartnerAccount() { moesifCalls.push(['disconnect', key]); state.partner = null; },
+    async savePartnerAccount() { moesifCalls.push(['connect', key]); state.partners[key] = true; },
+    async deletePartnerAccount() { moesifCalls.push(['disconnect', key]); delete state.partners[key]; },
 });
 
 function call(fn, req) {
@@ -159,17 +167,59 @@ const db = new Database(${JSON.stringify('DB_FILE')});
         const raw = db.prepare('SELECT * FROM billing_configurations').get();
         out.storedSecretProviders = Object.keys(JSON.parse(raw.provider_secrets_enc.toString('utf8')));
         out.storedMoesifSettings = JSON.parse(raw.provider_settings.toString('utf8')).moesif;
-        out.storedMoesifEndpointIsMoesifs = state.endpoints.find((e) => e.id === out.storedMoesifSettings.eventEndpointId).url.includes('moesif');
+        out.moesifEndpointInStripe = state.endpoints.some((e) => e.url.includes(encodeURIComponent(${JSON.stringify(FIRST_KEYS.moesifCollectorApplicationId)})));
         out.storedText = Object.values(raw).map((v) => (Buffer.isBuffer(v) ? v.toString('utf8') : String(v))).join('|');
         const conn = await configurationDao.getWithSecrets(${JSON.stringify(ORG)});
         out.connectionKeys = { collector: conn.moesifCollectorApplicationId, key: conn.moesifManagementKey };
+    } else if (process.env.PHASE === 'promoted') {
+        // Another paid plan, created with the keys of an application billing does not use yet.
+        const catalogService = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/services/billing/billingCatalogService.js'))});
+        db.prepare('INSERT INTO subscription_plans (uuid, org_uuid, portal_id, handle, display_name, ref_id, created_by, updated_by) VALUES (?,?,?,?,?,?,?,?)')
+            .run('plan-silver', ${JSON.stringify(ORG)}, ${JSON.stringify(PORTAL)}, 'silver', 'Silver', 'silver', 'test', 'test');
+        await require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/dao/planPricingDao.js'))}).create(${JSON.stringify(ORG)}, 'plan-silver',
+            { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH', flatAmount: '49.00' });
+        const pairs = [{ api: { uuid: 'api-1', name: 'Weather API', version: 'v1.0' }, planUuid: 'plan-silver' }];
+        const stored = () => JSON.parse(db.prepare('SELECT provider_settings FROM billing_configurations').get().provider_settings.toString('utf8')).moesif;
+        out.settingsBeforeMove = stored();
+        const endpointsBeforeMove = state.endpoints.map((e) => e.id);
+
+        stripeRefusesEndpoints = true;
+        out.refusedMove = await catalogService.build(${JSON.stringify(ORG)}, await configurationDao.getWithSecrets(${JSON.stringify(ORG)}), pairs)
+            .then(() => 'built', (err) => err.name);
+        stripeRefusesEndpoints = false;
+        out.moesifCallsOnRefusedMove = moesifCalls.splice(0);
+        out.settingsAfterRefusedMove = stored();
+        out.endpointsUnchangedAfterRefusedMove = JSON.stringify(state.endpoints.map((e) => e.id)) === JSON.stringify(endpointsBeforeMove);
+
+        const built = await catalogService.build(${JSON.stringify(ORG)}, await configurationDao.getWithSecrets(${JSON.stringify(ORG)}), pairs);
+        await catalogService.saveApiPlans(built.apiPlans);
+        out.moesifCallsOnMove = moesifCalls.splice(0);
+        out.builtApplications = built.apiPlans.flatMap((p) => p.items.map((i) => i.application));
+        out.settingsAfterMove = stored();
+        out.endpointsAfterMove = state.endpoints.map((e) => ({ id: e.id, url: e.url }));
+
+        // Stripe refuses removing the second of the two Moesif endpoints: the first is put back.
+        const moesifUrls = () => state.endpoints.map((e) => e.url).filter((url) => url.includes('moesif')).sort();
+        const moesifUrlsBefore = moesifUrls();
+        let deletes = 0;
+        stripeRefusesDelete = () => ++deletes === 2;
+        out.refusedRemoval = await call(svc.deleteBillingConfiguration, as());
+        stripeRefusesDelete = () => false;
+        moesifCalls.splice(0);
+        out.moesifEndpointsPutBack = JSON.stringify(moesifUrls()) === JSON.stringify(moesifUrlsBefore) && moesifUrlsBefore.length === 2;
+        out.billingKeptAfterRefusedRemoval = (await call(svc.getBillingConfiguration, as())).status;
+
+        out.deletedAfterMove = await call(svc.deleteBillingConfiguration, as());
+        out.moesifCallsOnDeleteAfterMove = moesifCalls.splice(0);
+        out.endpointsAfterDeleteAfterMove = state.endpoints.map((e) => e.url);
+        out.partnersAfterDeleteAfterMove = Object.keys(state.partners);
     } else {
         const conn = await configurationDao.getWithSecrets(${JSON.stringify(ORG)});
         out.connectionKeys = { collector: conn.moesifCollectorApplicationId, key: conn.moesifManagementKey };
         out.deleted = await call(svc.deleteBillingConfiguration, as());
         out.moesifCallsOnDelete = moesifCalls.splice(0);
         out.endpointsAfterDelete = state.endpoints.map((e) => e.url);
-        out.partnerAfterDelete = state.partner;
+        out.partnersAfterDelete = Object.keys(state.partners);
         out.afterDelete = await call(svc.getBillingConfiguration, as());
         out.secondSetup = await call(svc.createBillingConfiguration, as({ body: stripeKeys }));
         out.moesifCallsOnSecondSetup = moesifCalls.splice(0);
@@ -225,6 +275,7 @@ function run(phase, supplied) {
 }
 const setUp = () => run('setup', FIRST_KEYS);
 const moved = () => { setUp(); return run('moved', SECOND_KEYS); };
+const promoted = () => { moved(); return run('promoted', THIRD_KEYS); };
 
 test('the config supplies both Moesif keys', () => {
     assert.deepEqual(setUp().deploymentFields, ['moesifCollectorApplicationId', 'moesifManagementKey']);
@@ -268,7 +319,7 @@ test('the supplied keys are never stored', () => {
 test('setup records the Moesif application and Moesif\'s endpoint in Stripe', () => {
     const r = setUp();
     assert.equal(r.storedMoesifSettings.application, '6447:123');
-    assert.ok(r.storedMoesifEndpointIsMoesifs);
+    assert.ok(r.moesifEndpointInStripe);
 });
 
 test('with another application\'s keys, the connection uses them', () => {
@@ -280,7 +331,7 @@ test('removing billing leaves the earlier application alone and removes everythi
     assert.equal(r.deleted.status, 204);
     assert.deepEqual(r.moesifCallsOnDelete, [], 'no Moesif call: the earlier application can\'t be reached');
     assert.deepEqual(r.endpointsAfterDelete, [], "Moesif's endpoint and the portal's are removed from Stripe");
-    assert.ok(r.partnerAfterDelete, "the earlier application's connection to Stripe is left there");
+    assert.ok(r.partnersAfterDelete.includes(FIRST_KEYS.moesifManagementKey), "the earlier application's connection to Stripe is left there");
     assert.equal(r.afterDelete.status, 404);
 });
 
@@ -288,4 +339,42 @@ test('billing is then set up again in the new application', () => {
     const r = moved();
     assert.equal(r.secondSetup.status, 201);
     assert.ok(r.moesifCallsOnSecondSetup.some(([name, key]) => name === 'connect' && key === SECOND_KEYS.moesifManagementKey));
+});
+
+test('a paid plan created with another application\'s keys first moves billing there with the stored Stripe key', () => {
+    const r = promoted();
+    assert.equal(r.settingsBeforeMove.application, '6447:999');
+    assert.deepEqual(r.moesifCallsOnMove.slice(0, 1), [['connect', THIRD_KEYS.moesifManagementKey]]);
+    assert.ok(r.moesifCallsOnMove.every(([, key]) => key === THIRD_KEYS.moesifManagementKey), 'every Moesif call uses the new keys');
+    assert.equal(r.settingsAfterMove.application, '6447:555');
+    assert.ok(r.endpointsAfterMove.some((e) => e.url.includes(encodeURIComponent(THIRD_KEYS.moesifCollectorApplicationId))),
+        "Moesif's endpoint for the new application is added in Stripe");
+    assert.deepEqual(r.settingsAfterMove.earlierApplications, ['6447:999'], 'the earlier application is kept, so removal finds its endpoint');
+    assert.deepEqual(r.builtApplications, ['6447:555'], 'the plan is made in the new application');
+});
+
+test('when Stripe refuses the new application\'s endpoint, the move is undone and no plan is created', () => {
+    const r = promoted();
+    assert.equal(r.refusedMove, 'BillingCatalogError');
+    assert.deepEqual(r.moesifCallsOnRefusedMove, [['connect', THIRD_KEYS.moesifManagementKey], ['disconnect', THIRD_KEYS.moesifManagementKey]]);
+    assert.deepEqual(r.settingsAfterRefusedMove, r.settingsBeforeMove);
+    assert.ok(r.endpointsUnchangedAfterRefusedMove);
+});
+
+test('removing billing after a move leaves the earlier application\'s plans and connection, and removes every endpoint', () => {
+    const r = promoted();
+    assert.equal(r.deletedAfterMove.status, 204);
+    const key = THIRD_KEYS.moesifManagementKey;
+    assert.deepEqual(r.moesifCallsOnDeleteAfterMove, [['archive-price', key], ['archive-plan', key], ['disconnect', key]],
+        "only the plan made in the new application is taken off sale; the earlier application's plan is skipped");
+    assert.deepEqual(r.endpointsAfterDeleteAfterMove, [], "both applications' Moesif endpoints and the portal's are removed from Stripe");
+    assert.ok(r.partnersAfterDeleteAfterMove.includes(SECOND_KEYS.moesifManagementKey), "the earlier application's connection to Stripe is left there");
+    assert.ok(!r.partnersAfterDeleteAfterMove.includes(THIRD_KEYS.moesifManagementKey));
+});
+
+test('when Stripe refuses removing one of Moesif\'s endpoints, the ones removed are put back and billing stays', () => {
+    const r = promoted();
+    assert.notEqual(r.refusedRemoval.status, 204);
+    assert.ok(r.moesifEndpointsPutBack, "both applications' Moesif endpoints are in Stripe again");
+    assert.equal(r.billingKeptAfterRefusedRemoval, 200);
 });

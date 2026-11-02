@@ -34,9 +34,15 @@
  * An API plan is never changed afterwards: the plan's pricing and its meters' definitions are locked
  * once it exists (planPricingService, meterService). When its plan stops being sold on its API, it
  * is taken off sale with the provider (retire).
+ *
+ * When the portal's Moesif keys are for another application than billing uses (the deployment moved
+ * the portal to another Moesif application), the first paid plan created moves billing to the keys'
+ * application with the stored Stripe key, as if billing were removed and set up again
+ * (moveToKeysApplication). What was made in the earlier application stays there: retire skips it.
  */
 
 const billingApiPlanDao = require('../../dao/billingApiPlanDao');
+const billingConfigurationDao = require('../../dao/billingConfigurationDao');
 const subscriptionPlanDao = require('../../dao/subscriptionPlanDao');
 const planPricingDao = require('../../dao/planPricingDao');
 const meterDao = require('../../dao/meterDao');
@@ -177,7 +183,8 @@ async function buildItem(connector, item, { limit, onCreated, call = (fn) => fn(
         const meterRef = price
             ? await create('meter', () => catalog.createUsageMeter({ name, meter, planRef, priceRef }))
             : null;
-        return { priceUuid: price ? price.uuid : pricing.flat_price_uuid, planRef, priceRef, meterRef };
+        return { priceUuid: price ? price.uuid : pricing.flat_price_uuid, planRef, priceRef, meterRef,
+            application: connector.application };
     };
     const results = await Promise.allSettled(item.parts.map((part) => limit(async () => {
         if (stopped) return null;
@@ -241,20 +248,70 @@ function partLimiter() {
     return partLimit;
 }
 
+// The moves in flight on this instance, by organization, so requests at the same time share one.
+const moves = new Map();
+
+/**
+ * Moves billing to the Moesif application the keys are for: the application is connected to Stripe
+ * with the stored Stripe key, Moesif's endpoint for it is added in Stripe, and it is recorded as the
+ * application billing uses, with the earlier ones kept so removing billing finds their endpoints.
+ * All or nothing: when a step fails, the steps done are undone and the error is thrown.
+ */
+function moveToKeysApplication(orgId, conn, connector) {
+    if (!moves.has(orgId)) {
+        moves.set(orgId, moveBilling(orgId, conn, connector).finally(() => moves.delete(orgId)));
+    }
+    return moves.get(orgId);
+}
+
+async function moveBilling(orgId, conn, connector) {
+    const done = [];
+    try {
+        done.push((await connector.connectPayments()).undo);
+        const endpoint = await connector.ensureMoesifEvents(await connector.payments.listEventEndpoints());
+        if (endpoint.undo) done.push(endpoint.undo);
+        await billingConfigurationDao.setMoesifApplication(orgId, {
+            application: connector.application,
+            earlierApplications: [...new Set([conn.moesifApplication, ...(conn.moesifEarlierApplications || [])])]
+                .filter((app) => app && app !== connector.application),
+        });
+        logger.info('Billing moved to the Moesif application of the portal\'s keys',
+            { orgId, from: conn.moesifApplication, to: connector.application });
+    } catch (err) {
+        for (const step of done.reverse()) {
+            await persisting(step).catch((undoErr) => logger.warn(
+                'Could not undo a step of moving billing to another Moesif application', { orgId, error: undoErr.message }));
+        }
+        throw err;
+    }
+}
+
 /**
  * Creates with the billing provider the paid plans some (API, plan) pairs enable, before the request
  * saves anything. `pairs` are { api: { uuid, name, version }, planUuid }, the API's uuid null
  * when the request creates it; `conn` is the organization's billing configuration and `connector`
  * its billing provider. Pairs whose plan is free, or that have an API plan already, need
- * nothing. When any part fails, everything created is removed and BillingCatalogError is thrown,
- * naming the plan; the provider's reason is logged. Resolves to { apiPlans, undo }: the API plans for
- * the request to save (saveApiPlans), and undo, which removes what was created when that save fails.
+ * nothing. When the keys are for another Moesif application than billing uses, billing is moved to
+ * it first. When the move or any part fails, everything created is removed and BillingCatalogError
+ * is thrown, naming the plan; the provider's reason is logged. Resolves to { apiPlans, undo }: the
+ * API plans for the request to save (saveApiPlans), and undo, which removes what was created when
+ * that save fails.
  */
 async function build(orgId, conn, pairs, connector = conn && billingProvider.forConfiguration(conn)) {
     const nothing = { apiPlans: [], undo: async () => {} };
     if (!conn || pairs.length === 0) return nothing;
     const items = await itemsFor(orgId, connector, pairs);
     if (items.length === 0) return nothing;
+    if (!connector.reachesSetupApplication()) {
+        try {
+            await moveToKeysApplication(orgId, conn, connector);
+        } catch (cause) {
+            logger.warn('Billing could not be moved to the Moesif application of the portal\'s keys, so no paid plan is created', {
+                orgId, provider: cause.provider, status: cause.status, request: cause.request, cause: cause.message,
+            });
+            throw new BillingCatalogError(items[0], cause);
+        }
+    }
     const created = [];
     let failed = false;
     // Once a part fails, parts of every plan of the request not started yet are skipped.
@@ -308,11 +365,14 @@ class BillingRetireError extends Error {
 
 /**
  * Takes API plans off sale with the provider (`apiPlans`: billingApiPlanDao rows): each item's billing
- * meter is removed and its price and plan are archived. Throws BillingRetireError when a part fails.
+ * meter is removed and its price and plan are archived; items made in another Moesif application are
+ * skipped. Throws BillingRetireError when a part fails.
  */
 async function retire(orgId, connector, apiPlans) {
     for (const apiPlan of apiPlans) {
         for (const item of apiPlan.items) {
+            // Made in another Moesif application, which these keys can't reach: it stays there.
+            if (item.application && item.application !== connector.application) continue;
             try {
                 await persisting(() => connector.catalog.archivePart(
                     { planRef: item.plan_ref, priceRef: item.price_ref, meterRef: item.meter_ref }));

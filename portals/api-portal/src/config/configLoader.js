@@ -862,7 +862,8 @@ validateArtifactConfig(config.artifacts);
 
 /**
  * Fail-closed startup check: the billing settings below must be whole numbers of at least 1, and
- * the Moesif keys set in config must come as a pair and only outside multi-organization mode.
+ * the Moesif keys set in config must come as a pair, for one Moesif application, and only outside
+ * multi-organization mode.
  */
 function validateBillingConfig(cfg) {
     const billing = cfg.billing;
@@ -906,6 +907,23 @@ function validateBillingConfig(cfg) {
             'allowed in multi-organization mode. Each organization enters its own in Settings › Billing.\n'
         );
         process.exit(1);
+    }
+    if (set.length === 2) {
+        const { collectorApplication, keyForOtherApplication } = require('../billing/connectors/moesif/application');
+        const application = collectorApplication(moesif.collectorApplicationId);
+        if (!application) {
+            process.stderr.write(
+                '[FATAL] billing.moesif.collector_application_id is not a Moesif Collector Application Id.\n'
+            );
+            process.exit(1);
+        }
+        if (keyForOtherApplication(moesif.managementKey, application)) {
+            process.stderr.write(
+                '[FATAL] billing.moesif.management_key is for a different Moesif application than ' +
+                'billing.moesif.collector_application_id.\n'
+            );
+            process.exit(1);
+        }
     }
 }
 

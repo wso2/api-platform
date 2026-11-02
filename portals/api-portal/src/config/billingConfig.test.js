@@ -160,6 +160,29 @@ test('a Moesif key that is not a string stops the portal from starting', () => {
     assert.match(stderr, /\[FATAL\] billing\.moesif\.management_key must be a string/);
 });
 
+// A management key shaped like Moesif's, naming its application in the `app` claim.
+const segment = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const managementKeyFor = (app) => `${segment({ alg: 'HS256' })}.${segment({ app })}.signature`;
+const keysFor = (collectorId, managementKey) =>
+    `[api_portal.billing.moesif]\ncollector_application_id = "${collectorId}"\nmanagement_key = "${managementKey}"\n`;
+
+test('a management key for the collector id\'s Moesif application is loaded', () => {
+    const { status } = boot(keysFor(segment({ app: '6447:123' }), managementKeyFor('6447:123')));
+    assert.equal(status, 0);
+});
+
+test('a management key for another Moesif application stops the portal from starting', () => {
+    const { status, stderr } = boot(keysFor(segment({ app: '6447:123' }), managementKeyFor('6447:999')));
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.management_key is for a different Moesif application than billing\.moesif\.collector_application_id/);
+});
+
+test('a value that is not a Collector Application Id stops the portal from starting', () => {
+    const { status, stderr } = boot(keysFor('moesif-0000', 'moesif-key-0000'));
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
+});
+
 test('Moesif keys in config stop a multi-organization portal from starting', () => {
     const { status, stderr } = boot(MULTI_ORGANIZATION + MOESIF_KEYS);
     assert.equal(status, 1);

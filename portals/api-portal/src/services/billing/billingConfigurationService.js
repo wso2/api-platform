@@ -407,10 +407,7 @@ const createBillingConfiguration = async (req, res) => {
             payment_provider: input.payment_provider,
             settings: {
                 // What removing billing finds again when the deployment later gives other keys.
-                moesif: {
-                    application: connector.application,
-                    eventEndpointId: moesifEndpoint.ref,
-                },
+                moesif: { application: connector.application },
                 stripe: {
                     publishableKey: input.stripePublishableKey,
                     webhookEndpointId: endpoint.ref,

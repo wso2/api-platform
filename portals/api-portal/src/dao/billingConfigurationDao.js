@@ -216,6 +216,26 @@ const setEventEndpoint = async (orgId, { baseUrl, endpointId, secret }, t) => {
     return get(orgId, t);
 };
 
+/**
+ * Records the Moesif application billing uses: `moesif` is { application, earlierApplications }.
+ * Resolves to the configuration, or null when there is none.
+ */
+const setMoesifApplication = async (orgId, { application, earlierApplications }, t) => {
+    const exec = t || db;
+    const row = await exec.queryOne(
+        `SELECT provider_settings FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]
+    );
+    if (!row) return null;
+    const settings = parseObject(row.provider_settings);
+    settings.moesif = { ...(settings.moesif || {}), application, earlierApplications };
+    await exec.execute(
+        `UPDATE ${TABLE} SET provider_settings = ? WHERE org_uuid = ? AND portal_id = ?`,
+        [jsonParam(settings), orgId, getPortalId()]
+    );
+    return get(orgId, t);
+};
+
 /** Deletes the configuration, and with it its customers, their checkouts, and its API plans. */
 const deleteConfiguration = async (orgId, t) => {
     const exec = t || db;
@@ -232,5 +252,6 @@ module.exports = {
     getWebhookSecret,
     create,
     setEventEndpoint,
+    setMoesifApplication,
     delete: deleteConfiguration,
 };
