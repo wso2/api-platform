@@ -103,7 +103,7 @@ func (i *mcpProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		// Refresh capabilities from the upstream alongside the rest of the configuration.
 		// If it fails, keep the previously cached capabilities provided the upstream is unchanged.
 		cfg.Capabilities = i.fetchCapabilities(ctx.OrgID, cfg)
-		if cfg.Capabilities == nil && sameMCPUpstreamURL(existing.Configuration, cfg) {
+		if cfg.Capabilities == nil && sameMCPUpstream(existing.Configuration, cfg) {
 			cfg.Capabilities = existing.Configuration.Capabilities
 		}
 		existing.Configuration = cfg
@@ -116,13 +116,22 @@ func (i *mcpProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 	return &ImportResult{ID: ctx.ID, DeployedVersion: version, Deployable: true}, nil
 }
 
-// sameMCPUpstreamURL reports whether both configurations target the same non-empty main
-// upstream URL, i.e. whether cached capabilities for one still describe the other.
-func sameMCPUpstreamURL(a, b model.MCPProxyConfiguration) bool {
+// sameMCPUpstream reports whether both configurations target the same non-empty main
+// upstream URL with the same upstream auth, i.e. whether cached capabilities for one still
+// describe the other. Auth is compared too because a server can expose different
+// tools/prompts/resources to different credentials.
+func sameMCPUpstream(a, b model.MCPProxyConfiguration) bool {
 	if a.Upstream.Main == nil || b.Upstream.Main == nil {
 		return false
 	}
-	return a.Upstream.Main.URL != "" && a.Upstream.Main.URL == b.Upstream.Main.URL
+	if a.Upstream.Main.URL == "" || a.Upstream.Main.URL != b.Upstream.Main.URL {
+		return false
+	}
+	authA, authB := a.Upstream.Main.Auth, b.Upstream.Main.Auth
+	if authA == nil || authB == nil {
+		return authA == authB
+	}
+	return *authA == *authB
 }
 
 // mapMCPProxySpecToConfig reverse-maps a gateway-pushed MCP proxy deployment spec into

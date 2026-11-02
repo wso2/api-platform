@@ -860,6 +860,36 @@ func TestImport_MCPProxy_RePushKeepsCapabilitiesWhenFetchFails(t *testing.T) {
 	}
 }
 
+// TestImport_MCPProxy_RePushDropsCapabilitiesWhenAuthChanges verifies cached capabilities are
+// not reused when the upstream URL is unchanged but its auth differs, since a server can expose
+// different capabilities to different credentials.
+func TestImport_MCPProxy_RePushDropsCapabilitiesWhenAuthChanges(t *testing.T) {
+	d := setupImportTest(t)
+	tools := []map[string]interface{}{{"name": "get_weather"}}
+	stubMCPServerInfo(t, &api.MCPServerInfoFetchResponse{Tools: &tools}, nil)
+
+	mcpReq := func(dpID, key string) dto.ImportGatewayArtifactRequest {
+		req := dpMCPReq(dpID, "weather-mcp", "Weather MCP")
+		req.Configuration.Spec["upstream"] = map[string]interface{}{
+			"url":  "https://mcp.example.com/sse",
+			"auth": map[string]interface{}{"type": "api-key", "header": "Authorization", "value": key},
+		}
+		return req
+	}
+	mustImport(t, d, withDeployedAt(mcpReq("dp-1", "key-a"), baseDeployedAt))
+
+	stubMCPServerInfo(t, nil, errors.New("upstream unreachable"))
+	mustImport(t, d, withDeployedAt(mcpReq("dp-2", "key-b"), newerDeployedAt))
+
+	p, err := repository.NewMCPProxyRepo(d.db).GetByHandle("weather-mcp", importTestOrgID)
+	if err != nil || p == nil {
+		t.Fatalf("load MCP proxy: (%v, %v)", p, err)
+	}
+	if c := p.Configuration.Capabilities; c != nil {
+		t.Errorf("Capabilities = %+v, want nil when upstream auth changed and refetch failed", c)
+	}
+}
+
 // TestImport_LLMProviderTemplate_RePushPreservesCPOnlyFields verifies a winning gateway
 // re-push does not wipe the control-plane-only metadata block (the gateway spec has none).
 func TestImport_LLMProviderTemplate_RePushPreservesCPOnlyFields(t *testing.T) {
@@ -1074,6 +1104,13 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 			Metadata:    &api.LLMProviderTemplateMetadata{OpenapiSpecUrl: &specURL},
 		}); err != nil {
 			t.Errorf("Template Update(DP, openapi/metadata edit) = %v, want success", err)
+		}
+		got, err := svc.Get(importTestOrgID, "blk-tmpl")
+		if err != nil {
+			t.Fatalf("Template Get after metadata edit: %v", err)
+		}
+		if got.Metadata == nil || got.Metadata.OpenapiSpecUrl == nil || *got.Metadata.OpenapiSpecUrl != specURL {
+			t.Errorf("Metadata.OpenapiSpecUrl = %+v, want %q persisted", got.Metadata, specURL)
 		}
 	})
 

@@ -364,6 +364,37 @@ func TestArtifactImport_RestAPIMatchOperationsPreserved(t *testing.T) {
 	}
 }
 
+func TestArtifactImport_RestAPIMatchOnlyOperation(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := restImportRequest("11111111-1111-1111-1111-111111111116", "match-only-api", "Match Only API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		// No flat method/path: the match block is the only source of the request.
+		map[string]interface{}{
+			"match": map[string]interface{}{
+				"method": "patch",
+				"path":   map[string]interface{}{"value": "/alerts/{id}"},
+			},
+		},
+	}
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 1 || ops[0].Request == nil {
+		t.Fatalf("stored operations = %+v, want 1 with a request", ops)
+	}
+	if r := ops[0].Request; r.Method != "PATCH" || r.Path != "/alerts/{id}" {
+		t.Errorf("operation = (%q, %q), want (PATCH, /alerts/{id}) from match", r.Method, r.Path)
+	}
+}
+
 func TestArtifactImport_RestAPIOperationsReplacedOnNewerPush(t *testing.T) {
 	d := setupImportTest(t)
 
@@ -379,7 +410,6 @@ func TestArtifactImport_RestAPIOperationsReplacedOnNewerPush(t *testing.T) {
 
 	second := restImportRequest(id, "replace-ops-api", "Replace Ops API")
 	second.Configuration.Spec["operations"] = []interface{}{
-		map[string]interface{}{"method": "GET", "path": "/alerts"},
 		map[string]interface{}{"method": "PUT", "path": "/alerts/{id}"},
 	}
 	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, withDeployedAt(second, newerDeployedAt)); err != nil {
@@ -391,8 +421,8 @@ func TestArtifactImport_RestAPIOperationsReplacedOnNewerPush(t *testing.T) {
 		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
 	}
 	ops := api.Configuration.Operations
-	if len(ops) != 2 || ops[1].Request == nil || ops[1].Request.Method != "PUT" || ops[1].Request.Path != "/alerts/{id}" {
-		t.Errorf("stored operations = %+v, want the newer push's two operations", ops)
+	if len(ops) != 1 || ops[0].Request == nil || ops[0].Request.Method != "PUT" || ops[0].Request.Path != "/alerts/{id}" {
+		t.Errorf("stored operations = %+v, want exactly the newer push's single PUT operation (replaced, not merged)", ops)
 	}
 }
 
