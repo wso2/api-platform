@@ -32,7 +32,13 @@ export function readStoredLocale(): string | null {
     // Adopt a preference saved under the pre-namespace key. The legacy key is
     // left in place: on a shared origin it may belong to another console.
     const legacy = window.localStorage.getItem(LEGACY_LOCALE_STORAGE_KEY);
-    if (legacy !== null) window.localStorage.setItem(LOCALE_STORAGE_KEY, legacy);
+    if (legacy !== null) {
+      try {
+        window.localStorage.setItem(LOCALE_STORAGE_KEY, legacy);
+      } catch {
+        // Best-effort copy: the legacy value still applies for this load.
+      }
+    }
     return legacy;
   } catch {
     return null;
