@@ -266,6 +266,37 @@ func TestRelayRejectsWhenPoolAndQueueAreBothFull(t *testing.T) {
 	wg.Wait()
 }
 
+// request_timeout covers the whole call, the wait for a slot included; a call
+// that never got a slot is busy, since the gateway was never asked.
+func TestRelayCountsTheWaitForASlotTowardTheTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	relay := gatewayRelay(t, func(o *RelayOptions) {
+		o.MaxConcurrent = 1
+		o.MaxPending = 1
+		o.RequestTimeout = 200 * time.Millisecond
+	})
+	// Hold the only slot, as a long-running call would.
+	release, err := relay.acquire(context.Background())
+	require.NoError(t, err)
+	defer release()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := relay.Do(context.Background(), targetFor(t, srv.URL), Request{Method: "GET", Path: "/"})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, ErrBusy)
+	case <-time.After(2 * time.Second):
+		t.Fatal("a queued call waited past request_timeout")
+	}
+}
+
 func TestRelayRefusesLinkLocalMetadataEvenIfResolutionYieldsIt(t *testing.T) {
 	// Even when "*" is allowed, the dial-time guard refuses the metadata endpoint.
 	relay := gatewayRelay(t, func(o *RelayOptions) { o.RequestTimeout = 2 * time.Second })

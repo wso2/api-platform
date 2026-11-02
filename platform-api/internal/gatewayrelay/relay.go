@@ -154,14 +154,16 @@ func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, er
 	}
 	u.RawQuery = rawQuery
 
+	// The timeout starts before the wait for a slot, so a queued call still
+	// ends within request_timeout (and so within the server's write timeout).
+	ctx, cancel := context.WithTimeout(ctx, r.opts.RequestTimeout)
+	defer cancel()
+
 	release, err := r.acquire(ctx)
 	if err != nil {
 		return Relayed{}, err
 	}
 	defer release()
-
-	ctx, cancel := context.WithTimeout(ctx, r.opts.RequestTimeout)
-	defer cancel()
 
 	outbound, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
 	if err != nil {
@@ -217,6 +219,10 @@ func (r *Relay) acquire(ctx context.Context) (func(), error) {
 		}, nil
 	case <-ctx.Done():
 		r.inFlight.Add(-1)
+		// Out of time before the gateway was even called: busy, not a gateway timeout.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, ErrBusy
+		}
 		return nil, ctx.Err()
 	}
 }

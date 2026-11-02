@@ -534,11 +534,11 @@ max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
 # REST API is deployed to and returns the gateway's response as data. The caller names the REST API and the gateway,
 # never a URL; the target is that gateway's endpoint plus the API's context.
 [platform_api.gateway_relay]
-request_timeout    = "30s"     # one relayed call, end to end; must stay below server.timeouts.write
+request_timeout    = "30s"     # one relayed call, end to end, its wait for a slot included; must stay below server.timeouts.write
 max_request_bytes  = 2097152   # 2 MiB decoded request body (the JSON request may be larger: base64)
 max_response_bytes = 8388608   # 8 MiB; a longer gateway response is truncated and flagged, not failed
 max_concurrent     = 32        # relayed calls in flight at once, per replica
-max_pending        = 64        # calls that may wait for a slot before new ones get 503
+max_pending        = 64        # calls that may wait for a slot before new ones get 503 (as does one still waiting at request_timeout)
 ca_file            = ""        # PEM bundle to trust for gateway certificates
 tls_skip_verify    = false     # development only; exclusive with ca_file
 

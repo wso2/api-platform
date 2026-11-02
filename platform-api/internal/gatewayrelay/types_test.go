@@ -44,7 +44,7 @@ func TestEncodeBodyFallsBackToBase64ForBinary(t *testing.T) {
 	// A PNG header is not valid UTF-8; as a JSON string it would be corrupted.
 	body, enc = EncodeBody([]byte{0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe})
 	assert.Equal(t, EncodingBase64, enc)
-	assert.NotEmpty(t, body)
+	assert.Equal(t, "iVBOR//+", body)
 }
 
 func TestBuildTargetComposesEndpointAndContext(t *testing.T) {
