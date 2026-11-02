@@ -1352,3 +1352,65 @@ machinery already exists.
 retries included, and firing it is terminal. Raising `perTryIdleTimeout` above 60s is
 therefore pointless — the route timeout wins. Any fix has to move both, and 60s is already
 short for a long non-streaming completion before failover is in the picture at all.
+
+---
+
+## An unresolvable host DOES fail over on an LlmProxy (2026-11-02)
+
+Settled by reverting the layered feature's dead upstreams to unresolvable
+hostnames and running it. The three failover scenarios **passed**.
+
+### Why — the loopback hop
+
+An LlmProxy request takes two hops through the same Envoy:
+
+```
+client → :8080  /my-proxy/chat/completions
+                     │   ← the failover retry policy is on THIS route
+                     ▼
+         cluster upstream_LlmProxy_<uuid>_anthropic
+             = 127.0.0.1:8080, base path /anthropic-ctx     ← loopback
+                     │
+                     ▼
+         :8080  /anthropic-ctx/chat/completions
+                     │   ← the LlmProvider's own route
+                     ▼
+         cluster api.anthropic.com      ← DNS fails HERE
+```
+
+The DNS failure lands on the **inner** route; the retry policy sits on the
+**outer** one. From the outer route's view its cluster is `127.0.0.1:8080`,
+which is always healthy — it connected and received a response that happens to
+be a `503`, and an upstream `503` matches `retry_on: 5xx`.
+
+| Whose view | What it sees |
+|---|---|
+| Inner route | local `no_healthy_upstream` — terminal |
+| Outer route, where failover lives | upstream returned `503` — **retriable** |
+
+The loopback launders a terminal local reply into a retriable status. On a
+DIRECT upstream there is no second hop, so the local reply lands on the route
+carrying the retry policy and nothing can be retried. **The limitation recorded
+earlier is real, but only for direct upstreams.**
+
+This does not make failover catch everything. The rule is unchanged: retriable
+means something reached an upstream. A committed response, the route's overall
+timeout, a `4xx`, a client disconnect and an exhausted attempt budget are all
+still terminal.
+
+### Two corrections this forced
+
+- **A fix applied earlier was unnecessary.** The layered feature's dead
+  upstreams had been changed from unresolvable hostnames to refusing ports.
+  That change was made in the same step as rebuilding a stale policy copy, and
+  the stale policy was the entire cause — the hostnames were never the problem.
+  Reverted, and the feature's prose now carries the loopback explanation
+  instead of the claim that a refusing port is required.
+- **A real defect in the feature file.** One scenario asserted
+  `x-envoy-attempt-count: 1` against a proxy with NO failover attached. The
+  controller sets `IncludeAttemptCountInResponse: t.vhostHasFailover(routes)`,
+  so that header does not exist there; the assertion was testing for the
+  presence of a feature the scenario deliberately omits. It survived manual
+  `curl` verification because that scenario was never exercised by hand.
+
+Result after both: **17 scenarios, 199 steps, all passed.**

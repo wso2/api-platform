@@ -35,14 +35,17 @@ Feature: Load spreading and failover on the same operation
   the next one in the chain did.
 
   A dead target is produced by pointing a provider's upstream at a host that
-  RESOLVES but refuses the connection. That distinction is load-bearing. An
-  unresolvable hostname yields Envoy's local `no_healthy_upstream` reply, which
-  is NOT retriable — the request fails with one attempt and no failover occurs,
-  which is a documented limitation rather than a bug (see poc-results.md). A
-  refused connection yields `connect-failure`, which is retriable, and so is the
-  only transport failure that can demonstrate a rescue at all.
+  does not resolve, the same way `failover-core.feature` does.
 
-  A forced status code would not do either: it would apply identically to every
+  That works HERE because of the loopback hop, and the distinction is worth
+  knowing. On an LlmProxy each provider sits behind a loopback cluster
+  (`127.0.0.1:<listener>`) which is always healthy, so the DNS failure happens
+  on the provider's own inner route and comes back to the proxy as an ordinary
+  upstream 503 — which is retriable. On a DIRECT upstream there is no second
+  hop: Envoy answers locally with `no_healthy_upstream`, a local reply is
+  terminal, and no failover occurs (poc-results.md).
+
+  A forced status code would not do: it would apply identically to every
   attempt, so the fallback would fail the same way as the primary.
 
   Background:
@@ -69,7 +72,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-dead-ctx
         upstream:
-          url: http://sample-backend:9998
+          url: http://rl-nonexistent-host:9080/dead-upstream
         accessControl:
           mode: allow_all
       """
@@ -203,7 +206,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-susp-dead-ctx
         upstream:
-          url: http://sample-backend:9998
+          url: http://rl-nonexistent-host:9080/dead-upstream
         accessControl:
           mode: allow_all
       """
@@ -342,7 +345,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-na-dead-ctx
         upstream:
-          url: http://sample-backend:9998
+          url: http://rl-nonexistent-host:9080/dead-upstream
         accessControl:
           mode: allow_all
       """
@@ -452,7 +455,7 @@ Feature: Load spreading and failover on the same operation
         template: openai
         context: /rl-solo-dead-ctx
         upstream:
-          url: http://sample-backend:9998
+          url: http://rl-nonexistent-host:9080/dead-upstream
         accessControl:
           mode: allow_all
       """
@@ -520,7 +523,10 @@ Feature: Load spreading and failover on the same operation
       {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 503
-    And the response header "x-envoy-attempt-count" should be "1"
+    # No "x-envoy-attempt-count" assertion here, deliberately. The controller sets
+    # IncludeAttemptCountInResponse on a virtual host only when one of its routes has
+    # failover, so this proxy -- which has none -- emits no such header at all. Asserting
+    # it would test the absence of the feature rather than this scenario's subject.
 
     # That failure suspended the dead target under the ROUTING POLICY's own
     # suspendDuration. Both following requests therefore land on the live
