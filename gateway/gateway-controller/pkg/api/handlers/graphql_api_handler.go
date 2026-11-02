@@ -25,24 +25,18 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/graphqlapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
-// GraphQLAPI CRUD handlers, implemented directly on *APIServer (mirroring
-// mcp_proxy_handler.go's pattern rather than restapi's own service package) since
-// GraphQLApi has no operations/upstreamDefinitions/vhosts to warrant a bespoke
-// service layer: Create/Update reuse the same generic s.deploymentService that
-// RestApi/WebSubApi already share (GraphQLApi is wired into it via
-// utils.RegisterKindDeployParser/RegisterKindConfigValidator — see
-// pkg/utils/graphql_deployment.go — not a hardcoded case in api_deployment.go).
+// GraphQLAPI CRUD handlers. The logic lives in pkg/service/graphqlapi, so the REST
+// API and the MCP tools share it; these handlers map its results to HTTP responses.
 
 // CreateGraphQLAPI implements ServerInterface.CreateGraphQLAPI
 // (POST /graphql-apis)
@@ -61,12 +55,9 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 
 	correlationID := middleware.GetCorrelationID(r)
 
-	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
-		Data:          body,
+	stored, err := s.getGraphQLAPIService().Create(graphqlapi.CreateParams{
+		Body:          body,
 		ContentType:   r.Header.Get("Content-Type"),
-		Kind:          string(api.GraphQLAPIKindGraphQLApi),
-		APIID:         "", // empty to generate a new UUID
-		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -99,9 +90,7 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.pushDeployableGraphQLArtifact(result, correlationID, log)
-
-	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
+	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(stored.SourceConfiguration, stored))
 }
 
 // ListGraphQLAPIs implements ServerInterface.ListGraphQLAPIs
@@ -111,7 +100,7 @@ func (s *APIServer) ListGraphQLAPIs(w http.ResponseWriter, r *http.Request, para
 		s.SearchDeployments(w, r, string(api.GraphQLAPIKindGraphQLApi))
 		return
 	}
-	configs, err := s.db.GetAllConfigsByKind(string(api.GraphQLAPIKindGraphQLApi))
+	configs, err := s.getGraphQLAPIService().List()
 	if err != nil {
 		s.logger.Error("Failed to get GraphQL APIs", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
@@ -138,21 +127,9 @@ func (s *APIServer) ListGraphQLAPIs(w http.ResponseWriter, r *http.Request, para
 func (s *APIServer) GetGraphQLAPIById(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 
-	cfg, err := s.db.GetConfigByKindAndHandle(string(api.GraphQLAPIKindGraphQLApi), id)
+	cfg, err := s.getGraphQLAPIService().GetByHandle(id)
 	if err != nil {
-		if storage.IsNotFoundError(err) {
-			log.Warn("GraphQL API configuration not found", slog.String("handle", id))
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
-			})
-			return
-		}
-		log.Error("Failed to get GraphQL API configuration", slog.Any("error", err), slog.String("handle", id))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to retrieve configuration",
-		})
+		writeGraphQLAPILoadError(w, log, id, err)
 		return
 	}
 
@@ -174,126 +151,65 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	existing, err := s.db.GetConfigByKindAndHandle(string(api.GraphQLAPIKindGraphQLApi), id)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			log.Warn("GraphQL API configuration not found", slog.String("handle", id))
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
-			})
-			return
-		}
-		log.Error("Failed to get GraphQL API configuration", slog.Any("error", err), slog.String("handle", id))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to retrieve configuration",
-		})
-		return
-	}
-
-	// Validate handle match BEFORE persisting anything — mirrors
-	// RestAPIService.Update's ordering. Checking this only after
-	// DeployAPIConfiguration (which upserts immediately) would let a mismatched
-	// body silently rename the stored config to the body's handle before the
-	// mismatch is ever reported, orphaning the original path handle even though
-	// the client receives a 400.
-	var graphqlConfig api.GraphQLAPI
-	if err := s.parser.Parse(body, r.Header.Get("Content-Type"), &graphqlConfig); err != nil {
-		log.Error("Failed to parse GraphQL API configuration", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("failed to parse configuration: %v", err),
-		})
-		return
-	}
-	if graphqlConfig.Metadata.Name != "" && graphqlConfig.Metadata.Name != id {
-		log.Warn("GraphQL API update handle mismatch", slog.String("pathHandle", id), slog.String("bodyHandle", graphqlConfig.Metadata.Name))
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("metadata.name '%s' does not match path id '%s'", graphqlConfig.Metadata.Name, id),
-		})
-		return
-	}
-
 	correlationID := middleware.GetCorrelationID(r)
 
-	// Ensure the deployment uses the existing UUID so DeployAPIConfiguration performs
-	// an update (upsert) rather than creating a second artifact.
-	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
-		Data:          body,
+	stored, err := s.getGraphQLAPIService().Update(graphqlapi.UpdateParams{
+		Handle:        id,
+		Body:          body,
 		ContentType:   r.Header.Get("Content-Type"),
-		Kind:          string(api.GraphQLAPIKindGraphQLApi),
-		APIID:         existing.UUID,
-		Origin:        existing.Origin,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
 	if err != nil {
-		log.Error("Failed to update GraphQL API configuration", slog.Any("error", err))
-		if mapRenderError(w, "update", err) {
-			return
-		}
-		if mapValidationError(w, err) {
-			return
-		}
-		if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
+		var parseErr *graphqlapi.ParseError
+		var mismatchErr *graphqlapi.HandleMismatchError
+		switch {
+		case isGraphQLAPILookupError(err):
+			writeGraphQLAPILoadError(w, log, id, err)
+		case errors.As(err, &parseErr):
+			log.Error("Failed to parse GraphQL API configuration", slog.Any("error", parseErr.Cause))
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
-				Message: err.Error(),
+				Message: fmt.Sprintf("failed to parse configuration: %v", parseErr.Cause),
 			})
-			return
+		case errors.As(err, &mismatchErr):
+			log.Warn("GraphQL API update handle mismatch", slog.String("pathHandle", id), slog.String("bodyHandle", mismatchErr.YAMLHandle))
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("metadata.name '%s' does not match path id '%s'", mismatchErr.YAMLHandle, id),
+			})
+		default:
+			writeGraphQLAPIUpdateError(w, log, err)
 		}
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to update configuration",
-		})
 		return
 	}
 
-	s.pushDeployableGraphQLArtifact(result, correlationID, log)
-
-	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(stored.SourceConfiguration, stored))
 }
 
 // DeleteGraphQLAPI implements ServerInterface.DeleteGraphQLAPI
 // (DELETE /graphql-apis/{id})
 func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
+	correlationID := middleware.GetCorrelationID(r)
 
-	cfg, err := s.db.GetConfigByKindAndHandle(string(api.GraphQLAPIKindGraphQLApi), id)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			log.Warn("GraphQL API configuration not found", slog.String("handle", id))
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+	if err := s.getGraphQLAPIService().Delete(graphqlapi.DeleteParams{
+		Handle:        id,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}); err != nil {
+		var deleteErr *graphqlapi.DeleteError
+		if errors.As(err, &deleteErr) {
+			log.Error("Failed to delete GraphQL API config from database", slog.Any("error", deleteErr.Cause))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
-				Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
+				Message: "Failed to delete configuration",
 			})
 			return
 		}
-		log.Error("Failed to get GraphQL API configuration", slog.Any("error", err), slog.String("handle", id))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to retrieve configuration",
-		})
+		writeGraphQLAPILoadError(w, log, id, err)
 		return
 	}
-
-	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-		log.Error("Failed to delete GraphQL API config from database", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to delete configuration",
-		})
-		return
-	}
-
-	correlationID := middleware.GetCorrelationID(r)
-	s.publishGraphQLAPIEvent("DELETE", cfg.UUID, correlationID, log)
-
-	// Notify the control plane (DP->CP) that this artifact was deleted via the shared
-	// handler path; it keeps the artifact and marks it undeployed.
-	s.pushArtifactUndeploy(cfg, log)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
@@ -302,46 +218,55 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 	})
 }
 
-// pushDeployableGraphQLArtifact pushes a newly created/updated GraphQL API to the
-// control plane, mirroring RestAPIHandler's create/update push behavior. It is a
-// no-op (like the other kinds) when push is disabled, disconnected, or the result
-// was a stale/no-op deployment.
-func (s *APIServer) pushDeployableGraphQLArtifact(result *utils.APIDeploymentResult, correlationID string, log *slog.Logger) {
-	if result.IsStale {
+// isGraphQLAPILookupError reports whether err came from looking up a GraphQL API by handle.
+func isGraphQLAPILookupError(err error) bool {
+	var loadErr *graphqlapi.LoadError
+	return errors.Is(err, graphqlapi.ErrNotFound) || errors.As(err, &loadErr)
+}
+
+// writeGraphQLAPILoadError writes the response for a failed GraphQL API lookup: 404 when it does not
+// exist; otherwise it logs the storage error and returns 500.
+func writeGraphQLAPILoadError(w http.ResponseWriter, log *slog.Logger, handle string, err error) {
+	if errors.Is(err, graphqlapi.ErrNotFound) {
+		log.Warn("GraphQL API configuration not found", slog.String("handle", handle))
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", handle),
+		})
 		return
 	}
-	if s.controlPlaneClient == nil || !s.controlPlaneClient.IsConnected() || s.controlPlaneClient.IsOnPrem() ||
-		!s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-		return
+	cause := err
+	var loadErr *graphqlapi.LoadError
+	if errors.As(err, &loadErr) {
+		cause = loadErr.Cause
 	}
-	cfgID := result.StoredConfig.UUID
-	deployedAt := result.StoredConfig.DeployedAt
-	s.controlPlaneClient.SubmitArtifactPush(func() {
-		s.waitForDeploymentAndPush(cfgID, correlationID, deployedAt, log)
+	log.Error("Failed to get GraphQL API configuration", slog.Any("error", cause), slog.String("handle", handle))
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		Status:  "error",
+		Message: "Failed to retrieve configuration",
 	})
 }
 
-// publishGraphQLAPIEvent publishes a delete event to the event hub so all replicas
-// (including self) converge through the event listener sync, mirroring
-// RestAPIService.publishEvent/MCPDeploymentService.publishMCPProxyEvent.
-func (s *APIServer) publishGraphQLAPIEvent(action, entityID, correlationID string, logger *slog.Logger) {
-	event := eventhub.Event{
-		GatewayID:           s.gatewayID,
-		OriginatedTimestamp: time.Now(),
-		EventType:           eventhub.EventTypeAPI,
-		Action:              action,
-		EntityID:            entityID,
-		EventID:             correlationID,
-		EventData:           eventhub.EmptyEventData,
+// writeGraphQLAPIUpdateError writes the response for a failed GraphQL API redeploy.
+func writeGraphQLAPIUpdateError(w http.ResponseWriter, log *slog.Logger, err error) {
+	log.Error("Failed to update GraphQL API configuration", slog.Any("error", err))
+	if mapRenderError(w, "update", err) {
+		return
 	}
-	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
-		logger.Warn("Failed to publish event to event hub",
-			slog.String("gateway_id", s.gatewayID),
-			slog.String("event_type", string(eventhub.EventTypeAPI)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID),
-			slog.Any("error", err))
+	if mapValidationError(w, err) {
+		return
 	}
+	if storage.IsConflictError(err) {
+		httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		Status:  "error",
+		Message: "Failed to update configuration",
+	})
 }
 
 // CreateGraphQLAPIKey implements ServerInterface.CreateGraphQLAPIKey

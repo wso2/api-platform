@@ -143,6 +143,107 @@ func TestRematerializeMCPProxyConfig_RedactsUpstreamCredential(t *testing.T) {
 	assertNoSecretInJSON(t, mcp)
 }
 
+// agentBody is the MCP tools' response builder for Agent. It must apply the
+// same redaction the REST handler's buildAgentResponse does: the four MCP
+// read-back paths (deploy create/update, get, list) all go through it, so a
+// regression here hands the upstream credential to the model.
+func TestMcpAgentBody_RedactsUpstreamCredentialAndResolvesContext(t *testing.T) {
+	source := map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1",
+		"kind":       "Agent",
+		"metadata":   map[string]any{"name": "trip-planner-v1.0"},
+		"spec": map[string]any{
+			"displayName": "Trip Planner",
+			"version":     "v1.0",
+			"context":     "/trip-planner/$version",
+			"upstream": map[string]any{
+				"url":  "http://a2a-trip-planner:9099",
+				"auth": map[string]any{"type": "api-key", "header": "x-api-key", "value": secretValue},
+			},
+			"a2a": map[string]any{
+				"protocolVersion": "1.0",
+				"operationConfigs": map[string]any{
+					"transports": []any{map[string]any{"protocolBinding": "JSONRPC", "pathPrefix": "/"}},
+				},
+			},
+		},
+	}
+
+	// Stored form: the typed configuration, exactly as the service persists it.
+	raw, err := json.Marshal(source)
+	require.NoError(t, err)
+	var stored api.AgentConfiguration
+	require.NoError(t, json.Unmarshal(raw, &stored))
+
+	cfg := &models.StoredConfig{
+		UUID:                "id-4",
+		Handle:              "trip-planner-v1.0",
+		Kind:                models.KindAgent,
+		DisplayName:         "Trip Planner",
+		Version:             "v1.0",
+		SourceConfiguration: stored,
+	}
+
+	body, err := (&McpHandler{}).agentBody(slog.Default(), cfg)
+	require.NoError(t, err)
+	assertNoSecretInJSON(t, body)
+
+	// The stored configuration must be untouched: replicas re-render it.
+	require.NotNil(t, stored.Spec.Upstream.Auth)
+	require.NotNil(t, stored.Spec.Upstream.Auth.Value)
+	assert.Equal(t, secretValue, *stored.Spec.Upstream.Auth.Value)
+
+	// Context is echoed resolved, as the REST handler does, not as the
+	// stored `$version` placeholder.
+	out, err := json.Marshal(body)
+	require.NoError(t, err)
+	assert.Contains(t, string(out), `"context":"/trip-planner/v1.0"`)
+	assert.NotContains(t, string(out), "$version")
+}
+
+// llmProviderBody is the MCP tools' response builder for LlmProvider, the
+// counterpart of the REST handler's rematerializeLLMProviderConfig call on
+// every verb.
+func TestMcpLLMProviderBody_RedactsUpstreamCredential(t *testing.T) {
+	source := map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1",
+		"kind":       "LlmProvider",
+		"metadata":   map[string]any{"name": "openai-provider"},
+		"spec": map[string]any{
+			"displayName": "OpenAI Provider",
+			"version":     "v1.0",
+			"template":    "openai",
+			"upstream": map[string]any{
+				"url":  "https://api.openai.com/v1",
+				"auth": map[string]any{"type": "api-key", "header": "Authorization", "value": secretValue},
+			},
+		},
+	}
+
+	raw, err := json.Marshal(source)
+	require.NoError(t, err)
+	var stored api.LLMProviderConfiguration
+	require.NoError(t, json.Unmarshal(raw, &stored))
+
+	cfg := &models.StoredConfig{
+		UUID:                "id-5",
+		Handle:              "openai-provider",
+		Kind:                models.KindLlmProvider,
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
+		SourceConfiguration: stored,
+	}
+
+	body, err := (&McpHandler{}).llmProviderBody(slog.Default(), cfg)
+	require.NoError(t, err)
+	assertNoSecretInJSON(t, body)
+
+	require.NotNil(t, stored.Spec.Upstream.Auth)
+	require.NotNil(t, stored.Spec.Upstream.Auth.Value)
+	assert.Equal(t, secretValue, *stored.Spec.Upstream.Auth.Value,
+		"stored source configuration must not be mutated")
+}
+
 // A secret reference is redacted exactly like a literal value.
 func TestRematerializeLLMProviderConfig_RedactsSecretReferenceToo(t *testing.T) {
 	const handle = `{{ secret "openai-prod-key" }}`
