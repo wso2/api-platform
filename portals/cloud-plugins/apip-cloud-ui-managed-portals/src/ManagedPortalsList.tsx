@@ -283,6 +283,7 @@ export default function ManagedPortalsList({
                     const status = portal.status ?? "active";
                     const canVisit = status === "active" && Boolean(portal.url);
                     const isPending = status === "pending";
+                    const isDeleting = status === "deleting";
                     return (
                       <Card
                         key={portal.id}
@@ -320,7 +321,7 @@ export default function ManagedPortalsList({
                                 borderColor: "divider",
                                 borderRadius: 1,
                                 bgcolor: "action.hover",
-                                opacity: isPending ? 0.4 : 1,
+                                opacity: isPending || isDeleting ? 0.4 : 1,
                               }}
                             >
                               <Box
@@ -364,7 +365,9 @@ export default function ManagedPortalsList({
                               title={
                                 isPending
                                   ? "Editing is available once provisioning completes."
-                                  : status === "failed"
+                                  : isDeleting
+                                    ? "The portal is being deleted."
+                                    : status === "failed"
                                     ? "Editing is disabled while the portal is in a failed state. Delete and re-create."
                                     : readOnly
                                       ? (host.resourceLimits?.readOnlyMessage ?? "")
@@ -456,33 +459,38 @@ export default function ManagedPortalsList({
                                 variant="contained"
                                 disabled
                                 startIcon={
-                                  isPending ? (
+                                  isPending || isDeleting ? (
                                     <CircularProgress size={16} color="inherit" />
                                   ) : undefined
                                 }
                               >
                                 {isPending
                                   ? "Creating portal..."
-                                  : status === "failed"
+                                  : isDeleting
+                                    ? "Deleting portal..."
+                                    : status === "failed"
                                     ? "Creation failed"
                                     : "Portal unavailable"}
                               </Button>
                             )}
                             {/* Keep deletion available so pending or failed portals can be recovered. */}
-                            <Tooltip title="Delete portal" arrow>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                aria-label={`Delete ${portal.name}`}
-                                onClick={() => setDeleteTarget(portal)}
-                                sx={{
-                                  width: 36,
-                                  height: 36,
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <Trash2 size={16} />
-                              </IconButton>
+                            <Tooltip title={isDeleting ? "The portal is being deleted." : "Delete portal"} arrow>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  aria-label={`Delete ${portal.name}`}
+                                  onClick={() => setDeleteTarget(portal)}
+                                  disabled={isDeleting}
+                                  sx={{
+                                    width: 36,
+                                    height: 36,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <Trash2 size={16} />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                           </Stack>
                         </CardContent>
