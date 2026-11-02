@@ -475,3 +475,128 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
     When I delete the LLM provider "mf-susp-alive-provider"
     Then the response status code should be 200
+
+  # ====================================================================
+  # US4 — a suspension expires, and the target is tried again
+  # ====================================================================
+
+  Scenario: A suspension expires and the target is admitted as a probe
+    # Suspension has to be temporary. A target taken out permanently on one bad
+    # minute never comes back, and a publisher who configured three providers ends
+    # up running on one with no indication why.
+    #
+    # The probe here FAILS -- the target is still dead -- and that is deliberate.
+    # What this scenario pins is the re-admission, which is observable on its own:
+    # the attempt count going back up proves the target re-entered the chain. A
+    # scenario that also needed the probe to succeed would have to mutate a
+    # provider mid-run and would be testing two things at once.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-expire-dead-provider
+      spec:
+        displayName: MF Expire Dead
+        version: v1.0
+        template: openai
+        context: /mf-expire-dead-ctx
+        upstream:
+          url: http://mf-expire-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-expire-alive-provider
+      spec:
+        displayName: MF Expire Alive
+        version: v1.0
+        template: openai
+        context: /mf-expire-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/expire-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # A short window, so it can expire inside one scenario.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-expire-proxy
+      spec:
+        displayName: MF Expire Proxy
+        version: v1.0
+        context: /mf-expire-proxy
+        provider:
+          id: mf-expire-dead-provider
+        additionalProviders:
+          - id: mf-expire-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 5
+                  suspendAfterFailures: 1
+                  maxSuspendMultiplier: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The failure that suspends it.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-expire-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    # Immediately after: suspended, so it is skipped and one attempt suffices.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-expire-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    # Past the window. maxSuspendMultiplier is 1, so the re-suspension that the
+    # failed probe causes lasts the same 5s rather than doubling -- without that
+    # the timing of this scenario would depend on the escalation ladder.
+    When I wait for 8 seconds
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-expire-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    # Two attempts again: the target was re-admitted and tried. Had the suspension
+    # been permanent this would still read 1, with the client none the wiser.
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/expire-alive-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-expire-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-expire-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-expire-alive-provider"
+    Then the response status code should be 200
