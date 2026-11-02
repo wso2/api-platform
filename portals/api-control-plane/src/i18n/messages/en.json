@@ -12,26 +12,46 @@
   "api.create.ApiCreationProgress.failed.title": {
     "defaultMessage": "We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}"
   },
+  "api.create.ApiCreationProgress.node.backend": {
+    "defaultMessage": "Backend"
+  },
+  "api.create.ApiCreationProgress.node.client": {
+    "defaultMessage": "Client"
+  },
   "api.create.ApiCreationProgress.progress.label": {
     "defaultMessage": "{kind, select, graphql {GraphQL API} other {API proxy}} creation progress",
-    "description": "Accessible name for the circular progress indicator."
+    "description": "Accessible name for the progress bar."
   },
   "api.create.ApiCreationProgress.progress.value": {
     "defaultMessage": "{value}%",
     "description": "Share of the creation flow completed so far."
   },
-  "api.create.ApiCreationProgress.stage.creating": {
-    "defaultMessage": "Creating {kind, select, graphql {GraphQL API} other {API Proxy}}",
-    "description": "Status shown while the platform is creating the API proxy."
-  },
   "api.create.ApiCreationProgress.stage.done": {
     "defaultMessage": "{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…"
   },
-  "api.create.ApiCreationProgress.stage.finalizing": {
-    "defaultMessage": "Finalizing setup"
+  "api.create.ApiCreationProgress.step.configuring": {
+    "defaultMessage": "{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}"
   },
-  "api.create.ApiCreationProgress.stage.validating": {
-    "defaultMessage": "Validating configuration"
+  "api.create.ApiCreationProgress.step.connecting": {
+    "defaultMessage": "Connecting to backend"
+  },
+  "api.create.ApiCreationProgress.step.deploying": {
+    "defaultMessage": "{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}"
+  },
+  "api.create.ApiCreationProgress.step.state.active": {
+    "defaultMessage": "In progress",
+    "description": "Screen-reader text for the step currently running."
+  },
+  "api.create.ApiCreationProgress.step.state.done": {
+    "defaultMessage": "Completed",
+    "description": "Screen-reader text for a finished step."
+  },
+  "api.create.ApiCreationProgress.step.state.pending": {
+    "defaultMessage": "Pending",
+    "description": "Screen-reader text for a step not yet started."
+  },
+  "api.create.ApiCreationProgress.step.validating": {
+    "defaultMessage": "Validating API definition"
   },
   "api.create.ApiCreationProgress.title": {
     "defaultMessage": "We are in the process of creating your {kind, select, graphql {GraphQL API} other {API Proxy}}"
