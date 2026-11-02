@@ -15,8 +15,8 @@
 #
 #   docker build -t api-control-plane .
 #
-# To serve the console under a path prefix on a shared origin (e.g. /api-platform),
-# build with --build-arg VITE_APP_BASE_PATH=/api-platform/. Whatever serves the
+# To serve the console under a path prefix on a shared origin (e.g. /api-management),
+# build with --build-arg VITE_APP_BASE_PATH=/api-management/. Whatever serves the
 # bundle must serve it under that same prefix.
 # -----------------------------------------------------------------------------
 

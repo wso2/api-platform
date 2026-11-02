@@ -38,7 +38,7 @@ const fromWindow = (): WindowConfig => {
   };
 };
 
-/** The console's serving prefix, e.g. "/api-platform"; empty when served at the root. */
+/** The console's serving prefix, e.g. "/api-management"; empty when served at the root. */
 export function appBasePath(): string {
   return (fromWindow().appBasePath ?? '').replace(/\/$/, '');
 }

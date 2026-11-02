@@ -37,11 +37,11 @@ describe('fetchEntitlementSummary', () => {
   });
 
   it('reads through the proxy under the console base path', async () => {
-    vi.stubGlobal('window', { __RUNTIME_CONFIG__: { appBasePath: '/api-platform' } });
+    vi.stubGlobal('window', { __RUNTIME_CONFIG__: { appBasePath: '/api-management' } });
     const fetchMock = stubFetch();
     await fetchEntitlementSummary();
     expect(fetchMock.mock.calls[0]?.[0]).toMatch(
-      /^\/api-platform\/proxy\/billing-entitlement\/summary\?/,
+      /^\/api-management\/proxy\/billing-entitlement\/summary\?/,
     );
   });
 });
