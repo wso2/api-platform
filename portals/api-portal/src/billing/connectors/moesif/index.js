@@ -59,16 +59,29 @@ function paymentModule(paymentProvider) {
 /**
  * The connector for one billing configuration. `conn` carries the decrypted settings:
  * moesifCollectorApplicationId, moesifManagementKey, payment_provider and the payment provider's own
- * settings (for Stripe, stripeApiKey).
+ * settings (for Stripe, stripeApiKey). A stored configuration also carries what setup recorded:
+ * moesifApplication, the Moesif application billing was set up in, and moesifEventEndpointId,
+ * Moesif's endpoint in the payment provider.
  */
 function create(conn) {
     const moesif = clients.moesif(conn.moesifManagementKey);
     const payments = paymentModule(conn.payment_provider).create(conn);
     const slug = payments.moesifProviderSlug;
+    const application = client.collectorApplication(conn.moesifCollectorApplicationId);
 
     return {
         provider: PROVIDER,
         payments,
+
+        /** The Moesif application ("524:75") the configuration's keys are for, or null. */
+        application,
+
+        /**
+         * Whether the configuration's keys are for the Moesif application billing was set up in.
+         */
+        reachesSetupApplication() {
+            return !conn.moesifApplication || conn.moesifApplication === application;
+        },
 
         // ── connection ─────────────────────────────────────────────────────────
 
@@ -96,14 +109,20 @@ function create(conn) {
         },
 
         /**
-         * Removes Moesif's endpoint for this application from the payment provider, found by its
-         * address. Resolves to { undo }: undo registers it again, or is null when there was none.
+         * Removes Moesif's endpoint from the payment provider: the one setup recorded, and any at this
+         * application's address. Resolves to { undo }: undo registers it again, or is null when there
+         * was none.
          */
         async removeMoesifEvents() {
             const url = client.stripeWebhookUrl(conn.moesifCollectorApplicationId);
-            const found = (await payments.listEventEndpoints()).filter((e) => e.url === url);
+            const found = (await payments.listEventEndpoints())
+                .filter((e) => e.id === conn.moesifEventEndpointId || e.url === url);
             for (const endpoint of found) await payments.removeEventEndpoint(endpoint.id);
-            return { undo: found.length > 0 ? () => payments.ensureMoesifEndpoint({ url, endpoints: [] }) : null };
+            return {
+                undo: found.length > 0
+                    ? () => Promise.all(found.map((e) => payments.ensureMoesifEndpoint({ url: e.url, endpoints: [] })))
+                    : null,
+            };
         },
 
         /**

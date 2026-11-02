@@ -33,6 +33,9 @@
  * other keys or another provider, an administrator removes billing and sets it up again; nothing
  * created for the earlier configuration is reused. The payment provider's key decides the mode: a
  * test key puts the portal in test mode, shown on the billing settings page.
+ *
+ * Keys the deployment supplies (billing/deploymentSettings.js) are used but never stored; setup then
+ * asks only for the payment provider's keys.
  */
 
 const db = require('../../db/driver');
@@ -41,6 +44,7 @@ const BillingConfigurationDTO = require('../../dto/billingConfigurationDto');
 const userIdpReferenceDao = require('../../dao/userIdpReferenceDao');
 const { BillingProviderError } = require('../../billing/http');
 const billingProvider = require('../../billing/billingProvider');
+const { deploymentFields, deploymentSettings, suppliedByDeployment } = require('../../billing/deploymentSettings');
 const constants = require('../../utils/constants');
 const util = require('../../utils/util');
 const logger = require('../../config/logger');
@@ -85,6 +89,7 @@ const SETUP = Object.freeze({
 const NOT_CONNECTED = 'Billing is not set up for this organization.';
 const ALREADY_SET_UP = 'Billing is already set up. Remove it to set it up again.';
 const SUBSCRIPTIONS_ACTIVE = "Billing can't be removed while paid subscriptions are active.";
+const SUPPLIED_BY_DEPLOYMENT = "This portal's deployment sets this value, and it can't be updated.";
 
 class BillingInputError extends Error {
     /** `field`: the request field the problem is about, shown under it; null for the request. */
@@ -164,18 +169,21 @@ function resolveSetup(body) {
     return { billing_provider: provider, payment_provider: paymentProvider };
 }
 
-/** Validates a set up request. */
+/** Validates a set up request. Settings the deployment supplies are taken from it, not the request. */
 function resolveInput(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
         throw new BillingInputError('Request body is missing or invalid');
     }
     const setup = resolveSetup(body);
+    const sent = deploymentFields().find((name) => body[name] !== undefined && body[name] !== null && body[name] !== '');
+    if (sent) throw new BillingInputError(SUPPLIED_BY_DEPLOYMENT, sent);
     const input = {
         ...setup,
         moesifCollectorApplicationId: optionalString(body, 'moesifCollectorApplicationId', 255),
         moesifManagementKey: optionalString(body, 'moesifManagementKey', 4096),
         stripeApiKey: optionalString(body, 'stripeApiKey', 255),
         stripePublishableKey: optionalString(body, 'stripePublishableKey', 255),
+        ...deploymentSettings(),
     };
     const missing = ['moesifCollectorApplicationId', 'moesifManagementKey', 'stripeApiKey', 'stripePublishableKey'].filter((k) => !input[k]);
     if (missing.length > 0) {
@@ -229,9 +237,14 @@ const KEY_FIELDS = Object.freeze({ Moesif: 'moesifManagementKey', Stripe: 'strip
  * Stripe's) can name internals, so they are only logged, with the request they answered.
  */
 
+/** A provider refused a key the deployment supplies; the administrator can't update it. */
+const suppliedKeyRefused = (provider) =>
+    `${provider} refused the key this portal's deployment gives it. Contact your platform's support.`;
+
 /** One provider's refusal, said next to the key it is about. */
 function keyFailureText(failure) {
     if (failure.status === 0 || failure.status >= 500) return `${failure.provider} could not be reached. Try again later.`;
+    if (suppliedByDeployment(KEY_FIELDS[failure.provider])) return suppliedKeyRefused(failure.provider);
     if (failure.status === 401) return `This ${failure.provider} key is invalid. Please enter a valid key.`;
     if (failure.status === 403) return `This ${failure.provider} key does not have a permission billing needs.`;
     return `${failure.provider} refused this key.`;
@@ -255,7 +268,7 @@ function sendProviderError(res, error) {
     if (failures.every((f) => f.status === 0 || f.status >= 500)) {
         return util.sendError(res, 502, message, { code: 'BILLING_PROVIDER_UNAVAILABLE', errors });
     }
-    const hint = failures.some((f) => f.isAuthError)
+    const hint = failures.some((f) => f.isAuthError && !suppliedByDeployment(KEY_FIELDS[f.provider]))
         ? ' Check that each key is correct and has the permissions listed in Settings › Billing.' : '';
     return util.sendError(res, 400, message + hint, { code: 'BILLING_KEY_INVALID', errors });
 }
@@ -366,7 +379,8 @@ const createBillingConfiguration = async (req, res) => {
 
         const moesifStripe = await setupStep('Moesif could not connect to Stripe',
             () => connector.connectPayments(),
-            { field: 'moesifManagementKey', message: 'This Moesif key cannot connect the Moesif application to Stripe. It needs the App configs scopes listed in Settings › Billing.' });
+            { field: 'moesifManagementKey', message: suppliedByDeployment('moesifManagementKey') ? suppliedKeyRefused('Moesif')
+                : 'This Moesif key cannot connect the Moesif application to Stripe. It needs the App configs scopes listed in Settings › Billing.' });
         done.push({ name: 'moesif stripe connection', undo: moesifStripe.undo });
 
         const moesifEndpoint = await setupStep('Stripe did not accept Moesif\'s webhook endpoint',
@@ -386,10 +400,17 @@ const createBillingConfiguration = async (req, res) => {
         }));
         const catalog = await billingCatalogService.build(orgId, input, pairs, connector);
         done.push({ name: 'paid plans', undo: catalog.undo });
+        // A key the deployment supplies is not stored: an empty secret is left out.
+        const stored = (field) => (suppliedByDeployment(field) ? undefined : input[field]);
         const conn = {
             billing_provider: input.billing_provider,
             payment_provider: input.payment_provider,
             settings: {
+                // What removing billing finds again when the deployment later gives other keys.
+                moesif: {
+                    application: connector.application,
+                    eventEndpointId: moesifEndpoint.ref,
+                },
                 stripe: {
                     publishableKey: input.stripePublishableKey,
                     webhookEndpointId: endpoint.ref,
@@ -397,7 +418,10 @@ const createBillingConfiguration = async (req, res) => {
                 },
             },
             secrets: {
-                moesif: { collectorApplicationId: input.moesifCollectorApplicationId, managementKey: input.moesifManagementKey },
+                moesif: {
+                    collectorApplicationId: stored('moesifCollectorApplicationId'),
+                    managementKey: stored('moesifManagementKey'),
+                },
                 stripe: { apiKey: input.stripeApiKey, webhookSecret: endpoint.secret },
             },
         };
@@ -548,6 +572,7 @@ class SubscriptionsActiveError extends Error {
  *   6. the portal's endpoint is removed from Stripe;
  *   7. the configuration and its keys are deleted, with its customers, their checkouts, and its API
  *      plans.
+ * Steps 3 and 4 are skipped when the keys are for another Moesif application than the one setup used.
  * When a step fails, steps 4 to 6 already done are undone and billing is not removed. Resolves to
  * false when the organization has no billing; throws SubscriptionsActiveError or RemovalStepError.
  */
@@ -559,12 +584,16 @@ async function removeBilling(orgId) {
         if (await countActiveSubscriptions(orgId) > 0) throw new SubscriptionsActiveError();
         const connector = billingProvider.forConfiguration(existing);
         if (await endOpenCheckouts(orgId, connector)) throw new SubscriptionsActiveError();
-        await retireApiPlans(orgId, connector);
-
-        await removalStep('moesif stripe connection', 'Moesif did not remove its connection to Stripe',
-            async () => (await connector.disconnectPayments()).undo, done, orgId,
-            'The Moesif key does not have the Alert rules: create scope. Disconnect Stripe from the Moesif '
-            + 'application, then remove billing again.');
+        if (connector.reachesSetupApplication()) {
+            await retireApiPlans(orgId, connector);
+            await removalStep('moesif stripe connection', 'Moesif did not remove its connection to Stripe',
+                async () => (await connector.disconnectPayments()).undo, done, orgId,
+                'The Moesif key does not have the Alert rules: create scope. Disconnect Stripe from the Moesif '
+                + 'application, then remove billing again.');
+        } else {
+            logger.warn('Billing removal: the keys are for a different Moesif application from the one setup '
+                + 'used; its paid plans and its connection to Stripe are left there', { orgId });
+        }
         await removalStep('moesif endpoint', 'Stripe did not remove Moesif\'s webhook endpoint',
             async () => (await connector.removeMoesifEvents()).undo, done, orgId);
         const portalEndpointRef = existing.stripeWebhookEndpointId;
@@ -667,6 +696,7 @@ module.exports = {
     SubscriptionsActiveError,
     removeBilling,
     webhookUrl,
+    deploymentFields,
     describeConfiguration,
     getBillingConfiguration,
     createBillingConfiguration,

@@ -27,7 +27,8 @@
  * them for the connector, and `getWebhookSecret` decrypts only the signing secret.
  *
  * Rows read here carry each setting as the connector names it: { stripe: { publishableKey } } is
- * `stripePublishableKey`.
+ * `stripePublishableKey`. Settings the deployment supplies (billing/deploymentSettings.js) are not
+ * stored; `getWithSecrets` gives the supplied values instead.
  */
 
 const db = require('../db/driver');
@@ -35,6 +36,7 @@ const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 const { createCryptoUtil, bufferToUtf8 } = require('../utils/cryptoUtil');
 const { getPortalId } = require('../utils/orgContext');
+const { deploymentSettings } = require('../billing/deploymentSettings');
 
 const TABLE = 'billing_configurations';
 const PUBLIC_COLUMNS = 'org_uuid, billing_provider, payment_provider, provider_settings, created_by, created_at';
@@ -131,7 +133,7 @@ const get = async (orgId, t) => {
     ));
 };
 
-/** The organization's billing configuration with its keys decrypted, or null. */
+/** The organization's billing configuration with its keys decrypted and the deployment's settings, or null. */
 const getWithSecrets = async (orgId, t) => {
     const exec = t || db;
     const row = await exec.queryOne(
@@ -148,7 +150,7 @@ const getWithSecrets = async (orgId, t) => {
             secrets[provider][key] = decryptSecret(orgId, provider, key, payload);
         }
     }
-    return { ...toConfiguration(row), ...flatten(secrets) };
+    return { ...toConfiguration(row), ...flatten(secrets), ...deploymentSettings() };
 };
 
 /**

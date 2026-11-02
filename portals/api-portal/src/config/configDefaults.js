@@ -387,6 +387,10 @@ const DEFAULTS = {
             // paid plan is offered on an API. Lower it if Moesif refuses calls as too many (it
             // allows 500 management calls a minute).
             maxParallelPrices: 4,
+            // Moesif keys set for the whole portal instead of in billing setup. Both or neither;
+            // not allowed in multi-organization mode.
+            collectorApplicationId: '',
+            managementKey: '',
         },
         // Limits for calls to Stripe and Moesif.
         client: {
