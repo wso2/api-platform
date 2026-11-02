@@ -427,9 +427,21 @@ though the routing policy keeps nominating it, and that load spreads across the 
 - **FR-012e**: Policies whose work is target-specific — credential injection, request/response
   translation, target steering — MUST execute **per attempt**, so each attempt is correctly formed
   for the target it reaches.
-- **FR-012f**: Each policy's execution class under failover MUST be an explicit, declared property of
-  that policy, never inferred at runtime. A policy with no declared class MUST default to
-  once-per-client-request, so a policy that is later discovered to have side effects fails safe.
+- **FR-012f** *(withdrawn 2026-11-02)*: A policy no longer declares an execution class, and nothing
+  refuses one at the upstream position. Where a policy runs is determined by where the publisher
+  attaches it: `operationPolicies` runs once per client request, a provider's `policies` list runs
+  once per attempt routed to that provider.
+  The requirement was implemented and reverted. It rested on a worked example that does not hold:
+  a per-provider policy was said to repeat its side effect once per attempt, but each provider's
+  upstream chain runs only on attempts routed to THAT provider, so a per-provider counter counts
+  one request to that provider — correct rather than duplicated. Reaching the claimed failure
+  needs a request-scoped side effect deliberately placed in a provider-scoped slot, which is the
+  author's error and visible in the field they wrote it under.
+  Enforcement also refused 68 of 71 policies, which is evidence the default was wrong for the
+  population rather than evidence the population was unsafe. What remains is documentation: both
+  provider shapes describe the field as running once per upstream attempt, where a publisher reads
+  it. The explicit `model-failover` refusal is unaffected — its reason is that the policy belongs
+  in `operationPolicies` once, not that repeating it is unsafe.
 - **FR-012g**: Internal failover attempts MUST NOT be observable to the client as separate requests,
   separate responses, or redirects. The client sees exactly one request and one response.
 - **FR-013**: The system MUST NOT attempt failover once response headers or any streamed response

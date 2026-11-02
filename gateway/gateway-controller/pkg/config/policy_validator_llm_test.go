@@ -19,7 +19,6 @@
 package config
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -459,76 +458,4 @@ func TestPolicyValidator_FailoverRefusedPerUpstream_BothProviderShapes(t *testin
 		require.NotEmpty(t, errs)
 		assert.Equal(t, "spec.providers[0].policies[0].name", errs[0].Field)
 	})
-}
-
-// --- FR-012f: a policy must declare itself safe to repeat before it can run per attempt.
-
-func perAttemptDefs() map[string]models.PolicyDefinition {
-	perAttempt := models.ExecutionClassPerAttempt
-	return map[string]models.PolicyDefinition{
-		// Declares the class: shaping the request for the target an attempt goes to.
-		"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0", ExecutionClass: &perAttempt},
-		// Declares nothing. Stands for every policy that counts, charges or calls out.
-		"basic-ratelimit|v1.0.0": {Name: "basic-ratelimit", Version: "v1.0.0"},
-	}
-}
-
-func upstreamPolicyErrors(t *testing.T, policies []api.Policy) []ValidationError {
-	t.Helper()
-	validator := NewPolicyValidator(perAttemptDefs(), nil)
-	cfg := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
-		Provider: &api.LLMProxyProvider{Id: "openai-provider"},
-		AdditionalProviders: &[]api.LLMProxyAdditionalProvider{
-			{Id: "anthropic-provider", Policies: &policies},
-		},
-	}}
-	return validator.ValidateLLMProxyPolicies(cfg)
-}
-
-// A policy that declared the class is accepted.
-func TestPolicyValidator_PerAttemptPolicyIsAccepted(t *testing.T) {
-	errs := upstreamPolicyErrors(t, []api.Policy{{Name: "set-headers", Version: "v1"}})
-	assert.Empty(t, errs, "a policy declaring executionClass: per-attempt must be accepted here")
-}
-
-// THE case the check exists for. basic-ratelimit declares nothing, so it is refused rather
-// than silently counting once per attempt — a request that fails over twice would otherwise
-// consume three units of a limit the client spent one request on, with nothing in the response
-// showing it and the client seeing exactly the single success failover is designed to give.
-func TestPolicyValidator_UndeclaredPolicyIsRefusedPerUpstream(t *testing.T) {
-	errs := upstreamPolicyErrors(t, []api.Policy{{Name: "basic-ratelimit", Version: "v1"}})
-
-	require.NotEmpty(t, errs, "an undeclared policy must be refused per upstream, not accepted "+
-		"— failing open here multiplies a side effect once per retry")
-	assert.Equal(t, "spec.additionalProviders[0].policies[0].name", errs[0].Field)
-	assert.Contains(t, errs[0].Message, "executionClass",
-		"the error must name what is missing, so an author knows what to ask the policy's owner for")
-}
-
-// The same policy is fine in operationPolicies, which runs once per client request. The check
-// is about WHERE a policy is attached, not about the policy being bad.
-func TestPolicyValidator_UndeclaredPolicyIsFineInOperationPolicies(t *testing.T) {
-	validator := NewPolicyValidator(perAttemptDefs(), nil)
-	cfg := &api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
-		Provider:       &api.LLMProxyProvider{Id: "openai-provider"},
-		GlobalPolicies: &[]api.Policy{{Name: "basic-ratelimit", Version: "v1"}},
-	}}
-	assert.Empty(t, validator.ValidateLLMProxyPolicies(cfg),
-		"a policy with side effects is correct once per client request; only per-attempt is refused")
-}
-
-// An unresolvable policy is already reported by the reference check. Reporting it a second
-// time in different words helps nobody and buries the real error.
-func TestPolicyValidator_UnknownPolicyIsNotReportedTwice(t *testing.T) {
-	errs := upstreamPolicyErrors(t, []api.Policy{{Name: "no-such-policy", Version: "v1"}})
-
-	require.NotEmpty(t, errs)
-	var mentionsClass int
-	for _, e := range errs {
-		if strings.Contains(e.Message, "executionClass") {
-			mentionsClass++
-		}
-	}
-	assert.Zero(t, mentionsClass,
-		"an unresolvable policy should report that it is unknown, not that it failed to declare a class")
 }

@@ -326,9 +326,7 @@ func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfigurati
 		}
 		errors = append(errors, ValidateUpstreamPolicies(attachment.Policies, fieldPath)...)
 		for j, p := range *attachment.Policies {
-			at := fmt.Sprintf("%s[%d]", fieldPath, j)
-			errors = append(errors, pv.validatePolicy(p, at)...)
-			errors = append(errors, pv.validateRunsPerAttempt(p, at)...)
+			errors = append(errors, pv.validatePolicy(p, fmt.Sprintf("%s[%d]", fieldPath, j))...)
 		}
 	}
 	return errors
@@ -483,38 +481,6 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 // - Accept full semantic versions as-is (vX.Y.Z)
 // - Allow major-only versions (vX) and resolve them to a single matching full version
 // - An empty version resolves to the latest available version for that policy name
-// validateRunsPerAttempt refuses a policy that has not declared itself safe to run once per
-// upstream ATTEMPT rather than once per client request.
-//
-// Fails closed on an undeclared policy, which is the whole value of the check. A policy with a
-// side effect -- charging quota, counting a rate limit, calling a third party -- placed in an
-// upstream chain performs that effect once per attempt, so a request that fails over twice
-// charges three times. Nothing in the response would show it, and the client sees the single
-// success failover is designed to give them, so the over-counting would surface as a billing
-// discrepancy long after the deploy that caused it.
-//
-// An author who genuinely needs a policy here asks for its definition to declare the class,
-// which is a deliberate act by whoever owns that policy and knows whether repeating it is safe.
-func (pv *PolicyValidator) validateRunsPerAttempt(p api.Policy, fieldPath string) []ValidationError {
-	definition, errs := pv.validatePolicyRef(p.Name, p.Version, fieldPath)
-	if len(errs) > 0 || definition == nil {
-		// An unresolvable policy is already reported by validatePolicy; saying it twice in
-		// different words helps nobody.
-		return nil
-	}
-	if definition.RunsPerAttempt() {
-		return nil
-	}
-	return []ValidationError{{
-		Field: fieldPath + ".name",
-		Message: fmt.Sprintf("policy %q does not declare executionClass: %s, so it cannot be "+
-			"attached per upstream. Policies here run once per RETRY ATTEMPT, not once per "+
-			"client request, and anything with a side effect would repeat it. If repeating "+
-			"this policy is safe, declare the class in its policy definition",
-			p.Name, models.ExecutionClassPerAttempt),
-	}}
-}
-
 func (pv *PolicyValidator) validatePolicyRef(name, version, fieldPath string) (*models.PolicyDefinition, []ValidationError) {
 	resolvedVersion, err := pv.resolvePolicyVersion(name, version)
 	if err != nil {
