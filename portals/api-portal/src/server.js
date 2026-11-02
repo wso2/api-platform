@@ -190,7 +190,6 @@ async function startServer() {
     // above and the designMode branch in app.js.
     if (!config.designMode?.enabled) {
         await seedDefaultOrg();
-        await seedPlatformApiWebhookSubscriber();
         await logMultiOrganizationMode();
     }
 

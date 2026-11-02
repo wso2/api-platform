@@ -22,28 +22,18 @@ release notes.
   own organisation. A compromised portal pod can now forge events only for the
   one organisation that owns that portal.
 
-- **OSS management endpoint `POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret`.**
+- **Management endpoint `POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret`.**
   Scope `ap:api_portal:manage`. Generates (or rotates) the per-portal secret
   and returns `{ secret, receiverPath }` **once** — the plaintext is not
-  retrievable from Platform API after this response. The operator pastes the
-  secret, and the receiver URL (Platform API base URL + `receiverPath`), into
-  the API Portal's `config.toml` under
-  `[api_portal.webhooks.platform_api]` and restarts the portal; the portal
-  self-seeds its `platform-api` webhook subscriber row from that config. The
-  OSS README's "Webhook signing secret for Platform API deliveries" section
-  states the ordering explicitly.
+  retrievable from Platform API after this response. The caller registers the
+  returned secret and receiver URL (Platform API base URL + `receiverPath`)
+  on the portal via its admin REST API, as any other webhook subscriber.
+  No portal restart required.
 
 - **PDK methods `APIPortals.EnsureWebhookSecret` / `RotateWebhookSecret`.**
   Used by the apim-saas managed-portals plugin to borrow a per-portal signing
   secret and the per-portal receiver URL at seed time, so a leaked secret in
   cloud only affects the one portal's organisation.
-
-- **OSS admin-API refusal of config-owned subscriber row.** When
-  `config.webhooks.platformApi.url` and `.secret` are both set, the API
-  Portal's admin API returns `403` on `PUT /webhook-subscribers/platform-api`
-  and `DELETE /webhook-subscribers/platform-api`. All other subscriber ids
-  behave as before. The subscriber DTO carries `configOwned: true` for the
-  config-driven row so admin UIs can grey out the edit affordance.
 
 ### Deprecated
 
@@ -84,10 +74,10 @@ release notes.
   upgrade through the legacy route.
 - Operators migrate portals to the per-portal receiver by (a) calling
   `POST /api/v0.9/api-portals/{id}/webhook-secret` for each portal on Platform
-  API, (b) pasting the returned secret and URL into the portal's
-  `config.toml`, and (c) restarting the portal. The portal then signs with the
-  per-portal secret and Platform API verifies at the matching per-portal
-  URL.
+  API, then (b) registering the returned secret and receiver URL on the
+  portal via its admin REST API (any other subscriber flow, UI or API). The
+  portal then signs with the per-portal secret and Platform API verifies at
+  the matching per-portal URL. No portal restart required.
 - In the next release, `legacy_shared_secret` defaults to `false`. Operators
   who have not migrated every portal by then should either migrate before
   upgrading or flip the flag back on in configuration to buy more time; the
