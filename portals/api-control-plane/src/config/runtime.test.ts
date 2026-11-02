@@ -107,6 +107,92 @@ describe('runtimeConfig', () => {
     );
   });
 
+  it('keeps the BFF routes for the existing auth modes', async () => {
+    window.__RUNTIME_CONFIG__ = { authMode: 'oidc' };
+
+    const { authContract } = await loadRuntimeConfig();
+
+    expect(authContract).toMatchObject({
+      loginStyle: 'redirect',
+      loginUrl: '/api/auth/login',
+      returnParam: 'return',
+      sessionUrl: '/api/session',
+      sessionFormat: 'bff',
+      logoutUrl: '/api/logout',
+      logoutStyle: 'post-json',
+    });
+  });
+
+  it('reads external mode and its endpoints from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      authMode: 'external',
+      authLoginUrl: '/api-platform/auth/login',
+      authReturnParam: 'returnTo',
+      authSessionUrl: '/api-platform/auth/session',
+      authLogoutUrl: '/api-platform/auth/logout',
+      authClaimMappings: '{"username":"name","organization":"ouId"}',
+    };
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.authMode).toBe('external');
+    expect(runtimeConfig.authContract).toMatchObject({
+      loginStyle: 'redirect',
+      loginUrl: '/api-platform/auth/login',
+      returnParam: 'returnTo',
+      sessionUrl: '/api-platform/auth/session',
+      sessionFormat: 'claims',
+      logoutUrl: '/api-platform/auth/logout',
+      logoutStyle: 'navigate',
+    });
+    expect(runtimeConfig.authContract.claimMappings.username).toBe('name');
+    expect(runtimeConfig.authContract.claimMappings.organization).toBe('ouId');
+  });
+
+  it('reads the check-session endpoint and interval from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      authMode: 'external',
+      authCheckSessionUrl: '/api-platform/auth/checksession',
+      authCheckSessionInterval: 45,
+    };
+
+    const { authContract } = await loadRuntimeConfig();
+
+    expect(authContract.checkSessionUrl).toBe('/api-platform/auth/checksession');
+    expect(authContract.checkSessionInterval).toBe(45);
+  });
+
+  it('reads the auth endpoints from build configuration when runtime config has none', async () => {
+    vi.stubEnv('VITE_AUTH_MODE', 'external');
+    vi.stubEnv('VITE_AUTH_SESSION_URL', '/auth/session');
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.authMode).toBe('external');
+    expect(runtimeConfig.authContract.sessionUrl).toBe('/auth/session');
+  });
+
+  // The Test console's relay is not part of signing in: any auth mode can move it.
+  it.each([
+    ['defaults to the BFF relay', {}, '/api/gateway-relay/invoke'],
+    ['is set from runtime config in a BFF mode', { authMode: 'basic', gatewayRelayUrl: '/relay' }, '/relay'],
+    ['is set from runtime config in external mode', { authMode: 'external', gatewayRelayUrl: '/relay' }, '/relay'],
+  ])('gatewayRelayUrl %s', async (_case, config, expected) => {
+    window.__RUNTIME_CONFIG__ = config;
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayRelayUrl).toBe(expected);
+  });
+
+  it('gatewayRelayUrl is read from build configuration when runtime config has none', async () => {
+    vi.stubEnv('VITE_GATEWAY_RELAY_URL', '/build/relay');
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayRelayUrl).toBe('/build/relay');
+  });
+
   it('an unrecognized authMode value falls back to basic', async () => {
     window.__RUNTIME_CONFIG__ = { authMode: 'something-else' };
 

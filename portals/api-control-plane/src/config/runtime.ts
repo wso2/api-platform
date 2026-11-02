@@ -16,6 +16,13 @@
  * under the License.
  */
 
+import {
+  readAuthMode,
+  resolveAuthContract,
+  type AuthContract,
+  type AuthMode,
+} from './authContract';
+
 /**
  * One gateway release the Quick Start step can offer a download for, keyed by
  * `type` since the regular and event gateways ship as separate artifacts.
@@ -40,10 +47,23 @@ export type RuntimeConfig = {
   /**
    * "basic" — the BFF's file-based login against Platform API's own user
    * store (no external IdP). "oidc" — the BFF runs a confidential/PKCE code
-   * exchange against a configured external IdP. Either way, the browser
-   * never sees a token; the BFF holds the session server-side.
+   * exchange against a configured external IdP. "external" — no BFF: a
+   * gateway or auth proxy in front of the console handles sign-in and holds
+   * the session. In every mode the browser never sees a token.
    */
-  authMode: 'basic' | 'oidc';
+  authMode: AuthMode;
+  /**
+   * The sign-in, session and sign-out endpoints for `authMode`, with any
+   * per-deployment overrides applied (see `config/authContract.ts`).
+   */
+  authContract: AuthContract;
+  /**
+   * The Test console's relay, which sends a request to a deployed gateway and
+   * returns its answer. This portal's BFF serves it at
+   * /api/gateway-relay/invoke; set it wherever the deployment serves the relay,
+   * whatever the auth mode.
+   */
+  gatewayRelayUrl: string;
   /**
    * Per-deployment default locale (BCP 47, e.g. "en"). Falls through
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
@@ -179,6 +199,18 @@ type LegacyWindowConfig = Partial<{
   apiBaseUrl: string;
   baseUrl: string;
   authMode: string;
+  authLoginStyle: string;
+  authLoginUrl: string;
+  authCredentialsUrl: string;
+  authReturnParam: string;
+  authSessionUrl: string;
+  authSessionFormat: string;
+  authCheckSessionUrl: string;
+  authCheckSessionInterval: string | number;
+  authLogoutUrl: string;
+  authLogoutStyle: string;
+  authClaimMappings: string | Record<string, unknown>;
+  gatewayRelayUrl: string;
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
@@ -265,9 +297,6 @@ const readSanitizeHtmlDocsEnabled = (value: boolean | string | undefined) =>
 const readDeploymentMode = (value: string | undefined): RuntimeConfig['deploymentMode'] =>
   value === 'cloud' ? 'cloud' : 'onprem';
 
-const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
-  value === 'oidc' ? 'oidc' : 'basic';
-
 const normalizeBasePath = (value?: string) => {
   if (!value || value === '/') return '';
   return `/${value.replace(/^\/|\/$/g, '')}`;
@@ -306,6 +335,10 @@ const hostFromUrl = (url: string) => {
   }
 };
 
+const resolvedAuthMode = readAuthMode(
+  fromWindow().authMode || fromWindow().AUTH_MODE || import.meta.env.VITE_AUTH_MODE,
+);
+
 export const runtimeConfig: RuntimeConfig = {
   appBasePath: normalizeBasePath(
     fromWindow().appBasePath ||
@@ -319,9 +352,26 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().baseUrl ||
     import.meta.env.VITE_API_BASE_URL ||
     '',
-  authMode: readAuthMode(
-    fromWindow().authMode || fromWindow().AUTH_MODE || import.meta.env.VITE_AUTH_MODE,
-  ),
+  authMode: resolvedAuthMode,
+  authContract: resolveAuthContract(resolvedAuthMode, {
+    loginStyle: fromWindow().authLoginStyle || import.meta.env.VITE_AUTH_LOGIN_STYLE,
+    loginUrl: fromWindow().authLoginUrl || import.meta.env.VITE_AUTH_LOGIN_URL,
+    credentialsUrl: fromWindow().authCredentialsUrl || import.meta.env.VITE_AUTH_CREDENTIALS_URL,
+    returnParam: fromWindow().authReturnParam || import.meta.env.VITE_AUTH_RETURN_PARAM,
+    sessionUrl: fromWindow().authSessionUrl || import.meta.env.VITE_AUTH_SESSION_URL,
+    sessionFormat: fromWindow().authSessionFormat || import.meta.env.VITE_AUTH_SESSION_FORMAT,
+    checkSessionUrl:
+      fromWindow().authCheckSessionUrl || import.meta.env.VITE_AUTH_CHECK_SESSION_URL,
+    checkSessionInterval:
+      fromWindow().authCheckSessionInterval || import.meta.env.VITE_AUTH_CHECK_SESSION_INTERVAL,
+    logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
+    logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
+    claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
+  }),
+  gatewayRelayUrl:
+    fromWindow().gatewayRelayUrl ||
+    import.meta.env.VITE_GATEWAY_RELAY_URL ||
+    '/api/gateway-relay/invoke',
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
     fromWindow().defaultLocale ||
