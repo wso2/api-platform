@@ -18,7 +18,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { LEGACY_LOCALE_STORAGE_KEY, LOCALE_STORAGE_KEY } from './config';
+import { LOCALE_STORAGE_KEY } from './config';
 import { readStoredLocale, writeStoredLocale } from './localePreference';
 
 afterEach(() => {
@@ -29,20 +29,17 @@ describe('stored locale preference', () => {
   it('writes under the namespaced key only', () => {
     writeStoredLocale('en-XA');
     expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en-XA');
-    expect(localStorage.getItem(LEGACY_LOCALE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem('app.locale')).toBeNull();
   });
 
-  it('prefers the namespaced key over the legacy one', () => {
+  it('reads back the namespaced key', () => {
     localStorage.setItem(LOCALE_STORAGE_KEY, 'en');
-    localStorage.setItem(LEGACY_LOCALE_STORAGE_KEY, 'en-XA');
     expect(readStoredLocale()).toBe('en');
   });
 
-  it('adopts a legacy preference once and leaves the legacy key alone', () => {
-    localStorage.setItem(LEGACY_LOCALE_STORAGE_KEY, 'en-XA');
-    expect(readStoredLocale()).toBe('en-XA');
-    expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe('en-XA');
-    expect(localStorage.getItem(LEGACY_LOCALE_STORAGE_KEY)).toBe('en-XA');
+  it('ignores a preference left under the pre-namespace key', () => {
+    localStorage.setItem('app.locale', 'en-XA');
+    expect(readStoredLocale()).toBeNull();
   });
 
   it('returns null when nothing is stored', () => {
