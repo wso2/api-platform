@@ -87,9 +87,6 @@ policies:
     - name: mcp-spec-validation
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-spec-validation@v0
-    - name: model-failover
-      version: v0.1.0
-      filePath: ./dev-policies/model-failover
     - name: model-round-robin
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v1
