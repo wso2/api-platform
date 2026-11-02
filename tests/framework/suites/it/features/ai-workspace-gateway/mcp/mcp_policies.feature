@@ -23,9 +23,8 @@ Feature: MCP proxy behavior under attached policies
   So that I can verify the proxy enforces them correctly
 
   # What is left here belongs to no single MCP policy: attaching one that does not exist, and a
-  # policy that is not MCP-specific. Each MCP policy has its own file - mcp_auth.feature,
-  # mcp_authz.feature, mcp_ratelimit.feature, mcp_acl_list.feature, mcp_rewrite.feature and
-  # mcp_spec_validation.feature - each holding that policy's behaviour in both protocol eras.
+  # policy that is not MCP-specific. Each MCP policy's own behaviour is tested in its suite in
+  # wso2/gateway-controllers.
 
   Background:
     Given the gateway services are running
