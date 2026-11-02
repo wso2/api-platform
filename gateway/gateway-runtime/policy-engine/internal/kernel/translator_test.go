@@ -1315,3 +1315,48 @@ func TestBuildAnalyticsStruct_BodiesRoutedByStoreLimit(t *testing.T) {
 	assert.Equal(t, "small", stored.RequestBody)
 	assert.Empty(t, stored.ResponseBody, "a body left in metadata must not also be stored")
 }
+
+// =============================================================================
+// Failover publish: metadata and route-cache clearing must ride the SAME response
+// =============================================================================
+
+// The model-failover policy writes its priority groups in the request-BODY phase, because the
+// chain is keyed by the model and the model is in the body. Envoy selects a route before that,
+// so the body-phase response has to tell it to select again — otherwise attempt 1 would use the
+// route as it stood before the groups existed, and the first attempt of every failover-enabled
+// request would go to the wrong cluster.
+//
+// Nothing else would catch that. The groups would still be published, the retry would still work,
+// and only the FIRST attempt would be wrong — which looks like a routing bug, not a missing flag.
+func TestTranslateRequestBodyActions_CarriesMetadataAndClearsTheRouteCache(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
+	}
+
+	result := &executor.RequestExecutionResult{Results: []executor.RequestPolicyResult{}}
+
+	response, err := TranslateRequestBodyActions(result, chain, execCtx)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+
+	body := response.GetRequestBody()
+	require.NotNil(t, body, "body-phase response carried no RequestBody section")
+	require.NotNil(t, body.Response, "body-phase response carried no CommonResponse")
+
+	assert.True(t, body.Response.ClearRouteCache,
+		"the body phase must clear the route cache: failover publishes its priority groups here, "+
+			"and without this attempt 1 uses the route as it stood before they existed")
+
+	// Both on the same response, not merely both present somewhere. A publish split across two
+	// responses would leave a window in which the route is reselected without the groups.
+	assert.NotNil(t, response.DynamicMetadata,
+		"dynamic metadata must ride the same response as the route-cache clear")
+}
