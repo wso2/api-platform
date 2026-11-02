@@ -600,3 +600,123 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
     When I delete the LLM provider "mf-expire-alive-provider"
     Then the response status code should be 200
+
+  # ====================================================================
+  # US3 — a fallback on another vendor is adapted to that vendor
+  # ====================================================================
+
+  Scenario: A cross-vendor fallback is sent that vendor's format and credential
+    # This is the scenario the per-attempt chain exists for. A fallback on another
+    # vendor needs a DIFFERENT request: different path, different body shape,
+    # different auth header. Adapting once downstream cannot work, because the
+    # downstream chain runs before any target is chosen -- it would have to guess,
+    # and either guess breaks one of the two attempts.
+    #
+    # The upstream here is an echo backend, so what it reports IS what the vendor
+    # would have received.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-vendor-x-provider
+      spec:
+        displayName: MF Vendor X
+        version: v1.0
+        template: openai
+        context: /mf-vendor-x-ctx
+        upstream:
+          url: http://mf-vendor-x-nonexistent:9080/vendor-x
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-vendor-y-provider
+      spec:
+        displayName: MF Vendor Y
+        version: v1.0
+        template: openai
+        context: /mf-vendor-y-ctx
+        upstream:
+          url: http://sample-backend:9080/vendor-y-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Vendor Y carries its own transformer and its own credential. Both are
+    # appended by the controller to that provider's per-attempt chain, the
+    # credential always last so no author-written policy can observe it.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-xvendor-proxy
+      spec:
+        displayName: MF Cross Vendor Proxy
+        version: v1.0
+        context: /mf-xvendor-proxy
+        provider:
+          id: mf-vendor-x-provider
+        additionalProviders:
+          - id: mf-vendor-y-provider
+            as: vendor-y
+            auth:
+              type: api-key
+              header: x-api-key
+              value: mf-xvendor-credential
+            transformer:
+              type: openai-to-anthropic-transformer
+              version: v0
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: vendor-y
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The client sends OpenAI's shape and gets a success.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-xvendor-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    # The transformer rewrote the PATH for the second vendor. /chat/completions
+    # reaching vendor Y would mean no adaptation happened.
+    And the response body should contain "/vendor-y-upstream/v1/messages"
+
+    # And the BODY: max_tokens is required by the second vendor and has no
+    # equivalent in what the client sent, so its presence cannot come from the
+    # original request being forwarded unchanged.
+    And the response body should contain "max_tokens"
+    And the response body should contain "claude-sonnet-4-5-20250929"
+
+    # And the credential for THAT provider, applied on the attempt that reached it.
+    And the response body should contain "mf-xvendor-credential"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-xvendor-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-vendor-x-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-vendor-y-provider"
+    Then the response status code should be 200
