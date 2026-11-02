@@ -15,7 +15,10 @@ scenarios:
     title: "Import an OpenAPI 3.0 file with a path parameter to create an API with name, version, context, description and upstream, then deploy it and call one operation; 201, the API has those details, lifecycle CREATED and the right project, one operation per path and method, GET /openapi returns the uploaded definition, the UI shows the operations and the definition, and the call reaches the upstream with its path parameter."
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
     it:
       status: automated
       refs:
@@ -25,7 +28,10 @@ scenarios:
     title: "Import the same definition from an HTTPS URL, check the API, then deploy it and call one operation; the same results as importing the file."
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI URL"
     it:
       status: automated
       refs:
@@ -46,7 +52,10 @@ scenarios:
     title: "On a deployed imported API whose operation1 has a policy, upload a definition that keeps operation1, adds an operation and removes another, then redeploy; the operations follow the new definition and operation1 keeps its policy, GET /openapi returns the new definition, the new operation answers and the removed one returns 404."
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher replaces a deployed API's definition and redeploys it"
     it:
       status: automated
       refs:
@@ -56,7 +65,10 @@ scenarios:
     title: "On a deployed imported API whose operation1 has a policy, upload a definition that renames operation1's path, then redeploy; the renamed operation has no policy and is called without it."
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher replaces a deployed API's definition and redeploys it"
     it:
       status: automated
       refs:
@@ -99,7 +111,10 @@ scenarios:
     title: "Import as a file a document that is not valid OpenAPI 3.x, a Swagger 2.0 document and one with empty paths; 400 with the reason for each (invalid definition, Swagger 2 not supported, at least one operation required), and no API is created."
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
     it:
       status: known-issue
       issue: https://github.com/wso2/api-platform/issues/4024
@@ -110,7 +125,10 @@ scenarios:
     title: "Validate an invalid OpenAPI 3.x file (POST /rest-apis/validate-openapi); 200 with isValid false, the errors listed and a content field."
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
     it:
       status: automated
       refs:
@@ -131,7 +149,10 @@ scenarios:
     title: "Import a definition just over the configured size limit, as a file and from a URL; 413, the UI shows the definition-too-large message, and no API is created."
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
     it:
       status: automated
       refs:

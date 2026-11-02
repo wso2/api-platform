@@ -126,12 +126,15 @@ blocks:
         features:
           - features/management_portal/tenant_isolation.feature
 
-  # Management Portal deployment lifecycle: the console against the real control plane and a
-  # real gateway, so each deployment's status follows the gateway's acknowledgement.
+  # Management Portal deployment lifecycle and API definitions: the console against the real
+  # control plane and a real gateway, so each deployment's status follows the gateway's
+  # acknowledgement. platform-api trusts the testbench specs service and caps a definition at
+  # 64 KiB (overlays/platform-api-openapi-import.toml).
   - name: management-portal-deploy
     parallel: 2
     components:
       - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-openapi-import.toml
       - name: platform-gateway
         dependsOn: [platform-api]
       - name: testbench
@@ -143,6 +146,10 @@ blocks:
         tags: "~@known-issue"
         features:
           - features/management_portal/deployment_lifecycle.feature
+      - name: api-definition
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/api_definition.feature
 
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai
