@@ -31,7 +31,8 @@ func defaultConfig() *Config {
 			BaseURL: defaultPolicyHubBaseURL,
 		},
 		Server: ServerConfig{
-			StaticDir: "/app",
+			StaticDir:     "/app",
+			XFrameOptions: XFrameDeny,
 			HTTP: HTTPListener{
 				Enabled: false,
 				Port:    9780,

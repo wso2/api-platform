@@ -38,6 +38,16 @@ func sameSite(v string) http.SameSite {
 	}
 }
 
+// cookiePath scopes the session and refresh cookies to the base path, so a console
+// sharing an origin with other apps neither sends them to those apps nor collides
+// with theirs. "/" when no base path is configured.
+func (s *Server) cookiePath() string {
+	if s.cfg.Server.BasePath == "" {
+		return "/"
+	}
+	return s.cfg.Server.BasePath
+}
+
 // refreshCookieName is the HttpOnly cookie that carries the OIDC refresh
 // token. The access token stays in the unchanged session cookie (bare JWT);
 // splitting them avoids the 4KB single-cookie limit when both tokens are large.
@@ -63,7 +73,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, access, refresh string,
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.Session.Cookie.Name,
 		Value:    access,
-		Path:     "/",
+		Path:     s.cookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -73,7 +83,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, access, refresh string,
 		http.SetCookie(w, &http.Cookie{
 			Name:     s.refreshCookieName(),
 			Value:    refresh,
-			Path:     "/",
+			Path:     s.cookiePath(),
 			HttpOnly: true,
 			Secure:   s.cfg.Session.Cookie.Secure,
 			SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -88,7 +98,7 @@ func (s *Server) clearRefreshCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.refreshCookieName(),
 		Value:    "",
-		Path:     "/",
+		Path:     s.cookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -100,7 +110,7 @@ func (s *Server) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.Session.Cookie.Name,
 		Value:    "",
-		Path:     "/",
+		Path:     s.cookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -114,7 +124,7 @@ func (s *Server) setTxCookie(w http.ResponseWriter, txID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    txID,
-		Path:     "/api/auth",
+		Path:     s.path("/api/auth"),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,
@@ -126,7 +136,7 @@ func (s *Server) clearTxCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    "",
-		Path:     "/api/auth",
+		Path:     s.path("/api/auth"),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,

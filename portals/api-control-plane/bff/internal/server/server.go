@@ -100,9 +100,17 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse control_plane.url: %w", err)
 	}
-	proxies := []mountedProxy{
-		{prefix: cfg.ControlPlane.ProxyPrefix, rp: proxy.ReverseProxy(primaryTarget, cfg.ControlPlane.ProxyPrefix, primaryTransport)},
+	var proxies []mountedProxy
+	// Each upstream is mounted at its prefix and again under the base path. The
+	// Rewrite hook strips the whole mounted prefix, so each mount needs its own
+	// reverse proxy and the upstream sees neither part.
+	mount := func(prefix string, target *url.URL, transport http.RoundTripper) {
+		proxies = append(proxies, mountedProxy{prefix: prefix, rp: proxy.ReverseProxy(target, prefix, transport)})
+		if base := cfg.Server.BasePath; base != "" {
+			proxies = append(proxies, mountedProxy{prefix: base + prefix, rp: proxy.ReverseProxy(target, base+prefix, transport)})
+		}
 	}
+	mount(cfg.ControlPlane.ProxyPrefix, primaryTarget, primaryTransport)
 
 	// Additional named upstreams (e.g. a billing service) are proxied
 	// same-origin alongside the primary one, each with its own transport so a
@@ -124,7 +132,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if prefix == "" {
 			prefix = cfg.ControlPlane.ProxyPrefix + "/" + u.Name
 		}
-		proxies = append(proxies, mountedProxy{prefix: prefix, rp: proxy.ReverseProxy(target, prefix, upstreamTransport)})
+		mount(prefix, target, upstreamTransport)
 	}
 
 	s := &Server{
@@ -205,6 +213,11 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 // Handler returns the fully-wired HTTP handler (for the listener and for tests).
 func (s *Server) Handler() http.Handler { return s.handler }
 
+// path prefixes an app-internal absolute path (route pattern, cookie Path, redirect
+// target) with [server] base_path. suffix must start with "/". With no base path
+// configured it returns suffix unchanged.
+func (s *Server) path(suffix string) string { return s.cfg.Server.BasePath + suffix }
+
 // Close releases background resources (the OIDC transaction sweeper and, when
 // enabled, the session store's eviction sweeper).
 func (s *Server) Close() error {
@@ -247,23 +260,34 @@ func withWriteDeadlineOf(d time.Duration, next http.HandlerFunc) http.HandlerFun
 // routes builds the mux and wraps it with the global middleware chain.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	base := s.cfg.Server.BasePath
+
+	// Every BFF route answers at the origin root and, when configured, under the base
+	// path: probes dial the pod directly, bypassing the edge that routes the prefix,
+	// and a bundle built for the prefix also loads through a hostname with no prefix.
+	handle := func(method, route string, h http.HandlerFunc) {
+		mux.HandleFunc(method+" "+route, h)
+		if base != "" {
+			mux.HandleFunc(method+" "+s.path(route), h)
+		}
+	}
 
 	// Health (no auth, no CSRF).
-	mux.HandleFunc("GET /healthz", withWriteDeadline(handleHealth))
+	handle(http.MethodGet, "/healthz", withWriteDeadline(handleHealth))
 
 	// Runtime config consumed by the SPA before app init.
-	mux.HandleFunc("GET /api-platform.env.config.js", withWriteDeadline(s.handleRuntimeConfig))
-	mux.HandleFunc("GET /api-platform.common.config.js", withWriteDeadline(s.handleCommonConfig))
+	handle(http.MethodGet, "/api-platform.env.config.js", withWriteDeadline(s.handleRuntimeConfig))
+	handle(http.MethodGet, "/api-platform.common.config.js", withWriteDeadline(s.handleCommonConfig))
 
 	// Auth endpoints.
-	mux.HandleFunc("POST /api/login", withWriteDeadline(s.handleLogin))
-	mux.HandleFunc("POST /api/logout", withWriteDeadline(s.handleLogout))
-	mux.HandleFunc("GET /api/session", withWriteDeadline(s.handleSession))
-	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
-	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
+	handle(http.MethodPost, "/api/login", withWriteDeadline(s.handleLogin))
+	handle(http.MethodPost, "/api/logout", withWriteDeadline(s.handleLogout))
+	handle(http.MethodGet, "/api/session", withWriteDeadline(s.handleSession))
+	handle(http.MethodGet, "/api/auth/login", withWriteDeadline(s.handleOIDCLogin))
+	handle(http.MethodGet, "/api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
 
 	// Gateway-relay relay. The handler returns 404 when disabled.
-	mux.HandleFunc("POST /api/gateway-relay/invoke",
+	handle(http.MethodPost, "/api/gateway-relay/invoke",
 		withWriteDeadlineOf(s.gatewayInvokeWriteDeadline(), s.handleGatewayInvoke))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
@@ -276,7 +300,14 @@ func (s *Server) routes() http.Handler {
 
 	// SPA static files + client-side routing fallback. Must be registered
 	// last since it's the catch-all for everything not matched above.
-	mux.Handle("/", spaHandler(s.cfg.Server.StaticDir))
+	spa := spaHandler(s.cfg.Server.StaticDir)
+	mux.Handle("/", spa)
+	if base != "" {
+		// The prefix is stripped before spaHandler resolves against the static dir, so
+		// its containment check still sees the only path that reaches the filesystem.
+		// ServeMux redirects the bare prefix to its trailing-slash form.
+		mux.Handle(s.path("/"), http.StripPrefix(base, spa))
+	}
 
 	return chain(mux,
 		recoverPanic,

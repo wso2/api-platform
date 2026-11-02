@@ -46,7 +46,8 @@ func makeJWT(claims map[string]any) string {
 func newTestConfig(controlPlaneURL string) *config.Config {
 	cfg := &config.Config{
 		Server: config.ServerConfig{
-			HTTP: config.HTTPListener{Enabled: true, Port: 0},
+			HTTP:          config.HTTPListener{Enabled: true, Port: 0},
+			XFrameOptions: config.XFrameDeny,
 		},
 		ControlPlane: config.ControlPlaneConfig{
 			URL:            controlPlaneURL,

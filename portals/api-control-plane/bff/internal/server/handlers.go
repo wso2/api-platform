@@ -177,7 +177,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "AUTH_METHOD_DISABLED", "oidc auth is not enabled")
 		return
 	}
-	ret := sanitizeReturn(r.URL.Query().Get("return"))
+	ret := s.sanitizeReturn(r.URL.Query().Get("return"))
 	authURL, txID, err := s.oidc.AuthCodeURL(ret)
 	if err != nil {
 		var tooMany auth.ErrTooManyPendingLogins
@@ -202,7 +202,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if errCode := q.Get("error"); errCode != "" {
 		slog.Warn("oidc callback error", "error", errCode, "desc", q.Get("error_description"))
-		http.Redirect(w, r, "/login?error="+errCode, http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error="+errCode, http.StatusFound)
 		return
 	}
 
@@ -215,7 +215,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	sess, ret, err := s.oidc.Callback(r.Context(), txID, q.Get("state"), q.Get("code"))
 	if err != nil {
 		slog.Warn("oidc callback failed", "err", err)
-		http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error=auth_failed", http.StatusFound)
 		return
 	}
 	// OIDC: access JWT stays in the session cookie (unchanged). The refresh
@@ -224,11 +224,11 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	// endpoint. The in-memory store still holds id_token + refresh for the
 	// common proxy path.
 	if err := s.putRefreshState(r.Context(), sess); err != nil {
-		http.Redirect(w, r, "/login?error=session_failed", http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error=session_failed", http.StatusFound)
 		return
 	}
 	s.setSessionCookie(w, sess.AccessToken, sess.RefreshToken, sess.AbsoluteExpiry)
-	http.Redirect(w, r, sanitizeReturn(ret), http.StatusFound)
+	http.Redirect(w, r, s.sanitizeReturn(ret), http.StatusFound)
 }
 
 // ---------------------------------------------------------------------------
@@ -542,8 +542,25 @@ func isBodyTooLarge(err error) bool {
 	return errors.As(err, &mbe)
 }
 
-// sanitizeReturn ensures redirect targets are local paths (no open redirect).
-func sanitizeReturn(p string) string {
+// sanitizeReturn confines a post-login return target to this console: a local path
+// (see sanitizeLocalPath) that also sits under the base path, so a console sharing an
+// origin cannot be used to bounce the user into a sibling app. Anything else falls
+// back to the console's own root.
+func (s *Server) sanitizeReturn(p string) string {
+	clean := sanitizeLocalPath(p)
+	base := s.cfg.Server.BasePath
+	if base == "" {
+		return clean
+	}
+	u, err := url.Parse(clean)
+	if err != nil || (u.Path != base && !strings.HasPrefix(u.Path, base+"/")) {
+		return s.path("/")
+	}
+	return clean
+}
+
+// sanitizeLocalPath ensures redirect targets are local paths (no open redirect).
+func sanitizeLocalPath(p string) string {
 	if p == "" || strings.ContainsAny(p, "\r\n\x00") {
 		return "/"
 	}
