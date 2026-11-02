@@ -360,7 +360,10 @@ environment), keyed on the portal's internal UUID.
    admin API or the admin UI, with the returned secret and target URL. Any
    subsequent rotation is just steps 1 and 2 again.
 
-No portal restart is required.
+No portal restart is required. On a rotation, complete step 2 within Platform
+API's `webhook.rotation_grace` (default `10m`) of step 1: until then Platform
+API still accepts the previous secret, and after it deliveries signed with the
+previous secret get `401`.
 
 ---
 

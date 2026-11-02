@@ -517,5 +517,11 @@ func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
 	}
 	_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, strings.TrimSpace(actor))
 	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)
+	// The secret row went with the portal (FK cascade); drop its cached keys
+	// too, so the receiver stops accepting the portal's deliveries at once
+	// rather than when the cache entry expires.
+	if s.webhookSecrets != nil {
+		s.webhookSecrets.invalidateKeyRegistry(portal.ID)
+	}
 	return nil
 }

@@ -117,7 +117,23 @@ func (s *APIPortalWebhookSecretService) EnsureWebhookSecret(ctx context.Context,
 		return "", "", fmt.Errorf("ensure webhook secret: encrypt: %w", err)
 	}
 	if err := s.secretRepo.Insert(portal.ID, ciphertext); err != nil {
-		return "", "", fmt.Errorf("ensure webhook secret: insert: %w", err)
+		if !repository.IsUniqueViolation(err) {
+			return "", "", fmt.Errorf("ensure webhook secret: insert: %w", err)
+		}
+		// A concurrent first call inserted the row between our read and
+		// insert. Return the secret that won, keeping Ensure idempotent.
+		winner, rerr := s.secretRepo.GetByPortalUUID(portal.ID)
+		if rerr != nil {
+			return "", "", fmt.Errorf("ensure webhook secret: re-read after conflict: %w", rerr)
+		}
+		if winner == nil {
+			return "", "", fmt.Errorf("ensure webhook secret: insert conflicted but no row found: %w", err)
+		}
+		winnerPlain, derr := s.vault.Decrypt(ctx, winner.SecretEnc)
+		if derr != nil {
+			return "", "", fmt.Errorf("ensure webhook secret: decrypt: %w", derr)
+		}
+		return winnerPlain, portal.ID, nil
 	}
 	return plaintext, portal.ID, nil
 }
@@ -151,15 +167,25 @@ func (s *APIPortalWebhookSecretService) RotateWebhookSecret(ctx context.Context,
 		return "", "", fmt.Errorf("rotate webhook secret: encrypt: %w", err)
 	}
 
-	if existing == nil {
-		if err := s.secretRepo.Insert(portal.ID, ciphertext); err != nil {
-			return "", "", fmt.Errorf("rotate webhook secret: insert: %w", err)
-		}
-	} else {
+	rotate := func() error {
 		previousValidUntil := time.Now().UTC().Add(s.grace)
 		if err := s.secretRepo.Rotate(portal.ID, ciphertext, previousValidUntil); err != nil {
-			return "", "", fmt.Errorf("rotate webhook secret: rotate: %w", err)
+			return fmt.Errorf("rotate webhook secret: rotate: %w", err)
 		}
+		return nil
+	}
+	if existing == nil {
+		if err := s.secretRepo.Insert(portal.ID, ciphertext); err != nil {
+			if !repository.IsUniqueViolation(err) {
+				return "", "", fmt.Errorf("rotate webhook secret: insert: %w", err)
+			}
+			// A concurrent call created the row first; rotate over it instead.
+			if err := rotate(); err != nil {
+				return "", "", err
+			}
+		}
+	} else if err := rotate(); err != nil {
+		return "", "", err
 	}
 
 	s.invalidateKeyRegistry(portal.ID)

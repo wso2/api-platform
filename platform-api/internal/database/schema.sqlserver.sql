@@ -205,7 +205,7 @@ CREATE TABLE dbo.api_portal_webhook_secrets (
     previous_valid_until DATETIME2(7),
     created_at           DATETIME2(7)   NOT NULL DEFAULT SYSUTCDATETIME(),
     rotated_at           DATETIME2(7),
-    FOREIGN KEY (portal_uuid) REFERENCES api_portals(uuid) ON DELETE CASCADE
+    FOREIGN KEY (portal_uuid) REFERENCES dbo.api_portals(uuid) ON DELETE CASCADE
 );
 
 -- =====================================================================

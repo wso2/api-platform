@@ -74,6 +74,9 @@ func defaultConfig() *Server {
 				"/api/internal/v1/websub-apis",
 				"/api/internal/v1/webbroker-apis",
 				"/api/internal/" + constants.APIVersion + "/webhook/events",
+				// Per-portal receiver, /webhook/portals/{portalUUID}/events:
+				// authenticated by each portal's HMAC signature, not a token.
+				"/api/internal/" + constants.APIVersion + "/webhook/portals",
 			},
 			JWT: JWT{
 				Issuer:   "platform-api",

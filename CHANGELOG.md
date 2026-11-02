@@ -19,8 +19,9 @@ release notes.
   verifies deliveries with that portal's secret, falls back to the previous
   secret during a bounded grace window after a rotation, and rejects any
   delivery whose payload organisation does not resolve to the sending portal's
-  own organisation. A compromised portal pod can now forge events only for the
-  one organisation that owns that portal.
+  own organisation. Once a portal signs with its own secret and the legacy
+  shared-secret route is off (the default), a compromised portal pod can forge
+  events only for the one organisation that owns that portal.
 
 - **Management endpoint `POST /api/v0.9/api-portals/{apiPortalId}/webhook-secret`.**
   Scope `ap:api_portal:manage`. Generates (or rotates) the per-portal secret

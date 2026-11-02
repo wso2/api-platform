@@ -302,10 +302,16 @@ func (r *Receiver) ReceivePerPortalEvent(w http.ResponseWriter, req *http.Reques
 
 	keys, err := r.keyRegistry.Get(req.Context(), portalUUID)
 	if err != nil {
-		// Keep the response generic so an attacker cannot enumerate portal uuids
-		// — both "unknown portal" and "bad signature" look identical on the wire.
-		return apperror.Unauthorized.Wrap(err).
-			WithLogMessage(fmt.Sprintf("per-portal webhook: key load failed, portal=%s clientIP=%s", portalUUID, req.RemoteAddr))
+		if apperror.APIPortalNotFound.Is(err) {
+			// Keep the response generic so an attacker cannot enumerate portal
+			// uuids: "unknown portal" and "bad signature" look identical.
+			return apperror.Unauthorized.Wrap(err).
+				WithLogMessage(fmt.Sprintf("per-portal webhook: no portal or secret, portal=%s clientIP=%s", portalUUID, req.RemoteAddr))
+		}
+		// A repository or vault failure is not the sender's fault; answer 503
+		// so it is not mistaken for a bad signature.
+		return apperror.ServiceUnavailable.Wrap(err).
+			WithLogMessage(fmt.Sprintf("per-portal webhook: key load failed, portal=%s", portalUUID))
 	}
 
 	sigHeader := req.Header.Get(r.cfg.SignatureHeader)
