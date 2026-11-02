@@ -20,8 +20,8 @@ export const SUPPORTED_LOCALES = ['en', 'en-XA'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 export const DEFAULT_LOCALE: SupportedLocale = 'en';
-// Namespaced: this console can share an origin with other consoles (served
-// under a base path), and a generic key would be read and overwritten by them.
+// Namespaced: served under a base path, the console shares an origin with
+// whatever else is hosted there, and a generic key would collide with it.
 export const LOCALE_STORAGE_KEY = 'apicp.locale';
 
 /**

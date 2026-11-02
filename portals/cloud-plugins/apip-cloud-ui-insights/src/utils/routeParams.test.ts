@@ -31,14 +31,14 @@ describe('parseInsightsRouteParams', () => {
   // The console can be served under a base path on a shared origin; the
   // handles must still resolve from the full browser pathname.
   it('reads org and project handles under a base path', () => {
-    expect(parseInsightsRouteParams('/api-management/organizations/acme/projects/p1/insights')).toEqual({
+    expect(parseInsightsRouteParams('/console/organizations/acme/projects/p1/insights')).toEqual({
       orgHandle: 'acme',
       projectHandler: 'p1',
     });
   });
 
   it('returns undefined handles when the path carries none', () => {
-    expect(parseInsightsRouteParams('/api-management/')).toEqual({
+    expect(parseInsightsRouteParams('/console/')).toEqual({
       orgHandle: undefined,
       projectHandler: undefined,
     });
