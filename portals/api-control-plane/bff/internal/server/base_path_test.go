@@ -496,22 +496,3 @@ func TestSanitizeReturn(t *testing.T) {
 		}
 	}
 }
-
-func TestXFrameOptionsHeader(t *testing.T) {
-	for _, want := range []string{config.XFrameDeny, config.XFrameSameOrigin} {
-		cfg := newTestConfig("https://unused.example.com")
-		cfg.Server.XFrameOptions = want
-		bff := newRoutedServer(t, cfg)
-		res, err := http.Get(bff.URL + "/healthz")
-		if err != nil {
-			t.Fatalf("GET /healthz: %v", err)
-		}
-		_ = readBody(t, res)
-		if got := res.Header.Values("X-Frame-Options"); len(got) != 1 || got[0] != want {
-			t.Errorf("X-Frame-Options = %v, want [%s]", got, want)
-		}
-		if got := res.Header.Get("Content-Security-Policy"); got != "frame-ancestors 'self'" {
-			t.Errorf("Content-Security-Policy = %q", got)
-		}
-	}
-}

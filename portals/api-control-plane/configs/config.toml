@@ -7,10 +7,7 @@ domain = '{{ env "APIP_ACP_DOMAIN" "localhost:8082" }}'
 # URL path prefix the console is served under (e.g. "/console" behind a shared origin).
 # Empty serves from the origin root. The SPA must be built with the same value
 # (VITE_APP_BASE_PATH), and redirect_url below must point under it.
-base_path       = '{{ env "APIP_ACP_SERVER_BASE_PATH" "" }}'
-# "DENY" | "SAMEORIGIN". Browsers that honour the CSP frame-ancestors 'self' this BFF
-# also sends ignore this header, so it only matters to browsers that don't.
-x_frame_options = '{{ env "APIP_ACP_SERVER_X_FRAME_OPTIONS" "DENY" }}'
+base_path = '{{ env "APIP_ACP_SERVER_BASE_PATH" "" }}'
 
 [api_control_plane.server.http]
 

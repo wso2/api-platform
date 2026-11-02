@@ -174,11 +174,6 @@ the prefix on the request, build the SPA with `VITE_APP_BASE_PATH=/console/` and
 prefix as well as at the root, and cookies are scoped to it. In `oidc` mode, point
 `APIP_ACP_AUTH_OIDC_REDIRECT_URL` at `/console/api/auth/callback`.
 
-`APIP_ACP_SERVER_X_FRAME_OPTIONS` defaults to `DENY`. The BFF also sends
-`Content-Security-Policy: frame-ancestors 'self'`, which browsers apply instead, so
-same-origin framing (such as a silent sign-in iframe) works with either value and
-framing from another origin is blocked.
-
 Cookie `Path` is not a security boundary: script on any app sharing the origin can
 reach the console's routes with its session. Share an origin only with apps of equal
 trust.

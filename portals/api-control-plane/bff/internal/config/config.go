@@ -176,12 +176,6 @@ func (c ControlPlaneConfig) UpstreamPrefix(u UpstreamConfig) string {
 	return c.ProxyPrefix + "/" + u.Name
 }
 
-// X-Frame-Options values accepted by [server] x_frame_options.
-const (
-	XFrameDeny       = "DENY"
-	XFrameSameOrigin = "SAMEORIGIN"
-)
-
 // ServerConfig is [api_control_plane.server]: two independent listeners,
 // following the platform-wide [server.http] / [server.https] shape — either or
 // both may run, each on its own port. The listeners always bind all interfaces.
@@ -193,13 +187,9 @@ type ServerConfig struct {
 	// it. Empty (the default) serves from the origin root only. The SPA bundle must be
 	// built with the same value (VITE_APP_BASE_PATH), since index.html references its
 	// assets absolutely.
-	BasePath string `koanf:"base_path"`
-	// XFrameOptions is the X-Frame-Options response header: "DENY" (the default) or
-	// "SAMEORIGIN". Browsers that honour the CSP frame-ancestors directive this BFF also
-	// sends ignore this header, so it only matters to browsers that don't.
-	XFrameOptions string        `koanf:"x_frame_options"`
-	HTTP          HTTPListener  `koanf:"http"`
-	HTTPS         HTTPSListener `koanf:"https"`
+	BasePath string        `koanf:"base_path"`
+	HTTP     HTTPListener  `koanf:"http"`
+	HTTPS    HTTPSListener `koanf:"https"`
 }
 
 // HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
@@ -502,10 +492,6 @@ func (c *Config) normalize() {
 	}
 
 	c.Server.BasePath = normalizeBasePath(c.Server.BasePath)
-	c.Server.XFrameOptions = strings.ToUpper(strings.TrimSpace(c.Server.XFrameOptions))
-	if c.Server.XFrameOptions == "" {
-		c.Server.XFrameOptions = XFrameDeny
-	}
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
@@ -553,9 +539,6 @@ func (c *Config) validate() error {
 	}
 	if err := c.validateBasePath(); err != nil {
 		return err
-	}
-	if c.Server.XFrameOptions != XFrameDeny && c.Server.XFrameOptions != XFrameSameOrigin {
-		return fmt.Errorf("[server] x_frame_options %q must be %q or %q", c.Server.XFrameOptions, XFrameDeny, XFrameSameOrigin)
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")

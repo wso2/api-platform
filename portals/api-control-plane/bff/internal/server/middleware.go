@@ -44,7 +44,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		if s.cfg.Session.Cookie.Secure {
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
-		h.Set("X-Frame-Options", s.cfg.Server.XFrameOptions)
+		h.Set("X-Frame-Options", "DENY")
 		h.Set("Content-Security-Policy", "frame-ancestors 'self'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")

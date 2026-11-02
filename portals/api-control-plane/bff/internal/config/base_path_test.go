@@ -126,25 +126,3 @@ prefix = "/console/proxy"
 		t.Errorf("Load: %v", err)
 	}
 }
-
-func TestLoad_XFrameOptions(t *testing.T) {
-	cases := []struct{ keys, want string }{
-		{"", XFrameDeny},
-		{`x_frame_options = ""`, XFrameDeny},
-		{`x_frame_options = "DENY"`, XFrameDeny},
-		{`x_frame_options = "SAMEORIGIN"`, XFrameSameOrigin},
-		{`x_frame_options = " sameorigin "`, XFrameSameOrigin},
-	}
-	for _, tc := range cases {
-		cfg, err := loadServer(t, tc.keys)
-		if err != nil {
-			t.Fatalf("Load(%q): %v", tc.keys, err)
-		}
-		if cfg.Server.XFrameOptions != tc.want {
-			t.Errorf("XFrameOptions(%q) = %q, want %q", tc.keys, cfg.Server.XFrameOptions, tc.want)
-		}
-	}
-	if _, err := loadServer(t, `x_frame_options = "ALLOW-FROM https://example.com"`); err == nil {
-		t.Error("an unsupported x_frame_options value must fail startup")
-	}
-}
