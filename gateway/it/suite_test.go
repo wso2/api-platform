@@ -115,9 +115,10 @@ func getFeaturePaths() []string {
 		"features/model-round-robin.feature",
 		"features/model-round-robin-multi-provider.feature",
 		"features/model-weighted-round-robin-multi-provider.feature",
-		// features/failover-core.feature is NOT in the default suite yet, and the reason is
-		// no longer the data plane: it PASSES as of 2026-11-02 (17 scenarios, 172 steps) now
-		// that the per-attempt upstream filter has landed.
+		// Neither failover feature is in the default suite yet, and the reason is no longer
+		// the data plane. Both PASS as of 2026-11-02 against freshly built coverage images:
+		// features/failover-core.feature        17 scenarios, 172 steps
+		// features/failover-per-attempt.feature 14 scenarios, 117 steps
 		//
 		// What blocks it is packaging. model-failover is not published as a Go module, so it
 		// has no `gomodule:` entry in build.yaml, so a build from a clean checkout does not
@@ -125,8 +126,9 @@ func getFeaturePaths() []string {
 		// locally only through a `filePath:` entry pointing at dev-policies/, which is
 		// gitignored and therefore absent on CI.
 		//
-		// Register it in the same change that publishes the policy and pins it (T040). Until
-		// then run it directly:
+		// Register both in the same change that publishes the policy and pins it (T040).
+		// Until then run them directly, with the warm-up features the cold-start caveat in
+		// the gateway-integration-tests skill calls for:
 		//   IT_FEATURE_PATHS=features/health.feature,features/api_deploy.feature,features/failover-core.feature make test
 		"features/json-schema-guardrail.feature",
 		"features/llm-provider-templates.feature",
