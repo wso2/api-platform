@@ -1414,3 +1414,54 @@ still terminal.
   `curl` verification because that scenario was never exercised by hand.
 
 Result after both: **17 scenarios, 199 steps, all passed.**
+
+---
+
+## The attempt-count header is virtual-host scoped (2026-11-02)
+
+Found by the cross-API isolation scenario (T085), which is what that scenario is
+for.
+
+**FR-030d and SC-012a say an API that does not attach failover behaves
+identically whether or not another API does. For one response header, it does
+not.**
+
+`IncludeAttemptCountInResponse` is set per VIRTUAL HOST when any route in it
+has failover:
+
+```go
+IncludeAttemptCountInResponse: t.vhostHasFailover(routes)
+```
+
+Two LlmProxies on the same vhost therefore share the setting. Attaching
+failover to API A adds `x-envoy-attempt-count: 1` to API B's responses, though
+B has no failover and never retries.
+
+**It cannot be scoped away by configuration.** Checked against the full
+`VirtualHost` and `Route` field sets in go-control-plane v1.40.0:
+`include_attempt_count_in_response` exists on `VirtualHost` only. There is no
+per-route equivalent to set.
+
+### Severity, and the options
+
+Low. The header is informational, carries no identity, and says only that some
+API on this gateway uses failover. Nothing in a response body or status changes,
+and no credential or routing decision crosses between the APIs — the same
+scenario asserts both of those and they hold.
+
+| Option | Cost |
+|---|---|
+| Accept and document | FR-030d is not strictly true, and says so |
+| `response_headers_to_remove` on non-failover routes | Restores the requirement; adds a header mutation to unrelated routes in any mixed vhost, widening this feature's blast radius beyond APIs that use it |
+| Relax SC-012a to exclude informational Envoy headers | Honest, and narrows a requirement that was written without this constraint in view |
+
+Not fixed. The integration scenario asserts the header as it actually behaves,
+with a comment pointing here, so the day someone scopes it properly that line
+fails and is updated deliberately rather than silently drifting.
+
+### What the scenario still proves
+
+The isolation that matters holds. API B's request carried its own policy's
+marker and none of API A's credential, with an echo backend reporting what it
+actually received — so A's per-attempt chain did not run on B's request, which
+is the claim the design document makes.

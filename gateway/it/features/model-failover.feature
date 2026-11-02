@@ -720,3 +720,166 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
     When I delete the LLM provider "mf-vendor-y-provider"
     Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030d — attaching failover to one API changes nothing for another
+  # ====================================================================
+
+  Scenario: An API without failover is untouched by one that has it, even sharing a provider
+    # Per-attempt chains are keyed by CLUSTER, and two APIs attaching the same
+    # provider reach it through API-scoped clusters. If that keying were wrong --
+    # if a chain were stored under a cluster name both APIs share -- one API's
+    # chain would run on the other's requests, and since a provider's credential
+    # is the last policy in that chain, API A's key would be applied to API B's
+    # request. This scenario is the check on that claim.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-iso-dead-provider
+      spec:
+        displayName: MF Isolation Dead
+        version: v1.0
+        template: openai
+        context: /mf-iso-dead-ctx
+        upstream:
+          url: http://mf-iso-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-iso-shared-provider
+      spec:
+        displayName: MF Isolation Shared
+        version: v1.0
+        template: openai
+        context: /mf-iso-shared-ctx
+        upstream:
+          url: http://sample-backend:9080/iso-shared-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # API A: failover attached, and it reaches the shared provider with ITS key.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-iso-a-proxy
+      spec:
+        displayName: MF Isolation A
+        version: v1.0
+        context: /mf-iso-a-proxy
+        provider:
+          id: mf-iso-dead-provider
+        additionalProviders:
+          - id: mf-iso-shared-provider
+            as: shared
+            auth:
+              type: api-key
+              header: x-api-key
+              value: mf-iso-a-credential
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: shared
+      """
+    Then the response status should be 201
+
+    # API B: the SAME provider, no failover at all, and a marker of its own set by
+    # an ordinary operation policy. A marker rather than a credential deliberately:
+    # primary-provider auth and additionalProviders auth do not reach the upstream
+    # by the same route, and this scenario is about chain isolation, not about
+    # characterising that difference.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-iso-b-proxy
+      spec:
+        displayName: MF Isolation B
+        version: v1.0
+        context: /mf-iso-b-proxy
+        provider:
+          id: mf-iso-shared-provider
+        operationPolicies:
+          - name: set-headers
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  request:
+                    headers:
+                      - name: x-iso-b-marker
+                        value: mf-iso-b-marker
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Drive API A first, so its per-attempt chain is live before B is observed.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-iso-a-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "mf-iso-a-credential"
+
+    # Now API B, through the same provider.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-iso-b-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/iso-shared-upstream"
+
+    # B's own configuration ran -- the marker its policy sets is on the request
+    # the backend received.
+    And the response body should contain "mf-iso-b-marker"
+
+    # And nothing of A's did. The echo backend reports what it actually received,
+    # so A's credential appearing on B's request would be a real leak between two
+    # APIs, applied by a chain that should never have run here.
+    And the response body should not contain "mf-iso-a-credential"
+
+    # B DOES carry x-envoy-attempt-count, and that is a known deviation rather
+    # than the intent. Envoy exposes include_attempt_count_in_response on a
+    # VirtualHost only -- there is no per-route equivalent -- so enabling it for
+    # A's routes enables it for every API sharing that vhost. B's responses gain
+    # an informational header it would not otherwise have.
+    #
+    # Asserted as it behaves, not as FR-030d words it, so the day someone scopes
+    # this properly this line fails and is updated deliberately. See
+    # poc-results.md, "The attempt-count header is virtual-host scoped".
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-iso-a-proxy"
+    Then the response should be successful
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-iso-b-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-iso-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-iso-shared-provider"
+    Then the response status code should be 200
