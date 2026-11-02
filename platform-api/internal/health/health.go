@@ -202,15 +202,30 @@ func (c *Checker) Evaluate() Result {
 
 	c.mu.Lock()
 	ev.result = c.buildResult(started, checks, outcomes)
-	c.cached = ev
-	c.cachedAt = c.now()
-	if c.logger != nil {
-		c.logger.observe(ev.result, c.cachedAt)
+	// An evaluation that Invalidate overtook may have run its checks before the change
+	// Invalidate announced, so its result answers only the callers already waiting on it.
+	if c.inflight == ev {
+		c.cached = ev
+		c.cachedAt = c.now()
+		if c.logger != nil {
+			c.logger.observe(ev.result, c.cachedAt)
+		}
+		c.inflight = nil
 	}
-	c.inflight = nil
 	c.mu.Unlock()
 	close(ev.done)
 	return ev.result
+}
+
+// Invalidate discards the cached result, so the next Evaluate runs the checks again. It
+// is for a change the checks would report at once, such as the end of startup, that must
+// not wait out the cache TTL. An evaluation still running is not shared either, since its
+// checks may have run before the change.
+func (c *Checker) Invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cached = nil
+	c.inflight = nil
 }
 
 type outcome struct {

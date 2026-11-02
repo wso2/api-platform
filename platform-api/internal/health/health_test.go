@@ -331,6 +331,54 @@ func TestEvaluateConcurrentCallersShareOneRun(t *testing.T) {
 	}
 }
 
+func TestInvalidateDropsCachedResult(t *testing.T) {
+	c, _ := newTestChecker(testOptions())
+	var started atomic.Bool
+	c.Register("startup", func(context.Context) error {
+		if started.Load() {
+			return nil
+		}
+		return errors.New("starting")
+	})
+
+	require.False(t, c.Evaluate().Healthy)
+	started.Store(true)
+	assert.False(t, c.Evaluate().Healthy, "within the TTL the cached result is reused")
+
+	c.Invalidate()
+
+	assert.True(t, c.Evaluate().Healthy, "after Invalidate the checks run again at once")
+}
+
+func TestInvalidateDuringEvaluationIsNotCached(t *testing.T) {
+	c, _ := newTestChecker(testOptions())
+	var runs atomic.Int32
+	var started atomic.Bool
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	c.Register("startup", func(context.Context) error {
+		if runs.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		if started.Load() {
+			return nil
+		}
+		return errors.New("starting")
+	})
+
+	stale := make(chan Result, 1)
+	go func() { stale <- c.Evaluate() }()
+	<-entered
+	c.Invalidate()
+	close(release)
+	assert.False(t, (<-stale).Healthy)
+
+	started.Store(true)
+	assert.True(t, c.Evaluate().Healthy, "an evaluation overtaken by Invalidate must not be cached")
+	assert.Equal(t, int32(2), runs.Load())
+}
+
 func TestEvaluateKeepsFailureStartAcrossEvaluations(t *testing.T) {
 	c, clk := newTestChecker(testOptions())
 	var failing atomic.Bool

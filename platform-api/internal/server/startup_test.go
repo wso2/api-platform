@@ -464,6 +464,8 @@ func assertPortReleased(t *testing.T, port int) {
 
 func TestStartServingWithReachableDatabase(t *testing.T) {
 	cfg := servingConfig(t, sqliteDatabase(t))
+	// A result cached during the wait, with startup down, must not outlive the startup phase.
+	cfg.Health.CacheTTL = time.Minute
 
 	sv, err := testServer().startServing(cfg)
 	if err != nil {
@@ -491,7 +493,7 @@ func TestStartServingWithReachableDatabase(t *testing.T) {
 	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(ready), `"startup":{"status":"down","error":"starting"`) {
 		t.Errorf("/ready before the full API serves = %d %s, want 503 with startup down", resp.StatusCode, ready)
 	}
-	sv.started.Store(true)
+	sv.markStarted()
 	for _, path := range []string{"/health", "/ready"} {
 		if body := getBody(t, http.DefaultClient, base+path); !strings.Contains(body, `"status":"ok"`) ||
 			!strings.Contains(body, `"startup":{"status":"up"}`) {

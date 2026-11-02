@@ -72,6 +72,10 @@ var errStarting = health.Reason("starting")
 // probe never sees it healthy while its APIs cannot yet be reached.
 type startupGate struct {
 	started atomic.Bool
+	// invalidate drops the health checker's cached result. A result cached during the
+	// startup phase reports startup as down, and would otherwise outlive it by up to the
+	// cache TTL.
+	invalidate func()
 }
 
 // check is the startup health check. It is registered unlogged: it fails on every
@@ -86,6 +90,9 @@ func (g *startupGate) check(context.Context) error {
 // markStarted ends the startup phase; health then depends on the other checks alone.
 func (g *startupGate) markStarted() {
 	g.started.Store(true)
+	if g.invalidate != nil {
+		g.invalidate()
+	}
 }
 
 // databasePool is the part of the database pool the health check needs.
@@ -347,6 +354,7 @@ func serveHealthWhileWaiting(cfg *config.Config, log *slog.Logger, checker *heal
 	checker.Register("database", newDatabaseCheck(db.GetDB(), window, settings, time.Now),
 		health.WithTimeout(settings.CheckTimeout))
 	checker.RegisterUnlogged("startup", gate.check)
+	gate.invalidate = checker.Invalidate
 	// Serve health before waiting, so probes get a real answer (503) during the wait
 	// instead of a refused connection.
 	admin := startAdminServer(cfg, checker.Handler(), authMiddleware, log)

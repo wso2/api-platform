@@ -134,6 +134,14 @@ func (s *Server) startServing(cfg *config.Server) (*serving, error) {
 	return sv, nil
 }
 
+// markStarted ends the health check's startup phase. It also drops the checker's cached
+// result: one cached during the startup wait reports startup as down, and would
+// otherwise outlive it by up to the cache TTL.
+func (sv *serving) markStarted() {
+	sv.started.Store(true)
+	sv.health.Invalidate()
+}
+
 // release stops everything startServing acquired, for a startup that fails after it.
 func (sv *serving) release() {
 	signal.Stop(sv.quit)

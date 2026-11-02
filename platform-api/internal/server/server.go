@@ -29,7 +29,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -69,7 +68,7 @@ type Server struct {
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 	listeners      *listenerSet    // bound during startup, before the database is reached
 	quit           chan os.Signal  // shutdown signals, caught from the start of startup
-	started        *atomic.Bool    // ends the health check's startup phase once the full API serves
+	markStarted    func()          // ends the health check's startup phase once the full API serves
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -883,7 +882,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		plugins:        plugins,
 		listeners:      serving.listeners,
 		quit:           serving.quit,
-		started:        serving.started,
+		markStarted:    serving.markStarted,
 	}, nil
 }
 
@@ -1090,7 +1089,7 @@ func (s *Server) Start() error {
 	go s.timeoutService.Start(ctx)
 
 	s.listeners.useHandler(s.handler)
-	s.started.Store(true)
+	s.markStarted()
 	s.logger.Info("Platform API started")
 
 	teardown := func() {

@@ -495,6 +495,8 @@ func newWaitChecker(cfg *config.Config) *health.Checker {
 
 func TestServeHealthWhileWaitingWithReachableDatabase(t *testing.T) {
 	cfg := waitConfig(t, time.Minute)
+	// A result cached during the wait, with startup down, must not outlive the startup phase.
+	cfg.Controller.Health.CacheTTL = time.Minute
 	window := observe.NewWindow(cfg.Controller.Health.Database.FailureWindow, nil)
 	db, err := storage.Open(storage.BackendConfig{Type: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "gw.db"),
 		Window: window}, discardLogger())
