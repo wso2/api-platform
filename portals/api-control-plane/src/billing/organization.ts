@@ -66,7 +66,7 @@ let pending: Promise<BillingOrganization | null> | null = null;
  */
 export function getBillingOrganization(): Promise<BillingOrganization | null> {
   if (!runtimeConfig.billingProxyEnabled) return Promise.resolve(null);
-  pending ??= fetch(`/proxy/billing/organization?product=${PRODUCT}`, {
+  pending ??= fetch(`${runtimeConfig.appBasePath}/proxy/billing/organization?product=${PRODUCT}`, {
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
   })

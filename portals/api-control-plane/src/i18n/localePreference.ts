@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { LOCALE_STORAGE_KEY, type SupportedLocale } from './config';
+import { LEGACY_LOCALE_STORAGE_KEY, LOCALE_STORAGE_KEY, type SupportedLocale } from './config';
 
 /*
  * Centralizes persisted locale handling so reads and writes share the same key
@@ -27,7 +27,13 @@ import { LOCALE_STORAGE_KEY, type SupportedLocale } from './config';
 export function readStoredLocale(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    return window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (stored !== null) return stored;
+    // Adopt a preference saved under the pre-namespace key. The legacy key is
+    // left in place: on a shared origin it may belong to another console.
+    const legacy = window.localStorage.getItem(LEGACY_LOCALE_STORAGE_KEY);
+    if (legacy !== null) window.localStorage.setItem(LOCALE_STORAGE_KEY, legacy);
+    return legacy;
   } catch {
     return null;
   }
