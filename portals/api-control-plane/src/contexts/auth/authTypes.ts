@@ -48,7 +48,9 @@ export type AuthStatus =
   | 'loading'
   | 'authenticated'
   | 'unauthenticated'
-  | 'expired';
+  | 'expired'
+  /** The session endpoint failed (5xx or no answer) before any session was known. */
+  | 'unavailable';
 
 export type AuthState = {
   error?: string;

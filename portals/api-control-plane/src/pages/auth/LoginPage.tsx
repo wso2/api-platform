@@ -62,6 +62,7 @@ import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { hairline } from '../../theme/receipes';
+import { ServerErrorPage } from '../appShell/appShellPages/system/SystemPages';
 
 const messages = defineMessages({
   brandLockup: {
@@ -318,7 +319,10 @@ export function LoginPage() {
     !isBrowserSupported || (isInvitation && state.displayOrgName) || oidcError || auth.error,
   );
 
-  const shouldAutoRedirect = !auth.isAuthenticated && isRedirectLogin && !isInvitation && !oidcError;
+  // Not while the session endpoint is down: sign-in is behind the same server.
+  const isUnavailable = auth.status === 'unavailable';
+  const shouldAutoRedirect =
+    !auth.isAuthenticated && isRedirectLogin && !isInvitation && !oidcError && !isUnavailable;
 
   // Redirect to the sign-in endpoint unless showing an invitation or a
   // sign-in error. Use an effect because auth.login() navigates and mutates a ref.
@@ -329,6 +333,8 @@ export function LoginPage() {
   }, [auth, from, shouldAutoRedirect]);
 
   if (auth.isAuthenticated) return <Navigate to={from} replace />;
+
+  if (isUnavailable) return <ServerErrorPage />;
 
   // Hand-over to the identity provider is already under way, so the sign-in card
   // below would only appear for the instant before the browser leaves — which reads

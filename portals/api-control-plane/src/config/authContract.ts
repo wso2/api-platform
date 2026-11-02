@@ -28,7 +28,9 @@
  *   - a way to sign in: a credentials form it posts to, or a URL it sends the
  *     browser to with a "come back to" parameter;
  *   - an endpoint that says who is signed in;
- *   - a way to sign out.
+ *   - a way to sign out;
+ *   - optionally, an endpoint that only reads the session, to notice one that
+ *     ended elsewhere.
  *
  * `authMode` picks a preset for all of them, and each one can be overridden
  * from the runtime config. `basic` and `oidc` are this portal's BFF and are
@@ -50,14 +52,16 @@ export type LoginStyle = 'form' | 'redirect';
  * `user` (as the gateway's `oauth2-session` policy does) and the granted scopes,
  * space-separated, in `scope` (`@thunderid/browser` 1.9.3 and later read it
  * too). For `claims` and `sdk` the console resolves the user itself through
- * `claimMappings`. Any non-2xx answer means "not signed in" in every format.
+ * `claimMappings`. In every format, a 5xx (or no answer) means the endpoint is
+ * unavailable, not that nobody is signed in; any other non-2xx means signed out.
  */
 export type SessionFormat = 'bff' | 'claims' | 'sdk';
 
 /**
- * `post-json`: POST to the logout endpoint, then follow the `logoutUrl` it
- * returns, if any (the BFF's contract). `navigate`: send the browser to the
- * logout URL, which ends the session and redirects.
+ * `post-json`: POST to the logout endpoint, then follow the URL it returns, if
+ * any: `logoutUrl` (the BFF) or `redirectUrl` (the gateway's `oauth2-session`
+ * policy). `navigate`: send the browser to the logout URL, which ends the
+ * session and redirects; any other site can trigger that too.
  */
 export type LogoutStyle = 'post-json' | 'navigate';
 
@@ -88,6 +92,14 @@ export type AuthContract = {
   returnParam: string;
   sessionUrl: string;
   sessionFormat: SessionFormat;
+  /**
+   * Answers like `sessionUrl` without extending the session (the gateway's
+   * `/checksession`); polled every `checkSessionInterval` seconds while signed
+   * in. '' turns polling off. Not `/userinfo`: polling that would keep an open
+   * tab's session alive forever.
+   */
+  checkSessionUrl: string;
+  checkSessionInterval: number;
   logoutUrl: string;
   logoutStyle: LogoutStyle;
   claimMappings: ClaimMappings;
@@ -101,6 +113,9 @@ export type AuthContractOverrides = Partial<{
   returnParam: string;
   sessionUrl: string;
   sessionFormat: string;
+  checkSessionUrl: string;
+  /** Seconds, as a number or a numeric string. */
+  checkSessionInterval: string | number;
   logoutUrl: string;
   logoutStyle: string;
   /** A JSON object, either as a string or already parsed. */
@@ -150,6 +165,20 @@ const nonEmpty = (value: string | undefined, fallback: string) => {
   return trimmed ? trimmed : fallback;
 };
 
+export const DEFAULT_CHECK_SESSION_INTERVAL = 30;
+
+/** Shorter intervals are raised to this. */
+export const MIN_CHECK_SESSION_INTERVAL = 5;
+
+/** Seconds between session checks; the default for anything but a positive number. */
+export const parseCheckSessionInterval = (value: string | number | undefined): number => {
+  const seconds = typeof value === 'string' ? Number(value.trim()) : value;
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return DEFAULT_CHECK_SESSION_INTERVAL;
+  }
+  return Math.max(seconds, MIN_CHECK_SESSION_INTERVAL);
+};
+
 /**
  * Overlays the configured claim names on the defaults. Unknown keys, and
  * values that are not non-empty strings, are ignored; broken JSON leaves the
@@ -188,6 +217,9 @@ export const resolveAuthContract = (
     returnParam: nonEmpty(overrides.returnParam, BFF_ROUTES.returnParam),
     sessionUrl: nonEmpty(overrides.sessionUrl, BFF_ROUTES.sessionUrl),
     sessionFormat: oneOf(overrides.sessionFormat, ['bff', 'claims', 'sdk'], preset.sessionFormat),
+    // No default: the BFF has no such endpoint, so polling is opt-in.
+    checkSessionUrl: overrides.checkSessionUrl?.trim() ?? '',
+    checkSessionInterval: parseCheckSessionInterval(overrides.checkSessionInterval),
     logoutUrl: nonEmpty(overrides.logoutUrl, BFF_ROUTES.logoutUrl),
     logoutStyle: oneOf(overrides.logoutStyle, ['post-json', 'navigate'], preset.logoutStyle),
     claimMappings: parseClaimMappings(overrides.claimMappings),

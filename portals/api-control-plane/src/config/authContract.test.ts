@@ -19,8 +19,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_CHECK_SESSION_INTERVAL,
   DEFAULT_CLAIM_MAPPINGS,
   buildLoginUrl,
+  parseCheckSessionInterval,
   parseClaimMappings,
   readAuthMode,
   resolveAuthContract,
@@ -33,6 +35,9 @@ const BFF_ENDPOINTS = {
   returnParam: 'return',
   sessionUrl: '/api/session',
   logoutUrl: '/api/logout',
+  // The BFF has no read-only session endpoint: no polling.
+  checkSessionUrl: '',
+  checkSessionInterval: DEFAULT_CHECK_SESSION_INTERVAL,
 };
 
 describe('readAuthMode', () => {
@@ -86,6 +91,8 @@ describe('resolveAuthContract', () => {
       credentialsUrl: '/creds',
       returnParam: 'returnTo',
       sessionUrl: '/api-platform/auth/session',
+      checkSessionUrl: ' /api-platform/auth/checksession ',
+      checkSessionInterval: '60',
       logoutUrl: '/api-platform/auth/logout',
     });
 
@@ -94,6 +101,8 @@ describe('resolveAuthContract', () => {
       credentialsUrl: '/creds',
       returnParam: 'returnTo',
       sessionUrl: '/api-platform/auth/session',
+      checkSessionUrl: '/api-platform/auth/checksession',
+      checkSessionInterval: 60,
       logoutUrl: '/api-platform/auth/logout',
     });
   });
@@ -135,6 +144,19 @@ describe('resolveAuthContract', () => {
     expect(contract.logoutStyle).toBe('post-json');
     expect(contract.loginUrl).toBe('/api/auth/login');
     expect(contract.sessionUrl).toBe('/api/session');
+  });
+});
+
+describe('parseCheckSessionInterval', () => {
+  it.each([
+    [undefined, 30],
+    ['abc', 30],
+    ['0', 30],
+    [' 45 ', 45],
+    [120, 120],
+    ['1', 5],
+  ] as const)('%s → %i seconds', (value, expected) => {
+    expect(parseCheckSessionInterval(value)).toBe(expected);
   });
 });
 

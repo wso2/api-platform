@@ -25,14 +25,17 @@ let unmountPage: (() => void) | undefined;
 // The page reads the sign-in style from runtimeConfig, which is fixed at module
 // load: set the deployment's runtime config, then load the page and the test
 // providers fresh so they share one module graph (and one auth context).
-async function renderLoginPage(runtimeConfig: Record<string, string>) {
+async function renderLoginPage(
+  runtimeConfig: Record<string, string>,
+  preset: 'unauthenticated' | 'unavailable' = 'unauthenticated',
+) {
   window.__RUNTIME_CONFIG__ = runtimeConfig;
   vi.resetModules();
   const { renderWithProviders, screen } = await import('../../test/utils');
   const { authStatePresets } = await import('../../test/mockAuthState');
   const { LoginPage } = await import('./LoginPage');
 
-  const authState = authStatePresets.unauthenticated();
+  const authState = authStatePresets[preset]();
   unmountPage = renderWithProviders(<LoginPage />, { route: '/login', authState }).unmount;
   return { authState, screen };
 }
@@ -70,6 +73,16 @@ describe('LoginPage', { timeout: 30_000 }, () => {
     expect(await screen.findByText('Signing you in')).toBeInTheDocument();
     expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
     expect(authState.login).toHaveBeenCalledWith('/');
+  });
+
+  it('does not hand over to the gateway while the session endpoint is unavailable', async () => {
+    const { authState, screen } = await renderLoginPage(
+      { authMode: 'external', authLoginUrl: '/api-platform/auth/login' },
+      'unavailable',
+    );
+
+    expect(await screen.findByText('Server error')).toBeInTheDocument();
+    expect(authState.login).not.toHaveBeenCalled();
   });
 
   it('shows the credential form when a deployment forces form sign-in', async () => {

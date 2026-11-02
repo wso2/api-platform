@@ -53,8 +53,8 @@ export type RuntimeConfig = {
    */
   authMode: AuthMode;
   /**
-   * The sign-in, session, sign-out and relay endpoints for `authMode`, with
-   * any per-deployment overrides applied (see `config/authContract.ts`).
+   * The sign-in, session and sign-out endpoints for `authMode`, with any
+   * per-deployment overrides applied (see `config/authContract.ts`).
    */
   authContract: AuthContract;
   /**
@@ -205,6 +205,8 @@ type LegacyWindowConfig = Partial<{
   authReturnParam: string;
   authSessionUrl: string;
   authSessionFormat: string;
+  authCheckSessionUrl: string;
+  authCheckSessionInterval: string | number;
   authLogoutUrl: string;
   authLogoutStyle: string;
   authClaimMappings: string | Record<string, unknown>;
@@ -358,6 +360,10 @@ export const runtimeConfig: RuntimeConfig = {
     returnParam: fromWindow().authReturnParam || import.meta.env.VITE_AUTH_RETURN_PARAM,
     sessionUrl: fromWindow().authSessionUrl || import.meta.env.VITE_AUTH_SESSION_URL,
     sessionFormat: fromWindow().authSessionFormat || import.meta.env.VITE_AUTH_SESSION_FORMAT,
+    checkSessionUrl:
+      fromWindow().authCheckSessionUrl || import.meta.env.VITE_AUTH_CHECK_SESSION_URL,
+    checkSessionInterval:
+      fromWindow().authCheckSessionInterval || import.meta.env.VITE_AUTH_CHECK_SESSION_INTERVAL,
     logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
     logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
     claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,

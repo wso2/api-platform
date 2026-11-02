@@ -30,7 +30,7 @@ import {
   CSRF_HEADER_VALUE,
 } from '../../contexts/auth/authConstants';
 import { ApiErrorKind, platformErrorFromBody, platformErrorFromTransport } from './errors';
-import { notifyForbidden, notifySessionExpired } from './sessionEvents';
+import { notifyForbidden, notifyUnauthorized } from './sessionEvents';
 
 /**
  * Per-request context carried on the axios config. Declared via module
@@ -400,12 +400,17 @@ const classifyTransportFailure = (
  * Sends one request and returns the raw success response, or throws `ApiError`.
  * `responseType: 'text'` keeps the body exactly as sent instead of letting axios
  * guess at JSON.
+ *
+ * A 401 is sent once more when the session turns out to be alive (the check
+ * refreshed the token, or signed the browser back in). Safe for any method: a
+ * 401 comes from authentication, before the Platform API acts on the request.
  */
 async function send(
   method: string,
   path: string,
   options: RequestOptions,
-  responseType?: 'text' | 'blob'
+  responseType?: 'text' | 'blob',
+  retried = false
 ): Promise<AxiosResponse<unknown>> {
   const verb = method.toUpperCase();
   const requestId = newRequestId();
@@ -450,6 +455,15 @@ async function send(
     deadline.release();
   }
 
+  if (
+    response.status === 401 &&
+    !retried &&
+    (await notifyUnauthorized()) &&
+    !options.signal?.aborted
+  ) {
+    return send(method, path, options, responseType, true);
+  }
+
   if (response.status >= 400) {
     let body: unknown = response.data;
     if (typeof body == 'string') {
@@ -460,7 +474,6 @@ async function send(
       }
     }
 
-    if (response.status === 401) notifySessionExpired();
     // Tagged with the operation so `PermissionProvider` can tell a genuine
     // denial from the console having predicted this call would succeed.
     if (response.status === 403) notifyForbidden(options.operationName);

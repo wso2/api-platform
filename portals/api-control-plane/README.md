@@ -54,10 +54,16 @@ window.__RUNTIME_CONFIG__ = {
   authReturnParam: 'returnTo',
   authSessionUrl: '/api-platform/auth/userinfo',
   authSessionFormat: 'sdk',
+  authCheckSessionUrl: '/api-platform/auth/checksession',
+  authCheckSessionInterval: 30,
   authLogoutUrl: '/api-platform/auth/logout',
+  authLogoutStyle: 'post-json',
   authClaimMappings: '{"username":"name","organization":"ouId","org_name":"ouName","org_handle":"ouHandle"}',
 };
 ```
+
+Declare only `POST /logout` on the gateway: a `GET` sign-out can be triggered
+by any other site with a link.
 
 #### Settings
 
@@ -72,8 +78,10 @@ default, is in `src/config/authContract.ts`.
 | `authReturnParam` | `return` | the query parameter the sign-in URL reads |
 | `authSessionUrl` | `/api/session` | the "who is signed in" endpoint |
 | `authSessionFormat` | `bff` | `claims` by default; `sdk` for the API Platform gateway (see below) |
+| `authCheckSessionUrl` | none | none; a session endpoint that only reads the session (the gateway's `/checksession`) turns on polling |
+| `authCheckSessionInterval` | 30 | 30 seconds between polls; at least 5 |
 | `authLogoutUrl` | `/api/logout` | the sign-out URL |
-| `authLogoutStyle` | `post-json` | `navigate` |
+| `authLogoutStyle` | `post-json` | `navigate` (a plain navigation); `post-json` for the API Platform gateway, which answers `{"redirectUrl"}` |
 | `authClaimMappings` | the BFF's `[auth.claim_mappings]` defaults | which claim holds each user field, same keys as `[auth.claim_mappings]` |
 
 #### Session formats
@@ -92,6 +100,20 @@ scopes. If the session doesn't report scopes at all, the console offers every
 action and the Platform API refuses what the user may not do. The BFF's role
 mode (scopes from roles through a mapping file) is not available without the
 BFF.
+
+**When the session ends or the server is down.** In every mode:
+
+- A 5xx or no answer from the session endpoint is not a sign-out: a signed-in
+  console stays signed in; otherwise it shows a server error.
+- A 401 on an API call makes the console ask the session endpoint again (on the
+  gateway, that refreshes the token or signs back in through Native SSO). If the
+  session is alive, the call is sent once more.
+- With `authCheckSessionUrl` set, a visible tab polls it, so it notices a
+  session that ended elsewhere. Never `/userinfo`: polling that extends the idle
+  timeout, keeping an open tab's session alive forever.
+
+`expiresAt` in the SDK session is the access token's expiry, not the session's;
+the gateway renews the token itself, so the console doesn't use it.
 
 ### The Test console's gateway relay
 

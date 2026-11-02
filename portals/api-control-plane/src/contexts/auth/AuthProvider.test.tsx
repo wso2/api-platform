@@ -96,6 +96,15 @@ describe('AuthProvider', () => {
     );
   });
 
+  it('hydrates as unavailable, not unauthenticated, when the BFF cannot be reached', async () => {
+    server.use(http.get('/api/session', () => HttpResponse.error()));
+    renderProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status').textContent).toBe('unavailable')
+    );
+  });
+
   it('loginWithCredentials sends the CSRF header and updates state on success', async () => {
     server.use(
       http.get('/api/session', () =>

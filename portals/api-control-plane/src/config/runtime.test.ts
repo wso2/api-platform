@@ -149,6 +149,19 @@ describe('runtimeConfig', () => {
     expect(runtimeConfig.authContract.claimMappings.organization).toBe('ouId');
   });
 
+  it('reads the check-session endpoint and interval from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      authMode: 'external',
+      authCheckSessionUrl: '/api-platform/auth/checksession',
+      authCheckSessionInterval: 45,
+    };
+
+    const { authContract } = await loadRuntimeConfig();
+
+    expect(authContract.checkSessionUrl).toBe('/api-platform/auth/checksession');
+    expect(authContract.checkSessionInterval).toBe(45);
+  });
+
   it('reads the auth endpoints from build configuration when runtime config has none', async () => {
     vi.stubEnv('VITE_AUTH_MODE', 'external');
     vi.stubEnv('VITE_AUTH_SESSION_URL', '/auth/session');

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildLoginUrl, withAppBasePath, type SessionFormat } from '../../config/authContract';
 import { runtimeConfig } from '../../config/runtime';
@@ -24,7 +24,7 @@ import { CSRF_HEADER, CSRF_HEADER_VALUE } from './authConstants';
 import { AuthStateContext } from './AuthStateContext';
 import type { AuthState, AuthStatus, AuthUser } from './authTypes';
 import { hasScopeClaim, userFromClaims } from './userFromClaims';
-import { onSessionExpired } from '../../api/core/sessionEvents';
+import { onUnauthorized } from '../../api/core/sessionEvents';
 
 const contract = runtimeConfig.authContract;
 
@@ -50,6 +50,7 @@ const mutatingHeaders: HeadersInit = {
 type SessionCheck = { status: Exclude<AuthStatus, 'loading'>; user?: AuthUser };
 
 const SIGNED_OUT: SessionCheck = { status: 'unauthenticated' };
+const UNAVAILABLE: SessionCheck = { status: 'unavailable' };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -107,15 +108,27 @@ const SESSION_READERS: Record<SessionFormat, (response: Response) => Promise<Ses
   sdk: readSdkSession,
 };
 
-/** Asks the session endpoint who is signed in. Never throws: a failed request reads as signed out. */
-async function checkSession(): Promise<SessionCheck> {
+/**
+ * Asks a session endpoint who is signed in. Never throws. A 5xx or no answer
+ * is `unavailable`, not signed out: the session may well be alive.
+ */
+async function checkSession(url: string): Promise<SessionCheck> {
+  let response: Response;
   try {
-    const response = await fetch(contract.sessionUrl, { credentials: 'same-origin' });
+    response = await fetch(url, { credentials: 'same-origin' });
+  } catch {
+    return UNAVAILABLE;
+  }
+  if (response.status >= 500) return UNAVAILABLE;
+  try {
     return await SESSION_READERS[contract.sessionFormat](response);
   } catch {
     return SIGNED_OUT;
   }
 }
+
+/** Field for field, so a check that changes nothing doesn't re-render the app. */
+const sameUser = (a?: AuthUser, b?: AuthUser) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * Something in front of the console owns authentication — this portal's BFF,
@@ -141,10 +154,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser>();
   const [error, setError] = useState<string>();
 
-  const hydrate = useCallback(async () => {
-    const session = await checkSession();
-    setUser(session.user);
+  // Set once logout starts: a session check answering later would redirect to
+  // sign-in and cancel the logout's own navigation.
+  const leaving = useRef(false);
+
+  /** Takes `url`'s answer and resolves whether the session is alive. */
+  const hydrate = useCallback(async (url: string = contract.sessionUrl) => {
+    const session = await checkSession(url);
+    if (leaving.current) return false;
+    if (session.status === 'unavailable') {
+      setStatus((current) => (current === 'authenticated' ? current : 'unavailable'));
+      return false;
+    }
+    setUser((current) => (sameUser(current, session.user) ? current : session.user));
     setStatus(session.status);
+    return session.status === 'authenticated';
   }, []);
 
   useEffect(() => {
@@ -152,21 +176,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [hydrate]);
 
   /**
-   * Re-checks the session when the API layer reports a 401.
-   *
-   * Without this, an expired session surfaced only as individual failed
-   * requests: the user sat on a screen where nothing worked and nothing
-   * explained why. Re-hydrating asks the session endpoint what is actually
-   * true; it may have renewed the session server-side, in which case the answer is
-   * "still authenticated" and nothing further happens; otherwise `status`
-   * becomes unauthenticated (or `expired`) and `ProtectedRoute` redirects.
-   *
-   * The transport publishes rather than calling in, so it never imports this
-   * provider; that would be a cycle and would make the client untestable. It
-   * also debounces, so a screen firing eight parallel requests against a dead
-   * session triggers one re-check, not eight.
+   * Re-checks the session on a 401 and tells the transport whether to send the
+   * request again. Behind the gateway the check itself refreshes a rejected
+   * token, or signs the browser back in through Native SSO, so the answer is
+   * often yes. Otherwise `status` changes and `ProtectedRoute` redirects.
    */
-  useEffect(() => onSessionExpired(() => void hydrate()), [hydrate]);
+  useEffect(() => onUnauthorized(() => hydrate()), [hydrate]);
+
+  /**
+   * While signed in, polls `checkSessionUrl` when the tab is visible, and
+   * checks when it is shown again, so an open tab notices a session that ended
+   * elsewhere (a sign-out in another tab, the idle timeout).
+   */
+  useEffect(() => {
+    const url = contract.checkSessionUrl;
+    if (!url || status !== 'authenticated') return undefined;
+    let checking = false;
+    const check = () => {
+      if (checking || document.visibilityState !== 'visible') return;
+      checking = true;
+      void hydrate(url).finally(() => {
+        checking = false;
+      });
+    };
+    const timer = setInterval(check, contract.checkSessionInterval * 1000);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [hydrate, status]);
 
   // Every sign-in endpoint redirects back to a path from the host root, while
   // callers pass a path inside the app; add the base path the app is mounted
@@ -208,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    leaving.current = true;
     // A gateway or proxy ends the session on a plain navigation and redirects
     // on its own. Leave without touching local state, for the same reason as
     // the IDP case below.
@@ -226,10 +266,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Any 2xx ends the session server-side. The body is only read for the
         // IDP end-session URL, which a file-based logout (204, no body) has not
         // got — so a parse failure is expected there, not an error. Mirrors the
-        // AI Workspace BFF provider.
+        // AI Workspace BFF provider. `redirectUrl` is the gateway policy's name.
         if (response.ok) {
-          const body = (await response.json().catch(() => ({}))) as { logoutUrl?: string };
-          logoutUrl = body.logoutUrl;
+          const body = (await response.json().catch(() => ({}))) as {
+            logoutUrl?: string;
+            redirectUrl?: string;
+          };
+          logoutUrl = body.logoutUrl ?? body.redirectUrl;
         }
       } catch {
         // Best-effort: proceed to clear local state and navigate away regardless.

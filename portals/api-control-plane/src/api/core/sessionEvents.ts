@@ -18,8 +18,8 @@
 
 /**
  * The API layer's outbound events — the two things the server can say that the
- * rest of the app has to react to: "this session is gone" (401) and "this
- * session may not do that" (403).
+ * rest of the app has to react to: "this request had no live session" (401) and
+ * "this session may not do that" (403).
  *
  * This lives in its own module, apart from the transport, because the two have
  * opposite audiences. The transport is internal — nothing outside `src/api`
@@ -34,49 +34,45 @@
  * `PermissionProvider` what it had predicted without importing React.
  */
 
-type SessionExpiredListener = () => void;
+/* -------------------------------------------------------------------------- */
+/* Unauthorized (401)                                                          */
+/* -------------------------------------------------------------------------- */
 
-const listeners = new Set<SessionExpiredListener>();
+/** Re-checks the session and resolves whether it is still alive. */
+export type UnauthorizedHandler = () => Promise<boolean>;
+
+let unauthorizedHandler: UnauthorizedHandler | undefined;
+
+/** The check in flight, shared by every 401 that arrives while it runs. */
+let pending: Promise<boolean> | undefined;
 
 /**
- * Subscribes to session expiry. Returns an unsubscribe function suitable for
+ * Registers what a 401 triggers. Returns an unregister function suitable for
  * returning straight from a `useEffect`.
  */
-export const onSessionExpired = (listener: SessionExpiredListener): (() => void) => {
-  listeners.add(listener);
+export const onUnauthorized = (handler: UnauthorizedHandler): (() => void) => {
+  unauthorizedHandler = handler;
   return () => {
-    listeners.delete(listener);
+    if (unauthorizedHandler === handler) unauthorizedHandler = undefined;
   };
 };
 
-/** Window within which repeat notifications collapse into one. */
-const DEBOUNCE_MS = 3_000;
-
-let lastNotifiedAt = 0;
-
 /**
- * Announces that the session is gone.
- *
- * Debounced because a dashboard commonly has several queries in flight at once:
- * without it, eight parallel 401s would queue eight re-checks and eight
- * redirects to the login page.
+ * Announces a 401 and resolves whether the session is still alive, so the
+ * request is worth sending again. Parallel 401s share one check: a dashboard
+ * with eight failing queries asks once. False when nothing is registered or the
+ * check fails.
  */
-export const notifySessionExpired = (): void => {
-  const now = Date.now();
-  if (now - lastNotifiedAt < DEBOUNCE_MS) return;
-  lastNotifiedAt = now;
-  for (const listener of listeners) listener();
-};
-
-/**
- * Clears the debounce window so the next notification fires again.
- *
- * Test seam, like `resetHttpClient`: the window is module state, so without
- * this a spec that triggers a 401 would silently suppress the notification in
- * every spec running within the next few seconds, making tests order-dependent.
- */
-export const resetSessionExpiryNotice = (): void => {
-  lastNotifiedAt = 0;
+export const notifyUnauthorized = (): Promise<boolean> => {
+  const handler = unauthorizedHandler;
+  if (!handler) return Promise.resolve(false);
+  pending ??= Promise.resolve()
+    .then(handler)
+    .catch(() => false)
+    .finally(() => {
+      pending = undefined;
+    });
+  return pending;
 };
 
 /* -------------------------------------------------------------------------- */

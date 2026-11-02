@@ -18,10 +18,11 @@
 
 import type { ReactNode } from 'react';
 import { http, HttpResponse, type JsonBodyType } from 'msw';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fireEvent, render, renderWithProviders, screen, waitFor } from '../../test/utils';
+import { act, fireEvent, render, renderWithProviders, screen, waitFor } from '../../test/utils';
 import { server } from '../../test/server';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './authConstants';
 
 // A console under /api-platform behind a gateway or auth proxy that acts as its
 // BFF: no /api/* routes, and the gateway's own sign-in, session and sign-out URLs.
@@ -98,6 +99,7 @@ afterEach(() => {
   delete window.__RUNTIME_CONFIG__;
   vi.resetModules();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 // Each test loads the provider's module graph fresh, which can take more than
@@ -190,10 +192,11 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       expect(screen.getByTestId('scopes')).toHaveTextContent(expected);
     });
 
+    // Never `expired`: that page's button would end the identity provider session.
     it.each([
       ['isSignedIn: false', { isSignedIn: false }, 200],
       ['a missing isSignedIn', { user: { sub: '6c1f' } }, 200],
-      ['a non-2xx', { error: 'service_unavailable' }, 503],
+      ['a 4xx', { error: 'not_found' }, 404],
     ])('is signed out on %s', async (_case, body, status) => {
       answer(URL, body, status);
       await renderProvider(SDK_CONFIG);
@@ -202,11 +205,15 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       expect(screen.getByTestId('user')).toHaveTextContent('');
     });
 
-    it('is signed out when the session request fails', async () => {
-      server.use(http.get(URL, () => HttpResponse.error()));
+    // The gateway keeps sessions through a Redis outage.
+    it.each([
+      ['a 503', () => HttpResponse.json({ error: 'service_unavailable' }, { status: 503 })],
+      ['no answer', () => HttpResponse.error()],
+    ])('is unavailable, not signed out, on %s', async (_case, reply) => {
+      server.use(http.get(URL, reply));
       await renderProvider(SDK_CONFIG);
 
-      await waitForStatus('unauthenticated');
+      await waitForStatus('unavailable');
     });
   });
 
@@ -244,6 +251,208 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
 
       expect(assign).toHaveBeenCalledWith('/api-platform/auth/logout');
       expect(screen.getByTestId('status')).toHaveTextContent('authenticated');
+    });
+
+    it('logout posts to the gateway and follows the redirectUrl it answers', async () => {
+      answer(SDK_CONFIG.authSessionUrl, { isSignedIn: true, user: { name: 'Alice' } });
+      let csrfHeader: string | null = null;
+      server.use(
+        http.post('/api-platform/auth/logout', ({ request }) => {
+          csrfHeader = request.headers.get(CSRF_HEADER);
+          return HttpResponse.json({ redirectUrl: 'https://idp.example.com/oauth2/logout?id_token_hint=x' });
+        }),
+      );
+      const assign = vi.fn();
+      vi.stubGlobal('location', { ...window.location, assign });
+      await renderProvider({ ...SDK_CONFIG, authLogoutStyle: 'post-json' });
+      await waitForStatus('authenticated');
+
+      fireEvent.click(screen.getByText('logout'));
+
+      await waitFor(() =>
+        expect(assign).toHaveBeenCalledWith('https://idp.example.com/oauth2/logout?id_token_hint=x'),
+      );
+      expect(csrfHeader).toBe(CSRF_HEADER_VALUE);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+    });
+
+    // A check answering mid-logout must not redirect to sign-in and cancel the logout.
+    it('ignores session checks once logout has started', async () => {
+      let signedIn = true;
+      server.use(
+        http.get(SDK_CONFIG.authSessionUrl, () =>
+          HttpResponse.json(signedIn ? { isSignedIn: true, user: { name: 'Alice' } } : { isSignedIn: false }),
+        ),
+      );
+      let finishLogout: () => void = () => undefined;
+      server.use(
+        http.post('/api-platform/auth/logout', async () => {
+          signedIn = false;
+          await new Promise<void>((resolve) => {
+            finishLogout = resolve;
+          });
+          return HttpResponse.json({ redirectUrl: 'https://idp.example.com/oauth2/logout' });
+        }),
+      );
+      const assign = vi.fn();
+      vi.stubGlobal('location', { ...window.location, assign });
+      await renderProvider({ ...SDK_CONFIG, authLogoutStyle: 'post-json' });
+      await waitForStatus('authenticated');
+      const { notifyUnauthorized } = await import('../../api/core/sessionEvents');
+
+      fireEvent.click(screen.getByText('logout'));
+      await vi.waitFor(() => expect(signedIn).toBe(false));
+      const alive = await act(() => notifyUnauthorized());
+      finishLogout();
+
+      expect(alive).toBe(false);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('https://idp.example.com/oauth2/logout'));
+    });
+  });
+
+  describe('after a 401', () => {
+    async function renderAndCheck(sessionAnswers: Array<() => Response>) {
+      let calls = 0;
+      server.use(
+        http.get(SDK_CONFIG.authSessionUrl, () => sessionAnswers[Math.min(calls++, sessionAnswers.length - 1)]()),
+      );
+      await renderProvider(SDK_CONFIG);
+      await waitForStatus('authenticated');
+      // The provider's fresh module graph; in act, so the state it sets is on screen.
+      const { notifyUnauthorized } = await import('../../api/core/sessionEvents');
+      return act(() => notifyUnauthorized());
+    }
+    const signedIn = () => HttpResponse.json({ isSignedIn: true, user: { name: 'Alice' } });
+
+    it('answers that the session is alive when the session endpoint says so', async () => {
+      await expect(renderAndCheck([signedIn])).resolves.toBe(true);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+    });
+
+    it('moves to signed out, with no retry, when the session has ended', async () => {
+      const alive = await renderAndCheck([signedIn, () => HttpResponse.json({ isSignedIn: false })]);
+
+      expect(alive).toBe(false);
+      await waitForStatus('unauthenticated');
+    });
+
+    it('stays signed in, with no retry, when the session endpoint is down', async () => {
+      const alive = await renderAndCheck([
+        signedIn,
+        () => HttpResponse.json({ error: 'service_unavailable' }, { status: 503 }),
+      ]);
+
+      expect(alive).toBe(false);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+      expect(screen.getByTestId('user')).toHaveTextContent('Alice');
+    });
+  });
+
+  describe('polling the check-session endpoint', () => {
+    const CHECK_URL = '/api-platform/auth/checksession';
+    const POLLING_CONFIG = { ...SDK_CONFIG, authCheckSessionUrl: CHECK_URL, authCheckSessionInterval: '30' };
+    const alice = { isSignedIn: true, user: { sub: '6c1f', name: 'Alice' }, scope: 'openid' };
+    // A poll is a fetch and a render after the timer: allow for a busy suite.
+    const eventually = (assertion: () => void) => vi.waitFor(assertion, { timeout: 5000 });
+    const eventuallyStatus = (status: string) =>
+      eventually(() => expect(screen.getByTestId('status').textContent).toBe(status));
+
+    let visibility: DocumentVisibilityState = 'visible';
+    const setVisibility = (state: DocumentVisibilityState) => {
+      visibility = state;
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    beforeEach(() => {
+      visibility = 'visible';
+      vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+      // Only the polling interval. Testing Library's waitFor runs on setInterval
+      // too, so waits on anything but the DOM use vi.waitFor.
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    /** Signs in, then answers the check endpoint with each body in turn (the last repeats). */
+    async function signInAndPoll(config: Record<string, string>, checkAnswers: Array<() => Response>) {
+      let checks = 0;
+      answer(SDK_CONFIG.authSessionUrl, alice);
+      server.use(
+        http.get(CHECK_URL, () => checkAnswers[Math.min(checks++, checkAnswers.length - 1)]()),
+      );
+      await renderProvider(config);
+      await waitForStatus('authenticated');
+      await act(async () => {}); // the polling effect is set up after that render
+      return { checks: () => checks };
+    }
+
+    it('asks every interval while the tab is visible, and signs out when the session has ended', async () => {
+      const poll = await signInAndPoll(POLLING_CONFIG, [
+        () => HttpResponse.json(alice),
+        () => HttpResponse.json({ isSignedIn: false }),
+      ]);
+
+      vi.advanceTimersByTime(30_000);
+      await eventually(() => expect(poll.checks()).toBe(1));
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+
+      // A tick while the first poll is still finishing is skipped, so keep ticking.
+      await eventually(() => {
+        vi.advanceTimersByTime(30_000);
+        expect(screen.getByTestId('status').textContent).toBe('unauthenticated');
+      });
+
+      // Signed out: no more polling.
+      const checksWhenSignedOut = poll.checks();
+      vi.advanceTimersByTime(90_000);
+      expect(poll.checks()).toBe(checksWhenSignedOut);
+    });
+
+    it('waits while the tab is hidden, and asks the moment it is shown again', async () => {
+      const poll = await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+
+      setVisibility('hidden');
+      vi.advanceTimersByTime(120_000);
+      expect(poll.checks()).toBe(0);
+
+      setVisibility('visible');
+      await eventuallyStatus('unauthenticated');
+      expect(poll.checks()).toBe(1);
+    });
+
+    it('keeps the same user object when nothing changed, so the app does not re-render', async () => {
+      const seen = new Set<unknown>();
+      const { AuthProvider, useAuth } = await loadAuth(POLLING_CONFIG);
+      function Watcher() {
+        const auth = useAuth();
+        if (auth.user) seen.add(auth.user);
+        return <span data-testid="status">{auth.status}</span>;
+      }
+      let checks = 0;
+      answer(SDK_CONFIG.authSessionUrl, alice);
+      server.use(http.get(CHECK_URL, () => (checks++, HttpResponse.json(alice))));
+      render(
+        <AuthProvider>
+          <Watcher />
+        </AuthProvider>,
+      );
+      await waitForStatus('authenticated');
+      await act(async () => {});
+
+      await eventually(() => {
+        vi.advanceTimersByTime(30_000);
+        expect(checks).toBeGreaterThanOrEqual(2);
+      });
+
+      expect(seen.size).toBe(1);
+    });
+
+    it('does not poll without a check-session URL', async () => {
+      const poll = await signInAndPoll(SDK_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+
+      vi.advanceTimersByTime(120_000);
+
+      expect(poll.checks()).toBe(0);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
     });
   });
 
