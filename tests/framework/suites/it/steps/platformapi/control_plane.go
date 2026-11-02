@@ -97,6 +97,7 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 	RegisterPortalEvents(sc, s)
 	RegisterMCPServer(sc, s)
 	RegisterServiceAccount(sc, s)
+	RegisterAPIDefinition(sc, s)
 }
 
 // baseURL resolves the control plane's HTTPS base URL for this block.

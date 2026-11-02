@@ -34,6 +34,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -54,6 +56,7 @@ import (
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 )
 
 func TestArtifactPath(t *testing.T) {
@@ -232,6 +235,70 @@ func TestActorCredentials(t *testing.T) {
 		_, err := actorCredentials(who)
 		require.ErrorContains(t, err, "unknown control-plane actor", who)
 	}
+}
+
+func TestMultipartFormUploadsFixturesAndSendsTextFields(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.NoError(t, tcontext.Set(ctx, "project", "proj-1"))
+	table := formTable(t, [][]string{
+		{"projectId", "${CTX:project}"},
+		{"file", "@spec:petstore-v1.yaml"},
+		{"spec", "@generated-spec:2048"},
+	})
+	body, contentType, err := multipartForm(ctx, table)
+	require.NoError(t, err)
+	_, params, err := mime.ParseMediaType(contentType)
+	require.NoError(t, err)
+	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{"proj-1"}, form.Value["projectId"])
+	want, err := specs.Fixture("petstore-v1.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "petstore-v1.yaml", form.File["file"][0].Filename)
+	require.Equal(t, int64(len(want)), form.File["file"][0].Size)
+	require.Equal(t, int64(2048), form.File["spec"][0].Size)
+}
+
+func TestMultipartFormRejectsBadRowsAndUnknownFixtures(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	for name, rows := range map[string][][]string{
+		"no rows":         nil,
+		"one cell":        {{"file"}},
+		"unknown fixture": {{"file", "@spec:missing.yaml"}},
+		"no byte count":   {{"file", "@generated-spec:big"}},
+	} {
+		_, _, err := multipartForm(ctx, formTable(t, rows))
+		require.Error(t, err, name)
+	}
+}
+
+// formTable builds a step table from rows of cell values.
+func formTable(t *testing.T, rows [][]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	var built []row
+	for _, values := range rows {
+		var cells []cell
+		for _, value := range values {
+			cells = append(cells, cell{value})
+		}
+		built = append(built, row{Cells: cells})
+	}
+	raw, err := json.Marshal(map[string]any{"rows": built})
+	require.NoError(t, err)
+	var table godog.Table
+	require.NoError(t, json.Unmarshal(raw, &table))
+	return &table
+}
+
+func TestSpecFixtureURL(t *testing.T) {
+	require.Equal(t, "https://testbench:3025/specs/petstore-v1.yaml", specFixtureURL("https", "petstore-v1.yaml"))
+	require.Equal(t, "http://testbench:3024/specs/large?bytes=10", specFixtureURL("http", "large?bytes=10"))
 }
 
 // trackingContext returns a runner context with a fresh cleanup registry installed.

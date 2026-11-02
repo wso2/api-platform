@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
@@ -164,13 +165,21 @@ func Testbench() *components.Definition {
 			// See testbench/services/stripe and testbench/services/moesif.
 			{Name: "stripe", Port: stripe.Port, Scheme: "http", AwaitListening: true},
 			{Name: "moesif", Port: moesif.Port, Scheme: "http", AwaitListening: true},
+			// specs serves OpenAPI documents for the control plane to import by URL, at
+			// http://testbench:3024/specs/<name> and, with shared.SpecsTLS, which platform-api
+			// is given to trust, at https://testbench:3025/specs/<name>. See
+			// testbench/services/specs.
+			{Name: "specs", Port: specs.Port, Scheme: "http", AwaitListening: true},
+			{Name: "specs-tls", Port: specs.TLSPort, Scheme: "https", AwaitListening: true},
 		},
 		Env: map[string]string{
-			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),
-			oidc.EnvTLSKey:  string(shared.IdentityProviderTLS().PrivateKeyPEM),
-			oidc.EnvIssuer:  OIDCIssuer,
-			jev.EnvTLSCert:  string(shared.JevTLS().CertPEM),
-			jev.EnvTLSKey:   string(shared.JevTLS().PrivateKeyPEM),
+			oidc.EnvTLSCert:  string(shared.IdentityProviderTLS().CertPEM),
+			oidc.EnvTLSKey:   string(shared.IdentityProviderTLS().PrivateKeyPEM),
+			oidc.EnvIssuer:   OIDCIssuer,
+			jev.EnvTLSCert:   string(shared.JevTLS().CertPEM),
+			jev.EnvTLSKey:    string(shared.JevTLS().PrivateKeyPEM),
+			specs.EnvTLSCert: string(shared.SpecsTLS().CertPEM),
+			specs.EnvTLSKey:  string(shared.SpecsTLS().PrivateKeyPEM),
 		},
 		// Every service answers the same health path on its own port, so gating on one is
 		// gating on the process. AwaitListening above already proves each port is bound.

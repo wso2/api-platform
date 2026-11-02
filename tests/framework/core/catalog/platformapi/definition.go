@@ -58,7 +58,12 @@ const platformAPIBootAttempts = 3
 
 // PlatformAPI returns the Platform API component definition.
 func PlatformAPI() *components.Definition {
-	generated := map[string][]byte{"certs/api-portal-ca.pem": shared.APIPortalTLS().CertPEM}
+	generated := map[string][]byte{
+		"certs/api-portal-ca.pem": shared.APIPortalTLS().CertPEM,
+		// The testbench specs service's certificate, for a block that imports OpenAPI documents
+		// over HTTPS (overlays/platform-api-openapi-import.toml).
+		"certs/specs-ca.pem": shared.SpecsTLS().CertPEM,
+	}
 	for name, content := range shared.ControlPlaneCrypto() {
 		generated[name] = content
 	}
