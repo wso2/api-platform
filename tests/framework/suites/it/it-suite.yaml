@@ -635,6 +635,35 @@ blocks:
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
 
+  # REST API definition import and update. platform-api trusts the testbench specs service, so
+  # a definition is imported over HTTPS, caps a definition at 64 KiB, and adds a user with no
+  # ap: scope (overlays/platform-api-openapi-import.toml). Stored definitions are per engine.
+  - name: rest-api-definition
+    parallel: 2
+    components:
+      - name: platform-api
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        overlay: tests/framework/core/catalog/overlays/platform-api-openapi-import.toml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: api-definitions
+        tags: "~@known-issue"
+        features:
+          - features/management-portal/api-definitions/import.feature
+          - features/management-portal/api-definitions/update.feature
+          - features/management-portal/api-definitions/validate.feature
+          - features/management-portal/api-definitions/limits.feature
+          - features/management-portal/api-definitions/authz.feature
+      # A gateway-originated API needs gateway-to-control-plane sync, from gateway 1.2.0.
+      - name: api-definitions-read-only
+        tags: "gateway-version>=1.2.0;~@known-issue"
+        features:
+          - features/management-portal/api-definitions/update_read_only.feature
+
   # Deployment sync with a disconnected gateway: every scenario stops or restarts
   # gateway-controller, so the block hosts them alone. A 30s deployment timeout keeps the
   # wait for a timed-out deployment short.
