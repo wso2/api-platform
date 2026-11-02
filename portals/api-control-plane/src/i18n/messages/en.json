@@ -864,6 +864,10 @@
     "defaultMessage": "gateways",
     "description": "Plural noun for gateways, used inside the limit-reached sentence."
   },
+  "apiControlPlane.hooks.useResourceLimits.componentPortals": {
+    "defaultMessage": "portals",
+    "description": "Plural noun for developer portals, used inside the limit-reached sentence."
+  },
   "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
     "defaultMessage": "APIs",
     "description": "Plural noun for APIs, used inside the limit-reached sentence."
@@ -4982,9 +4986,17 @@
   "gateways.create.type.regular.title": {
     "defaultMessage": "API Gateway"
   },
+  "gateways.create.version.badge.latest": {
+    "defaultMessage": "Latest",
+    "description": "Badge marking the newest gateway release offered for the chosen type."
+  },
   "gateways.create.version.badge.lts": {
     "defaultMessage": "LTS",
     "description": "Badge marking a long-term-support gateway build."
+  },
+  "gateways.create.version.badge.sts": {
+    "defaultMessage": "STS",
+    "description": "Badge marking a short-term-support gateway build."
   },
   "gateways.create.version.error.required": {
     "defaultMessage": "Choose a gateway version."
@@ -4992,9 +5004,13 @@
   "gateways.create.version.label": {
     "defaultMessage": "Gateway Version"
   },
+  "gateways.create.version.noneConfigured": {
+    "defaultMessage": "No release of this gateway type is configured for this console. It is registered as version {version}.",
+    "description": "Shown under a disabled version list when the chosen gateway type has no configured releases. {version} is a number such as 1.0."
+  },
   "gateways.create.version.option": {
-    "defaultMessage": "api-gateway v{version}",
-    "description": "One entry in the gateway version list; {version} is a number such as 1.0."
+    "defaultMessage": "{distribution} v{version}",
+    "description": "One entry in the gateway version list. {distribution} is a distribution name such as api-gateway (do not translate); {version} is a number such as 1.2."
   },
   "gateways.detail.GetStarted.download.intro": {
     "defaultMessage": "Run this command in your terminal to download the gateway:"
@@ -5046,6 +5062,10 @@
   "gateways.detail.GetStarted.reconfiguring": {
     "defaultMessage": "Generating…"
   },
+  "gateways.detail.GetStarted.setup.intro": {
+    "defaultMessage": "Navigate into the gateway folder and run the setup script. It creates the listener TLS certificate, the encryption key, and the api-platform.env file:",
+    "description": "api-platform.env is a file name — keep it exactly as written."
+  },
   "gateways.detail.GetStarted.start.enter": {
     "defaultMessage": "1. Navigate to the gateway folder."
   },
@@ -5053,14 +5073,29 @@
     "defaultMessage": "2. Run this command to start the gateway using the configs/keys.env file created in Step 2:",
     "description": "configs/keys.env is a file path — keep it exactly as written."
   },
+  "gateways.detail.GetStarted.start.runSetupScript": {
+    "defaultMessage": "From the gateway folder, run this command to start the gateway using the api-platform.env file:",
+    "description": "api-platform.env is a file name — keep it exactly as written."
+  },
   "gateways.detail.GetStarted.step.configure": {
     "defaultMessage": "Step 2: Configure the Gateway"
+  },
+  "gateways.detail.GetStarted.step.configureAfterSetup": {
+    "defaultMessage": "Step 3: Configure the Gateway",
+    "description": "Configure step heading for gateway releases that have a setup step before it."
   },
   "gateways.detail.GetStarted.step.download": {
     "defaultMessage": "Step 1: Download the Gateway"
   },
+  "gateways.detail.GetStarted.step.setup": {
+    "defaultMessage": "Step 2: Set up the Gateway"
+  },
   "gateways.detail.GetStarted.step.start": {
     "defaultMessage": "Step 3: Start the Gateway"
+  },
+  "gateways.detail.GetStarted.step.startAfterSetup": {
+    "defaultMessage": "Step 4: Start the Gateway",
+    "description": "Start step heading for gateway releases that have a setup step before it."
   },
   "gateways.detail.GetStarted.tab.docker": {
     "defaultMessage": "Docker",
