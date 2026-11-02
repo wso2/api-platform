@@ -213,18 +213,30 @@ func (r *Relay) acquire(ctx context.Context) (func(), error) {
 	}
 	select {
 	case r.slots <- struct{}{}:
-		return func() {
-			<-r.slots
-			r.inFlight.Add(-1)
-		}, nil
 	case <-ctx.Done():
 		r.inFlight.Add(-1)
-		// Out of time before the gateway was even called: busy, not a gateway timeout.
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, ErrBusy
-		}
-		return nil, ctx.Err()
+		return nil, notStarted(ctx.Err())
 	}
+	release := func() {
+		<-r.slots
+		r.inFlight.Add(-1)
+	}
+	// select picks at random when a slot and the deadline are both ready, so a
+	// slot can come after the deadline. That call never started either.
+	if err := ctx.Err(); err != nil {
+		release()
+		return nil, notStarted(err)
+	}
+	return release, nil
+}
+
+// notStarted maps the end of a call's context before the gateway was called:
+// out of time is busy, not a gateway timeout.
+func notStarted(err error) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ErrBusy
+	}
+	return err
 }
 
 // trimToRuneBoundary drops a partial UTF-8 sequence from the end of a truncated

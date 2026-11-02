@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -269,21 +270,25 @@ func TestRelayRejectsWhenPoolAndQueueAreBothFull(t *testing.T) {
 // request_timeout covers the whole call, the wait for a slot included; a call
 // that never got a slot is busy, since the gateway was never asked.
 func TestRelayCountsTheWaitForASlotTowardTheTimeout(t *testing.T) {
+	var reached atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
+	const timeout = 200 * time.Millisecond
 	relay := gatewayRelay(t, func(o *RelayOptions) {
 		o.MaxConcurrent = 1
 		o.MaxPending = 1
-		o.RequestTimeout = 200 * time.Millisecond
+		o.RequestTimeout = timeout
 	})
 	// Hold the only slot, as a long-running call would.
 	release, err := relay.acquire(context.Background())
 	require.NoError(t, err)
 	defer release()
 
+	started := time.Now()
 	done := make(chan error, 1)
 	go func() {
 		_, err := relay.Do(context.Background(), targetFor(t, srv.URL), Request{Method: "GET", Path: "/"})
@@ -292,9 +297,32 @@ func TestRelayCountsTheWaitForASlotTowardTheTimeout(t *testing.T) {
 	select {
 	case err := <-done:
 		assert.ErrorIs(t, err, ErrBusy)
-	case <-time.After(2 * time.Second):
+		assert.GreaterOrEqual(t, time.Since(started), timeout, "the call waited in the queue, not refused at once")
+		assert.False(t, reached.Load(), "a busy call must not reach the gateway")
+	case <-time.After(timeout + 800*time.Millisecond):
 		t.Fatal("a queued call waited past request_timeout")
 	}
+}
+
+// A free slot and an expired deadline are both ready, and select picks either;
+// both must end as busy without calling the gateway.
+func TestRelayDoesNotCallTheGatewayWithASlotTakenAfterTheDeadline(t *testing.T) {
+	var reached atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		reached.Store(true)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	relay := gatewayRelay(t, nil)
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	for i := 0; i < 32; i++ {
+		_, err := relay.Do(expired, targetFor(t, srv.URL), Request{Method: "GET", Path: "/"})
+		require.ErrorIs(t, err, ErrBusy)
+	}
+	assert.False(t, reached.Load())
+	assert.Zero(t, relay.inFlight.Load(), "every slot was given back")
 }
 
 func TestRelayRefusesLinkLocalMetadataEvenIfResolutionYieldsIt(t *testing.T) {
