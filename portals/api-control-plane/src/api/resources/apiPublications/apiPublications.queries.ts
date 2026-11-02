@@ -25,6 +25,10 @@ import {
   getApiPublicationDefinition,
   getApiPublicationDraft,
   getApiPublicationDraftDefinition,
+  getApiPublicationDraftLandingPage,
+  getApiPublicationDraftThumbnail,
+  getApiPublicationLandingPage,
+  getApiPublicationThumbnail,
   listApiPublications,
   type ListApiPublicationsQuery,
 } from './apiPublications.endpoints';
@@ -55,6 +59,22 @@ export const apiPublicationQueries = {
       staleTime: staleTimes.standard,
     }),
 
+  draftLandingPage: (org: OrgScope, apiPortalId: string, apiType: string, apiId: string) =>
+    queryOptions({
+      queryKey: apiPublicationKeys.child(org, apiId, 'draftLandingPage', { apiPortalId, apiType }),
+      queryFn: ({ signal }) =>
+        getApiPublicationDraftLandingPage(apiPortalId, apiType, apiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  draftThumbnail: (org: OrgScope, apiPortalId: string, apiType: string, apiId: string) =>
+    queryOptions({
+      queryKey: apiPublicationKeys.child(org, apiId, 'draftThumbnail', { apiPortalId, apiType }),
+      queryFn: ({ signal }) =>
+        getApiPublicationDraftThumbnail(apiPortalId, apiType, apiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
   publication: (org: OrgScope, apiPortalId: string, apiType: string, apiId: string) =>
     queryOptions({
       queryKey: apiPublicationKeys.child(org, apiId, 'publication', { apiPortalId, apiType }),
@@ -71,6 +91,22 @@ export const apiPublicationQueries = {
       }),
       queryFn: ({ signal }) =>
         getApiPublicationDefinition(apiPortalId, apiType, apiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  publicationThumbnail: (org: OrgScope, apiPortalId: string, apiType: string, apiId: string) =>
+    queryOptions({
+      queryKey: apiPublicationKeys.child(org, apiId, 'publicationThumbnail', { apiPortalId, apiType }),
+      queryFn: ({ signal }) =>
+        getApiPublicationThumbnail(apiPortalId, apiType, apiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  publicationLandingPage: (org: OrgScope, apiPortalId: string, apiType: string, apiId: string) =>
+    queryOptions({
+      queryKey: apiPublicationKeys.child(org, apiId, 'publicationLandingPage', { apiPortalId, apiType }),
+      queryFn: ({ signal }) =>
+        getApiPublicationLandingPage(apiPortalId, apiType, apiId, { orgId: org, signal }),
       staleTime: staleTimes.standard,
     }),
 };

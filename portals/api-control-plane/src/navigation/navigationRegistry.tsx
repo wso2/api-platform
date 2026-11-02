@@ -369,7 +369,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     // is the header switcher's job.
     isVisible: ({ isProjectScope }) => !isProjectScope,
     to: orgLevelTo(routes.projects),
-    match: matchRoutes(routes.projects(), routes.projectHome()),
+    match: matchRoutes(routes.projects(), routes.newProject(), routes.projectHome()),
   },
   {
     id: 'gateways',

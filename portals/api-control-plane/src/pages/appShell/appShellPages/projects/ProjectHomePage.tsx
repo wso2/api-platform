@@ -55,14 +55,21 @@ function ProjectHomePageContent() {
           <ProjectMetadata orgHandle={orgHandle} project={project} />
         </Grid>
 
-        <Grid size={{ xs: 12 }}>
-          <Divider />
-          <ProjectStatistics onTypeFilterChange={setApiTypeFilter} selectedType={apiTypeFilter} />
-          <Divider />
+        <Grid size={{ xs: 12 }} sx={{ mt: -1 }}>
+          <Divider sx={{ borderBottomWidth: 1 }} />
         </Grid>
 
         <Grid size={{ xs: 12 }} sx={{ minHeight: 400 }}>
-          <ApiList typeFilter={apiTypeFilter} />
+          <ApiList
+            typeFilter={apiTypeFilter}
+            onClearTypeFilter={() => setApiTypeFilter(null)}
+            sidebar={
+              <ProjectStatistics
+                onTypeFilterChange={setApiTypeFilter}
+                selectedType={apiTypeFilter}
+              />
+            }
+          />
         </Grid>
       </Grid>
     </>

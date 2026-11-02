@@ -23,6 +23,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { useResourceLimits } from '../../../hooks/useResourceLimits';
 import type { ApiError } from '../../core/errors';
 import { requireOrgScope, useApiScope } from '../../core/scope';
 import {
@@ -130,6 +131,7 @@ export const useCreateGateway = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateGateways(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<Gateway, ApiError, CreateGatewayBody>({
     // `async` so a missing scope rejects the mutation rather than throwing
@@ -147,6 +149,9 @@ export const useCreateGateway = (overrides: { orgId?: string } = {}) => {
       }
       invalidate();
     },
+    // On settle, not success: a refused create is evidence the count was
+    // stale-low. Inert with no supplier mounted.
+    onSettled: () => refreshResourceLimits(),
   });
 };
 
@@ -174,6 +179,7 @@ export const useDeleteGateway = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateGateways(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<void, ApiError, { gatewayId: string }>({
     mutationFn: async ({ gatewayId }) =>
@@ -186,6 +192,7 @@ export const useDeleteGateway = (overrides: { orgId?: string } = {}) => {
         queryClient.removeQueries({ queryKey: gatewayKeys.detail(org, gatewayId) });
       }
       invalidate();
+      refreshResourceLimits(); // a delete frees budget
     },
   });
 };

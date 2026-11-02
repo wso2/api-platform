@@ -17,19 +17,31 @@
  */
 
 import type { ReactNode } from 'react';
-import { Avatar, Box, Divider, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { BoxIcon, Settings } from '@wso2/oxygen-ui-icons-react';
+import {
+  Avatar,
+  Box,
+  Divider,
+  IconButton,
+  RelativeTime,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { BoxIcon, Settings, Users } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
+import { TruncatedText } from '@/components/common/TruncatedText';
+import { SecondaryText } from '@/components/common/SecondaryText';
+import { PageTitleAvatar } from '@/components/common/PageTitleAvatar';
 import { routes } from '@/routes/paths';
 import { relativeTime } from '@/utils/relativeTime';
 
 const messages = defineMessages({
   created: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.created',
-    defaultMessage: '<muted>Created</muted> {date}',
+    defaultMessage: 'Created',
   },
   descriptionFallback: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.descriptionFallback',
@@ -68,9 +80,9 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
     ? relativeTime(project.createdAt)
     : intl.formatMessage(messages.unknown);
   const muted = (chunks: ReactNode) => (
-    <Box component="span" sx={{ opacity: 0.7 }}>
+    <SecondaryText component="span" variant="inherit">
       {chunks}
-    </Box>
+    </SecondaryText>
   );
 
   return (
@@ -82,41 +94,39 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
         spacing={2}
         marginTop={2}
       >
-        <Stack alignItems="flex-start" direction="row" spacing={2.5} sx={{ minWidth: 0 }}>
-          <Avatar
-            sx={{
-              bgcolor: 'primary.main',
-              color: 'primary.contrastText',
-              height: 64,
-              width: 64,
-            }}
-            variant="rounded"
-          >
+        <Stack alignItems="flex-start" direction="row" spacing={2.5} sx={{ minWidth: 0, flex: 1 }}>
+          <PageTitleAvatar>
             <BoxIcon size={28} />
-          </Avatar>
-          <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+          </PageTitleAvatar>
+          <Stack spacing={1.5} sx={{ minWidth: 0, flex: 1 }}>
             <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap sx={{ fontWeight: 800 }} variant="h2">
-                {project.displayName}
+              <Typography sx={{ fontWeight: 800 }} variant="h2">
+                <TruncatedText text={project.displayName} maxCharacters={100} />
               </Typography>
-              <Typography color="text.secondary" variant="body1">
-                {project.description || <FormattedMessage {...messages.descriptionFallback} />}
-              </Typography>
+              <SecondaryText>
+                <TruncatedText
+                  text={project.description || intl.formatMessage(messages.descriptionFallback)}
+                  maxLines={2}
+                />
+              </SecondaryText>
             </Box>
 
             <Stack
               alignItems="center"
               direction="row"
-              divider={<Divider flexItem orientation="vertical" />}
+              divider={<Divider orientation="vertical" sx={{ height: 20, alignSelf: 'center' }} />}
               flexWrap="wrap"
               spacing={2}
             >
               <Typography color="text.secondary" variant="body2">
                 <FormattedMessage {...messages.owner} values={{ muted, owner }} />
               </Typography>
-              <Typography color="text.secondary" variant="body2">
-                <FormattedMessage {...messages.created} values={{ date: created, muted }} />
-              </Typography>
+              <RelativeTime
+                action={muted(<FormattedMessage {...messages.created} />)}
+                time={created}
+                dateTime={project.createdAt || undefined}
+                hideIcon
+              />
               <Stack alignItems="center" direction="row" spacing={1}>
                 {memberName && (
                   <Tooltip title={memberName}>
@@ -127,6 +137,7 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
                           color: 'primary.contrastText',
                           height: 28,
                           width: 28,
+                          zIndex: 1,
                         }}
                       >
                         {memberName.charAt(0).toUpperCase()}
@@ -138,7 +149,9 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
                           height: 28,
                           width: 28,
                         }}
-                      />
+                      >
+                        <Users size={18} strokeWidth={1} />
+                      </Avatar>
                     </Stack>
                   </Tooltip>
                 )}

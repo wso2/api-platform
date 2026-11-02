@@ -8,74 +8,46 @@ This document provides instructions for the GitHub Copilot coding agent when wor
   - `gateway/gateway-controller/` - Gateway controller service
   - `gateway/gateway-runtime/policy-engine/` - Policy engine service
   - `gateway/gateway-runtime/router/` - Envoy-based router
-  - `gateway/it/` - Integration tests
 - `kubernetes/` - Kubernetes operator and Helm charts
   - `kubernetes/gateway-operator/` - Gateway Kubernetes operator
+- `tests/framework/` - Integration test framework; the gateway integration tests are in `tests/framework/suites/it/`
 
 ## Running Integration Tests
 
-### When modifying code in `./gateway/**` (excluding `./gateway/it/`)
+The gateway integration tests run on the integration framework in `tests/framework` (see
+`tests/framework/README.md`, and `tests/framework/CLAUDE.md` for how to write features and steps).
+The framework builds the gateway images it tests from source, so a run always tests the current
+code, whether you changed gateway components or only test files.
 
-If you change any code in the gateway components (gateway-controller, policy-engine, router, etc.), you MUST:
-
-1. **Rebuild the Docker images** to include your changes:
+1. **Build the testbench image** (the mock backends), once and after changing `tests/framework/testbench/**`:
    ```bash
-   cd gateway && make build
+   make -C tests/framework testbench
    ```
 
-2. **Modify the test configuration** to use the non-coverage images. Edit `gateway/it/docker-compose.test.yaml` line 25 and remove the `-coverage` suffix from the gateway-controller image name:
-   - Change: `ghcr.io/wso2/api-platform/gateway-controller-coverage:<version>`
-   - To: `ghcr.io/wso2/api-platform/gateway-controller:<version>`
-   
-   **Important:** Keep the existing version tag (e.g., `0.3.0-SNAPSHOT`) as-is. The version in the file is the current version - do not hardcode a different version.
-
-3. **Run the integration tests**:
+2. **Run the tests**. The `gateway-core` block on SQLite:
    ```bash
-   cd gateway/it && make test
+   make -C gateway test-integration
+   ```
+   Or the block and feature you changed. Find the block in `tests/framework/suites/it/it-suite.yaml`
+   and select the feature by its tag:
+   ```bash
+   cd tests/framework
+   go test ./suites/it -count=1 -v -timeout=60m -blocks <block>/sqlite -feature-tags "@<feature-tag>"
    ```
 
-4. **Revert the gateway-controller image name before committing**. The `-coverage` suffix removal was only for local testing. Before creating a PR, restore the `-coverage` suffix of `gateway/it/docker-compose.test.yaml`:
-   - Change: `ghcr.io/wso2/api-platform/gateway-controller:<version>`
-   - Back to: `ghcr.io/wso2/api-platform/gateway-controller-coverage:<version>`
-   
-   **Important:** Do NOT include this image name change in your PR. The CI pipeline requires the coverage image. Other legitimate changes to docker-compose.test.yaml should still be committed.
-
-### When modifying only `./gateway/it/**` (integration test files only)
-
-If you are only modifying integration test files (test cases, test utilities, etc.) and not the gateway component source code:
-
-1. **Modify the test configuration** to use the non-coverage images. Edit `gateway/it/docker-compose.test.yaml` line 25 and remove the `-coverage` suffix from the gateway-controller image name:
-   - Change: `ghcr.io/wso2/api-platform/gateway-controller-coverage:<version>`
-   - To: `ghcr.io/wso2/api-platform/gateway-controller:<version>`
-   
-   **Important:** Keep the existing version tag as-is. Do not change the version number.
-
-2. **Run the integration tests**:
+3. **Restore `gateway/build-manifest.yaml` before committing.** A source build rewrites it with the
+   newest policy versions:
    ```bash
-   cd gateway/it && make test
+   git restore gateway/build-manifest.yaml
    ```
-
-3. **Revert the gateway-controller image name before committing**. Restore the `-coverage` suffix  of `gateway/it/docker-compose.test.yaml`:
-   - Change: `ghcr.io/wso2/api-platform/gateway-controller:<version>`
-   - Back to: `ghcr.io/wso2/api-platform/gateway-controller-coverage:<version>`
-   
-   **Important:** Do NOT include this image name change in your PR. Other legitimate changes to docker-compose.test.yaml should still be committed.
-
-Note: The images are pre-built during the setup phase, so you can run tests directly without rebuilding.
-
-## Important Notes
-
-- The `copilot-setup-steps.yml` workflow pre-builds gateway images using `make build`
-- The docker-compose file by default references coverage images (for CI coverage reporting)
-- You must switch to non-coverage images when running tests in the Copilot environment
-- **Version tags:** Always use whatever version tag is currently in the docker-compose.test.yaml file. The version may change over time (e.g., `0.3.0-SNAPSHOT`, `0.4.0-SNAPSHOT`, etc.) - never hardcode a specific version
 
 ## Build Commands Reference
 
 | Command | Description | Working Directory |
 |---------|-------------|-------------------|
 | `make build` | Build all gateway Docker images locally | `gateway/` |
-| `make test` | Run integration tests | `gateway/it/` |
+| `make test-integration` | Run the gateway-core integration tests on SQLite | `gateway/` |
+| `make test-integration-all` | Run the whole integration framework suite | `gateway/` |
 
 ## Policy Configuration in Integration Tests
 
@@ -83,7 +55,7 @@ When writing integration tests for policies, you MUST understand how policy para
 
 ### Policy Parameter Types
 
-Policies have two types of parameters defined in their `policy-definition.yaml` files (located in `gateway/policies/<policy-name>/v<version>/policy-definition.yaml`):
+Policies have two types of parameters defined in their `policy-definition.yaml` files (in the [wso2/gateway-controllers](https://github.com/wso2/gateway-controllers) repository, at `policies/<policy-name>/policy-definition.yaml`). Most policies' own integration tests live there too, in `policies/<policy-name>/it/`; the tests in this repository cover policies only as part of gateway behaviour:
 
 1. **`parameters`** (User Parameters): User-defined parameters that are specified in the API configuration when deploying an API. These are set by API developers via the REST API or API YAML.
 
@@ -109,30 +81,29 @@ systemParameters:
 
 The `"wso2/defaultValue"` path `${config.policy_configurations.jwtauth_v1.keymanagers}` tells the gateway to fetch the value from:
 
-```yaml
-# In gateway/it/test-config.yaml
-policy_configurations:
-  jwtauth_v1:
-    keyManagers:
-      - name: test-jwks
-        issuer: http://mock-jwks.default.svc.cluster.local:8080/token
-        jwks:
-          remote:
-            uri: http://mock-jwks:8080/jwks
+```toml
+# In the gateway configuration of the block under test, e.g. an overlay in
+# tests/framework/core/catalog/overlays/
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
 ```
 
 ### Setting Up Policy Tests
 
 When creating integration tests for a policy:
 
-1. **Check the policy definition** at `gateway/policies/<policy-name>/v<version>/policy-definition.yaml`
+1. **Check the policy definition** at `policies/<policy-name>/policy-definition.yaml` in wso2/gateway-controllers
 
 2. **Identify systemParameters**: Look for properties with `"wso2/defaultValue"` - these need gateway config entries
 
-3. **Add system parameter values to test-config.yaml**: Add the required configuration under `policy_configurations` in `gateway/it/test-config.yaml` following the JSON path from `"wso2/defaultValue"`:
+3. **Add system parameter values to the block's gateway configuration**: Add the required configuration under `policy_configurations` in the overlay the block uses (`tests/framework/core/catalog/overlays/<name>.toml`, referenced by the block's `overlay:` in `tests/framework/suites/it/it-suite.yaml`), following the JSON path from `"wso2/defaultValue"`:
    - Path: `${config.policy_configurations.<policy_id>.<param_name>}`
-   - Location: `gateway/it/test-config.yaml` → `policy_configurations` → `<policy_id>` → `<param_name>`
-   - Note: The `<policy_id>` in the path typically follows the pattern `<policyname>_v<version>` with underscores (e.g., `jwtauth_v010` for `jwt-auth` v0.1.0)
+   - Location: the overlay → `[policy_configurations.<policy_id>]` → `<param_name>`
+   - Note: The `<policy_id>` in the path typically follows the pattern `<policyname>_v<version>` with underscores (e.g., `jwtauth_v1` for `jwt-auth` v1)
 
 4. **Use regular parameters in API definitions**: In your feature file's API YAML, only specify user `params` (not system parameters):
 
@@ -146,7 +117,7 @@ operations:
         version: v1
         params:                    # These are user parameters
           issuers:
-            - test-jwks
+            - mock-jwks
           audiences:
             - my-api
           requiredScopes:
@@ -155,21 +126,21 @@ operations:
 
 ### Example: Adding JWT Auth Policy Test
 
-1. **Policy definition** (`gateway/policies/jwt-auth/v0.1.0/policy-definition.yaml`) shows:
+1. **Policy definition** (`policies/jwt-auth/policy-definition.yaml` in wso2/gateway-controllers) shows:
    - `parameters`: `issuers`, `audiences`, `requiredScopes`, etc. (user-defined)
    - `systemParameters`: `keyManagers`, `jwksCacheTtl`, etc. with `"wso2/defaultValue"` references
 
-2. **Add to test-config.yaml**:
-```yaml
-policy_configurations:
-  jwtauth_v1:
-    keyManagers:
-      - name: test-jwks
-        issuer: http://mock-jwks:8080/token
-        jwks:
-          remote:
-            uri: http://mock-jwks:8080/jwks
-    jwkscachettl: "5m"
+2. **Add to the block's overlay**:
+```toml
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"
+
+[policy_configurations.jwtauth_v1]
+jwkscachettl = "5m"
 ```
 
 3. **In your feature file API definition**, only include user params:
@@ -179,7 +150,7 @@ policies:
     version: v1
     params:
       issuers:
-        - test-jwks
+        - mock-jwks
 ```
 
 ### Key Points
@@ -187,7 +158,7 @@ policies:
 - **NEVER** put systemParameters in the API definition - they come from the gateway config
 - **ALWAYS** check the policy-definition.yaml for `"wso2/defaultValue"` to know what config entries are needed
 - The config path uses the format: `policy_configurations.<policy_id>.<lowercase_param_name>`
-- If a test fails with missing system parameters, check that `gateway/it/test-config.yaml` has the required `policy_configurations` entries
+- If a test fails with missing system parameters, check that the block's overlay has the required `policy_configurations` entries
 
 ## Unit Tests
 
@@ -199,9 +170,6 @@ cd gateway/gateway-controller && go test ./...
 
 # Policy Engine
 cd gateway/gateway-runtime/policy-engine && go test ./...
-
-# Router
-cd gateway/gateway-runtime/router && go test ./...
 
 # Gateway Operator
 cd kubernetes/gateway-operator && go test ./...

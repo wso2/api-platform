@@ -7457,23 +7457,27 @@ export interface components {
             id: string;
             /** @description The name stored with the selection, so it can still be shown after the source is deleted. */
             displayName: string;
-            /** @description True when the plan or document no longer exists. The publication keeps the selection until the next publish. */
-            deleted: boolean;
-            /** @description True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it. */
-            edited: boolean;
+            /**
+             * @description How the selected plan or document compares with this selection, as last saved (a draft) or published (a live listing):
+             *     - UNCHANGED: It has not changed since.
+             *     - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
+             *     - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+             * @enum {string}
+             */
+            sourceStatus: "UNCHANGED" | "UPDATED" | "DELETED";
         };
         PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
             subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
             docIds?: components["schemas"]["DocIdList"];
         };
-        PublicationDraftDetails: components["schemas"]["PublicationDraftDetailsInput"] & components["schemas"]["PublicationAuditFields"] & {
+        PublicationDraftDetails: components["schemas"]["PublicationDetailsCore"] & components["schemas"]["PublicationAuditFields"] & {
             /** @description Whether this draft stores a thumbnail of its own. */
             readonly hasThumbnail?: boolean;
             /** @description Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name. */
             readonly hasLandingPage?: boolean;
-            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            /** @description The selected subscription plans, including deleted ones. Their ids are what a draft save sends as subscriptionPlanIds. */
             readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
-            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            /** @description The selected documents, including deleted ones. Their ids are what a draft save sends as docIds. */
             readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         Publication: components["schemas"]["PublicationDetailsCore"] & components["schemas"]["PublicationAuditFields"] & {
@@ -7482,15 +7486,13 @@ export interface components {
             apiPortalName?: string;
             /** @enum {string} */
             status?: "PUBLISHED" | "DEPRECATED";
-            subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
-            docIds?: components["schemas"]["DocIdList"];
             /** @description Whether this publication stores a thumbnail. */
             readonly hasThumbnail?: boolean;
             /** @description Whether this publication stores a landing page. */
             readonly hasLandingPage?: boolean;
-            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            /** @description The selected subscription plans, including deleted ones. */
             readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
-            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            /** @description The selected documents, including deleted ones. */
             readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         PublicationSummaryItem: {

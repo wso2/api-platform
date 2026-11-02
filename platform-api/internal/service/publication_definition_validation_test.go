@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -87,6 +88,39 @@ func TestValidateDefinitionContent_UnregisteredApiTypeIsRejected(t *testing.T) {
 			err := validateDefinitionContent("websub-api", tt.definition)
 			if !apperror.APIPublicationTypeUnsupported.Is(err) {
 				t.Fatalf("got %v, want an APIPublicationTypeUnsupported rejection", err)
+			}
+		})
+	}
+}
+
+// TestValidateDefinitionContent_NamesTheDefinitionField checks that every way a definition can
+// fail publish validation reports "definition" as the field, so a client can tell it from a
+// problem in the other content sent with a publish.
+func TestValidateDefinitionContent_NamesTheDefinitionField(t *testing.T) {
+	tests := []struct {
+		name       string
+		apiType    string
+		definition *model.PublicationContent
+	}{
+		{"rest, none saved", restAPITypeValue, nil},
+		{"rest, empty", restAPITypeValue, contentOf("application/json", "{}")},
+		{"rest, unparseable", restAPITypeValue, contentOf("application/json", "{not json")},
+		{"rest, not OpenAPI", restAPITypeValue, contentOf("application/json", `{"openapi":"3.0.0"}`)},
+		{"rest, wrong content type", restAPITypeValue, contentOf("application/xml", validRESTDefinitionSpec)},
+		{"graphql, wrong content type", constants.PublicationAPITypeGraphQLAPI, contentOf("application/json", "type Query { hello: String }")},
+		{"graphql, malformed", constants.PublicationAPITypeGraphQLAPI, contentOf("application/graphql", "type Query { hello: }")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateDefinitionContent(tt.apiType, tt.definition)
+
+			var appErr *apperror.Error
+			if !errors.As(err, &appErr) || !apperror.APIPublicationValidationFailed.Is(err) {
+				t.Fatalf("got %v, want a publication validation failure", err)
+			}
+			want := []apperror.FieldError{{Field: "definition", Message: appErr.Message}}
+			if len(appErr.FieldErrors) != 1 || appErr.FieldErrors[0] != want[0] {
+				t.Fatalf("got field errors %v, want %v", appErr.FieldErrors, want)
 			}
 		})
 	}

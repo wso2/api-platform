@@ -49,8 +49,11 @@ Feature: Rejected control-plane pushes are retried on gateway-controller reconne
       | metadata.annotations  | {"gateway.api-platform.wso2.com/project-id":"${CTX:missingProjectHandle}"} |
     Then the response should be successful
     And the control plane should not receive the "Mcp" artifact "${CTX:mcpName}"
+    And the gateway should record control-plane sync status "failed" for the "Mcp" artifact "${CTX:mcpName}"
 
     When I create a project "${CTX:missingProjectHandle}" on the control plane
     And I restart the "gateway-controller" service
     Then the control plane should receive the "Mcp" artifact "${CTX:mcpName}"
     And the control plane should have deployed the "Mcp" artifact "${CTX:mcpName}"
+    And the gateway should record control-plane sync status "success" for the "Mcp" artifact "${CTX:mcpName}"
+    And the gateway should record a control-plane artifact id for the "Mcp" artifact "${CTX:mcpName}"

@@ -25,7 +25,10 @@ import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
 import { LogsFeature, MetricsPanel, ScopedLogsNotice } from '@wso2-enterprise/apip-cloud-ui-logs';
 import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
-import { TrialStatusFeature } from '@wso2-enterprise/apip-cloud-ui-trial-status';
+import {
+  EntitlementsGate,
+  TrialStatusFeature,
+} from '@wso2-enterprise/apip-cloud-ui-entitlements';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
@@ -33,6 +36,7 @@ import {
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import {
+  APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
@@ -42,6 +46,7 @@ import {
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
+import { runtimeConfig } from '../../../../api-control-plane/src/config/runtime';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
@@ -64,6 +69,26 @@ export const cloudBrandLogo: BrandLogo = {
 const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
 
 /**
+ * `GatewaysFeature`'s port requires `gatewayVersions`, which this host's own
+ * `CloudHostPort` (core, `api-control-plane/src/hostPort.tsx`) does not carry.
+ * API Control Plane has no hardcoded catalog the way AI Workspace does — its
+ * release versions come from the BFF's own `config.toml` (`[[gateway_versions]]`,
+ * see `bff/internal/config/config.go`), surfaced through this SPA's
+ * `runtimeConfig.gatewayVersions` (`src/config/runtime.ts`), which already
+ * falls back to `[]` for a deployment whose config predates this field.
+ */
+const API_GATEWAY_VERSIONS = runtimeConfig.gatewayVersions;
+
+/**
+ * TEMPORARY: the control-plane host shown in the self-hosted gateway setup
+ * commands (Gateways and Deploy pages), hardcoded to the WSO2 Cloud production
+ * host for now. The per-environment `GATEWAY_CONTROL_PLANE_HOST` runtime config
+ * is ignored until it is fixed to give the right host for every environment.
+ */
+const GATEWAY_CONTROL_PLANE_HOST =
+  'prod-wso2cloud.gateway.cloud.wso2.com/apip-platform-api-apip-platform-api-internal-endpoint';
+
+/**
  * The API Deploy override. The built-in Deploy page sits inside `AppPage`, which
  * supplies the page padding and breadcrumbs, so the scope picker shown before an
  * API is in scope gets that same container here; without it the picker card
@@ -78,7 +103,7 @@ function CloudDeployPage({ port }: { port: CloudHostPort }) {
       requires="api"
       to={routes.apiDeploy}
     >
-      <DeployFeature port={port} />
+      <DeployFeature port={{ ...port, gatewayControlPlaneHost: GATEWAY_CONTROL_PLANE_HOST }} />
     </ScopeGate>
   );
   return isApiScope ? gate : <AppPage>{gate}</AppPage>;
@@ -152,6 +177,11 @@ const observabilityLogsPath = (orgHandle: string) =>
 
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
+    // Entitlements is console-only. The shared `apip-cloud-ui-trial-status`
+    // package still serves AI Workspace unchanged; this console renders the
+    // newer badge from its own package instead, so neither portal constrains
+    // the other. Keeps the slot id `trial-status` so nothing downstream that
+    // selects on it has to change.
     id: 'trial-status',
     version: '0.1.0',
     extensions: [
@@ -160,6 +190,16 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         slot: HEADER_ACTIONS_SLOT,
         order: 10,
         render: (port) => <TrialStatusFeature port={port} />,
+      },
+      {
+        // Headless: supplies the organization's creation limits and read-only
+        // verdict through the Port. Mounted on every in-shell route, and the
+        // only thing that ever calls `resourceLimits.set` — with no cloud
+        // plugin registered the host supplies nothing and stays unrestricted.
+        id: 'entitlements-gate',
+        slot: APP_GATE_SLOT,
+        order: 10,
+        render: (port) => <EntitlementsGate port={port} />,
       },
     ],
   }),
@@ -202,7 +242,18 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         group: '',
         order: 45,
         routePath: 'gateways',
-        render: (port) => <GatewaysFeature gatewayTypes={API_GATEWAY_TYPES} port={port} />,
+        render: (port) => (
+          <GatewaysFeature
+            gatewayTypes={API_GATEWAY_TYPES}
+            // Hardcoded for now (see GATEWAY_CONTROL_PLANE_HOST); the gateways plugin
+            // reads `controlPlaneHost`.
+            port={{
+              ...port,
+              gatewayVersions: API_GATEWAY_VERSIONS,
+              controlPlaneHost: GATEWAY_CONTROL_PLANE_HOST,
+            }}
+          />
+        ),
         label: 'Gateways',
         level: 'organization',
       },
@@ -234,7 +285,11 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         order: 0,
         routePath: 'deploy',
         render: (port, artifactHandle) => (
-          <DeployFeature artifactHandle={artifactHandle} kind="GraphQLApi" port={port} />
+          <DeployFeature
+            artifactHandle={artifactHandle}
+            kind="GraphQLApi"
+            port={{ ...port, gatewayControlPlaneHost: GATEWAY_CONTROL_PLANE_HOST }}
+          />
         ),
         label: 'Deploy',
         level: 'api',

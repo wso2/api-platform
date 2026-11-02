@@ -683,7 +683,10 @@ func TestPublicationTypeAndPath(t *testing.T) {
 	apiType, err := publicationType("RestApi")
 	require.NoError(t, err)
 	require.Equal(t, "rest-api", apiType)
-	for _, kind := range []string{"Mcp", "LlmProvider", "", "restapi"} {
+	apiType, err = publicationType("GraphQLApi")
+	require.NoError(t, err)
+	require.Equal(t, "graphql-api", apiType)
+	for _, kind := range []string{"Mcp", "LlmProvider", "", "restapi", "graphqlapi"} {
 		_, err := publicationType(kind)
 		require.ErrorContains(t, err, "not supported", kind)
 	}
@@ -759,9 +762,10 @@ func TestDraftFromTable(t *testing.T) {
 		"text that starts with a bracket but is not JSON stays a string")
 }
 
-func TestMinimalOpenAPIDefinitionIsAValidDocument(t *testing.T) {
-	body, err := minimalOpenAPIDefinition("weather")
+func TestMinimalDefinitionMatchesTheAPIKind(t *testing.T) {
+	body, contentType, err := minimalDefinition("RestApi", "weather")
 	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
 
 	var document struct {
 		OpenAPI string `json:"openapi"`
@@ -776,6 +780,11 @@ func TestMinimalOpenAPIDefinitionIsAValidDocument(t *testing.T) {
 	require.Equal(t, "weather", document.Info.Title)
 	require.NotEmpty(t, document.Info.Version)
 	require.NotEmpty(t, document.Paths)
+
+	body, contentType, err = minimalDefinition("GraphQLApi", "weather")
+	require.NoError(t, err)
+	require.Equal(t, "application/graphql", contentType)
+	require.Contains(t, string(body), "type Query")
 }
 
 func TestSelectedPlans(t *testing.T) {
