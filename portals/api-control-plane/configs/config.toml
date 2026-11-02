@@ -46,7 +46,7 @@ base_url = '{{ env "APIP_ACP_POLICY_HUB_BASE_URL" "" }}'
 # before relying on it in production.
 [[api_control_plane.gateway_versions]]
 type    = "regular"
-version = "2026.05.13"
+version = "2026.09.24"
 channel = "STS"
 
 [[api_control_plane.gateway_versions]]
@@ -71,7 +71,9 @@ channel        = "LTS"
 [api_control_plane.gateway]
 
 # Control plane address for self-hosted gateways: host[:port][/path], no scheme.
-# Set per environment. If empty, the platform host is used.
+# Set per environment. If empty, the console's own setup panel uses the platform
+# host, and the cloud gateway and deploy setup commands show
+# <control-plane-host:port> until a host is set.
 controlplane_host = '{{ env "APIP_ACP_GATEWAY_CONTROLPLANE_HOST" "" }}'
 
 

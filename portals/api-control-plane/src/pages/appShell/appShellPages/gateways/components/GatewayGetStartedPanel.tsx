@@ -163,13 +163,13 @@ const messages = defineMessages({
   setupIntro: {
     id: 'gateways.detail.GetStarted.setup.intro',
     defaultMessage:
-      'Navigate into the gateway folder and run the setup script. It creates the listener TLS certificate, the encryption key, and the api-platform.env file:',
+      'Run the setup script. It creates the listener TLS certificate, the encryption key, and the api-platform.env file:',
     description: 'api-platform.env is a file name — keep it exactly as written.',
   },
   startRunSetupScript: {
     id: 'gateways.detail.GetStarted.start.runSetupScript',
     defaultMessage:
-      'From the gateway folder, run this command to start the gateway using the api-platform.env file:',
+      '2. Run this command to start the gateway using the api-platform.env file:',
     description: 'api-platform.env is a file name — keep it exactly as written.',
   },
   stepConfigure: {
@@ -522,8 +522,9 @@ export function GatewayGetStartedPanel({
               </SetupStep>
 
               {/* From 1.2 on, the archive's setup script writes the env file
-                  the configure step appends to — and leaves the shell inside
-                  the gateway folder, so the start step needs no `cd`. */}
+                  the configure step appends to. Every block runs from the
+                  download folder, as in the older flow, so each one works in
+                  a fresh terminal rather than only in the shell before it. */}
               {hasSetupStep ? (
                 <>
                   <SetupStep title={messages.stepSetup}>
@@ -540,6 +541,10 @@ export function GatewayGetStartedPanel({
                   )}
 
                   <SetupStep title={messages.stepStartAfterSetup}>
+                    <Typography color="text.secondary" variant="body2">
+                      <FormattedMessage {...messages.startEnter} />
+                    </Typography>
+                    <CopyableCommand code={enterDirectoryCommand(target)} />
                     <Typography color="text.secondary" variant="body2">
                       <FormattedMessage {...messages.startRunSetupScript} />
                     </Typography>

@@ -109,7 +109,7 @@ describe('GatewayDetailPage', () => {
 
     // The panel's commands are built from the gateway's own type and version.
     expect(
-      screen.getByText(/wso2apip-api-gateway-1\.0\.zip/, { exact: false }),
+      screen.getByText(/wso2apip-api-gateway-1\.0\.0\.zip/, { exact: false }),
     ).toBeInTheDocument();
   });
 
@@ -132,7 +132,8 @@ describe('GatewayDetailPage', () => {
       expect(text).toContain(
         'releases/download/gateway/v1.2.0/wso2apip-api-gateway-1.2.0.zip',
       );
-      expect(text).toContain('cd wso2apip-api-gateway-1.2.0 && ./scripts/setup.sh');
+      expect(text).toContain('./wso2apip-api-gateway-1.2.0/scripts/setup.sh');
+      expect(text).toContain('cd wso2apip-api-gateway-1.2.0');
       expect(text).not.toContain('configs/keys.env');
     } finally {
       runtimeConfig.gatewayVersions = configuredCatalog;

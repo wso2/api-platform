@@ -51,6 +51,7 @@ func TestLoadGatewayControlPlaneHostRuntimeConfig(t *testing.T) {
 			want: "dev-wso2cloud.gateway.example.com/apip-platform-api-apip-platform-api-internal-endpoint",
 		},
 		"host and port":               {env: "cp.example.com:9243", want: "cp.example.com:9243"},
+		"highest port":                {env: "cp.example.com:65535", want: "cp.example.com:65535"},
 		"surrounding space and slash": {env: "  cp.example.com/ ", want: "cp.example.com"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -89,6 +90,8 @@ func TestLoadRejectsUnsafeGatewayControlPlaneHost(t *testing.T) {
 		"inner space":       "cp.example.com /x",
 		"substitution":      "$(whoami).example.com",
 		"heredoc break":     "cp.example.com\nENVFILE",
+		"port zero":         "cp.example.com:0",
+		"port out of range": "cp.example.com:99999",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("APIP_ACP_GATEWAY_CONTROLPLANE_HOST", host)

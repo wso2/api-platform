@@ -108,6 +108,15 @@ export const usesSetupScript = (version: string): boolean => {
 };
 
 /**
+ * A release's full version. Releases are published as `major.minor.patch`, so
+ * a bare `major.minor` (how the server stores a version until the gateway
+ * reports its own) resolves to that minor's first release rather than a tag
+ * and archive that do not exist.
+ */
+const releaseVersion = (version: string): string =>
+  /^\d+\.\d+$/.test(version) ? `${version}.0` : version;
+
+/**
  * Resolves a gateway, the deployment's release catalog and its control plane
  * host into the values every command below is built from.
  *
@@ -124,7 +133,7 @@ export const setupTarget = (
   const entry = findVersionEntry(catalog, type, reported);
 
   const knownVersion = entry?.version ?? reported;
-  const tag = entry?.latestVersion ?? (knownVersion ? `v${knownVersion}` : FALLBACK_RELEASE_TAG);
+  const tag = entry?.latestVersion ?? (knownVersion ? `v${releaseVersion(knownVersion)}` : FALLBACK_RELEASE_TAG);
   const version = tag.replace(/^v/, '');
   const distVersion = entry?.distVersion ?? version;
 
@@ -146,9 +155,15 @@ export const downloadCommand = (target: GatewaySetupTarget): string =>
   `curl -sLO ${RELEASE_BASE}/${target.releaseTag}/${target.distribution}.zip && \\\n` +
   `unzip ${target.distribution}.zip`;
 
-/** Runs the setup script to generate certificates, keys, and `api-platform.env`. */
+/**
+ * Runs the setup script to generate certificates, keys, and `api-platform.env`.
+ *
+ * Run from the download folder, like every other step: the script enters its
+ * own distribution, so the shell is not left somewhere the later steps'
+ * paths do not expect.
+ */
 export const setupScriptCommand = (target: GatewaySetupTarget): string =>
-  `cd ${target.distribution} && ./scripts/setup.sh`;
+  `./${target.distribution}/scripts/setup.sh`;
 
 /**
  * Writes the registration token and control plane host into the env file the
@@ -157,12 +172,12 @@ export const setupScriptCommand = (target: GatewaySetupTarget): string =>
  * A heredoc rather than separate `echo` lines so the whole file is one paste,
  * and the token never lands in the user's shell history as a bare argument.
  * The setup-script flow appends to the `api-platform.env` that `setup.sh`
- * wrote, from inside the gateway folder; the older flow writes a fresh
- * `configs/keys.env`.
+ * wrote; the older flow writes a fresh `configs/keys.env`. Both run from the
+ * download folder.
  */
 export const configureCommand = (target: GatewaySetupTarget, token: string): string =>
   target.flow === 'setupScript'
-    ? `cat >> ${SETUP_SCRIPT_ENV_FILE} << 'ENVFILE'\n` +
+    ? `cat >> ${target.distribution}/${SETUP_SCRIPT_ENV_FILE} << 'ENVFILE'\n` +
       `APIP_GW_CONTROLLER_CONTROLPLANE_HOST=${controlPlaneAddress(target.controlPlaneHost)}\n` +
       `APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${token}\n` +
       `ENVFILE`
@@ -176,7 +191,10 @@ export const configureCommand = (target: GatewaySetupTarget, token: string): str
 export const enterDirectoryCommand = (target: GatewaySetupTarget): string =>
   `cd ${target.distribution}`;
 
-/** Brings the gateway up with the env file written in the configure step. */
+/**
+ * Brings the gateway up with the env file written in the configure step. Run
+ * from inside the distribution, after `enterDirectoryCommand`.
+ */
 export const startCommand = (target: GatewaySetupTarget): string =>
   target.flow === 'setupScript'
     ? 'docker compose up'

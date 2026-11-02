@@ -86,9 +86,19 @@ describe('gatewaySetup', () => {
 
   it('keeps the version of a gateway whose release the catalog no longer lists', () => {
     // Offering another release would hand out a build the gateway is not running.
+    // The stored `major.minor` names that minor's first published release, since
+    // no release is tagged or archived without a patch number.
     expect(setupTarget(aGateway({ version: '0.9' }), HOST, CATALOG)).toMatchObject({
-      distribution: 'wso2apip-api-gateway-0.9',
-      releaseTag: 'gateway/v0.9',
+      distribution: 'wso2apip-api-gateway-0.9.0',
+      releaseTag: 'gateway/v0.9.0',
+      version: '0.9.0',
+    });
+  });
+
+  it('keeps a full or date-based version the catalog no longer lists as it is', () => {
+    expect(setupTarget(aGateway({ version: '2026.09.24' }), HOST, CATALOG)).toMatchObject({
+      distribution: 'wso2apip-api-gateway-2026.09.24',
+      releaseTag: 'gateway/v2026.09.24',
     });
   });
 
@@ -119,9 +129,9 @@ describe('gatewaySetup', () => {
   it('uses the setup script and api-platform.env from 1.2 on', () => {
     const target = setupTarget(aGateway({ version: '1.2' }), HOST, CATALOG);
 
-    expect(setupScriptCommand(target)).toBe('cd wso2apip-api-gateway-1.2.0 && ./scripts/setup.sh');
+    expect(setupScriptCommand(target)).toBe('./wso2apip-api-gateway-1.2.0/scripts/setup.sh');
     expect(configureCommand(target, 'secret-token')).toBe(
-      "cat >> api-platform.env << 'ENVFILE'\n" +
+      "cat >> wso2apip-api-gateway-1.2.0/api-platform.env << 'ENVFILE'\n" +
         `APIP_GW_CONTROLLER_CONTROLPLANE_HOST=${HOST}:443\n` +
         'APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=secret-token\n' +
         'ENVFILE',

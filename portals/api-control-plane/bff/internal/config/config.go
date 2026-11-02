@@ -30,6 +30,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -105,9 +106,24 @@ type GatewayConfig struct {
 }
 
 // controlPlaneHostPattern validates the `host[:port][/path]` format before the
-// value is used in shell and Helm commands.
+// value is used in shell and Helm commands. The port, when present, is
+// captured so validControlPlaneHost can range-check it.
 var controlPlaneHostPattern = regexp.MustCompile(
-	`^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~-]+)*$`)
+	`^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::([0-9]{1,5}))?(?:/[A-Za-z0-9._~-]+)*$`)
+
+// validControlPlaneHost reports whether host matches controlPlaneHostPattern
+// and any port it carries is a usable TCP port (1-65535).
+func validControlPlaneHost(host string) bool {
+	m := controlPlaneHostPattern.FindStringSubmatch(host)
+	if m == nil {
+		return false
+	}
+	if m[1] == "" {
+		return true
+	}
+	port, err := strconv.Atoi(m[1])
+	return err == nil && port >= 1 && port <= 65535
+}
 
 // GatewayRelayConfig configures the bounded relay for the Test page's Swagger console.
 type GatewayRelayConfig struct {
@@ -587,7 +603,7 @@ func (c *Config) validate() error {
 			return fmt.Errorf("[[gateway_versions]] entry %d has invalid channel %q: must be \"STS\" or \"LTS\"", i, gv.Channel)
 		}
 	}
-	if h := c.Gateway.ControlPlaneHost; h != "" && !controlPlaneHostPattern.MatchString(h) {
+	if h := c.Gateway.ControlPlaneHost; h != "" && !validControlPlaneHost(h) {
 		return fmt.Errorf("[gateway] controlplane_host %q is invalid: must be host[:port][/path] with no scheme, e.g. \"cp.example.com:443\"", h)
 	}
 	seen := map[string]bool{}

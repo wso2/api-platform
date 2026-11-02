@@ -5063,7 +5063,7 @@
     "defaultMessage": "Generating…"
   },
   "gateways.detail.GetStarted.setup.intro": {
-    "defaultMessage": "Navigate into the gateway folder and run the setup script. It creates the listener TLS certificate, the encryption key, and the api-platform.env file:",
+    "defaultMessage": "Run the setup script. It creates the listener TLS certificate, the encryption key, and the api-platform.env file:",
     "description": "api-platform.env is a file name — keep it exactly as written."
   },
   "gateways.detail.GetStarted.start.enter": {
@@ -5074,7 +5074,7 @@
     "description": "configs/keys.env is a file path — keep it exactly as written."
   },
   "gateways.detail.GetStarted.start.runSetupScript": {
-    "defaultMessage": "From the gateway folder, run this command to start the gateway using the api-platform.env file:",
+    "defaultMessage": "2. Run this command to start the gateway using the api-platform.env file:",
     "description": "api-platform.env is a file name — keep it exactly as written."
   },
   "gateways.detail.GetStarted.step.configure": {
