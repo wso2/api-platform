@@ -653,6 +653,43 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 	return response, nil
 }
 
+// GetAPIInvokeTarget returns the context of the REST API and the endpoints of
+// the gateway it is deployed to, for sending a test request through that
+// gateway. A gateway the API is only associated with is refused like one it has
+// nothing to do with: the console offers deployed gateways only, and accepting
+// any associated one would let a caller aim the request at it.
+func (s *APIService) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (apiContext string, endpoints []string, err error) {
+	apiUUID, err := s.getAPIUUIDByHandle(apiHandle, orgID)
+	if err != nil {
+		return "", nil, err
+	}
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgID)
+	if err != nil {
+		return "", nil, err
+	}
+	if apiModel == nil || apiModel.OrganizationID != orgID {
+		return "", nil, apperror.RESTAPINotFound.New()
+	}
+
+	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgID)
+	if err != nil {
+		return "", nil, err
+	}
+	for _, gw := range gateways {
+		if gw == nil || gw.Handle != gatewayHandle {
+			continue
+		}
+		if !gw.IsDeployed {
+			break
+		}
+		if apiModel.Configuration.Context != nil {
+			apiContext = *apiModel.Configuration.Context
+		}
+		return apiContext, gw.Endpoints, nil
+	}
+	return "", nil, apperror.RESTAPIInvokeGatewayNotDeployed.New()
+}
+
 // AddGatewaysToAPI associates multiple gateways with an API
 func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)

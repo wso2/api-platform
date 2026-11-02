@@ -807,6 +807,144 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/{restApiId}/gateways/{gatewayId}/invoke:
+    post:
+      summary: Send a test request to a REST API through a gateway
+      description: |
+        Sends one request to the REST API as deployed on the given gateway, and returns the
+        gateway's response as data. This is what the console's Test console uses, since a
+        browser often cannot call a gateway directly (CORS, mixed content, or a gateway its
+        network cannot reach).
+
+        The caller names the REST API and the gateway, never a URL: the request goes to the
+        gateway's endpoint plus the REST API's context, only if the REST API is deployed to that
+        gateway, and only if the endpoint matches the control plane's configured allow list
+        (`gateway_relay.egress.allow_hosts`). Redirects are not followed. Only the headers in the
+        request body are sent; the caller's own credentials never reach the gateway.
+
+        Any answer from the gateway, whatever its status, is a successful relay: the response is
+        `200` and carries the gateway's status, headers and body. An error status here means the
+        request was not relayed. A response body longer than `gateway_relay.max_response_bytes`
+        is truncated and flagged.
+
+        Access needs the same scopes as reading this REST API's gateways: testing it sends no more
+        than the caller could send to the gateway directly.
+      operationId: InvokeRESTAPIOnGateway
+      security:
+        - OAuth2Security:
+            - ap:rest_api:gateway:read
+            - ap:rest_api:gateway:manage
+            - ap:rest_api:manage
+      tags:
+        - REST APIs
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: gatewayId
+          in: path
+          required: true
+          description: Handle of a gateway the REST API is deployed to
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RESTAPIInvokeRequest'
+      responses:
+        '200':
+          description: The gateway answered; its response is in `response`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIInvokeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: |
+            Forbidden. Either the token lacks the scopes, or the gateway's endpoint is not on the
+            control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_TARGET_NOT_ALLOWED
+                message: This gateway cannot be reached from the control plane.
+        '404':
+          description: |
+            Not Found. The REST API does not exist in the caller's organization
+            (`REST_API_NOT_FOUND`), or it is not deployed to the gateway
+            (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_GATEWAY_NOT_DEPLOYED
+                message: This REST API is not deployed to the selected gateway.
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: |
+            Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`),
+            or its endpoint is not an http or https address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_GATEWAY_NO_ENDPOINT
+                message: The selected gateway has no endpoint configured.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '502':
+          description: Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_UPSTREAM_UNREACHABLE
+                message: The gateway could not be reached.
+                trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+        '503':
+          description: |
+            Service Unavailable. Too many test requests are in flight on this replica
+            (`REST_API_INVOKE_BUSY`); retry shortly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_BUSY
+                message: Too many test requests are in flight; try again shortly.
+                trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+        '504':
+          description: Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: REST_API_INVOKE_UPSTREAM_TIMEOUT
+                message: The gateway did not respond in time.
+                trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
   /rest-apis/{restApiId}/api-keys:
     post:
       summary: Create API key
@@ -10172,6 +10310,118 @@ components:
           maxLength: 63
           description: Handle (URL-friendly slug) of the gateway to associate with the REST API
           example: prod-gateway-01
+
+    RESTAPIInvokeHeader:
+      type: object
+      description: One header or query parameter. A list keeps repeated names.
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          example: X-API-Key
+        value:
+          type: string
+          example: 3f2a9c
+
+    RESTAPIInvokeRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        The test request to send. Hop-by-hop headers, `Host`, `Content-Length`, `Expect`,
+        `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are
+        refused; `Authorization` is allowed, for the API under test.
+      properties:
+        method:
+          type: string
+          description: One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case
+          default: GET
+          example: POST
+        path:
+          type: string
+          description: |
+            Path relative to the REST API's invoke URL, starting with `/`. It may not leave the
+            REST API's context, or carry a query or fragment.
+          default: /
+          example: /orders
+        query:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/RESTAPIInvokeHeader'
+        headers:
+          type: array
+          maxItems: 50
+          description: At most 50 headers, 16 KiB across all names and values
+          items:
+            $ref: '#/components/schemas/RESTAPIInvokeHeader'
+        body:
+          type: string
+          description: The request body, at most `gateway_relay.max_request_bytes` once decoded
+          example: '{"item":"pizza"}'
+        bodyEncoding:
+          $ref: '#/components/schemas/RESTAPIInvokeBodyEncoding'
+
+    RESTAPIInvokeBodyEncoding:
+      type: string
+      description: How `body` is written; `base64` carries binary data
+      enum:
+        - utf8
+        - base64
+      default: utf8
+
+    RESTAPIInvokeResponse:
+      type: object
+      required:
+        - outcome
+        - response
+      properties:
+        outcome:
+          type: string
+          enum:
+            - response
+          description: Always `response`
+        response:
+          $ref: '#/components/schemas/RESTAPIInvokeResult'
+
+    RESTAPIInvokeResult:
+      type: object
+      description: The gateway's response
+      required:
+        - status
+        - statusText
+        - headers
+        - body
+        - bodyEncoding
+        - truncated
+        - durationMs
+      properties:
+        status:
+          type: integer
+          description: The gateway's HTTP status
+          example: 201
+        statusText:
+          type: string
+          example: Created
+        headers:
+          type: array
+          description: Every response header, sorted, repeated names kept
+          items:
+            $ref: '#/components/schemas/RESTAPIInvokeHeader'
+        body:
+          type: string
+          description: The response body; base64 when it is not valid UTF-8
+        bodyEncoding:
+          $ref: '#/components/schemas/RESTAPIInvokeBodyEncoding'
+        truncated:
+          type: boolean
+          description: The body exceeded `gateway_relay.max_response_bytes` and was clipped
+        durationMs:
+          type: integer
+          format: int64
+          description: The gateway round trip, in milliseconds
+          example: 42
 
     RESTAPIGatewayListResponse:
       type: object

@@ -313,6 +313,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rest-apis/{restApiId}/gateways/{gatewayId}/invoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test request to a REST API through a gateway
+         * @description Sends one request to the REST API as deployed on the given gateway, and returns the
+         *     gateway's response as data. This is what the console's Test console uses, since a
+         *     browser often cannot call a gateway directly (CORS, mixed content, or a gateway its
+         *     network cannot reach).
+         *
+         *     The caller names the REST API and the gateway, never a URL: the request goes to the
+         *     gateway's endpoint plus the REST API's context, only if the REST API is deployed to that
+         *     gateway, and only if the endpoint matches the control plane's configured allow list
+         *     (`gateway_relay.egress.allow_hosts`). Redirects are not followed. Only the headers in the
+         *     request body are sent; the caller's own credentials never reach the gateway.
+         *
+         *     Any answer from the gateway, whatever its status, is a successful relay: the response is
+         *     `200` and carries the gateway's status, headers and body. An error status here means the
+         *     request was not relayed. A response body longer than `gateway_relay.max_response_bytes`
+         *     is truncated and flagged.
+         *
+         *     Access needs the same scopes as reading this REST API's gateways: testing it sends no more
+         *     than the caller could send to the gateway directly.
+         */
+        post: operations["InvokeRESTAPIOnGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rest-apis/{restApiId}/api-keys": {
         parameters: {
             query?: never;
@@ -4149,6 +4186,79 @@ export interface components {
              * @example prod-gateway-01
              */
             gatewayId: string;
+        };
+        /** @description One header or query parameter. A list keeps repeated names. */
+        RESTAPIInvokeHeader: {
+            /** @example X-API-Key */
+            name: string;
+            /** @example 3f2a9c */
+            value: string;
+        };
+        /**
+         * @description The test request to send. Hop-by-hop headers, `Host`, `Content-Length`, `Expect`,
+         *     `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are
+         *     refused; `Authorization` is allowed, for the API under test.
+         */
+        RESTAPIInvokeRequest: {
+            /**
+             * @description One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case
+             * @default GET
+             * @example POST
+             */
+            method: string;
+            /**
+             * @description Path relative to the REST API's invoke URL, starting with `/`. It may not leave the
+             *     REST API's context, or carry a query or fragment.
+             * @default /
+             * @example /orders
+             */
+            path: string;
+            query?: components["schemas"]["RESTAPIInvokeHeader"][];
+            /** @description At most 50 headers, 16 KiB across all names and values */
+            headers?: components["schemas"]["RESTAPIInvokeHeader"][];
+            /**
+             * @description The request body, at most `gateway_relay.max_request_bytes` once decoded
+             * @example {"item":"pizza"}
+             */
+            body?: string;
+            bodyEncoding?: components["schemas"]["RESTAPIInvokeBodyEncoding"];
+        };
+        /**
+         * @description How `body` is written; `base64` carries binary data
+         * @default utf8
+         * @enum {string}
+         */
+        RESTAPIInvokeBodyEncoding: "utf8" | "base64";
+        RESTAPIInvokeResponse: {
+            /**
+             * @description Always `response`
+             * @enum {string}
+             */
+            outcome: "response";
+            response: components["schemas"]["RESTAPIInvokeResult"];
+        };
+        /** @description The gateway's response */
+        RESTAPIInvokeResult: {
+            /**
+             * @description The gateway's HTTP status
+             * @example 201
+             */
+            status: number;
+            /** @example Created */
+            statusText: string;
+            /** @description Every response header, sorted, repeated names kept */
+            headers: components["schemas"]["RESTAPIInvokeHeader"][];
+            /** @description The response body; base64 when it is not valid UTF-8 */
+            body: string;
+            bodyEncoding: components["schemas"]["RESTAPIInvokeBodyEncoding"];
+            /** @description The body exceeded `gateway_relay.max_response_bytes` and was clipped */
+            truncated: boolean;
+            /**
+             * Format: int64
+             * @description The gateway round trip, in milliseconds
+             * @example 42
+             */
+            durationMs: number;
         };
         RESTAPIGatewayListResponse: {
             /**
@@ -9123,6 +9233,152 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
+        };
+    };
+    InvokeRESTAPIOnGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
+                restApiId: components["parameters"]["apiId"];
+                /** @description Handle of a gateway the REST API is deployed to */
+                gatewayId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RESTAPIInvokeRequest"];
+            };
+        };
+        responses: {
+            /** @description The gateway answered; its response is in `response` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPIInvokeResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description Forbidden. Either the token lacks the scopes, or the gateway's endpoint is not on the
+             *     control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_TARGET_NOT_ALLOWED",
+                     *       "message": "This gateway cannot be reached from the control plane."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Not Found. The REST API does not exist in the caller's organization
+             *     (`REST_API_NOT_FOUND`), or it is not deployed to the gateway
+             *     (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_GATEWAY_NOT_DEPLOYED",
+                     *       "message": "This REST API is not deployed to the selected gateway."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`),
+             *     or its endpoint is not an http or https address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_GATEWAY_NO_ENDPOINT",
+                     *       "message": "The selected gateway has no endpoint configured."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalServerError"];
+            /** @description Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_UPSTREAM_UNREACHABLE",
+                     *       "message": "The gateway could not be reached.",
+                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Service Unavailable. Too many test requests are in flight on this replica
+             *     (`REST_API_INVOKE_BUSY`); retry shortly.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_BUSY",
+                     *       "message": "Too many test requests are in flight; try again shortly.",
+                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`). */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_UPSTREAM_TIMEOUT",
+                     *       "message": "The gateway did not respond in time.",
+                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     CreateAPIKey: {

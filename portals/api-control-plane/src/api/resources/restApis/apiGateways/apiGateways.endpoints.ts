@@ -37,6 +37,8 @@ export type RestApiGatewayListResponse = ResponseOf<'GetRESTAPIGateways'>;
 export type RestApiGateway = ItemOf<'GetRESTAPIGateways'>;
 export type ListRestApiGatewaysQuery = QueryOf<'GetRESTAPIGateways'>;
 export type AddGatewaysToApiBody = BodyOf<'AddGatewaysToAPI'>;
+export type InvokeRestApiOnGatewayBody = BodyOf<'InvokeRESTAPIOnGateway'>;
+export type InvokeRestApiOnGatewayResponse = ResponseOf<'InvokeRESTAPIOnGateway'>;
 
 const collectionPath = (restApiId: PathOf<'GetRESTAPIGateways'>['restApiId']): string =>
   `/rest-apis/${encodeURIComponent(restApiId)}/gateways`;
@@ -67,4 +69,22 @@ export const addGatewaysToApi = async (
     ...options,
     operationName: 'AddGatewaysToAPI',
   });
+};
+
+/**
+ * Sends one test request to the REST API as deployed on the gateway. Any answer
+ * from the gateway, whatever its status, resolves: it is carried in `response`.
+ * A rejection means the request was not relayed.
+ */
+export const invokeRestApiOnGateway = async (
+  restApiId: string,
+  gatewayId: string,
+  body: InvokeRestApiOnGatewayBody,
+  options?: RequestOptions,
+): Promise<InvokeRestApiOnGatewayResponse> => {
+  return http.post<InvokeRestApiOnGatewayResponse>(
+    `${collectionPath(restApiId)}/${encodeURIComponent(gatewayId)}/invoke`,
+    body,
+    { ...options, operationName: 'InvokeRESTAPIOnGateway' },
+  );
 };

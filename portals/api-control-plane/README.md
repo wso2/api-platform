@@ -115,12 +115,14 @@ BFF.
 `expiresAt` in the SDK session is the access token's expiry, not the session's;
 the gateway renews the token itself, so the console doesn't use it.
 
-### The Test console's gateway relay
+### The Test console's requests
 
-The Test console sends requests to a deployed gateway through a relay. That is
-a separate setting from sign-in, available in every auth mode:
-`gatewayRelayUrl` (`VITE_GATEWAY_RELAY_URL` at build time), by default the
-BFF's `/api/gateway-relay/invoke`.
+The Test console sends its requests to a deployed gateway through the Platform
+API, `POST /rest-apis/{restApiId}/gateways/{gatewayId}/invoke`, on the same path
+as every other Platform API call: the BFF's proxy, or the gateway's
+`oauth2-session-proxy`. The Platform API decides which gateway addresses it may
+reach, under `[platform_api.gateway_relay]` in its own config. There is nothing
+to set in the console.
 
 ## Development
 

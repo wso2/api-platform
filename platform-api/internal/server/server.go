@@ -37,6 +37,8 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
+	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/mcpserver"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -432,6 +434,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
+	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, apiService, slogger)
+	if err != nil {
+		return nil, err
+	}
 	apiDocumentHandler := handler.NewAPIDocumentHandler(apiDocumentService, identityService, slogger, cfg)
 	apiThumbnailHandler := handler.NewAPIThumbnailHandler(apiDocumentService, identityService, slogger, cfg)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
@@ -528,6 +534,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	appHandler.RegisterRoutes(core)
 	apiPortalHandler.RegisterRoutes(core)
 	apiHandler.RegisterRoutes(core)
+	apiInvokeHandler.RegisterRoutes(core)
 	apiDocumentHandler.RegisterRoutes(core)
 	apiThumbnailHandler.RegisterRoutes(core)
 	gatewayHandler.RegisterRoutes(core)
@@ -1292,4 +1299,29 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 		"retryBackoff", cfg.RetryBackoff,
 		"overallTimeout", cfg.OverallTimeout)
 	return service.NewHTTPPortalPublisher(authRegistry, lightClient, listingClient, contentClient, cfg.PlanListingBudget()), nil
+}
+
+// newAPIInvokeHandler builds the gateway relay behind the Test console's invoke
+// route. An invalid allow_hosts entry fails startup rather than leaving the
+// relay with a policy other than the one configured.
+func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
+	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
+	if err != nil {
+		return nil, fmt.Errorf("invalid gateway_relay.egress: %w", err)
+	}
+	relay, err := gatewayrelay.NewRelay(gatewayrelay.RelayOptions{
+		RequestTimeout:   cfg.RequestTimeout,
+		MaxRequestBytes:  cfg.MaxRequestBytes,
+		MaxResponseBytes: cfg.MaxResponseBytes,
+		MaxConcurrent:    cfg.MaxConcurrent,
+		MaxPending:       cfg.MaxPending,
+		CAFile:           cfg.CAFile,
+		TLSSkipVerify:    cfg.TLSSkipVerify,
+		Egress:           policy,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize the gateway relay: %w", err)
+	}
+	slogger.Info("Gateway relay ready", "egress", policy.Describe())
+	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, slogger), nil
 }

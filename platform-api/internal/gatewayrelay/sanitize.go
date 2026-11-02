@@ -24,7 +24,7 @@ import (
 	"strings"
 )
 
-// Errors the sanitizer and envelope decoding can produce. They are all mapped
+// Errors the sanitizer and body decoding can produce. They are all mapped
 // to one generic client-facing rejection by the handler — the distinction
 // exists for the server-side log, not for the caller, who must not be told
 // which specific check refused their request.
@@ -43,8 +43,8 @@ var (
 	ErrBodyTooLarge        = errors.New("request body exceeds the allowed size")
 )
 
-// Bounds on the envelope's own lists, independent of the JSON byte ceiling.
-// A 2 MiB envelope could otherwise hold tens of thousands of one-byte headers.
+// Bounds on the request's own lists, independent of the JSON byte ceiling.
+// A 2 MiB request could otherwise hold tens of thousands of one-byte headers.
 const (
 	maxHeaderCount     = 50
 	maxHeaderBytes     = 16 << 10 // 16 KiB across all names and values
@@ -75,13 +75,11 @@ var allowedMethods = map[string]bool{
 //     resolved target and the actual body say.
 //   - Cookie and the forwarding headers would let the browser attach ambient
 //     credentials or forge the apparent client address. Nothing the browser
-//     holds should travel to a tenant-controlled gateway implicitly; a tester
-//     who wants a cookie sent can still say so via the Gateway relay's own
-//     header list under a name that is not Cookie.
+//     holds should travel to a tenant-controlled gateway implicitly.
 //
 // Authorization is NOT in this list: an API under test legitimately needs one,
 // and the value comes from the console's own form. What must never appear is
-// the *session's* token, and that is guaranteed structurally; this package
+// the caller's own token, and that is guaranteed structurally; this package
 // never receives it.
 var forbiddenHeaders = map[string]bool{
 	"connection":          true,
@@ -239,7 +237,7 @@ func ResolvePath(basePath, rawPath string) (decoded, escaped string, err error) 
 	if err != nil || u.Scheme != "" || u.Host != "" || u.Opaque != "" || u.User != nil {
 		return "", "", ErrInvalidPath
 	}
-	// The envelope carries query parameters in their own field; a query or
+	// The request carries query parameters in their own field; a query or
 	// fragment smuggled through the path field would bypass SanitizeQuery.
 	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return "", "", ErrInvalidPath

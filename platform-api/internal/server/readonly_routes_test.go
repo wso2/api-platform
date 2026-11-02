@@ -39,6 +39,7 @@ func TestReadOnlyExemptRoutesAreRegistered(t *testing.T) {
 	logger := slog.Default()
 	mux := http.NewServeMux()
 	handler.NewAPIHandler(nil, nil, nil, logger, nil).RegisterRoutes(mux)
+	handler.NewAPIInvokeHandler(nil, nil, 0, logger).RegisterRoutes(mux)
 	handler.NewMCPProxyHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewAgentProxyHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewGatewayInternalAPIHandler(nil, nil, nil, nil, logger).RegisterRoutes(mux)

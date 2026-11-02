@@ -211,15 +211,15 @@ func TestResolvePathWithRootContext(t *testing.T) {
 }
 
 func TestDecodeBody(t *testing.T) {
-	b, err := Envelope{Body: "hello"}.DecodeBody()
+	b, err := Request{Body: "hello"}.DecodeBody()
 	require.NoError(t, err)
 	assert.Equal(t, "hello", string(b))
 
-	b, err = Envelope{Body: "aGVsbG8=", BodyEncoding: EncodingBase64}.DecodeBody()
+	b, err = Request{Body: "aGVsbG8=", BodyEncoding: EncodingBase64}.DecodeBody()
 	require.NoError(t, err)
 	assert.Equal(t, "hello", string(b))
 
-	_, err = Envelope{Body: "x", BodyEncoding: "rot13"}.DecodeBody()
+	_, err = Request{Body: "x", BodyEncoding: "rot13"}.DecodeBody()
 	assert.ErrorIs(t, err, ErrInvalidBodyEncoding)
 }
 

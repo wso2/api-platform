@@ -44,7 +44,7 @@
 // already decides the question.
 //
 // It does mean a wide entry is a wide grant — "*" reaches anything the floor
-// above does not refuse, the BFF's own host included. An operator listing
+// above does not refuse, the Platform API's own host included. An operator listing
 // localhost has chosen to reach localhost; the policy does not second-guess
 // it, so the narrower the list, the better.
 //
@@ -85,6 +85,9 @@ var (
 type Spec struct {
 	// AllowHosts lists the relay's permitted targets. Empty permits none.
 	AllowHosts []string
+	// Logger receives the refusals, with the address and reason the caller is
+	// never told. Nil uses slog.Default().
+	Logger *slog.Logger
 }
 
 // Policy is a parsed, validated Spec.
@@ -94,6 +97,7 @@ type Policy struct {
 	// be able to re-open a refused range.
 	netguardPolicy netguard.Policy
 	allow          []targetPattern
+	logger         *slog.Logger
 }
 
 // targetPattern is one allow_hosts entry: a host glob, with an optional
@@ -155,7 +159,10 @@ func globMatch(pattern, s string) bool {
 // are never configurable. Everything the operator writes only ever decides
 // which names may be dialed at all; nothing widens that base.
 func Parse(spec Spec) (*Policy, error) {
-	policy := &Policy{netguardPolicy: netguard.PermitPrivateBlockMetadata()}
+	policy := &Policy{netguardPolicy: netguard.PermitPrivateBlockMetadata(), logger: spec.Logger}
+	if policy.logger == nil {
+		policy.logger = slog.Default()
+	}
 	// Both schemes are ordinary serving modes for a gateway; netguard
 	// defaults to https alone, which would refuse a plain-http one.
 	policy.netguardPolicy.AllowedSchemes = []string{"http", "https"}
@@ -212,13 +219,13 @@ func (p *Policy) DialContext(timeout time.Duration) func(context.Context, string
 
 		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 		if err != nil || len(ips) == 0 {
-			slog.Warn("gateway relay egress: host did not resolve", "host", host)
+			p.logger.Warn("gateway relay egress: host did not resolve", "host", host)
 			return nil, errDialRefused
 		}
 
 		for _, ip := range ips {
 			if err := netguard.Validate(ctx, p.netguardPolicy, ip.IP.String()); err != nil {
-				slog.Warn("gateway relay egress refused",
+				p.logger.Warn("gateway relay egress refused",
 					"host", host, "addr", ip.IP.String(), "reason", classify(ip.IP))
 				return nil, ErrAddressNotAllowed
 			}
@@ -233,7 +240,7 @@ func (p *Policy) DialContext(timeout time.Duration) func(context.Context, string
 			}
 			lastErr = dialErr
 		}
-		slog.Warn("gateway relay egress: no resolved address accepted a connection",
+		p.logger.Warn("gateway relay egress: no resolved address accepted a connection",
 			"host", host, "err", lastErr)
 		return nil, errDialRefused
 	}
@@ -300,7 +307,7 @@ func (p *Policy) CheckTarget(u *url.URL) error {
 // can confirm what is in force without re-reading config.toml.
 func (p *Policy) Describe() string {
 	if len(p.allow) == 0 {
-		return "allow_hosts=[] (nothing is reachable — set allow_hosts to use the gateway relay)"
+		return "allow_hosts=[] (nothing is reachable: set gateway_relay.egress.allow_hosts to use the gateway relay)"
 	}
 	entries := make([]string, 0, len(p.allow))
 	for _, pattern := range p.allow {

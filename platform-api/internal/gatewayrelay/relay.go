@@ -30,7 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/httpkit/httpclient"
 
-	"api-control-plane-bff/internal/egress"
+	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
 )
 
 // ErrBusy is returned when the relay is already at its concurrency ceiling and
@@ -60,10 +60,10 @@ type RelayOptions struct {
 // Relay sends one sanitized request to a resolved gateway target and reads a
 // bounded response back.
 //
-// It holds no reference to the session, the session store, or any token. The
-// only headers it sets are the ones handed to Do, which is what makes it
-// structurally impossible for this path to leak the caller's Platform API
-// bearer token to a tenant-controlled gateway, rather than merely unlikely.
+// It holds no reference to the caller's request or token. The only headers it
+// sets are the ones handed to Do, which is what makes it structurally
+// impossible for this path to leak the caller's bearer token to a
+// tenant-controlled gateway, rather than merely unlikely.
 type Relay struct {
 	client *http.Client
 	opts   RelayOptions
@@ -132,7 +132,7 @@ func NewRelay(opts RelayOptions) (*Relay, error) {
 //
 // The returned error means the relay itself failed. A gateway that answered at
 // all, with any status, is a successful relay and comes back in Relayed.
-func (r *Relay) Do(ctx context.Context, target Target, env Envelope) (Relayed, error) {
+func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, error) {
 	// Host and port are properties of the URL and do not depend on DNS, so
 	// they are settled here rather than in the dialer: this is where a
 	// refusal can still be reported as "this target is not allowed" with the
@@ -142,23 +142,23 @@ func (r *Relay) Do(ctx context.Context, target Target, env Envelope) (Relayed, e
 	if err := r.opts.Egress.CheckTarget(target.URL); err != nil {
 		return Relayed{}, err
 	}
-	method, err := NormalizeMethod(env.Method)
+	method, err := NormalizeMethod(req.Method)
 	if err != nil {
 		return Relayed{}, err
 	}
-	headers, err := SanitizeHeaders(env.Headers)
+	headers, err := SanitizeHeaders(req.Headers)
 	if err != nil {
 		return Relayed{}, err
 	}
-	rawQuery, err := SanitizeQuery(env.Query)
+	rawQuery, err := SanitizeQuery(req.Query)
 	if err != nil {
 		return Relayed{}, err
 	}
-	decodedPath, escapedPath, err := ResolvePath(target.URL.Path, env.Path)
+	decodedPath, escapedPath, err := ResolvePath(target.URL.Path, req.Path)
 	if err != nil {
 		return Relayed{}, err
 	}
-	body, err := env.DecodeBody()
+	body, err := req.DecodeBody()
 	if err != nil {
 		return Relayed{}, err
 	}
@@ -186,18 +186,18 @@ func (r *Relay) Do(ctx context.Context, target Target, env Envelope) (Relayed, e
 	ctx, cancel := context.WithTimeout(ctx, r.opts.RequestTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
+	outbound, err := http.NewRequestWithContext(ctx, method, u.String(), bytes.NewReader(body))
 	if err != nil {
 		return Relayed{}, err
 	}
 	// The sanitized list is the complete set of headers on the wire. Assigning
-	// rather than merging is deliberate: nothing this BFF holds may reach a
-	// gateway by default, so there is no base set to merge into.
-	req.Header = headers
-	req.ContentLength = int64(len(body))
+	// rather than merging is deliberate: nothing the Platform API holds may
+	// reach a gateway, so there is no base set to merge into.
+	outbound.Header = headers
+	outbound.ContentLength = int64(len(body))
 
 	started := time.Now()
-	res, err := r.client.Do(req)
+	res, err := r.client.Do(outbound)
 	if err != nil {
 		return Relayed{}, err
 	}
@@ -293,8 +293,8 @@ func cutStatusLine(status string) (code, phrase string, ok bool) {
 // order keeps the console's rendering from reshuffling between identical calls.
 //
 // These travel as inert JSON strings. None of them is ever written onto the
-// BFF's own response, so a gateway cannot set a cookie on the portal origin or
-// talk the browser into rendering its body as HTML there.
+// Platform API's own response, so a gateway cannot set a cookie on the console
+// origin or talk the browser into rendering its body as HTML there.
 func flattenHeaders(h http.Header) []Header {
 	out := make([]Header, 0, len(h))
 	for name, values := range h {

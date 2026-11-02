@@ -801,6 +801,11 @@ export const OPERATION_SCOPES = {
   ],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
+  InvokeRESTAPIOnGateway: [
+    'ap:rest_api:gateway:manage',
+    'ap:rest_api:gateway:read',
+    'ap:rest_api:manage',
+  ],
   listAgentProxies: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   listAgentProxyAPIKeys: [
     'ap:agent_proxy:api_key:manage',
