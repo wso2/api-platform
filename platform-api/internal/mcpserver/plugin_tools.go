@@ -64,8 +64,21 @@ func (s *Server) addPluginTools(srv *mcp.Server, tools []pdk.MCPTool) error {
 				p.Title = title
 			}
 		}
-		add(s, srv, &mcp.Tool{Name: tool.Name, Title: tool.Title, Description: tool.Description,
-			Annotations: pluginRisks[tool.Risk], InputSchema: schema}, tool.Routes,
+		t := &mcp.Tool{Name: tool.Name, Title: tool.Title, Description: tool.Description,
+			Annotations: pluginRisks[tool.Risk], InputSchema: schema}
+		if tool.Output != nil {
+			// As for the input: a struct value, so the schema is an object.
+			outputType := reflect.TypeOf(tool.Output)
+			if outputType.Kind() != reflect.Struct {
+				return fmt.Errorf("mcp server: plugin tool %q: the output must be a struct value", tool.Name)
+			}
+			outputSchema, err := jsonschema.ForType(outputType, nil)
+			if err != nil {
+				return fmt.Errorf("mcp server: plugin tool %q: output: %w", tool.Name, err)
+			}
+			t.OutputSchema = outputSchema
+		}
+		add(s, srv, t, tool.Routes,
 			func(ctx context.Context, c caller, arguments json.RawMessage) (any, error) {
 				return tool.Run(ctx, pdk.MCPCall{Arguments: arguments, Org: c.org, User: c.user})
 			})
