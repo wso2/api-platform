@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -2163,10 +2164,12 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":     {{"id": "default"}, {"id": "syn-project-abcde234-2"}},
-		"/secrets":      {{"handle": "syn-secret-abcde234-1"}, {"handle": "ops-secret"}},
-		"/pipelines":    {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
-		"/environments": {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
+		"/projects":      {{"id": "default"}, {"id": "syn-project-abcde234-2"}},
+		"/llm-proxies":   {{"id": "syn-llm-proxy-abcde234-1"}},
+		"/llm-providers": {{"id": "syn-llm-provider-abcde234-1"}, {"id": "ops-provider"}},
+		"/secrets":       {{"handle": "syn-secret-abcde234-1"}, {"handle": "ops-secret"}},
+		"/pipelines":     {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
+		"/environments":  {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
 	}}
 }
 
@@ -2190,16 +2193,70 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
+		"llm-proxies/syn-llm-proxy-abcde234-1",
+		"llm-providers/syn-llm-provider-abcde234-1",
 		"secrets/syn-secret-abcde234-1",
 		"pipelines/syn-pipeline-abcde234-1",
 		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:6])
-	require.Len(t, removed, 6)
+	}, stub.deleted[:8])
+	require.Len(t, removed, 8)
 	for _, id := range stub.deleted {
 		require.NotContains(t, id, "default")
 		require.NotContains(t, id, "zzzzz222")
 		require.NotContains(t, id, "ops-secret")
+		require.NotContains(t, id, "ops-provider")
 	}
+}
+
+func TestListCollectionReadsEveryAdvertisedPage(t *testing.T) {
+	ids := []string{"p1", "p2", "p3", "p4", "p5"}
+	var queries []string
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		end := min(offset+2, len(ids))
+		list := make([]map[string]any, 0, 2)
+		for _, id := range ids[offset:end] {
+			list = append(list, map[string]any{"id": id})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(list), "list": list,
+			"pagination": map[string]any{"total": len(ids), "offset": offset, "limit": 2}})
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	items, err := listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/projects")
+	require.NoError(t, err)
+	require.Len(t, items, 5)
+	require.Equal(t, "p5", items[4]["id"])
+	require.Equal(t, []string{"", "limit=2&offset=2", "limit=2&offset=4"}, queries, "paging parameters are sent only once the platform advertises more pages")
+}
+
+func TestListCollectionReadsOnePageWhenThePlatformDoesNotPage(t *testing.T) {
+	requests := 0
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "a"}, {"id": "b"}}})
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	items, err := listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/secrets")
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	require.Equal(t, 1, requests)
+}
+
+func TestListCollectionRefusesAPlatformThatIgnoresTheOffset(t *testing.T) {
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "a"}, {"id": "b"}},
+			"pagination": map[string]any{"total": 10, "offset": 0, "limit": 2}})
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	_, err = listCollection(context.Background(), httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base, "console-token", "/projects")
+	require.ErrorContains(t, err, "did not honour offset")
 }
 
 func TestCloudSweepsCarryOnPastAListingThatFails(t *testing.T) {

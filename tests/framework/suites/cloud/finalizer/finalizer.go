@@ -52,10 +52,17 @@ type Collection struct {
 	List func(ctx context.Context) ([]Leftover, error)
 	// Delete removes one entry by its ID. An entry that is already gone is not an error.
 	Delete func(ctx context.Context, id string) error
-	// Timeout bounds the listing and deleting of this collection within the caller's own
-	// deadline. Zero leaves only the caller's deadline.
+	// Timeout bounds the time this collection may spend, within the caller's own deadline. Each
+	// deletion may use what is left of it. Once it is spent, a deletion still gets MinAttempt, so
+	// no leftover goes without an attempt. Zero leaves only the caller's deadline.
 	Timeout time.Duration
+	// MinAttempt is the time a deletion gets after Timeout is spent. Zero means
+	// DefaultMinAttempt.
+	MinAttempt time.Duration
 }
+
+// DefaultMinAttempt is the time a deletion gets when its collection's Timeout is already spent.
+const DefaultMinAttempt = 15 * time.Second
 
 // Tracker holds the runner suffixes of one run and sweeps the organisation for entries named
 // with them. Every name from the framework's unique generator carries its runner's suffix.
@@ -125,12 +132,14 @@ func (t *Tracker) Sweep(ctx context.Context, collections []Collection) ([]string
 // sweepCollection lists one collection and deletes the entries of the tracked runs, within the
 // collection's own budget.
 func (t *Tracker) sweepCollection(ctx context.Context, collection Collection, suffixes []string) ([]string, []error) {
+	started := time.Now()
+	listCtx := ctx
 	if collection.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, collection.Timeout)
+		listCtx, cancel = context.WithTimeout(ctx, collection.Timeout)
 		defer cancel()
 	}
-	items, err := collection.List(ctx)
+	items, err := collection.List(listCtx)
 	if err != nil {
 		return nil, []error{fmt.Errorf("listing %s: %w", collection.Name, err)}
 	}
@@ -145,13 +154,29 @@ func (t *Tracker) sweepCollection(ctx context.Context, collection Collection, su
 			continue
 		}
 		t.log.Warn("removing a resource the run left behind", "collection", collection.Name, "id", item.ID)
-		if err := collection.Delete(ctx, item.ID); err != nil {
+		if err := t.deleteWithin(ctx, collection, item.ID, started); err != nil {
 			errs = append(errs, err)
 			continue
 		}
 		removed = append(removed, collection.Name+"/"+item.ID)
 	}
 	return removed, errs
+}
+
+// deleteWithin deletes one entry with a deadline of its own, derived from the caller's context so
+// an earlier slow deletion cannot leave this one with an expired context.
+func (t *Tracker) deleteWithin(ctx context.Context, collection Collection, id string, started time.Time) error {
+	if collection.Timeout <= 0 {
+		return collection.Delete(ctx, id)
+	}
+	minAttempt := collection.MinAttempt
+	if minAttempt <= 0 {
+		minAttempt = DefaultMinAttempt
+	}
+	budget := max(collection.Timeout-time.Since(started), minAttempt)
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	return collection.Delete(ctx, id)
 }
 
 // OwnedBy reports whether any name carries one of the suffixes as a whole name segment, so an

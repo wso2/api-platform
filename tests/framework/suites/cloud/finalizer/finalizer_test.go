@@ -160,8 +160,9 @@ func TestTrackIsSafeForConcurrentRunners(t *testing.T) {
 func TestSweepGivesEachCollectionItsOwnBudget(t *testing.T) {
 	var secondListed bool
 	stuck := Collection{
-		Name:    "/stuck",
-		Timeout: 20 * time.Millisecond,
+		Name:       "/stuck",
+		Timeout:    20 * time.Millisecond,
+		MinAttempt: 20 * time.Millisecond,
 		List: func(context.Context) ([]Leftover, error) {
 			return []Leftover{{ID: "a", Names: []string{"x-abcde234"}}}, nil
 		},
@@ -184,4 +185,38 @@ func TestSweepGivesEachCollectionItsOwnBudget(t *testing.T) {
 	_, err := tracker.Sweep(context.Background(), []Collection{stuck, next})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.True(t, secondListed, "a collection that ran out of time must not starve the next one")
+}
+
+func TestSweepTriesEveryLeftoverAfterTheCollectionBudgetIsSpent(t *testing.T) {
+	var attempts []string
+	collection := Collection{
+		Name:       "/slow",
+		Timeout:    30 * time.Millisecond,
+		MinAttempt: 300 * time.Millisecond,
+		List: func(context.Context) ([]Leftover, error) {
+			return []Leftover{
+				{ID: "a", Names: []string{"x-abcde234"}},
+				{ID: "b", Names: []string{"y-abcde234"}},
+				{ID: "c", Names: []string{"z-abcde234"}},
+			}, nil
+		},
+		Delete: func(ctx context.Context, id string) error {
+			attempts = append(attempts, id)
+			if id == "a" {
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return nil
+		},
+	}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{collection})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, []string{"a", "b", "c"}, attempts)
+	require.Equal(t, []string{"/slow/b", "/slow/c"}, removed, "a spent budget must not leave later leftovers with an expired context")
 }

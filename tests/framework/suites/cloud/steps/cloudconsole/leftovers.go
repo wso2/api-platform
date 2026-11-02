@@ -18,11 +18,14 @@ package cloudconsole
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -46,8 +49,8 @@ const finalizerDeleteTimeout = 90 * time.Second
 const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
-// order: a gateway goes before the environment it runs in, and a project before the pipeline it
-// is bound to. idFields name the list-item fields that identify a resource in its own route.
+// order: a gateway goes before the environment it runs in, a project before the pipeline it
+// is bound to, and an LLM proxy before its provider, which goes before the secret it uses. idFields name the list-item fields that identify a resource in its own route.
 var finalizerCollections = []struct {
 	collection string
 	idFields   []string
@@ -55,6 +58,8 @@ var finalizerCollections = []struct {
 }{
 	{collection: "/managed-gateways", idFields: []string{"id"}},
 	{collection: "/projects", idFields: []string{"id"}},
+	{collection: llmProxiesCollection, idFields: []string{"id"}},
+	{collection: llmProvidersCollection, idFields: []string{"id"}},
 	{collection: secretsCollection, idFields: []string{"handle", "id"}},
 	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
 	{collection: environmentsCollection, idFields: []string{"name"}, wait: true},
@@ -178,22 +183,75 @@ func cloudSweeps(client *httpx.Client, base, token string) []finalizer.Collectio
 // errCollectionNotServed marks a collection whose list route the platform answers with 404.
 var errCollectionNotServed = errors.New("the platform does not serve this collection")
 
+// maxListPages bounds how many pages one collection is read through.
+const maxListPages = 100
+
+// listCollection reads every page of a collection. The first request carries no paging
+// parameters; when the platform reports that more items exist, the next pages are read with the
+// limit and offset it advertises.
 func listCollection(ctx context.Context, client *httpx.Client, base, token, collection string) ([]map[string]any, error) {
-	resp, err := client.Do(ctx, httpx.Request{
-		Method:  http.MethodGet,
-		URL:     cloudAPIURL(base, collection),
-		Headers: map[string]string{"Authorization": "Bearer " + token},
-	}, 0, 0)
-	if err != nil {
-		return nil, err
+	var all []map[string]any
+	offset, limit := 0, 0
+	for page := 0; page < maxListPages; page++ {
+		target := cloudAPIURL(base, collection)
+		if page > 0 {
+			target += "?" + url.Values{"limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}}.Encode()
+		}
+		resp, err := client.Do(ctx, httpx.Request{
+			Method:  http.MethodGet,
+			URL:     target,
+			Headers: map[string]string{"Authorization": "Bearer " + token},
+		}, 0, 0)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusNotFound && page == 0 {
+			return nil, errCollectionNotServed
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, responseError(resp)
+		}
+		items, err := listItems(resp)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+
+		paging := listPaging(resp)
+		if paging == nil || len(items) == 0 {
+			return all, nil
+		}
+		if page > 0 && paging.Offset != nil && *paging.Offset != offset {
+			return nil, fmt.Errorf("%s did not honour offset %d, it answered from offset %d", collection, offset, *paging.Offset)
+		}
+		offset += len(items)
+		if paging.Total == nil || offset >= *paging.Total {
+			return all, nil
+		}
+		limit = max(len(items), 1)
+		if paging.Limit != nil && *paging.Limit > 0 {
+			limit = *paging.Limit
+		}
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, errCollectionNotServed
+	return nil, fmt.Errorf("%s holds more than %d pages; refusing to read further", collection, maxListPages)
+}
+
+// pageInfo is the paging block of a list response. A field the platform leaves out is nil.
+type pageInfo struct {
+	Total  *int `json:"total"`
+	Offset *int `json:"offset"`
+	Limit  *int `json:"limit"`
+}
+
+// listPaging returns the paging block of a list response, or nil when the response has none.
+func listPaging(resp *httpx.Response) *pageInfo {
+	var document struct {
+		Pagination *pageInfo `json:"pagination"`
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, responseError(resp)
+	if err := json.Unmarshal(resp.Body, &document); err != nil {
+		return nil
 	}
-	return listItems(resp)
+	return document.Pagination
 }
 
 // deleteLeftover deletes one resource, retrying a refusal for a while: a gateway that is still
