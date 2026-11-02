@@ -148,11 +148,17 @@ describe('ApiCreationProgress', () => {
       expect(screen.getByText('Validating API definition', { selector: 'li p' })).toBeInTheDocument();
 
       act(() => {
-        vi.advanceTimersByTime(3_000);
+        vi.advanceTimersByTime(1_000);
+      });
+      expect(doneSteps()).toBe(2);
+
+      act(() => {
+        vi.advanceTimersByTime(2_000);
       });
 
       expect(doneSteps()).toBe(3);
-      expect(screen.getByText('Deploying proxy', { selector: 'li p' })).toBeInTheDocument();
+      expect(screen.getByText('Saving proxy', { selector: 'li p' })).toBeInTheDocument();
+      expect(stepsList().querySelector('[aria-current="step"]')).toHaveTextContent('Saving proxy');
 
       // However long the server takes, the last step stays open.
       act(() => {
@@ -188,7 +194,13 @@ describe('ApiCreationProgress', () => {
         />,
       );
 
-      expect(screen.getByText('Deploying GraphQL API', { selector: 'li p' })).toBeInTheDocument();
+      act(() => {
+        vi.advanceTimersByTime(3_000);
+      });
+
+      expect(screen.getByText('Creating GraphQL API', { selector: 'li p' })).toBeInTheDocument();
+      expect(screen.getByText('Creating GraphQL API', { selector: '[aria-live="polite"]' })).toBeInTheDocument();
+      expect(screen.getByText('Preparing GraphQL schema and policies')).toBeInTheDocument();
     });
 
     it('starts a retry from the first step again', () => {
@@ -206,6 +218,10 @@ describe('ApiCreationProgress', () => {
       );
 
       expect(doneSteps()).toBe(0);
+      expect(screen.getByRole('progressbar', { name: 'API proxy creation progress' })).toHaveAttribute(
+        'aria-valuenow',
+        '0',
+      );
     });
   });
 });

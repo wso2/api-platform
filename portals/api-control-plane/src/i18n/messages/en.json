@@ -30,13 +30,25 @@
     "defaultMessage": "{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…"
   },
   "api.create.ApiCreationProgress.step.configuring": {
-    "defaultMessage": "Configuring routes and policies"
+    "defaultMessage": "{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}"
   },
   "api.create.ApiCreationProgress.step.connecting": {
     "defaultMessage": "Connecting to backend"
   },
   "api.create.ApiCreationProgress.step.deploying": {
-    "defaultMessage": "{kind, select, graphql {Deploying GraphQL API} other {Deploying proxy}}"
+    "defaultMessage": "{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}"
+  },
+  "api.create.ApiCreationProgress.step.state.active": {
+    "defaultMessage": "In progress",
+    "description": "Screen-reader text for the step currently running."
+  },
+  "api.create.ApiCreationProgress.step.state.done": {
+    "defaultMessage": "Completed",
+    "description": "Screen-reader text for a finished step."
+  },
+  "api.create.ApiCreationProgress.step.state.pending": {
+    "defaultMessage": "Pending",
+    "description": "Screen-reader text for a step not yet started."
   },
   "api.create.ApiCreationProgress.step.validating": {
     "defaultMessage": "Validating API definition"

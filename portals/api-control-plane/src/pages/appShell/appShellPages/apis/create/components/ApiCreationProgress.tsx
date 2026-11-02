@@ -65,7 +65,8 @@ const messages = defineMessages({
   },
   stepConfiguring: {
     id: 'api.create.ApiCreationProgress.step.configuring',
-    defaultMessage: 'Configuring routes and policies',
+    defaultMessage:
+      '{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}',
   },
   stepConnecting: {
     id: 'api.create.ApiCreationProgress.step.connecting',
@@ -73,7 +74,22 @@ const messages = defineMessages({
   },
   stepDeploying: {
     id: 'api.create.ApiCreationProgress.step.deploying',
-    defaultMessage: '{kind, select, graphql {Deploying GraphQL API} other {Deploying proxy}}',
+    defaultMessage: '{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}',
+  },
+  stepStateActive: {
+    id: 'api.create.ApiCreationProgress.step.state.active',
+    defaultMessage: 'In progress',
+    description: 'Screen-reader text for the step currently running.',
+  },
+  stepStateDone: {
+    id: 'api.create.ApiCreationProgress.step.state.done',
+    defaultMessage: 'Completed',
+    description: 'Screen-reader text for a finished step.',
+  },
+  stepStatePending: {
+    id: 'api.create.ApiCreationProgress.step.state.pending',
+    defaultMessage: 'Pending',
+    description: 'Screen-reader text for a step not yet started.',
   },
   stepValidating: {
     id: 'api.create.ApiCreationProgress.step.validating',
@@ -143,8 +159,22 @@ const STEPS = [
 const activeStepFor = (percent: number) =>
   Math.min(STEP_COUNT - 1, Math.floor(percent / (100 / STEP_COUNT)));
 
+/** Read by assistive tech, invisible on screen. */
+const visuallyHidden = {
+  border: 0,
+  clip: 'rect(0 0 0 0)',
+  height: '1px',
+  margin: '-1px',
+  overflow: 'hidden',
+  padding: 0,
+  position: 'absolute',
+  whiteSpace: 'nowrap',
+  width: '1px',
+} as const;
+
 const NODE_SIZE = 64;
 const CORE_SIZE = 150;
+const CORE_SIZE_NARROW = 110;
 
 /**
  * The waiting illustration: a client and a backend with the proxy between
@@ -196,7 +226,8 @@ const ApiProxyFlowArt = ({ complete }: { complete: boolean }) => {
         flex: 1,
         height: 2,
         mb: '25px',
-        mx: '14px',
+        minWidth: 8,
+        mx: { sm: '14px', xs: '6px' },
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -259,11 +290,11 @@ const ApiProxyFlowArt = ({ complete }: { complete: boolean }) => {
           alignItems: 'center',
           display: 'flex',
           flexShrink: 0,
-          height: CORE_SIZE,
+          height: { sm: CORE_SIZE, xs: CORE_SIZE_NARROW },
           justifyContent: 'center',
           mb: '25px',
           position: 'relative',
-          width: CORE_SIZE,
+          width: { sm: CORE_SIZE, xs: CORE_SIZE_NARROW },
         }}
       >
         <Box
@@ -475,6 +506,7 @@ export const ApiCreationProgress = ({
                 <Stack
                   component="li"
                   direction="row"
+                  aria-current={active ? 'step' : undefined}
                   key={step.id}
                   spacing={1.25}
                   sx={{
@@ -506,6 +538,11 @@ export const ApiCreationProgress = ({
                   <Typography color="inherit" variant="body2">
                     <FormattedMessage {...step} values={{ kind: apiKind }} />
                   </Typography>
+                  <Box component="span" sx={visuallyHidden}>
+                    <FormattedMessage
+                      {...(done ? messages.stepStateDone : active ? messages.stepStateActive : messages.stepStatePending)}
+                    />
+                  </Box>
                 </Stack>
               );
             })}
