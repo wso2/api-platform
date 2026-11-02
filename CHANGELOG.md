@@ -33,12 +33,6 @@ release notes.
   OSS README's "Webhook signing secret for Platform API deliveries" section
   states the ordering explicitly.
 
-- **`ApiPortalResponse.webhookSecretConfigured`.** Single-portal reads
-  (`GET /api-portals/{apiPortalId}`, `POST /api-portals`, `PUT
-  /api-portals/{apiPortalId}`) now carry a boolean reporting whether a
-  per-portal signing secret exists for that portal. The plaintext is never
-  returned on reads.
-
 - **PDK methods `APIPortals.EnsureWebhookSecret` / `RotateWebhookSecret`.**
   Used by the apim-saas managed-portals plugin to borrow a per-portal signing
   secret and the per-portal receiver URL at seed time, so a leaked secret in

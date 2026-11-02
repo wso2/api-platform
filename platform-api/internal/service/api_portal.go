@@ -155,29 +155,6 @@ func (s *APIPortalService) RotateWebhookSecret(ctx context.Context, handle, orgI
 	return s.webhookSecrets.RotateWebhookSecret(ctx, handle, orgID)
 }
 
-// withWebhookSecretFlag populates the webhookSecretConfigured bool on a built
-// ApiPortalResponse by asking the per-portal webhook secret service whether a
-// secret row exists. Silent fallback to false when the service is nil (tests)
-// or the lookup fails; the field itself is informational and must not break a
-// successful portal read.
-func (s *APIPortalService) withWebhookSecretFlag(resp *api.ApiPortalResponse, portalUUID string) *api.ApiPortalResponse {
-	if resp == nil {
-		return nil
-	}
-	configured := false
-	if s.webhookSecrets != nil {
-		has, err := s.webhookSecrets.HasSecret(portalUUID)
-		if err != nil {
-			s.slogger.Warn("Failed to probe webhook secret configuration",
-				"portalUUID", portalUUID, "error", err)
-		} else {
-			configured = has
-		}
-	}
-	resp.WebhookSecretConfigured = &configured
-	return resp
-}
-
 // PaginationInfo is the {total, offset, limit} triplet used to build the list-response envelope.
 type PaginationInfo struct {
 	Total  int
@@ -271,7 +248,7 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", portal.ID, "api_portal", orgID, actor)
-	return s.withWebhookSecretFlag(ModelToAPIPortalResponse(portal), portal.ID), nil
+	return ModelToAPIPortalResponse(portal), nil
 }
 
 // validateAPIPortalStatus rejects any value not in the platform-api-defined
@@ -422,7 +399,7 @@ func (s *APIPortalService) GetAPIPortal(handle, orgID string) (*api.ApiPortalRes
 	if portal == nil {
 		return nil, apperror.APIPortalNotFound.New()
 	}
-	return s.withWebhookSecretFlag(ModelToAPIPortalResponse(portal), portal.ID), nil
+	return ModelToAPIPortalResponse(portal), nil
 }
 
 // ListAPIPortals returns a page of API Portals in the organization; Limit/Offset are normalized here.
@@ -523,7 +500,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 	_ = s.auditRepo.Record("UPDATE", portal.ID, "api_portal", orgID, portal.UpdatedBy)
 	// Config may have changed; drop cached AuthProvider so next call rebuilds.
 	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)
-	return s.withWebhookSecretFlag(ModelToAPIPortalResponse(portal), portal.ID), nil
+	return ModelToAPIPortalResponse(portal), nil
 }
 
 // DeleteAPIPortal removes the API Portal identified by its handle within orgID.

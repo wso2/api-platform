@@ -40,12 +40,12 @@ import (
 // EnsureWebhookSecret is the "give me a secret, generate if absent" call the
 // plugin uses on Seed; RotateWebhookSecret is the explicit rotation path.
 type APIPortalWebhookSecretService struct {
-	portalRepo   repository.APIPortalRepository
-	secretRepo   repository.APIPortalWebhookSecretRepository
-	vault        vault.SecretVault
-	grace        time.Duration
-	keyRegistry  *PortalWebhookKeyRegistry
-	slogger      *slog.Logger
+	portalRepo  repository.APIPortalRepository
+	secretRepo  repository.APIPortalWebhookSecretRepository
+	vault       vault.SecretVault
+	grace       time.Duration
+	keyRegistry *PortalWebhookKeyRegistry
+	slogger     *slog.Logger
 }
 
 // NewAPIPortalWebhookSecretService constructs the service. keyRegistry may be
@@ -173,16 +173,4 @@ func (s *APIPortalWebhookSecretService) invalidateKeyRegistry(portalUUID string)
 		return
 	}
 	s.keyRegistry.Invalidate(portalUUID)
-}
-
-// HasSecret reports whether a per-portal webhook signing secret row exists for
-// portalUUID. Does not decrypt — it is a cheap PK existence check, used by the
-// ApiPortalResponse builder to populate the webhookSecretConfigured flag on
-// single-portal read responses.
-func (s *APIPortalWebhookSecretService) HasSecret(portalUUID string) (bool, error) {
-	row, err := s.secretRepo.GetByPortalUUID(portalUUID)
-	if err != nil {
-		return false, err
-	}
-	return row != nil, nil
 }

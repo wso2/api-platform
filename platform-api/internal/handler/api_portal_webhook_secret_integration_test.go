@@ -16,9 +16,9 @@
  */
 
 // Integration tests for POST /api-portals/{apiPortalId}/webhook-secret and
-// the webhookSecretConfigured flag on GET /api-portals/{apiPortalId}. Covers
-// FR-006, FR-007, FR-009, FR-010, and the receiverPath shape described in
-// research.md Decision 5.
+// the response shape of GET /api-portals/{apiPortalId} after one.
+// Covers FR-006, FR-007, FR-009, FR-010, and the receiverPath shape described
+// in research.md Decision 5.
 
 package handler
 
@@ -44,11 +44,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-
 // setupAPIPortalWebhookSecretEnv is a sibling of setupAPIPortalHandlerEnv
 // (api_portal_integration_test.go) that wires the per-portal webhook secret
-// service and the webhook config into the handler so GenerateWebhookSecret
-// and the webhookSecretConfigured flag on GetAPIPortal both work.
+// service into the handler so GenerateWebhookSecret works.
 func setupAPIPortalWebhookSecretEnv(t *testing.T) (http.Handler, *database.DB, func()) {
 	t.Helper()
 
@@ -115,7 +113,7 @@ func createTestAPIPortal(t *testing.T, r http.Handler) string {
 // webhookSecretResp mirrors api.GenerateApiPortalWebhookSecretResponse so the
 // test can assert field names and types without importing the generated DTO.
 type webhookSecretResp struct {
-	Secret      string `json:"secret"`
+	Secret       string `json:"secret"`
 	ReceiverPath string `json:"receiverPath"`
 }
 
@@ -202,27 +200,11 @@ func TestAPIPortalHandler_WebhookSecret_SecondCallRotates(t *testing.T) {
 	}
 }
 
-func TestAPIPortalHandler_WebhookSecret_PortalGetSurfacesConfiguredFlagButNeverPlaintext(t *testing.T) {
+func TestAPIPortalHandler_WebhookSecret_PortalGetNeverSurfacesPlaintext(t *testing.T) {
 	r, _, cleanup := setupAPIPortalWebhookSecretEnv(t)
 	t.Cleanup(cleanup)
 
 	handle := createTestAPIPortal(t, r)
-
-	// Before the first webhook-secret call: the GET response MUST NOT claim
-	// a secret is configured (even if the field is omitted or false, it must
-	// not be true).
-	getBefore := httptest.NewRecorder()
-	r.ServeHTTP(getBefore, apiPortalTestRequest(t, http.MethodGet, apiPortalTestBase+"/"+handle, nil))
-	if getBefore.Code != http.StatusOK {
-		t.Fatalf("GET before: want 200, got %d: %s", getBefore.Code, getBefore.Body.String())
-	}
-	var beforeBody map[string]any
-	if err := json.Unmarshal(getBefore.Body.Bytes(), &beforeBody); err != nil {
-		t.Fatalf("decode before: %v", err)
-	}
-	if v, ok := beforeBody["webhookSecretConfigured"]; ok && v == true {
-		t.Fatalf("webhookSecretConfigured must not be true before any secret has been generated; got %v", beforeBody["webhookSecretConfigured"])
-	}
 
 	// Call webhook-secret to establish the ciphertext row.
 	post := httptest.NewRecorder()
@@ -233,9 +215,8 @@ func TestAPIPortalHandler_WebhookSecret_PortalGetSurfacesConfiguredFlagButNeverP
 	var postResp webhookSecretResp
 	_ = json.Unmarshal(post.Body.Bytes(), &postResp)
 
-	// After the call: GET surfaces webhookSecretConfigured: true, but MUST NOT
-	// surface the plaintext anywhere in the body (not as `secret`, not
-	// embedded in any string).
+	// GET must not leak the plaintext anywhere in the response body — not as a
+	// `secret` field, not embedded in any string.
 	getAfter := httptest.NewRecorder()
 	r.ServeHTTP(getAfter, apiPortalTestRequest(t, http.MethodGet, apiPortalTestBase+"/"+handle, nil))
 	if getAfter.Code != http.StatusOK {
@@ -245,14 +226,9 @@ func TestAPIPortalHandler_WebhookSecret_PortalGetSurfacesConfiguredFlagButNeverP
 	if err := json.Unmarshal(getAfter.Body.Bytes(), &afterBody); err != nil {
 		t.Fatalf("decode after: %v", err)
 	}
-	if v, ok := afterBody["webhookSecretConfigured"]; !ok || v != true {
-		t.Fatalf("FR-010: expected webhookSecretConfigured=true after generate, got %v (present=%v)", v, ok)
-	}
 	if _, present := afterBody["secret"]; present {
 		t.Fatal("FR-010: GET response MUST NOT contain a `secret` field")
 	}
-	// Belt-and-suspenders: the plaintext MUST NOT be embedded anywhere in the
-	// body — not as a field, not inside another string.
 	if bytes.Contains(getAfter.Body.Bytes(), []byte(postResp.Secret)) {
 		t.Fatalf("FR-010: plaintext secret leaked in GET response body: %s", getAfter.Body.String())
 	}

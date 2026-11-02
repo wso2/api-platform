@@ -2493,12 +2493,6 @@ type ApiPortalResponse struct {
 
 	// Url Public URL of the API Portal. Operator-supplied.
 	Url string `json:"url" yaml:"url"`
-
-	// WebhookSecretConfigured True when a per-portal webhook signing secret has been generated for
-	// this portal (via POST /api-portals/{apiPortalId}/webhook-secret). The
-	// secret itself is never returned on reads; this flag only reports
-	// presence.
-	WebhookSecretConfigured *bool `json:"webhookSecretConfigured,omitempty" yaml:"webhookSecretConfigured,omitempty"`
 }
 
 // Application defines model for Application.

@@ -14191,15 +14191,6 @@ components:
           example: "https://acme-portal.example.com"
         metadata:
           $ref: '#/components/schemas/ApiPortalMetadata'
-        webhookSecretConfigured:
-          type: boolean
-          description: |
-            True when a per-portal webhook signing secret has been generated for
-            this portal (via POST /api-portals/{apiPortalId}/webhook-secret). The
-            secret itself is never returned on reads; this flag only reports
-            presence.
-          readOnly: true
-          example: true
         createdAt:
           type: string
           format: date-time
