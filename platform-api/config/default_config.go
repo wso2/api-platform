@@ -165,7 +165,7 @@ func defaultConfig() *Server {
 		},
 		Webhook: Webhook{
 			Enabled:            false,
-			LegacySharedSecret: true,
+			LegacySharedSecret: false,
 			RotationGrace:      10 * time.Minute,
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB

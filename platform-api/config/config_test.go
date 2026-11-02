@@ -856,3 +856,10 @@ func TestValidateWebhookConfig(t *testing.T) {
 		})
 	}
 }
+
+// The legacy shared-secret route is opt-in: a deployment that does not set
+// legacy_shared_secret gets only the per-portal receiver.
+func TestWebhookLegacySharedSecretDefaultsOff(t *testing.T) {
+	assert.False(t, defaultConfig().Webhook.LegacySharedSecret,
+		"legacy_shared_secret must default to false so the shared-secret route is opt-in")
+}

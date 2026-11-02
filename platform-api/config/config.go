@@ -441,10 +441,10 @@ type Webhook struct {
 	// when LegacySharedSecret is true; a per-portal secret keyed off the portal UUID is
 	// used by /webhook/portals/{uuid}/events.
 	Secret string `koanf:"secret"`
-	// LegacySharedSecret keeps the pre-per-portal-secret route (/webhook/events) mounted
-	// and verified against Secret. Default true for one release so existing deployments
-	// keep working; flip to false once every portal subscriber row points at the per-portal
-	// receiver URL, then remove the key in a later release.
+	// LegacySharedSecret mounts the pre-per-portal-secret route (/webhook/events),
+	// verified against Secret. Off by default: an operator whose portals still sign with
+	// the global secret opts in until every portal subscriber row points at the
+	// per-portal receiver URL. The key is removed in a later release.
 	LegacySharedSecret bool `koanf:"legacy_shared_secret"`
 	// RotationGrace is how long the previous per-portal secret remains valid after rotation.
 	// Portal delivery is single-attempt, so without a grace window any event signed between

@@ -38,14 +38,11 @@ release notes.
 ### Deprecated
 
 - **Legacy webhook receiver route `POST /api/internal/v0.9/webhook/events`.**
-  Formally deprecated in this release. The route stays mounted in this release
-  so existing deployments continue to accept deliveries from portals still
-  signing with the global secret — the new config key
-  `platform_api.webhook.legacy_shared_secret` defaults to `true` here. In the
-  next release the default flips to `false` and the route is unmounted unless
-  an operator explicitly opts in. The route code is retained one further
-  release as a reversible emergency fallback. Outright removal is deferred to
-  a later release.
+  Formally deprecated in this release and unmounted by default. The new config
+  key `platform_api.webhook.legacy_shared_secret` defaults to `false`; an
+  operator whose portals still sign with the global secret sets it to `true`
+  to keep the route mounted while they migrate. The route code is retained as
+  a reversible fallback. Outright removal is deferred to a later release.
 
 - **`platform_api.webhook.secret` (the single global signing secret).** Used
   only by the legacy route and only while `legacy_shared_secret=true`. When
@@ -56,7 +53,7 @@ release notes.
 ### Changed
 
 - **Platform API config `platform_api.webhook`.** New keys: `legacy_shared_secret`
-  (bool, default `true` in this release) and `rotation_grace` (duration, default
+  (bool, default `false`) and `rotation_grace` (duration, default
   `10m` — operator-configurable; negative values refuse to start).
 - **Per-portal receiver's in-memory key cache now expires after 60 seconds**
   (previously held until an explicit rotation on the same replica). This
@@ -69,16 +66,18 @@ release notes.
 
 ### Upgrade notes
 
-- Existing deployments continue to work on upgrade without any operator step.
-  Every delivery that was accepted before upgrade is still accepted after
-  upgrade through the legacy route.
+- **Action required for portals signing with the global secret.** The legacy
+  route is unmounted by default, so deliveries to
+  `POST /api/internal/v0.9/webhook/events` return `404` after upgrade. Either
+  migrate every portal before upgrading (below), or set
+  `platform_api.webhook.legacy_shared_secret=true` (with
+  `platform_api.webhook.secret` still configured) to keep the route mounted
+  while migrating.
 - Operators migrate portals to the per-portal receiver by (a) calling
   `POST /api/v0.9/api-portals/{id}/webhook-secret` for each portal on Platform
   API, then (b) registering the returned secret and receiver URL on the
   portal via its admin REST API (any other subscriber flow, UI or API). The
   portal then signs with the per-portal secret and Platform API verifies at
   the matching per-portal URL. No portal restart required.
-- In the next release, `legacy_shared_secret` defaults to `false`. Operators
-  who have not migrated every portal by then should either migrate before
-  upgrading or flip the flag back on in configuration to buy more time; the
-  flag stays available one further release as an emergency fallback.
+- Once every portal is migrated, leave `legacy_shared_secret` unset (or
+  `false`) and drop `platform_api.webhook.secret`.
