@@ -40,10 +40,8 @@ scenarios:
     title: As org B, update and delete org A's REST API, rotate org A's gateway token and delete org A's secret; each returns 404 and nothing changes.
     priority: P0
     ui:
-      status: automated
-      refs:
-        - feature: suites/ui/features/management_portal/tenant_isolation.feature
-          scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
+      status: exempt
+      reason: The console gives org B no way to reach an edit, delete or rotate control for org A's resources, because their pages show not found (TENANT-001). The writes are tested at the API level in IT (decided 2026-11-03).
     it:
       status: automated
       refs:

@@ -22,7 +22,7 @@ Feature: The Management Portal keeps each organization's APIs and gateways to it
   I want another organization's console to neither list nor open my APIs and gateways
   So that what my organization publishes stays inside it
 
-  @TENANT-002 @TENANT-001 @TENANT-003
+  @TENANT-002 @TENANT-001
   Scenario: Journey: another organization can neither find nor open an organization's API and gateway
     Given I generate a unique handle from "tenant-ui-project" and store it as "project"
     And I generate a unique handle from "tenant-ui-api" and store it as "apiA"
