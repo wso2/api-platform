@@ -29,7 +29,6 @@ import { isTestKeyExpired, KEY_COUNTDOWN_TICK_MS, testKeyRemainingMs } from './u
 import { useTestApiKey } from './utils/useTestApiKey';
 import { isApiError } from '@/api/core/errors';
 import { AppPage } from '@/components/AppPage';
-import { ApiDesignerCanvasIllustration } from '@/components/illustrations/ApiDesignerCanvasIllustration';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
@@ -73,12 +72,6 @@ const messages = defineMessages({
     defaultMessage: 'You must deploy the API to start testing.',
     description:
       'Heading of the empty state shown when the API is not deployed anywhere, so there is no endpoint to send requests to.',
-  },
-  noDefinitionTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.noDefinitionTitle',
-    defaultMessage: 'You must add an API definition to start testing.',
-    description:
-      'Heading of the empty state shown when the API has no stored OpenAPI definition, so there are no resources to test.',
   },
   deploymentUnavailable: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.deploymentUnavailable',
@@ -361,57 +354,52 @@ function TestConsole() {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
 
-  /** Nothing to test without a contract; no existing-API upload page exists. */
-  if (definitionMissing) {
-    return (
-      <>
-        <PageTitle>{heading}</PageTitle>
-        <EmptyState
-          illustration={<ApiDesignerCanvasIllustration />}
-          title={intl.formatMessage(messages.noDefinitionTitle)}
-        />
-      </>
-    );
-  }
+  /**
+   * Without a definition the Console view has nothing to render, but the API is
+   * deployed and can still be called, so only the cURL view is offered.
+   */
+  const activeView: ConsoleView = definitionMissing ? 'curl' : view;
 
   return (
     <>
       <PageTitle>
         {heading}
         <PageTitle.SubHeader>
-          {view === 'console' ? (
+          {activeView === 'console' ? (
             <FormattedMessage {...messages.subtitleConsoleView} />
           ) : (
             <FormattedMessage {...messages.subtitleCurlView} />
           )}
         </PageTitle.SubHeader>
-        <PageTitle.Actions>
-          <ToggleButtonGroup
-            aria-label={intl.formatMessage(messages.viewLabel)}
-            exclusive
-            onChange={(_event, next) => next && setView(next as ConsoleView)}
-            size="medium"
-            value={view}
-            color="primary"
-          >
-            <ToggleButton value="console">
-              <Stack alignItems="center" direction="row" spacing={1}>
-                <LucideBookOpenCheck size={16} />
-                <span>
-                  <FormattedMessage {...messages.consoleView} />
-                </span>
-              </Stack>
-            </ToggleButton>
-            <ToggleButton value="curl">
-              <Stack alignItems="center" direction="row" spacing={1}>
-                <SquareTerminal size={16} />
-                <span>
-                  <FormattedMessage {...messages.curlView} />
-                </span>
-              </Stack>
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </PageTitle.Actions>
+        {!definitionMissing && (
+          <PageTitle.Actions>
+            <ToggleButtonGroup
+              aria-label={intl.formatMessage(messages.viewLabel)}
+              exclusive
+              onChange={(_event, next) => next && setView(next as ConsoleView)}
+              size="medium"
+              value={view}
+              color="primary"
+            >
+              <ToggleButton value="console">
+                <Stack alignItems="center" direction="row" spacing={1}>
+                  <LucideBookOpenCheck size={16} />
+                  <span>
+                    <FormattedMessage {...messages.consoleView} />
+                  </span>
+                </Stack>
+              </ToggleButton>
+              <ToggleButton value="curl">
+                <Stack alignItems="center" direction="row" spacing={1}>
+                  <SquareTerminal size={16} />
+                  <span>
+                    <FormattedMessage {...messages.curlView} />
+                  </span>
+                </Stack>
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
       <Stack spacing={2}>
@@ -437,9 +425,9 @@ function TestConsole() {
           )}
         </Card>
 
-        {!spec ? (
+        {!spec && !definitionMissing ? (
           <ErrorState title={intl.formatMessage(messages.definitionUnavailable)} />
-        ) : view === 'console' ? (
+        ) : spec && activeView === 'console' ? (
           <Card sx={{ p: 2 }} variant="outlined">
             <TestConsoleSpecViewer
               baseUrl={baseUrl}
