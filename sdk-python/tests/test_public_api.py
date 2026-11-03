@@ -124,6 +124,7 @@ class PublicAPITests(unittest.TestCase):
             "PROVIDER_STREAM_FAILED": "960002",
             "NO_MODEL_AVAILABLE": "960003",
             "INVALID_REQUEST_HEADER": "960004",
+            "INVALID_REQUEST_URI": "960005",
         }
         for name, wire in expected.items():
             self.assertEqual(getattr(v1alpha2.FaultCode, name), wire, name)

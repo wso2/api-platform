@@ -208,6 +208,9 @@ class FaultCode:
     #: contradicting the body. The caller's failure; the header counterpart of
     #: INVALID_REQUEST_BODY.
     INVALID_REQUEST_HEADER: Final[str] = "960004"
+    #: A request path or query string a policy needed and could not use. The caller's
+    #: failure; the URI counterpart of INVALID_REQUEST_BODY.
+    INVALID_REQUEST_URI: Final[str] = "960005"
 
     # ── Codes the gateway sets — do not emit these ───────────────────────────
     UPSTREAM_UNREACHABLE: Final[str] = "101503"

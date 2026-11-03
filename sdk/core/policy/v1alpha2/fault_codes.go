@@ -390,6 +390,13 @@ const (
 	// in a different place: a client sending a well-formed body with a wrong header. Pair it
 	// with FaultTypeValidation and DirectionRequest.
 	FaultCodeInvalidRequestHeader = "960004"
+	// FaultCodeInvalidRequestURI is a request path or query string a policy needed and could
+	// not use — a query string that does not parse, a path that does not match the shape the
+	// policy rewrites. The failure is the caller's.
+	//
+	// The URI counterpart of FaultCodeInvalidRequestBody and FaultCodeInvalidRequestHeader.
+	// Pair it with FaultTypeValidation and DirectionRequest.
+	FaultCodeInvalidRequestURI = "960005"
 )
 
 // Blocks a policy may allocate in.

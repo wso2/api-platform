@@ -28,6 +28,8 @@ unaffected.
   left to send the request to.
 - `FaultCode.INVALID_REQUEST_HEADER` (`960004`) — a request header a policy needed and
   could not use: missing, malformed, or contradicting the body.
+- `FaultCode.INVALID_REQUEST_URI` (`960005`) — a request path or query string a policy
+  needed and could not use.
 
 ---
 
