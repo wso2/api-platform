@@ -30,6 +30,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/modelgateway"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
@@ -68,6 +69,11 @@ type LLMDeploymentParams struct {
 	Logger        *slog.Logger        // Logger
 	IsUpdate      bool                // True when the caller has resolved this as an update (e.g. from DB lookup)
 	DesiredState  models.DesiredState // Desired deployment state; empty defaults to StateDeployed
+
+	// Provisioning marks the gateway's own write of the default model endpoint at
+	// startup — the one write allowed to create it while provisioning is on. Never
+	// set from a request.
+	Provisioning bool
 }
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
@@ -88,6 +94,9 @@ type LLMDeploymentService struct {
 	// gateway-originated artifact is created here including via the immutable-gateway loader.
 	controlPlaneClient    ArtifactPusher
 	deploymentPushEnabled bool
+
+	// modelsConfig is [controller.models]; see SetModelsConfig.
+	modelsConfig config.ModelsConfig
 }
 
 // NewLLMDeploymentService initializes the service
@@ -119,6 +128,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 		validator:           config.NewLLMValidator(),
 		policyValidator:     policyValidator,
 		transformer:         NewLLMProviderTransformer(store, db, routerConfig, policyVersionResolver),
+		routerConfig:        routerConfig,
 	}
 
 	// Initialize OOB templates
@@ -235,6 +245,19 @@ func (s *LLMDeploymentService) InitializeExistingLLMState() error {
 	for _, cfg := range s.store.GetAllByKind(string(api.LLMProxyConfigurationKindLlmProxy)) {
 		if err := s.hydrateStoredLLMConfig(cfg); err != nil {
 			errs = append(errs, err.Error())
+		}
+	}
+
+	// Each model endpoint's provider_name maps to its inbound template, as each
+	// provider's maps to its own.
+	for _, cfg := range s.store.GetAllByKind(models.KindModelEndpoint) {
+		endpoint, ok := cfg.SourceConfiguration.(api.ModelEndpointConfiguration)
+		if !ok {
+			continue
+		}
+		name := models.ModelEndpointProviderName(cfg.Handle)
+		if err := s.publishProviderTemplateMappingAsLazyResource(name, models.EffectiveInboundTemplate(endpoint.Spec), ""); err != nil {
+			errs = append(errs, fmt.Sprintf("failed to publish provider-template mapping for model endpoint %s: %v", cfg.Handle, err))
 		}
 	}
 
@@ -1116,6 +1139,7 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 		if sc.Spec.Context != nil {
 			configContext = *sc.Spec.Context
 		}
+		configVHost = sc.Spec.Vhost
 	default:
 		restCfg, ok := config.Configuration.(api.RestAPI)
 		if !ok {
@@ -1175,6 +1199,11 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	if isUndeploy, err := s.isLLMProviderUndeployRequest(params); err != nil {
 		return nil, err
 	} else if isUndeploy {
+		// An undeployed provider serves nothing, so every Model with a target on it
+		// would stop resolving. Refused like a delete, naming those Models.
+		if err := s.ensureProviderNotReferenced(handle, "undeploy"); err != nil {
+			return nil, err
+		}
 		params.DesiredState = models.StateUndeployed
 		// DeployedAt left nil — deploy method will set time.Now() to mark undeployment time
 	} else {
@@ -1190,8 +1219,49 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	if err != nil {
 		return nil, err
 	}
+	s.warnUnresolvableDependentModels(handle, params.Logger)
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
+}
+
+// warnUnresolvableDependentModels logs every Model a provider change has left
+// unresolvable. The change is allowed — a provider's owner may change its exposure,
+// its template or its access control — but a Model that targets it then stops being
+// served until it is updated, and the operator who made the change should hear
+// about that from the change, not from the Model's callers.
+func (s *LLMDeploymentService) warnUnresolvableDependentModels(providerHandle string, logger *slog.Logger) {
+	if logger == nil || !s.ModelsEnabled() {
+		return
+	}
+	handles, err := s.ModelsReferencingProvider(providerHandle)
+	if err != nil || len(handles) == 0 {
+		return
+	}
+	lookup := s.modelLookup()
+	for _, handle := range handles {
+		cfg, err := s.GetModelByHandle(handle)
+		if err != nil {
+			continue
+		}
+		source, ok := cfg.SourceConfiguration.(api.ModelConfiguration)
+		if !ok {
+			continue
+		}
+		holder := &models.StoredConfig{Configuration: source}
+		if err := templateengine.RenderSpec(holder, s.deploymentService.secretResolver, nil); err != nil {
+			continue
+		}
+		rendered, ok := holder.Configuration.(api.ModelConfiguration)
+		if !ok {
+			continue
+		}
+		if _, err := modelgateway.Resolve(&rendered, lookup, ModelResolveOptions(s.routerConfig, false)); err != nil {
+			logger.Warn("Provider change leaves a Model that targets it unservable; update the Model",
+				slog.String("provider", providerHandle),
+				slog.String("model", handle),
+				slog.String("reason", err.Error()))
+		}
+	}
 }
 
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
@@ -1204,11 +1274,16 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
+	// Checked before anything is removed: a refused delete must leave the provider
+	// exactly as it was, API keys included.
+	if err := s.ensureProviderNotReferenced(handle, "delete"); err != nil {
+		return cfg, err
+	}
 	// Remove the canonical row first so every replica observes the same delete
 	// via the follow-up event, instead of each writer mutating local state inline.
-	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
-		return cfg, fmt.Errorf("failed to delete LLM provider API keys from database: %w", err)
-	}
+	// DeleteConfig removes the provider's API keys in the same transaction, so a
+	// delete that fails (a proxy still references the provider) keeps them; removing
+	// them beforehand, as this once did, lost them whenever the delete was refused.
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
@@ -1335,9 +1410,7 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: LLM proxy configuration with handle '%s' not found", storage.ErrNotFound, handle)
 	}
-	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
-		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)
-	}
+	// DeleteConfig removes the proxy's API keys in the same transaction as the row.
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}

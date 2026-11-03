@@ -282,6 +282,33 @@ func inheritLLMUpstreamAuth(incoming **api.LLMUpstreamAuth, stored *api.LLMUpstr
 	inheritSameTypeCredential(&(*incoming).Value, &(*incoming).PolicyParams, stored.Value, stored.PolicyParams)
 }
 
+// inheritModelTargetCredentials carries persisted target credentials forward when a
+// Model update omits them.
+//
+// A credential belongs to the target it was stored against, and a target is the
+// pair of its name and its provider: an update that renames a target, or points it
+// at another provider, inherits nothing for it and must supply its own — the
+// stored key was issued for a different provider's route.
+func inheritModelTargetCredentials(incoming *api.ModelConfiguration, storedSource any) {
+	if incoming == nil {
+		return
+	}
+	stored, ok := reinterpret[api.ModelConfiguration](storedSource)
+	if !ok {
+		return
+	}
+	storedAuth := make(map[string]*api.LLMUpstreamAuth, len(stored.Spec.Targets))
+	for _, t := range stored.Spec.Targets {
+		storedAuth[t.Name+"\x00"+t.Provider.Id] = t.Auth
+	}
+	for i := range incoming.Spec.Targets {
+		t := &incoming.Spec.Targets[i]
+		if auth, found := storedAuth[t.Name+"\x00"+t.Provider.Id]; found {
+			inheritLLMUpstreamAuth(&t.Auth, auth)
+		}
+	}
+}
+
 // inheritMCPProxyCredential carries a persisted upstream credential forward when
 // an MCP proxy update omits it.
 func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource any) {
