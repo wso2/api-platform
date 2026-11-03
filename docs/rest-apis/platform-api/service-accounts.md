@@ -18,7 +18,7 @@ curl -X GET https://localhost:9243/api/v0.9/service-accounts \
 
 ```
 
-Returns the organization's service accounts. The client secret is never included, only its masked form. `query` also matches the owner.
+Returns the organization's service accounts. The client secret is never included, only its masked form.
 
 ### Authentication
 

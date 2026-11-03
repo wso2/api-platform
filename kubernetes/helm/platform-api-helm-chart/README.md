@@ -372,8 +372,9 @@ Say the current key is `sa_signing.pem`:
 2. Wait at least `jwksCacheMaxAge`, plus the JWKS refresh interval of any gateway that
    verifies these tokens. Then move `active: true` to the new key and `helm upgrade`. New
    tokens are signed with it, and tokens from the old key still verify.
-3. Wait one `tokenTtl` plus `jwksCacheMaxAge`. Then remove the old entry and its Secret
-   key, and `helm upgrade`.
+3. Wait for the step 2 rollout to finish (`kubectl rollout status` on the Platform API
+   Deployment): until then, old pods still sign with the old key. Then wait one `tokenTtl`
+   plus `jwksCacheMaxAge`, remove the old entry and its Secret key, and `helm upgrade`.
 
 Moving from an RSA key to an EC key takes the same three steps. Before step 2, check that
 every verifier of the JWKS, such as a gateway's key manager, supports the new algorithm.
