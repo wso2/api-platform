@@ -63,6 +63,20 @@ func TestBuildRuntimeConfig_FeatureFlagReachesTheSPA(t *testing.T) {
 	}
 }
 
+// The BFF requests the hub publishing scopes on its own reading of this flag, so the
+// SPA must get that reading too, whatever spelling turned it on.
+func TestBuildRuntimeConfig_HubPublishingFlagReachesTheSPAAsTheBFFReadsIt(t *testing.T) {
+	for set, want := range map[string]string{`"TRUE"`: "true", `"t"`: "true", `"1"`: "true", `"0"`: "false"} {
+		k := loadRuntimeKoanf(t, "[feature_flags]\napi_portal_integration_enabled = "+set+"\n")
+
+		out := buildRuntimeConfig(&Config{}, k)
+
+		if got := out["APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED"]; got != want {
+			t.Errorf("api_portal_integration_enabled = %s reached the SPA as %q, want %q", set, got, want)
+		}
+	}
+}
+
 // A deployment that never mentions a feature must leave it on, which it does by the
 // key being absent and the SPA falling back to its own default.
 func TestBuildRuntimeConfig_AbsentFeatureFlagIsOmitted(t *testing.T) {

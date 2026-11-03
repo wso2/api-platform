@@ -18,6 +18,7 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/knadh/koanf/v2"
@@ -103,6 +104,13 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 	// src/config.env.ts), so there is no runtime value that could disagree with the
 	// prefix the BFF actually strips.
 	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
+
+	// The BFF acts on this flag itself (the hub publishing OIDC scopes), so the SPA
+	// gets the BFF's reading of it as a bare boolean, not the raw spelling: "TRUE"
+	// would otherwise turn the scopes on and leave the pages hidden.
+	if k.Exists(hubPublishingFlagKey) {
+		out[runtimeKey(hubPublishingFlagKey)] = strconv.FormatBool(k.Bool(hubPublishingFlagKey))
+	}
 
 	// Whether the BFF has a billing upstream, as a bare boolean — the URL itself is
 	// never browser-safe. The SPA only needs to know that the same-origin
