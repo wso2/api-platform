@@ -108,6 +108,10 @@ func (a AuditHTTPAuth) AuthHeader() (name, value string, err error) {
 		if a.Basic.Username == "" || a.Basic.Password == "" {
 			return "", "", fmt.Errorf("basic.username and basic.password are both required when type is %q", AuditAuthBasic)
 		}
+		// RFC 7617: the first colon separates the user-id from the password.
+		if strings.Contains(a.Basic.Username, ":") {
+			return "", "", fmt.Errorf("basic.username must not contain a colon")
+		}
 		name, value = "Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(a.Basic.Username+":"+a.Basic.Password))
 	case AuditAuthHeader:
 		if a.Header.Name == "" || a.Header.Value == "" {
@@ -175,6 +179,9 @@ func NormalizeAuditOutputs(outputs []string) ([]string, error) {
 
 // maxAuditFileSizeMB (1 TiB) keeps the rotation threshold in bytes from overflowing.
 const maxAuditFileSizeMB = 1 << 20
+
+// maxAuditRetryBackoff keeps the doubling retry delay from overflowing.
+const maxAuditRetryBackoff = time.Hour
 
 func validateAuditFileConfig(cfg AuditFile) error {
 	path, err := ResolveAuditFilePath(cfg.Path)
@@ -265,6 +272,9 @@ func validateAuditHTTPConfig(cfg AuditHTTP) error {
 	}
 	if cfg.MaxRetries > 0 && cfg.RetryBackoff <= 0 {
 		return fmt.Errorf("retry_backoff must be positive when max_retries > 0, got %s", cfg.RetryBackoff)
+	}
+	if cfg.RetryBackoff > maxAuditRetryBackoff {
+		return fmt.Errorf("retry_backoff must be at most %s, got %s", maxAuditRetryBackoff, cfg.RetryBackoff)
 	}
 
 	if _, _, err := cfg.Auth.AuthHeader(); err != nil {
