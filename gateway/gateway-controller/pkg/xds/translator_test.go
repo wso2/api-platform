@@ -33,6 +33,7 @@ import (
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
@@ -3812,6 +3813,109 @@ func TestCreateWeightedCluster_PeerHostnameMetadata(t *testing.T) {
 			assert.Equal(t, endpoints[i].Host,
 				lb.GetMetadata().GetFilterMetadata()["envoy.lb"].GetFields()["hostname"].GetStringValue())
 		}
+	})
+}
+
+// TestEndpointAuthority: the host name auto host rewrite writes into the Host header
+// keeps a port that is not the scheme's default, and is left unset on the default
+// port, where Envoy's own default (the bare address) is already right.
+func TestEndpointAuthority(t *testing.T) {
+	cases := []struct {
+		name string
+		host string
+		port uint32
+		tls  bool
+		want string
+	}{
+		{"http on its default port", "backend", 80, false, ""},
+		{"https on its default port", "bedrock-runtime.us-east-1.amazonaws.com", 443, true, ""},
+		{"http on another port", "testbench", 3006, false, "testbench:3006"},
+		{"https on another port", "api.example.com", 8443, true, "api.example.com:8443"},
+		{"http on the https port", "backend", 443, false, "backend:443"},
+		{"https on the http port", "backend", 80, true, "backend:80"},
+		{"IPv4 literal", "10.0.0.5", 8080, false, "10.0.0.5:8080"},
+		{"IPv6 literal", "::1", 8080, false, "[::1]:8080"},
+		{"no host", "", 8080, false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, endpointAuthority(tc.host, tc.port, tc.tls))
+		})
+	}
+}
+
+// TestUpstreamEndpointHostnameKeepsNonDefaultPort: every upstream endpoint path sets
+// the endpoint host name, so an upstream on a non-default port receives Host
+// host:port, the Host aws-authentication signs for. Envoy's default for a DNS
+// cluster drops the port, and the upstream's signature check then fails.
+func TestUpstreamEndpointHostnameKeepsNonDefaultPort(t *testing.T) {
+	translator := createTestTranslator()
+	hostnameOf := func(lb *endpoint.LbEndpoint) string { return lb.GetEndpoint().GetHostname() }
+
+	t.Run("a single endpoint keeps its non-default port", func(t *testing.T) {
+		for raw, want := range map[string]string{
+			"http://testbench:3006":                           "testbench:3006",
+			"https://api.example.com:8443/v1":                 "api.example.com:8443",
+			"http://backend:80/v1":                            "",
+			"https://bedrock-runtime.us-east-1.amazonaws.com": "",
+		} {
+			u, err := url.Parse(raw)
+			require.NoError(t, err)
+			endpoints, _, err := translator.processEndpoint(u, nil, nil, "")
+			require.NoError(t, err)
+			assert.Equal(t, want, hostnameOf(endpoints[0].GetLbEndpoints()[0]), raw)
+		}
+	})
+
+	t.Run("each weighted endpoint keeps its non-default port, an explicit host name wins", func(t *testing.T) {
+		endpoints := []models.Endpoint{
+			{Host: "a.internal", Port: 8080},
+			{Host: "b.internal", Port: 80},
+			{Host: "c.internal", Port: 8080, Hostname: "provider.example.com"},
+		}
+		c, err := translator.createWeightedCluster("upstream_plain", endpoints, nil, nil, "")
+		require.NoError(t, err)
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, 3)
+		assert.Equal(t, "a.internal:8080", hostnameOf(lbs[0]))
+		assert.Empty(t, hostnameOf(lbs[1]), "the default port leaves Envoy's default in place")
+		assert.Equal(t, "provider.example.com", hostnameOf(lbs[2]))
+
+		c, err = translator.createWeightedCluster("upstream_secure", []models.Endpoint{
+			{Host: "a.example.com", Port: 443},
+			{Host: "b.example.com", Port: 8443},
+		}, &models.UpstreamTLS{Enabled: true}, nil, "")
+		require.NoError(t, err)
+		lbs = c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		assert.Empty(t, hostnameOf(lbs[0]))
+		assert.Equal(t, "b.example.com:8443", hostnameOf(lbs[1]))
+	})
+
+	t.Run("a model endpoint's loopback keeps its vhost, or else the listener port", func(t *testing.T) {
+		rdc := &models.RuntimeDeployConfig{
+			Metadata: models.Metadata{UUID: "u", Kind: "ModelEndpoint"},
+			Routes:   map[string]*models.Route{},
+			UpstreamClusters: map[string]*models.UpstreamCluster{
+				"on_vhost": {
+					BasePath:  "/provider",
+					Endpoints: []models.Endpoint{{Host: "127.0.0.1", Port: 8080, Hostname: "provider.example.com"}},
+				},
+				"on_default_vhost": {
+					BasePath:  "/provider",
+					Endpoints: []models.Endpoint{{Host: "127.0.0.1", Port: 8080}},
+				},
+			},
+		}
+		_, clusters, err := translator.translateRuntimeConfig(rdc)
+		require.NoError(t, err)
+		got := map[string]string{}
+		for _, c := range clusters {
+			got[c.GetName()] = hostnameOf(c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()[0])
+		}
+		assert.Equal(t, map[string]string{
+			"on_vhost":         "provider.example.com",
+			"on_default_vhost": "127.0.0.1:8080",
+		}, got)
 	})
 }
 

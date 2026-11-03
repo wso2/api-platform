@@ -687,6 +687,8 @@ func (t *Translator) createWeightedCluster(
 		}
 		if ep.Hostname != "" {
 			lb.GetEndpoint().Hostname = ep.Hostname
+		} else {
+			lb.GetEndpoint().Hostname = endpointAuthority(ep.Host, uint32(ep.Port), tlsEnabled)
 		}
 
 		// Each endpoint in a weighted upstream can have a different hostname (round-robin/
@@ -797,10 +799,28 @@ func buildGatewayInternalSinkCluster() *cluster.Cluster {
 	}
 }
 
+// endpointAuthority is the host name auto host rewrite writes into the Host header
+// of a request to an upstream endpoint: host:port when the port is not the scheme's
+// default, or "" when it is, which leaves Envoy's own default, the bare address, in
+// place. That default drops a non-default port, so the upstream would get a Host no
+// direct client sends it (RFC 9110 §7.2), and a request signed for the upstream URL
+// (aws-authentication's SigV4) would fail verification there.
+func endpointAuthority(host string, port uint32, tlsEnabled bool) string {
+	defaultPort := constants.HTTPDefaultPort
+	if tlsEnabled {
+		defaultPort = constants.HTTPSDefaultPort
+	}
+	if host == "" || port == defaultPort {
+		return ""
+	}
+	return net.JoinHostPort(host, strconv.FormatUint(uint64(port), 10))
+}
+
 // setClusterEndpointHostname sets the host name of a single-endpoint cluster's
-// endpoint, which auto host rewrite then writes into the Host header. A no-op for
-// an empty name, which is every endpoint but a model endpoint's loopback to a
-// provider route served on a vhost of its own.
+// endpoint, which auto host rewrite then writes into the Host header, in place of
+// the endpointAuthority processEndpoint gave it. A no-op for an empty name, which
+// is every endpoint but a model endpoint's loopback to a provider route served on
+// a vhost of its own.
 func setClusterEndpointHostname(c *cluster.Cluster, hostname string) {
 	if hostname == "" || c == nil || c.LoadAssignment == nil {
 		return
@@ -3144,6 +3164,8 @@ func (t *Translator) processEndpoint(
 			},
 		}},
 	}
+	localityLbEndpoints.LbEndpoints[0].GetEndpoint().Hostname =
+		endpointAuthority(upstreamURL.Hostname(), port, upstreamURL.Scheme == constants.SchemeHTTPS)
 
 	setEndpointPeerHostname(localityLbEndpoints.LbEndpoints[0], upstreamURL.Hostname())
 

@@ -227,7 +227,8 @@ type Endpoint struct {
 	// endpoint, which auto host rewrite writes into the Host header. It exists for
 	// an endpoint whose address is not the name it must be addressed by: the model
 	// endpoint reaches a provider's route over the gateway's own loopback address,
-	// and the provider's route is matched by its vhost, not by 127.0.0.1.
+	// and the provider's route is matched by its vhost, not by 127.0.0.1. Unset,
+	// the router uses Host, with Port when it is not the scheme's default.
 	Hostname string
 }
 
