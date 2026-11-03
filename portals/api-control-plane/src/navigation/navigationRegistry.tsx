@@ -588,6 +588,8 @@ export const navigationRegistry: NavigationDefinition[] = [
         id: 'manage-service-accounts',
         label: 'Service Accounts',
         order: 1,
+        // The page is for administrators; others would only see "forbidden".
+        permission: 'createServiceAccount',
         to: orgLevelTo((orgHandle) => routes.serviceAccounts(orgHandle)),
         match: matchRoutes(routes.serviceAccounts()),
       },

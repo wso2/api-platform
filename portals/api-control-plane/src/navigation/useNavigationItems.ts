@@ -21,6 +21,7 @@ import { useLocation } from 'react-router-dom';
 
 import { isFeatureDisabled } from '../config/features';
 import { runtimeConfig } from '../config/runtime';
+import { usePermissions } from '../permissions/PermissionContext';
 import {
   useConsoleScope,
   type ConsoleScope,
@@ -138,6 +139,7 @@ export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
   const location = useLocation();
   const extensions = useExtensions();
+  const { decide } = usePermissions();
 
   return useMemo(() => {
     // Host-injected extensions are converted to the same NavigationDefinition
@@ -251,6 +253,7 @@ export const useNavigationItems = (): NavigationItem[] => {
       if (!isFeatureEnabled(definition)) return undefined;
       if (isDisabled(definition)) return undefined;
       if (!(definition.isVisible?.(scope) ?? true)) return undefined;
+      if (definition.permission && !decide(definition.permission).allowed) return undefined;
 
       const to = definition.to(scope);
       if (!to) return undefined;
@@ -297,7 +300,7 @@ export const useNavigationItems = (): NavigationItem[] => {
           combinedRegistry.find((item) => item.id === right?.id)?.order ?? 0;
         return leftOrder - rightOrder;
       }) as NavigationItem[];
-  }, [location.pathname, scope, extensions]);
+  }, [location.pathname, scope, extensions, decide]);
 };
 
 /**

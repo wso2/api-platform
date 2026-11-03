@@ -19,6 +19,7 @@
 import type { ReactNode } from 'react';
 
 import type { FeatureId } from '../config/features';
+import type { PermissionOperation } from '../permissions/evaluate';
 import type { ConsoleScope } from '../scope/ConsoleScopeProvider';
 import type { RequiredScope } from '../scope/ScopeGate';
 
@@ -47,6 +48,11 @@ export type NavigationDefinition = {
   level?: NavigationLevel;
   match?: (pathname: string) => boolean;
   order: number;
+  /**
+   * Operation the user must be allowed for the item to show, decided as `<Can>`
+   * decides it, so the item never leads to a page that only says "forbidden".
+   */
+  permission?: PermissionOperation;
   /**
    * Pins this item to the sidebar's fixed bottom section (`Sidebar.Footer`)
    * instead of the scrolling main nav list. Used for Settings, which should
