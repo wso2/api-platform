@@ -42,6 +42,7 @@ var registryKinds = []string{
 	models.KindLlmProxy,
 	models.KindAgent,
 	models.KindGraphQLApi,
+	models.KindModelEndpoint,
 }
 
 // envoyTranslatorExcludedKinds are the kinds that must NOT be wired into the
@@ -99,6 +100,15 @@ func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployCon
 			return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
 		}
 		return r.graphqlT.Transform(cfg)
+	case models.KindModelEndpoint:
+		// A gateway built without the model endpoint compiler serves nothing for
+		// an endpoint, rather than routing it down a path that cannot build it.
+		return r.modelEndpointT.Transform(cfg)
+	case models.KindModel:
+		// Compiled into its endpoints' configs, never on its own; see
+		// models.IsContributingKind.
+		return nil, fmt.Errorf("%w: %s contributes to its model endpoints and has no runtime config of its own",
+			ErrUnsupportedKind, cfg.Kind)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
 	}
@@ -106,13 +116,20 @@ func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployCon
 
 // Registry dispatches StoredConfig → RuntimeDeployConfig by API kind.
 type Registry struct {
-	restT    *RestAPITransformer
-	llmT     *LLMTransformer
-	agentT   *AgentTransformer
-	graphqlT *GraphQLAPITransformer
+	restT          *RestAPITransformer
+	llmT           *LLMTransformer
+	agentT         *AgentTransformer
+	graphqlT       *GraphQLAPITransformer
+	modelEndpointT *ModelEndpointTransformer
 }
 
 // NewRegistry creates a new transformer Registry.
 func NewRegistry(restT *RestAPITransformer, llmT *LLMTransformer, agentT *AgentTransformer, graphqlT *GraphQLAPITransformer) *Registry {
 	return &Registry{restT: restT, llmT: llmT, agentT: agentT, graphqlT: graphqlT}
+}
+
+// SetModelEndpointTransformer wires the model endpoint compiler. Unset, a model
+// endpoint compiles to an empty runtime config.
+func (r *Registry) SetModelEndpointTransformer(t *ModelEndpointTransformer) {
+	r.modelEndpointT = t
 }
