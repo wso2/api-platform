@@ -22,6 +22,24 @@ import { runtimeConfig } from '../config/runtime';
 // product whose subscription drives APIP gateway provisioning.
 const PRODUCT = 'api-platform';
 
+// Placeholder origin a candidate path is resolved against, to see whether the
+// URL parser keeps it on this origin.
+const PROBE_ORIGIN = 'https://same-origin.invalid';
+
+/**
+ * Whether `path` stays on this page's origin. A leading `/` alone does not
+ * decide it: the URL parser reads `//host`, `/\host`, and a tab or newline
+ * between the slashes as another host. A value it cannot parse is not a path.
+ */
+const isSameOriginPath = (path: string): boolean => {
+  if (!path.startsWith('/')) return false;
+  try {
+    return new URL(path, PROBE_ORIGIN).origin === PROBE_ORIGIN;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * The same-origin path billing is reached through: `<proxy base>/billing`, the
  * way the BFF names its upstreams (`{proxy_prefix}/{name}`) and a gateway in
@@ -33,8 +51,7 @@ const PRODUCT = 'api-platform';
  */
 const billingBase = (): string => {
   const base = runtimeConfig.platformApiBaseUrl.replace(/\/+$/, '');
-  const sameOrigin = base.startsWith('/') && !base.startsWith('//');
-  return `${sameOrigin ? base : '/proxy'}/billing`;
+  return `${isSameOriginPath(base) ? base : '/proxy'}/billing`;
 };
 
 /** The organization's billing record, as far as anything in this console reads it. */

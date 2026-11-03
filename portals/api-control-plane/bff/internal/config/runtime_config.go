@@ -52,7 +52,7 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 	}
 
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
-	// ProductActivation can call it (same-origin, via /proxy/billing/...)
+	// ProductActivation can call it (same-origin, via {proxy_prefix}/billing/...)
 	// without ever knowing the real billing service URL. Absent (defaults
 	// false client-side) for every deployment that doesn't configure one —
 	// every standalone deployment today.

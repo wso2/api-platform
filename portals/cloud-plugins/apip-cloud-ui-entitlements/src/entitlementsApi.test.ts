@@ -57,14 +57,31 @@ describe('fetchEntitlementSummary', () => {
       { platformApiBaseUrl: '//platform.example.com' },
       '/proxy/billing-entitlement/summary?product=api-platform',
     ],
+    [
+      { platformApiBaseUrl: '/\\platform.example.com' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [
+      { platformApiBaseUrl: '/\t/platform.example.com' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [{ platformApiBaseUrl: '//[' }, '/proxy/billing-entitlement/summary?product=api-platform'],
   ])('reads the summary under the proxy base for %j', async (config, expected) => {
     stubRuntimeConfig(config);
-    const fetchMock = vi.fn().mockResolvedValue(okResponse({ entitlements: [] }));
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ products: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
     await fetchEntitlementSummary();
 
     expect(fetchMock).toHaveBeenCalledWith(expected, expect.anything());
+  });
+
+  it('resolves the summary it read', async () => {
+    stubRuntimeConfig({ platformApiBaseUrl: '/api-management/proxy' });
+    const summary = { products: [] };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(summary)));
+
+    await expect(fetchEntitlementSummary()).resolves.toEqual(summary);
   });
 
   it('resolves null when the read fails, so a failed read never locks anyone out', async () => {

@@ -61,6 +61,24 @@ export function upgradeUrl(organization: string | undefined): string | undefined
   return `${base}/cloud/bijira/upgrade?orgId=${encodeURIComponent(organization)}`;
 }
 
+// Placeholder origin a candidate path is resolved against, to see whether the
+// URL parser keeps it on this origin.
+const PROBE_ORIGIN = 'https://same-origin.invalid';
+
+/**
+ * Whether `path` stays on this page's origin. A leading `/` alone does not
+ * decide it: the URL parser reads `//host`, `/\host`, and a tab or newline
+ * between the slashes as another host. A value it cannot parse is not a path.
+ */
+const isSameOriginPath = (path: string): boolean => {
+  if (!path.startsWith('/')) return false;
+  try {
+    return new URL(path, PROBE_ORIGIN).origin === PROBE_ORIGIN;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * The same-origin path this console's named upstreams sit under: `/proxy`
  * behind the BFF (`{proxy_prefix}/{name}`), `/api-management/proxy` behind a
@@ -76,5 +94,5 @@ export function proxyBase(): string {
   const base = (config.PLATFORM_API_BASE_URL || config.platformApiBaseUrl || '')
     .trim()
     .replace(/\/+$/, '');
-  return base.startsWith('/') && !base.startsWith('//') ? base : '/proxy';
+  return isSameOriginPath(base) ? base : '/proxy';
 }

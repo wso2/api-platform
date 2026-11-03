@@ -81,7 +81,8 @@ describe('getBillingOrganization', () => {
    * proxy: `/proxy/billing` behind the BFF, `/api-management/proxy/billing`
    * behind a gateway that serves the console under a path. A Platform API URL
    * that is not a same-origin path has no billing route, so billing stays on
-   * the BFF's default.
+   * the BFF's default. That includes values that start with `/` but that the
+   * URL parser reads as another host, and values it cannot parse.
    */
   it.each([
     ['/proxy', '/proxy/billing/organization?product=api-platform'],
@@ -89,6 +90,9 @@ describe('getBillingOrganization', () => {
     ['', '/proxy/billing/organization?product=api-platform'],
     ['https://localhost:9243', '/proxy/billing/organization?product=api-platform'],
     ['//platform.example.com', '/proxy/billing/organization?product=api-platform'],
+    ['/\\platform.example.com', '/proxy/billing/organization?product=api-platform'],
+    ['/\t/platform.example.com', '/proxy/billing/organization?product=api-platform'],
+    ['//[', '/proxy/billing/organization?product=api-platform'],
   ])('reads billing under the proxy base for platformApiBaseUrl %j', async (base, expected) => {
     vi.spyOn(runtimeConfig, 'platformApiBaseUrl', 'get').mockReturnValue(base);
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse({}));
