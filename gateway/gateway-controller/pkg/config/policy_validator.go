@@ -291,6 +291,155 @@ func (pv *PolicyValidator) ValidateLLMProviderPolicies(cfg *api.LLMProviderConfi
 		cfg.Spec.GlobalFaultPolicies, cfg.Spec.OperationFaultPolicies)
 }
 
+// Definitions returns the loaded policy definitions, keyed "name|version". The map is
+// shared and must not be modified.
+func (pv *PolicyValidator) Definitions() map[string]models.PolicyDefinition {
+	return pv.policyDefinitions
+}
+
+// ValidateModelPolicies validates a Model's policies: its policies and fault
+// policies like any LLM global policy, and its routing policy, whose parameters
+// are the policy's own as written and are validated against its schema.
+//
+// As for an LLM proxy's policies, what is validated is what the author wrote: the
+// inbound template's extraction fields, which the compiler merges into the router's
+// parameters, are the gateway's, and a router whose schema forbids additional
+// properties would refuse them.
+func (pv *PolicyValidator) ValidateModelPolicies(cfg *api.ModelConfiguration) []ValidationError {
+	var errors []ValidationError
+	if cfg.Spec.Policies != nil {
+		for i, policy := range *cfg.Spec.Policies {
+			fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
+		}
+	}
+	if cfg.Spec.FaultPolicies != nil {
+		for i, policy := range *cfg.Spec.FaultPolicies {
+			fieldPath := fmt.Sprintf("spec.faultPolicies[%d]", i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
+		}
+	}
+	if routing := cfg.Spec.Routing; routing != nil {
+		policyDef, errs := pv.validatePolicyRef(routing.Policy.Name, routing.Policy.Version, "spec.routing.policy")
+		errors = append(errors, errs...)
+		if len(errs) == 0 && policyDef.Parameters != nil {
+			// Copied, so coercion never touches the Model being saved.
+			params := make(map[string]interface{})
+			if routing.Params != nil {
+				for k, v := range *routing.Params {
+					params[k] = v
+				}
+			}
+			coerceParamsBySchema(params, *policyDef.Parameters)
+			errors = append(errors, pv.validatePolicyParams(params, *policyDef.Parameters, "spec.routing.params", nil)...)
+		}
+	}
+	return errors
+}
+
+// ValidateModelEndpointPolicies validates a model endpoint's policy references: its
+// policies and fault policies like any API-level policy, and every transformer
+// entry against the contract a transformer must meet.
+//
+// A transformer entry names an installed policy, so no arbitrary code is loaded.
+// The policy must accept the providerId parameter the compiler injects — it is
+// how the transformer names the provider's cluster — and the entry's params,
+// with every placeholder filled by a stand-in value and providerId set, must pass
+// the policy's own schema. Whether the policy reads the endpoint's inbound format
+// is not something a definition states, so it is not checked here.
+func (pv *PolicyValidator) ValidateModelEndpointPolicies(cfg *api.ModelEndpointConfiguration) []ValidationError {
+	var errors []ValidationError
+	for _, list := range []struct {
+		field    string
+		policies *[]api.Policy
+	}{{"spec.policies", cfg.Spec.Policies}, {"spec.faultPolicies", cfg.Spec.FaultPolicies}} {
+		if list.policies == nil {
+			continue
+		}
+		for i, policy := range *list.policies {
+			fieldPath := fmt.Sprintf("%s[%d]", list.field, i)
+			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
+				errors = append(errors, err)
+				continue
+			}
+			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
+		}
+	}
+	if cfg.Spec.Transformers == nil {
+		return errors
+	}
+	for i, entry := range *cfg.Spec.Transformers {
+		fieldPath := fmt.Sprintf("spec.transformers[%d]", i)
+		typ := strings.TrimSpace(entry.Type)
+		if typ == "" || typ == transformerTypeNone || entry.Version == nil {
+			continue
+		}
+		policyDef, errs := pv.validatePolicyRef(typ, strings.TrimSpace(*entry.Version), fieldPath)
+		if len(errs) > 0 {
+			errors = append(errors, errs...)
+			continue
+		}
+		if !definesParameter(policyDef, providerIDParam) {
+			errors = append(errors, ValidationError{Field: fieldPath + ".type", Message: fmt.Sprintf(
+				"policy '%s' cannot be a transformer: it declares no '%s' parameter, which names the provider it "+
+					"routes to", typ, providerIDParam)})
+			continue
+		}
+		if policyDef.Parameters == nil {
+			continue
+		}
+		params := map[string]interface{}{providerIDParam: "provider"}
+		if entry.Params != nil {
+			for k, v := range *entry.Params {
+				params[k] = withPlaceholderStandIns(v)
+			}
+		}
+		coerceParamsBySchema(params, *policyDef.Parameters)
+		errors = append(errors, pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params", nil)...)
+	}
+	return errors
+}
+
+// definesParameter reports whether a policy definition declares a parameter.
+func definesParameter(def *models.PolicyDefinition, name string) bool {
+	if def == nil || def.Parameters == nil {
+		return false
+	}
+	props, _ := (*def.Parameters)["properties"].(map[string]interface{})
+	_, ok := props[name]
+	return ok
+}
+
+// withPlaceholderStandIns replaces each {apiVersion} placeholder with a stand-in
+// value, so a parameter that will hold a version validates as one.
+func withPlaceholderStandIns(v interface{}) interface{} {
+	switch val := v.(type) {
+	case string:
+		return knownParamPlaceholder.ReplaceAllString(val, "v1")
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(val))
+		for k, inner := range val {
+			out[k] = withPlaceholderStandIns(inner)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(val))
+		for i, inner := range val {
+			out[i] = withPlaceholderStandIns(inner)
+		}
+		return out
+	}
+	return v
+}
+
 // ValidateLLMProxyPolicies validates all policy references in an LLM proxy configuration.
 // See ValidateLLMProviderPolicies for the rationale on validating the source configuration.
 func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfiguration) []ValidationError {
