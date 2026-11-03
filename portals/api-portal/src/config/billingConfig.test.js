@@ -183,6 +183,13 @@ test('a value that is not a Collector Application Id stops the portal from start
     assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
 });
 
+test('a collector id whose application is not named as Moesif names one stops the portal from starting', () => {
+    // Otherwise the check that both keys are for one application would be skipped.
+    const { status, stderr } = boot(keysFor(segment({ app: 'not-an-application' }), managementKeyFor('6447:999')));
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
+});
+
 test('Moesif keys in config stop a multi-organization portal from starting', () => {
     const { status, stderr } = boot(MULTI_ORGANIZATION + MOESIF_KEYS);
     assert.equal(status, 1);

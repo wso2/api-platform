@@ -41,6 +41,7 @@
  * (moveToKeysApplication). What was made in the earlier application stays there: retire skips it.
  */
 
+const db = require('../../db/driver');
 const billingApiPlanDao = require('../../dao/billingApiPlanDao');
 const billingConfigurationDao = require('../../dao/billingConfigurationDao');
 const subscriptionPlanDao = require('../../dao/subscriptionPlanDao');
@@ -270,11 +271,13 @@ async function moveBilling(orgId, conn, connector) {
         done.push((await connector.connectPayments()).undo);
         const endpoint = await connector.ensureMoesifEvents(await connector.payments.listEventEndpoints());
         if (endpoint.undo) done.push(endpoint.undo);
-        await billingConfigurationDao.setMoesifApplication(orgId, {
+        // One transaction: when any part of recording fails, nothing is recorded before the
+        // steps above are undone, so the next paid plan tries the move again.
+        await db.withTransaction((t) => billingConfigurationDao.setMoesifApplication(orgId, {
             application: connector.application,
             earlierApplications: [...new Set([conn.moesifApplication, ...(conn.moesifEarlierApplications || [])])]
                 .filter((app) => app && app !== connector.application),
-        });
+        }, t));
         logger.info('Billing moved to the Moesif application of the portal\'s keys',
             { orgId, from: conn.moesifApplication, to: connector.application });
     } catch (err) {

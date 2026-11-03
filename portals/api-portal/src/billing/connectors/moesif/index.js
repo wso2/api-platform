@@ -144,11 +144,20 @@ function create(conn) {
 
         /**
          * Connects the Moesif application to the payment provider with this configuration's key,
-         * replacing any connection. Resolves to { undo }: undo removes the connection.
+         * replacing any connection. Resolves to { undo }: undo removes the connection, or, when the
+         * application was connected before (an application billing used earlier), saves it again
+         * as it was (on or off), so plans still sold there keep reaching the payment provider.
          */
         async connectPayments() {
+            const before = await moesif.getPartnerAccount(slug);
+            const wasConnected = Boolean(before && before.partner_account);
+            const wasOn = wasConnected && payments.moesifPartnerAccountEnabled(before);
             await moesif.savePartnerAccount(slug, payments.moesifPartnerAccount(true));
-            return { undo: () => moesif.deletePartnerAccount(slug) };
+            return {
+                undo: wasConnected
+                    ? () => moesif.savePartnerAccount(slug, payments.moesifPartnerAccount(wasOn))
+                    : () => moesif.deletePartnerAccount(slug),
+            };
         },
 
         /**

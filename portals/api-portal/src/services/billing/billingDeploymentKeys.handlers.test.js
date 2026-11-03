@@ -191,6 +191,32 @@ const db = new Database(${JSON.stringify('DB_FILE')});
         out.settingsAfterRefusedMove = stored();
         out.endpointsUnchangedAfterRefusedMove = JSON.stringify(state.endpoints.map((e) => e.id)) === JSON.stringify(endpointsBeforeMove);
 
+        // The new application is connected to Stripe already, as one billing used earlier is: a
+        // refused move leaves it connected.
+        const thirdKey = ${JSON.stringify(THIRD_KEYS.moesifManagementKey)};
+        state.partners[thirdKey] = true;
+        stripeRefusesEndpoints = true;
+        out.refusedMoveWhenConnected = await catalogService.build(${JSON.stringify(ORG)}, await configurationDao.getWithSecrets(${JSON.stringify(ORG)}), pairs)
+            .then(() => 'built', (err) => err.name);
+        stripeRefusesEndpoints = false;
+        out.moesifCallsOnRefusedMoveWhenConnected = moesifCalls.splice(0);
+        out.connectedAfterRefusedMove = Boolean(state.partners[thirdKey]);
+        delete state.partners[thirdKey];
+
+        // Recording the new application fails after its write: the write is rolled back with the
+        // rest of the move, so the next paid plan moves billing again.
+        const record = configurationDao.setMoesifApplication;
+        configurationDao.setMoesifApplication = async (...args) => {
+            await record(...args);
+            throw new Error('database unavailable');
+        };
+        out.failedRecord = await catalogService.build(${JSON.stringify(ORG)}, await configurationDao.getWithSecrets(${JSON.stringify(ORG)}), pairs)
+            .then(() => 'built', (err) => err.name);
+        configurationDao.setMoesifApplication = record;
+        moesifCalls.splice(0);
+        out.settingsAfterFailedRecord = stored();
+        out.endpointsUnchangedAfterFailedRecord = JSON.stringify(state.endpoints.map((e) => e.id)) === JSON.stringify(endpointsBeforeMove);
+
         const built = await catalogService.build(${JSON.stringify(ORG)}, await configurationDao.getWithSecrets(${JSON.stringify(ORG)}), pairs);
         await catalogService.saveApiPlans(built.apiPlans);
         out.moesifCallsOnMove = moesifCalls.splice(0);
@@ -359,6 +385,22 @@ test('when Stripe refuses the new application\'s endpoint, the move is undone an
     assert.deepEqual(r.moesifCallsOnRefusedMove, [['connect', THIRD_KEYS.moesifManagementKey], ['disconnect', THIRD_KEYS.moesifManagementKey]]);
     assert.deepEqual(r.settingsAfterRefusedMove, r.settingsBeforeMove);
     assert.ok(r.endpointsUnchangedAfterRefusedMove);
+});
+
+test('a refused move to an application already connected to Stripe leaves it connected', () => {
+    const r = promoted();
+    assert.equal(r.refusedMoveWhenConnected, 'BillingCatalogError');
+    const key = THIRD_KEYS.moesifManagementKey;
+    assert.deepEqual(r.moesifCallsOnRefusedMoveWhenConnected, [['connect', key], ['connect', key]],
+        'the connection is saved again as it was, not removed');
+    assert.ok(r.connectedAfterRefusedMove);
+});
+
+test('when recording the new application fails, nothing of the move is kept', () => {
+    const r = promoted();
+    assert.equal(r.failedRecord, 'BillingCatalogError');
+    assert.deepEqual(r.settingsAfterFailedRecord, r.settingsBeforeMove, 'the application billing uses is unchanged');
+    assert.ok(r.endpointsUnchangedAfterFailedRecord, "Moesif's endpoint for the new application is removed again");
 });
 
 test('removing billing after a move leaves the earlier application\'s plans and connection, and removes every endpoint', () => {

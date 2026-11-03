@@ -40,7 +40,7 @@ function decodeSegment(segment) {
  */
 function collectorApplication(applicationId) {
     const claims = decodeSegment(String(applicationId || '').trim().split('.')[0]);
-    return claims && typeof claims.app === 'string' && claims.app ? claims.app : null;
+    return claims && typeof claims.app === 'string' && APPLICATION.test(claims.app) ? claims.app : null;
 }
 
 /** The Moesif application a management key is for (its `app` claim), or null when it does not say. */
