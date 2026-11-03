@@ -31,6 +31,7 @@ import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
+import { useAuth } from '../../contexts/auth/AuthProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useResourceLimits } from '../../hooks/useResourceLimits';
 import { usePageTitle } from '../../navigation/usePageTitle';
@@ -75,6 +76,7 @@ export default function AppLayout() {
     readOnlyBanner,
     setReadOnly,
   } = useResourceLimits();
+  const auth = useAuth();
 
   const resourceLimits = useMemo(
     () => ({
@@ -140,6 +142,7 @@ export default function AppLayout() {
     gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHostOverride || undefined,
     resourceLimits,
     resources,
+    user: auth.user ? { email: auth.user.email, name: auth.user.name } : undefined,
   };
 
   return (

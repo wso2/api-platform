@@ -199,6 +199,23 @@ export const HEADER_ACTIONS_SLOT = 'header.actions';
 export const APP_GATE_SLOT = 'app.gate';
 
 /**
+ * Slot for a source of the name the Organization home page greets the signed-in
+ * user by ("Hello, <name>").
+ *
+ * The portal greets by the organization's display name. A deployment that knows
+ * the person's own name registers an entry here; its `resolveName` may answer
+ * nothing when it has none, in which case the next entry is tried and, failing
+ * all, the organization name stays.
+ * A deployment that registers nothing here greets exactly as it always did.
+ */
+export const HOME_GREETING_SLOT = 'home.greeting';
+
+/** A `home.greeting` entry — see `HOME_GREETING_SLOT`. Nothing renders; it only supplies a name. */
+export type ApiControlPlaneGreetingSource = SlotEntry & {
+  resolveName: (port: CloudHostPort) => string | null | undefined;
+};
+
+/**
  * A headless `app.gate` entry — see `APP_GATE_SLOT`. Like a header action, it
  * carries only `render`, because it has no page and no nav presence; declaring
  * `routePath`/`level` would claim otherwise. `render` is called with the live
@@ -271,7 +288,8 @@ export type ApiControlPlaneCloudEntry =
   // render }` — so this arm admits nothing new on its own. Named anyway: a gate
   // being accepted by accident, because it happens to match another arm, is not
   // the same as the registry declaring that gates are entries.
-  | ApiControlPlaneAppGate;
+  | ApiControlPlaneAppGate
+  | ApiControlPlaneGreetingSource;
 
 export function ExtensionsProvider({
   extensions,

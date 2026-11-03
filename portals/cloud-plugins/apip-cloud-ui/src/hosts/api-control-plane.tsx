@@ -22,6 +22,7 @@ import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
 import { LogsFeature, MetricsPanel, ScopedLogsNotice } from '@wso2-enterprise/apip-cloud-ui-logs';
 import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
 import {
   EntitlementsGate,
   TrialStatusFeature,
@@ -31,6 +32,7 @@ import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import {
   APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
+  HOME_GREETING_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
@@ -172,6 +174,21 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         slot: APP_GATE_SLOT,
         order: 10,
         render: (port) => <EntitlementsGate port={port} />,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    // Greets the signed-in user by their own name on the Organization home page,
+    // read from the session the host already holds (no request of its own). With no
+    // name the page keeps greeting by the organization's name.
+    id: 'user-profile',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'home-greeting-name',
+        slot: HOME_GREETING_SLOT,
+        order: 10,
+        resolveName: (port) => nameFromPort(port),
       },
     ],
   }),

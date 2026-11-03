@@ -2708,7 +2708,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle": {
     "defaultMessage": "Hello, {organizationName}",
-    "description": "{organizationName} is the display name of the organization. Never translated."
+    "description": "{organizationName} is the name the user is greeted by: their own name where known, else the organization's display name. Never translated."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteAriaLabel": {
     "defaultMessage": "Delete {name}",
