@@ -314,6 +314,8 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 		correlationID := syncCorrelationID(dep)
 		deployedAt := dep.DeployedAt
 
+		var result *utils.APIDeploymentResult
+		var agentResult *agent.CreateResult
 		switch dep.Kind {
 		case models.KindLlmProvider:
 			if c.llmDeploymentService == nil {
@@ -322,7 +324,7 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 				)
 				continue
 			}
-			_, err = c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, dep.ArtifactID,
+			result, err = c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.llmDeploymentService)
 
 		case models.KindLlmProxy:
@@ -332,11 +334,11 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 				)
 				continue
 			}
-			_, err = c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, dep.ArtifactID,
+			result, err = c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.llmDeploymentService)
 
 		case models.KindRestApi:
-			_, err = c.apiUtilsService.CreateAPIFromYAML(yamlData, dep.ArtifactID,
+			result, err = c.apiUtilsService.CreateAPIFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.deploymentService)
 
 		case models.KindMcp:
@@ -346,7 +348,7 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 				)
 				continue
 			}
-			_, err = c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, dep.ArtifactID,
+			result, err = c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.mcpDeploymentService)
 
 		case models.KindAgent:
@@ -359,7 +361,7 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 			// CreateFromYAML lives on the Agent service rather than on
 			// apiUtilsService like its counterparts, because that package imports
 			// pkg/utils. Same call shape either way.
-			_, err = c.agentService.CreateFromYAML(yamlData, dep.ArtifactID,
+			agentResult, err = c.agentService.CreateFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.logger)
 		case models.KindGraphQLApi:
 			// GraphQLApi has no dedicated deployment service — it self-registers into
@@ -367,7 +369,7 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 			// pkg/utils/graphql_deployment.go's init()), so it is deployed through the
 			// same generic deploymentService RestApi uses, keyed off the YAML's own
 			// "kind: GraphQLApi" field rather than a per-kind service reference.
-			_, err = c.apiUtilsService.CreateAPIFromYAML(yamlData, dep.ArtifactID,
+			result, err = c.apiUtilsService.CreateAPIFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.deploymentService)
 		}
 
@@ -378,6 +380,17 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 				slog.String("kind", dep.Kind),
 				slog.Any("error", err),
 			)
+			c.sendSyncDeployAck(dep, "failed", syncAckFailureCode(dep.Kind, err))
+			continue
+		}
+
+		if (result != nil && result.IsStale) || (agentResult != nil && agentResult.IsStale) {
+			// Stale — DB was not modified. Do not send ack; the controller that
+			// applied the newer version acks it (same as the live event handlers).
+			c.logger.Debug("Skipped stale deployment during sync (newer version exists in DB)",
+				slog.String("artifact_id", dep.ArtifactID),
+				slog.String("deployment_id", dep.DeploymentID),
+			)
 			continue
 		}
 
@@ -386,6 +399,7 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 			slog.String("kind", dep.Kind),
 			slog.String("correlation_id", correlationID),
 		)
+		c.sendSyncDeployAck(dep, "success", "")
 	}
 }
 
@@ -401,6 +415,7 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 				slog.String("artifact_id", dep.ArtifactID),
 				slog.Any("error", err),
 			)
+			c.sendSyncAck(dep, "failed", ackCodeGatewayProcessingError)
 			continue
 		}
 
@@ -425,6 +440,7 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 				slog.String("artifact_id", dep.ArtifactID),
 				slog.Any("error", err),
 			)
+			c.sendSyncAck(dep, "failed", ackCodeGatewayProcessingError)
 			continue
 		}
 
@@ -456,6 +472,7 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 					slog.String("artifact_id", dep.ArtifactID),
 					slog.Any("error", err),
 				)
+				c.sendSyncAck(dep, "failed", ackCodeGatewayProcessingError)
 				continue
 			}
 			c.updateXDSSnapshotAsync(dep.ArtifactID, correlationID, false, true)
@@ -466,6 +483,7 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 			slog.String("new_state", dep.State),
 			slog.String("correlation_id", correlationID),
 		)
+		c.sendSyncAck(dep, "success", "")
 	}
 }
 
@@ -965,6 +983,61 @@ func (c *Client) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
 
 	c.logger.Info("Bottom-up API sync completed successfully", slog.Int("processed", len(apis)))
 	return nil
+}
+
+// sendSyncAck acknowledges a deployment the startup sync applied, as the live
+// event handlers do, so the control plane can settle a deployment it sent while
+// this gateway was offline. The action follows the remote state, and the ack
+// echoes deployedAt, which is the control plane's performed_at concurrency token.
+func (c *Client) sendSyncAck(dep models.ControlPlaneDeployment, status, errorCode string) {
+	state, ok := models.ParseDesiredState(dep.State)
+	if !ok {
+		return
+	}
+	action := "deploy"
+	if state == models.StateUndeployed {
+		action = "undeploy"
+	}
+	c.sendDeploymentAck(dep.DeploymentID, dep.ArtifactID, syncAckResourceType(dep.Kind), action, status,
+		dep.DeployedAt, errorCode)
+}
+
+// sendSyncDeployAck acknowledges a deployment the sync fetched. A fetch always
+// applies the artifact as deployed, so it is acked only when the control plane
+// expects it deployed; for any other remote state there is nothing true to report.
+func (c *Client) sendSyncDeployAck(dep models.ControlPlaneDeployment, status, errorCode string) {
+	if state, ok := models.ParseDesiredState(dep.State); !ok || state != models.StateDeployed {
+		return
+	}
+	c.sendSyncAck(dep, status, errorCode)
+}
+
+// syncAckResourceType maps an artifact kind to the resource type its deployment
+// ack carries, matching the live event handlers.
+func syncAckResourceType(kind string) string {
+	switch kind {
+	case models.KindLlmProvider:
+		return "llmprovider"
+	case models.KindLlmProxy:
+		return "llmproxy"
+	case models.KindMcp:
+		return "mcpproxy"
+	case models.KindAgent:
+		return ackResourceTypeAgent
+	case models.KindGraphQLApi:
+		return "graphqlapi"
+	default:
+		return "api"
+	}
+}
+
+// syncAckFailureCode is the error code a failed sync apply is acked with,
+// classified the same way as the live event handlers for that kind.
+func syncAckFailureCode(kind string, err error) string {
+	if kind == models.KindAgent {
+		return agentAckFailureCode(err)
+	}
+	return ackCodeGatewayProcessingError
 }
 
 // syncEventType maps an artifact kind to the corresponding eventhub.EventType.
