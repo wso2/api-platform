@@ -59,8 +59,7 @@ const (
 	// ShapeXML is a plain XML error document, for a REST caller that asked for XML.
 	ShapeXML ShapeID = "xml"
 
-	// ShapeSOAP11 and ShapeSOAP12 are declared so Negotiate can name them, but are NOT
-	// registered, so they render as passthrough.
+	// ShapeSOAP11 and ShapeSOAP12 are a SOAP Fault in a SOAP 1.1 or SOAP 1.2 envelope.
 	ShapeSOAP11 ShapeID = "soap11"
 	ShapeSOAP12 ShapeID = "soap12"
 )
@@ -124,8 +123,6 @@ type Registry struct {
 }
 
 // NewRegistry returns the registry of implemented shapes.
-//
-// ShapeSOAP11/ShapeSOAP12 are intentionally absent — see their declaration.
 func NewRegistry() *Registry {
 	return &Registry{
 		renderers: map[ShapeID]Renderer{
@@ -133,6 +130,8 @@ func NewRegistry() *Registry {
 			ShapeJSONRPC:            jsonRPCRenderer{},
 			ShapeJSONRPCEventStream: jsonRPCEventStreamRenderer{},
 			ShapeXML:                xmlRenderer{},
+			ShapeSOAP11:             soap11Renderer{},
+			ShapeSOAP12:             soap12Renderer{},
 		},
 	}
 }
@@ -198,18 +197,27 @@ func Negotiate(req Request) ShapeID {
 			return ShapeJSONRPCEventStream
 		}
 		return ShapeJSONRPC
+	case policy.APIKindSoapApi:
+		// A SOAP client reads a Fault and nothing else, whatever it puts in Accept. One SOAP
+		// API serves both versions, and the request carries which: SOAP 1.2 has its own media
+		// type, and everything else — text/xml, and a bodyless GET for ?wsdl — is answered
+		// as SOAP 1.1, the version a client that did not say is most likely to read.
+		if normalizeMediaType(req.ContentType) == mediaSOAP12 {
+			return ShapeSOAP12
+		}
+		return ShapeSOAP11
 	}
-	// 2. Protocols identified by the request's own media type. SOAP is the case this
-	// exists for: a single SOAP API serves both versions, and the version is carried
-	// by the request, so it cannot be resolved at deploy time.
+	// 2. Protocols identified by the request's own media type, for kinds that do not fix
+	// one. A SoapApi route is decided above; this is a caller on any other kind that sent
+	// a SOAP 1.2 envelope.
 	switch normalizeMediaType(req.ContentType) {
 	case mediaSOAP12:
 		return ShapeSOAP12
 	case mediaTextXML:
-		// text/xml is SOAP 1.1's media type, but it is also just XML, and telling the two
-		// apart needs an API kind that does not exist yet. A plain XML document is the
-		// choice that is merely incomplete for a SOAP 1.1 caller rather than unreadable,
-		// which JSON would be.
+		// text/xml is SOAP 1.1's media type, but it is also just XML. On a SoapApi route the
+		// kind settles it above; here, on any other kind, a plain XML document is the choice
+		// that is merely incomplete for a SOAP 1.1 caller rather than unreadable, which JSON
+		// would be.
 		return ShapeXML
 	}
 

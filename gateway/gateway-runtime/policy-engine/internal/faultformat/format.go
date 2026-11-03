@@ -47,6 +47,7 @@ var knownAPIKinds = []policy.APIKind{
 	policy.APIKindMCP,
 	policy.APIKindAgent,
 	policy.APIKindWebSubApi,
+	policy.APIKindSoapApi,
 }
 
 // supportedKinds is the set of API kinds the gateway synthesizes an error body for.
@@ -54,22 +55,21 @@ var knownAPIKinds = []policy.APIKind{
 // In code rather than configuration because formatting is a protocol concern, not an operator
 // preference.
 //
-// Agent only. Every other kind returns the errors it always has, and an Agent API has none to
-// preserve — it is new in this release, so there is no body any client has already been
-// written against.
+// Agent and SoapApi. Every other kind returns the errors it always has; these two have none
+// to preserve — each is new, so there is no body any client has already been written against.
 //
-// It is also the kind that needs this most. MCP fixes a protocol too, but its policies write
-// their own JSON-RPC envelope, so an MCP rejection is already the right shape before this
-// package is consulted. A2A has no such policies: a rejection on an Agent route comes from an
-// ordinary policy like api-key-auth, which writes ordinary JSON — unparseable to the JSON-RPC
-// client on the other end. Nothing else fills that gap.
+// They are also the kinds that need this most. MCP fixes a protocol too, but its policies
+// write their own JSON-RPC envelope, so an MCP rejection is already the right shape before
+// this package is consulted. A2A and SOAP have no such policies: a rejection on an Agent or
+// SOAP route comes from an ordinary policy like api-key-auth, which writes ordinary JSON —
+// unparseable to a JSON-RPC client, and to a SOAP client that expects a Fault in an envelope.
+// Nothing else fills that gap.
 var supportedKinds = []policy.APIKind{
 	policy.APIKindAgent,
+	policy.APIKindSoapApi,
 }
 
-// SupportedKinds returns the kinds error-body synthesis is enabled for.
-//
-// Empty today; see supportedKinds.
+// SupportedKinds returns the kinds error-body synthesis is enabled for; see supportedKinds.
 func SupportedKinds() KindSet {
 	set, _ := NewKindSet(kindNames(supportedKinds))
 	return set
