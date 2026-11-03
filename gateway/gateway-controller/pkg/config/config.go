@@ -218,6 +218,7 @@ type Controller struct {
 	PolicyServer PolicyServerConfig `koanf:"policy_server"`
 	Policies     PoliciesConfig     `koanf:"policies"`
 	LLM          LLMConfig          `koanf:"llm"`
+	Models       ModelsConfig       `koanf:"models"`
 	Auth         AuthConfig         `koanf:"auth"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
@@ -450,6 +451,50 @@ type PoliciesConfig struct {
 
 type LLMConfig struct {
 	TemplateDefinitionsPath string `koanf:"template_definitions_path"`
+}
+
+// DefaultModelsContext is the default model endpoint's context when none is configured.
+const DefaultModelsContext = "/wso2/v1"
+
+// ModelsConfig configures Models and the model endpoints that serve them.
+type ModelsConfig struct {
+	// Enabled turns the feature on. Off by default, so upgrading a gateway
+	// provisions nothing and claims no path until an operator asks for it.
+	Enabled bool `koanf:"enabled"`
+
+	// Endpoint configures model endpoints: the default one the gateway provisions,
+	// and the request limit every endpoint applies.
+	Endpoint ModelEndpointConfig `koanf:"endpoint"`
+}
+
+// ModelEndpointConfig is [controller.models.endpoint].
+type ModelEndpointConfig struct {
+	// Provision makes the gateway create and own the default model endpoint,
+	// `wso2`, at Context. On by default once the feature is enabled. While it is
+	// on, `wso2` can be neither created nor deleted through the API.
+	Provision bool `koanf:"provision"`
+
+	// Context is the path the provisioned default endpoint (`wso2`) is served at.
+	// The startup check refuses to start when another artifact already uses it.
+	Context string `koanf:"context"`
+
+	// MaxRequestBodyBytes is the largest request body any model endpoint accepts
+	// for dispatch, the provisioned one or another. Zero means the listener's
+	// per_connection_buffer_limit_bytes, which is the most Envoy will buffer anyway.
+	MaxRequestBodyBytes int64 `koanf:"max_request_body_bytes"`
+}
+
+// ProvisionsDefaultEndpoint reports whether the gateway provisions `wso2`.
+func (m ModelsConfig) ProvisionsDefaultEndpoint() bool {
+	return m.Enabled && m.Endpoint.Provision
+}
+
+// EffectiveContext returns the default endpoint's configured context, or the default.
+func (m ModelsConfig) EffectiveContext() string {
+	if strings.TrimSpace(m.Endpoint.Context) == "" {
+		return DefaultModelsContext
+	}
+	return strings.TrimSpace(m.Endpoint.Context)
 }
 
 // StorageConfig holds storage-related configuration
@@ -1227,6 +1272,10 @@ func defaultConfig() *Config {
 			LLM: LLMConfig{
 				TemplateDefinitionsPath: "./default-llm-provider-templates",
 			},
+			Models: ModelsConfig{
+				Enabled:  false,
+				Endpoint: ModelEndpointConfig{Provision: true, Context: DefaultModelsContext},
+			},
 			Storage: StorageConfig{
 				Type: "sqlite",
 				SQLite: SQLiteConfig{
@@ -1949,6 +1998,12 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// After the listener: an unset model body limit defaults to the listener's
+	// buffer limit, which validateHTTPListenerConfig has just defaulted.
+	if err := c.validateModelsConfig(); err != nil {
+		return err
+	}
+
 	// Validate API key configuration
 	if err := c.validateAPIKeyConfig(); err != nil {
 		return err
@@ -2574,6 +2629,46 @@ func (c *Config) validateSubscriptionsConfig() error {
 // IsAccessLogsEnabled returns true if access logs are enabled
 func (c *Config) IsAccessLogsEnabled() bool {
 	return c.Router.AccessLogs.Enabled
+}
+
+// modelsContextPattern is the context shape every LLM kind accepts.
+var modelsContextPattern = regexp.MustCompile(`^/([a-zA-Z0-9_\-/]*[^/])?$`)
+
+// validateModelsConfig validates [controller.models], failing closed. The checks
+// run whether or not the feature is enabled, so a bad value is found when it is
+// written rather than on the day someone switches the feature on.
+func (c *Config) validateModelsConfig() error {
+	m := &c.Controller.Models
+	ep := &m.Endpoint
+	ep.Context = m.EffectiveContext()
+
+	if !modelsContextPattern.MatchString(ep.Context) || strings.Contains(ep.Context, "//") ||
+		strings.Contains(ep.Context, "/./") || strings.Contains(ep.Context, "/../") ||
+		strings.HasSuffix(ep.Context, "/.") || strings.HasSuffix(ep.Context, "/..") {
+		return fmt.Errorf("controller.models.endpoint.context must be an absolute path with no trailing slash, "+
+			"empty segment or dot segment, got: %q", ep.Context)
+	}
+	if ep.Context == "/" {
+		return fmt.Errorf("controller.models.endpoint.context must not be '/': the default model endpoint would shadow every other API")
+	}
+	if errs := validateNotReservedGatewayPath("controller.models.endpoint.context", ep.Context); len(errs) > 0 {
+		return fmt.Errorf("controller.models.endpoint.context: %s", errs[0].Message)
+	}
+
+	listenerLimit := int64(c.Router.HTTPListener.PerConnectionBufferLimitBytes)
+	switch {
+	case ep.MaxRequestBodyBytes < 0:
+		return fmt.Errorf("controller.models.endpoint.max_request_body_bytes must not be negative, got: %d", ep.MaxRequestBodyBytes)
+	case ep.MaxRequestBodyBytes == 0:
+		ep.MaxRequestBodyBytes = listenerLimit
+	case listenerLimit > 0 && ep.MaxRequestBodyBytes > listenerLimit:
+		// Envoy stops buffering at the listener's limit, so a larger value here would
+		// promise bodies the gateway can never receive. Raise both together.
+		return fmt.Errorf("controller.models.endpoint.max_request_body_bytes (%d) must not exceed "+
+			"router.http_listener.per_connection_buffer_limit_bytes (%d); raise both together",
+			ep.MaxRequestBodyBytes, listenerLimit)
+	}
+	return nil
 }
 
 // validateHTTPListenerConfig validates the HTTP listener configuration
