@@ -190,12 +190,18 @@ func parsePrivateKey(data []byte) (crypto.Signer, error) {
 	return nil, fmt.Errorf("unsupported PEM block %q", block.Type)
 }
 
+// minRSAKeyBits is the smallest RSA modulus accepted for signing (NIST SP 800-57).
+const minRSAKeyBits = 2048
+
 // resolveAlgorithm returns override, or the algorithm pub implies when it is
 // empty. It fails when the key type does not allow the algorithm.
 func resolveAlgorithm(pub crypto.PublicKey, override string) (string, error) {
 	var allowed []string // the first is the default
 	switch k := pub.(type) {
 	case *rsa.PublicKey:
+		if bits := k.N.BitLen(); bits < minRSAKeyBits {
+			return "", fmt.Errorf("RSA key is %d bits; use at least %d", bits, minRSAKeyBits)
+		}
 		allowed = []string{"RS256", "PS256"}
 	case *ecdsa.PublicKey:
 		switch k.Curve {

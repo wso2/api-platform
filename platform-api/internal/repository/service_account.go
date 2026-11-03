@@ -159,7 +159,7 @@ func (r *ServiceAccountRepo) List(orgID, search string, limit, offset int) ([]*m
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	args := append(append([]any{orgID}, searchArgs...), pageArgs...)
 	rows, err := r.db.Query(r.db.Rebind(serviceAccountCols+
-		` WHERE organization_uuid = ?`+searchClause+` ORDER BY created_at DESC `+pageClause), args...)
+		` WHERE organization_uuid = ?`+searchClause+` ORDER BY created_at DESC, uuid DESC `+pageClause), args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list service accounts: %w", err)
 	}
@@ -238,8 +238,11 @@ func (r *ServiceAccountRepo) Delete(orgID, uuid string, prevVersion int64, rev *
 }
 
 func (r *ServiceAccountRepo) TouchLastUsed(uuid string, at time.Time, ip string) error {
-	_, err := r.db.Exec(r.db.Rebind(`UPDATE service_accounts SET last_used_at = ?, last_used_ip = ? WHERE uuid = ?`),
-		at.UTC(), ip, uuid)
+	// Concurrent exchanges can commit out of order; keep the latest.
+	_, err := r.db.Exec(r.db.Rebind(`
+		UPDATE service_accounts SET last_used_at = ?, last_used_ip = ?
+		WHERE uuid = ? AND (last_used_at IS NULL OR last_used_at < ?)`),
+		at.UTC(), ip, uuid, at.UTC())
 	if err != nil {
 		return fmt.Errorf("failed to record service account use: %w", err)
 	}
@@ -280,11 +283,15 @@ func (r *ServiceAccountRepo) revokeTx(tx *sql.Tx, rev *model.ServiceAccountRevoc
 	}
 	expiresAt, revokedAt := rev.ExpiresAt.UTC(), time.Now().UTC()
 	update := func() (bool, error) {
+		// Keep the later expiry: a shorter token_ttl since the last revoke must not
+		// drop the watermark while a token from before it is still valid.
 		res, err := tx.Exec(r.db.Rebind(`
 			UPDATE service_account_revocations
-			SET min_token_version = ?, expires_at = ?, revoked_by = ?, revoked_at = ?
+			SET min_token_version = ?,
+				expires_at = CASE WHEN expires_at > ? THEN expires_at ELSE ? END,
+				revoked_by = ?, revoked_at = ?
 			WHERE account_uuid = ? AND min_token_version < ?`),
-			rev.MinTokenVersion, expiresAt, rev.RevokedBy, revokedAt, rev.AccountUUID, rev.MinTokenVersion)
+			rev.MinTokenVersion, expiresAt, expiresAt, rev.RevokedBy, revokedAt, rev.AccountUUID, rev.MinTokenVersion)
 		if err != nil {
 			return false, fmt.Errorf("failed to update revocation: %w", err)
 		}

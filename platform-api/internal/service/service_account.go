@@ -399,7 +399,8 @@ func (s *ServiceAccountService) Exchange(req ExchangeRequest) (*api.ServiceAccou
 // revocation builds the watermark rejecting sa's tokens below minVersion.
 // expires_at is two TTLs out: one covers every token minted before the revoke,
 // the other absorbs a minting replica whose clock ran ahead (a token's exp is
-// set by that replica's clock).
+// set by that replica's clock). Replica clocks more than one TTL apart are not
+// supported: such a token can outlive its watermark.
 func (s *ServiceAccountService) revocation(sa *model.ServiceAccount, minVersion int64, actor string) *model.ServiceAccountRevocation {
 	now := time.Now().UTC()
 	return &model.ServiceAccountRevocation{

@@ -146,6 +146,22 @@ func TestRevocationCache_RefreshKeepsNewerLocalRevoke(t *testing.T) {
 	}
 }
 
+// A higher watermark keeps the later expiry, as the stored row does.
+func TestRevocationCache_RaiseKeepsLaterExpiry(t *testing.T) {
+	c := NewRevocationCache(&fakeLedger{}, quietLogger())
+	c.Load() //nolint:errcheck
+	later := time.Now().Add(2 * time.Hour)
+
+	c.Remember(rev("a", 2, later))
+	c.Remember(rev("a", 3, time.Now().Add(time.Hour)))
+	c.mu.RLock()
+	wm := c.watermarks["a"]
+	c.mu.RUnlock()
+	if wm.minVersion != 3 || !wm.expiresAt.Equal(later) {
+		t.Fatalf("watermark = %+v, want version 3 expiring at %v", wm, later)
+	}
+}
+
 // Jitter is waited before the first fetch too, so no fetch happens at t=0.
 func TestRevocationCache_JitterBeforeFirstFetch(t *testing.T) {
 	ledger := &fakeLedger{}
