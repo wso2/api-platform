@@ -686,7 +686,10 @@ func TestPublicationTypeAndPath(t *testing.T) {
 	apiType, err = publicationType("GraphQLApi")
 	require.NoError(t, err)
 	require.Equal(t, "graphql-api", apiType)
-	for _, kind := range []string{"Mcp", "LlmProvider", "", "restapi", "graphqlapi"} {
+	apiType, err = publicationType("Mcp")
+	require.NoError(t, err)
+	require.Equal(t, "mcp-proxy", apiType)
+	for _, kind := range []string{"LlmProvider", "", "restapi", "graphqlapi", "mcp"} {
 		_, err := publicationType(kind)
 		require.ErrorContains(t, err, "not supported", kind)
 	}
@@ -785,6 +788,18 @@ func TestMinimalDefinitionMatchesTheAPIKind(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "application/graphql", contentType)
 	require.Contains(t, string(body), "type Query")
+
+	body, contentType, err = minimalDefinition("Mcp", "weather")
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	var mcp struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	require.NoError(t, json.Unmarshal(body, &mcp))
+	require.Len(t, mcp.Tools, 1)
+	require.NotEmpty(t, mcp.Tools[0].Name)
 }
 
 func TestSelectedPlans(t *testing.T) {
