@@ -129,6 +129,26 @@ func buildResourceResponse(cfg any, status api.ResourceStatus) any {
 		cp := *v
 		cp.Status = &status
 		return cp
+	case api.ModelConfiguration:
+		v.Status = &status
+		return v
+	case *api.ModelConfiguration:
+		if v == nil {
+			return nil
+		}
+		cp := *v
+		cp.Status = &status
+		return cp
+	case api.ModelEndpointConfiguration:
+		v.Status = &status
+		return v
+	case *api.ModelEndpointConfiguration:
+		if v == nil {
+			return nil
+		}
+		cp := *v
+		cp.Status = &status
+		return cp
 	}
 	return cfg
 }

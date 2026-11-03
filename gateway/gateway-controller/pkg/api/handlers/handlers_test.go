@@ -197,6 +197,13 @@ func (m *MockStorage) DeleteConfig(id string) error {
 		return m.deleteErr
 	}
 	delete(m.configs, id)
+	// Mirrors the SQL store, which deletes the artifact's API keys in the same
+	// transaction as its row.
+	for keyID, key := range m.apiKeys {
+		if key.ArtifactUUID == id {
+			delete(m.apiKeys, keyID)
+		}
+	}
 	return nil
 }
 
@@ -3134,7 +3141,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("http://llm-backend.com"),
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	cfg := &models.StoredConfig{
@@ -3174,7 +3181,7 @@ func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("http://llm-backend.com"),
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	cfg := &models.StoredConfig{
@@ -3254,7 +3261,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("http://llm-backend.com"),
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	cfg := &models.StoredConfig{
@@ -3387,7 +3394,7 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: stringPtr("http://llm-backend.com"),
 				},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
 		Origin:       models.OriginGatewayAPI,

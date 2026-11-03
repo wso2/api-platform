@@ -204,6 +204,11 @@ func (s *APIServer) UpdateLLMProvider(w http.ResponseWriter, r *http.Request, id
 			})
 			return
 		}
+		// An undeploy of a provider that Models target is refused naming them.
+		if storage.IsConflictError(err) {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			return
+		}
 		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
 	}
@@ -231,6 +236,11 @@ func (s *APIServer) DeleteLLMProvider(w http.ResponseWriter, r *http.Request, id
 	cfg, err := s.llmDeploymentService.DeleteLLMProvider(id, correlationID, log)
 	if err != nil {
 		log.Warn("Failed to delete LLM provider configuration", slog.String("handle", id))
+		// A provider that Models target cannot be deleted; the message names them.
+		if storage.IsConflictError(err) {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			return
+		}
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{

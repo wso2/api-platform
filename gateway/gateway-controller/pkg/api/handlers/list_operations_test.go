@@ -276,7 +276,7 @@ func TestListLLMProvidersWithData(t *testing.T) {
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: stringPtr("https://example.com"),
 				},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
 		CreatedAt: now,
