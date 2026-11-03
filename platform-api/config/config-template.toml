@@ -86,10 +86,10 @@ format = "text"   # text | json
 # ---------------------------------------------------------------------------
 # Audit
 # ---------------------------------------------------------------------------
-# Every audited change is recorded in the audit table. enabled = false records
-# nothing: no table rows and no output lines.
+# Off by default. enabled = true records every audited change in the audit
+# table; while it is false, nothing is recorded: no table rows and no output lines.
 [platform_api.audit]
-enabled = true
+enabled = false
 # Also write each record as a JSON line tagged "logType":"audit" to any of
 # "stdout", "file" and "http". Outputs are additive, order is irrelevant, and an
 # unknown or repeated name fails startup. Empty keeps records in the table only.
