@@ -765,7 +765,7 @@ func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *mo
 			// still matches (the timeout does not re-stamp it), so the late success
 			// settles the deployment; a real failure or a newer operation does not match.
 			rowsAffected, err = s.deploymentRepo.RecoverTimedOutStatus(
-				ack.ArtifactID, orgID, gatewayID, newStatus, ack.PerformedAt,
+				ack.ArtifactID, orgID, gatewayID, ack.DeploymentID, newStatus, ack.PerformedAt,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to recover timed-out status for success ack: %w", err)

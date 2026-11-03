@@ -243,6 +243,19 @@ func TestAgentProxyDeploymentAck_LateAckSettlesOnlyMatchingTimeout(t *testing.T)
 		env.apply(t, env.gatewayAck(deploymentID, "undeploy", "success", "", token))
 		env.assertState(t, deploymentID, "FAILED", model.DeploymentErrorTimeout)
 	})
+	t.Run("other deployment", func(t *testing.T) {
+		env := setupAgentAckEnv(t)
+		deploymentID := env.deploy(t, env.gateway)
+		token := env.performedAt(t, env.gatewayUUID)
+		if _, err := env.deploymentRepo.UpdateStatusWithPerformedAtGuard(env.proxyUUID, agentProxyOrg, env.gatewayUUID,
+			model.DeploymentStatusFailed, model.DeploymentErrorTimeout, token,
+			[]model.DeploymentStatus{model.DeploymentStatusDeploying}); err != nil {
+			t.Fatalf("simulate timeout: %v", err)
+		}
+
+		env.apply(t, env.gatewayAck("other-deployment", "deploy", "success", "", token))
+		env.assertState(t, deploymentID, "FAILED", model.DeploymentErrorTimeout)
+	})
 }
 
 func TestAgentProxyDeploymentAck_UndeployTransitions(t *testing.T) {
