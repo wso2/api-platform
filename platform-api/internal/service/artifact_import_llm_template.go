@@ -116,7 +116,9 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 	if utils.DecideMetadataWrite(false, existing.Origin, &existing.UpdatedAt, ctx.DeployedAt) == utils.WriteFullMetadata {
 		existing.Name = utils.ImportDisplayName(ctx.Configuration)
 		existing.ManagedBy = managedBy
-		existing.Metadata = specTmpl.Metadata
+		if specTmpl.Metadata != nil {
+			existing.Metadata = specTmpl.Metadata
+		}
 		existing.PromptTokens = specTmpl.PromptTokens
 		existing.CompletionTokens = specTmpl.CompletionTokens
 		existing.TotalTokens = specTmpl.TotalTokens
