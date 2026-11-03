@@ -61,6 +61,7 @@ import {
   type ServiceAccount,
   type ServiceAccountCredentials,
 } from '@/api/resources/serviceAccounts';
+import { useApiScope } from '@/api/core/scope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from '@/components/StateViews';
@@ -292,6 +293,7 @@ type Confirm = { kind: 'disable' | 'regenerate' | 'delete'; account: ServiceAcco
 /** The organization's service accounts, under Manage. Administrators only. */
 export function ServiceAccountsPage() {
   const intl = useIntl();
+  const { org } = useApiScope();
   return (
     <Can
       do="createServiceAccount"
@@ -302,7 +304,8 @@ export function ServiceAccountsPage() {
         />
       }
     >
-      <ServiceAccountList />
+      {/* Keyed so switching organization drops every dialog and one-time secret. */}
+      <ServiceAccountList key={org} />
     </Can>
   );
 }
@@ -386,23 +389,6 @@ function ServiceAccountList() {
     }
   };
 
-  if (accountsQuery.isPending) return <LoadingState label={intl.formatMessage(messages.loading)} />;
-  if (accountsQuery.error) {
-    return isServiceAccountsDisabled(accountsQuery.error) ? (
-      <EmptyState
-        description={intl.formatMessage(messages.disabledBody)}
-        title={intl.formatMessage(messages.disabledTitle)}
-      />
-    ) : (
-      <ErrorState message={intl.formatMessage(messages.loadFailed)} />
-    );
-  }
-
-  const accounts = accountsQuery.data.list ?? [];
-  const isFirstRun = accountsQuery.data.pagination.total === 0 && !term && !search;
-  // Rows are empty while the clamp above moves back a page.
-  const steppingBack = accounts.length === 0 && offset > 0;
-
   const confirmMessages = confirm
     ? {
         delete: { body: messages.deleteBody, label: messages.delete, title: messages.deleteTitle },
@@ -410,6 +396,89 @@ function ServiceAccountList() {
         regenerate: { body: messages.regenerateBody, label: messages.regenerate, title: messages.regenerateTitle },
       }[confirm.kind]
     : null;
+
+  // Rendered in every branch: a list refetch that reloads or fails right after
+  // Create or Regenerate must not hide the one-time secret.
+  const dialogs = (
+    <>
+      {formTarget !== null && (
+        <ServiceAccountFormDialog
+          account={formTarget === 'create' ? null : formTarget}
+          key={formTarget === 'create' ? 'create' : formTarget.id}
+          onClose={() => setFormTarget(null)}
+          onCreated={(result) => {
+            setFormTarget(null);
+            setCredentials(result);
+          }}
+          onRegenerate={(account) => setConfirm({ account, kind: 'regenerate' })}
+        />
+      )}
+
+      <CredentialsDialog
+        credentials={credentials}
+        onDone={() => setCredentials(null)}
+        onTestToken={(result) =>
+          setTokenTarget({ account: result.serviceAccount, secret: result.clientSecret })
+        }
+        scopes={credentials ? scopesFor(credentials.serviceAccount) : []}
+      />
+
+      {tokenTarget && (
+        <TestTokenDialog
+          account={tokenTarget.account}
+          initialSecret={tokenTarget.secret}
+          key={tokenTarget.account.id}
+          onClose={() => setTokenTarget(null)}
+          scopes={scopesFor(tokenTarget.account)}
+          scopesStatus={rolesQuery.status}
+        />
+      )}
+
+      {confirm && confirmMessages && (
+        <ConfirmDialog
+          confirmInputLabel={confirm.kind === 'delete' ? intl.formatMessage(messages.deleteInput) : undefined}
+          confirmLabel={intl.formatMessage(confirmMessages.label)}
+          confirmPhrase={confirm.kind === 'delete' ? confirm.account.id : undefined}
+          destructive
+          loading={updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending}
+          message={intl.formatMessage(confirmMessages.body)}
+          onCancel={() => setConfirm(null)}
+          onConfirm={runConfirm}
+          open
+          title={intl.formatMessage(confirmMessages.title, { name: confirm.account.displayName })}
+        />
+      )}
+    </>
+  );
+
+  if (accountsQuery.isPending) {
+    return (
+      <>
+        <LoadingState label={intl.formatMessage(messages.loading)} />
+        {dialogs}
+      </>
+    );
+  }
+  if (accountsQuery.error) {
+    return (
+      <>
+        {isServiceAccountsDisabled(accountsQuery.error) ? (
+          <EmptyState
+            description={intl.formatMessage(messages.disabledBody)}
+            title={intl.formatMessage(messages.disabledTitle)}
+          />
+        ) : (
+          <ErrorState message={intl.formatMessage(messages.loadFailed)} />
+        )}
+        {dialogs}
+      </>
+    );
+  }
+
+  const accounts = accountsQuery.data.list ?? [];
+  const isFirstRun = accountsQuery.data.pagination.total === 0 && !term && !search;
+  // Rows are empty while the clamp above moves back a page.
+  const steppingBack = accounts.length === 0 && offset > 0;
 
   return (
     <>
@@ -527,52 +596,7 @@ function ServiceAccountList() {
         </Stack>
       )}
 
-      {formTarget !== null && (
-        <ServiceAccountFormDialog
-          account={formTarget === 'create' ? null : formTarget}
-          key={formTarget === 'create' ? 'create' : formTarget.id}
-          onClose={() => setFormTarget(null)}
-          onCreated={(result) => {
-            setFormTarget(null);
-            setCredentials(result);
-          }}
-          onRegenerate={(account) => setConfirm({ account, kind: 'regenerate' })}
-        />
-      )}
-
-      <CredentialsDialog
-        credentials={credentials}
-        onDone={() => setCredentials(null)}
-        onTestToken={(result) =>
-          setTokenTarget({ account: result.serviceAccount, secret: result.clientSecret })
-        }
-        scopes={credentials ? scopesFor(credentials.serviceAccount) : []}
-      />
-
-      {tokenTarget && (
-        <TestTokenDialog
-          account={tokenTarget.account}
-          initialSecret={tokenTarget.secret}
-          key={tokenTarget.account.id}
-          onClose={() => setTokenTarget(null)}
-          scopes={scopesFor(tokenTarget.account)}
-        />
-      )}
-
-      {confirm && confirmMessages && (
-        <ConfirmDialog
-          confirmInputLabel={confirm.kind === 'delete' ? intl.formatMessage(messages.deleteInput) : undefined}
-          confirmLabel={intl.formatMessage(confirmMessages.label)}
-          confirmPhrase={confirm.kind === 'delete' ? confirm.account.id : undefined}
-          destructive
-          loading={updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending}
-          message={intl.formatMessage(confirmMessages.body)}
-          onCancel={() => setConfirm(null)}
-          onConfirm={runConfirm}
-          open
-          title={intl.formatMessage(confirmMessages.title, { name: confirm.account.displayName })}
-        />
-      )}
+      {dialogs}
     </>
   );
 }

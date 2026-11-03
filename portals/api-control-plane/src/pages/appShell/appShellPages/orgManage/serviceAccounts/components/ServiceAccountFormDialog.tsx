@@ -126,7 +126,7 @@ const messages = defineMessages({
   },
   tooLong: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.ServiceAccountFormDialog.tooLong',
-    defaultMessage: 'Use at most {max} characters.',
+    defaultMessage: 'Too long: the limit is {max} bytes, and some characters take more than one.',
   },
   roleRemovedWarning: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.ServiceAccountFormDialog.roleRemovedWarning',
@@ -168,16 +168,18 @@ const messages = defineMessages({
   },
 });
 
-/** Matches the server's limits, in characters; the server counts bytes. */
+/** The server's limits, in UTF-8 bytes of the trimmed value. */
 const MAX = { description: 1023, displayName: 255 } as const;
 
 type TextField = keyof typeof MAX;
 
+const utf8 = new TextEncoder();
+
 /** Only the display name is required. */
 const textProblem = (value: string, field: TextField): MessageDescriptor | null => {
-  const length = value.trim().length;
-  if (length === 0) return field === 'displayName' ? messages.required : null;
-  return length > MAX[field] ? messages.tooLong : null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return field === 'displayName' ? messages.required : null;
+  return utf8.encode(trimmed).length > MAX[field] ? messages.tooLong : null;
 };
 
 const sameRoles = (a: readonly string[], b: readonly string[]) =>
@@ -292,8 +294,10 @@ function ServiceAccountForm({
 
   // The fresh copy arrives through `account`, which shares this query's cache.
   const reload = () => {
+    // A failed refetch keeps the old data, so only a success clears the conflict.
     void reloadQuery.refetch().then((result) => {
-      if (result.data) setConflict(false);
+      if (result.isSuccess) setConflict(false);
+      else notify(intl.formatMessage(messages.loadFailed), 'error');
     });
   };
 

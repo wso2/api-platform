@@ -95,6 +95,10 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.TestTokenDialog.scopeFailed',
     defaultMessage: "The account's roles do not grant the requested scopes. Reload the page and try again.",
   },
+  rolesFailed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.TestTokenDialog.rolesFailed',
+    defaultMessage: "Could not load the roles, so the token's scopes are unknown. Reload the page and try again.",
+  },
   accessToken: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.TestTokenDialog.accessToken',
     defaultMessage: 'Access token',
@@ -137,6 +141,8 @@ export type TestTokenDialogProps = {
   initialSecret?: string;
   /** Requested as `scope`; required by a server in scope mode, ignored in role mode. */
   scopes: string[];
+  /** Whether `scopes` is known yet: it comes from the role list. */
+  scopesStatus?: 'pending' | 'error' | 'success';
   onClose: () => void;
 };
 
@@ -144,7 +150,13 @@ export type TestTokenDialogProps = {
  * Exchanges the account's client ID and a pasted secret for a short-lived token.
  * Mount it per account (keyed) so nothing carries over between accounts.
  */
-export function TestTokenDialog({ account, initialSecret = '', scopes, onClose }: TestTokenDialogProps) {
+export function TestTokenDialog({
+  account,
+  initialSecret = '',
+  scopes,
+  scopesStatus = 'success',
+  onClose,
+}: TestTokenDialogProps) {
   const intl = useIntl();
   const mutation = useIssueServiceAccountToken();
   const [secret, setSecret] = useState(initialSecret);
@@ -170,9 +182,13 @@ export function TestTokenDialog({ account, initialSecret = '', scopes, onClose }
         ? intl.formatMessage(messages.rejected)
         : intl.formatMessage(messages.failed);
 
+  // Without the role list the request would carry no scope, which a server in
+  // scope mode rejects for valid credentials.
+  const scopesReady = scopesStatus === 'success';
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!secret || mutation.isPending) return;
+    if (!secret || !scopesReady || mutation.isPending) return;
     // A failed retry must not leave the previous token on screen.
     setIssued(null);
     mutation.mutate(
@@ -235,6 +251,11 @@ export function TestTokenDialog({ account, initialSecret = '', scopes, onClose }
             <Alert icon={<Info size={18} />} severity="info">
               <FormattedMessage {...messages.usageNote} />
             </Alert>
+            {scopesStatus === 'error' && (
+              <Alert severity="error">
+                <FormattedMessage {...messages.rolesFailed} />
+              </Alert>
+            )}
             {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
 
             {issued && (
@@ -289,7 +310,7 @@ export function TestTokenDialog({ account, initialSecret = '', scopes, onClose }
           <Button disabled={mutation.isPending} onClick={close} variant="outlined">
             <FormattedMessage {...messages.close} />
           </Button>
-          <Button disabled={!secret || mutation.isPending} type="submit" variant="contained">
+          <Button disabled={!secret || !scopesReady || mutation.isPending} type="submit" variant="contained">
             <FormattedMessage
               {...(mutation.isPending ? messages.getting : issued ? messages.getAnother : messages.getToken)}
             />

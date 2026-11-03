@@ -18,7 +18,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -613,5 +613,108 @@ describe('ServiceAccountsPage', () => {
     const form = await screen.findByRole('dialog');
 
     expect(await within(form).findByDisplayValue('changed-by-someone-else')).toBeInTheDocument();
+  });
+});
+
+describe('ServiceAccountsPage when something fails', () => {
+  const serverError = () =>
+    HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'boom', status: 'error' }, { status: 500 });
+
+  it('will not ask for a token until the roles have loaded', async () => {
+    server.use(
+      collection('/service-accounts', [ciDeployer], { record: requests }),
+      failure('get', '/roles', 500, 'INTERNAL_ERROR'),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Get token' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Client secret/), SECRET);
+
+    expect(await within(dialog).findByText(/Could not load the roles/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Get token' })).toBeDisabled();
+  });
+
+  it('keeps a new secret on screen when the list fails to reload behind it', async () => {
+    let lists = 0;
+    server.use(
+      http.get(apiUrl('/service-accounts'), () =>
+        ++lists === 1 ? HttpResponse.json(listEnvelope([])) : serverError(),
+      ),
+      collection('/roles', roles),
+      accepts('post', '/service-accounts', credentialsFor()),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'New service account' }));
+    const form = await screen.findByRole('dialog');
+    await user.type(within(form).getByLabelText(/Display name/), 'CI deployer');
+    expect(await within(form).findByText('ap_service_account')).toBeInTheDocument();
+    await user.click(within(form).getByRole('button', { name: 'Create' }));
+
+    expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
+    expect(screen.getByText('Copy the secret now')).toBeInTheDocument();
+    expect(screen.getByLabelText('Client secret')).toHaveValue(SECRET);
+  }, FORM_TIMEOUT);
+
+  it('measures the name in bytes, as the server does', async () => {
+    useAccounts([]);
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'New service account' }));
+    const form = await screen.findByRole('dialog');
+    await user.click(within(form).getByLabelText(/Display name/));
+    // 100 characters, 300 bytes.
+    await user.paste('界'.repeat(100));
+
+    expect(await within(form).findByText(/Too long: the limit is 255 bytes/)).toBeInTheDocument();
+  });
+
+  it('keeps the conflict when the reload fails, so a stale form cannot be saved', async () => {
+    useAccounts();
+    let reads = 0;
+    server.use(
+      failure('put', '/service-accounts/ci-deployer', 409, 'CONFLICT'),
+      http.get(apiUrl('/service-accounts/ci-deployer'), () =>
+        ++reads === 1 ? HttpResponse.json(ciDeployer) : serverError(),
+      ),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    const form = await screen.findByRole('dialog');
+    await user.type(within(form).getByLabelText(/Description/), ' changed');
+    await user.click(within(form).getByRole('button', { name: 'Save changes' }));
+    expect(await within(form).findByText(/Someone else changed this account/)).toBeInTheDocument();
+
+    await user.click(within(form).getByRole('button', { name: 'Reload' }));
+
+    expect(
+      await screen.findByText('Could not load the service account. Close this and try again.'),
+    ).toBeInTheDocument();
+    expect(within(form).getByText(/Someone else changed this account/)).toBeInTheDocument();
+  });
+
+  it('goes back to "Copy" when a later copy fails', async () => {
+    useAccounts();
+    server.use(resource('/service-accounts/ci-deployer', aServiceAccount()));
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    const form = await screen.findByRole('dialog');
+    const copy = await within(form).findByRole('button', { name: 'Copy client ID' });
+    await user.click(copy);
+    await waitFor(() => expect(copy).toHaveTextContent(/^Copied$/));
+
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(new Error('denied'));
+    await user.click(copy);
+
+    expect(
+      await screen.findByText('Could not copy. Select the value and copy it manually.'),
+    ).toBeInTheDocument();
+    expect(copy).toHaveTextContent(/^Copy$/);
   });
 });

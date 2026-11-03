@@ -2991,7 +2991,7 @@
     "defaultMessage": "Saving…"
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.ServiceAccountFormDialog.tooLong": {
-    "defaultMessage": "Use at most {max} characters."
+    "defaultMessage": "Too long: the limit is {max} bytes, and some characters take more than one."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.ServiceAccountFormDialog.updateFailed": {
     "defaultMessage": "Could not save the service account."
@@ -3037,6 +3037,9 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.TestTokenDialog.revokeNote": {
     "defaultMessage": "This token cannot be revoked on its own. Disabling the account or regenerating its secret stops it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.TestTokenDialog.rolesFailed": {
+    "defaultMessage": "Could not load the roles, so the token's scopes are unknown. Reload the page and try again."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.components.TestTokenDialog.scopeFailed": {
     "defaultMessage": "The account's roles do not grant the requested scopes. Reload the page and try again."

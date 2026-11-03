@@ -34,16 +34,19 @@ export const useCopy = () => {
   const { notify } = useNotifications();
   const [copied, setCopied] = useState(false);
 
+  const fail = () => {
+    setCopied(false);
+    notify(intl.formatMessage(messages.copyFailed), 'error');
+  };
+
   const copy = (value: string) => {
     // Clipboard access may be unavailable outside secure contexts.
     const written = navigator.clipboard?.writeText(value);
     if (!written) {
-      notify(intl.formatMessage(messages.copyFailed), 'error');
+      fail();
       return;
     }
-    written
-      .then(() => setCopied(true))
-      .catch(() => notify(intl.formatMessage(messages.copyFailed), 'error'));
+    written.then(() => setCopied(true)).catch(fail);
   };
 
   return { copied, copy };
