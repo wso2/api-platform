@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/agentcard"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/aws"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
@@ -164,6 +165,11 @@ func Testbench() *components.Definition {
 			// See testbench/services/stripe and testbench/services/moesif.
 			{Name: "stripe", Port: stripe.Port, Scheme: "http", AwaitListening: true},
 			{Name: "moesif", Port: moesif.Port, Scheme: "http", AwaitListening: true},
+			// The AWS endpoints the gateway's AWS Authentication policy reaches, verifying SigV4
+			// signatures: an AWS-hosted upstream at http://testbench/<service>/<region>, and STS,
+			// which the gateway runtime reaches through AWS_ENDPOINT_URL_STS. See
+			// testbench/services/aws.
+			{Name: "aws", Port: aws.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),

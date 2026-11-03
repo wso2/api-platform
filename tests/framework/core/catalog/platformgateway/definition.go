@@ -57,6 +57,9 @@ func PlatformGateway() *components.Definition {
 
 			StagedFiles: map[string]string{
 				"llm-pricing/model_prices.json": "gateway/configs/llm-pricing/model_prices.json",
+				// A block overrides this with resources/aws/workload-credentials to give the
+				// runtime AWS workload credentials.
+				"aws-credentials": "tests/framework/core/catalog/platformgateway/resources/aws/credentials",
 			},
 			GeneratedFiles: gatewayGeneratedFiles(),
 			Env:            env,
