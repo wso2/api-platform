@@ -1600,3 +1600,102 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
     When I delete the LLM provider "mf-tokens-alive-provider"
     Then the response status code should be 200
+
+  # ====================================================================
+  # SC-011 — one unit of quota, however many attempts it took
+  # ====================================================================
+
+  Scenario: Three attempts consume one unit of subscription quota
+    # Same reasoning as the rate-limit scenario, through the quota path instead.
+    # A plan of 2 requests/minute against a three-deep chain is the sharp part:
+    # if a rescued request spent one unit PER ATTEMPT, the very first request
+    # would overrun the plan on its own and the second would already be refused.
+    When I create a subscription plan "MFQuotaPlan" with 2 requests per minute
+    Then the response status should be 201
+    And I store the last response field "id" as "planId"
+
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-quota-v1.0
+      spec:
+        displayName: MF Quota
+        version: v1.0
+        context: /mf-quota/$version
+        subscriptionPlans:
+          - MFQuotaPlan
+        upstreamDefinitions:
+          - name: primary
+            basePath: /quota-dead-one
+            upstreams:
+              - url: http://sample-backend:9998
+          - name: mid
+            basePath: /quota-dead-two
+            upstreams:
+              - url: http://sample-backend:9997
+          - name: alive
+            basePath: /quota-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: subscription-validation
+                version: v1
+                params:
+                  subscriptionKeyHeader: "Subscription-Key"
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: mid
+                        - model: claude-opus-4-1-20250805
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    When I create a subscription for API "mf-quota-v1.0" with plan and token "mf-quota-subscription-token"
+    Then the response status should be 201
+
+    When I set header "Content-Type" to "application/json"
+    And I set header "Subscription-Key" to "mf-quota-subscription-token"
+    And I send a POST request to "http://localhost:8080/mf-quota/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # Two targets passed over, the third served.
+    And the response header "x-envoy-attempt-count" should be "3"
+    And the response body should contain "/quota-alive"
+
+    # The second unit. Counted per attempt, the plan would already be spent.
+    When I send a POST request to "http://localhost:8080/mf-quota/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "3"
+
+    # ...and the plan is real: the third request is refused.
+    When I send a POST request to "http://localhost:8080/mf-quota/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    When I delete the API "mf-quota-v1.0"
+    Then the response should be successful
+    When I delete the subscription plan with stored id "planId"
+    Then the response should be successful
