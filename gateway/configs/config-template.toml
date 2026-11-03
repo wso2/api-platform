@@ -337,9 +337,12 @@ issuer = "api-platform-devportal"
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
-# Off by default. enabled = true records every change made through the management
-# API in the audit table; while it is false, nothing is recorded: no table rows and
-# no output lines. Changes pushed from the control plane are never recorded.
+# Off by default. enabled = true records changes made through the management API
+# to REST and GraphQL APIs, LLM providers, proxies and provider templates, MCP
+# proxies, agents, API keys, certificates, subscriptions and subscription plans in
+# the audit table. Secrets and certificate reloads are not recorded. While it is
+# false, nothing is recorded: no table rows and no output lines. Changes pushed
+# from the control plane are never recorded.
 [controller.audit]
 enabled = false
 # Also write each record as a JSON line tagged "logType":"audit" to any of
@@ -373,8 +376,9 @@ max_size_mb = 100
 # "http" output — read only when outputs contains "http".
 #
 # Batches records and POSTs them as newline-delimited JSON
-# (application/x-ndjson), which Splunk HEC's /services/collector/raw,
-# Elasticsearch/OpenSearch, Fluent Bit and Vector accept as-is. The queue is held
+# (application/x-ndjson), which Splunk HEC's /services/collector/raw, Fluent Bit
+# and Vector accept as-is. Elasticsearch/OpenSearch _bulk needs an action line
+# before each record, so send to them through one of these collectors. The queue is held
 # in memory only: an outage longer than the queue and retries can absorb loses
 # records from this output (the audit table still has them). On shutdown the
 # queue is flushed for up to 5s, and a batch that fails then is not retried.
@@ -401,7 +405,8 @@ queue_capacity = 10000
 request_timeout = "10s"
 # Retries after the first attempt, for transport errors, 429 and 5xx only, with
 # exponential backoff from retry_backoff plus jitter. A 429's Retry-After replaces
-# the backoff (capped at 30s). Other 4xx responses are not retried.
+# the backoff (capped at 30s). Other 4xx responses are not retried. retry_backoff
+# is at most 1h.
 max_retries = 3
 retry_backoff = "1s"
 
