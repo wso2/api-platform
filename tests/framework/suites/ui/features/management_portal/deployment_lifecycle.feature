@@ -46,12 +46,10 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     And the Management Portal confirms a deployment started and stores its name as "live"
     And the deployment status on gateway "it-gateway" becomes "Active"
     And the gateway answers 200 to a "GET" request to "/${CTX:api}/health"
-    * sheet check "DEPLC-004"
     When the user clicks "View More" in the Management Portal
     Then the Management Portal offers a "Delete ${CTX:first}" button
     And the Management Portal offers no "Delete ${CTX:live}" button
     When the user closes the drawer in the Management Portal
-    * sheet check "DEPLC-003"
     And the user clicks "Change deployment on it-gateway" on gateway "it-gateway" in the Management Portal
     And the user selects deployment "${CTX:live}" in the Management Portal
     Then the Management Portal's "Restore" button is disabled
@@ -85,17 +83,14 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     And the Management Portal confirms a deployment started and stores its name as "live"
     And the deployment status on gateway "it-gateway" becomes "Active"
     And the gateway answers 200 to a "GET" request to "/${CTX:api}/health"
-    * sheet check "DEPLC-001"
     When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
     And the gateway answers 404 to a "GET" request to "/${CTX:api}/health"
-    * sheet check "DEPLC-002"
     When the user clicks "Redeploy" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms redeploying deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Active"
     And the gateway answers 200 to a "GET" request to "/${CTX:api}/health"
-    * sheet check "DEPLC-005"
     When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
@@ -130,12 +125,10 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
       """
       {"query":"{ hello }"}
       """
-    * sheet check "DEPLC-004"
     When the user clicks "View More" in the Management Portal
     Then the Management Portal offers a "Delete ${CTX:first}" button
     And the Management Portal offers no "Delete ${CTX:live}" button
     When the user closes the drawer in the Management Portal
-    * sheet check "DEPLC-003"
     And the user clicks "Change deployment on it-gateway" on gateway "it-gateway" in the Management Portal
     And the user selects deployment "${CTX:live}" in the Management Portal
     Then the Management Portal's "Restore" button is disabled
@@ -175,7 +168,6 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
       """
       {"query":"{ hello }"}
       """
-    * sheet check "DEPLC-001"
     When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
@@ -183,7 +175,6 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
       """
       {"query":"{ hello }"}
       """
-    * sheet check "DEPLC-002"
     When the user clicks "Redeploy" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms redeploying deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Active"
@@ -191,7 +182,6 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
       """
       {"query":"{ hello }"}
       """
-    * sheet check "DEPLC-005"
     When the user clicks "Stop" on gateway "it-gateway" in the Management Portal
     Then the Management Portal confirms stopping deployment "${CTX:live}"
     And the deployment status on gateway "it-gateway" becomes "Suspended"
