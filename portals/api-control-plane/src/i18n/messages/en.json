@@ -899,6 +899,14 @@
     "defaultMessage": "gateways",
     "description": "Plural noun for gateways, used inside the limit-reached sentence."
   },
+  "apiControlPlane.hooks.useResourceLimits.componentManagedGateways": {
+    "defaultMessage": "WSO2-managed gateways",
+    "description": "Plural noun for WSO2-managed gateways, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways": {
+    "defaultMessage": "self-hosted gateways",
+    "description": "Plural noun for self-hosted gateways, used inside the limit-reached sentence."
+  },
   "apiControlPlane.hooks.useResourceLimits.componentPortals": {
     "defaultMessage": "portals",
     "description": "Plural noun for developer portals, used inside the limit-reached sentence."

@@ -26,6 +26,7 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { hostingBlocked } from './utils/limits';
 import type {
   Environment,
   Gateway,
@@ -321,6 +322,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         environments={environments}
         gatewayVersions={port.gatewayVersions}
         initialHosting={initialHosting}
+        hostingBlocked={hostingBlocked(port)}
         onBack={() => {
           setView('list');
           setEditingGatewayId(null);
