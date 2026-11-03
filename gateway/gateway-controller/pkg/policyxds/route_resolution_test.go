@@ -188,6 +188,26 @@ func TestExistingKindGoldenRouteConfigContent(t *testing.T) {
 	}, got)
 }
 
+// A definition cluster that carries its URL — the model endpoint's provider clusters — reaches
+// the engine as upstream_definition_urls; a definition without one is not listed there.
+func TestRouteConfigCarriesUpstreamDefinitionURLs(t *testing.T) {
+	rdc := restRDC()
+	rdc.UpstreamClusters["upstream_RestApi_api-1_bedrock"] = &models.UpstreamCluster{
+		Name: "bedrock", BasePath: "/", URL: "https://bedrock-runtime.us-east-1.amazonaws.com",
+		Endpoints: []models.Endpoint{{Host: "bedrock-runtime.us-east-1.amazonaws.com", Port: 443}},
+	}
+	rdc.UpstreamClusters["upstream_RestApi_api-1_plain"] = &models.UpstreamCluster{
+		Name: "plain", BasePath: "/v1", Endpoints: []models.Endpoint{{Host: "example.com", Port: 443}},
+	}
+	resources, err := testTranslator().TranslateRuntimeConfigs([]*models.RuntimeDeployConfig{rdc})
+	require.NoError(t, err)
+
+	got := decodeRouteConfig(t, resources[RouteConfigTypeURL]["GET|/petstore/v1/pets|localhost"])
+	assert.Equal(t, map[string]interface{}{"bedrock": "https://bedrock-runtime.us-east-1.amazonaws.com"},
+		got["upstream_definition_urls"])
+	assert.Equal(t, map[string]interface{}{"bedrock": "/", "plain": "/v1"}, got["upstream_definition_paths"])
+}
+
 // ─── Per-route resolver selection ────────────────────────────────────────────
 
 // The reason resolver selection moved onto the route: one API can hold both shapes at
