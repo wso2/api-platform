@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/kubernetes/gateway-operator
 
-go 1.26.5
+go 1.26.10
 
 require (
 	github.com/go-logr/logr v1.4.3
