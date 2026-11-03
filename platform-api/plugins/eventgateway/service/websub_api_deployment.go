@@ -29,7 +29,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -52,7 +51,7 @@ type WebSubAPIDeploymentService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
-	auditService         *audit.Service
+	auditService         *coreservice.AuditService
 }
 
 // NewWebSubAPIDeploymentService creates a new WebSubAPIDeploymentService
@@ -67,7 +66,7 @@ func NewWebSubAPIDeploymentService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
-	auditService *audit.Service,
+	auditService *coreservice.AuditService,
 ) *WebSubAPIDeploymentService {
 	return &WebSubAPIDeploymentService{
 		auditService:         auditService,

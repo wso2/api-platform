@@ -32,7 +32,6 @@ import (
 	"net/http"
 
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -97,7 +96,7 @@ type Deps struct {
 	GatewayEventsService *service.GatewayEventsService
 	APIKeyService        *service.APIKeyService
 	IdentityService      *service.IdentityService
-	AuditService         *audit.Service
+	AuditService         *service.AuditService
 
 	// DBEncryptionKey is the derived hex key used for encrypted DB columns.
 	DBEncryptionKey string

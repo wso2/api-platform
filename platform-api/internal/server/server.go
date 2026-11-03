@@ -35,7 +35,6 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
@@ -70,7 +69,7 @@ type Server struct {
 	timeoutService *service.DeploymentTimeoutService
 	dispatcher     *service.EventDispatcher
 	eventHub       eventhub.EventHub
-	auditService   *audit.Service
+	auditService   *service.AuditService
 	logger         *slog.Logger
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 }
@@ -257,7 +256,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiUtil := &utils.APIUtil{}
 
 	// Initialize services
-	auditService, err := audit.NewService(auditRepo, cfg.Audit, slogger)
+	auditService, err := service.NewAuditService(auditRepo, cfg.Audit, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize audit outputs: %w", err)
 	}

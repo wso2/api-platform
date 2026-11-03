@@ -27,7 +27,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
@@ -61,7 +60,7 @@ type GraphQLAPIDeploymentService struct {
 	builds               *BuildService
 	cfg                  *config.Server
 	slogger              *slog.Logger
-	auditService         *audit.Service
+	auditService         *AuditService
 }
 
 // NewGraphQLAPIDeploymentService creates a new GraphQL API deployment service.
@@ -77,7 +76,7 @@ func NewGraphQLAPIDeploymentService(
 	identity *IdentityService,
 	cfg *config.Server,
 	slogger *slog.Logger,
-	auditService *audit.Service,
+	auditService *AuditService,
 ) *GraphQLAPIDeploymentService {
 	return &GraphQLAPIDeploymentService{
 		auditService:         auditService,

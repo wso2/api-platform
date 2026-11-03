@@ -29,7 +29,6 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
@@ -49,7 +48,7 @@ type WebSubAPIHmacSecretService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	gatewayRepo          repository.GatewayRepository
 	slogger              *slog.Logger
-	auditService         *audit.Service
+	auditService         *coreservice.AuditService
 }
 
 // NewWebSubAPIHmacSecretService creates a new WebSubAPIHmacSecretService.
@@ -62,7 +61,7 @@ func NewWebSubAPIHmacSecretService(
 	gatewayRepo repository.GatewayRepository,
 	encryptionKeyStr string,
 	slogger *slog.Logger,
-	auditService *audit.Service,
+	auditService *coreservice.AuditService,
 ) (*WebSubAPIHmacSecretService, error) {
 	if encryptionKeyStr == "" {
 		return nil, apperror.HmacSecretNotConfigured.New()

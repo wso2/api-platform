@@ -15,7 +15,7 @@
  *
  */
 
-package audit
+package service
 
 import (
 	"context"
@@ -28,13 +28,13 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// fileSink appends each audit line to a file, rotating at a size ceiling.
+// auditFileSink appends each audit line to a file, rotating at a size ceiling.
 //
 // Rotation keeps one backup: the live file is renamed to <path>.1, replacing any
 // earlier backup, and a new file is opened, so at most 2 x max_size_mb is on disk.
 // This is logrotate's "create" mode, which tailers that track inodes (Fluent Bit,
 // Filebeat) follow. The sink must be the file's only writer.
-type fileSink struct {
+type auditFileSink struct {
 	mu sync.Mutex
 	// f is nil after Close, or after a rotation could not open a new file.
 	f      *os.File
@@ -46,12 +46,12 @@ type fileSink struct {
 	// maxBytes is the rotation threshold. 0 disables rotation.
 	maxBytes int64
 	logger   *slog.Logger
-	throttle errThrottle
+	throttle auditErrThrottle
 	// buf is reused across writes to append the newline, so each line is one Write.
 	buf []byte
 }
 
-func newFileSink(cfg config.AuditFile, logger *slog.Logger) (*fileSink, error) {
+func newAuditFileSink(cfg config.AuditFile, logger *slog.Logger) (*auditFileSink, error) {
 	path, err := config.ResolveAuditFilePath(cfg.Path)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func newFileSink(cfg config.AuditFile, logger *slog.Logger) (*fileSink, error) {
 	if cfg.MaxSizeMB < 0 {
 		return nil, fmt.Errorf("max_size_mb must be >= 0, got %d", cfg.MaxSizeMB)
 	}
-	s := &fileSink{path: path, maxBytes: int64(cfg.MaxSizeMB) << 20, logger: logger}
+	s := &auditFileSink{path: path, maxBytes: int64(cfg.MaxSizeMB) << 20, logger: logger}
 	if err := s.open(); err != nil {
 		return nil, fmt.Errorf("cannot open %q for append: %w", path, err)
 	}
@@ -73,7 +73,7 @@ func newFileSink(cfg config.AuditFile, logger *slog.Logger) (*fileSink, error) {
 // checkPermissions refuses an existing file that group or others can read: open
 // sets the 0600 and 0700 modes only when it creates them. A permissive directory
 // only warns, since a 0600 file is unreadable whatever its directory's mode.
-func (s *fileSink) checkPermissions() error {
+func (s *auditFileSink) checkPermissions() error {
 	info, err := s.f.Stat()
 	if err != nil {
 		return fmt.Errorf("cannot stat %q: %w", s.path, err)
@@ -90,11 +90,11 @@ func (s *fileSink) checkPermissions() error {
 	return nil
 }
 
-func (s *fileSink) Name() string { return config.AuditOutputFile }
+func (s *auditFileSink) Name() string { return config.AuditOutputFile }
 
 // Write appends the line, rotating first if it would push the file past the size
 // ceiling. A failure drops the line and logs.
-func (s *fileSink) Write(line []byte) {
+func (s *auditFileSink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -136,7 +136,7 @@ func (s *fileSink) Write(line []byte) {
 
 // rotate renames the live file to <path>.1 and opens a new one. Callers hold s.mu.
 // If the rename fails, the original file is reopened so writing continues.
-func (s *fileSink) rotate() error {
+func (s *auditFileSink) rotate() error {
 	closeErr := s.f.Close()
 	s.f = nil
 
@@ -156,7 +156,7 @@ func (s *fileSink) rotate() error {
 
 // open opens the live file for append, creating it 0600 and its directory 0700
 // if missing, and seeds the size from it. Callers hold s.mu, or own s.
-func (s *fileSink) open() error {
+func (s *auditFileSink) open() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (s *fileSink) open() error {
 }
 
 // Close closes the live file. Writes are unbuffered, so there is nothing to flush.
-func (s *fileSink) Close(context.Context) error {
+func (s *auditFileSink) Close(context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closed = true

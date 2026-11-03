@@ -15,7 +15,7 @@
  *
  */
 
-package audit
+package service
 
 import (
 	"context"
@@ -26,23 +26,23 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// stdoutSink writes each line to the process's stdout, serialized by a mutex so
+// auditStdoutSink writes each line to the process's stdout, serialized by a mutex so
 // concurrent records cannot interleave.
-type stdoutSink struct {
+type auditStdoutSink struct {
 	mu       sync.Mutex
 	logger   *slog.Logger
-	throttle errThrottle
+	throttle auditErrThrottle
 	// buf is reused across writes to append the newline, so each line is one Write.
 	buf []byte
 }
 
-func newStdoutSink(logger *slog.Logger) *stdoutSink {
-	return &stdoutSink{logger: logger}
+func newAuditStdoutSink(logger *slog.Logger) *auditStdoutSink {
+	return &auditStdoutSink{logger: logger}
 }
 
-func (s *stdoutSink) Name() string { return config.AuditOutputStdout }
+func (s *auditStdoutSink) Name() string { return config.AuditOutputStdout }
 
-func (s *stdoutSink) Write(line []byte) {
+func (s *auditStdoutSink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.buf = append(append(s.buf[:0], line...), '\n')
@@ -52,4 +52,4 @@ func (s *stdoutSink) Write(line []byte) {
 }
 
 // Close does nothing: stdout is not owned by this sink and is unbuffered.
-func (s *stdoutSink) Close(context.Context) error { return nil }
+func (s *auditStdoutSink) Close(context.Context) error { return nil }

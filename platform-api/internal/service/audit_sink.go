@@ -15,7 +15,7 @@
  *
  */
 
-package audit
+package service
 
 import (
 	"context"
@@ -27,7 +27,7 @@ import (
 // sink is a destination for audit lines. Implementations must be safe for
 // concurrent use. A sink that cannot deliver a line drops it and logs; it never
 // fails the request being audited.
-type sink interface {
+type auditSink interface {
 	// Write emits one JSON line, without a trailing newline. It runs on the
 	// request path, so it must not block for more than a short, bounded time.
 	Write(line []byte)
@@ -40,23 +40,23 @@ type sink interface {
 	Name() string
 }
 
-// errorLogInterval is the minimum gap between two error logs from one sink. A
+// auditErrorLogInterval is the minimum gap between two error logs from one sink. A
 // sink failure is usually persistent (a full disk, a receiver that is down), so
 // logging every dropped record would turn one fault into a log storm.
-const errorLogInterval = 30 * time.Second
+const auditErrorLogInterval = 30 * time.Second
 
-// errThrottle rate-limits a sink's error logs and counts what it suppressed.
+// auditErrThrottle rate-limits a sink's error logs and counts what it suppressed.
 // The zero value is ready to use.
-type errThrottle struct {
+type auditErrThrottle struct {
 	mu         sync.Mutex
 	lastLogged time.Time
 	suppressed int
 }
 
-func (t *errThrottle) logError(logger *slog.Logger, msg, sinkName string, err error) {
+func (t *auditErrThrottle) logError(logger *slog.Logger, msg, sinkName string, err error) {
 	t.mu.Lock()
 	now := time.Now()
-	if !t.lastLogged.IsZero() && now.Sub(t.lastLogged) < errorLogInterval {
+	if !t.lastLogged.IsZero() && now.Sub(t.lastLogged) < auditErrorLogInterval {
 		t.suppressed++
 		t.mu.Unlock()
 		return

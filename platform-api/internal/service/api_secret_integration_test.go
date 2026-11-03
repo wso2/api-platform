@@ -35,7 +35,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -93,7 +92,7 @@ func setupAPISecretTestEnv(t *testing.T) (*APIService, *SecretService, func()) {
 
 	apiRepo := repository.NewAPIRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
-	auditRepo, err := audit.NewService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
+	auditRepo, err := NewAuditService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
 	if err != nil {
 		t.Fatalf("create audit service: %v", err)
 	}
