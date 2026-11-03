@@ -1481,3 +1481,60 @@ The isolation that matters holds. API B's request carried its own policy's
 marker and none of API A's credential, with an echo backend reporting what it
 actually received — so A's per-attempt chain did not run on B's request, which
 is the claim the design document makes.
+
+## RestApi failover reached the right cluster on the wrong path (2026-11-02)
+
+**T086a, the FR-030a parity scenario, failed on its first run — and the failure was real.**
+
+The same failover block was deployed under `kind: RestApi`, with a target's `provider` naming an
+`upstreamDefinition` instead of an `additionalProviders` alias. The primary pointed at a refusing
+port, the fallback at a live one.
+
+| Signal | Observed | Verdict |
+|---|---|---|
+| status | `200` | ✓ |
+| `x-envoy-attempt-count` | `2` | ✓ failover engaged |
+| echoed upstream path | `/rest-dead-upstream/chat/completions` | ✗ **primary's base path** |
+
+Port 9998 refuses, so the 200 can only have come from the live upstream. The fallback cluster was
+selected correctly and then handed the *primary's* base path.
+
+### Two mechanisms, only one of which was kind-agnostic
+
+Failover needs both of these, and they live in different places:
+
+1. **Selecting the fallback cluster** — Envoy's `priority_group` specifier, driven by the ranking
+   the downstream pass publishes. Nothing about it is kind-specific.
+2. **Sending that cluster its own base path** — `repointToProvider`, which runs in the
+   **per-attempt upstream filter chain**. The route's `regex_rewrite` is compiled once and points
+   every attempt at the primary, so without this an attempt arrives on the wrong context.
+
+`buildUpstreamPolicyChains(spec *api.LLMProxyConfigData, …)` in `pkg/transform/upstream_chains.go`
+was the only writer of `UpstreamPolicyChains`, and `attachUpstreamChainTo` gated the filter on that
+chain being non-empty. An LlmProxy always qualified — every provider carries a transformer and auth
+chain. A RestApi failing over between upstream definitions carries no per-provider policies at all,
+so it got no filter, so step 2 never ran.
+
+### Confirmed by isolating the one variable
+
+Re-running the identical scenario with both definitions sharing one `basePath` — which makes the
+re-point a no-op — passed outright (14/14 scenarios, `attempt-count: 2`, `200`). Cluster selection
+was never the problem.
+
+### Fix
+
+`attachUpstreamChainTo` now attaches the per-attempt filter when a cluster either carries authored
+upstream policies **or** appears as a resolved target in some route's `FailoverConfig`. The target
+set is static — an unresolvable target is dropped at config time, so `Targets[].Cluster` is exactly
+what Envoy can select — so this needs no new transport and never names the policy.
+
+FR-043 still holds by construction: a cluster with neither property carries no filter and pays no
+ext_proc round trip. Locked in by `TestAttachUpstreamChainTo_CoversFailoverTargetsWithoutPolicies`
+alongside the existing `…_SkipsClustersWithNoWork`.
+
+### Worth noting
+
+This is the failure mode that is worst to ship: no error, no log, a `200` body from a real backend.
+Only an assertion on *which* resource answered catches it. The two earlier lessons about absence
+assertions (T084, T085) have the same root — a passing status code proves far less than it appears
+to.

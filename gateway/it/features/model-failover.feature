@@ -1011,3 +1011,87 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
     When I delete the LLM provider "mf-pii-alive-provider"
     Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030a — the same configuration works on a kind that is not an LlmProxy
+  # ====================================================================
+
+  Scenario: The same failover configuration behaves the same on a RestApi
+    # Applicability is decided by whether a target RESOLVES, not by a list of
+    # permitted kinds. On an LlmProxy a target's provider names an
+    # additionalProviders alias; on a RestApi it names an upstreamDefinition.
+    # Name them the same and the policy block is byte-for-byte identical. The
+    # `params` block below is literally the one the PII scenario above attaches
+    # to an LlmProxy; only the wrapper around it differs (`paths:` there,
+    # `operations[].policies` here), because that is each kind's own attachment
+    # schema and not part of the failover configuration.
+    #
+    # The dead upstream here REFUSES rather than failing DNS, and that difference
+    # is the point rather than an incidental choice. A RestApi has no loopback
+    # hop: Envoy answers an unresolvable host locally with no_healthy_upstream,
+    # which is terminal, and no failover occurs. On an LlmProxy the same name
+    # fails on the provider's inner route and returns a retriable 503. A refused
+    # connection is retriable on both, so it is the failure mode that lets one
+    # configuration be compared across the two kinds at all.
+    #
+    # The two definitions carry DIFFERENT basePaths deliberately. Selecting the
+    # fallback cluster and sending it the fallback's own base path are separate
+    # mechanisms: the first is Envoy's priority_group and was always kind-
+    # agnostic, the second runs in the per-attempt upstream filter chain. That
+    # chain used to be built for an LlmProxy only, so a RestApi fallback was
+    # reached but served on the PRIMARY's base path — a 200 from the wrong
+    # resource, with no error anywhere. Give both definitions the same basePath
+    # and this scenario passes either way, which is exactly why it must not.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-restapi-failover-v1.0
+      spec:
+        displayName: MF RestApi Failover
+        version: v1.0
+        context: /mf-restapi/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /rest-dead-upstream
+            upstreams:
+              - url: http://sample-backend:9998
+          - name: alive
+            basePath: /rest-alive-upstream
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # Identical outcome to the LlmProxy scenarios above: the first target refuses,
+    # the second answers, and the client sees one success after two attempts.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-restapi/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/rest-alive-upstream"
+
+    # Cleanup
+    When I delete the API "mf-restapi-failover-v1.0"
+    Then the response status code should be 200

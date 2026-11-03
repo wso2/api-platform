@@ -377,18 +377,50 @@ func attachUpstreamFilters(cluster *clusterv3.Cluster, filters []*hcm.HttpFilter
 	return nil
 }
 
+// failoverTargetClusters collects every cluster reachable as a failover attempt on this
+// deployment.
+//
+// These need per-attempt processing even with no authored policies, because the engine
+// re-points an attempt at its own upstream's base path BEFORE the chain runs. The set is known
+// statically: a target that did not resolve to a cluster is dropped at config time, so
+// Targets[].Cluster is exactly the set Envoy can select.
+func failoverTargetClusters(rdc *models.RuntimeDeployConfig) map[string]bool {
+	clusters := make(map[string]bool)
+	for _, route := range rdc.Routes {
+		if route == nil || route.Failover == nil || route.Failover.Inert() {
+			continue
+		}
+		for _, target := range route.Failover.Targets {
+			if target.Cluster != "" {
+				clusters[target.Cluster] = true
+			}
+		}
+	}
+	return clusters
+}
+
 // attachUpstreamChainTo gives a cluster the per-attempt filter chain, but only when that cluster
 // actually has per-attempt work to do.
 //
-// This is what makes FR-043 hold by construction. A cluster with no upstream policy chain carries
-// no filter, so a request reaching it pays no ext_proc round trip — no gating mechanism, no
-// opt-in flag, and no cost to APIs that never attach an upstream policy.
+// This is what makes FR-043 hold by construction. A cluster that neither carries an upstream
+// policy chain nor is reachable as a failover attempt gets no filter, so a request reaching it
+// pays no ext_proc round trip — no gating mechanism, no opt-in flag, and no cost to APIs that
+// use neither feature.
+//
+// Participating in a failover chain qualifies on its own, with no authored policies required.
+// The engine re-points each attempt at its own upstream's base path before running the chain,
+// and that must happen for EVERY attempt — the route's regex_rewrite is compiled once and sends
+// all of them to the primary's base path otherwise. An LlmProxy gets the filter regardless,
+// since its providers always carry a transformer and auth chain; a RestApi failing over between
+// upstream definitions has no such chain, and without this clause its fallback attempts
+// silently arrived on the primary's base path (FR-030a).
 func (t *Translator) attachUpstreamChainTo(cluster *clusterv3.Cluster, rdc *models.RuntimeDeployConfig) error {
 	if cluster == nil || rdc == nil {
 		return nil
 	}
-	chain, ok := rdc.UpstreamPolicyChains[cluster.GetName()]
-	if !ok || chain == nil || len(chain.Policies) == 0 {
+	chain, hasChain := rdc.UpstreamPolicyChains[cluster.GetName()]
+	hasPolicies := hasChain && chain != nil && len(chain.Policies) > 0
+	if !hasPolicies && !failoverTargetClusters(rdc)[cluster.GetName()] {
 		return nil
 	}
 
@@ -402,8 +434,12 @@ func (t *Translator) attachUpstreamChainTo(cluster *clusterv3.Cluster, rdc *mode
 	if err := attachUpstreamFilters(cluster, filters); err != nil {
 		return err
 	}
+	policyCount := 0
+	if hasPolicies {
+		policyCount = len(chain.Policies)
+	}
 	t.logger.Debug("attached per-attempt policy chain to cluster",
 		slog.String("cluster", cluster.GetName()),
-		slog.Int("policies", len(chain.Policies)))
+		slog.Int("policies", policyCount))
 	return nil
 }

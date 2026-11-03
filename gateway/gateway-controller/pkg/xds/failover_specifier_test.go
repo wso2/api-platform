@@ -605,6 +605,58 @@ func TestAttachUpstreamChainTo_SkipsClustersWithNoWork(t *testing.T) {
 	}
 }
 
+// A failover target gets the per-attempt filter even with no authored policies.
+//
+// The engine re-points an attempt at its own upstream's base path before the chain runs, and the
+// route's regex_rewrite cannot vary per attempt. Without the filter a fallback attempt arrives on
+// the PRIMARY's base path and is served by the wrong resource — silently, with a 200. An LlmProxy
+// never showed this because its providers always carry a transformer chain; a RestApi failing over
+// between upstream definitions carries none (FR-030a).
+func TestAttachUpstreamChainTo_CoversFailoverTargetsWithoutPolicies(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.PolicyEngine.UpstreamProcessing = true
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+	require.NoError(t, err)
+
+	rdc := &models.RuntimeDeployConfig{
+		Routes: map[string]*models.Route{
+			"route_with_failover": {
+				Failover: &models.FailoverConfig{
+					Targets: []models.FailoverTarget{
+						{Model: "gpt-4o", Cluster: "upstream_RestApi_abc_primary"},
+						{Model: "claude", Cluster: "upstream_RestApi_abc_alive"},
+					},
+				},
+			},
+			"route_inert_failover": {
+				// Every target unresolvable: inert, so it must not pull in any cluster.
+				Failover: &models.FailoverConfig{
+					Targets: []models.FailoverTarget{{Model: "ghost"}},
+				},
+			},
+			"route_no_failover": {},
+		},
+	}
+
+	for name, wantFilters := range map[string]bool{
+		"upstream_RestApi_abc_primary": true,
+		"upstream_RestApi_abc_alive":   true,
+		"upstream_RestApi_abc_other":   false,
+	} {
+		t.Run(name, func(t *testing.T) {
+			cluster := clusterWithName(name)
+			require.NoError(t, translator.attachUpstreamChainTo(cluster, rdc))
+			got := len(upstreamFiltersOn(t, cluster)) > 0
+			if got != wantFilters {
+				t.Fatalf("cluster %q has filters = %v, want %v", name, got, wantFilters)
+			}
+		})
+	}
+}
+
 // Envoy DROPS a dynamic-metadata update for any namespace absent from receiving_namespaces,
 // logging "namespace not configured for receiving" and otherwise carrying on. Without wso2.failover
 // listed on the DOWNSTREAM filter, a failover policy's published ranking never reaches the cluster
