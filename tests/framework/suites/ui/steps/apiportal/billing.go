@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
@@ -607,6 +608,7 @@ const (
 	keyBillingPlanName  = "apiPortalBillingPlanName"
 	keyBillingMeterID   = "apiPortalBillingMeterID"
 	keyBillingMeterName = "apiPortalBillingMeterName"
+	keyBillingMonth     = "apiPortalBillingMonth"
 )
 
 // setUpBillingByAPI sets up billing through the REST API, with Stripe's events sent to the portal's
@@ -639,7 +641,16 @@ func (u *Steps) setUpBillingByAPI(ctx context.Context) error {
 	if status != http.StatusCreated {
 		return fmt.Errorf("setting up billing: status %d %s", status, body)
 	}
-	return u.registerBilling(ctx)
+	if err := u.registerBilling(ctx); err != nil {
+		return err
+	}
+	var billing struct {
+		CreatedAt time.Time `json:"createdAt"`
+	}
+	if err := json.Unmarshal([]byte(body), &billing); err != nil || billing.CreatedAt.IsZero() {
+		return fmt.Errorf("reading when billing was set up from %s: %v", body, err)
+	}
+	return tcontext.Set(ctx, keyBillingMonth, billing.CreatedAt.UTC().Month().String())
 }
 
 // createRequestMeterByAPI adds a Requests meter whose prices may filter on Status and Method.

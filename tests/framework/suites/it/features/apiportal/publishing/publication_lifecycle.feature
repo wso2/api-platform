@@ -17,9 +17,9 @@
 # --------------------------------------------------------------------
 
 @platform-api-gateway-api-portal
-Feature: Publishing a REST API to an API Portal through the control plane
+Feature: Publishing an API to an API Portal through the control plane
   As an API publisher
-  I want to publish a deployed REST API to an API Portal from the control plane
+  I want to publish a REST or GraphQL API to an API Portal from the control plane
   So that API consumers can discover it and its subscription plans in the portal
 
   Background:
@@ -193,3 +193,112 @@ Feature: Publishing a REST API to an API Portal through the control plane
     When I publish the "RestApi" "${CTX:idleHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 201
     And the API Portal should list the API "${CTX:idleHandle}" with status "PUBLISHED"
+
+  Scenario: A GraphQL API is published, deprecated and unpublished through the control plane
+    Given I generate a unique resource name from "publish-graphql" and store it as "graphqlHandle"
+    And I generate a unique API context from "/publish-graphql" and store it as "graphqlContext"
+    And I create a GraphQL API "${CTX:graphqlHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:graphqlContext}"
+    And I save a publishable draft of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:graphqlHandle}  |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    When I publish the "GraphQLApi" "${CTX:graphqlHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 201
+    And the publication of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" should have status "PUBLISHED"
+    And the API Portal should list the API "${CTX:graphqlHandle}" with type "GRAPHQL"
+    And the API Portal should list the API "${CTX:graphqlHandle}" with status "PUBLISHED"
+    And the API Portal should list the API "${CTX:graphqlHandle}" offering plan "${CTX:planHandle}"
+    When I deprecate the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the API Portal should list the API "${CTX:graphqlHandle}" with status "DEPRECATED"
+    When I unpublish the "GraphQLApi" "${CTX:graphqlHandle}" from the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 204
+    And the API Portal should not list the API "${CTX:graphqlHandle}"
+    When I read the draft of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "${CTX:graphqlHandle}"
+
+  @type:negative
+  Scenario: A GraphQL draft is published only through its own type, and only with a GraphQL definition
+    Given I generate a unique resource name from "publish-graphql" and store it as "graphqlHandle"
+    And I generate a unique API context from "/publish-graphql" and store it as "graphqlContext"
+    And I create a GraphQL API "${CTX:graphqlHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:graphqlContext}"
+    And I save a publication draft of the "GraphQLApi" "${CTX:graphqlHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:graphqlHandle}  |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I send a "PUT" request to the control plane at "/api-portals/${CTX:portalHandle}/apis/graphql-api/${CTX:graphqlHandle}/draft/definition" with body:
+      """
+      {"openapi": "3.0.3", "info": {"title": "${CTX:graphqlHandle}", "version": "1.0.0"}, "paths": {}}
+      """
+    When I publish the "RestApi" "${CTX:graphqlHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 404
+    And the JSON response field "code" should be "API_NOT_FOUND"
+    When I publish the "GraphQLApi" "${CTX:graphqlHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 400
+    And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
+    And the API Portal should not list the API "${CTX:graphqlHandle}"
+
+  Scenario: An MCP proxy is published, deprecated and unpublished through the control plane
+    Given I generate a unique resource name from "publish-mcp" and store it as "mcpHandle"
+    And I generate a unique API context from "/publish-mcp" and store it as "mcpContext"
+    And I create an MCP proxy "${CTX:mcpHandle}" via the control plane with context "${CTX:mcpContext}" and spec versions "2025-06-18"
+    And I save a publishable draft of the "Mcp" "${CTX:mcpHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:mcpHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    When I publish the "Mcp" "${CTX:mcpHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 201
+    And the publication of the "Mcp" "${CTX:mcpHandle}" on the API Portal "${CTX:portalHandle}" should have status "PUBLISHED"
+    And the API Portal should list the MCP server "${CTX:mcpHandle}" with status "PUBLISHED"
+    And the API Portal should list the MCP server "${CTX:mcpHandle}" offering plan "${CTX:planHandle}"
+    And the API Portal should not list the API "${CTX:mcpHandle}"
+    When I deprecate the "Mcp" "${CTX:mcpHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the API Portal should list the MCP server "${CTX:mcpHandle}" with status "DEPRECATED"
+    When I unpublish the "Mcp" "${CTX:mcpHandle}" from the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 204
+    And the API Portal should not list the MCP server "${CTX:mcpHandle}"
+    When I read the draft of the "Mcp" "${CTX:mcpHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "${CTX:mcpHandle}"
+
+  Scenario: Republishing an edited MCP proxy draft replaces its listing in the API Portal
+    Given I generate a unique resource name from "publish-mcp" and store it as "mcpHandle"
+    And I generate a unique API context from "/publish-mcp" and store it as "mcpContext"
+    And I create an MCP proxy "${CTX:mcpHandle}" via the control plane with context "${CTX:mcpContext}" and spec versions "2025-06-18"
+    And I save a publishable draft of the "Mcp" "${CTX:mcpHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:mcpHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "Mcp" "${CTX:mcpHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    When I save a publishable draft of the "Mcp" "${CTX:mcpHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:mcpHandle}-renamed |
+      | version             | ${CTX:apiVersion}        |
+      | subscriptionPlanIds | ["${CTX:planHandle}"]    |
+    And I publish the "Mcp" "${CTX:mcpHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the API Portal should list the MCP server "${CTX:mcpHandle}" with display name "${CTX:mcpHandle}-renamed"
+    And the API Portal should list the MCP server "${CTX:mcpHandle}" with status "PUBLISHED"
+
+  @type:negative
+  Scenario: An MCP proxy draft is published only through its own type, and only with an MCP definition
+    Given I generate a unique resource name from "publish-mcp" and store it as "mcpHandle"
+    And I generate a unique API context from "/publish-mcp" and store it as "mcpContext"
+    And I create an MCP proxy "${CTX:mcpHandle}" via the control plane with context "${CTX:mcpContext}" and spec versions "2025-06-18"
+    And I save a publication draft of the "Mcp" "${CTX:mcpHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:mcpHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I send a "PUT" request to the control plane at "/api-portals/${CTX:portalHandle}/apis/mcp-proxy/${CTX:mcpHandle}/draft/definition" with body:
+      """
+      {"openapi": "3.0.3", "info": {"title": "${CTX:mcpHandle}", "version": "1.0.0"}, "paths": {}}
+      """
+    When I publish the "RestApi" "${CTX:mcpHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 404
+    And the JSON response field "code" should be "API_NOT_FOUND"
+    When I publish the "Mcp" "${CTX:mcpHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 400
+    And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
+    And the API Portal should not list the MCP server "${CTX:mcpHandle}"

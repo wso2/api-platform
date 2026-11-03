@@ -31,7 +31,7 @@ import {
   Megaphone,
   Network,
   Rocket,
-  Settings,
+  SlidersHorizontal,
   ShieldCheck,
   FlaskConical,
   Box,
@@ -57,8 +57,8 @@ const CLUSTER = {
   place: 'place',
   /** What you can do to the API you're in. */
   api: 'api',
-  /** Reachable at any scope. */
-  global: 'global',
+  /** Usage and administration: Insights, Observability, Manage. */
+  operate: 'operate',
 } as const;
 
 /** Escapes regex metacharacters, then turns each `:param` into a single-segment wildcard. */
@@ -75,7 +75,7 @@ const toRouteRegex = (pattern: string): RegExp => new RegExp(`^${escapeRoutePatt
 /**
  * Like `toRouteRegex`, but also matches any path nested one or more segments
  * below it — for an item whose page has its own sub-navigation one level
- * deeper (Settings' tabs; see `SettingsLayout`/`useSettingsTabs`), so the
+ * deeper, so the
  * sidebar item stays highlighted while browsing any of them.
  */
 const toRouteRegexWithSubpaths = (pattern: string): RegExp =>
@@ -369,7 +369,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     // is the header switcher's job.
     isVisible: ({ isProjectScope }) => !isProjectScope,
     to: orgLevelTo(routes.projects),
-    match: matchRoutes(routes.projects(), routes.projectHome()),
+    match: matchRoutes(routes.projects(), routes.newProject(), routes.projectHome()),
   },
   {
     id: 'gateways',
@@ -448,7 +448,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     // exactly the APIs it is meant for. Same for Observability below.
     id: 'insights',
     label: 'Insights',
-    group: CLUSTER.api,
+    group: CLUSTER.operate,
     order: 60,
     icon: <ChartColumn />,
     ...submenu([
@@ -471,7 +471,7 @@ export const navigationRegistry: NavigationDefinition[] = [
   {
     id: 'observability',
     label: 'Observability',
-    group: CLUSTER.api,
+    group: CLUSTER.operate,
     order: 70,
     icon: <Activity />,
     ...submenu([
@@ -510,24 +510,39 @@ export const navigationRegistry: NavigationDefinition[] = [
     ),
   },
   {
-    // The one page with no scope requirement at all, hence its own cluster.
-    id: 'settings',
-    label: 'Settings',
-    group: CLUSTER.global,
+    // Organization-level admin pages, grouped like Observability. The pages
+    // pages are organization-level routes (`/subscription-plans`, `/meters`). No `requires`, so the
+    // children show at every scope (both tabs are organization-scoped).
+    id: 'manage',
+    label: 'Manage',
+    group: CLUSTER.operate,
     order: 100,
-    icon: <Settings />,
-    // Follows you down one level: the organization's settings while browsing the
-    // org, that project's settings once you are inside one — one pinned link at a
-    // time, never both. Same page either way; only the scope it reads differs.
-    // matchSubpaths: true keeps this highlighted on Settings' own tabs (General,
-    // Subscription plans, ...), one segment below the bare route it links to.
-    ...adaptive(
-      [
-        { level: 'project', to: routes.projectSettings },
-        { level: 'organization', to: routes.settings },
-      ],
-      { matchSubpaths: true },
-    ),
+    icon: <SlidersHorizontal />,
+    to: orgLevelTo((orgHandle) => routes.subscriptionPlans(orgHandle)),
+    // Never matches: the sidebar highlights the first active item it finds,
+    // parents before children, so a parent matching its own pages would take the
+    // highlight from the page's own entry below.
+    match: () => false,
+    children: [
+      {
+        icon: <Gauge />,
+        id: 'manage-subscription-plans',
+        label: 'Subscription Plans',
+        order: 0,
+        to: orgLevelTo((orgHandle) => routes.subscriptionPlans(orgHandle)),
+        match: matchRoutes(routes.subscriptionPlans()),
+      },
+      {
+        icon: <Activity />,
+        id: 'manage-meters',
+        label: 'Meters',
+        order: 0,
+        // Hidden from the sidebar for now; the page and its route stay in place.
+        isVisible: () => false,
+        to: orgLevelTo((orgHandle) => routes.meters(orgHandle)),
+        match: matchRoutes(routes.meters()),
+      },
+    ],
   },
 ];
 

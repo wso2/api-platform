@@ -18,6 +18,7 @@ package config
 
 import (
 	"encoding/json"
+	"log/slog"
 	"strings"
 )
 
@@ -44,6 +45,12 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		out["POLICY_HUB_BASE_URL"] = cfg.PolicyHub.BaseURL
 	}
 
+	// Address self-hosted gateways dial, shown in setup commands. Only emit it
+	// when configured so the SPA does not guess for gateways running elsewhere.
+	if cfg.Gateway.ControlPlaneHost != "" {
+		out["GATEWAY_CONTROL_PLANE_HOST"] = cfg.Gateway.ControlPlaneHost
+	}
+
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
 	// ProductActivation can call it (same-origin, via /proxy/billing/...)
 	// without ever knowing the real billing service URL. Absent (defaults
@@ -62,6 +69,19 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 	// explicitly so the SPA never guesses from environmentName.
 	if cfg.ControlPlane.MoesifAppURL != "" {
 		out["moesifAppUrl"] = cfg.ControlPlane.MoesifAppURL
+	}
+
+	// gatewayVersions is the self-hosted-gateway release catalog for the Quick
+	// Start download step (see config.GatewayVersionEntry). This is the first
+	// key here that isn't a plain string, so — unlike every other entry in
+	// this map — it's JSON-encoded into one and the SPA JSON.parses it back
+	// out (see src/config/runtime.ts's gatewayVersions reader).
+	if len(cfg.GatewayVersions) > 0 {
+		if enc, err := json.Marshal(cfg.GatewayVersions); err != nil {
+			slog.Error("failed to marshal gateway_versions for runtime config", "error", err)
+		} else {
+			out["gatewayVersions"] = string(enc)
+		}
 	}
 
 	// Only the [sanitize_html_docs] keys that are set; the SPA defaults the rest.

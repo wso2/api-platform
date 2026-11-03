@@ -154,6 +154,9 @@ export const routes = {
   organizations: '/organizations',
   organizationHome: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/home`,
   projects: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/projects`,
+  // `new` sits where a project handle would; `RESERVED_HANDLE_SEGMENTS` keeps it from
+  // being read back as a project.
+  newProject: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/projects/new`,
   gateways: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/gateways`,
   newGateway: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/gateways/new`,
   gateway: (orgHandle = ':orgHandle', gatewayId = ':gatewayId') =>
@@ -341,23 +344,10 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'admin'),
-  // Settings is the one page with no scope requirement, so the sidebar links to
-  // the organization-level path and it renders whatever the scope. It needs no
-  // scope-less alias for the same reason: there is nothing to select.
-  settings: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/settings`,
-  // The same page, deep-linked for one project — the gear on a project card.
-  // Kept as its own builder rather than a `ScopeHandle` on `settings` because
-  // these two are alternative entry points, not a scoped/scope-less pair.
-  projectSettings: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
-    projectPath(orgHandle, projectHandler, 'settings'),
-  // One Settings sub-nav tab, org- and project-scoped. `tab` is the segment
-  // below `/settings/` ("general", or an extension's own `routePath` with the
-  // `settings/` prefix stripped) — the sub-nav and the routes are built from
-  // these two, so a tab can never link somewhere no route answers.
-  settingsTab: (tab: string, orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/settings/${tab}`,
-  projectSettingsTab: (tab: string, orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
-    projectPath(orgHandle, projectHandler, `settings/${tab}`),
+  // Organization-level pages with no project or API tier, so no scoped builders
+  // and no scope-less alias: there is nothing to select.
+  subscriptionPlans: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/subscription-plans`,
+  meters: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/meters`,
 };
 
 export type ProjectPathBuilder = (orgHandle: string, projectHandler: ScopeHandle) => string;

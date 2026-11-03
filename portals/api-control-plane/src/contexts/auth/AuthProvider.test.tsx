@@ -37,6 +37,7 @@ function Probe() {
         login
       </button>
       <button onClick={auth.logout}>logout</button>
+      <button onClick={() => auth.login('/orgs/acme')}>redirect login</button>
     </div>
   );
 }
@@ -95,6 +96,15 @@ describe('AuthProvider', () => {
     );
   });
 
+  it('hydrates as unavailable, not unauthenticated, when the BFF cannot be reached', async () => {
+    server.use(http.get('/api/session', () => HttpResponse.error()));
+    renderProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status').textContent).toBe('unavailable')
+    );
+  });
+
   it('loginWithCredentials sends the CSRF header and updates state on success', async () => {
     server.use(
       http.get('/api/session', () =>
@@ -145,6 +155,26 @@ describe('AuthProvider', () => {
       expect(screen.getByTestId('error')).toHaveTextContent('invalid credentials')
     );
     expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated');
+  });
+
+  // The BFF reads `return` and redirects back to it as a path from the host
+  // root; with no base path that is the app path itself.
+  it('login redirects to the BFF sign-in with the path to come back to', async () => {
+    server.use(
+      http.get('/api/session', () =>
+        HttpResponse.json({ authenticated: false }, { status: 401 })
+      )
+    );
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
+    );
+
+    fireEvent.click(screen.getByText('redirect login'));
+
+    expect(assign).toHaveBeenCalledWith('/api/auth/login?return=%2Forgs%2Facme');
   });
 
   // The IDP path must navigate without first flipping status to 'unauthenticated'.

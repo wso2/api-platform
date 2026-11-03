@@ -21,6 +21,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
+import { runtimeConfig } from '@/config/runtime';
 import {
   aGateway,
   accepts,
@@ -108,8 +109,35 @@ describe('GatewayDetailPage', () => {
 
     // The panel's commands are built from the gateway's own type and version.
     expect(
-      screen.getByText(/wso2apip-api-gateway-1\.0\.zip/, { exact: false }),
+      screen.getByText(/wso2apip-api-gateway-1\.0\.0\.zip/, { exact: false }),
     ).toBeInTheDocument();
+  });
+
+  it('resolves a configured 1.2 release to its download and setup-script steps', async () => {
+    const configuredCatalog = runtimeConfig.gatewayVersions;
+    runtimeConfig.gatewayVersions = [
+      { channel: 'LTS', latestVersion: 'v1.2.0', type: 'regular', version: '1.2' },
+    ];
+    try {
+      server.use(resource('/gateways/:gatewayId', gateway({ version: '1.2' })));
+
+      const { container } = renderPage();
+
+      expect(await screen.findByText('Step 2: Set up the Gateway')).toBeInTheDocument();
+      expect(screen.getByText('Step 4: Start the Gateway')).toBeInTheDocument();
+
+      // Syntax highlighting splits each command across spans, so the commands
+      // are matched on the rendered text rather than one element's.
+      const text = container.textContent ?? '';
+      expect(text).toContain(
+        'releases/download/gateway/v1.2.0/wso2apip-api-gateway-1.2.0.zip',
+      );
+      expect(text).toContain('./wso2apip-api-gateway-1.2.0/scripts/setup.sh');
+      expect(text).toContain('cd wso2apip-api-gateway-1.2.0');
+      expect(text).not.toContain('configs/keys.env');
+    } finally {
+      runtimeConfig.gatewayVersions = configuredCatalog;
+    }
   });
 
   it('counts setup complete once the gateway agent has connected', async () => {

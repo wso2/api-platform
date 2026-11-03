@@ -31,7 +31,9 @@
  * (catalog.js), so what a subscriber sees is what is billed.
  */
 
+const logger = require('../../../config/logger');
 const client = require('./client');
+const { keyForOtherApplication } = require('./application');
 const catalog = require('./catalog');
 const stripePayments = require('./payments/stripe');
 
@@ -56,19 +58,38 @@ function paymentModule(paymentProvider) {
     return module;
 }
 
+/** The Moesif application a payment provider endpoint sends events to, or null when it is not Moesif's. */
+function endpointApplication(url) {
+    try {
+        return client.collectorApplication(new URL(url).searchParams.get('moesif_application_id'));
+    } catch (_err) {
+        return null;
+    }
+}
+
 /**
  * The connector for one billing configuration. `conn` carries the decrypted settings:
  * moesifCollectorApplicationId, moesifManagementKey, payment_provider and the payment provider's own
- * settings (for Stripe, stripeApiKey).
+ * settings (for Stripe, stripeApiKey). A stored configuration also carries what setup recorded:
+ * moesifApplication, the Moesif application billing uses, and moesifEarlierApplications, the ones it
+ * used before. Moesif's endpoints in the payment provider are found by the application they name.
  */
 function create(conn) {
     const moesif = clients.moesif(conn.moesifManagementKey);
     const payments = paymentModule(conn.payment_provider).create(conn);
     const slug = payments.moesifProviderSlug;
+    const application = client.collectorApplication(conn.moesifCollectorApplicationId);
+    const reachesSetupApplication = () => !conn.moesifApplication || conn.moesifApplication === application;
 
     return {
         provider: PROVIDER,
         payments,
+
+        /** The Moesif application ("524:75") the configuration's keys are for, or null. */
+        application,
+
+        /** Whether the configuration's keys are for the Moesif application billing uses. */
+        reachesSetupApplication,
 
         // ── connection ─────────────────────────────────────────────────────────
 
@@ -96,23 +117,47 @@ function create(conn) {
         },
 
         /**
-         * Removes Moesif's endpoint for this application from the payment provider, found by its
-         * address. Resolves to { undo }: undo registers it again, or is null when there was none.
+         * Removes Moesif's endpoints from the payment provider for the applications billing uses and
+         * used before, or, when none is recorded, for this application. All or none: when one can't
+         * be removed, the ones already removed are registered again. Resolves to { undo }: undo
+         * registers them again, or is null when there were none.
          */
         async removeMoesifEvents() {
-            const url = client.stripeWebhookUrl(conn.moesifCollectorApplicationId);
-            const found = (await payments.listEventEndpoints()).filter((e) => e.url === url);
-            for (const endpoint of found) await payments.removeEventEndpoint(endpoint.id);
-            return { undo: found.length > 0 ? () => payments.ensureMoesifEndpoint({ url, endpoints: [] }) : null };
+            const applications = (conn.moesifApplication
+                ? [conn.moesifApplication, ...(conn.moesifEarlierApplications || [])] : [application]).filter(Boolean);
+            const found = (await payments.listEventEndpoints())
+                .filter((e) => applications.includes(endpointApplication(e.url)));
+            const removed = [];
+            const putBack = () => Promise.all(removed.map((e) => payments.ensureMoesifEndpoint({ url: e.url, endpoints: [] })));
+            try {
+                for (const endpoint of found) {
+                    await payments.removeEventEndpoint(endpoint.id);
+                    removed.push(endpoint);
+                }
+            } catch (err) {
+                await putBack().catch((undoErr) => logger.warn('Could not register Moesif\'s endpoint again',
+                    { error: undoErr.message }));
+                throw err;
+            }
+            return { undo: removed.length > 0 ? putBack : null };
         },
 
         /**
          * Connects the Moesif application to the payment provider with this configuration's key,
-         * replacing any connection. Resolves to { undo }: undo removes the connection.
+         * replacing any connection. Resolves to { undo }: undo removes the connection, or, when the
+         * application was connected before (an application billing used earlier), saves it again
+         * as it was (on or off), so plans still sold there keep reaching the payment provider.
          */
         async connectPayments() {
+            const before = await moesif.getPartnerAccount(slug);
+            const wasConnected = Boolean(before && before.partner_account);
+            const wasOn = wasConnected && payments.moesifPartnerAccountEnabled(before);
             await moesif.savePartnerAccount(slug, payments.moesifPartnerAccount(true));
-            return { undo: () => moesif.deletePartnerAccount(slug) };
+            return {
+                undo: wasConnected
+                    ? () => moesif.savePartnerAccount(slug, payments.moesifPartnerAccount(wasOn))
+                    : () => moesif.deletePartnerAccount(slug),
+            };
         },
 
         /**
@@ -228,8 +273,6 @@ function paymentsFor(paymentProvider) {
 }
 
 // An application as Moesif names it in its ids and keys: organization number, application number.
-const APPLICATION = /^\d+:\d+$/;
-
 /**
  * Checks the Moesif settings of a setup request before any call. The application ID must be a
  * Collector Application ID, since Moesif's Stripe webhook address carries it, and for the same
@@ -241,8 +284,7 @@ function checkSettings({ moesifCollectorApplicationId, moesifManagementKey }) {
         return { field: 'moesifCollectorApplicationId',
             message: 'This is not a Collector Application Id. Copy it from the API Keys page in Moesif.' };
     }
-    const keyApp = client.keyApplication(moesifManagementKey);
-    if (keyApp && APPLICATION.test(app) && APPLICATION.test(keyApp) && app !== keyApp) {
+    if (keyForOtherApplication(moesifManagementKey, app)) {
         return { field: 'moesifCollectorApplicationId',
             message: 'This Collector Application Id is for a different Moesif application than the Management API key.' };
     }

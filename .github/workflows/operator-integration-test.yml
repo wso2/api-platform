@@ -286,7 +286,7 @@ jobs:
       - name: Create encryption key secret
         run: |
           kubectl create secret generic gateway-encryption-keys \
-            --from-file=default-aesgcm256-v1.bin=gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin \
+            --from-file=default-aesgcm256-v1.bin=tests/fixtures/aesgcm-keys/default-aesgcm256-v1.bin \
             --namespace default
 
       - name: Create test APIGateway
@@ -1768,7 +1768,7 @@ jobs:
 
           echo "Creating gateway encryption keys secret in ${TEST_NS}..."
           kubectl create secret generic gateway-encryption-keys \
-            --from-file=default-aesgcm256-v1.bin=gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin \
+            --from-file=default-aesgcm256-v1.bin=tests/fixtures/aesgcm-keys/default-aesgcm256-v1.bin \
             --namespace "${TEST_NS}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
@@ -2253,7 +2253,7 @@ jobs:
           echo "Creating scoped-test namespace..."
           kubectl create ns scoped-test --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret generic gateway-encryption-keys \
-            --from-file=default-aesgcm256-v1.bin=gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin \
+            --from-file=default-aesgcm256-v1.bin=tests/fixtures/aesgcm-keys/default-aesgcm256-v1.bin \
             --namespace scoped-test
           
           echo "Installing operator in scoped mode (watchNamespaces={scoped-test})..."

@@ -17,10 +17,11 @@
  */
 
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
+import { runtimeConfig, type GatewayVersionEntry } from '@/config/runtime';
 import { accepts, aGateway, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { makeConsoleScope } from '@/test/mockScope';
@@ -28,6 +29,15 @@ import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GatewayCreatePage } from './GatewayCreatePage';
 
 const ORG = 'api-platform-demo';
+
+/** A deployment's `[[gateway_versions]]`, newest first per type; nothing for "ai". */
+const CATALOG: GatewayVersionEntry[] = [
+  { channel: 'LTS', latestVersion: 'v1.2.0', type: 'regular', version: '1.2' },
+  { channel: 'STS', latestVersion: 'v1.1.0', type: 'regular', version: '1.1' },
+  { channel: 'LTS', latestVersion: 'v1.0.0', type: 'event', version: '1.0' },
+];
+
+const configuredCatalog = runtimeConfig.gatewayVersions;
 
 let requests: Recorder;
 
@@ -52,7 +62,18 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  runtimeConfig.gatewayVersions = CATALOG;
 });
+
+afterEach(() => {
+  runtimeConfig.gatewayVersions = configuredCatalog;
+});
+
+/** Fills the two required free-text fields so a submit reaches the network. */
+async function fillRequired(user: ReturnType<typeof renderPage>['user']) {
+  await user.type(screen.getByLabelText(/Name/), 'Edge Gateway');
+  await user.type(screen.getByLabelText(/URL/), 'https://edge.test:8443');
+}
 
 describe('GatewayCreatePage', () => {
   it('reveals every unmet rule on submit and sends nothing', async () => {
@@ -113,5 +134,66 @@ describe('GatewayCreatePage', () => {
     // Landing on the gateway's own page is what tells the user provisioning
     // worked — the form itself shows no success state.
     expect(await screen.findByText('gateway detail')).toBeInTheDocument();
+  });
+
+  it('offers the configured releases for the type, latest first and selected', async () => {
+    server.use(accepts('post', '/gateways', aGateway(), { record: requests }));
+
+    const { user } = renderPage();
+
+    await user.click(screen.getByRole('combobox', { name: /Gateway Version/ }));
+    const options = await screen.findAllByRole('option');
+
+    expect(options.map((option) => option.textContent)).toEqual([
+      'api-gateway v1.2LatestLTS',
+      'api-gateway v1.1STS',
+    ]);
+
+    await user.click(options[0]);
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: 'Provision gateway' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(JSON.parse(requests.last()!.body)).toMatchObject({
+      functionalityType: 'regular',
+      version: '1.2',
+    });
+  });
+
+  it('moves the version to the new type’s latest release when the type changes', async () => {
+    server.use(accepts('post', '/gateways', aGateway(), { record: requests }));
+
+    const { user } = renderPage();
+
+    await user.click(screen.getByRole('radio', { name: /Event Gateway/ }));
+
+    expect(screen.getByRole('combobox', { name: /Gateway Version/ })).toHaveTextContent(
+      'event-gateway v1.0',
+    );
+
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: 'Provision gateway' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(JSON.parse(requests.last()!.body)).toMatchObject({
+      functionalityType: 'event',
+      version: '1.0',
+    });
+  });
+
+  it('explains a type with no configured release instead of offering an empty list', async () => {
+    const { user } = renderPage();
+
+    await user.click(screen.getByRole('radio', { name: /AI Gateway/ }));
+
+    expect(
+      screen.getByText(
+        'No release of this gateway type is configured for this console. It is registered as version 1.0.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /Gateway Version/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 });

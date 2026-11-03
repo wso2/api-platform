@@ -41,6 +41,20 @@ export const GATEWAY_TYPES_FOR_KIND: Record<ArtifactKind, readonly string[]> = {
   AgentProxy: ['ai'],
 };
 
+/** The gateway type to create for a kind: the first type its pipeline accepts. */
+export const gatewayTypeForKind = (kind: ArtifactKind): 'regular' | 'ai' =>
+  GATEWAY_TYPES_FOR_KIND[kind]?.[0] === 'ai' ? 'ai' : 'regular';
+
+/** The platform-api resource each kind is stored under, for reading its display name. */
+const ARTIFACT_RESOURCE: Record<ArtifactKind, string> = {
+  RestApi: 'rest-apis',
+  GraphQLApi: 'graphql-apis',
+  Mcp: 'mcp-proxies',
+  LlmProxy: 'llm-proxies',
+  LlmProvider: 'llm-providers',
+  AgentProxy: 'agent-proxies',
+};
+
 /**
  * Whether a deployment of this kind is made with a backend URL of its own.
  *
@@ -78,6 +92,7 @@ type BuildDTO = {
  * an endpoint of its own.
  */
 type RestApiDTO = {
+  name?: string;
   upstream?: { main?: { url?: string } };
   /** True when a gateway created the API; its deployments are then the gateway's to manage. */
   readOnly?: boolean;
@@ -156,12 +171,23 @@ export function createDeployClient(
      * rather than by URL), and whether the API is read-only because a gateway
      * created it.
      */
-    async readApi(): Promise<{ endpointUrl?: string; readOnly: boolean }> {
-      // Only REST APIs are read here; the other kinds either have no backend URL or
-      // shape it differently, so it is left empty for them rather than guessed at.
-      if (kind !== 'RestApi') return { readOnly: false };
+    async readApi(): Promise<{ name?: string; endpointUrl?: string; readOnly: boolean }> {
+      if (kind !== 'RestApi') {
+        // Only the display name is wanted for the other kinds: they have no backend URL
+        // here and are never read-only. A failed read must not lock the page's actions,
+        // so it leaves the name empty and the caller falls back to the handle.
+        try {
+          const artifact = await apiFetch<{ name?: string; displayName?: string }>(
+            'GET',
+            `/${ARTIFACT_RESOURCE[kind]}/${encodeURIComponent(apiHandle)}`
+          );
+          return { name: artifact?.name ?? artifact?.displayName, readOnly: false };
+        } catch {
+          return { readOnly: false };
+        }
+      }
       const api = await apiFetch<RestApiDTO>('GET', `/rest-apis/${encodeURIComponent(apiHandle)}`);
-      return { endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
+      return { name: api?.name, endpointUrl: api?.upstream?.main?.url, readOnly: api?.readOnly === true };
     },
 
     /**

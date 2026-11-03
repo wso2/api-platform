@@ -25,13 +25,14 @@ import {
   Stack,
   TablePagination,
 } from '@wso2/oxygen-ui';
-import { Plus, Search } from '@wso2/oxygen-ui-icons-react';
+import { Plus, Search, SearchX } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
 import { AppPage } from '@/components/AppPage';
+import { EmptyResults } from '@/components/common/EmptyResults';
 import { useDeleteProject, useProjects } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -39,7 +40,6 @@ import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
-import { NewProjectDialog } from './components/NewProjectDialog';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { ProjectFolderIllustration } from '@/components/illustrations/ProjectFolderIllustration';
 import { Can } from '@/permissions/Can';
@@ -48,6 +48,11 @@ const PAGE_SIZE_OPTIONS = [12, 24, 48];
 const SEARCH_DEBOUNCE_MS = 300;
 
 const messages = defineMessages({
+  clearSearch: {
+    id: 'project.list.clearSearch',
+    defaultMessage: 'Clear search',
+    description: 'Button that empties the search box when no project matches it.',
+  },
   createProject: {
     id: 'project.list.createProjectButton',
     defaultMessage: 'Create Project',
@@ -135,7 +140,6 @@ function ProjectListPageContent() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
-  const [createOpen, setCreateOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Project | null>(null);
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
@@ -220,7 +224,7 @@ function ProjectListPageContent() {
           <PageTitle.Actions>
             <Can do="CreateProject" denied="hide">
               <Button
-                onClick={() => setCreateOpen(true)}
+                onClick={() => navigate(routes.newProject(orgHandle))}
                 startIcon={<Plus />}
                 sx={{ borderRadius: 5 }}
                 variant="contained"
@@ -235,7 +239,7 @@ function ProjectListPageContent() {
       {isFirstRun ? (
         <EmptyState
           actionLabel={intl.formatMessage(messages.emptyAction)}
-          onAction={() => setCreateOpen(true)}
+          onAction={() => navigate(routes.newProject(orgHandle))}
           title={intl.formatMessage(messages.emptyTitle)}
           description={intl.formatMessage(messages.emptyDescription)}
           actionIcon={<Plus />}
@@ -262,9 +266,12 @@ function ProjectListPageContent() {
             value={search}
           />
           {projects.length === 0 ? (
-            <EmptyState
-              title={intl.formatMessage(messages.noMatchesTitle)}
+            <EmptyResults
+              actionLabel={intl.formatMessage(messages.clearSearch)}
               description={intl.formatMessage(messages.noMatchesDescription)}
+              illustration={<SearchX size={34} strokeWidth={1.5} />}
+              onAction={() => setSearch('')}
+              title={intl.formatMessage(messages.noMatchesTitle)}
             />
           ) : (
             <>
@@ -279,7 +286,9 @@ function ProjectListPageContent() {
               </Box>
 
               {total > PAGE_SIZE_OPTIONS[0] && (
-                <Box>
+                // Pulled up into the Stack's spacing, and a shorter toolbar, so the pager
+                // sits close to the last card.
+                <Box sx={{ mt: -1.5 }}>
                   <TablePagination
                     component="div"
                     count={total}
@@ -292,6 +301,7 @@ function ProjectListPageContent() {
                     page={currentPage}
                     rowsPerPage={rowsPerPage}
                     rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+                    sx={{ '& .MuiTablePagination-toolbar': { minHeight: 40 } }}
                   />
                 </Box>
               )}
@@ -299,12 +309,6 @@ function ProjectListPageContent() {
           )}
         </Stack>
       )}
-
-      <NewProjectDialog
-        onClose={() => setCreateOpen(false)}
-        open={createOpen}
-        orgHandle={orgHandle}
-      />
 
       <ConfirmDialog
         confirmInputLabel={intl.formatMessage(messages.deleteConfirmInputLabel, {

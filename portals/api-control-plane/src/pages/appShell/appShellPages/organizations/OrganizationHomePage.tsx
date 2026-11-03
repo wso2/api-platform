@@ -33,12 +33,11 @@ import {
   Grid,
   IconButton,
   MenuItem,
-  SearchBar,
   Select,
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ArrowRight, Boxes, Clock, Network, PanelTop, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { ArrowRight, Boxes, Clock, Network, PanelTop, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
@@ -52,12 +51,13 @@ import { useRestApiCounts } from '@/api/resources/restApis';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
-import { NewProjectDialog } from '@/pages/appShell/appShellPages/projects/components/NewProjectDialog';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 import ExploreMoreCard from './components/ExploreMoreCard';
 import { Can } from '@/permissions/Can';
+import { CanCreate } from '@/permissions/CanCreate';
+import type { LimitedComponent } from '@/hooks/useResourceLimits';
 
 const messages = defineMessages({
   apiAction: {
@@ -79,7 +79,7 @@ const messages = defineMessages({
   },
   bannerTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle',
-    defaultMessage: 'Welcome to {organizationName}',
+    defaultMessage: 'Hello, {organizationName}',
     description: '{organizationName} is the display name of the organization. Never translated.',
   },
   developerPortalAction: {
@@ -142,19 +142,11 @@ const messages = defineMessages({
   },
   projectsAdd: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd',
-    defaultMessage: 'New project',
-  },
-  projectsEmpty: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmpty',
-    defaultMessage: 'No projects match your search.',
+    defaultMessage: 'Create Project',
   },
   projectsNone: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsNone',
     defaultMessage: 'No projects yet.',
-  },
-  projectsSearch: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsSearch',
-    defaultMessage: 'Search projects',
   },
   projectApiCount: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectApiCount',
@@ -211,6 +203,8 @@ type OverviewCardProps = {
   onAction: () => void;
   title: string;
   operationId: string;
+  /** What this card creates, for the quota check. Omit if nothing caps it. */
+  component?: LimitedComponent;
 };
 
 function OverviewCard({
@@ -221,17 +215,36 @@ function OverviewCard({
   onAction,
   title,
   operationId = '',
+  component,
 }: OverviewCardProps) {
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <CardContent sx={{ flexGrow: 1 }}>
         <Stack alignItems="flex-start" direction="row" spacing={1.5}>
           <Avatar
-            sx={{
-              bgcolor: 'action.hover',
-              color: 'primary.main',
-              height: 40,
-              width: 40,
+            sx={(theme) => {
+              const palette = theme.vars?.palette ?? theme.palette;
+              return {
+                background: `radial-gradient(ellipse at 30% 25%, color-mix(in srgb, ${palette.primary.main} 22%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 10%, ${palette.background.paper}) 70%, color-mix(in srgb, ${palette.primary.main} 7%, ${palette.background.paper}) 100%)`,
+                border: '1px solid',
+                borderColor: `color-mix(in srgb, ${palette.primary.light} 20%, transparent)`,
+                borderRadius: '13px',
+                boxShadow: `inset 0 0 10px color-mix(in srgb, ${palette.primary.light} 5%, transparent)`,
+                color: `color-mix(in srgb, ${palette.primary.main} 75%, ${palette.text.secondary})`,
+                height: 50,
+                width: 50,
+                flexShrink: 0,
+                '& svg': {
+                  strokeWidth: 1.75,
+                },
+                ...theme.applyStyles('dark', {
+                  background:
+                    'radial-gradient(ellipse at 30% 25%, #493021 0%, #35251b 50%, #251e17 100%)',
+                  borderColor: '#61412b',
+                  boxShadow: 'inset 0 0 0 0.5px rgba(224, 150, 91, 0.06)',
+                  color: '#d88049',
+                }),
+              };
             }}
             variant="rounded"
           >
@@ -254,7 +267,7 @@ function OverviewCard({
         </Stack>
       </CardContent>
       <Divider />
-      <Can do={operationId} denied="hide">
+      <CanCreate component={component} do={operationId} denied="hide">
         <ButtonBase onClick={onAction} sx={{ textAlign: 'left', width: '100%' }}>
           <Box
             sx={{
@@ -273,7 +286,7 @@ function OverviewCard({
             <ArrowRight size={16} />
           </Box>
         </ButtonBase>
-      </Can>
+      </CanCreate>
     </Card>
   );
 }
@@ -292,10 +305,8 @@ function OrganizationHomePageContent() {
   const { notify } = useNotifications();
   const { isLoading, organization, organizations, params, projects } = useConsoleScope();
   const orgHandle = params.orgHandle || '';
-  const [createOpen, setCreateOpen] = useState(false);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState('');
-  const [search, setSearch] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const organizationQuery = useOrganization(orgHandle);
   const gatewaysQuery = useGateways({ limit: 100 });
@@ -323,17 +334,7 @@ function OrganizationHomePageContent() {
     [projects],
   );
 
-  const visibleProjects = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return sortedProjects
-      .filter(
-        (project) =>
-          !query ||
-          project.displayName.toLowerCase().includes(query) ||
-          project.description?.toLowerCase().includes(query),
-      )
-      .slice(0, 5);
-  }, [search, sortedProjects]);
+  const visibleProjects = sortedProjects.slice(0, 5);
 
   const createApi = () => {
     if (sortedProjects.length === 1) {
@@ -379,7 +380,22 @@ function OrganizationHomePageContent() {
           <Typography sx={{ fontWeight: 800 }} variant="h3">
             <FormattedMessage
               {...messages.bannerTitle}
-              values={{ organizationName: currentOrganization.displayName }}
+              values={{
+                organizationName: (
+                  <Box
+                    component="span"
+                    sx={(theme) => ({
+                      backgroundImage: `linear-gradient(90deg, ${(theme.vars?.palette ?? theme.palette).primary.main}, ${(theme.vars?.palette ?? theme.palette).primary.light})`,
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      color: 'transparent',
+                      WebkitTextFillColor: 'transparent',
+                    })}
+                  >
+                    {currentOrganization.displayName}
+                  </Box>
+                ),
+              }}
             />
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 800 }} variant="body1">
@@ -399,6 +415,7 @@ function OrganizationHomePageContent() {
               onAction={createApi}
               title={intl.formatMessage(messages.apiTitle)}
               operationId="CreateRESTAPI"
+              component="restApis"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -414,6 +431,7 @@ function OrganizationHomePageContent() {
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
               operationId="CreateGateway"
+              component="gateways"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -432,6 +450,7 @@ function OrganizationHomePageContent() {
               onAction={() => navigate(routes.managedApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
               operationId="CreateApiPortal"
+              component="portals"
             />
           </Grid>
         </Grid>
@@ -466,14 +485,13 @@ function OrganizationHomePageContent() {
               spacing={1}
               width={{ md: 'auto', xs: '100%' }}
             >
-              <SearchBar
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={intl.formatMessage(messages.projectsSearch)}
-                size="small"
-                value={search}
-              />
               <Can do="CreateProject" denied="hide">
-                <Button onClick={() => setCreateOpen(true)} size="small" variant="outlined">
+                <Button
+                  onClick={() => navigate(routes.newProject(orgHandle))}
+                  size="small"
+                  startIcon={<Plus size={16} />}
+                  variant="outlined"
+                >
                   <FormattedMessage {...messages.projectsAdd} />
                 </Button>
               </Can>
@@ -605,9 +623,7 @@ function OrganizationHomePageContent() {
               <Stack alignItems="center" spacing={1} sx={{ py: 4 }}>
                 <Boxes size={24} />
                 <Typography color="text.secondary" variant="body2">
-                  <FormattedMessage
-                    {...(search.trim() ? messages.projectsEmpty : messages.projectsNone)}
-                  />
+                  <FormattedMessage {...messages.projectsNone} />
                 </Typography>
               </Stack>
             )}
@@ -630,12 +646,6 @@ function OrganizationHomePageContent() {
 
         <ExploreMoreCard />
       </Stack>
-
-      <NewProjectDialog
-        onClose={() => setCreateOpen(false)}
-        open={createOpen}
-        orgHandle={orgHandle}
-      />
       <Dialog
         fullWidth
         maxWidth="xs"
@@ -688,7 +698,7 @@ function OrganizationHomePageContent() {
             <Button
               onClick={() => {
                 setProjectSelectorOpen(false);
-                setCreateOpen(true);
+                navigate(routes.newProject(orgHandle));
               }}
               variant="contained"
             >

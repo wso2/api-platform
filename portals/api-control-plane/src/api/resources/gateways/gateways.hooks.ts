@@ -22,7 +22,9 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
+import { useResourceLimits } from '../../../hooks/useResourceLimits';
 import type { ApiError } from '../../core/errors';
 import { requireOrgScope, useApiScope } from '../../core/scope';
 import {
@@ -115,21 +117,25 @@ const GATEWAY_POLL_INTERVAL_MS = 5000;
  * visited yet — invalidating only the current page leaves those stale. Prefix
  * invalidation covers all of them in one call, and TanStack Query only
  * refetches the queries that are actually mounted.
+ *
+ * Also exported for the app shell, which invalidates on behalf of extensions
+ * that write through their own client and cannot reach this cache.
  */
-const useInvalidateGateways = (orgId?: string) => {
+export const useInvalidateGateways = (orgId?: string) => {
   const queryClient = useQueryClient();
   const { org } = useApiScope({ orgId });
 
-  return () => {
+  return useCallback(() => {
     if (!org) return;
     void queryClient.invalidateQueries({ queryKey: gatewayKeys.all(org) });
-  };
+  }, [org, queryClient]);
 };
 
 export const useCreateGateway = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateGateways(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<Gateway, ApiError, CreateGatewayBody>({
     // `async` so a missing scope rejects the mutation rather than throwing
@@ -147,6 +153,9 @@ export const useCreateGateway = (overrides: { orgId?: string } = {}) => {
       }
       invalidate();
     },
+    // On settle, not success: a refused create is evidence the count was
+    // stale-low. Inert with no supplier mounted.
+    onSettled: () => refreshResourceLimits(),
   });
 };
 
@@ -174,6 +183,7 @@ export const useDeleteGateway = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateGateways(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<void, ApiError, { gatewayId: string }>({
     mutationFn: async ({ gatewayId }) =>
@@ -186,6 +196,7 @@ export const useDeleteGateway = (overrides: { orgId?: string } = {}) => {
         queryClient.removeQueries({ queryKey: gatewayKeys.detail(org, gatewayId) });
       }
       invalidate();
+      refreshResourceLimits(); // a delete frees budget
     },
   });
 };

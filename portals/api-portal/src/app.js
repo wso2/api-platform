@@ -333,7 +333,7 @@ app.use(async (err, req, res, next) => {
         if (!Handlebars.partials[name]) Handlebars.registerPartial(name, '');
     });
 
-    const errorType = status === 404 ? '404' : status === 403 ? '403' : '500';
+    const errorType = err.errorType || (status === 404 ? '404' : status === 403 ? '403' : '500');
     // Always this instance's own organization — never the first path segment of the
     // failed request. A 404 from orgGuard means that segment named some *other*
     // organization, and echoing it back would point the error page's "home" link
@@ -355,7 +355,7 @@ app.use(async (err, req, res, next) => {
             profile = { ...profile, isAdmin: false };
         }
     }
-    const templateContent = { baseUrl, errorType, profile };
+    const templateContent = { baseUrl, errorType, profile, signUpEnabled: Boolean(config.auth?.idp?.signUpUrl) };
 
     const html = util.renderTemplate('../pages/error-page/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
     res.status(status).send(html);

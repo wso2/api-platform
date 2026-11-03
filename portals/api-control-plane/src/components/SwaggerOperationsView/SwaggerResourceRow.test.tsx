@@ -85,4 +85,18 @@ describe('SwaggerResourceRow', () => {
     expect(screen.getByRole('button', { expanded: false })).toBeInTheDocument();
     expect(screen.queryByText('Attached policies')).not.toBeInTheDocument();
   });
+
+  it('reports each open and close to its owner', async () => {
+    const onExpandedChange = vi.fn();
+    const { user } = renderWithProviders(
+      <SwaggerResourceRow method="GET" onExpandedChange={onExpandedChange} path="/v1/agents">
+        <p>body</p>
+      </SwaggerResourceRow>,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Show details/ }));
+    await user.click(screen.getByRole('button', { name: /Hide details/ }));
+
+    expect(onExpandedChange.mock.calls).toEqual([[true], [false]]);
+  });
 });

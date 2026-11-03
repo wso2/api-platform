@@ -19,6 +19,8 @@
 import { PageTitle } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage } from 'react-intl';
 
+import { SecondaryText } from '@/components/common/SecondaryText';
+
 const messages = defineMessages({
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.title',
@@ -44,7 +46,9 @@ export function PoliciesPageTitle() {
         <FormattedMessage {...messages.title} />
       </PageTitle.Header>
       <PageTitle.SubHeader>
-        <FormattedMessage {...messages.subtitle} />
+        <SecondaryText component="span" variant="inherit">
+          <FormattedMessage {...messages.subtitle} />
+        </SecondaryText>
       </PageTitle.SubHeader>
     </PageTitle>
   );
