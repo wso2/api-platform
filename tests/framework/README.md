@@ -110,8 +110,11 @@ tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow, which ha
 
 `release` cuts a real release (tag, embedded-snapshots commit, and a
 `ghcr.io/wso2/api-platform/testbench:X.Y.Z` image): the `version` input is optional, and left
-empty the workflow auto-increments the patch of the highest existing release; give it an explicit
-version to start a new minor/major or to backport a fix onto an older line.
+empty the workflow auto-increments the patch of the highest existing release. Give it an explicit
+version to start a new minor/major; major versions above 1 are rejected because the module path
+has no `/v2` suffix. It does not select an older line: the release is always cut from the `main`
+commit it was dispatched from (the tag points at a snapshot commit on top of it), so this
+workflow cannot publish a backport.
 
 `rebuild-testbench` republishes the testbench image of the latest release with the testbench code
 on `main`, without a new version: the `version` input is ignored, and the
@@ -124,15 +127,9 @@ tests against the released `core/`.
 The testbench image also gets whichever floating tags that release is the newest of: `:latest`
 only when it's the highest release overall, the bare `:MAJOR` only when it's the highest within
 that major, and `:MAJOR.MINOR` only when it's the highest patch within that minor line. So a
-backport onto an older minor line never moves `:latest` or `:MAJOR` backward, and gets that line's
-`:MAJOR.MINOR` if it's the newest patch there, while an out-of-order patch inside a line gets no
-floating tag at all.
-
-Retention keeps the newest 3 patch images per minor line on a best-effort basis: after a release,
-older images in that line are deleted from GHCR, except the one just published, so a line can hold
-a fourth until the next release in it. The step is skipped with a warning when the token is
-missing or lacks `delete:packages`, and a failed deletion only warns, so the limit isn't enforced
-in those cases.
+version below the highest existing release never moves `:latest` or `:MAJOR` backward, and gets
+its `:MAJOR.MINOR` only if it's the newest patch of that line, while an out-of-order patch inside a
+line gets no floating tag at all.
 
 A consumer picks a reference with plain `go get`, no special syntax needed:
 

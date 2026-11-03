@@ -35,9 +35,6 @@ on:
 
 env:
   TESTBENCH_REPOSITORY: ghcr.io/wso2/api-platform/testbench
-  TESTBENCH_PACKAGE: api-platform/testbench
-  GHCR_ORG: wso2
-  RETAIN_KEEP: 3
 
 jobs:
   release:
@@ -81,6 +78,10 @@ jobs:
               echo "Error: '$INPUT_VERSION' is not a MAJOR.MINOR.PATCH version"
               exit 1
             fi
+            if [ "${VERSION%%.*}" -gt 1 ]; then
+              echo "Error: major version ${VERSION%%.*} needs a /v${VERSION%%.*} module path suffix; the framework only supports majors 0 and 1"
+              exit 1
+            fi
             echo "explicit=true" >> "$GITHUB_OUTPUT"
           else
             VERSION="$(go run ./cmd/release next-version -repo .)"
@@ -94,8 +95,8 @@ jobs:
 
       # Only for an auto-computed version: auto-incrementing the patch of the latest release
       # from a commit main has already moved past would publish a release that's missing
-      # whatever landed since. An explicit version (a deliberate backport, say) is exempt —
-      # releasing from an older commit on purpose is the point of giving one.
+      # whatever landed since. An explicit version is a deliberate choice of what to publish, so
+      # it is exempt.
       - name: Reject an auto-computed release from a stale commit
         if: steps.version.outputs.explicit == 'false'
         run: |
@@ -176,20 +177,6 @@ jobs:
           git tag -a "tests/framework/v${VERSION}" -m "Tests framework ${VERSION}"
           git push origin "tests/framework/v${VERSION}"
 
-      # Best-effort cleanup, never a reason to fail a release that already shipped: cmd/release
-      # turns a missing token, an insufficient delete:packages scope, or any other API error into
-      # a warning annotation rather than a non-zero exit.
-      - name: Retain only the newest images per minor line
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          GHCR_RETENTION_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
-        run: |
-          go run ./cmd/release retain \
-            -org "${GHCR_ORG}" \
-            -package "${TESTBENCH_PACKAGE}" \
-            -released "${VERSION}" \
-            -keep "${RETAIN_KEEP}"
-
   # Rebuilds an existing release's testbench image with the testbench code on main, without
   # cutting a new version: no release tag is created or moved, so `go get` still resolves the
   # same framework version. The image keeps the tags it already owns, so consumers pinned to
@@ -219,6 +206,18 @@ jobs:
         with:
           go-version: '1.26.10'
           cache-dependency-path: tests/framework/go.sum
+
+      # The testbench comes from the dispatched commit; if main moved while this run waited in the
+      # concurrency group, publishing it would leave the mutable tags older than main.
+      - name: Reject a rebuild from a stale commit
+        run: |
+          set -euo pipefail
+          main_head="$(git ls-remote --heads origin main | cut -f1)"
+          if [ "${main_head}" != "${GITHUB_SHA}" ]; then
+            echo "Error: ${GITHUB_SHA} is not main's current head (${main_head})."
+            echo "Re-dispatch from the current main."
+            exit 1
+          fi
 
       # Always the highest existing release: a given `version` input is ignored, so a rebuild
       # can never touch an older release's image.
