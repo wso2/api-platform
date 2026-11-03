@@ -246,8 +246,8 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 // sqliteAddedColumns lists columns added to tables that have already shipped.
 // SQLite has no ADD COLUMN IF NOT EXISTS, so InitSchema adds each one an
 // existing database lacks; the Postgres and SQL Server schema files carry
-// guarded ALTER TABLE statements instead (and upgrade/ the same as standalone
-// scripts). Fresh databases already get the column from the CREATE TABLE body.
+// guarded ALTER TABLE statements instead. Fresh databases already get the
+// column from the CREATE TABLE body.
 var sqliteAddedColumns = []struct {
 	table, column, definition string
 }{
