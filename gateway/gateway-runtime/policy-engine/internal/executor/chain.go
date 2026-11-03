@@ -161,6 +161,7 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 			if mod.Method != nil {
 				reqCtx.Method = *mod.Method
 			}
+			noteUpstreamRedirect(ctx, mod.UpstreamName)
 		}
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
@@ -346,6 +347,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(ctx context.Context, policyList [
 			// Apply modifications to context
 			if mods, ok := action.(policy.UpstreamRequestModifications); ok {
 				applyRequestModifications(reqCtx, &mods)
+				noteUpstreamRedirect(ctx, mods.UpstreamName)
 			}
 		}
 

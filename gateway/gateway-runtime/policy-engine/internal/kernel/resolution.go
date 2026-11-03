@@ -363,7 +363,7 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 	}
 
 	headerResult, err := ec.server.executor.ExecuteRequestHeaderPolicies(
-		ctx,
+		ec.withUpstreamRedirectHook(ctx),
 		ec.policyChain.Policies,
 		ec.requestHeaderCtx,
 		ec.policyChain.PolicySpecs,
@@ -394,7 +394,7 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 	bodyResult := &executor.RequestExecutionResult{}
 	if !headerResult.ShortCircuited && ec.policyChain.RequiresRequestBody {
 		bodyResult, err = ec.server.executor.ExecuteRequestPolicies(
-			ctx,
+			ec.withUpstreamRedirectHook(ctx),
 			ec.policyChain.Policies,
 			ec.requestBodyCtx,
 			ec.policyChain.PolicySpecs,
