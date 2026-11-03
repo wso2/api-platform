@@ -142,7 +142,7 @@ const apiHolds = (answers: Answers = {}) => {
 const youMay = (...scopes: string[]) =>
   vi.mocked(useAppAuth).mockReturnValue({ hasPermission: (scope: string) => scopes.includes(scope) } as never);
 
-const ALL_SCOPES = [SCOPES.MCP_PROXY_API_PORTAL_MANAGE];
+const ALL_SCOPES = [SCOPES.MCP_PROXY_API_PORTAL_MANAGE, SCOPES.API_PORTAL_DRAFT_UPDATE];
 
 const plansAre = (plans: unknown[]) => vi.mocked(useSubscriptionPlans).mockReturnValue({ plans, failed: false, upToDate: true } as never);
 

@@ -174,6 +174,7 @@ export const SCOPES = {
   MCP_PROXY_API_PORTAL_PUBLISH:   'ap:api_portal:mcp_proxy:publish',
   MCP_PROXY_API_PORTAL_UNPUBLISH: 'ap:api_portal:mcp_proxy:unpublish',
   MCP_PROXY_API_PORTAL_MANAGE:    'ap:api_portal:mcp_proxy:manage',
+  API_PORTAL_DRAFT_UPDATE:        'ap:api_portal:draft:update',
 
   // Agent Proxies
   AGENT_PROXY_READ:                'ap:agent_proxy:read',

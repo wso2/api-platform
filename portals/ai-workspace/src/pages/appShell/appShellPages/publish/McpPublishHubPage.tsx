@@ -363,6 +363,7 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
   const isPublished = Boolean(publication);
   const canDeprecate = publication?.status === 'PUBLISHED';
   const canManage = hasPermission(SCOPES.MCP_PROXY_API_PORTAL_MANAGE);
+  const canUpdateDraft = hasPermission(SCOPES.API_PORTAL_DRAFT_UPDATE);
 
   // Published is off the switch while there is nothing live, so an unpublish that lands
   // while the published version is on screen falls back to the draft.
@@ -702,7 +703,7 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
                 onPublish={handlePublish}
                 onSaveDraft={handleSaveDraft}
                 onUnpublish={() => setConfirmingUnpublish(true)}
-                permissions={{ publish: canManage, unpublish: canManage, deprecate: canManage }}
+                permissions={{ saveDraft: canUpdateDraft, publish: canManage, unpublish: canManage, deprecate: canManage }}
                 publishing={pendingAction === 'publishing'}
                 saveBlocked={assets.unreadable}
                 savingDraft={pendingAction === 'saving'}

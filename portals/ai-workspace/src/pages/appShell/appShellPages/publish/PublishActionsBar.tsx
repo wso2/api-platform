@@ -42,7 +42,7 @@ export type PublishActionsBarProps = {
   /** Save Draft and Publish are off: saving now would lose a part of the listing the page could not read. */
   saveBlocked?: boolean;
   /** What the signed-in user may do; an action they lack is disabled like one that does not apply. */
-  permissions: { publish: boolean; unpublish: boolean; deprecate: boolean };
+  permissions: { saveDraft: boolean; publish: boolean; unpublish: boolean; deprecate: boolean };
   deprecating: boolean;
   onDeprecate: () => void;
   onPublish: () => void;
@@ -130,7 +130,7 @@ export function PublishActionsBar({
 
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: 'stretch', justifyContent: 'flex-end' }}>
-      <Button disabled={busy || !canSaveDraft || saveBlocked} onClick={onSaveDraft} variant="outlined">
+      <Button disabled={busy || !canSaveDraft || saveBlocked || !permissions.saveDraft} onClick={onSaveDraft} variant="outlined">
         <FormattedMessage {...messages.saveDraft} />
       </Button>
       <ButtonGroup color={ACTION_COLOR[effectiveAction]} variant="contained">

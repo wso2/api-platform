@@ -21,7 +21,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, screen } from '../../../../test/utils';
 import { PublishActionsBar, type PublishActionsBarProps } from './PublishActionsBar';
 
-const everything = { publish: true, unpublish: true, deprecate: true };
+const everything = { saveDraft: true, publish: true, unpublish: true, deprecate: true };
 
 const renderBar = (props: Partial<PublishActionsBarProps> = {}) => {
   const handlers = {
@@ -65,6 +65,12 @@ describe('PublishActionsBar', () => {
 
     it('is off while there is nothing to save', () => {
       renderBar({ canSaveDraft: false });
+
+      expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+    });
+
+    it('is off for a user who may not update drafts', () => {
+      renderBar({ permissions: { ...everything, saveDraft: false } });
 
       expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
     });
@@ -131,7 +137,7 @@ describe('PublishActionsBar', () => {
       const { user } = renderBar({
         canDeprecate: true,
         isPublished: true,
-        permissions: { publish: true, unpublish: true, deprecate: false },
+        permissions: { ...everything, deprecate: false },
       });
 
       await openMenu(user);
