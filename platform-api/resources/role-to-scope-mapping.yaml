@@ -346,7 +346,8 @@ roles:
       - dp:webhook_subscriber:read
       - dp:event:read
 
-  # Service account, read-only — the Platform API read scopes of ap_viewer.
+  # Service account, read-only — a subset of ap_viewer's Platform API reads,
+  # with no credential reads (API keys, secrets, gateway tokens).
   - name: ap_service_account
     scopes:
       - ap:organization:read
@@ -356,6 +357,9 @@ roles:
       - ap:rest_api:read
       - ap:rest_api:deployment:read
       - ap:rest_api:build:read
+      - ap:graphql_api:read
+      - ap:graphql_api:deployment:read
+      - ap:graphql_api:build:read
       - ap:application:read
       - ap:subscription:read
       - ap:subscription_plan:read
@@ -369,3 +373,6 @@ roles:
       - ap:mcp_proxy:read
       - ap:mcp_proxy:deployment:read
       - ap:mcp_proxy:build:read
+      - ap:agent_proxy:read
+      - ap:agent_proxy:deployment:read
+      - ap:agent_proxy:build:read
