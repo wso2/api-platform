@@ -3655,6 +3655,1050 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /model-endpoints:
+    post:
+      summary: Create a new model endpoint
+      description: >
+        Add a model endpoint to the Gateway. A model endpoint is the client-facing
+        API that serves Models: a request names a Model (in the body or the path,
+        as the endpoint's inbound template says) and is dispatched to that Model's
+        own policy chain. The handle `wso2` is reserved for the endpoint the
+        gateway provisions when `controller.models.endpoint.provision` is set.
+        Requires `controller.models.enabled`.
+      operationId: createModelEndpoint
+      x-basicauth-roles: [admin]
+      tags:
+        - Model Endpoint Management
+      requestBody:
+        required: true
+        description: Model endpoint in YAML or JSON format
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/ModelEndpointConfigurationRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelEndpointConfigurationRequest'
+      responses:
+        '201':
+          description: Model endpoint created and deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelEndpointConfiguration'
+        '400':
+          description: Invalid configuration (validation failed), or the models feature is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: >
+            Conflict - an endpoint with the same handle or display name exists, the
+            context and vhost are already used, or the handle is the reserved `wso2`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all model endpoints
+      description: List the model endpoints on the Gateway, optionally filtered by display name, version, context, status or vhost.
+      operationId: listModelEndpoints
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by display name
+          schema:
+            type: string
+          example: Partner Model Endpoint
+        - name: version
+          in: query
+          required: false
+          description: Filter by version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by context
+          schema:
+            type: string
+          example: /partners/v1
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: deployed
+        - name: vhost
+          in: query
+          required: false
+          description: Filter by vhost
+          schema:
+            type: string
+          example: partners-ai.example.com
+      responses:
+        '200':
+          description: List of model endpoints
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 2
+                  modelEndpoints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelEndpointConfiguration'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-endpoints/{id}:
+    get:
+      summary: Get a model endpoint by handle
+      description: Get a model endpoint by its handle.
+      operationId: getModelEndpointById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the model endpoint
+          schema:
+            type: string
+          example: wso2
+      responses:
+        '200':
+          description: Model endpoint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelEndpointConfiguration'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/ModelEndpointConfiguration'
+        '404':
+          description: Model endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing model endpoint
+      description: >
+        Update a model endpoint. Every Model the endpoint serves is recompiled; an
+        update that would leave a Model it serves today unable to compile (for
+        example by removing the transformer that Model's provider needs) is refused,
+        naming those Models. The context of the provisioned `wso2` endpoint is set
+        by `controller.models.endpoint.context` and cannot be changed here.
+      operationId: updateModelEndpoint
+      x-basicauth-roles: [admin]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the model endpoint
+          schema:
+            type: string
+          example: wso2
+      requestBody:
+        required: true
+        description: Updated model endpoint
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/ModelEndpointConfigurationRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelEndpointConfigurationRequest'
+      responses:
+        '200':
+          description: Model endpoint updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelEndpointConfiguration'
+        '400':
+          description: Invalid configuration, or the models feature is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Model endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: >
+            Conflict - the update would break a Model the endpoint serves, the
+            context and vhost are already used, or it changes the provisioned
+            endpoint's context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete a model endpoint
+      description: >
+        Delete a model endpoint and its API keys. Refused while a deployed Model
+        names the endpoint in `spec.endpoints`, and for the provisioned `wso2`
+        endpoint while `controller.models.endpoint.provision` is set.
+      operationId: deleteModelEndpoint
+      x-basicauth-roles: [admin]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the model endpoint
+          schema:
+            type: string
+          example: partners
+      responses:
+        '200':
+          description: Model endpoint deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Model endpoint deleted successfully
+                  id:
+                    type: string
+                    example: partners
+        '404':
+          description: Model endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: A deployed Model names the endpoint, or it is the provisioned `wso2` endpoint
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-endpoints/{id}/api-keys:
+    post:
+      summary: Create a new API key for a model endpoint
+      description: Generate a new API key for a model endpoint, or register one with an explicit value.
+      operationId: createModelEndpointAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a model endpoint
+          schema:
+            type: string
+          example: wso2
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: A model endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key, conflicting update, or no endpoint that could check the key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List the API keys of a model endpoint
+      description: List all API keys issued for a model endpoint.
+      operationId: listModelEndpointAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a model endpoint
+          schema:
+            type: string
+          example: wso2
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: A model endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-endpoints/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate an API key of a model endpoint
+      description: Regenerate an existing API key of a model endpoint.
+      operationId: regenerateModelEndpointAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a model endpoint
+          schema:
+            type: string
+          example: wso2
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: team-a
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: A model endpoint or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /model-endpoints/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key of a model endpoint
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateModelEndpointAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a model endpoint
+          schema:
+            type: string
+          example: wso2
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: team-a
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: A model endpoint or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key of a model endpoint
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeModelEndpointAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Endpoint Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a model endpoint
+          schema:
+            type: string
+          example: wso2
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: team-a
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '404':
+          description: A model endpoint or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /models:
+    post:
+      summary: Create a new Model
+      description: >
+        Add a Model to the Gateway. A Model is an AI model the gateway serves on
+        the model endpoints it names in `spec.endpoints` (for example the
+        gateway-provisioned `wso2`, by default at `/wso2/v1`): clients send the
+        Model's `modelName` where the endpoint's inbound format carries the model,
+        and the gateway routes the request to one of the Model's targets. The Model
+        is not checked against its endpoints: one that an endpoint cannot serve is
+        left out of that endpoint and the reason is logged. Requires
+        `controller.models.enabled`.
+      operationId: createModel
+      x-basicauth-roles: [admin]
+      tags:
+        - Model Management
+      requestBody:
+        required: true
+        description: Model in YAML or JSON format
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/ModelConfigurationRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfigurationRequest'
+      responses:
+        '201':
+          description: Model created and deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfiguration'
+        '400':
+          description: Invalid configuration (validation failed), or the models feature is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - a Model with the same handle or modelName already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all Models
+      description: List Models registered in the Gateway, optionally filtered by display name, version, model name or status.
+      operationId: listModels
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Model Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by Model displayName
+          schema:
+            type: string
+          example: GPT-4o
+        - name: version
+          in: query
+          required: false
+          description: Filter by Model version
+          schema:
+            type: string
+          example: v1.0
+        - name: modelName
+          in: query
+          required: false
+          description: Filter by the model name clients send
+          schema:
+            type: string
+          example: gpt-4o
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: deployed
+      responses:
+        '200':
+          description: List of Models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 2
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelConfiguration'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /models/{id}:
+    get:
+      summary: Get Model by unique identifier
+      description: Get a Model by its ID.
+      operationId: getModelById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the Model
+          schema:
+            type: string
+          example: gpt-4o
+      responses:
+        '200':
+          description: Model details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfiguration'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/ModelConfiguration'
+        '404':
+          description: Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing Model
+      description: Update an existing Model in the Gateway.
+      operationId: updateModel
+      x-basicauth-roles: [admin]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the Model
+          schema:
+            type: string
+          example: gpt-4o
+      requestBody:
+        required: true
+        description: Updated Model
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/ModelConfigurationRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfigurationRequest'
+      responses:
+        '200':
+          description: Model updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfiguration'
+        '400':
+          description: Invalid configuration, or the models feature is disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - another Model already uses this modelName
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete a Model
+      description: Delete a Model and its API keys. Its model name stops resolving on every model endpoint.
+      operationId: deleteModel
+      x-basicauth-roles: [admin]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the Model
+          schema:
+            type: string
+          example: gpt-4o
+      responses:
+        '200':
+          description: Model deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Model deleted successfully
+                  id:
+                    type: string
+                    example: gpt-4o
+        '404':
+          description: Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /models/{id}/api-keys:
+    post:
+      summary: Create a new API key for a Model
+      description: Generate a new API key for a Model, or register one with an explicit value.
+      operationId: createModelAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a Model
+          schema:
+            type: string
+          example: claude-haiku
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: A Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key, conflicting update, or no endpoint that could check the key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List the API keys of a Model
+      description: List all API keys issued for a Model.
+      operationId: listModelAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a Model
+          schema:
+            type: string
+          example: claude-haiku
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: A Model not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /models/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate an API key of a Model
+      description: Regenerate an existing API key of a Model.
+      operationId: regenerateModelAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a Model
+          schema:
+            type: string
+          example: claude-haiku
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: haiku-app
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: A Model or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /models/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key of a Model
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateModelAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a Model
+          schema:
+            type: string
+          example: claude-haiku
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: haiku-app
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: A Model or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key of a Model
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeModelAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Model Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of a Model
+          schema:
+            type: string
+          example: claude-haiku
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: haiku-app
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '404':
+          description: A Model or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /secrets:
     get:
       tags:
@@ -6492,7 +7536,6 @@ components:
         - version
         - template
         - upstream
-        - accessControl
       properties:
         displayName:
           type: string
@@ -6528,6 +7571,18 @@ components:
           type: string
           description: Template name to use for this LLM Provider
           example: openai
+        exposure:
+          type: string
+          description: >
+            Whether the provider is published as a route of its own. `route` (the
+            default) serves the provider at its context, as it always has. `none`
+            publishes no route: the provider is reachable only through the Models
+            that target it, which call its upstream directly with its upstream
+            credential. A provider with `exposure: none` takes no context, vhost,
+            accessControl, policies or fault policies, and issues no API keys.
+          enum: [route, none]
+          default: route
+          example: route
         upstreamDefinitions:
           type: array
           description: List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.
@@ -6537,8 +7592,11 @@ components:
           allOf:
             - $ref: "#/components/schemas/Upstream"
             - $ref: "#/components/schemas/UpstreamAuth"
+            - $ref: "#/components/schemas/LLMUpstreamVersion"
         accessControl:
-          $ref: '#/components/schemas/LLMAccessControl'
+          description: Required when `exposure` is `route`; rejected when it is `none`.
+          allOf:
+            - $ref: '#/components/schemas/LLMAccessControl'
         globalPolicies:
           type: array
           description: Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.
@@ -6665,6 +7723,21 @@ components:
                 either way the field is omitted from management API response
                 bodies. An update that omits it inherits the stored value;
                 set `type: none` to remove auth.
+
+    LLMUpstreamVersion:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          description: >
+            The provider API version the gateway speaks when it translates a Model
+            request for this provider — the Azure OpenAI `api-version` (required
+            for an Azure OpenAI provider that Models target), the Gemini API
+            version (default `v1beta`), or the Anthropic version header (default
+            `2023-06-01`). Not used by the provider's own route.
+          minLength: 1
+          maxLength: 64
+          example: "2024-10-21"
 
     LLMUpstreamAuth:
       type: object
@@ -7161,6 +8234,473 @@ components:
             for this LLM Proxy (the routes that forward traffic upstream). Supported at the
             API level only - LLM routes are synthesized by the gateway, so there is no
             operation-level override.
+
+    ModelEndpointConfigurationRequest:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Model endpoint specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: Model endpoint kind
+          example: ModelEndpoint
+          enum:
+            - ModelEndpoint
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/ModelEndpointConfigData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: ModelEndpoint
+        metadata:
+          name: partners
+        spec:
+          displayName: Partner Model Endpoint
+          version: v1.0
+          context: /partners/v1
+          policies:
+            - name: api-key-auth
+              version: v1
+              params:
+                key: Authorization
+                in: header
+                valuePrefix: Bearer
+
+    ModelEndpointConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/ModelEndpointConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: ModelEndpoint
+        metadata:
+          name: partners
+        spec:
+          displayName: Partner Model Endpoint
+          version: v1.0
+          context: /partners/v1
+          policies:
+            - name: api-key-auth
+              version: v1
+              params:
+                key: Authorization
+                in: header
+                valuePrefix: Bearer
+        status:
+          id: partners
+          state: deployed
+          createdAt: 2026-10-28T09:12:44Z
+          updatedAt: 2026-10-28T09:40:02Z
+          deployedAt: 2026-10-28T09:40:02Z
+
+    ModelEndpointConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+      properties:
+        displayName:
+          type: string
+          description: >
+            Human-readable endpoint name, unique among the gateway's model endpoints
+            (API-level rate-limit counters key on it). Only letters, numbers, spaces,
+            hyphens, underscores and dots.
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Partner Model Endpoint
+        version:
+          type: string
+          description: Semantic version of the endpoint
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: >
+            Base path the endpoint is served at (must start with /, no trailing
+            slash). Required for every endpoint but the provisioned `wso2`, whose
+            context is set by `controller.models.endpoint.context`. The context and vhost
+            must not clash with any other artifact on the gateway.
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          minLength: 1
+          maxLength: 200
+          example: /partners/v1
+        vhost:
+          type: string
+          description: >
+            Virtual host the endpoint is served on; the gateway's default vhost when
+            absent. Wildcards are only allowed in the left-most label.
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: partners-ai.example.com
+        inboundTemplate:
+          type: string
+          description: >
+            Handle of the provider template describing the wire format clients send,
+            as on an LLM proxy. The model is read where the template's
+            `requestModel` says. `openai` (the default), `anthropic` and `gemini`
+            are accepted: the formats the gateway has an inbound profile for, which
+            fixes the endpoint's operations, catalog and error bodies.
+          minLength: 1
+          maxLength: 253
+          default: openai
+          example: openai
+        policies:
+          type: array
+          description: >
+            Endpoint-wide policies, run first in every Model chain and in the catalog
+            chain. Attached at API level, so an endpoint rate limit is shared by every
+            Model. When omitted, defaults to api-key-auth on `Authorization: Bearer
+            <key>`. An explicit list is used as given, so an empty list serves the
+            endpoint without authentication.
+          items:
+            $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Policies executed when any request on the endpoint fails, over the error
+            response; run after a Model's own fault policies.
+          items:
+            $ref: "#/components/schemas/Policy"
+        transformers:
+          type: array
+          description: >
+            The transformers that convert this endpoint's inbound format to a
+            provider's. There are no built-in defaults: a provider whose template is
+            the endpoint's inbound template needs none, and any other provider needs
+            an entry here, matched by provider handle first and template second. A
+            Model with a provider no entry matches is left out of this endpoint.
+          maxItems: 128
+          items:
+            $ref: '#/components/schemas/ModelEndpointTransformer'
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: Route timeouts for the endpoint's dispatch and catalog operations.
+        deploymentState:
+          type: string
+          description: >
+            Desired deployment state - 'deployed' (default) or 'undeployed'. An
+            undeployed endpoint serves nothing; its Models and keys are kept, and
+            Models keep serving on their other endpoints.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    ModelEndpointTransformer:
+      type: object
+      required:
+        - type
+      description: >
+        One transformer entry: the LLM proxy `transformer` fields (`type`, `version`,
+        `params`), plus which providers it applies to and the paths it writes.
+        Exactly one of `provider` or `template` is set.
+      properties:
+        provider:
+          type: string
+          description: LLM provider handle this entry applies to. Wins over a `template` entry.
+          minLength: 1
+          maxLength: 253
+          example: acme-llm-prod
+        template:
+          type: string
+          description: Provider template handle or template group this entry applies to.
+          minLength: 1
+          maxLength: 253
+          example: anthropic
+        type:
+          type: string
+          description: >
+            An installed transformer policy name, or `none` for no transformer
+            (a provider that already speaks the endpoint's format).
+          minLength: 1
+          maxLength: 253
+          example: openai-to-anthropic-transformer
+        version:
+          type: string
+          description: Major-only policy version, required unless `type` is `none`.
+          pattern: '^v\d+$'
+          example: v1
+        params:
+          type: object
+          description: >
+            Parameters passed to the transformer. `providerId` is injected by the
+            gateway and cannot be set. String values may use `{apiVersion}` or
+            `{apiVersion:<default>}`, filled from the provider's
+            `spec.upstream.apiVersion`.
+          additionalProperties: true
+        upstreamPaths:
+          type: array
+          maxItems: 16
+          description: >
+            The paths the transformer writes upstream, with `{upstreamModel}` and
+            `{apiVersion}` placeholders. Used only to check that a provider reached
+            through its own route allows them (accessControl).
+          items:
+            type: string
+            minLength: 1
+            maxLength: 512
+          example: [/v1/messages]
+
+    ModelConfigurationRequest:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Model specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: Model kind
+          example: Model
+          enum:
+            - Model
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/ModelConfigData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: Model
+        metadata:
+          name: gpt-4o
+        spec:
+          displayName: GPT-4o
+          version: v1.0
+          modelName: gpt-4o
+          endpoints: [wso2]
+          targets:
+            - name: openai
+              provider:
+                id: wso2-openai-provider
+              upstreamModel: gpt-4o
+
+    ModelConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/ModelConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: Model
+        metadata:
+          name: gpt-4o
+        spec:
+          displayName: GPT-4o
+          version: v1.0
+          modelName: gpt-4o
+          endpoints: [wso2]
+          targets:
+            - name: openai
+              provider:
+                id: wso2-openai-provider
+              upstreamModel: gpt-4o
+        status:
+          id: gpt-4o
+          state: deployed
+          createdAt: 2026-10-21T07:21:13Z
+          updatedAt: 2026-10-21T07:21:13Z
+          deployedAt: 2026-10-21T07:21:13Z
+
+    ModelConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+        - modelName
+        - endpoints
+        - targets
+      properties:
+        displayName:
+          type: string
+          description: Human-readable Model name
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: GPT-4o
+        version:
+          type: string
+          description: Semantic version of the Model
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        modelName:
+          type: string
+          description: >
+            The name clients send for this Model, wherever the endpoint's inbound
+            format carries the model (the `model` field for OpenAI and Anthropic,
+            the path for Gemini). Unique across Models on this gateway. Matched
+            exactly and case-sensitively.
+          minLength: 1
+          maxLength: 256
+          example: gpt-4o
+        endpoints:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          description: >
+            Handles of the model endpoints that serve this Model. Required, with no
+            implicit default. Each must name a model endpoint on this gateway,
+            deployed or not; a save naming one that does not exist is refused with 400.
+            A Model saved as deployed is also refused with 400 when a named endpoint
+            cannot serve it, for example when it has no transformer for one of the
+            Model's providers.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 253
+          example: [wso2]
+        targets:
+          type: array
+          minItems: 1
+          description: >
+            The upstream models this Model can be served by. Each target is a pair
+            of a deployed LLM provider and the model name that provider knows it by,
+            and the pair is unique within the Model. With more than one target,
+            `routing` is required to choose between them. The first target is the
+            default: it serves a request the routing policy did not place.
+          items:
+            $ref: '#/components/schemas/ModelTarget'
+        routing:
+          $ref: '#/components/schemas/ModelRouting'
+        policies:
+          type: array
+          description: >
+            Policies applied to every request for this Model, after the endpoint's
+            own policies (authentication) and before routing. Policies here see the
+            request and response in each endpoint's inbound format.
+          items:
+            $ref: "#/components/schemas/Policy"
+        faultPolicies:
+          type: array
+          description: >
+            Ordered list of policies executed only when a request for this Model
+            fails, over the error response. Run before the endpoint's own fault
+            policies.
+          items:
+            $ref: "#/components/schemas/Policy"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. An undeployed Model stops resolving on every endpoint but its configuration is kept.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    ModelTarget:
+      type: object
+      required:
+        - name
+        - provider
+        - upstreamModel
+      properties:
+        name:
+          type: string
+          description: >
+            Name of this target, unique within the Model. A routing policy's model
+            fields (`model`, `defaultModel`, `modelName`) may name the target by
+            this name, as well as by its upstream model.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: openai
+        provider:
+          $ref: '#/components/schemas/ModelTargetProvider'
+        upstreamModel:
+          type: string
+          description: >
+            The model name sent to the provider. For an Azure OpenAI provider this
+            is the deployment name.
+          minLength: 1
+          maxLength: 256
+          example: gpt-4o
+        auth:
+          description: >
+            Credential the gateway presents to a provider reached through its own
+            route (`exposure: route`) — the same field, with the same rules, as
+            `auth` on an LLM proxy's provider. Required when that provider's route
+            authenticates with api-key-auth; rejected for a provider with
+            `exposure: none`, which is called directly with the provider's own
+            upstream credential. Write-only values are never returned and are
+            inherited on an update that omits them.
+          allOf:
+            - $ref: '#/components/schemas/LLMUpstreamAuth'
+
+    ModelTargetProvider:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Handle of a deployed LLM provider
+          example: wso2-openai-provider
+
+    ModelRouting:
+      type: object
+      required:
+        - policy
+      description: >
+        The routing policy that chooses a target per request. Any model routing
+        policy can be used (round-robin, weighted round-robin, semantic, cost-based,
+        time-based, intelligent routing, header routing). Its parameters are the
+        policy's own, written as the policy defines them. A parameter that names a
+        model (`model`, `defaultModel`, `modelName`) may give a target's name or its
+        upstream model; one that names a provider gives a provider handle. At request
+        time the gateway matches the policy's choice to one of the Model's targets,
+        and a choice that matches none is served by the first target.
+      properties:
+        policy:
+          $ref: '#/components/schemas/ModelRoutingPolicy'
+        params:
+          type: object
+          description: >
+            Parameters for the routing policy, exactly as the policy defines them,
+            and checked against its parameter schema on save.
+          additionalProperties: true
+
+    ModelRoutingPolicy:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+          description: Routing policy name
+          example: model-round-robin
+        version:
+          type: string
+          description: Major-only routing policy version
+          pattern: '^v\d+$'
+          example: v1
 
     SecretConfigurationRequest:
       type: object
@@ -7692,5 +9232,9 @@ tags:
     description: CRUD operations for LLM Provider configurations
   - name: LLM Proxy Management
     description: CRUD operations for LLM Proxy configurations
+  - name: Model Endpoint Management
+    description: CRUD operations for model endpoints, which serve Models to clients
+  - name: Model Management
+    description: CRUD operations for Models served on the gateway's model endpoints
   - name: Secrets Management
     description: CRUD operations for Secrets
