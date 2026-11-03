@@ -16,7 +16,8 @@
  * under the License.
  */
 
-// Package bedrock provides a deterministic AWS Bedrock ApplyGuardrail-compatible service.
+// Package bedrock provides a deterministic AWS Bedrock service: ApplyGuardrail, and Converse for
+// an LLM provider on the awsbedrock template.
 package bedrock
 
 import (
@@ -98,6 +99,15 @@ func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if m := conversePath.FindStringSubmatch(r.URL.Path); m != nil {
+			if strings.ToUpper(r.Method) != http.MethodPost {
+				w.Header().Set("Allow", http.MethodPost)
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			s.converse(w, r, m[1])
+			return
+		}
 		if !guardrailPathRegex.MatchString(r.URL.Path) {
 			http.NotFound(w, r)
 			return
