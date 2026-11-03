@@ -23,6 +23,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -75,8 +76,12 @@ type HTTPSteps struct {
 	lastRequest  *http.Request
 	lastResponse *http.Response
 	lastBody     []byte
-	headers      map[string]string
-	requestHost  string
+	// bodyCutOff records that the response body ended before the protocol said it
+	// would — the client-visible signature of a stream reset after the headers
+	// were already sent. Only ever set by SendGETRequestAllowingCutOffBody.
+	bodyCutOff  bool
+	headers     map[string]string
+	requestHost string
 }
 
 // NewHTTPSteps creates a new HTTPSteps instance
@@ -99,6 +104,9 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 
 	// HTTP method steps
 	ctx.Step(`^I send a GET request to \"([^\"]*)\"$`, h.ISendGETRequest)
+	ctx.Step(`^I send a GET request to \"([^\"]*)\" allowing a cut-off body$`, h.SendGETRequestAllowingCutOffBody)
+	ctx.Step(`^the response body should have been cut off$`, h.theResponseBodyShouldHaveBeenCutOff)
+	ctx.Step(`^the response body should not have been cut off$`, h.theResponseBodyShouldNotHaveBeenCutOff)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\"$`, h.ISendPOSTRequest)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\" with body:$`, h.ISendPOSTRequestWithBody)
 	ctx.Step(`^I send a PUT request to \"([^\"]*)\" with body:$`, h.ISendPUTRequestWithBody)
@@ -127,6 +135,7 @@ func (h *HTTPSteps) Reset() {
 	h.lastRequest = nil
 	h.lastResponse = nil
 	h.lastBody = nil
+	h.bodyCutOff = false
 	h.headers = make(map[string]string)
 	h.requestHost = ""
 }
@@ -678,4 +687,59 @@ func (h *HTTPSteps) iSendPOSTRequestWithHeaderPairAndBody(url, headerPair string
 	headerValue := strings.TrimSpace(parts[1])
 
 	return h.sendRequestWithTempHeader(http.MethodPost, url, []byte(body.Content), headerName, headerValue)
+}
+
+// SendGETRequestAllowingCutOffBody issues a GET and keeps whatever arrived even when the
+// body ends early.
+//
+// The ordinary send fails the step on a short read, which makes one behaviour untestable:
+// a response whose headers reached the client and whose body was then cut off. That is
+// exactly what a post-header upstream failure looks like from outside (FR-013) — the status
+// and headers are real and already delivered, and no retry is possible because a 200 cannot
+// be un-sent. Status and headers are captured before the read either way, so the partial
+// body is kept and the truncation is recorded as an assertable fact rather than an error.
+//
+// Deliberately narrow: only an early end of body is tolerated. A connection that fails
+// before any response, or any other transport error, still fails the step.
+func (h *HTTPSteps) SendGETRequestAllowingCutOffBody(url string) error {
+	err := h.ISendGETRequest(url)
+	if err == nil {
+		return nil
+	}
+	if h.lastResponse == nil || !isUnexpectedEOF(err) {
+		return err
+	}
+	h.bodyCutOff = true
+	log.Printf("DEBUG: response body was cut off mid-stream (status=%d, %d bytes read): %v",
+		h.lastResponse.StatusCode, len(h.lastBody), err)
+	return nil
+}
+
+// isUnexpectedEOF reports whether err is the body ending before the framing said it would.
+// io.ErrUnexpectedEOF covers a short read of a declared length; http.ErrBodyReadAfterClose and
+// a bare io.EOF are NOT this condition and are left to fail.
+func isUnexpectedEOF(err error) bool {
+	return errors.Is(err, io.ErrUnexpectedEOF)
+}
+
+func (h *HTTPSteps) theResponseBodyShouldHaveBeenCutOff() error {
+	if h.lastResponse == nil {
+		return fmt.Errorf("no response recorded")
+	}
+	if !h.bodyCutOff {
+		return fmt.Errorf("expected the response body to have been cut off, but it was "+
+			"delivered complete (status %d, %d bytes)", h.lastResponse.StatusCode, len(h.lastBody))
+	}
+	return nil
+}
+
+func (h *HTTPSteps) theResponseBodyShouldNotHaveBeenCutOff() error {
+	if h.lastResponse == nil {
+		return fmt.Errorf("no response recorded")
+	}
+	if h.bodyCutOff {
+		return fmt.Errorf("expected a complete response body, but it was cut off after %d bytes",
+			len(h.lastBody))
+	}
+	return nil
 }

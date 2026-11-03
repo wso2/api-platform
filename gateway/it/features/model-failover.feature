@@ -1180,3 +1180,94 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the MCP proxy "mf-inert-mcp-v1.0"
     Then the response should be successful
+
+  # ====================================================================
+  # FR-013 — failover stops once the response has started
+  # ====================================================================
+
+  Scenario: A failure after the response has started is not failed over
+    # Both operations below carry byte-identical failover configuration, and
+    # that pairing is the whole point. /status/503 fails BEFORE any body, so it
+    # must fail over — it is the control proving failover is live on this API.
+    # /drip sends its headers in about 20ms and then streams for 10s, so the 2s
+    # route timeout cuts it mid-body: a failure AFTER the response started.
+    # Without the control, "no second attempt" on /drip would be indistinguishable
+    # from failover never having engaged here at all.
+    #
+    # Envoy cannot rescue the second case and should not try: a 200 that has
+    # already reached the client cannot be un-sent (envoyproxy/envoy#5876 — mid-
+    # stream retry is closed by design, not a gap). The client-visible result is
+    # a real 200 whose body stops early, which is what this asserts.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-stream-safety-v1.0
+      spec:
+        displayName: MF Stream Safety
+        version: v1.0
+        context: /mf-stream-safety/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend:80
+          - name: alive
+            basePath: /mf-stream-fallback
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        resilience:
+          timeout: 2s
+        operations:
+          - method: GET
+            path: /status/503
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+          - method: GET
+            path: /drip
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    # CONTROL — the 503 is in the headers, so nothing has been sent to the client
+    # yet and the attempt is retriable. Failover works on this API.
+    When I send a GET request to "http://localhost:8080/mf-stream-safety/v1.0/status/503"
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/mf-stream-fallback"
+    And the response body should not have been cut off
+
+    # SUBJECT — same configuration, same API, failure moved to after the headers.
+    When I send a GET request to "http://localhost:8080/mf-stream-safety/v1.0/drip?duration=10&numbytes=60" allowing a cut-off body
+    # The headers were real and already delivered — this is not an error response.
+    Then the response status code should be 200
+    # One attempt only: the fallback was never reached.
+    And the response header "x-envoy-attempt-count" should be "1"
+    # And the client saw the consequence rather than a silent rescue.
+    And the response body should have been cut off
+    And the response body should not contain "/mf-stream-fallback"
+
+    # Cleanup
+    When I delete the API "mf-stream-safety-v1.0"
+    Then the response status code should be 200
