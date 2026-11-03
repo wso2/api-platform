@@ -16,12 +16,14 @@
  * under the License.
  */
 
-// Package aws provides the testbench's AWS service: one stateless service, on port 80, that
-// plays the AWS endpoints the gateway's AWS Authentication policy reaches, and verifies AWS
-// Signature Version 4 (SigV4) request signatures independently of the AWS SDK the gateway uses.
+// Package aws provides the testbench's AWS services. The AWS service, on port 80, plays the AWS
+// endpoints the gateway's AWS Authentication policy reaches, and verifies AWS Signature Version 4
+// (SigV4) request signatures independently of the AWS SDK the gateway uses. The Bedrock service,
+// on port 3006, plays the Bedrock Runtime ApplyGuardrail API the AWS Bedrock Guardrail policy
+// calls.
 //
-// The first two segments of a request path name the AWS service and region being addressed, as
-// an AWS endpoint's host name does:
+// The first two segments of a request path to the AWS service name the AWS service and region
+// being addressed, as an AWS endpoint's host name does:
 //
 //	/sts/<region>                          STS AssumeRole (sts.go), for policies that assume an
 //	                                       IAM role, through AWS_ENDPOINT_URL_STS
@@ -64,6 +66,14 @@
 //	testbench-sts-short-lived    always assumed, with credentials that expire after 3 seconds
 //
 // Any other role is assumed normally.
+//
+// The Bedrock service (bedrock.go) listens on its own port, which the gateway runtime reaches
+// through AWS_ENDPOINT_URL_BEDROCK_RUNTIME as http://testbench:3006. It decides ApplyGuardrail from
+// the text it is given and does not verify signatures: text naming violence, hate or illegal
+// content is blocked (GUARDRAIL_INTERVENED); email addresses at example.com are masked ("mask-"
+// addresses, restorable) or redacted; text asking to simulate an error gets 500; anything else
+// passes (NONE) and is echoed back, as Bedrock always returns the text in outputs[0]. It keeps no
+// state either.
 //
 // The fixture credentials are:
 //

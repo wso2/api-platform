@@ -997,6 +997,138 @@ func TestInOutage(t *testing.T) {
 	require.True(t, inOutage(time.Unix(4009, 999_999_999)))
 }
 
+// Bedrock, the AWS Bedrock Guardrail policy's ApplyGuardrail, on its own port (bedrock.go). These
+// are the tests of the Bedrock service from before it moved into this package, unchanged but for
+// the names.
+
+const bedrockApplyPath = "/guardrail/test-guardrail/version/DRAFT/apply"
+
+func bedrockApplyRequest(text string) *http.Request {
+	body := `{"source":"INPUT","content":[{"text":{"text":"` + text + `"}}]}`
+	return httptest.NewRequest(http.MethodPost, bedrockApplyPath, strings.NewReader(body))
+}
+
+func decodeBedrockResponse(t *testing.T, recorder *httptest.ResponseRecorder) applyGuardrailResponse {
+	t.Helper()
+	var resp applyGuardrailResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	return resp
+}
+
+func TestApplyGuardrailSafeContentReturnsNoneWithEchoedOutput(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	NewBedrock().Handler().ServeHTTP(recorder, bedrockApplyRequest("Hello, this is safe content"))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	resp := decodeBedrockResponse(t, recorder)
+	require.Equal(t, "NONE", resp.Action)
+	// A caller reading outputs[0].text (as real Bedrock guarantees is always present, even
+	// for action NONE) must not find an empty slice here.
+	require.Len(t, resp.Outputs, 1)
+	require.Equal(t, "Hello, this is safe content", resp.Outputs[0]["text"])
+	require.Empty(t, resp.Assessments)
+}
+
+func TestApplyGuardrailEmptyContentReturnsNoneWithEmptyEchoedOutput(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	NewBedrock().Handler().ServeHTTP(recorder, bedrockApplyRequest(""))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	resp := decodeBedrockResponse(t, recorder)
+	require.Equal(t, "NONE", resp.Action)
+	require.Len(t, resp.Outputs, 1)
+	require.Equal(t, "", resp.Outputs[0]["text"])
+}
+
+func TestApplyGuardrailViolatingKeywordsAreIntervened(t *testing.T) {
+	for _, keyword := range []string{"violence", "hate", "illegal"} {
+		t.Run(keyword, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			NewBedrock().Handler().ServeHTTP(recorder, bedrockApplyRequest("this contains "+keyword))
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			resp := decodeBedrockResponse(t, recorder)
+			require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+			require.Len(t, resp.Outputs, 1)
+			require.NotNil(t, resp.Assessments[0].ContentPolicy)
+		})
+	}
+}
+
+func TestApplyGuardrailSimulatedErrorKeywordsReturn500(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	NewBedrock().Handler().ServeHTTP(recorder, bedrockApplyRequest("please simulate an error here"))
+
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+}
+
+func TestApplyGuardrailMaskedEmailIsAnonymizedThenRestorable(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	NewBedrock().Handler().ServeHTTP(recorder, bedrockApplyRequest("Contact me at mask-test@example.com"))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	resp := decodeBedrockResponse(t, recorder)
+	require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+	text, _ := resp.Outputs[0]["text"].(string)
+	require.Contains(t, text, "$ANONYMIZED_EMAIL$")
+	require.NotContains(t, text, "mask-test@example.com")
+	require.NotNil(t, resp.Assessments[0].SensitiveInformationPolicy)
+}
+
+func TestApplyGuardrailPlainEmailIsPermanentlyRedacted(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	NewBedrock().Handler().ServeHTTP(recorder, bedrockApplyRequest("My SSN is test@example.com"))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	resp := decodeBedrockResponse(t, recorder)
+	text, _ := resp.Outputs[0]["text"].(string)
+	require.Contains(t, text, "*****")
+	require.NotContains(t, text, "test@example.com")
+}
+
+func TestApplyGuardrailInvalidJSONReturns400(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, bedrockApplyPath, strings.NewReader("{invalid"))
+	NewBedrock().Handler().ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+}
+
+func TestApplyGuardrailRejectsMalformedGuardrailPath(t *testing.T) {
+	for _, path := range []string{"/guardrail/x/version/DRAFT", "/guardrail/x/apply", "/wrong/path"} {
+		t.Run(path, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+			NewBedrock().Handler().ServeHTTP(recorder, req)
+			require.Equal(t, http.StatusNotFound, recorder.Code)
+		})
+	}
+}
+
+func TestApplyGuardrailRejectsNonPostMethod(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, bedrockApplyPath, nil)
+	NewBedrock().Handler().ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+}
+
+func TestBedrockHealthEndpoint(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	NewBedrock().Handler().ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"status":"ok"`)
+}
+
+func TestBedrockServiceMetadata(t *testing.T) {
+	s := NewBedrock()
+	require.Equal(t, "bedrock", s.Name())
+	require.Equal(t, BedrockPort, s.Port())
+	require.False(t, s.Stateful())
+}
+
 // Isolation: requests to different endpoints, sent concurrently, do not affect one another.
 
 func TestUpstreamVerifiesConcurrentRequests(t *testing.T) {
@@ -1022,11 +1154,13 @@ func TestUpstreamVerifiesConcurrentRequests(t *testing.T) {
 	}
 }
 
-// Valid and invalid requests are sent at once to one service: upstream requests with and without
-// a request-scoped key revocation, and STS AssumeRole for a normal and an unavailable role. Each
-// must get exactly the answer it gets alone, which shows that no answer depends on another request.
+// Valid and invalid requests are sent at once to both services of the package: upstream requests
+// with and without a request-scoped key revocation, STS AssumeRole for a normal and an unavailable
+// role, and Bedrock ApplyGuardrail for safe, blocked and error-simulating content. Each must get
+// exactly the answer it gets alone, which shows that no answer depends on another request.
 func TestConcurrentRequestsToEveryEndpointAreIndependent(t *testing.T) {
 	handler := testService(testNow).Handler()
+	bedrock := NewBedrock().Handler()
 	permanent := fixtureCredentials[permanentKey]
 	type check struct {
 		name   string
@@ -1080,17 +1214,47 @@ func TestConcurrentRequestsToEveryEndpointAreIndependent(t *testing.T) {
 			return assumeRoleRequest(assumeRoleFormFor(roleUnavailable), permanentKey, permanent, testNow)
 		}, expect(http.StatusServiceUnavailable, "ServiceUnavailable")},
 	}
+	bedrockChecks := []check{
+		{"Bedrock, safe content", func(i int) *http.Request {
+			return bedrockApplyRequest(fmt.Sprintf("safe request %d", i))
+		}, func(i int, recorder *httptest.ResponseRecorder) error {
+			var resp applyGuardrailResponse
+			if recorder.Code != http.StatusOK || json.Unmarshal(recorder.Body.Bytes(), &resp) != nil ||
+				resp.Action != "NONE" || resp.Outputs[0]["text"] != fmt.Sprintf("safe request %d", i) {
+				return fmt.Errorf("got %d %s", recorder.Code, recorder.Body.String())
+			}
+			return nil
+		}},
+		{"Bedrock, blocked content", func(int) *http.Request {
+			return bedrockApplyRequest("this is about violence")
+		}, func(_ int, recorder *httptest.ResponseRecorder) error {
+			if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "GUARDRAIL_INTERVENED") {
+				return fmt.Errorf("got %d %s", recorder.Code, recorder.Body.String())
+			}
+			return nil
+		}},
+		{"Bedrock, simulated error", func(int) *http.Request {
+			return bedrockApplyRequest("please simulate an error")
+		}, expect(http.StatusInternalServerError, "Simulated AWS Bedrock Guardrail error")},
+	}
+
+	targets := []struct {
+		handler http.Handler
+		checks  []check
+	}{{handler, checks}, {bedrock, bedrockChecks}}
 
 	const rounds = 40
 	var wg sync.WaitGroup
-	failures := make(chan string, rounds*len(checks))
+	failures := make(chan string, rounds*(len(checks)+len(bedrockChecks)))
 	for i := range rounds {
-		for _, c := range checks {
-			wg.Go(func() {
-				if err := c.verify(i, serve(handler, c.build(i))); err != nil {
-					failures <- fmt.Sprintf("%s, request %d: %v", c.name, i, err)
-				}
-			})
+		for _, target := range targets {
+			for _, c := range target.checks {
+				wg.Go(func() {
+					if err := c.verify(i, serve(target.handler, c.build(i))); err != nil {
+						failures <- fmt.Sprintf("%s, request %d: %v", c.name, i, err)
+					}
+				})
+			}
 		}
 	}
 	wg.Wait()

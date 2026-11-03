@@ -30,7 +30,6 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/aws"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
-	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
@@ -120,7 +119,7 @@ func Testbench() *components.Definition {
 			{Name: "jwks", Port: jwks.Port, Scheme: "http", AwaitListening: true},
 			{Name: "echo", Port: echo.Port, Scheme: "http", AwaitListening: true},
 			{Name: "interceptor", Port: interceptor.Port, Scheme: "http", AwaitListening: true},
-			{Name: "bedrock", Port: bedrock.Port, Scheme: "http", AwaitListening: true},
+			{Name: "bedrock", Port: aws.BedrockPort, Scheme: "http", AwaitListening: true},
 			{Name: "openai", Port: openai.Port, Scheme: "http", AwaitListening: true},
 			{Name: "mcp", Port: mcp.Port, Scheme: "http", AwaitListening: true},
 			// A handshake-era MCP server, for the behaviour the one above cannot show:
