@@ -1,0 +1,4 @@
+github.com/wso2/api-platform/sdk/core v0.5.0 h1:8b37YIUUhUNXmud75LQFziLs3fD/yrMM1YrMFryYy5s=
+github.com/wso2/api-platform/sdk/core v0.5.0/go.mod h1:TgjpOk3QBPc7xEQC+NctWcNq5dSPBkn7wSKh+hULTj8=
+golang.org/x/text v0.43.0 h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=
+golang.org/x/text v0.43.0/go.mod h1:hbSIYA/amXcRXTFSZqh8tWHEoqRvvbKPJ2uz/KU+a+s=
