@@ -286,6 +286,74 @@ token_ttl = "1h"
 # This is a supported trust-boundary configuration for internal tokens.
 skip_validation = false
 
+# Service accounts — non-human identities that swap a client ID and secret for a
+# short-lived platform JWT at POST /api/v0.9/service-accounts/token.
+#
+# Client secrets look like apsa_<64 hex chars>. Add the pattern
+# apsa_[0-9a-f]{64} to your secret scanner (GitHub secret scanning,
+# GitGuardian, trufflehog) so a leaked secret is caught.
+#
+# An account holds one or more roles from the role-to-scope mapping. Its
+# token carries one authorization claim, chosen by auth.authorization.mode: in
+# "scope" mode the client must send scope=<space-separated scopes>, all granted
+# by its roles, and the token carries exactly those; in "role" mode scope is
+# ignored and the token carries the roles.
+[platform_api.auth.service_account]
+# Off by default. Set to true to add the service-account endpoints; on Postgres
+# and SQL Server, apply the service_accounts and service_account_revocations
+# tables from the schema file first. Turning it off again refuses every
+# service-account token; accounts are kept and work again when turned back on.
+enabled = false
+# Lifetime of a service-account token.
+token_ttl = "15m"
+# Written to every service-account token's aud and required back on it.
+audience = "platform-api"
+
+[platform_api.auth.service_account.revocation]
+# How often each replica reloads revocations (plus up to half again as jitter).
+poll_interval = "5s"
+
+# Signing keys, set up like the gateway's [signing]. The public keys are published
+# at GET /.well-known/jwks (the server root, not /api/v0.9), so a gateway or any
+# other verifier checks a token by its kid.
+#
+# With no keys, service-account tokens are signed with auth.jwt, which needs
+# auth.jwt.private_key_file; without one, token issue is disabled. Own keys are
+# recommended for production: only they can be changed without breaking every
+# live token at once.
+#
+# Each key is a PEM private key file; the public key is derived from it. Exactly
+# one key is marked active and signs. Every listed key verifies and is published.
+# The kid defaults to the RFC 7638 thumbprint.
+#
+# The key type picks the signing algorithm, and `algorithm` may override it:
+#   RSA (PKCS #1 or PKCS #8)     RS256 (default), PS256
+#   EC P-256 (SEC 1 or PKCS #8)   ES256
+#   EC P-384 (SEC 1 or PKCS #8)   ES384
+# Other curves and key types are refused. An SA token must use exactly its key's
+# algorithm. With no keys, tokens use auth.jwt's key and RS256.
+#
+# Rotation, each step a config change and a rolling restart: (1) add the new key
+# without `active`; (2) after at least jwks_cache_max_age, move `active = true`
+# to it; (3) after token_ttl plus jwks_cache_max_age, remove the old key. Moving
+# to a key of another algorithm takes the same steps, but every verifier that
+# reads the JWKS must support the new algorithm before step 2.
+[platform_api.auth.service_account.signing]
+# Cache-Control max-age of the JWKS, 0 to 24h. Also the shortest wait between
+# rotation steps.
+jwks_cache_max_age = "5m"
+# Required with keys. Must differ from auth.jwt.issuer and every auth.idp.issuer.
+# issuer = "platform-api-sa"
+
+# [[platform_api.auth.service_account.signing.keys]]
+# path = "/etc/platform-api/keys/sa_signing.pem"
+# active = true
+#
+# [[platform_api.auth.service_account.signing.keys]]
+# path = "/etc/platform-api/keys/sa_signing_old.pem"
+# # kid = "..."        optional override of the thumbprint
+# # algorithm = "..."  optional override of the algorithm the key type implies
+
 # ---------------------------------------------------------------------------
 # Server listeners (HTTP + HTTPS)
 # ---------------------------------------------------------------------------
