@@ -107,8 +107,6 @@ func newAuditSinks(cfg config.Audit, logger *slog.Logger) ([]auditSink, error) {
 			s, err = newAuditFileSink(cfg.File, logger)
 		case config.AuditOutputHTTP:
 			s, err = newAuditHTTPSink(cfg.HTTP, logger)
-		default:
-			err = fmt.Errorf("unsupported output %q", name) // unreachable: NormalizeAuditOutputs rejects it
 		}
 		if err != nil {
 			closeAll()
