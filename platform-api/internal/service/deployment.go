@@ -760,6 +760,24 @@ func (s *DeploymentService) HandleDeploymentAck(gatewayID, orgID string, ack *mo
 			return fmt.Errorf("failed to update status for success ack: %w", err)
 		}
 		if rowsAffected == 0 {
+			// A gateway that was offline applies the deployment once it is back and
+			// acks it then, possibly after the timeout job failed it. performed_at
+			// still matches (the timeout does not re-stamp it), so the late success
+			// settles the deployment; a real failure or a newer operation does not match.
+			rowsAffected, err = s.deploymentRepo.RecoverTimedOutStatus(
+				ack.ArtifactID, orgID, gatewayID, newStatus, ack.PerformedAt,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to recover timed-out status for success ack: %w", err)
+			}
+			if rowsAffected > 0 {
+				s.slogger.Info("Timed-out deployment settled by late success ack",
+					"gatewayID", gatewayID, "artifactID", ack.ArtifactID,
+					"action", ack.Action, "newStatus", newStatus)
+				return nil
+			}
+		}
+		if rowsAffected == 0 {
 			s.slogger.Info("Success ack discarded (stale or status already changed)",
 				"gatewayID", gatewayID, "artifactID", ack.ArtifactID,
 				"action", ack.Action)
