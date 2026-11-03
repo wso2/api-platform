@@ -33,16 +33,12 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user clicks "Continue" in the Management Portal
     And the user chooses "Start with a contract" in the Management Portal
     And the user clicks "Upload" in the Management Portal
-    * sheet check "APIDEF-010"
     And the user uploads spec fixture "invalid.yaml" in the Management Portal
     Then the Management Portal shows "Validation failed:"
-    * sheet check "APIDEF-009"
     When the user uploads spec fixture "swagger2.yaml" in the Management Portal
     Then the Management Portal shows "Swagger 2.x is not allowed"
-    * sheet check "APIDEF-012"
     When the user uploads a generated spec of 65537 bytes in the Management Portal
     Then the Management Portal shows "The OpenAPI specification exceeds the maximum allowed size."
-    * sheet check "APIDEF-001"
     When the user uploads spec fixture "petstore-v1.yaml" in the Management Portal
     And the user clicks "Continue" in the Management Portal
     And the user enters "${CTX:api}" as the "Name" in the Management Portal
@@ -68,7 +64,6 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user clicks "Continue" in the Management Portal
     And the user chooses "Start with a contract" in the Management Portal
     And the user clicks "URL" in the Management Portal
-    * sheet check "APIDEF-002"
     And the user enters "${CTX:specUrl}" as the "URL for API Contract" in the Management Portal
     And the user submits the "URL for API Contract" field in the Management Portal
     And the user clicks "Continue" in the Management Portal
@@ -92,7 +87,6 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the Management Portal confirms a deployment started and stores its name as "first"
     And the deployment status on gateway "it-gateway" becomes "Active"
     And the gateway answers 200 to a "GET" request to "/${CTX:api}/store/inventory"
-    * sheet check "APIDEF-004"
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/definition"
     And the user clicks "Import Definition" in the Management Portal
     And the user uploads spec fixture "petstore-v2.yaml" in the Management Portal
@@ -107,7 +101,6 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the deployment status on gateway "it-gateway" becomes "Active"
     Then the gateway answers 200 to a "GET" request to "/${CTX:api}/pets/42/photos"
     And the gateway answers 404 to a "GET" request to "/${CTX:api}/store/inventory"
-    * sheet check "APIDEF-005"
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/definition"
     And the user clicks "Import Definition" in the Management Portal
     And the user uploads spec fixture "petstore-renamed.yaml" in the Management Portal
