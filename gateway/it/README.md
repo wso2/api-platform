@@ -80,7 +80,8 @@ gateway/it/
 
 | Command | Description |
 |---------|-------------|
-| `make test` | Run integration tests |
+| `make test` | Run integration tests (excludes `@load`) |
+| `make test-load` | Run **only** the `@load` scenarios — local only, not run by CI |
 | `make test-postgres` | Run integration tests with Postgres backend |
 | `make test-all` | Build coverage images + run tests |
 | `make test-verbose` | Run tests with verbose output |
@@ -88,6 +89,30 @@ gateway/it/
 | `make clean` | Remove containers, volumes, and artifacts |
 | `make check-docker` | Verify Docker is available |
 | `make coverage-report` | Open coverage HTML report in browser |
+
+## Load Scenarios
+
+Scenarios tagged `@load` are **excluded from every ordinary run and from CI**. They drive tens of
+thousands of requests and take minutes; in CI they would dominate the suite's runtime and turn an
+unrelated failure into a long wait.
+
+```bash
+make test-load        # run ONLY the @load scenarios
+IT_TAGS= make test    # run everything, load scenarios included
+IT_TAGS=@model-failover make test   # any godog tag expression
+```
+
+The filter lives in `suite_test.go` (`getTags`), defaulting to `~@load`. `IT_TAGS` overrides it,
+including with an empty value.
+
+Note that the tag filter only selects **within** the feature files godog loads, so `IT_TAGS=@load`
+on its own runs nothing and still reports `PASS` — there is no file in the default list carrying
+that tag. `make test-load` therefore sets `IT_FEATURE_PATHS` as well; override `LOAD_FEATURES` to
+point it elsewhere.
+
+Run `make test-load` locally before changing anything that affects how often a target is attempted,
+or what an attempt costs — those are the properties a functional scenario cannot catch, because they
+only show up over a large number of requests.
 
 ## Running Tests
 

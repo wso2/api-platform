@@ -73,6 +73,7 @@ func TestFeatures(t *testing.T) {
 			Strict:   true,
 			Format:   "pretty",
 			Paths:    getFeaturePaths(),
+			Tags:     getTags(),
 			TestingT: t,
 		},
 	}
@@ -81,6 +82,25 @@ func TestFeatures(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatal("non-zero status returned, failed to run feature tests")
 	}
+}
+
+// defaultTagFilter excludes load scenarios from every ordinary run.
+//
+// Load checks drive tens of thousands of requests and take minutes, which is useful locally
+// and wrong in CI: they would dominate the suite's runtime and turn an unrelated failure into
+// a long wait. Tagging them and excluding them by default is what lets them live in the same
+// repo as the functional scenarios without being paid for on every run.
+const defaultTagFilter = "~@load"
+
+// getTags returns the godog tag expression, overridable with IT_TAGS.
+//
+// Set IT_TAGS to "@load" to run ONLY the load scenarios (what `make test-load` does), or to
+// an empty string to run everything. Unset, load scenarios are skipped.
+func getTags() string {
+	if tags, ok := os.LookupEnv("IT_TAGS"); ok {
+		return tags
+	}
+	return defaultTagFilter
 }
 
 // getFeaturePaths returns default suite feature paths unless IT_FEATURE_PATHS is set.

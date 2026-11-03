@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -84,8 +85,11 @@ type HTTPSteps struct {
 	// requestAbandoned records that the client gave up before any response arrived — a
 	// caller walking away mid-request. Only ever set by SendGETRequestGivingUpAfter.
 	requestAbandoned bool
-	headers          map[string]string
-	requestHost      string
+	// load holds the tally from the most recent bulk drive. Kept separately from the
+	// single-request fields because a load run deliberately keeps no bodies.
+	load        loadTally
+	headers     map[string]string
+	requestHost string
 }
 
 // NewHTTPSteps creates a new HTTPSteps instance
@@ -113,6 +117,9 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the response body should not have been cut off$`, h.theResponseBodyShouldNotHaveBeenCutOff)
 	ctx.Step(`^I send a GET request to \"([^\"]*)\" and give up after (\d+)ms$`, h.SendGETRequestGivingUpAfter)
 	ctx.Step(`^the request should have been abandoned$`, h.theRequestShouldHaveBeenAbandoned)
+	ctx.Step(`^I drive (\d+) POST requests to \"([^\"]*)\" with body:$`, h.IDrivePOSTRequests)
+	ctx.Step(`^every response status should have been (\d+)$`, h.everyResponseStatusShouldHaveBeen)
+	ctx.Step(`^no response should have reported more than (\d+) attempts$`, h.noResponseShouldHaveReportedMoreThanAttempts)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\"$`, h.ISendPOSTRequest)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\" with body:$`, h.ISendPOSTRequestWithBody)
 	ctx.Step(`^I send a PUT request to \"([^\"]*)\" with body:$`, h.ISendPUTRequestWithBody)
@@ -143,6 +150,7 @@ func (h *HTTPSteps) Reset() {
 	h.lastBody = nil
 	h.bodyCutOff = false
 	h.requestAbandoned = false
+	h.load = loadTally{}
 	h.headers = make(map[string]string)
 	h.requestHost = ""
 }
@@ -796,6 +804,106 @@ func (h *HTTPSteps) SendGETRequestGivingUpAfter(url string, afterMs int) error {
 func (h *HTTPSteps) theRequestShouldHaveBeenAbandoned() error {
 	if !h.requestAbandoned {
 		return fmt.Errorf("expected the client to have given up before a response arrived")
+	}
+	return nil
+}
+
+// loadTally is what a bulk drive keeps: counts, not payloads.
+type loadTally struct {
+	sent        int
+	byStatus    map[int]int
+	byAttempts  map[int]int
+	maxAttempts int
+}
+
+// IDrivePOSTRequests sends count identical POSTs and tallies what came back.
+//
+// Separate from ISendManyGETRequests because the scale is different in kind: this is used for
+// runs of ten thousand, where a log line per request buries the result and keeping each body
+// wastes memory for data nothing reads. Only the counts survive, which is all the invariants
+// below need.
+//
+// Connections are reused — each body is drained and closed — so the run measures the gateway
+// rather than TCP setup.
+func (h *HTTPSteps) IDrivePOSTRequests(count int, url string, body *godog.DocString) error {
+	payload := []byte(body.Content)
+	tally := loadTally{byStatus: map[int]int{}, byAttempts: map[int]int{}}
+
+	log.Printf("DEBUG: driving %d POST requests to %s", count, url)
+	start := time.Now()
+	for i := 0; i < count; i++ {
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
+		if err != nil {
+			return fmt.Errorf("request %d: %w", i+1, err)
+		}
+		for name, value := range h.headers {
+			req.Header.Set(name, value)
+		}
+		if h.requestHost != "" {
+			req.Host = h.requestHost
+		}
+
+		resp, err := h.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("request %d of %d failed after %d sent: %w", i+1, count, tally.sent, err)
+		}
+		// Drain before close so the connection returns to the pool.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+
+		tally.sent++
+		tally.byStatus[resp.StatusCode]++
+		attempts := attemptsFromHeader(resp)
+		tally.byAttempts[attempts]++
+		if attempts > tally.maxAttempts {
+			tally.maxAttempts = attempts
+		}
+
+		if (i+1)%1000 == 0 {
+			log.Printf("DEBUG: %d/%d sent (%s elapsed)", i+1, count, time.Since(start).Round(time.Second))
+		}
+	}
+
+	h.load = tally
+	log.Printf("DEBUG: drove %d requests in %s; statuses=%v attempts=%v",
+		tally.sent, time.Since(start).Round(time.Second), tally.byStatus, tally.byAttempts)
+	return nil
+}
+
+// attemptsFromHeader reads x-envoy-attempt-count, treating absent or unparseable as one
+// attempt — the same reading the policy itself applies, so a missing header can never be
+// mistaken for extra attempts.
+func attemptsFromHeader(resp *http.Response) int {
+	raw := resp.Header.Get("x-envoy-attempt-count")
+	if raw == "" {
+		return 1
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 1
+	}
+	return n
+}
+
+func (h *HTTPSteps) everyResponseStatusShouldHaveBeen(status int) error {
+	if h.load.sent == 0 {
+		return fmt.Errorf("no bulk run has been driven")
+	}
+	if got := h.load.byStatus[status]; got != h.load.sent {
+		return fmt.Errorf("expected all %d responses to be %d, got %d of them; full distribution: %v",
+			h.load.sent, status, got, h.load.byStatus)
+	}
+	return nil
+}
+
+func (h *HTTPSteps) noResponseShouldHaveReportedMoreThanAttempts(max int) error {
+	if h.load.sent == 0 {
+		return fmt.Errorf("no bulk run has been driven")
+	}
+	if h.load.maxAttempts > max {
+		return fmt.Errorf("a request was attempted %d times, more than the %d targets in the chain — "+
+			"a target was retried or the chain looped; distribution: %v",
+			h.load.maxAttempts, max, h.load.byAttempts)
 	}
 	return nil
 }

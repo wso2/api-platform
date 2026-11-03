@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
+.PHONY: all test test-load test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -48,6 +48,22 @@ ensure-test-tags:
 # Requires: make build-coverage-image (run once before tests)
 test: ensure-test-tags
 	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -timeout 50m ./...
+
+# Run ONLY the load scenarios (@load), which every other target excludes.
+#
+# LOCAL ONLY — not run by CI. These drive tens of thousands of requests and take
+# minutes; in CI they would dominate the suite's runtime and turn an unrelated
+# failure into a long wait. Run this before changing anything that affects how
+# often a target is attempted, or the cost of an attempt.
+# IT_FEATURE_PATHS is set explicitly: the tag filter only selects WITHIN the files
+# godog loads, and the load feature is not in suite_test.go's default list, so
+# filtering alone would run zero scenarios and still report PASS. The warm-up
+# features come first for the same reason every other targeted run uses them —
+# a cold gateway answers 503 for the first few seconds.
+LOAD_FEATURES ?= features/health.feature,features/api_deploy.feature,features/model-failover-load.feature
+
+test-load: ensure-test-tags
+	COMPOSE_FILE=$(COMPOSE_FILE) IT_TAGS=@load IT_FEATURE_PATHS=$(LOAD_FEATURES) go test -v -timeout 90m ./...
 
 # Build all coverage-instrumented gateway components
 build-coverage:
