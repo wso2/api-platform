@@ -34,13 +34,10 @@ type auditTable interface {
 	Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
-// auditRecordJSON is the line written for a record. level, msg and logType are
-// fixed, so a collector can tell audit lines apart from platform-api's own JSON
-// logs.
+// auditRecordJSON is the line written for a record. logType is always "audit",
+// so a collector can tell audit lines apart from platform-api's own logs.
 type auditRecordJSON struct {
 	Time           time.Time `json:"time"`
-	Level          string    `json:"level"`
-	Msg            string    `json:"msg"`
 	LogType        string    `json:"logType"`
 	ID             string    `json:"id"`
 	Action         string    `json:"action"`
@@ -50,7 +47,9 @@ type auditRecordJSON struct {
 	PerformedBy    string    `json:"performedBy"`
 }
 
-// AuditService records audited changes. It implements repository.AuditRepository.
+// AuditService records audited changes. It implements repository.AuditRepository
+// for backward compatibility: the services that already record through that
+// interface are given an AuditService, so their calls are unchanged.
 type AuditService struct {
 	enabled bool
 	repo    auditTable
@@ -138,8 +137,6 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 	}
 	line, jsonErr := json.Marshal(auditRecordJSON{
 		Time:           performedAt,
-		Level:          "INFO",
-		Msg:            "audit",
 		LogType:        "audit",
 		ID:             id,
 		Action:         action,
