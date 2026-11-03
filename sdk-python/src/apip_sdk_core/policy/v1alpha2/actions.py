@@ -198,6 +198,9 @@ class FaultCode:
     MEDIATION_FAILED: Final[str] = "960000"
     #: A request payload a policy needed to read and could not. The caller's failure.
     INVALID_REQUEST_BODY: Final[str] = "960001"
+    #: A provider ending a streamed response with a failure after it began — an error event,
+    #: an exception frame. The provider's failure, reported in its own stream.
+    PROVIDER_STREAM_FAILED: Final[str] = "960002"
 
     # ── Codes the gateway sets — do not emit these ───────────────────────────
     UPSTREAM_UNREACHABLE: Final[str] = "101503"

@@ -21,6 +21,9 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Both are empty for every API kind released before Agent, so existing policies are
 unaffected.
+- `FaultCode.PROVIDER_STREAM_FAILED` (`960002`) — a provider ending a streamed
+  response with a failure after it began, such as an error event or exception frame.
+  Shared by every policy that translates a provider stream.
 
 ---
 

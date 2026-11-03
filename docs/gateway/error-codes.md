@@ -44,7 +44,7 @@ Ranges above decide the *category*. This decides who may allocate a number at al
 | `900000`–`904999` | Reserved (data plane) | Reuse only. Frontier is `904015`. |
 | `905000`–`905999` | This gateway (engine) | Conditions the reserved blocks do not cover. |
 | `906000`–`906399` | This gateway (guardrail) | Every guardrail rejection. See below. |
-| `960000`–`964999` | WSO2-shipped policies | `960000` and `960001` are shared by every shipped policy; see below. |
+| `960000`–`964999` | WSO2-shipped policies | `960000`, `960001` and `960002` are shared by every shipped policy; see below. |
 | `965000`–`969999` | **Reserved for users** | See below. |
 | `990000`–`999999` | Reserved (control plane) | Not for data-plane bodies. |
 
@@ -127,6 +127,7 @@ A policy describes its own rejection, so these are the policy's to choose. Reuse
 | Blocked by policy | `900805` | `BLOCKED_ERROR_CODE` |
 | The policy could not do its own job | `960000` | `FaultCodeMediationFailed` |
 | The request body could not be read | `960001` | `FaultCodeInvalidRequestBody` |
+| The provider's stream ended with a failure mid-response | `960002` | `FaultCodeProviderStreamFailed` |
 
 ### Guardrail codes: `906000`–`906399`
 
@@ -187,13 +188,14 @@ so the `96xxxx` space carries both, split so the two can never collide:
 | `960000`–`964999` | **WSO2-shipped policies.** |
 | `965000`–`969999` | **Customer policies.** WSO2 does not allocate here, so a code placed here will not later collide with a product code. |
 
-Shipped policies share two codes rather than allocating one per policy, because the failing
+Shipped policies share three codes rather than allocating one per policy, because the failing
 policy's name already reaches the fault chain and analytics as `FaultDetails.Policy`:
 
 | Code | Constant | Use it when |
 |---|---|---|
 | `960000` | `FaultCodeMediationFailed` | the policy could not do its own job — a transformation, credential or rewrite it could not complete. The failure is the gateway's. |
 | `960001` | `FaultCodeInvalidRequestBody` | the caller's payload could not be read — malformed JSON, a body whose shape the configuration does not fit. The failure is the caller's. |
+| `960002` | `FaultCodeProviderStreamFailed` | the provider ended a streamed response with a failure after it began — an error event or exception frame. The failure is the provider's. Not `101599`: that code is the router's, and the router saw a stream that completed normally. |
 
 The block is deliberately outside every classification range, so a code in it is categorised as
 `other`. That is the correct outcome rather than a limitation — the ranges encode an existing

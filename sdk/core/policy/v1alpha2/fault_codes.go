@@ -340,7 +340,7 @@ const (
 	TargetFailureRangeEnd      = 101600
 )
 
-// Codes any shipped policy may use, for the two conditions nearly all of them share.
+// Codes any shipped policy may use, for conditions many of them share rather than one owns.
 //
 // A policy that could not complete its own transformation, and a request body a policy could
 // not read, are not one-policy conditions — most of them can hit both. Before these, each
@@ -353,8 +353,9 @@ const (
 // not already have, and costs a registry entry per policy to keep straight.
 //
 // A policy still allocates its own code for a condition genuinely its own — no model
-// available to route to, a provider's stream breaking mid-response — where the code names
-// something the policy identity does not.
+// available to route to — where the code names something the policy identity does not. A
+// provider's stream breaking mid-response was one such condition, until every stream
+// translator could hit it; it is FaultCodeProviderStreamFailed below.
 const (
 	// FaultCodeMediationFailed is a policy failing to do its own job: a transformation it
 	// could not complete, a credential it could not mint, a rewrite it could not apply.
@@ -364,6 +365,15 @@ const (
 	// not — malformed JSON, a JSON-RPC envelope that is not one, a body whose shape the
 	// policy's configuration does not fit. The failure is the caller's.
 	FaultCodeInvalidRequestBody = "960001"
+	// FaultCodeProviderStreamFailed is a provider ending a streamed response with a failure
+	// after the response began: an error event, an exception frame. The failure is the
+	// provider's, reported in its own stream, so it is neither the policy failing its job nor
+	// the router failing to proxy — the router saw a stream that completed normally.
+	//
+	// Shared rather than per policy because every policy translating a provider stream can
+	// see it, and Policy already names which one did. Pair it with FaultTypeMediation and
+	// DirectionResponse.
+	FaultCodeProviderStreamFailed = "960002"
 )
 
 // Blocks a policy may allocate in.

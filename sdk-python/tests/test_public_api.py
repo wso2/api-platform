@@ -121,6 +121,7 @@ class PublicAPITests(unittest.TestCase):
             "RESOLUTION_UNSUPPORTED_ENCODING": "905007",
             "MEDIATION_FAILED": "960000",
             "INVALID_REQUEST_BODY": "960001",
+            "PROVIDER_STREAM_FAILED": "960002",
         }
         for name, wire in expected.items():
             self.assertEqual(getattr(v1alpha2.FaultCode, name), wire, name)
