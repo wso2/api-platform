@@ -35,6 +35,11 @@ describe('LandingPageTab with no page', () => {
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
 
+  it('cannot be created while an action runs', () => {
+    renderTab({ disabled: true, onCreate: vi.fn() });
+    expect(screen.getByRole('button', { name: 'Create from MCP proxy details' })).toBeDisabled();
+  });
+
   it('offers nothing to create in the published view', () => {
     renderTab({ readOnly: true });
     expect(screen.getByText('The MCP Hub shows its default page.')).toBeInTheDocument();

@@ -135,7 +135,7 @@ export function LandingPageTab({ disabled, failed, generated, onChange, onCreate
         <EmptyState
           action={
             onCreate && (
-              <Button onClick={onCreate} startIcon={<Plus size={16} />} variant="contained">
+              <Button disabled={disabled} onClick={onCreate} startIcon={<Plus size={16} />} variant="contained">
                 <FormattedMessage {...messages.create} />
               </Button>
             )
