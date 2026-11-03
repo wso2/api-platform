@@ -632,3 +632,102 @@ func TestDiscoveryNode_ProductionRegistryAdvertisesMCP(t *testing.T) {
 		"without this the controller withholds every MCP resolver-bearing route")
 	assert.Contains(t, names, resolver.RouteKeyResolverName)
 }
+
+// ─── Route error format ──────────────────────────────────────────────────────
+
+// error_format is carried onto the route's metadata when the engine can render it, and
+// dropped — never failing the route — when it cannot.
+func TestRouteConfigUpdate_ParsesErrorFormat(t *testing.T) {
+	tests := []struct {
+		name  string
+		value interface{}
+		want  string
+	}{
+		{"openai", "openai", "openai"},
+		{"anthropic", "anthropic", "anthropic"},
+		{"gemini", "gemini", "gemini"},
+		{"absent", nil, ""},
+		{"unknown shape", "cohere", ""},
+		{"case variant", "OpenAI", ""},
+		{"not a string", 7.0, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, k := newRouteHandler(t, resolver.DefaultRegistry())
+			data := map[string]interface{}{
+				"route_key":           "POST|/wso2/v1/chat/completions|*",
+				"resolver_name":       "route-key",
+				"canonical_chain_key": "POST|/wso2/v1/chat/completions|*",
+				"metadata":            map[string]interface{}{"kind": "LlmProxy", "vhost": "*"},
+			}
+			if tt.value != nil {
+				data["error_format"] = tt.value
+			}
+			require.NoError(t, h.HandleRouteConfigUpdate(context.Background(),
+				[]*anypb.Any{routeConfigResource(t, data)}, "v1"))
+
+			rc := k.GetRouteConfig("POST|/wso2/v1/chat/completions|*")
+			require.NotNil(t, rc, "an unusable error_format must not drop the route")
+			assert.Equal(t, tt.want, rc.Metadata.ErrorFormat)
+		})
+	}
+}
+
+// upstream_definition_urls reaches the route's metadata, keeping only usable string values;
+// a route without it — every route but the model endpoint's — carries none.
+func TestRouteConfigUpdate_ParsesUpstreamDefinitionURLs(t *testing.T) {
+	h, k := newRouteHandler(t, resolver.DefaultRegistry())
+	route := func(key string, urls interface{}) map[string]interface{} {
+		data := map[string]interface{}{
+			"route_key": key, "resolver_name": "route-key", "canonical_chain_key": key,
+			"metadata": map[string]interface{}{"kind": "LlmProxy", "vhost": "*"},
+		}
+		if urls != nil {
+			data["upstream_definition_urls"] = urls
+		}
+		return data
+	}
+	require.NoError(t, h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
+		routeConfigResource(t, route("POST|/wso2/v1/chat/completions|*", map[string]interface{}{
+			"bedrock": "https://bedrock-runtime.us-east-1.amazonaws.com", "empty": "", "odd": 7.0,
+		})),
+		routeConfigResource(t, route("GET|/other|*", nil)),
+	}, "v1"))
+
+	rc := k.GetRouteConfig("POST|/wso2/v1/chat/completions|*")
+	require.NotNil(t, rc)
+	assert.Equal(t, map[string]string{"bedrock": "https://bedrock-runtime.us-east-1.amazonaws.com"},
+		rc.Metadata.UpstreamDefinitionURLs)
+	other := k.GetRouteConfig("GET|/other|*")
+	require.NotNil(t, other)
+	assert.Empty(t, other.Metadata.UpstreamDefinitionURLs)
+}
+
+// The models-mode proxy's dispatch route, as the controller emits it, is accepted by the
+// production registry and keeps its format.
+func TestRouteConfigUpdate_ModelDispatchRoute(t *testing.T) {
+	h, k := newRouteHandler(t, resolver.DefaultRegistry())
+	require.NoError(t, h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
+		routeConfigResource(t, map[string]interface{}{
+			"route_key":     "POST|/wso2/v1/chat/completions|*",
+			"resolver_name": resolver.LLMModelDispatchResolverName,
+			"resolver_config": map[string]interface{}{
+				"models":         map[string]interface{}{"gpt-4o": "gpt4o"},
+				"errorOperation": "__dispatch__",
+			},
+			"max_request_body_bytes": 1048576.0,
+			"error_format":           "openai",
+			"metadata": map[string]interface{}{
+				"kind": "LlmProxy", "vhost": "*", "uuid": "wso2-uuid",
+			},
+		}),
+	}, "v1"))
+
+	rc := k.GetRouteConfig("POST|/wso2/v1/chat/completions|*")
+	require.NotNil(t, rc)
+	assert.Equal(t, resolver.LLMModelDispatchResolverName, rc.ResolverName)
+	assert.Equal(t, "openai", rc.Metadata.ErrorFormat)
+	assert.Equal(t, int64(1048576), rc.MaxRequestBodyBytes)
+	require.NotNil(t, rc.Prepared)
+	assert.True(t, rc.Prepared.Requirements.BuffersBody())
+}
