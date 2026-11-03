@@ -60,6 +60,9 @@ type auditHTTPSink struct {
 	done      chan struct{}
 	stopped   chan struct{}
 	closeOnce sync.Once
+	// closeMu orders every enqueue before Close stops the sender, so the final
+	// drain sees every accepted line.
+	closeMu sync.RWMutex
 	// The negotiated key exchange is logged once to show whether PQC is in use.
 	tlsLogged sync.Once
 }
@@ -130,6 +133,8 @@ func newAuditHTTPClient(cfg config.AuditHTTP, endpoint *url.URL) (*http.Client, 
 func (s *auditHTTPSink) Name() string { return config.AuditOutputHTTP }
 
 func (s *auditHTTPSink) Write(line []byte) {
+	s.closeMu.RLock()
+	defer s.closeMu.RUnlock()
 	select {
 	case <-s.done:
 		// The sender is gone, so a queued line would never be sent.
@@ -150,18 +155,7 @@ func (s *auditHTTPSink) Write(line []byte) {
 }
 
 func (s *auditHTTPSink) run() {
-	defer func() {
-		// A Write can race Close and queue a line after the final drain; report it.
-		left := len(s.queue)
-		for range left {
-			<-s.queue
-		}
-		if left > 0 {
-			s.logger.Error("Audit HTTP output closed with records still queued; dropping them",
-				"sink", s.Name(), "records", left)
-		}
-		close(s.stopped)
-	}()
+	defer close(s.stopped)
 
 	ticker := time.NewTicker(s.cfg.FlushInterval)
 	defer ticker.Stop()
@@ -300,7 +294,11 @@ func (s *auditHTTPSink) sleep(d time.Duration) bool {
 }
 
 func (s *auditHTTPSink) Close(ctx context.Context) error {
-	s.closeOnce.Do(func() { close(s.done) })
+	s.closeOnce.Do(func() {
+		s.closeMu.Lock()
+		close(s.done)
+		s.closeMu.Unlock()
+	})
 	select {
 	case <-s.stopped:
 		return nil

@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,13 +173,16 @@ func NormalizeAuditOutputs(outputs []string) ([]string, error) {
 	return normalized, nil
 }
 
+// maxAuditFileSizeMB (1 TiB) keeps the rotation threshold in bytes from overflowing.
+const maxAuditFileSizeMB = 1 << 20
+
 func validateAuditFileConfig(cfg AuditFile) error {
 	path, err := ResolveAuditFilePath(cfg.Path)
 	if err != nil {
 		return err
 	}
-	if cfg.MaxSizeMB < 0 {
-		return fmt.Errorf("max_size_mb must be >= 0, got %d", cfg.MaxSizeMB)
+	if cfg.MaxSizeMB < 0 || cfg.MaxSizeMB > maxAuditFileSizeMB {
+		return fmt.Errorf("max_size_mb must be between 0 and %d, got %d", maxAuditFileSizeMB, cfg.MaxSizeMB)
 	}
 	if cfg.MaxSizeMB == 0 {
 		slog.Warn("audit.file.max_size_mb is 0: rotation is disabled and the audit log grows "+
@@ -232,8 +236,13 @@ func validateAuditHTTPConfig(cfg AuditHTTP) error {
 	default:
 		return fmt.Errorf("endpoint scheme must be https (or http with allow_insecure_transport), got %q", u.Scheme)
 	}
-	if u.Host == "" {
+	if u.Hostname() == "" {
 		return fmt.Errorf("endpoint must include a host")
+	}
+	if port := u.Port(); port != "" {
+		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("endpoint port must be between 1 and 65535, got %q", port)
+		}
 	}
 
 	if cfg.BatchMaxEvents <= 0 {

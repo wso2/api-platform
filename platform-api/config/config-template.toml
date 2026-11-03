@@ -91,8 +91,9 @@ format = "text"   # text | json
 [platform_api.audit]
 enabled = false
 # Also write each record as a JSON line tagged "logType":"audit" to any of
-# "stdout", "file" and "http". Outputs are additive, order is irrelevant, and an
-# unknown or repeated name fails startup. Empty keeps records in the table only.
+# "stdout", "file" and "http". Outputs are additive and order is irrelevant.
+# While enabled, an unknown or repeated name fails startup. Empty keeps records in
+# the table only.
 #
 # An output that cannot be built (a file that cannot be opened, an unreadable CA
 # file) fails startup. At runtime a failed write drops the line and logs an error
@@ -105,13 +106,16 @@ outputs = []
 [platform_api.audit.file]
 # Absolute path of the live log file; required when "file" is selected. The
 # directory is created 0700 and the file 0600 at startup, and an existing file
-# that group or others can read fails startup. One writer per file: with several
-# replicas, give each its own volume, or records are silently lost on rotation.
+# that group or others can read, or a path that is not a regular file (such as a
+# symlink), fails startup. One writer per file: with several replicas, give each
+# its own volume, or records are silently lost on rotation. Rotate with
+# max_size_mb only: an external tool that renames or replaces the file leaves
+# platform-api writing to the old one.
 path = ""
 # path = "/app/data/logs/audit.log"
 # Size at which the live file is renamed to <path>.1 (replacing any earlier
 # backup) and a new one opened, so at most 2 x this is on disk. 0 disables
-# rotation and logs a warning.
+# rotation and logs a warning; the maximum is 1048576 (1 TiB).
 max_size_mb = 100
 
 # "http" output — read only when outputs contains "http".
@@ -121,7 +125,9 @@ max_size_mb = 100
 # Elasticsearch/OpenSearch, Fluent Bit and Vector accept as-is. The queue is held
 # in memory only: an outage longer than the queue and retries can absorb loses
 # records from this output (the audit table still has them). On shutdown the
-# queue is flushed for up to 5s.
+# queue is flushed for up to 5s, and a batch that fails then is not retried.
+# A retried batch may reach the receiver twice (e.g. after a timeout on a request
+# it already stored); deduplicate on "id" if that matters.
 [platform_api.audit.http]
 # Absolute URL each batch is POSTed to; required when "http" is selected.
 # Redirects are never followed.

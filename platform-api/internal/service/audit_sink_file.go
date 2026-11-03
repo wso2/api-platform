@@ -55,30 +55,12 @@ func newAuditFileSink(cfg config.AuditFile, logger *slog.Logger) (*auditFileSink
 	if err := s.open(); err != nil {
 		return nil, fmt.Errorf("cannot open %q for append: %w", path, err)
 	}
-	if err := s.checkPermissions(); err != nil {
-		_ = s.f.Close()
-		return nil, err
-	}
-	return s, nil
-}
-
-// checkPermissions refuses an existing file that group or others can read: open
-// sets 0600 only when it creates the file.
-func (s *auditFileSink) checkPermissions() error {
-	info, err := s.f.Stat()
-	if err != nil {
-		return fmt.Errorf("cannot stat %q: %w", s.path, err)
-	}
-	if perm := info.Mode().Perm(); perm&0o077 != 0 {
-		return fmt.Errorf("%q has permissions %#o, which allow group/other access; "+
-			"fix it with `chmod 600 %s` (or remove the file) and restart", s.path, perm, s.path)
-	}
-	dir := filepath.Dir(s.path)
+	dir := filepath.Dir(path)
 	if di, err := os.Stat(dir); err == nil && di.Mode().Perm()&0o077 != 0 {
-		s.logger.Warn("Audit log directory is group/other accessible; the log file itself is 0600",
+		logger.Warn("Audit log directory is group/other accessible; the log file itself is 0600",
 			"dir", dir, "mode", fmt.Sprintf("%#o", di.Mode().Perm()))
 	}
-	return nil
+	return s, nil
 }
 
 func (s *auditFileSink) Name() string { return config.AuditOutputFile }
@@ -140,9 +122,16 @@ func (s *auditFileSink) rotate() error {
 	return nil
 }
 
+// open is used at startup, after rotation and on recovery. It accepts only a
+// regular file: a symlink would redirect the records and a FIFO would block the
+// open. O_CREATE sets 0600 only when it creates the file, so an existing file
+// that group or others can read is refused.
 func (s *auditFileSink) open() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
+	}
+	if info, err := os.Lstat(s.path); err == nil && !info.Mode().IsRegular() {
+		return fmt.Errorf("%q is not a regular file", s.path)
 	}
 	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
@@ -153,19 +142,40 @@ func (s *auditFileSink) open() error {
 		_ = f.Close()
 		return err
 	}
+	// Catches a symlink swapped in between the Lstat and the open.
+	if link, err := os.Lstat(s.path); err != nil || !os.SameFile(info, link) {
+		_ = f.Close()
+		return fmt.Errorf("%q is not a regular file", s.path)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		_ = f.Close()
+		return fmt.Errorf("%q has permissions %#o, which allow group/other access; "+
+			"fix it with `chmod 600 %s` (or remove the file) and restart", s.path, perm, s.path)
+	}
 	s.f = f
 	s.size = info.Size()
 	return nil
 }
 
-func (s *auditFileSink) Close(context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.closed = true
-	if s.f == nil {
-		return nil
+// Close gives up when ctx ends, so a write stuck on the disk cannot hold shutdown.
+func (s *auditFileSink) Close(ctx context.Context) error {
+	done := make(chan error, 1)
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.closed = true
+		if s.f == nil {
+			done <- nil
+			return
+		}
+		f := s.f
+		s.f = nil
+		done <- f.Close()
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("audit file output did not close: %w", ctx.Err())
 	}
-	f := s.f
-	s.f = nil
-	return f.Close()
 }
