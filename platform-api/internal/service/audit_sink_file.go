@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -34,9 +35,11 @@ import (
 // This is logrotate's "create" mode, which tailers that track inodes (Fluent Bit,
 // Filebeat) follow. The sink must be the file's only writer.
 type auditFileSink struct {
-	mu   sync.Mutex
-	f    *os.File
-	path string
+	mu sync.Mutex
+	// f is nil after Close, or after a rotation could not open a new file.
+	f      *os.File
+	closed bool
+	path   string
 	// size is the live file's length, seeded from Stat at open so an append to an
 	// existing file counts, then advanced by each write.
 	size int64
@@ -85,8 +88,17 @@ func (s *auditFileSink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.f == nil { // closed
+	if s.closed {
 		return
+	}
+	if s.f == nil {
+		// A failed rotation left no file open. Retry on every write, so writing
+		// resumes once the directory is usable again.
+		if err := s.open(); err != nil {
+			s.throttle.logError(s.logger, "Audit log file is not open; dropping the record",
+				config.AuditOutputFile, err)
+			return
+		}
 	}
 
 	// The s.size > 0 guard lets a line larger than the whole ceiling land in a
@@ -123,18 +135,9 @@ func (s *auditFileSink) rotate() error {
 
 	renameErr := os.Rename(s.path, s.path+".1")
 
-	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
+	if err := s.open(); err != nil {
 		return fmt.Errorf("reopening after rotation: %w", err)
 	}
-	info, err := f.Stat()
-	if err != nil {
-		_ = f.Close()
-		return fmt.Errorf("stat after rotation: %w", err)
-	}
-	s.f = f
-	s.size = info.Size()
-
 	if renameErr != nil {
 		return fmt.Errorf("renaming to %s: %w", s.path+".1", renameErr)
 	}
@@ -144,10 +147,31 @@ func (s *auditFileSink) rotate() error {
 	return nil
 }
 
+// open opens the live file for append, recreating its directory (0700) if it
+// was removed, and seeds the size from it. Callers hold s.mu.
+func (s *auditFileSink) open() error {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	s.f = f
+	s.size = info.Size()
+	return nil
+}
+
 // Close closes the live file. Writes are unbuffered, so there is nothing to flush.
 func (s *auditFileSink) Close(context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.closed = true
 	if s.f == nil {
 		return nil
 	}

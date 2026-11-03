@@ -130,7 +130,9 @@ endpoint = ""
 # Permits a plaintext http:// endpoint; without it, http:// fails startup. Use
 # only for a trusted collector on the same network.
 allow_insecure_transport = false
-# A batch is sent when any of these is reached first.
+# A batch is sent when any of these is reached first. batch_max_bytes caps the
+# body: a record that would take it past the limit goes in the next batch, and a
+# single record larger than the limit is sent alone.
 batch_max_events = 100
 batch_max_bytes = 1048576
 flush_interval = "5s"

@@ -168,6 +168,11 @@ func (s *auditHTTPSink) run() {
 		}
 	}
 	add := func(line []byte) {
+		// Send what is batched first if this line would take the body past
+		// batch_max_bytes, so a body exceeds it only when one line alone does.
+		if batchBytes+len(line)+1 > s.cfg.BatchMaxBytes {
+			flush()
+		}
 		batch = append(batch, line)
 		batchBytes += len(line) + 1
 		if len(batch) >= s.cfg.BatchMaxEvents || batchBytes >= s.cfg.BatchMaxBytes {

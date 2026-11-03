@@ -40,6 +40,7 @@ import (
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"golang.org/x/net/http/httpguts"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/httpkit/httpclient"
@@ -126,7 +127,8 @@ type AuditHTTP struct {
 	// followed. It must be https:// unless AllowInsecureTransport is set.
 	Endpoint               string `koanf:"endpoint"`
 	AllowInsecureTransport bool   `koanf:"allow_insecure_transport"`
-	// A batch is sent when any of these bounds is reached.
+	// A batch is sent when any of these bounds is reached. BatchMaxBytes caps
+	// the body; only a single record larger than it is sent over it, alone.
 	BatchMaxEvents int           `koanf:"batch_max_events"`
 	BatchMaxBytes  int           `koanf:"batch_max_bytes"`
 	FlushInterval  time.Duration `koanf:"flush_interval"`
@@ -181,6 +183,9 @@ func (a AuditHTTPAuth) AuthHeader() (name, value string, err error) {
 		if a.Bearer.Token == "" {
 			return "", "", fmt.Errorf("bearer.token is required when type is %q", AuditAuthBearer)
 		}
+		if !httpguts.ValidHeaderFieldValue(a.Bearer.Token) {
+			return "", "", fmt.Errorf("bearer.token contains characters not allowed in an HTTP header")
+		}
 		return "Authorization", "Bearer " + a.Bearer.Token, nil
 	case AuditAuthBasic:
 		if a.Basic.Username == "" || a.Basic.Password == "" {
@@ -191,6 +196,13 @@ func (a AuditHTTPAuth) AuthHeader() (name, value string, err error) {
 	case AuditAuthHeader:
 		if a.Header.Name == "" || a.Header.Value == "" {
 			return "", "", fmt.Errorf("header.name and header.value are both required when type is %q", AuditAuthHeader)
+		}
+		if !httpguts.ValidHeaderFieldName(a.Header.Name) {
+			return "", "", fmt.Errorf("header.name %q is not a valid HTTP header name", a.Header.Name)
+		}
+		// Checked here so a bad value fails startup, not every delivery. Never echoed.
+		if !httpguts.ValidHeaderFieldValue(a.Header.Value) {
+			return "", "", fmt.Errorf("header.value contains characters not allowed in an HTTP header")
 		}
 		return a.Header.Name, a.Header.Value, nil
 	default:
@@ -211,6 +223,8 @@ func (h AuditHTTP) NewClient() (*http.Client, error) {
 	}
 	cfg := httpclient.DefaultConfig()
 	cfg.Timeouts.Overall = h.RequestTimeout
+	// httpkit's 10s response-header default would otherwise cut a longer one short.
+	cfg.Timeouts.ResponseHeader = h.RequestTimeout
 	cfg.Pooling.MaxIdleConnsPerHost = 2
 	if u.Scheme == "https" {
 		cfg.TLS.MinVersion = "TLS1_2"
