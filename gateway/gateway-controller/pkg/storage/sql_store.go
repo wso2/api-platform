@@ -291,6 +291,10 @@ func kindToResourceTable(kind string) (string, error) {
 		return agentsResourceTable, nil
 	case "GraphQLApi":
 		return "graphql_apis", nil
+	case "Model":
+		return modelsResourceTable, nil
+	case "ModelEndpoint":
+		return modelEndpointsResourceTable, nil
 	default:
 		if table, ok := extraResourceTables[kind]; ok {
 			return table, nil
@@ -298,6 +302,12 @@ func kindToResourceTable(kind string) (string, error) {
 		return "", fmt.Errorf("unknown kind: %s", kind)
 	}
 }
+
+// modelsResourceTable holds Model artifacts.
+const modelsResourceTable = "models"
+
+// modelEndpointsResourceTable holds ModelEndpoint artifacts.
+const modelEndpointsResourceTable = "model_endpoints"
 
 // extraResourceTables holds kind->table entries for kinds not known to core
 // (e.g. "WebSubApi"/"WebBrokerApi") — registered by an event-gateway-controller
@@ -310,7 +320,8 @@ var extraResourceTables = map[string]string{}
 // builtinResourceTables lists the per-kind tables core defines natively.
 // GetAllConfigs unions these with every table in extraResourceTables so
 // cross-kind listing also covers kinds registered by an external module.
-var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies", agentsResourceTable, "graphql_apis"}
+var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies", agentsResourceTable, "graphql_apis",
+	modelsResourceTable, modelEndpointsResourceTable}
 
 // agentsResourceTable holds Agent artifacts. Like llm_proxies, it carries
 // columns beyond (uuid, gateway_id, configuration) — here the signed Agent Card
@@ -388,6 +399,25 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		// there is no hydrate step to rebuild a derived form later. Anything
 		// reading Configuration after a restart therefore finds it non-nil.
 		var config api.AgentConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case "Model":
+		// The stored payload is the authored Model. A Model compiles into its
+		// endpoints' configs rather than one of its own, so there is no derived form
+		// to rebuild and Configuration is the source.
+		var config api.ModelConfiguration
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case "ModelEndpoint":
+		// The stored payload is the authored endpoint. It compiles from itself and
+		// the Models naming it, so Configuration is the source, as for a Model.
+		var config api.ModelEndpointConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
