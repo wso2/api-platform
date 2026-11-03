@@ -33,47 +33,51 @@ export const PRODUCT = 'api-platform';
 /** No ceiling, in the host's vocabulary. The API says `null`; the host says -1. */
 const UNLIMITED = -1;
 
-/**
- * The shared budget every interface type spends. This, not `apis`, is what
- * binds once a user mixes types: the budget can be exhausted while any one
- * type's own meter still shows room.
- */
-const MANAGED_INTERFACES = 'managed_interfaces';
-
-/** One interface type among several, not a budget of its own. See above. */
+/** The metered interface type. MCP, LLM and agent proxies are not metered. */
 const APIS = 'apis';
-const MCP_PROXIES = 'mcp_proxies';
-const LLM_PROXIES = 'llm_proxies';
-const AGENT_PROXIES = 'agent_proxies';
 
-/** Self-contained meter: self-hosted gateways have no shared budget. */
-const HYBRID_GATEWAYS = 'hybrid_gateways';
-
-/** Self-contained meter: developer portals have no shared budget either. */
+/** What an organization publishes through, rather than what it manages. */
 const API_DEVELOPER_PORTALS = 'api_developer_portals';
 
 /**
- * The types the panel breaks the budget down by, in display order. Only those
- * the plan actually caps are shown — an uncapped type is absent, not `0 / 0`.
+ * Two gateway meters, capped separately: WSO2 provisions and runs the first,
+ * the customer runs the second on their own boxes. They cost differently, so
+ * neither spends the other's allowance.
  */
-const INTERFACE_TYPE_METRICS = [APIS, MCP_PROXIES, LLM_PROXIES, AGENT_PROXIES] as const;
+const GATEWAYS = 'gateways';
+const HYBRID_GATEWAYS = 'hybrid_gateways';
 
-/** Caps listed after the budget. Independent, so never summed with it. */
-const STANDALONE_METRICS = [HYBRID_GATEWAYS, API_DEVELOPER_PORTALS] as const;
+/** WSO2-managed and self-hosted gateways, each with its own cap. */
+const GATEWAY_METRICS = [GATEWAYS, HYBRID_GATEWAYS] as const;
+
+/**
+ * The panel's groups, in display order. A plan that does not define one of
+ * these simply omits it.
+ *
+ * No `projects` row: billing carries the quota but nothing reports the count,
+ * so the row would read 0 of 5 for an organization that has projects. A wrong
+ * figure is worse than no figure — put it back once the count is metered.
+ */
+const INFRASTRUCTURE_METRICS = [API_DEVELOPER_PORTALS] as const;
+
+/** Managed interfaces: only APIs are metered. */
+const MANAGED_INTERFACE_METRICS = [APIS] as const;
 
 /** Display names for the caps we may need to name in a tooltip. */
 const METRIC_LABELS: Record<string, string> = {
-  [MANAGED_INTERFACES]: 'Managed Interfaces',
   [APIS]: 'APIs',
-  [MCP_PROXIES]: 'MCP Proxies',
-  [LLM_PROXIES]: 'LLM Proxies',
-  [AGENT_PROXIES]: 'Agent Proxies',
-  [HYBRID_GATEWAYS]: 'Gateways',
+  [GATEWAYS]: 'Managed Gateways',
+  [HYBRID_GATEWAYS]: 'Self-Hosted Gateways',
   [API_DEVELOPER_PORTALS]: 'Portals',
 };
 
 /** What the host understands. Mirrors its own `LimitedComponent` union. */
-export type LimitedComponent = 'restApis' | 'gateways' | 'portals';
+export type LimitedComponent =
+  | 'restApis'
+  | 'gateways'
+  | 'managedGateways'
+  | 'selfHostedGateways'
+  | 'portals';
 
 export type ResourceLimit = { max: number; used: number; message?: string };
 export type ResourceLimitSet = Partial<Record<LimitedComponent, ResourceLimit>>;
@@ -126,30 +130,31 @@ function toLimit(entitlement: Entitlement): ResourceLimit {
 }
 
 /**
- * The cap that actually binds across several meters: the one with the least
- * headroom. An API is capped twice over — the shared budget and its own meter
- * — and the one that stops the next create is whichever has less room.
- * Headroom, not limit: two equal limits differ once one is further spent.
- * Ties go to the earlier code, so the broader budget names itself.
+ * The cap to report for "may any of these be created": the meter with the MOST
+ * headroom, since one full kind does not stop the other. The opposite of the
+ * binding-cap rule, which answers a question about one specific kind.
+ *
+ * `undefined` when none of the codes is present. An unlimited meter wins
+ * outright — `remainingOf` gives it `Infinity`.
  */
-function bindingLimitOf(
+function roomiestLimitOf(
   entitlements: Map<string, Entitlement>,
   codes: readonly string[]
 ): ResourceLimit | undefined {
-  let bindingCode: string | undefined;
-  let leastRemaining = Infinity;
+  let roomiestCode: string | undefined;
+  let mostRemaining = -1;
 
   for (const code of codes) {
     const entitlement = entitlements.get(code);
     if (!entitlement) continue;
     const remaining = remainingOf(entitlement);
-    if (bindingCode === undefined || remaining < leastRemaining) {
-      bindingCode = code;
-      leastRemaining = remaining;
+    if (roomiestCode === undefined || remaining > mostRemaining) {
+      roomiestCode = code;
+      mostRemaining = remaining;
     }
   }
 
-  return bindingCode === undefined ? undefined : bindingLimit(entitlements, bindingCode);
+  return roomiestCode === undefined ? undefined : bindingLimit(entitlements, roomiestCode);
 }
 
 /**
@@ -196,12 +201,22 @@ export function toResourceLimits(
   const entitlements = byCode(product);
   const limits: ResourceLimitSet = {};
 
-  // Both meters: whichever binds disables the button and writes the tooltip.
-  const restApis = bindingLimitOf(entitlements, [MANAGED_INTERFACES, APIS]);
+  // The APIs meter alone: nothing else caps how many APIs may be created.
+  const restApis = bindingLimit(entitlements, APIS);
   if (restApis) limits.restApis = restApis;
 
-  const gateways = bindingLimit(entitlements, HYBRID_GATEWAYS);
-  if (gateways) limits.gateways = gateways;
+  // Each hosting kind has its own cap, so a surface that commits to one asks
+  // about that one. `gateways` answers the broader question — may ANY gateway
+  // be created — for a surface that only offers the choice, so it binds on
+  // whichever kind has the most room left rather than the least.
+  const managedGateways = bindingLimit(entitlements, GATEWAYS);
+  if (managedGateways) limits.managedGateways = managedGateways;
+
+  const selfHostedGateways = bindingLimit(entitlements, HYBRID_GATEWAYS);
+  if (selfHostedGateways) limits.selfHostedGateways = selfHostedGateways;
+
+  const anyGateway = roomiestLimitOf(entitlements, GATEWAY_METRICS);
+  if (anyGateway) limits.gateways = anyGateway;
 
   const portals = bindingLimit(entitlements, API_DEVELOPER_PORTALS);
   if (portals) limits.portals = portals;
@@ -240,13 +255,18 @@ export function isReadOnly(summary: EntitlementSummary | null | undefined): bool
 }
 
 /** The meters the usage panel lists, in the order it lists them. */
-export const USAGE_METRICS = [MANAGED_INTERFACES, ...INTERFACE_TYPE_METRICS, ...STANDALONE_METRICS] as const;
+export const USAGE_METRICS = [
+  ...INFRASTRUCTURE_METRICS,
+  ...GATEWAY_METRICS,
+  ...MANAGED_INTERFACE_METRICS,
+] as const;
 export {
   METRIC_LABELS,
-  MANAGED_INTERFACES,
   APIS,
-  INTERFACE_TYPE_METRICS,
+  GATEWAYS,
   HYBRID_GATEWAYS,
   API_DEVELOPER_PORTALS,
-  STANDALONE_METRICS,
+  INFRASTRUCTURE_METRICS,
+  GATEWAY_METRICS,
+  MANAGED_INTERFACE_METRICS,
 };

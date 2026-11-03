@@ -69,6 +69,12 @@ export type GatewayFormProps = {
   gatewayVersions: GatewayVersionEntry[];
   /** Preselects the Hosting option when creating, e.g. from the empty state's buttons. */
   initialHosting?: GatewayHosting | null;
+  /**
+   * Hosting kinds this organization has no room for, each with the message
+   * explaining why. Each kind is capped separately, so one being full says
+   * nothing about the other — hence a map rather than one flag.
+   */
+  hostingBlocked?: Partial<Record<GatewayHosting, string>>;
   onBack: () => void;
   /** Returning a promise lets the form keep its submit button busy until the save settles. Unchanged: still the `/managed-gateways` path. */
   onSubmit: (input: GatewayInput) => void | Promise<void>;
@@ -113,6 +119,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
   gateways,
   gatewayVersions,
   initialHosting = null,
+  hostingBlocked,
   onBack,
   onSubmit,
   onSubmitSelfHosted,
@@ -123,9 +130,14 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // nothing to choose, so the picker and its comparison table are left out
   // entirely rather than shown read-only; the fields below just reflect the
   // gateway's own hosting from the start.
-  const [hosting, setHosting] = useState<GatewayHosting | null>(
-    isEdit ? gateway!.hosting : initialHosting
-  );
+  // A kind whose quota is full must never arrive preselected — the form would
+  // open on a choice its own card refuses. An edit keeps its gateway's hosting
+  // regardless: a full quota does not stop editing what already exists.
+  const [hosting, setHosting] = useState<GatewayHosting | null>(() => {
+    if (isEdit) return gateway!.hosting;
+    if (initialHosting && hostingBlocked?.[initialHosting]) return null;
+    return initialHosting;
+  });
   const [showCompare, setShowCompare] = useState(false);
   const isSelfHosted = hosting === 'self-hosted';
 
@@ -268,9 +280,17 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   const step = ARROW_STEPS[event.key];
                   if (!step) return;
                   event.preventDefault();
-                  const current = HOSTING_OPTIONS.findIndex((option) => option.value === hosting);
                   const count = HOSTING_OPTIONS.length;
-                  const next = current === -1 ? (step > 0 ? 0 : count - 1) : (current + step + count) % count;
+                  const current = HOSTING_OPTIONS.findIndex((option) => option.value === hosting);
+                  // Step past any kind with no room rather than landing on a
+                  // card that cannot be chosen; stop if none is choosable.
+                  let next = current === -1 ? (step > 0 ? -1 : 0) : current;
+                  for (let tried = 0; tried < count; tried += 1) {
+                    next = (next + step + count) % count;
+                    if (!hostingBlocked?.[HOSTING_OPTIONS[next].value]) break;
+                    if (tried === count - 1) return;
+                  }
+                  if (hostingBlocked?.[HOSTING_OPTIONS[next].value]) return;
                   setHosting(HOSTING_OPTIONS[next].value);
                   event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
                 }}
@@ -283,6 +303,8 @@ const GatewayForm: FC<GatewayFormProps> = ({
                     description={option.description}
                     selected={hosting === option.value}
                     tabIndex={hosting === option.value || (hosting === null && index === 0) ? 0 : -1}
+                    disabled={Boolean(hostingBlocked?.[option.value])}
+                    disabledMessage={hostingBlocked?.[option.value]}
                     onClick={() => setHosting(option.value)}
                   />
                 ))}

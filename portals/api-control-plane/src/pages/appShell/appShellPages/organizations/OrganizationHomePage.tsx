@@ -419,6 +419,11 @@ function OrganizationHomePageContent() {
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
+            {/* No `component` below: gateways are capped per hosting kind, and
+                this card commits to neither — it opens the page where the
+                choice is made and each kind is gated on its own quota. One
+                combined verdict here would either block a user who still has
+                room for the other kind, or promise room for a kind with none. */}
             <OverviewCard
               action={intl.formatMessage(messages.gatewayAction)}
               description={intl.formatMessage(messages.gatewayDescription)}
@@ -431,7 +436,6 @@ function OrganizationHomePageContent() {
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
               operationId="CreateGateway"
-              component="gateways"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>

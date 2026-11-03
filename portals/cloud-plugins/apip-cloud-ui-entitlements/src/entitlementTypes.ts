@@ -26,7 +26,7 @@
 /** One quota's current state. */
 export type Entitlement = {
   /**
-   * The **metric code** — `apis`, `managed_interfaces`, `hybrid_gateways` —
+   * The **metric code** — `apis`, `hybrid_gateways`, `api_developer_portals` —
    * not a display label, despite the field being called `name`. Billing fills
    * it from the plan resource's `Code`, so it matches the seed's `code` column.
    */
