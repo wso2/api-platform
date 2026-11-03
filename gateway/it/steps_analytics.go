@@ -74,6 +74,7 @@ func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	ctx.Step(`^the latest analytics event should have response status (\d+)$`, a.theLatestAnalyticsEventShouldHaveResponseStatus)
 	ctx.Step(`^the latest analytics event should have metadata field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMetadataField)
 	ctx.Step(`^the latest analytics event should have MCP field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMCPField)
+	ctx.Step(`^the latest analytics event should report (\d+) prompt tokens and (\d+) total tokens$`, a.theLatestAnalyticsEventShouldReportTokens)
 	ctx.Step(`^the latest analytics event should have A2A field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveA2AField)
 	ctx.Step(`^the latest analytics event should not have A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveA2AField)
 	ctx.Step(`^the latest analytics event should carry only A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldCarryOnlyA2AField)
@@ -554,4 +555,71 @@ func sortedKeys(m map[string]interface{}) string {
 func (a *AnalyticsSteps) iSendGETRequestToAnalyticsCollectorEvents() error {
 	url := "http://localhost:8086/test/events"
 	return a.httpSteps.SendGETRequest(url)
+}
+
+// theLatestAnalyticsEventShouldReportTokens asserts the AI token usage recorded for the
+// latest event.
+//
+// Needed as its own step because the counts live in a NESTED object
+// (metadata.aiTokenUsage), which the flat metadata-field step cannot reach, and because the
+// body-contains step cannot express a value containing double quotes — its regex captures
+// [^"]*, so `"totalTokens":29` can never match.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldReportTokens(wantPrompt, wantTotal int) error {
+	event := a.lastMatchedEvent
+	if event == nil {
+		var err error
+		event, err = a.getLatestAnalyticsEvent("")
+		if err != nil {
+			return err
+		}
+	}
+	if event.Metadata == nil {
+		return fmt.Errorf("event has no metadata")
+	}
+	raw, ok := event.Metadata["aiTokenUsage"]
+	if !ok {
+		return fmt.Errorf("event carries no aiTokenUsage; metadata keys: %v", metadataKeys(event.Metadata))
+	}
+	usage, ok := raw.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("aiTokenUsage is %T, expected an object", raw)
+	}
+
+	gotPrompt, err := tokenField(usage, "promptTokens")
+	if err != nil {
+		return err
+	}
+	gotTotal, err := tokenField(usage, "totalTokens")
+	if err != nil {
+		return err
+	}
+	if gotPrompt != wantPrompt || gotTotal != wantTotal {
+		return fmt.Errorf("token usage = %d prompt / %d total, want %d / %d — billing did not follow "+
+			"the attempt that served the request", gotPrompt, gotTotal, wantPrompt, wantTotal)
+	}
+	return nil
+}
+
+func tokenField(usage map[string]interface{}, name string) (int, error) {
+	raw, ok := usage[name]
+	if !ok {
+		return 0, fmt.Errorf("aiTokenUsage has no %q; present: %v", name, metadataKeys(usage))
+	}
+	// JSON numbers decode as float64.
+	switch v := raw.(type) {
+	case float64:
+		return int(v), nil
+	case int:
+		return v, nil
+	}
+	return 0, fmt.Errorf("aiTokenUsage.%s is %T, expected a number", name, raw)
+}
+
+func metadataKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

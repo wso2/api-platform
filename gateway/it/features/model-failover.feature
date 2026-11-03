@@ -1491,3 +1491,112 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the API "mf-accounting-v1.0"
     Then the response status code should be 200
+
+  # ====================================================================
+  # SC-011 — the tokens billed are the serving attempt's
+  # ====================================================================
+
+  Scenario: A rescued request is billed for the attempt that actually served it
+    # The alive provider is the OpenAI mock, which answers deterministically:
+    # model gpt-4.1-2025-04-14, usage 19 prompt / 10 completion / 29 total. Fixed
+    # numbers are what make this assertable at all — an echo backend returns no
+    # usage block, so there would be nothing to attribute.
+    #
+    # Note what the client asked for and what answered differ: the request names
+    # gpt-4o, the dead primary never responds, and the attempt that serves reports
+    # a different model entirely. Billing has to follow the response, not the ask.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-tokens-dead-provider
+      spec:
+        displayName: MF Tokens Dead
+        version: v1.0
+        template: openai
+        context: /mf-tokens-dead-ctx
+        upstream:
+          url: http://mf-tokens-nonexistent:9080/v1
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-tokens-alive-provider
+      spec:
+        displayName: MF Tokens Alive
+        version: v1.0
+        template: openai
+        context: /mf-tokens-alive-ctx
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-tokens-proxy
+      spec:
+        displayName: MF Tokens Proxy
+        version: v1.0
+        context: /mf-tokens-proxy
+        provider:
+          id: mf-tokens-dead-provider
+        additionalProviders:
+          - id: mf-tokens-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: gpt-4o
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Reset LAST, immediately before the request, so a previous scenario's event
+    # cannot flush into this window and be read as this request's.
+    When I reset the analytics collector
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-tokens-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    When I wait 8 seconds for analytics to be published
+    Then the analytics collector should have received 1 event
+    When I send a GET request to the analytics collector events endpoint
+    Then the response should be successful
+    # The serving attempt's own numbers, exactly — not zero, and not doubled.
+    And the latest analytics event should report 19 prompt tokens and 29 total tokens
+    # Attribution follows the attempt that answered: the model the dead primary
+    # was asked for is not the model recorded.
+    And the response body should contain "gpt-4.1-2025-04-14"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-tokens-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-tokens-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-tokens-alive-provider"
+    Then the response status code should be 200
