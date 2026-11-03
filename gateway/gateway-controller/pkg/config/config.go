@@ -225,12 +225,6 @@ type Controller struct {
 	Audit        AuditConfig        `koanf:"audit"`
 }
 
-// AuditConfig holds audit-log configuration.
-type AuditConfig struct {
-	Enabled bool   `koanf:"enabled"`
-	Output  string `koanf:"output"`
-}
-
 // MetricsConfig holds Prometheus metrics server configuration
 type MetricsConfig struct {
 	// Enabled indicates whether the metrics server should be started
@@ -1326,6 +1320,18 @@ func defaultConfig() *Config {
 			},
 			Audit: AuditConfig{
 				Enabled: false,
+				// 100 MiB live + 100 MiB backup at most.
+				File: AuditFileConfig{MaxSizeMB: 100},
+				HTTP: AuditHTTPConfig{
+					BatchMaxEvents: 100,
+					BatchMaxBytes:  1 << 20, // 1 MiB
+					FlushInterval:  5 * time.Second,
+					QueueCapacity:  10000,
+					RequestTimeout: 10 * time.Second,
+					MaxRetries:     3,
+					RetryBackoff:   1 * time.Second,
+					Auth:           AuditHTTPAuthConfig{Type: AuditAuthNone},
+				},
 			},
 			Encryption: EncryptionConfig{
 				Providers: []ProviderConfig{
@@ -1523,10 +1529,8 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	switch c.Controller.Audit.Output {
-	case "", "stdout", "file":
-	default:
-		return fmt.Errorf("controller.audit.output must be \"stdout\" or \"file\"; got %q", c.Controller.Audit.Output)
+	if err := validateAuditConfig(&c.Controller.Audit); err != nil {
+		return err
 	}
 
 	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,

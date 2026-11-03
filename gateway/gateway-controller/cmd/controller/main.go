@@ -789,8 +789,13 @@ func main() {
 	// control-plane client builds its own services, which never get the audit
 	// service. An immutable gateway rejects every API change, and its boot
 	// loader shares restAPIService and agentSvc, so nothing is audited there.
+	var auditService *audit.AuditService
 	if !cfg.ImmutableGateway.Enabled {
-		auditService := audit.NewAuditService(db, gatewayID, cfg.Controller.Audit, log)
+		auditService, err = audit.NewAuditService(db, gatewayID, cfg.Controller.Audit, log)
+		if err != nil {
+			log.Error("Failed to initialize audit outputs", slog.Any("error", err))
+			os.Exit(1)
+		}
 		restAPIService.SetAuditService(auditService)
 		agentSvc.SetAuditService(auditService)
 		apiServer.SetAuditService(auditService)
@@ -1017,6 +1022,14 @@ func main() {
 			log.Error("REST API TLS server forced to shutdown", slog.Any("error", err))
 		}
 	}
+
+	// After the API servers, so records from requests that just finished are
+	// flushed. Its own bound: the servers may have used the whole budget above.
+	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := auditService.Close(auditCtx); err != nil {
+		log.Warn("Failed to close audit outputs cleanly", slog.Any("error", err))
+	}
+	auditCancel()
 
 	xdsServer.Stop()
 

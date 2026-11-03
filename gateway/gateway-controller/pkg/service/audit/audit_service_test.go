@@ -19,11 +19,13 @@
 package audit
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -56,11 +58,24 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &recordingAuditTable{err: tc.err}
-			var out bytes.Buffer
-			s := &AuditService{enabled: true, store: db, gatewayID: "gw-1", out: slog.NewJSONHandler(&out, nil),
-				logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+			logPath := filepath.Join(t.TempDir(), "audit.log")
+			s, err := NewAuditService(db, "gw-1", config.AuditConfig{
+				Enabled: true,
+				Outputs: []string{config.AuditOutputFile},
+				File:    config.AuditFileConfig{Path: logPath, MaxSizeMB: 100},
+			}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			if err != nil {
+				t.Fatalf("NewAuditService error = %v", err)
+			}
 
 			s.Record("CREATE", "res-1", "rest_api", "admin", "corr-1")
+			if err := s.Close(context.Background()); err != nil {
+				t.Fatalf("Close error = %v", err)
+			}
+			out, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatalf("reading the audit log: %v", err)
+			}
 
 			if len(db.rows) != 1 {
 				t.Fatalf("db rows = %d, want 1", len(db.rows))
@@ -74,8 +89,8 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 			}
 
 			var line map[string]any
-			if err := json.Unmarshal(out.Bytes(), &line); err != nil {
-				t.Fatalf("output line is not one JSON object: %v: %q", err, out.String())
+			if err := json.Unmarshal(out, &line); err != nil {
+				t.Fatalf("output line is not one JSON object: %v: %q", err, out)
 			}
 			for key, value := range map[string]string{
 				"time":          row.performedAt.Format(time.RFC3339Nano),
@@ -98,21 +113,27 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 
 func TestAuditServiceNoOutput(t *testing.T) {
 	db := &recordingAuditTable{}
-	s := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s, err := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewAuditService error = %v", err)
+	}
 
 	s.Record("DELETE", "res-1", "rest_api", "admin", "corr-1")
 
 	if len(db.rows) != 1 {
 		t.Fatalf("db rows = %d, want 1", len(db.rows))
 	}
-	if s.out != nil {
-		t.Fatal("output handler built although audit.output is unset")
+	if len(s.sinks) != 0 {
+		t.Fatal("output sinks built although audit.outputs is unset")
 	}
 }
 
 func TestDisabledAuditServiceRecordsNothing(t *testing.T) {
 	db := &recordingAuditTable{}
-	s := NewAuditService(db, "gw-1", config.AuditConfig{Output: "stdout"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s, err := NewAuditService(db, "gw-1", config.AuditConfig{Outputs: []string{"stdout"}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewAuditService error = %v", err)
+	}
 
 	s.Record("CREATE", "res-1", "rest_api", "admin", "corr-1")
 

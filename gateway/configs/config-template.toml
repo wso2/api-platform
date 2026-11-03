@@ -337,12 +337,111 @@ issuer = "api-platform-devportal"
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
-# enabled = true records changes made through the management API in the audit table.
-# output also writes each record as a JSON line tagged "logType":"audit", to
-# "stdout" or "file" (./data/logs/audit.log); unset keeps records in the table only.
+# Off by default. enabled = true records every change made through the management
+# API in the audit table; while it is false, nothing is recorded: no table rows and
+# no output lines. Changes pushed from the control plane are never recorded.
 [controller.audit]
 enabled = false
-# output = "stdout"
+# Also write each record as a JSON line tagged "logType":"audit" to any of
+# "stdout", "file" and "http". Outputs are additive and order is irrelevant.
+# While enabled, an unknown or repeated name fails startup. Empty keeps records in
+# the table only.
+#
+# An output that cannot be built (a file that cannot be opened, an unreadable CA
+# file) fails startup. At runtime a failed write drops the line and logs an error
+# (at most once every 30s per output); it never fails the request, and the table
+# row is still written.
+outputs = []
+# outputs = ["file", "http"]
+
+# "file" output — read only when outputs contains "file".
+[controller.audit.file]
+# Absolute path of the live log file; required when "file" is selected. The
+# directory is created 0700 and the file 0600 at startup, and an existing file
+# that group or others can read, or a path that is not a regular file (such as a
+# symlink), fails startup. One writer per file: with several replicas, give each
+# its own volume, or records are silently lost on rotation. Rotate with
+# max_size_mb only: an external tool that renames or replaces the file leaves
+# the controller writing to the old one.
+path = ""
+# path = "/app/data/logs/audit.log"
+# Size at which the live file is renamed to <path>.1 (replacing any earlier
+# backup) and a new one opened, so at most 2 x this is on disk. 0 disables
+# rotation and logs a warning; the maximum is 1048576 (1 TiB).
+max_size_mb = 100
+
+# "http" output — read only when outputs contains "http".
+#
+# Batches records and POSTs them as newline-delimited JSON
+# (application/x-ndjson), which Splunk HEC's /services/collector/raw,
+# Elasticsearch/OpenSearch, Fluent Bit and Vector accept as-is. The queue is held
+# in memory only: an outage longer than the queue and retries can absorb loses
+# records from this output (the audit table still has them). On shutdown the
+# queue is flushed for up to 5s, and a batch that fails then is not retried.
+# A retried batch may reach the receiver twice (e.g. after a timeout on a request
+# it already stored); deduplicate on "id" if that matters.
+[controller.audit.http]
+# Absolute URL each batch is POSTed to; required when "http" is selected.
+# Redirects are never followed.
+endpoint = ""
+# endpoint = "https://splunk.example.com:8088/services/collector/raw?sourcetype=wso2:gateway:audit"
+# Permits a plaintext http:// endpoint; without it, http:// fails startup. Use
+# only for a trusted collector on the same network.
+allow_insecure_transport = false
+# A batch is sent when any of these is reached first. batch_max_bytes caps the
+# body: a record that would take it past the limit goes in the next batch, and a
+# single record larger than the limit is sent alone.
+batch_max_events = 100
+batch_max_bytes = 1048576
+flush_interval = "5s"
+# Records waiting to be sent. When full, a new record is dropped (the older ones
+# are kept).
+queue_capacity = 10000
+# Bounds one POST attempt.
+request_timeout = "10s"
+# Retries after the first attempt, for transport errors, 429 and 5xx only, with
+# exponential backoff from retry_backoff plus jitter. A 429's Retry-After replaces
+# the backoff (capped at 30s). Other 4xx responses are not retried.
+max_retries = 3
+retry_backoff = "1s"
+
+# One header sent with every batch. type selects the scheme; only its sub-table
+# is read. A missing required field fails startup.
+#   type      sub-table   required           header sent
+#   "none"    —           —                  (none; the default)
+#   "bearer"  .bearer     token              Authorization: Bearer <token>
+#   "basic"   .basic      username, password Authorization: Basic <base64(user:pass)>
+#   "header"  .header     name, value        <name>: <value>
+# Never inline a credential: use {{ env "VAR" }} or {{ file "/path" }}.
+[controller.audit.http.auth]
+type = "none"
+
+[controller.audit.http.auth.bearer]
+token = ""
+# token = '{{ env "APIP_GW_AUDIT_HTTP_TOKEN" }}'
+
+[controller.audit.http.auth.basic]
+username = ""
+password = ""
+
+# For a scheme other than Bearer, e.g. Splunk HEC:
+#   name  = "Authorization"
+#   value = 'Splunk {{ env "APIP_GW_AUDIT_HEC_TOKEN" }}'
+[controller.audit.http.auth.header]
+name = ""
+value = ""
+
+# TLS for an https:// endpoint; ignored for http://. Independent of auth: a
+# client certificate does not suppress the auth header. All files are read at
+# startup.
+[controller.audit.http.tls]
+# PEM bundle to verify the receiver; empty uses the system trust store.
+ca_file = ""
+# Client certificate and key for mTLS, both or neither.
+cert_file = ""
+key_file = ""
+# Skips verifying the receiver's certificate; logs a warning at startup.
+insecure_skip_verify = false
 
 [controller.metrics]
 enabled = false
