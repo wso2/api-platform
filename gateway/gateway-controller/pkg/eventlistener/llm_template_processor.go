@@ -89,6 +89,10 @@ func (l *EventListener) handleLLMTemplateCreateOrUpdate(event eventhub.Event) {
 			slog.Any("error", err))
 	}
 
+	// An endpoint reads the model where its inbound template says, and a provider's
+	// transformer follows its template, so every endpoint may change.
+	l.refreshAllModelEndpoints(event.EventID)
+
 	l.logger.Info("Successfully processed LLM template create/update event",
 		slog.String("template_id", entityID),
 		slog.String("event_id", event.EventID))
@@ -125,6 +129,8 @@ func (l *EventListener) handleLLMTemplateDelete(event eventhub.Event) {
 				slog.Any("error", err))
 		}
 	}
+
+	l.refreshAllModelEndpoints(event.EventID)
 
 	l.logger.Info("Successfully processed LLM template delete event",
 		slog.String("template_id", entityID),

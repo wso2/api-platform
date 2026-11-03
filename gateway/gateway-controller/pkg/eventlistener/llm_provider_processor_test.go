@@ -69,7 +69,7 @@ func testLLMProviderStoredConfig(uuid, handle, template string, policies *[]api.
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://example.com"),
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			Policies:      policies,
 		},
 	}
