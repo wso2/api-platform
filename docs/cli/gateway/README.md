@@ -670,15 +670,10 @@ ap gateway image build \
   [--name <gateway-name>] \
   [--path <gateway-project-dir>] \
   [--repository <image-repository>] \
-  [--version <gateway-version>] \
-  [--gateway-builder <gateway-builder-image>] \
-  [--gateway-controller-base-image <gateway-controller-base-image>] \
-  [--router-base-image <router-base-image>] \
   [--push] \
   [--no-cache] \
   [--platform <platform>] \
-  [--offline] \
-  [--output-dir <output_dir>]
+  [--output-dir <output-dir>]
 ```
 
 Example:
@@ -687,7 +682,53 @@ Example:
 ap gateway image build
 ```
 
-For more information about customizing gateway policies during a build, refer to [this document](../customizing-gateway-policies.md).
+The gateway version, the base images, and the policies come from `build.yaml`. The flags control the rest of the build:
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--name` | Name of the directory that contains `build.yaml` | Gateway name, used in the image names. |
+| `--path`, `-p` | Current directory | Directory that contains `build.yaml`. |
+| `--repository` | `ghcr.io/wso2/api-platform` | Repository for the built images. Set it to a repository you can push to when you use `--push` or `--platform`. |
+| `--push` | `false` | Pushes the images to the repository after the build. |
+| `--no-cache` | `false` | Builds the images without the Docker build cache. |
+| `--platform` | _(none)_ | Builds the images for this Docker platform, such as `linux/amd64`, with `docker buildx`, and always pushes them. See [Target architecture](#target-architecture). |
+| `--output-dir` | _(none)_ | Copies the gateway builder output, including the compiled `policy-engine` binary, to this directory. |
+
+Behavior:
+
+- Builds `<repository>/<name>-gateway-runtime:<version>` and `<repository>/<name>-gateway-controller:<version>`, where `<version>` is `gateway.version` from `build.yaml`.
+- Writes `build-manifest.yaml` next to `build.yaml`, recording the resolved policy versions.
+
+Notes:
+
+- `--platform` here is the Docker target platform. It is unrelated to the `--platform` flag of the other gateway commands, which selects an API Platform, and `image build` doesn't contact a gateway.
+
+#### Target architecture
+
+The build runs in two stages:
+
+1. The CLI runs the gateway builder image as a container. The gateway builder compiles the `policy-engine` binary with the policies in `build.yaml`, for the architecture that the container runs on.
+2. The CLI builds the gateway runtime and gateway controller images from the gateway builder output.
+
+`--platform` applies only to the second stage. Docker runs the gateway builder for the build machine's architecture unless `DOCKER_DEFAULT_PLATFORM` sets another platform. `policy-engine` is the only architecture-specific part of the build output. If its architecture doesn't match the image platform, the gateway runtime fails to start with `Exec format error`. The gateway builder, gateway runtime, and gateway controller images support `linux/amd64` and `linux/arm64`.
+
+- **Build for the build machine's architecture:** omit `--platform` and `DOCKER_DEFAULT_PLATFORM`. The images are in the local Docker image store, and `--push` pushes them after the build. An AMD64 (x86-64) CI/CD agent therefore builds `linux/amd64` images; `uname -m` prints `x86_64` on AMD64 and `aarch64` on ARM64.
+- **Build for another architecture:** set `DOCKER_DEFAULT_PLATFORM` to the target platform. Docker then runs the gateway builder and builds the images for that platform under emulation, which takes longer. Docker Desktop includes emulation; on Linux, install QEMU as described in [Docker multi-platform builds](https://docs.docker.com/build/building/multi-platform/). For example, on an Apple silicon Mac:
+
+    ```shell
+    DOCKER_DEFAULT_PLATFORM=linux/amd64 ap gateway image build \
+      --repository <image-repository> \
+      --push
+    ```
+
+    If the pipeline can run on agents of different architectures, set the variable on the build step. On an agent that already matches the target platform, it has no effect.
+- **`--platform`:** doesn't change the architecture of `policy-engine`. If the platform differs from the build machine's architecture, also set `DOCKER_DEFAULT_PLATFORM` to the same value. With `--platform`:
+    - the CLI requires `docker buildx`;
+    - the images are always pushed, even without `--push`, and aren't in the local Docker image store, so run `docker login` first and set `--repository` to a repository you can push to;
+    - specify one platform per run. The gateway builder compiles one `policy-engine` binary, so a list such as `linux/amd64,linux/arm64` produces at least one image that fails to start. To build for both, run the command once per platform with a different `--name`.
+- **Check the result:** add `--output-dir <output-dir>`, then run `file <output-dir>/gateway-runtime/policy-engine`. It reports `x86-64` for `linux/amd64` and `ARM aarch64` for `linux/arm64`.
+
+For the `build.yaml` format and the policy types, see [Customizing the gateway by adding and removing policies](../customizing-gateway-policies.md).
 
 ## Related Commands
 
