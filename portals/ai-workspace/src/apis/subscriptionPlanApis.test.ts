@@ -58,6 +58,26 @@ describe('listSubscriptionPlans', () => {
     expect(get).toHaveBeenNthCalledWith(2, '/subscription-plans', { limit: 100, offset: 2 }, BASE);
   });
 
+  it('lists a plan once when one created mid-read pushes it onto the next page too', async () => {
+    vi.mocked(get).mockResolvedValueOnce(page(['a', 'b'], 4)).mockResolvedValueOnce(page(['b', 'c'], 4, 2));
+
+    const plans = await listSubscriptionPlans(BASE);
+
+    expect(plans.map(({ id }) => id)).toEqual(['a', 'b', 'c']);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops after 50 pages when the total never stops growing', async () => {
+    vi.mocked(get).mockImplementation(async (_path, query) =>
+      page([`plan-${(query as { offset: number }).offset}`], Number.MAX_SAFE_INTEGER)
+    );
+
+    const plans = await listSubscriptionPlans(BASE);
+
+    expect(plans).toHaveLength(50);
+    expect(get).toHaveBeenCalledTimes(50);
+  });
+
   it('stops on an empty page even when the total says more exist', async () => {
     vi.mocked(get).mockResolvedValueOnce(page(['a'], 5)).mockResolvedValueOnce(page([], 5, 1));
 

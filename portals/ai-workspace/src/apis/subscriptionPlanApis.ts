@@ -21,17 +21,30 @@ import type { SubscriptionPlan, SubscriptionPlanListResponse } from '../utils/ty
 
 /** The server's maximum page size for a plan list. */
 const PLANS_PAGE_SIZE = 100;
+/** Bounds the loop so a wrong `pagination.total` cannot make it run forever. */
+const PLANS_MAX_PAGES = 50;
 
-/** Every subscription plan of the organization, page by page. Scope: `ap:subscription_plan:read`. */
+/**
+ * Every subscription plan of the organization, page by page. A plan created while the
+ * pages are read can come up twice; it is listed once. Scope: `ap:subscription_plan:read`.
+ */
 export async function listSubscriptionPlans(baseUrl: string): Promise<SubscriptionPlan[]> {
   const plans: SubscriptionPlan[] = [];
-  for (;;) {
+  const seen = new Set<string>();
+  let received = 0;
+  for (let pages = 0; pages < PLANS_MAX_PAGES; pages += 1) {
     const page = await get<SubscriptionPlanListResponse>(
       '/subscription-plans',
-      { limit: PLANS_PAGE_SIZE, offset: plans.length },
+      { limit: PLANS_PAGE_SIZE, offset: received },
       baseUrl
     );
-    plans.push(...page.list);
-    if (page.list.length === 0 || plans.length >= page.pagination.total) return plans;
+    received += page.list.length;
+    for (const plan of page.list) {
+      if (seen.has(plan.id)) continue;
+      seen.add(plan.id);
+      plans.push(plan);
+    }
+    if (page.list.length === 0 || received >= page.pagination.total) break;
   }
+  return plans;
 }

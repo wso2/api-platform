@@ -202,6 +202,17 @@ describe('listMcpProxyDocuments', () => {
     expect(await listMcpProxyDocuments(PROXY, BASE)).toHaveLength(1);
     expect(get).toHaveBeenCalledTimes(2);
   });
+
+  it('stops after 50 pages when the total never stops growing', async () => {
+    vi.mocked(get).mockImplementation(async (_path, query) =>
+      page([`doc-${(query as { offset: number }).offset}`], Number.MAX_SAFE_INTEGER)
+    );
+
+    const documents = await listMcpProxyDocuments(PROXY, BASE);
+
+    expect(documents).toHaveLength(50);
+    expect(get).toHaveBeenCalledTimes(50);
+  });
 });
 
 describe('the landing page', () => {

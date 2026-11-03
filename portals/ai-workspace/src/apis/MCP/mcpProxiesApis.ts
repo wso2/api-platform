@@ -406,6 +406,8 @@ export async function getMcpProxyApiPortalPublicationThumbnail(
 
 /** The server's maximum page size for a document list. */
 const DOCUMENTS_PAGE_SIZE = 100;
+/** Bounds the loop so a wrong `pagination.total` cannot make it run forever. */
+const DOCUMENTS_MAX_PAGES = 50;
 
 /**
  * Every document of the MCP proxy, paging through the list until the server's total is
@@ -417,7 +419,7 @@ export async function listMcpProxyDocuments(mcpProxyId: string, baseUrl: string)
   const documents: MCPProxyDocument[] = [];
   const seen = new Set<string>();
   let received = 0;
-  for (;;) {
+  for (let pages = 0; pages < DOCUMENTS_MAX_PAGES; pages += 1) {
     const page = await get<MCPProxyDocumentListResponse>(path, { limit: DOCUMENTS_PAGE_SIZE, offset: received }, baseUrl);
     received += page.list.length;
     for (const document of page.list) {
@@ -425,8 +427,9 @@ export async function listMcpProxyDocuments(mcpProxyId: string, baseUrl: string)
       seen.add(document.id);
       documents.push(document);
     }
-    if (page.list.length === 0 || received >= page.pagination.total) return documents;
+    if (page.list.length === 0 || received >= page.pagination.total) break;
   }
+  return documents;
 }
 
 /** One document's body as stored, with the content type it was stored under. Scope: `ap:docs:read`. */
