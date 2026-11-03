@@ -153,7 +153,7 @@ func TestAllDefinedKindsFollowTheirConfiguredOrder(t *testing.T) {
 	kinds := []Kind{
 		KindEnvironment, KindCertificate, KindSharedScope, KindPolicy, KindMCPServer,
 		KindMCPProxy, KindAgent, KindAPI, KindAPIProduct, KindAPIKey, KindApplication, KindSubscription,
-		KindSecret, KindLLMProxy, KindLLMProvider, KindSubscriptionPlan,
+		KindSecret, KindLLMProxy, KindLLMProvider, KindSubscriptionPlan, KindModelEndpoint, KindModel,
 	}
 	for i, kind := range kinds {
 		require.NoError(t, r.Register(Resource{Kind: kind, ID: string(rune('a' + i)), Actor: "admin"}))
@@ -163,6 +163,13 @@ func TestAllDefinedKindsFollowTheirConfiguredOrder(t *testing.T) {
 	for i := 1; i < len(got); i++ {
 		require.LessOrEqual(t, got[i-1].Kind.Order, got[i].Kind.Order)
 	}
+}
+
+func TestModelsDeleteBeforeTheEndpointsAndProvidersTheyName(t *testing.T) {
+	require.Less(t, KindModel.Order, KindModelEndpoint.Order)
+	require.Less(t, KindModel.Order, KindLLMProvider.Order)
+	require.Less(t, KindModelEndpoint.Order, KindLLMProvider.Order)
+	require.Less(t, KindModelEndpoint.Order, KindSecret.Order)
 }
 
 func TestSweepPassesContextToDeleter(t *testing.T) {

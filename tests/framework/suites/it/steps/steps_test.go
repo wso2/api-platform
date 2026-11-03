@@ -280,6 +280,8 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"llm-provider.yaml":          "LlmProvider",
 		"llm-proxy.yaml":             "LlmProxy",
 		"mcp.yaml":                   "Mcp",
+		"model-endpoint.yaml":        "ModelEndpoint",
+		"model.yaml":                 "Model",
 		"rest-api.yaml":              "RestApi",
 		"subscription.yaml":          "Subscription",
 	}

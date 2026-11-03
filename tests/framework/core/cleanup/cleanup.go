@@ -76,6 +76,12 @@ var (
 	KindPolicy           = Kind{Name: "policy", Order: 60}
 	KindSharedScope      = Kind{Name: "shared-scope", Order: 70}
 	KindCertificate      = Kind{Name: "certificate", Order: 80}
+	// A Model targets LLM providers and names the model endpoints that serve it, and the
+	// gateway refuses to delete a provider a Model targets or an endpoint a deployed Model
+	// names, so a Model deletes before both. Its API keys are deleted with it.
+	KindModel = Kind{Name: "model", Order: 81}
+	// A model endpoint deletes after the Models that name it, and its API keys with it.
+	KindModelEndpoint = Kind{Name: "model-endpoint", Order: 83}
 	// LLMProxy and LLMProvider both delete before Secret: either can hold a credential as a
 	// {{ secret "handle" }} placeholder, and platform-api refuses to delete a secret still
 	// referenced by one (409 SECRET_IN_USE). LLMProxy also deletes before LLMProvider, since

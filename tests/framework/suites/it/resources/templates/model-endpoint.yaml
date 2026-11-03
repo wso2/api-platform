@@ -1,0 +1,8 @@
+apiVersion: ${VALUE:apiVersion}
+kind: ModelEndpoint
+metadata:
+  name: ${VALUE:name}
+spec:
+  displayName: ${VALUE:displayName}
+  version: ${VALUE:version}
+  context: ${VALUE:context}

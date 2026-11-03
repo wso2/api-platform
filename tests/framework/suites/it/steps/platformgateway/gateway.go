@@ -1150,12 +1150,12 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
 	g.registerResourceTemplateSteps(sc)
-	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
+	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Model|model endpoint) "([^"]*)"$`,
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
 	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Model|model endpoint) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1179,16 +1179,16 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
-	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
+	sc.Step(`^I wait for an analytics event for (path|API context) "([^"]*)" with response status (\d+)$`,
+		g.waitForAnalyticsEvent)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
+	sc.Step(`^the analytics collector should have no event for (path|API context) "([^"]*)"$`, g.analyticsNoEvent)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
 		g.analyticsRequestMethod)
-	sc.Step(`^the latest analytics event for path "([^"]*)" should have response status (\d+)$`,
+	sc.Step(`^the latest analytics event for (path|API context) "([^"]*)" should have response status (\d+)$`,
 		g.analyticsResponseStatus)
-	sc.Step(`^the latest analytics event for API context "([^"]*)" should have response status (\d+)$`,
-		g.analyticsResponseStatusForAPIContext)
-	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
+	sc.Step(`^the latest analytics event for (path|API context) "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
 		g.analyticsCompanyID)
@@ -1491,6 +1491,8 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
 	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
+	"Model":                 {"Model", collModels},
+	"model endpoint":        {"ModelEndpoint", collEndpoints},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -2232,12 +2234,45 @@ func (g *Gateway) latestAnalyticsEvent(ctx context.Context, path string) (*analy
 	})
 }
 
-// latestAnalyticsEventForAPIContext selects the event by the API context the gateway records
-// in the metadata of every event, which a request answered before routing still carries.
-func (g *Gateway) latestAnalyticsEventForAPIContext(ctx context.Context, apiContext string) (*analyticsEvent, error) {
-	return g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("API context %q", apiContext), func(event *analyticsEvent) bool {
-		return event.Metadata["apiContext"] == apiContext
-	})
+// How a step selects analytics events: by the request path an event's URI records, or by the
+// API context the gateway records in every event's metadata. The API context is carried by a
+// request answered before routing, and by a route whose path the policy engine rewrites rather
+// than Envoy, such as a model endpoint's, whose URI is its API context alone.
+const (
+	analyticsByPath       = "path"
+	analyticsByAPIContext = "API context"
+)
+
+// analyticsSelector resolves expr and returns a description of the selection, for errors, and
+// the predicate an event must satisfy.
+func analyticsSelector(ctx context.Context, by, expr string) (string, func(*analyticsEvent) bool, error) {
+	value, err := stepscommon.Expand(ctx, expr)
+	if err != nil {
+		return "", nil, err
+	}
+	switch by {
+	case analyticsByPath:
+		return fmt.Sprintf("path %q", value), func(event *analyticsEvent) bool {
+			return analyticsEventMatchesPath(event.Request.URI, value)
+		}, nil
+	case analyticsByAPIContext:
+		return fmt.Sprintf("API context %q", value), func(event *analyticsEvent) bool {
+			return value != "" && event.Metadata["apiContext"] == value
+		}, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported analytics event selector %q", by)
+	}
+}
+
+// latestAnalyticsEventBy returns the latest event the selection matches, and the selection's
+// description.
+func (g *Gateway) latestAnalyticsEventBy(ctx context.Context, by, expr string) (*analyticsEvent, string, error) {
+	what, match, err := analyticsSelector(ctx, by, expr)
+	if err != nil {
+		return nil, "", err
+	}
+	event, err := g.latestMatchingAnalyticsEvent(ctx, what, match)
+	return event, what, err
 }
 
 // latestMatchingAnalyticsEvent polls the collector until an event satisfies match and returns
@@ -2255,18 +2290,9 @@ func (g *Gateway) latestMatchingAnalyticsEvent(
 	defer cancel()
 	last, err := retry.Until(pollCtx, retry.Options{Interval: time.Second},
 		func(ctx context.Context) (*analyticsEvent, error) {
-			response, getErr := g.funnel.Client().Do(ctx, httpx.Request{
-				Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
-			}, 0, 0)
-			if getErr != nil {
-				return nil, retry.Transient(getErr)
-			}
-			if !response.Succeeded() {
-				return nil, retry.Transient(fmt.Errorf("analytics events returned %s", response.Describe()))
-			}
-			var events []analyticsEvent
-			if decodeErr := json.Unmarshal(response.Body, &events); decodeErr != nil {
-				return nil, decodeErr
+			events, fetchErr := g.fetchAnalyticsEvents(ctx, url)
+			if fetchErr != nil {
+				return nil, fetchErr
 			}
 			for i := len(events) - 1; i >= 0; i-- {
 				if events[i].Request.URI != "" {
@@ -2285,6 +2311,51 @@ func (g *Gateway) latestMatchingAnalyticsEvent(
 		return nil, fmt.Errorf("no analytics event found for %s (observed URIs: %v)", what, observed)
 	}
 	return last, nil
+}
+
+// fetchAnalyticsEvents reads every event the collector holds, once. A failed or unsuccessful
+// request is transient, so a poll retries it; an undecodable body is not.
+func (g *Gateway) fetchAnalyticsEvents(ctx context.Context, url string) ([]analyticsEvent, error) {
+	response, err := g.funnel.Client().Do(ctx, httpx.Request{
+		Method: http.MethodGet, URL: url, Headers: g.scenarioHeaders(ctx),
+	}, 0, 0)
+	if err != nil {
+		return nil, retry.Transient(err)
+	}
+	if !response.Succeeded() {
+		return nil, retry.Transient(fmt.Errorf("analytics events returned %s", response.Describe()))
+	}
+	var events []analyticsEvent
+	if err := json.Unmarshal(response.Body, &events); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+// analyticsNoEvent asserts the collector holds no event the selection matches, such as for a
+// request whose event the gateway drops. The collector is shared by every runner in the block, so
+// this reads it once rather than waiting for its count to settle: use it after waiting for an
+// event that is published no earlier than the one that must be absent.
+func (g *Gateway) analyticsNoEvent(ctx context.Context, by, expr string) error {
+	what, match, err := analyticsSelector(ctx, by, expr)
+	if err != nil {
+		return err
+	}
+	url, err := g.serviceURL(ctx, "analytics", "/test/events")
+	if err != nil {
+		return err
+	}
+	events, err := g.fetchAnalyticsEvents(ctx, url)
+	if err != nil {
+		return err
+	}
+	for i := range events {
+		if match(&events[i]) {
+			return fmt.Errorf("the analytics collector holds an event for %s (URI %q), want none",
+				what, events[i].Request.URI)
+		}
+	}
+	return nil
 }
 
 // resetAnalyticsCollector clears every event the testbench analytics collector has buffered
@@ -2399,16 +2470,17 @@ func (g *Gateway) waitForAnalyticsToSettle(ctx context.Context) error {
 	return err
 }
 
-// waitForAnalyticsEvent waits until the collector holds an event for path with the response
-// status, such as a readiness call's, so a settle and reset that follow can't run before it lands.
-func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status int) error {
-	resolved, err := stepscommon.Expand(ctx, path)
+// waitForAnalyticsEvent waits until the collector holds an event the selection matches with the
+// response status, such as a readiness call's, so a settle and reset that follow can't run before
+// it lands.
+func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, by, expr string, status int) error {
+	what, match, err := analyticsSelector(ctx, by, expr)
 	if err != nil {
 		return err
 	}
-	_, err = g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("path %q with response status %d", resolved, status),
+	_, err = g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("%s with response status %d", what, status),
 		func(event *analyticsEvent) bool {
-			return analyticsEventMatchesPath(event.Request.URI, resolved) && event.Response.Status == status
+			return match(event) && event.Response.Status == status
 		})
 	return err
 }
@@ -2436,34 +2508,19 @@ func (g *Gateway) analyticsRequestMethod(ctx context.Context, path, want string)
 	return nil
 }
 
-func (g *Gateway) analyticsResponseStatus(ctx context.Context, path string, want int) error {
-	event, err := g.analyticsEventForPath(ctx, path)
+func (g *Gateway) analyticsResponseStatus(ctx context.Context, by, expr string, want int) error {
+	event, what, err := g.latestAnalyticsEventBy(ctx, by, expr)
 	if err != nil {
 		return err
 	}
 	if event.Response.Status != want {
-		return fmt.Errorf("analytics event for %q has response status %d, want %d", path, event.Response.Status, want)
+		return fmt.Errorf("analytics event for %s has response status %d, want %d", what, event.Response.Status, want)
 	}
 	return nil
 }
 
-func (g *Gateway) analyticsResponseStatusForAPIContext(ctx context.Context, contextExpr string, want int) error {
-	apiContext, err := stepscommon.Expand(ctx, contextExpr)
-	if err != nil {
-		return err
-	}
-	event, err := g.latestAnalyticsEventForAPIContext(ctx, apiContext)
-	if err != nil {
-		return err
-	}
-	if event.Response.Status != want {
-		return fmt.Errorf("analytics event for API context %q has response status %d, want %d", apiContext, event.Response.Status, want)
-	}
-	return nil
-}
-
-func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want string) error {
-	event, err := g.analyticsEventForPath(ctx, path)
+func (g *Gateway) analyticsMetadataField(ctx context.Context, by, expr, field, want string) error {
+	event, _, err := g.latestAnalyticsEventBy(ctx, by, expr)
 	if err != nil {
 		return err
 	}
@@ -2580,6 +2637,8 @@ const (
 	collLLMProxies   = "/llm-proxies"
 	collAgents       = "/agents"
 	collGraphQLAPIs  = "/graphql-apis"
+	collModels       = "/models"
+	collEndpoints    = "/model-endpoints"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2747,6 +2806,10 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindAgent, true
 	case collGraphQLAPIs:
 		return cleanup.KindGraphQLAPI, true
+	case collModels:
+		return cleanup.KindModel, true
+	case collEndpoints:
+		return cleanup.KindModelEndpoint, true
 	default:
 		return cleanup.Kind{}, false
 	}

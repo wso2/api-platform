@@ -1,0 +1,4 @@
+# Models and the model endpoints that serve them. The feature is off by default; on, the gateway
+# provisions its default model endpoint, "wso2", at /wso2/v1.
+[controller.models]
+enabled = true

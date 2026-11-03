@@ -3448,6 +3448,23 @@ func TestControllerResourceKindsHaveCleanupKinds(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, cleanup.KindAgent, kind)
 
+	for stepKind, want := range map[string]struct {
+		declared, collection string
+		kind                 cleanup.Kind
+	}{
+		"Model":          {"Model", "/models", cleanup.KindModel},
+		"model endpoint": {"ModelEndpoint", "/model-endpoints", cleanup.KindModelEndpoint},
+	} {
+		spec, ok := resourceKinds[stepKind]
+		require.Truef(t, ok, "the %s step kind is registered", stepKind)
+		require.Equal(t, want.declared, spec.declared)
+		require.Equal(t, want.collection, spec.collection)
+		kind, ok := cleanupKindForCollection(spec.collection)
+		require.True(t, ok)
+		require.Equal(t, want.kind, kind)
+		require.Equal(t, want.collection, managementCollections[want.kind], "the cleanup sweep deletes a %s", stepKind)
+	}
+
 	_, ok = cleanupKindForCollection("/not-a-collection")
 	require.False(t, ok)
 }
@@ -4051,10 +4068,12 @@ func TestControllerEndpointsFollowTheGatewayRelease(t *testing.T) {
 
 func TestCleanupKindForResource(t *testing.T) {
 	for kind, want := range map[string]cleanup.Kind{
-		"API":         cleanup.KindAPI,
-		"MCP proxy":   cleanup.KindMCPProxy,
-		"LLM proxy":   cleanup.KindLLMProxy,
-		"GraphQL API": cleanup.KindGraphQLAPI,
+		"API":            cleanup.KindAPI,
+		"MCP proxy":      cleanup.KindMCPProxy,
+		"LLM proxy":      cleanup.KindLLMProxy,
+		"GraphQL API":    cleanup.KindGraphQLAPI,
+		"Model":          cleanup.KindModel,
+		"model endpoint": cleanup.KindModelEndpoint,
 	} {
 		got, err := CleanupKindForResource(kind)
 		require.NoError(t, err, kind)
@@ -4143,6 +4162,92 @@ func TestAnalyticsCompanyIDAssertions(t *testing.T) {
 // A readiness call's event is what a scenario waits for before resetting the collector: an event
 // for the path with another status doesn't count, so the step keeps polling until the wanted one
 // arrives, and fails when it never does.
+// analyticsTestGateway is a Gateway whose analytics collector is a test server answering
+// /analytics-block/test/events with the given body and status.
+func analyticsTestGateway(t *testing.T, status int, body string) *Gateway {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/analytics-block/test/events", r.URL.Path)
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+	parsed, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	serverPort, err := strconv.Atoi(parsed.Port())
+	require.NoError(t, err)
+	definition := &components.Definition{
+		Name: "testbench", Alias: "testbench",
+		Endpoints: []components.Endpoint{{Name: "analytics", Port: 3008, Scheme: "http"}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{3008: serverPort})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+	return &Gateway{
+		topo:   &frameworkruntime.Topology{Instances: instances, Block: &topology.ResolvedBlock{Name: "analytics-block"}},
+		funnel: httpx.NewFunnel(httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), 0, time.Millisecond),
+		base:   stubBase{},
+	}
+}
+
+func TestAnalyticsNoEvent(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	events := `[{"request":{"uri":"/endpoint/chat/completions"},"response":{"status":200},` +
+		`"metadata":{"apiContext":"/endpoint"}}]`
+
+	require.NoError(t, analyticsTestGateway(t, http.StatusOK, events).
+		analyticsNoEvent(ctx, analyticsByPath, "/provider/chat/completions"))
+	require.NoError(t, analyticsTestGateway(t, http.StatusOK, `[]`).
+		analyticsNoEvent(ctx, analyticsByPath, "/provider/chat/completions"))
+	require.NoError(t, analyticsTestGateway(t, http.StatusOK, events).
+		analyticsNoEvent(ctx, analyticsByAPIContext, "/provider"))
+
+	err := analyticsTestGateway(t, http.StatusOK, events).
+		analyticsNoEvent(ctx, analyticsByPath, "/endpoint/chat/completions")
+	require.ErrorContains(t, err, "holds an event for path")
+	err = analyticsTestGateway(t, http.StatusOK, events).analyticsNoEvent(ctx, analyticsByAPIContext, "/endpoint")
+	require.ErrorContains(t, err, "holds an event for API context")
+
+	require.Error(t, analyticsTestGateway(t, http.StatusOK, `not json`).
+		analyticsNoEvent(ctx, analyticsByPath, "/provider/chat/completions"))
+	require.Error(t, analyticsTestGateway(t, http.StatusServiceUnavailable, ``).
+		analyticsNoEvent(ctx, analyticsByPath, "/provider/chat/completions"))
+	require.Error(t, analyticsTestGateway(t, http.StatusOK, `[]`).
+		analyticsNoEvent(ctx, analyticsByPath, "${CTX:undefined}"), "an unresolved path is an error, not an absence")
+	require.ErrorContains(t, analyticsTestGateway(t, http.StatusOK, `[]`).
+		analyticsNoEvent(ctx, "host", "/provider"), "unsupported analytics event selector")
+}
+
+func TestAnalyticsEventsSelectedByAPIContext(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	// A model endpoint's event records its API context as the URI, not the request path.
+	events := `[{"request":{"uri":"/other"},"response":{"status":500},"metadata":{"apiContext":"/other"}},` +
+		`{"request":{"uri":"/endpoint"},"response":{"status":200},` +
+		`"metadata":{"apiContext":"/endpoint","modelAnalytics":{"handle":"m1"}}},` +
+		`{"request":{"uri":"/no-context"},"response":{"status":200}}]`
+	gateway := analyticsTestGateway(t, http.StatusOK, events)
+
+	require.NoError(t, gateway.waitForAnalyticsEvent(ctx, analyticsByAPIContext, "/endpoint", 200))
+	require.NoError(t, gateway.analyticsResponseStatus(ctx, analyticsByAPIContext, "/endpoint", 200))
+	require.NoError(t, gateway.analyticsMetadataField(ctx, analyticsByAPIContext, "/endpoint", "modelAnalytics.handle", "m1"))
+	require.ErrorContains(t, gateway.analyticsResponseStatus(ctx, analyticsByAPIContext, "/endpoint", 404),
+		`API context "/endpoint" has response status 200, want 404`)
+	require.ErrorContains(t, gateway.analyticsMetadataField(ctx, analyticsByAPIContext, "/endpoint", "modelAnalytics.handle", "m2"),
+		`is "m1", want "m2"`)
+	require.ErrorContains(t, gateway.analyticsMetadataField(ctx, analyticsByAPIContext, "/endpoint", "modelAnalytics.target", "a"),
+		"no field")
+
+	short, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	require.Error(t, gateway.waitForAnalyticsEvent(short, analyticsByPath, "/endpoint/chat/completions", 200),
+		"the request path is not the URI such an event records")
+	require.Error(t, gateway.waitForAnalyticsEvent(short, analyticsByAPIContext, "", 200),
+		"an empty API context matches no event, not one without a context")
+	require.ErrorContains(t, gateway.waitForAnalyticsEvent(short, "host", "/endpoint", 200),
+		"unsupported analytics event selector")
+}
+
 func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	var mu sync.Mutex
 	polls := 0
@@ -4179,12 +4284,12 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	}
 	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
 
-	require.NoError(t, gateway.waitForAnalyticsEvent(ctx, "/shop/v1.0/items/42", 200))
+	require.NoError(t, gateway.waitForAnalyticsEvent(ctx, analyticsByPath, "/shop/v1.0/items/42", 200))
 	mu.Lock()
 	require.GreaterOrEqual(t, polls, 2, "a 403 event for the path is not the readiness call's 200")
 	mu.Unlock()
 
 	short, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 	defer cancel()
-	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
+	require.Error(t, gateway.waitForAnalyticsEvent(short, analyticsByPath, "/shop/v1.0/items/42", 500))
 }

@@ -43,6 +43,8 @@ var managementCollections = map[cleanup.Kind]string{
 	cleanup.KindSecret:              "/secrets",
 	cleanup.KindSubscription:        "/subscriptions",
 	cleanup.KindSubscriptionPlan:    "/subscription-plans",
+	cleanup.KindModel:               "/models",
+	cleanup.KindModelEndpoint:       "/model-endpoints",
 }
 
 // RegisterDeleters registers how the cleanup sweep deletes each resource kind a gateway
