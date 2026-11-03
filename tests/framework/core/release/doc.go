@@ -17,11 +17,10 @@
  */
 
 // Package release computes the test framework's own release versioning: the next patch to cut
-// when none is given explicitly, which floating tags (latest, the bare major, major.minor) a
-// release should also receive, and which of a minor line's existing patches fall outside the
-// retention limit and should be retired.
+// when none is given explicitly, and which floating tags (latest, the bare major, major.minor) a
+// release should also receive.
 //
 // It is pure — no git, network, or registry calls — so it is fully covered by ordinary unit
 // tests that run in any pull request's CI, with no registry credentials required. cmd/release
-// wraps it with the git and GHCR I/O a real release run needs.
+// wraps it with the git I/O a real release run needs.
 package release
