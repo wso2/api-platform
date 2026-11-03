@@ -76,6 +76,20 @@ func buildDeploymentListItem(log *slog.Logger, cfg *models.StoredConfig) (any, e
 		}
 		return buildResourceResponseFromStored(proxy, cfg), nil
 
+	case models.KindModel:
+		model, err := rematerializeModelConfig(log, cfg.UUID, cfg.SourceConfiguration)
+		if err != nil {
+			return nil, err
+		}
+		return buildResourceResponseFromStored(model, cfg), nil
+
+	case models.KindModelEndpoint:
+		endpoint, err := rematerializeModelEndpointConfig(log, cfg.UUID, cfg.SourceConfiguration)
+		if err != nil {
+			return nil, err
+		}
+		return buildResourceResponseFromStored(endpoint, cfg), nil
+
 	case string(api.AgentConfigurationKindAgent):
 		agentConfig, err := rematerializeAgentConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 		if err != nil {
@@ -155,4 +169,18 @@ func redactAgentCredentials(cfg *api.AgentConfiguration) {
 		return
 	}
 	redactAuthCredential(&cfg.Spec.Upstream.Auth.Value, &cfg.Spec.Upstream.Auth.PolicyParams)
+}
+
+// redactModelCredentials clears every target credential from a Model bound for a
+// response body. A target credential is a key issued for another artifact's route,
+// so it is write-only exactly as an LLM proxy's provider credential is.
+func redactModelCredentials(cfg *api.ModelConfiguration) {
+	if cfg == nil {
+		return
+	}
+	for i := range cfg.Spec.Targets {
+		if auth := cfg.Spec.Targets[i].Auth; auth != nil {
+			redactAuthCredential(&auth.Value, &auth.PolicyParams)
+		}
+	}
 }

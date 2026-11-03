@@ -185,6 +185,7 @@ func NewAPIServer(
 	pushEnabled := systemConfig.Controller.ControlPlane.DeploymentSyncEnabled
 	server.mcpDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
+	server.llmDeploymentService.SetModelsConfig(systemConfig.Controller.Models)
 
 	server.agentService = agentService
 	server.AgentHandler = NewAgentHandler(agentService, logger)
