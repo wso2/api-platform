@@ -106,6 +106,7 @@ func loadStartupRuntimeConfigs(
 	runtimeStore *storage.RuntimeConfigStore,
 	secretResolver funcs.SecretResolver,
 	transformer models.ConfigTransformer,
+	policyValidator *config.PolicyValidator,
 	routerConfig *config.RouterConfig,
 	gatewayJWKSEnabled bool,
 	skipInvalidDeployments bool,
@@ -114,7 +115,7 @@ func loadStartupRuntimeConfigs(
 ) error {
 	refused := 0
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
-		loadedAPIs, runtimeStore, secretResolver, transformer, log, skipInvalidDeployments,
+		loadedAPIs, runtimeStore, secretResolver, transformer, policyValidator, log, skipInvalidDeployments,
 		func(c *models.StoredConfig) error {
 			refused++
 			if onRefused == nil {
@@ -150,6 +151,7 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 	runtimeStore *storage.RuntimeConfigStore,
 	secretResolver funcs.SecretResolver,
 	transformer models.ConfigTransformer,
+	policyValidator *config.PolicyValidator,
 	log *slog.Logger,
 	skipInvalidDeployments bool,
 	onEnvRefused func(*models.StoredConfig) error,
@@ -195,6 +197,13 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 			}
 		}
 
+		// Rendering leaves templated policy params as strings; restore their schema
+		// types as the event listener does, or the policy receives "10" for 10.
+		if soapAPI, ok := apiConfig.Configuration.(api.SoapAPI); ok && policyValidator != nil {
+			policyValidator.CoerceSoapAPIPolicies(&soapAPI)
+			apiConfig.Configuration = soapAPI
+		}
+
 		rdc, err := transformer.Transform(apiConfig)
 		if err != nil {
 			if log != nil {
@@ -230,7 +239,7 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 
 func supportsRuntimeBootstrapKind(kind string) bool {
 	switch kind {
-	case models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy, models.KindAgent, models.KindGraphQLApi:
+	case models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy, models.KindAgent, models.KindGraphQLApi, models.KindSoapApi:
 		return true
 	default:
 		return false

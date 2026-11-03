@@ -622,6 +622,180 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
+## SoapAPIRequest
+
+<a id="schemasoapapirequest"></a>
+<a id="schema_SoapAPIRequest"></a>
+<a id="tocSsoapapirequest"></a>
+<a id="tocssoapapirequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "SoapApi",
+  "metadata": {
+    "name": "stockquote-api-v1.0"
+  },
+  "spec": {
+    "displayName": "StockQuote API",
+    "version": "v1.0",
+    "context": "/stockquote/$version",
+    "upstream": {
+      "main": {
+        "url": "http://stockquote-service:8080/services/StockQuoteService"
+      }
+    }
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|API specification version|
+|kind|string|true|none|API type|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[SoapAPIData](#schemasoapapidata)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|SoapApi|
+
+## SoapAPI
+
+<a id="schemasoapapi"></a>
+<a id="schema_SoapAPI"></a>
+<a id="tocSsoapapi"></a>
+<a id="tocssoapapi"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "SoapApi",
+  "metadata": {
+    "name": "stockquote-api-v1.0"
+  },
+  "spec": {
+    "displayName": "StockQuote API",
+    "version": "v1.0",
+    "context": "/stockquote/$version",
+    "upstream": {
+      "main": {
+        "url": "http://stockquote-service:8080/services/StockQuoteService"
+      }
+    }
+  },
+  "status": {
+    "id": "stockquote-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[SoapAPIRequest](#schemasoapapirequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+## SoapAPIData
+
+<a id="schemasoapapidata"></a>
+<a id="schema_SoapAPIData"></a>
+<a id="tocSsoapapidata"></a>
+<a id="tocssoapapidata"></a>
+
+```json
+{
+  "displayName": "StockQuote API",
+  "version": "v1.0",
+  "context": "/stockquote/$version",
+  "upstream": {
+    "main": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    },
+    "sandbox": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    }
+  },
+  "vhosts": {
+    "main": "api.example.com",
+    "sandbox": "sandbox-api.example.com"
+  },
+  "subscriptionPlans": [
+    "Gold",
+    "Silver"
+  ],
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "deploymentState": "deployed"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
+|version|string|true|none|Semantic version of the API|
+|context|string|true|none|Base path for the SOAP service endpoint on the gateway (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /stockquote/$version resolves to /stockquote/v1.0).|
+|upstream|object|true|none|Backend SOAP service endpoint|
+|» main|[Upstream](#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
+|» sandbox|[Upstream](#schemaupstream)|false|none|Upstream backend configuration (single target or reference)|
+|vhosts|object|false|none|Custom virtual hosts/domains for the API|
+|» main|string|true|none|Custom virtual host/domain for production traffic|
+|» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
+|subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
+|policies|[[Policy](#schemapolicy)]|false|none|API-level policies applied to all SOAP traffic|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to both the POST and GET routes.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
+|deploymentState|string|false|none|Desired deployment state. Defaults to 'deployed'.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
 ## UpstreamDefinition
 
 <a id="schemaupstreamdefinition"></a>

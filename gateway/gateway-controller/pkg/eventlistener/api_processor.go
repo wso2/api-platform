@@ -94,9 +94,13 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	// RenderSpec JSON-roundtrips the config, which resets all policy params to strings.
 	// Coerce them back to their schema-declared types (integer, number, boolean).
 	if l.policyValidator != nil {
-		if restAPI, ok := storedConfig.Configuration.(api.RestAPI); ok {
-			l.policyValidator.CoerceRestAPIPolicies(&restAPI)
-			storedConfig.Configuration = restAPI
+		switch c := storedConfig.Configuration.(type) {
+		case api.RestAPI:
+			l.policyValidator.CoerceRestAPIPolicies(&c)
+			storedConfig.Configuration = c
+		case api.SoapAPI:
+			l.policyValidator.CoerceSoapAPIPolicies(&c)
+			storedConfig.Configuration = c
 		}
 	}
 

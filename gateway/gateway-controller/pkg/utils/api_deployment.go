@@ -42,15 +42,16 @@ import (
 
 // APIDeploymentParams contains parameters for API deployment operations
 type APIDeploymentParams struct {
-	Data          []byte        // Raw configuration data (YAML/JSON)
-	ContentType   string        // Content type for parsing
-	Kind          string        // API kind: "RestApi" or "WebSubApi"
-	APIID         string        // API ID (if provided, used for updates; if empty, generates new UUID)
-	DeploymentID  string        // Platform deployment ID (empty for gateway-api origin)
-	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
-	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
-	CorrelationID string        // Correlation ID for tracking
-	Logger        *slog.Logger  // Logger instance
+	Data          []byte              // Raw configuration data (YAML/JSON)
+	ContentType   string              // Content type for parsing
+	Kind          string              // API kind: "RestApi" or "WebSubApi"
+	APIID         string              // API ID (if provided, used for updates; if empty, generates new UUID)
+	DeploymentID  string              // Platform deployment ID (empty for gateway-api origin)
+	Origin        models.Origin       // Origin of the deployment: "control_plane" or "gateway_api"
+	DeployedAt    *time.Time          // Deployment timestamp from platform event (nil for gateway-api origin)
+	DesiredState  models.DesiredState // Requested state; empty means deployed
+	CorrelationID string              // Correlation ID for tracking
+	Logger        *slog.Logger        // Logger instance
 }
 
 // APIDeploymentResult contains the result of API deployment
@@ -290,13 +291,17 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		truncated := now.Truncate(time.Millisecond)
 		deployedAt = &truncated
 	}
+	desiredState := params.DesiredState
+	if desiredState == "" {
+		desiredState = models.StateDeployed
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
 		Handle:              handle,
 		Configuration:       parsedConfig,
 		SourceConfiguration: parsedConfig,
-		DesiredState:        models.StateDeployed,
+		DesiredState:        desiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CPSyncStatus:        cpSyncStatusForOrigin(params.Origin),

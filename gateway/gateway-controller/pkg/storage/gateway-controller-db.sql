@@ -103,6 +103,18 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- soap_apis, like graphql_apis, is a core kind defined directly here as a
+-- one-column-identical clone of rest_apis. initSchema also runs this whole script
+-- against an existing version 6 database, which creates it there without a
+-- version bump.
+CREATE TABLE IF NOT EXISTS soap_apis (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Note: Policy definitions are no longer stored in the database.
 -- They are loaded from files at controller startup (see policies/ directory).
 -- The policy_definitions table has been removed as of schema version 3.

@@ -23,8 +23,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -279,4 +282,43 @@ func TestSyncEventType(t *testing.T) {
 			assert.Equal(t, tt.expected, string(result))
 		})
 	}
+}
+
+// --- processSyncDeletions Tests ---
+
+// A SoapApi deleted on the control plane while the gateway was disconnected is an
+// orphan on reconnect. It is removed through the same generic deletion path as a
+// RestApi, and its removal is announced.
+func TestProcessSyncDeletions_RemovesOrphanedSoapAPI(t *testing.T) {
+	client, store, db, hub := createDeletionTestClient()
+
+	const soapID = "0199a1b2-0000-7000-8000-00000000c001"
+	spec := api.SoapAPIData{DisplayName: "Calculator", Context: "/calc", Version: "v1.0"}
+	spec.Upstream.Main = api.Upstream{Url: api.Ptr("http://calculator:3002/calculator/v1")}
+	soapAPI := &models.StoredConfig{
+		UUID:         soapID,
+		Kind:         models.KindSoapApi,
+		Handle:       "calculator-v1.0",
+		DisplayName:  "Calculator",
+		Version:      "v1.0",
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginControlPlane,
+		Configuration: api.SoapAPI{
+			Kind:     api.SoapAPIKindSoapApi,
+			Metadata: api.Metadata{Name: "calculator-v1.0"},
+			Spec:     spec,
+		},
+	}
+	require.NoError(t, db.SaveConfig(soapAPI))
+	require.NoError(t, store.Add(soapAPI))
+
+	client.processSyncDeletions([]string{soapID}, "test-gateway")
+
+	_, err := db.GetConfig(soapID)
+	assert.True(t, storage.IsNotFoundError(err), "the orphaned SoapApi must be removed, got %v", err)
+	assert.Equal(t, 1, db.removeKeyCallCount, "its API keys must be removed with it")
+	require.Len(t, hub.publishedEvents, 1)
+	assert.Equal(t, eventhub.EventTypeAPI, hub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", hub.publishedEvents[0].event.Action)
+	assert.Equal(t, soapID, hub.publishedEvents[0].event.EntityID)
 }
