@@ -15,7 +15,7 @@
  *
  */
 
-package service
+package audit
 
 import (
 	"context"
@@ -26,25 +26,25 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// auditSinkCleanupTimeout bounds closing the sinks already built when a later one
-// fails to build, so a stuck sink cannot hide the error that caused it.
-const auditSinkCleanupTimeout = 5 * time.Second
+// cleanupTimeout bounds closing the sinks already built when a later one fails
+// to build, so a stuck sink cannot hide the error that caused it.
+const cleanupTimeout = 5 * time.Second
 
-// newAuditSinks builds the sinks named by audit.outputs.
+// newSinks builds one sink per name in cfg.Outputs.
 //
 // It fails closed: a sink that cannot be built returns an error and the caller
-// refuses to start, rather than running without an output the operator asked for.
-// Sinks already built are closed first, so a failure part way through the list
-// leaks no file descriptor or goroutine.
-func newAuditSinks(cfg config.Audit, logger *slog.Logger) ([]auditSink, error) {
+// refuses to start, rather than running without an output the operator asked
+// for. Sinks already built are closed first, so a failure part way through the
+// list leaks no file descriptor or goroutine.
+func newSinks(cfg config.Audit, logger *slog.Logger) ([]sink, error) {
 	outputs, err := config.NormalizeAuditOutputs(cfg.Outputs)
 	if err != nil {
 		return nil, err
 	}
 
-	sinks := make([]auditSink, 0, len(outputs))
+	sinks := make([]sink, 0, len(outputs))
 	closeAll := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), auditSinkCleanupTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 		defer cancel()
 		for _, s := range sinks {
 			_ = s.Close(ctx)
@@ -52,28 +52,23 @@ func newAuditSinks(cfg config.Audit, logger *slog.Logger) ([]auditSink, error) {
 	}
 
 	for _, name := range outputs {
+		var s sink
+		var err error
 		switch name {
 		case config.AuditOutputStdout:
-			sinks = append(sinks, newAuditStdoutSink(logger))
+			s = newStdoutSink(logger)
 		case config.AuditOutputFile:
-			s, err := newAuditFileSink(cfg.File, logger)
-			if err != nil {
-				closeAll()
-				return nil, fmt.Errorf("audit.file: %w", err)
-			}
-			sinks = append(sinks, s)
+			s, err = newFileSink(cfg.File, logger)
 		case config.AuditOutputHTTP:
-			s, err := newAuditHTTPSink(cfg.HTTP, logger)
-			if err != nil {
-				closeAll()
-				return nil, fmt.Errorf("audit.http: %w", err)
-			}
-			sinks = append(sinks, s)
+			s, err = newHTTPSink(cfg.HTTP, logger)
 		default:
-			// Unreachable: NormalizeAuditOutputs rejects unknown names.
-			closeAll()
-			return nil, fmt.Errorf("unsupported audit.outputs entry %q", name)
+			err = fmt.Errorf("unsupported output %q", name) // unreachable: NormalizeAuditOutputs rejects it
 		}
+		if err != nil {
+			closeAll()
+			return nil, fmt.Errorf("audit.%s: %w", name, err)
+		}
+		sinks = append(sinks, s)
 	}
 	return sinks, nil
 }

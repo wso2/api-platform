@@ -18,11 +18,13 @@
 package service
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -56,12 +58,26 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &recordingAuditTable{err: tc.err}
-			var out bytes.Buffer
-			s := &AuditService{enabled: true, repo: db, sinks: []auditSink{&auditWriterSink{w: &out, name: "stdout"}}}
+			logPath := filepath.Join(t.TempDir(), "audit.log")
+			s, err := NewAuditService(db, config.Audit{
+				Enabled: true,
+				Outputs: []string{config.AuditOutputFile},
+				File:    config.AuditFile{Path: logPath, MaxSizeMB: 100},
+			}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			if err != nil {
+				t.Fatalf("NewAuditService error = %v", err)
+			}
 
-			err := s.Record("CREATE", "res-1", "rest_api", "org-1", "user-1")
+			err = s.Record("CREATE", "res-1", "rest_api", "org-1", "user-1")
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("Record error = %v, want %v", err, tc.err)
+			}
+			if err := s.Close(context.Background()); err != nil {
+				t.Fatalf("Close error = %v", err)
+			}
+			out, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatalf("reading the audit log: %v", err)
 			}
 
 			if len(db.rows) != 1 {
@@ -76,8 +92,8 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 			}
 
 			var line map[string]any
-			if err := json.Unmarshal(out.Bytes(), &line); err != nil {
-				t.Fatalf("output line is not one JSON object: %v: %q", err, out.String())
+			if err := json.Unmarshal(out, &line); err != nil {
+				t.Fatalf("output line is not one JSON object: %v: %q", err, out)
 			}
 			for key, value := range map[string]string{
 				"time":           row.performedAt.Format(time.RFC3339Nano),
@@ -109,8 +125,5 @@ func TestAuditServiceNoOutput(t *testing.T) {
 	}
 	if len(db.rows) != 1 {
 		t.Fatalf("db rows = %d, want 1", len(db.rows))
-	}
-	if len(s.sinks) != 0 {
-		t.Fatal("output sinks built although audit.outputs is unset")
 	}
 }

@@ -18,43 +18,45 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/audit"
 )
 
 type auditTable interface {
 	Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
+// AuditService records each audited change in the audit table and writes the
+// same record to the outputs configured in [platform_api.audit].
 type AuditService struct {
 	enabled bool
 	repo    auditTable
-	sinks   []auditSink
+	out     *audit.Writer // nil when auditing is disabled
 }
 
-// NewAuditService builds the configured outputs, only when auditing is enabled.
-// An output that cannot be built is an error, and the caller refuses to start.
+// NewAuditService builds the configured outputs when auditing is enabled. An
+// output that cannot be built is an error, and the caller refuses to start.
 func NewAuditService(repo auditTable, cfg config.Audit, slogger *slog.Logger) (*AuditService, error) {
 	s := &AuditService{enabled: cfg.Enabled, repo: repo}
 	if !cfg.Enabled {
 		return s, nil
 	}
-	sinks, err := newAuditSinks(cfg, slogger)
+	out, err := audit.NewWriter(cfg, slogger)
 	if err != nil {
 		return nil, err
 	}
-	s.sinks = sinks
+	s.out = out
 	return s, nil
 }
 
+// Record writes the table row, then the output line with the same id and time.
+// Only the table error is returned: an output failure never fails the request.
 func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
 	if !s.enabled {
 		return nil
@@ -65,35 +67,22 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 	performedAt := time.Now().UTC().Truncate(time.Microsecond)
 
 	err := s.repo.Record(id, performedAt, action, resourceUUID, resourceType, orgUUID, performedBy)
-	if len(s.sinks) > 0 {
-		rec := slog.NewRecord(performedAt, slog.LevelInfo, "audit", 0)
-		rec.AddAttrs(
-			slog.String("logType", "audit"),
-			slog.String("id", id),
-			slog.String("action", action),
-			slog.String("resourceType", resourceType),
-			slog.String("resourceId", resourceUUID),
-			slog.String("organizationId", orgUUID),
-			slog.String("performedBy", performedBy),
-		)
-		var buf bytes.Buffer
-		_ = slog.NewJSONHandler(&buf, nil).Handle(context.Background(), rec)
-		line := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
-		for _, sink := range s.sinks {
-			sink.Write(line)
-		}
-	}
+	s.out.Write(audit.Record{
+		ID:             id,
+		Time:           performedAt,
+		Action:         action,
+		ResourceType:   resourceType,
+		ResourceID:     resourceUUID,
+		OrganizationID: orgUUID,
+		PerformedBy:    performedBy,
+	})
 	return err
 }
 
-// Close closes every output, flushing any that buffer. Errors are joined so one
-// stuck output does not stop the others from closing.
+// Close flushes and closes the outputs.
 func (s *AuditService) Close(ctx context.Context) error {
-	var errs []error
-	for _, sink := range s.sinks {
-		if err := sink.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("closing %s audit output: %w", sink.Name(), err))
-		}
+	if s.out == nil {
+		return nil
 	}
-	return errors.Join(errs...)
+	return s.out.Close(ctx)
 }

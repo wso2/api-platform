@@ -15,7 +15,7 @@
  *
  */
 
-package service
+package audit
 
 import (
 	"context"
@@ -28,11 +28,10 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// auditSink is a destination for audit lines besides the audit table.
-//
-// Implementations must be safe for concurrent use. A sink that cannot deliver a
-// line drops it and logs; a sink failure never fails the request being audited.
-type auditSink interface {
+// sink is a destination for audit lines. Implementations must be safe for
+// concurrent use. A sink that cannot deliver a line drops it and logs; it never
+// fails the request being audited.
+type sink interface {
 	// Write emits one JSON line, without a trailing newline. It runs on the
 	// request path, so it must not block for more than a short, bounded time.
 	Write(line []byte)
@@ -45,23 +44,23 @@ type auditSink interface {
 	Name() string
 }
 
-// auditErrorLogInterval is the minimum gap between two error logs from one sink.
-// A sink failure is usually persistent (a full disk, a receiver that is down), so
-// logging every failed record would turn one fault into a log storm.
-const auditErrorLogInterval = 30 * time.Second
+// errorLogInterval is the minimum gap between two error logs from one sink. A
+// sink failure is usually persistent (a full disk, a receiver that is down), so
+// logging every dropped record would turn one fault into a log storm.
+const errorLogInterval = 30 * time.Second
 
-// auditErrThrottle rate-limits repeated error logging from a sink. The zero value
-// is ready to use and permits the first call.
-type auditErrThrottle struct {
+// errThrottle rate-limits a sink's error logs and counts what it suppressed.
+// The zero value is ready to use.
+type errThrottle struct {
 	mu         sync.Mutex
 	lastLogged time.Time
 	suppressed int
 }
 
-func (t *auditErrThrottle) logError(logger *slog.Logger, msg, sink string, err error) {
+func (t *errThrottle) logError(logger *slog.Logger, msg, sinkName string, err error) {
 	t.mu.Lock()
 	now := time.Now()
-	if !t.lastLogged.IsZero() && now.Sub(t.lastLogged) < auditErrorLogInterval {
+	if !t.lastLogged.IsZero() && now.Sub(t.lastLogged) < errorLogInterval {
 		t.suppressed++
 		t.mu.Unlock()
 		return
@@ -71,32 +70,32 @@ func (t *auditErrThrottle) logError(logger *slog.Logger, msg, sink string, err e
 	t.lastLogged = now
 	t.mu.Unlock()
 
-	attrs := []any{"sink", sink, "error", err}
+	attrs := []any{"sink", sinkName, "error", err}
 	if suppressed > 0 {
 		attrs = append(attrs, "suppressedSinceLastLog", suppressed)
 	}
 	logger.Error(msg, attrs...)
 }
 
-// auditWriterSink writes each line to an io.Writer it does not own, serialized by
-// a mutex so concurrent records cannot interleave. It backs the stdout output.
-type auditWriterSink struct {
+// writerSink writes each line to an io.Writer it does not own, serialized by a
+// mutex so concurrent records cannot interleave. It backs the stdout output.
+type writerSink struct {
 	mu       sync.Mutex
 	w        io.Writer
 	name     string
 	logger   *slog.Logger
-	throttle auditErrThrottle
+	throttle errThrottle
 	// buf is reused across writes to append the newline, so each line is one Write.
 	buf []byte
 }
 
-func newAuditStdoutSink(logger *slog.Logger) *auditWriterSink {
-	return &auditWriterSink{w: os.Stdout, name: config.AuditOutputStdout, logger: logger}
+func newStdoutSink(logger *slog.Logger) *writerSink {
+	return &writerSink{w: os.Stdout, name: config.AuditOutputStdout, logger: logger}
 }
 
-func (s *auditWriterSink) Name() string { return s.name }
+func (s *writerSink) Name() string { return s.name }
 
-func (s *auditWriterSink) Write(line []byte) {
+func (s *writerSink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.buf = append(append(s.buf[:0], line...), '\n')
@@ -105,5 +104,5 @@ func (s *auditWriterSink) Write(line []byte) {
 	}
 }
 
-// Close is a no-op: the writer is not owned by this sink and is unbuffered.
-func (s *auditWriterSink) Close(context.Context) error { return nil }
+// Close does nothing: the writer is not owned by this sink and is unbuffered.
+func (s *writerSink) Close(context.Context) error { return nil }

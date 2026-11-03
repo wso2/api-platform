@@ -15,7 +15,7 @@
  *
  */
 
-package service
+package audit
 
 import (
 	"bytes"
@@ -32,38 +32,39 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
 const (
-	// auditMaxErrorBodyBytes caps how much of a receiver's response is read, so
-	// a huge error body cannot grow the heap.
-	auditMaxErrorBodyBytes int64 = 4 << 10
-	// auditRetryAfterCap bounds how long a receiver's Retry-After can stall the
+	// maxResponseBodyBytes caps how much of a receiver's response is read, so a
+	// huge error body cannot grow the heap.
+	maxResponseBodyBytes int64 = 4 << 10
+	// retryAfterCap bounds how long a receiver's Retry-After can stall the
 	// sender while the queue fills.
-	auditRetryAfterCap = 30 * time.Second
+	retryAfterCap = 30 * time.Second
 )
 
-// auditHTTPSink batches audit lines and POSTs them as newline-delimited JSON to
-// an operator-chosen endpoint, for deployments without a log collector.
+// httpSink batches audit lines and POSTs them as newline-delimited JSON to an
+// operator-chosen endpoint, for deployments without a log collector.
 //
 //   - Write never blocks: it runs on the request path. A line that does not fit
 //     in the queue is dropped and logged.
 //   - The queue is bounded, so a receiver outage cannot grow memory without limit.
-//   - A batch that cannot be delivered is dropped. The queue is memory-only, so
-//     unlike a collector that buffers to disk, an outage longer than the queue and
-//     retries can absorb loses records; the audit table still has them.
-type auditHTTPSink struct {
+//   - A batch that cannot be delivered is dropped. The queue is memory-only, so an
+//     outage longer than the queue and retries can absorb loses records from this
+//     output; the audit table still has them.
+type httpSink struct {
 	cfg      config.AuditHTTP
 	client   *http.Client
 	host     string
 	logger   *slog.Logger
-	throttle auditErrThrottle
+	throttle errThrottle
 
-	// authHeaderName/Value are resolved once; an empty name means none. The
-	// value is a secret and is never logged.
-	authHeaderName  string
-	authHeaderValue string
+	// authName/authValue are resolved once; an empty name means none. The value
+	// is a secret and is never logged.
+	authName  string
+	authValue string
 
 	queue chan []byte
 	// done is closed by Close to stop the sender; stopped is closed by the
@@ -76,10 +77,10 @@ type auditHTTPSink struct {
 	tlsLogged sync.Once
 }
 
-// newAuditHTTPSink builds the sink and starts its sender. It returns an error
-// rather than degrading; config validation has already checked the same values.
-func newAuditHTTPSink(cfg config.AuditHTTP, logger *slog.Logger) (*auditHTTPSink, error) {
-	// Non-positive values would panic in time.NewTicker or make.
+// newHTTPSink builds the sink and starts its sender.
+func newHTTPSink(cfg config.AuditHTTP, logger *slog.Logger) (*httpSink, error) {
+	// Config validation rejects these; checked again because a non-positive value
+	// would panic in time.NewTicker or make.
 	if cfg.FlushInterval <= 0 || cfg.RequestTimeout <= 0 || cfg.QueueCapacity <= 0 ||
 		cfg.BatchMaxEvents <= 0 || cfg.BatchMaxBytes <= 0 || cfg.MaxRetries < 0 {
 		return nil, fmt.Errorf("batch, queue and timeout settings must be positive")
@@ -88,25 +89,25 @@ func newAuditHTTPSink(cfg config.AuditHTTP, logger *slog.Logger) (*auditHTTPSink
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("endpoint is not a valid absolute URL")
 	}
-	name, value, err := cfg.Auth.AuthHeader()
+	authName, authValue, err := cfg.Auth.AuthHeader()
 	if err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
 	}
-	client, err := cfg.NewClient()
+	client, err := newClient(cfg, u)
 	if err != nil {
 		return nil, fmt.Errorf("tls: %w", err)
 	}
 
-	s := &auditHTTPSink{
-		cfg:             cfg,
-		client:          client,
-		host:            u.Host,
-		logger:          logger,
-		authHeaderName:  name,
-		authHeaderValue: value,
-		queue:           make(chan []byte, cfg.QueueCapacity),
-		done:            make(chan struct{}),
-		stopped:         make(chan struct{}),
+	s := &httpSink{
+		cfg:       cfg,
+		client:    client,
+		host:      u.Host,
+		logger:    logger,
+		authName:  authName,
+		authValue: authValue,
+		queue:     make(chan []byte, cfg.QueueCapacity),
+		done:      make(chan struct{}),
+		stopped:   make(chan struct{}),
 	}
 	go s.run()
 	logger.Info("Audit HTTP output ready", "host", u.Host,
@@ -114,16 +115,47 @@ func newAuditHTTPSink(cfg config.AuditHTTP, logger *slog.Logger) (*auditHTTPSink
 	return s, nil
 }
 
-func (s *auditHTTPSink) Name() string { return config.AuditOutputHTTP }
+// newClient builds the client with httpkit, reading the TLS files for an
+// https:// endpoint (the tls block is ignored for http://). X25519MLKEM768 is
+// preferred, with classical curves after it for receivers that lack it.
+// Redirects are never followed: the target is chosen by the receiver, not the
+// operator.
+func newClient(cfg config.AuditHTTP, endpoint *url.URL) (*http.Client, error) {
+	c := httpclient.DefaultConfig()
+	c.Timeouts.Overall = cfg.RequestTimeout
+	// httpkit's 10s response-header default would otherwise cut a longer one short.
+	c.Timeouts.ResponseHeader = cfg.RequestTimeout
+	c.Pooling.MaxIdleConnsPerHost = 2
+	if endpoint.Scheme == "https" {
+		c.TLS.MinVersion = "TLS1_2"
+		c.TLS.MaxVersion = "TLS1_3"
+		c.TLS.CurvePreferences = "X25519MLKEM768,X25519,P-256,P-384"
+		c.TLS.RootCAFile = cfg.TLS.CAFile
+		c.TLS.ClientCertFile = cfg.TLS.CertFile
+		c.TLS.ClientKeyFile = cfg.TLS.KeyFile
+		c.TLS.InsecureSkipVerify = cfg.TLS.InsecureSkipVerify // #nosec G402 -- off by default; warned at startup
+		c.TLS.InsecureSkipVerifyAcknowledged = cfg.TLS.InsecureSkipVerify
+	}
+	client, err := httpclient.New(c)
+	if err != nil {
+		return nil, err
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return client, nil
+}
+
+func (s *httpSink) Name() string { return config.AuditOutputHTTP }
 
 // Write queues the line for delivery and never blocks. The line is copied
 // because the caller reuses its buffer.
-func (s *auditHTTPSink) Write(line []byte) {
+func (s *httpSink) Write(line []byte) {
 	select {
 	case <-s.done:
 		// The sender is gone, so a queued line would never be sent.
-		s.throttle.logError(s.logger, "Audit HTTP output is closed; dropping the record",
-			config.AuditOutputHTTP, fmt.Errorf("output closed"))
+		s.throttle.logError(s.logger, "Audit HTTP output is closed; dropping the record", s.Name(),
+			fmt.Errorf("output closed"))
 		return
 	default:
 	}
@@ -133,14 +165,14 @@ func (s *auditHTTPSink) Write(line []byte) {
 	select {
 	case s.queue <- queued:
 	default:
-		s.throttle.logError(s.logger, "Audit HTTP output queue is full; dropping the record",
-			config.AuditOutputHTTP, fmt.Errorf("queue capacity %d exhausted", s.cfg.QueueCapacity))
+		s.throttle.logError(s.logger, "Audit HTTP output queue is full; dropping the record", s.Name(),
+			fmt.Errorf("queue capacity %d exhausted", s.cfg.QueueCapacity))
 	}
 }
 
 // run is the sender: it collects lines into a batch, delivers it when a bound is
 // reached, and flushes what is left on shutdown.
-func (s *auditHTTPSink) run() {
+func (s *httpSink) run() {
 	defer func() {
 		// A Write can win the race against Close and queue a line after the final
 		// drain. Report it rather than losing it silently.
@@ -150,7 +182,7 @@ func (s *auditHTTPSink) run() {
 		}
 		if left > 0 {
 			s.logger.Error("Audit HTTP output closed with records still queued; dropping them",
-				"sink", config.AuditOutputHTTP, "records", left)
+				"sink", s.Name(), "records", left)
 		}
 		close(s.stopped)
 	}()
@@ -206,8 +238,8 @@ func (s *auditHTTPSink) run() {
 // deliver POSTs one batch, retrying transport errors, 429 and 5xx with jittered
 // exponential backoff. Any other 4xx means the receiver rejected the batch, so
 // retrying would not help.
-func (s *auditHTTPSink) deliver(batch [][]byte) {
-	body := encodeAuditNDJSON(batch)
+func (s *httpSink) deliver(batch [][]byte) {
+	body := encodeNDJSON(batch)
 	var lastErr error
 	// A receiver's Retry-After replaces the computed backoff rather than adding to it.
 	var nextDelay time.Duration
@@ -231,13 +263,13 @@ func (s *auditHTTPSink) deliver(batch [][]byte) {
 		}
 		nextDelay = retryAfter
 	}
-	s.throttle.logError(s.logger, "Failed to deliver audit records; dropping them", config.AuditOutputHTTP,
+	s.throttle.logError(s.logger, "Failed to deliver audit records; dropping them", s.Name(),
 		fmt.Errorf("%d record(s) dropped: %w", len(batch), lastErr))
 }
 
 // post makes one delivery attempt. It reports whether a failure is worth
 // retrying, and the receiver's Retry-After delay when it gives one.
-func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
+func (s *httpSink) post(body []byte) (time.Duration, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.RequestTimeout)
 	defer cancel()
 
@@ -246,8 +278,8 @@ func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 		return 0, false, fmt.Errorf("building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-ndjson")
-	if s.authHeaderName != "" {
-		req.Header.Set(s.authHeaderName, s.authHeaderValue)
+	if s.authName != "" {
+		req.Header.Set(s.authName, s.authValue)
 	}
 
 	resp, err := s.client.Do(req)
@@ -256,7 +288,7 @@ func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 	}
 	defer resp.Body.Close()
 	// Drain a bounded prefix so the connection can be reused.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, auditMaxErrorBodyBytes))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBodyBytes))
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
@@ -268,7 +300,7 @@ func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 		}
 		return 0, false, nil
 	case resp.StatusCode == http.StatusTooManyRequests:
-		return parseAuditRetryAfter(resp.Header.Get("Retry-After")), true, fmt.Errorf("receiver is rate limiting (429)")
+		return parseRetryAfter(resp.Header.Get("Retry-After")), true, fmt.Errorf("receiver is rate limiting (429)")
 	case resp.StatusCode >= 500:
 		return 0, true, fmt.Errorf("receiver returned status %d", resp.StatusCode)
 	default:
@@ -278,7 +310,7 @@ func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 
 // backoff returns the delay before retry attempt n (1-based): exponential, with
 // jitter so replicas retrying after a shared outage do not do so in lockstep.
-func (s *auditHTTPSink) backoff(attempt int) time.Duration {
+func (s *httpSink) backoff(attempt int) time.Duration {
 	// Cap the exponent so a large max_retries cannot overflow the shift.
 	delay := s.cfg.RetryBackoff << min(attempt-1, 10)
 	if half := delay / 2; half > 0 {
@@ -289,7 +321,7 @@ func (s *auditHTTPSink) backoff(attempt int) time.Duration {
 
 // sleep waits for d, returning false if Close was called first so shutdown is
 // not held for a full backoff.
-func (s *auditHTTPSink) sleep(d time.Duration) bool {
+func (s *httpSink) sleep(d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
@@ -302,7 +334,7 @@ func (s *auditHTTPSink) sleep(d time.Duration) bool {
 
 // Close stops the sender after a final flush, bounded by ctx. Safe to call more
 // than once.
-func (s *auditHTTPSink) Close(ctx context.Context) error {
+func (s *httpSink) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() { close(s.done) })
 	select {
 	case <-s.stopped:
@@ -312,9 +344,9 @@ func (s *auditHTTPSink) Close(ctx context.Context) error {
 	}
 }
 
-// encodeAuditNDJSON joins the batch into a newline-delimited body, which Splunk
-// HEC's raw endpoint, Elasticsearch/OpenSearch, Fluent Bit and Vector accept as-is.
-func encodeAuditNDJSON(batch [][]byte) []byte {
+// encodeNDJSON joins the batch into a newline-delimited body, which Splunk HEC's
+// raw endpoint, Elasticsearch/OpenSearch, Fluent Bit and Vector accept as-is.
+func encodeNDJSON(batch [][]byte) []byte {
 	var buf bytes.Buffer
 	for _, line := range batch {
 		buf.Write(line)
@@ -323,20 +355,20 @@ func encodeAuditNDJSON(batch [][]byte) []byte {
 	return buf.Bytes()
 }
 
-// parseAuditRetryAfter reads a Retry-After header in delta-seconds or HTTP-date
-// form, capped at auditRetryAfterCap. Anything unparseable gives 0, which leaves
-// the caller on its own backoff.
-func parseAuditRetryAfter(v string) time.Duration {
+// parseRetryAfter reads a Retry-After header in delta-seconds or HTTP-date form,
+// capped at retryAfterCap. Anything unparseable gives 0, which leaves the caller
+// on its own backoff.
+func parseRetryAfter(v string) time.Duration {
 	v = strings.TrimSpace(v)
 	if secs, err := strconv.Atoi(v); err == nil {
 		if secs <= 0 {
 			return 0
 		}
 		// Clamp before converting: a large value overflows time.Duration.
-		return time.Duration(min(secs, int(auditRetryAfterCap/time.Second))) * time.Second
+		return time.Duration(min(secs, int(retryAfterCap/time.Second))) * time.Second
 	}
 	if t, err := http.ParseTime(v); err == nil {
-		return min(max(time.Until(t), 0), auditRetryAfterCap)
+		return min(max(time.Until(t), 0), retryAfterCap)
 	}
 	return 0
 }
