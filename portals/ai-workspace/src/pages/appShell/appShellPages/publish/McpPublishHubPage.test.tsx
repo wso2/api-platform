@@ -422,8 +422,11 @@ describe('McpPublishHubPage', () => {
       expect(screen.getByRole('tab', { name: 'MCP Proxy Details' })).toHaveAttribute('aria-selected', 'true');
     });
 
-    it('is off for a user without the manage scope', async () => {
-      youMay();
+    it.each([
+      ['the manage scope', SCOPES.API_PORTAL_DRAFT_UPDATE],
+      ['the draft update scope, since it saves the draft first', SCOPES.MCP_PROXY_API_PORTAL_MANAGE],
+    ])('is off for a user without %s', async (_missing, held) => {
+      youMay(held);
 
       await renderPage();
 

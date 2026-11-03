@@ -703,7 +703,13 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
                 onPublish={handlePublish}
                 onSaveDraft={handleSaveDraft}
                 onUnpublish={() => setConfirmingUnpublish(true)}
-                permissions={{ saveDraft: canUpdateDraft, publish: canManage, unpublish: canManage, deprecate: canManage }}
+                // Publish saves the draft first, so it needs the draft scope too.
+                permissions={{
+                  saveDraft: canUpdateDraft,
+                  publish: canUpdateDraft && canManage,
+                  unpublish: canManage,
+                  deprecate: canManage,
+                }}
                 publishing={pendingAction === 'publishing'}
                 saveBlocked={assets.unreadable}
                 savingDraft={pendingAction === 'saving'}
