@@ -29,14 +29,8 @@
   "api.create.ApiCreationProgress.stage.done": {
     "defaultMessage": "{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…"
   },
-  "api.create.ApiCreationProgress.step.configuring": {
-    "defaultMessage": "{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}"
-  },
-  "api.create.ApiCreationProgress.step.connecting": {
-    "defaultMessage": "Connecting to backend"
-  },
   "api.create.ApiCreationProgress.step.deploying": {
-    "defaultMessage": "{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}"
+    "defaultMessage": "Creating {kind, select, graphql {GraphQL API} other {API Proxy}}"
   },
   "api.create.ApiCreationProgress.step.state.active": {
     "defaultMessage": "In progress",
@@ -157,31 +151,31 @@
     "defaultMessage": "API resources"
   },
   "api.create.apiType.graphQl.description": {
-    "defaultMessage": "Serve a GraphQL schema through the gateway."
+    "defaultMessage": "Serve a GraphQL schema."
   },
   "api.create.apiType.graphQl.title": {
     "defaultMessage": "GraphQL API"
   },
   "api.create.apiType.grpc.description": {
-    "defaultMessage": "Expose high-performance gRPC services."
+    "defaultMessage": "Expose gRPC services."
   },
   "api.create.apiType.grpc.title": {
     "defaultMessage": "gRPC API"
   },
   "api.create.apiType.rest.description": {
-    "defaultMessage": "Expose REST and other HTTP backends."
+    "defaultMessage": "Expose REST and HTTP backends."
   },
   "api.create.apiType.rest.title": {
     "defaultMessage": "REST API"
   },
   "api.create.apiType.webSocket.description": {
-    "defaultMessage": "Stream data over long-lived WebSocket connections."
+    "defaultMessage": "Stream data over WebSocket."
   },
   "api.create.apiType.webSocket.title": {
     "defaultMessage": "WebSocket API"
   },
   "api.create.apiType.webSub.description": {
-    "defaultMessage": "Deliver events to subscribers over WebSub."
+    "defaultMessage": "Deliver events over WebSub."
   },
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
@@ -778,6 +772,22 @@
   "apiCard.updated": {
     "defaultMessage": "Updated {relative}",
     "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
+  },
+  "apiControlPlane.components.ApiDesignerCanvasIllustration.aiReadiness": {
+    "defaultMessage": "AI-readiness",
+    "description": "Label beside the score in the animated API Designer preview."
+  },
+  "apiControlPlane.components.ApiDesignerCanvasIllustration.openApiValid": {
+    "defaultMessage": "OpenAPI 3.x valid",
+    "description": "A passed check in the animated API Designer preview."
+  },
+  "apiControlPlane.components.ApiDesignerCanvasIllustration.spectralPassed": {
+    "defaultMessage": "Spectral rules passed",
+    "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
+  },
+  "apiControlPlane.components.ContractFlowIllustration.resourcesFound": {
+    "defaultMessage": "{count, plural, one {# resource found} other {# resources found}}",
+    "description": "Status chip in the animated contract-import preview."
   },
   "apiControlPlane.components.ErrorFallback.action.goHome": {
     "defaultMessage": "Go to console home",

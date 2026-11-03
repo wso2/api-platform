@@ -16,86 +16,163 @@
  * under the License.
  */
 
-import { ColorSchemeSVG } from '@wso2/oxygen-ui';
+import { Box } from '@wso2/oxygen-ui';
+import { defineMessages, FormattedMessage, FormattedNumber } from 'react-intl';
 
-/** Dot-grid lattice behind the flow — sparse enough to read as a canvas. */
-const GRID_COLUMNS = 13;
-const GRID_ROWS = 7;
+import { illustrationCardSx } from './illustrationCardSx';
+import { useScaleToWidth } from './useScaleToWidth';
+import './ApiDesignerCanvasIllustration.css';
+
+const messages = defineMessages({
+  aiReadiness: {
+    id: 'apiControlPlane.components.ApiDesignerCanvasIllustration.aiReadiness',
+    defaultMessage: 'AI-readiness',
+    description: 'Label beside the score in the animated API Designer preview.',
+  },
+  openApiValid: {
+    id: 'apiControlPlane.components.ApiDesignerCanvasIllustration.openApiValid',
+    defaultMessage: 'OpenAPI 3.x valid',
+    description: 'A passed check in the animated API Designer preview.',
+  },
+  spectralPassed: {
+    id: 'apiControlPlane.components.ApiDesignerCanvasIllustration.spectralPassed',
+    defaultMessage: 'Spectral rules passed',
+    description: 'A passed check in the animated API Designer preview. Spectral is a tool name.',
+  },
+});
+
+/** The animation is drawn at this size and scaled to whatever box it is given. */
+const ART_WIDTH = 420;
+const ART_HEIGHT = 236;
+const SCORE = 0.92;
 
 /**
- * A design canvas seen from a distance: window chrome, an activity rail, a dot
- * grid, and a flow of operation nodes. It sits behind the hand-off button in
- * `DesignWithAiPanel` to show what the API Designer extension opens into.
+ * The API Designer editor in motion: code lines write themselves in, a scan
+ * bar flags one line, then a governance panel ticks off its checks and counts
+ * up an AI-readiness score. It sits beside the hand-off to the API Designer
+ * extension to show what that opens into.
  *
- * Drawn through Oxygen's `ColorSchemeSVG` so every fill and stroke resolves to
- * a theme colour rather than a hex literal — the console has a light/dark
- * toggle, and a fixed-colour illustration would go muddy in dark mode.
+ * The artwork is laid out at a fixed 420x236 and scaled to fit its container,
+ * so its type and spacing keep their proportions at any width. Colours come
+ * from the theme through `--apid-*` custom properties rather than literals, so
+ * it follows the light/dark toggle.
  *
- * Purely decorative: the panel's heading and body carry the meaning, so it is
- * hidden from assistive technology.
+ * Purely decorative: the surrounding copy carries the meaning, so it is hidden
+ * from assistive technology. Its motion stops for anyone who prefers less.
  */
 export function ApiDesignerCanvasIllustration() {
+  const { ref: frameRef, scale } = useScaleToWidth(ART_WIDTH);
+
   return (
-    <ColorSchemeSVG
+    <Box
       aria-hidden
-      height="auto"
-      sx={{ display: 'block', width: '100%' }}
-      viewBox="0 0 320 180"
+      ref={frameRef}
+      className="apid-frame"
+      sx={(theme) => {
+        const palette = theme.vars?.palette ?? theme.palette;
+        const mix = (colour: string, share: number, base = 'transparent') =>
+          `color-mix(in srgb, ${colour} ${share}%, ${base})`;
+        return {
+          // Theme variables and the tinted light-mode card, shared with the
+          // other empty-state animations.
+          ...illustrationCardSx('apid', theme),
+          '--apid-accent-glow': mix(palette.primary.main, 15),
+          '--apid-accent-line': mix(palette.primary.main, 53),
+          '--apid-accent-soft': mix(palette.primary.main, 20),
+          '--apid-accent-strong': palette.primary.light,
+          '--apid-amber': palette.warning.main,
+          '--apid-chrome': mix(palette.text.primary, 4, palette.background.paper),
+          '--apid-dim': mix(palette.text.primary, 18, palette.background.paper),
+          '--apid-dot': mix(palette.text.primary, 10),
+          '--apid-faint': palette.text.disabled,
+          '--apid-on-accent': palette.primary.contrastText,
+          '--apid-panel': mix(palette.text.primary, 6, palette.background.paper),
+          '--apid-shadow': mix('black', 35),
+          ...theme.applyStyles('dark', {
+            backgroundColor: palette.background.paper,
+            border: '1px solid',
+            borderColor: palette.divider,
+          }),
+          aspectRatio: `${ART_WIDTH} / ${ART_HEIGHT}`,
+          borderRadius: 0.5,
+          maxWidth: ART_WIDTH,
+          overflow: 'hidden',
+          position: 'relative',
+          width: '100%',
+        };
+      }}
     >
-      {/* Editor window: chrome bar over the canvas body. The second rect
-          squares off the chrome's lower corners, which the rounded one keeps. */}
-      <rect fill="surface" height={180} rx={8} width={320} />
-      <rect fill="muted" height={20} rx={8} width={320} />
-      <rect fill="muted" height={12} width={320} y={8} />
-      <g fill="border">
-        <circle cx={14} cy={10} r={3} />
-        <circle cx={26} cy={10} r={3} />
-        <circle cx={38} cy={10} r={3} />
-      </g>
-
-      {/* Activity rail down the left edge, one item active. */}
-      <rect fill="muted" height={160} width={24} x={0} y={20} />
-      <rect fill="border" height={10} rx={2} width={10} x={7} y={32} />
-      <rect fill="primary" height={10} rx={2} width={10} x={7} y={48} />
-      <rect fill="border" height={10} rx={2} width={10} x={7} y={64} />
-
-      <g fill="border">
-        {Array.from({ length: GRID_ROWS }, (_, row) =>
-          Array.from({ length: GRID_COLUMNS }, (_, column) => (
-            <circle cx={40 + column * 22} cy={36 + row * 20} key={`${row}-${column}`} r={1} />
-          )),
-        )}
-      </g>
-
-      {/* The flow itself: a start pill, an operation card with a branch off it,
-          a decision diamond, and a placeholder waiting to be filled in. */}
-      <g fill="none" stroke="border" strokeWidth={1.5}>
-        <path d="M170 52v16M170 104v14M170 140v12" />
-        <rect height={22} rx={11} width={54} x={143} y={30} />
-        <rect fill="background" height={36} rx={6} width={110} x={115} y={68} />
-        <path d="M225 86h7" />
-        <circle cx={244} cy={86} r={12} />
-        <rect
-          fill="background"
-          height={22}
-          rx={4}
-          transform="rotate(45 170 129)"
-          width={22}
-          x={159}
-          y={118}
-        />
-        <rect height={22} rx={6} strokeDasharray="4 3" width={110} x={115} y={152} />
-      </g>
-
-      {/* Contents of the operation card, and the two accents that give the
-          canvas a focal point. */}
-      <g fill="border">
-        <rect height={8} rx={2} width={8} x={125} y={82} />
-        <rect height={6} rx={3} width={48} x={139} y={83} />
-        <rect height={8} rx={2} width={8} x={205} y={82} />
-      </g>
-      <circle cx={244} cy={86} fill="primary" r={5} />
-      <path d="M166 163h8M170 159v8" stroke="primary" strokeLinecap="round" strokeWidth={1.5} />
-    </ColorSchemeSVG>
+      <Box
+        className="apid-anim"
+        sx={{
+          left: 0,
+          position: 'absolute',
+          top: 0,
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
+        }}
+      >
+        <div className="apid-top">
+          <i />
+          <i />
+          <i />
+        </div>
+        <div className="apid-body">
+          <div className="apid-side">
+            <i />
+            <i className="on" />
+            <i />
+          </div>
+          <div className="apid-code">
+            <div className="apid-line">
+              <b className="k" style={{ width: 44 }} />
+              <b className="m" style={{ width: 30 }} />
+            </div>
+            <div className="apid-line">
+              <b className="k" style={{ width: 30 }} />
+            </div>
+            <div className="apid-line">
+              <b style={{ width: 56 }} />
+              <b className="m" style={{ width: 40 }} />
+            </div>
+            <div className="apid-line flag">
+              <b style={{ width: 38 }} />
+              <b className="m" style={{ width: 64 }} />
+            </div>
+            <div className="apid-line">
+              <b className="k" style={{ width: 40 }} />
+            </div>
+            <div className="apid-line">
+              <b style={{ width: 48 }} />
+              <b className="m" style={{ width: 52 }} />
+            </div>
+            <div className="apid-line">
+              <b style={{ width: 34 }} />
+              <b className="m" style={{ width: 26 }} />
+            </div>
+            <div className="apid-scan" />
+            <div className="apid-panel">
+              <div className="apid-row">
+                <i />
+                <FormattedMessage {...messages.openApiValid} />
+              </div>
+              <div className="apid-row">
+                <i />
+                <FormattedMessage {...messages.spectralPassed} />
+              </div>
+              <div className="apid-score">
+                <div className="apid-ring" />
+                <span>
+                  <FormattedMessage {...messages.aiReadiness} />
+                  <strong>
+                    <FormattedNumber style="percent" value={SCORE} />
+                  </strong>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Box>
+    </Box>
   );
 }

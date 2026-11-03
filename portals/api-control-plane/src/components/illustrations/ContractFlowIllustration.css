@@ -1,0 +1,65 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+.apict-anim{position:relative;width:420px;height:200px}
+.apict-anim::before{content:"";position:absolute;left:50%;top:50%;width:320px;height:320px;margin:-160px;border-radius:50%;background:radial-gradient(circle,var(--apict-accent-glow) 0%,transparent 65%);pointer-events:none}
+
+/* Contract file */
+.apict-file{position:absolute;left:0;top:36px;width:120px;height:140px;border-radius:12px;background:var(--apict-surface);border:1px solid var(--apict-dim);box-shadow:0 12px 30px var(--apict-shadow);padding:16px 14px;display:flex;flex-direction:column;gap:9px;overflow:hidden;animation:apict-file 7s cubic-bezier(.3,.7,.3,1) infinite}
+.apict-file::after{content:"";position:absolute;right:-1px;top:-1px;width:22px;height:22px;background:linear-gradient(225deg,var(--apict-bg) 50%,var(--apict-dim) 50%);border-bottom-left-radius:6px}
+.apict-file-tag{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;color:var(--apict-accent-text);letter-spacing:.04em}
+.apict-file-tag i{width:14px;height:14px;border-radius:4px;background:var(--apict-accent)}
+.apict-file b{display:block;height:5px;border-radius:3px;background:var(--apict-faint)}
+.apict-file b.o{background:var(--apict-accent-strong)}
+.apict-file b.l{background:var(--apict-muted)}
+.apict-scan{position:absolute;left:0;right:0;top:0;height:28px;background:linear-gradient(180deg,transparent,var(--apict-scan-fade) 70%,var(--apict-accent-strong));border-bottom:1px solid var(--apict-accent-strong);opacity:0;animation:apict-scan 7s ease-in-out infinite}
+
+/* Connector */
+.apict-wire{position:absolute;left:120px;top:105px;width:70px;height:2px;background:repeating-linear-gradient(90deg,var(--apict-dim) 0 5px,transparent 5px 10px)}
+.apict-wire span{position:absolute;top:-2px;left:0;width:6px;height:6px;border-radius:50%;background:var(--apict-accent-strong);box-shadow:0 0 10px var(--apict-accent);opacity:0;animation:apict-dot 7s linear infinite}
+.apict-wire span:nth-child(2){animation-delay:.25s}
+.apict-wire span:nth-child(3){animation-delay:.5s}
+
+/* Branch */
+.apict-branch{position:absolute;left:190px;top:42px;width:30px;height:128px;border:2px solid var(--apict-accent);border-right:0;border-radius:8px 0 0 8px;transform-origin:left center;transform:scaleX(0);opacity:0;animation:apict-branch 7s ease-out infinite}
+
+/* Resources */
+.apict-res{position:absolute;left:220px;width:200px;height:38px;border-radius:10px;background:var(--apict-surface);border:1px solid var(--apict-dim);display:flex;align-items:center;gap:10px;padding:0 12px;font-size:12px;color:var(--apict-text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;opacity:0;transform:translateX(-14px);animation:apict-res 7s cubic-bezier(.3,.7,.3,1) infinite}
+.apict-res em{font-style:normal;font-family:Inter,system-ui,sans-serif;font-size:10px;font-weight:700;padding:3px 7px;border-radius:5px;background:var(--apict-method);color:var(--apict-on-method);min-width:38px;text-align:center}
+.apict-res-1{top:23px}
+.apict-res-2{top:87px;animation-delay:.18s}
+.apict-res-3{top:151px;animation-delay:.36s}
+
+/* Status chip */
+.apict-chip{position:absolute;left:50%;bottom:-34px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;height:26px;padding:0 12px;border-radius:13px;background:var(--apict-chip-bg);border:1px solid var(--apict-chip-border);font-size:12px;color:var(--apict-accent-text);white-space:nowrap;opacity:0;animation:apict-chip 7s ease-out infinite}
+.apict-chip i{width:12px;height:12px;border-radius:50%;background:var(--apict-accent);position:relative}
+.apict-chip i::after{content:"";position:absolute;left:4px;top:2px;width:3px;height:6px;border:solid var(--apict-on-accent);border-width:0 1.5px 1.5px 0;transform:rotate(45deg)}
+
+/* Timeline (7s loop): file drops in → scan → packets → branch → resources → chip → fade */
+@keyframes apict-file{0%{opacity:0;transform:translateY(-40px) rotate(-6deg)}10%{opacity:1;transform:translateY(4px) rotate(0)}14%{transform:none}90%{opacity:1;transform:none}100%{opacity:0;transform:none}}
+@keyframes apict-scan{0%,14%{opacity:0;top:-28px}16%{opacity:1}36%{opacity:1;top:140px}38%,100%{opacity:0;top:140px}}
+@keyframes apict-dot{0%,38%{opacity:0;transform:translateX(0)}40%{opacity:1}50%{opacity:1;transform:translateX(64px)}51%,100%{opacity:0;transform:translateX(64px)}}
+@keyframes apict-branch{0%,48%{opacity:0;transform:scaleX(0)}54%,90%{opacity:1;transform:scaleX(1)}100%{opacity:0;transform:scaleX(1)}}
+@keyframes apict-res{0%,54%{opacity:0;transform:translateX(-14px)}62%,90%{opacity:1;transform:none}100%{opacity:0;transform:none}}
+@keyframes apict-chip{0%,68%{opacity:0;transform:translate(-50%,6px)}74%,90%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,0)}}
+
+@media (prefers-reduced-motion:reduce){
+  .apict-anim *{animation:none!important;opacity:1!important;transform:none!important}
+  .apict-scan,.apict-wire span{display:none}
+  .apict-chip{transform:translateX(-50%)!important}
+}

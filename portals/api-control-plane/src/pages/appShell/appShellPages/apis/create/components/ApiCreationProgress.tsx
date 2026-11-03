@@ -43,7 +43,8 @@ const messages = defineMessages({
   },
   failedTitle: {
     id: 'api.create.ApiCreationProgress.failed.title',
-    defaultMessage: 'We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}',
+    defaultMessage:
+      'We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}',
   },
   percent: {
     id: 'api.create.ApiCreationProgress.progress.value',
@@ -61,20 +62,12 @@ const messages = defineMessages({
   },
   stageDone: {
     id: 'api.create.ApiCreationProgress.stage.done',
-    defaultMessage: '{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…',
-  },
-  stepConfiguring: {
-    id: 'api.create.ApiCreationProgress.step.configuring',
     defaultMessage:
-      '{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}',
-  },
-  stepConnecting: {
-    id: 'api.create.ApiCreationProgress.step.connecting',
-    defaultMessage: 'Connecting to backend',
+      '{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…',
   },
   stepDeploying: {
     id: 'api.create.ApiCreationProgress.step.deploying',
-    defaultMessage: '{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}',
+    defaultMessage: 'Creating {kind, select, graphql {GraphQL API} other {API Proxy}}',
   },
   stepStateActive: {
     id: 'api.create.ApiCreationProgress.step.state.active',
@@ -97,11 +90,13 @@ const messages = defineMessages({
   },
   title: {
     id: 'api.create.ApiCreationProgress.title',
-    defaultMessage: 'We are in the process of creating your {kind, select, graphql {GraphQL API} other {API Proxy}}',
+    defaultMessage:
+      'We are in the process of creating your {kind, select, graphql {GraphQL API} other {API Proxy}}',
   },
   titleWithName: {
     id: 'api.create.ApiCreationProgress.titleWithName',
-    defaultMessage: 'We are in the process of creating your {name} {kind, select, graphql {GraphQL API} other {API Proxy}}',
+    defaultMessage:
+      'We are in the process of creating your {name} {kind, select, graphql {GraphQL API} other {API Proxy}}',
     description: '{name} is the display name the user gave the API. Never translated.',
   },
 });
@@ -131,7 +126,7 @@ export type ApiCreationProgressProps = {
  * How the percentage behaves.
  *
  * Creation is a single request, so only the last step reflects real work. The
- * first three steps are paced by the clock — short, so a quick create is not
+ * first step is paced by the clock — short, so a quick create is not
  * held back — and fill the bar to `TIMED_SHARE`. The last step then waits on
  * the server: the bar eases toward a ceiling it never reaches on its own and
  * snaps to 100 only when the server actually answers, so the number never
@@ -139,7 +134,7 @@ export type ApiCreationProgressProps = {
  */
 const TICK_MS = 100;
 const STEP_MS = 450;
-const STEP_COUNT = 4;
+const STEP_COUNT = 2;
 const TIMED_STEPS = STEP_COUNT - 1;
 const TIMED_MS = STEP_MS * TIMED_STEPS;
 const TIMED_SHARE = (100 / STEP_COUNT) * TIMED_STEPS;
@@ -148,12 +143,7 @@ const PENDING_EASING = 0.05;
 /** Long enough for "100%" to register before the page changes under the user. */
 const COMPLETION_HOLD_MS = 800;
 
-const STEPS = [
-  messages.stepValidating,
-  messages.stepConfiguring,
-  messages.stepConnecting,
-  messages.stepDeploying,
-] as const;
+const STEPS = [messages.stepValidating, messages.stepDeploying] as const;
 
 /** The step in progress at a given percentage; the last one once the timed steps are through. */
 const activeStepFor = (percent: number) =>
@@ -493,12 +483,20 @@ export const ApiCreationProgress = ({
                 <FormattedMessage {...STEPS[activeStep]} values={{ kind: apiKind }} />
               )}
             </Typography>
-            <Typography color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }} variant="body2">
+            <Typography
+              color="text.secondary"
+              sx={{ fontVariantNumeric: 'tabular-nums' }}
+              variant="body2"
+            >
               <FormattedMessage {...messages.percent} values={{ value: rounded }} />
             </Typography>
           </Stack>
 
-          <Stack component="ul" spacing={1.25} sx={{ listStyle: 'none', m: 0, p: 0, textAlign: 'left' }}>
+          <Stack
+            component="ul"
+            spacing={1.25}
+            sx={{ listStyle: 'none', m: 0, p: 0, textAlign: 'left' }}
+          >
             {STEPS.map((step, index) => {
               const done = complete || index < activeStep;
               const active = !complete && index === activeStep;
@@ -540,7 +538,11 @@ export const ApiCreationProgress = ({
                   </Typography>
                   <Box component="span" sx={visuallyHidden}>
                     <FormattedMessage
-                      {...(done ? messages.stepStateDone : active ? messages.stepStateActive : messages.stepStatePending)}
+                      {...(done
+                        ? messages.stepStateDone
+                        : active
+                          ? messages.stepStateActive
+                          : messages.stepStatePending)}
                     />
                   </Box>
                 </Stack>

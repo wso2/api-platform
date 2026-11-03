@@ -20,6 +20,7 @@ import { alpha, Box, Stack, Typography, type Theme } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
+import { SecondaryText } from '@/components/common/SecondaryText';
 import { methodPalette } from '@/components/SwaggerOperationsView';
 import { hairline } from '@/theme/receipes';
 
@@ -82,6 +83,8 @@ const BADGE_HEIGHT = 30;
  * piece of content.
  */
 const barSx = (width: string) => (theme: Theme) => ({
+  '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+  animation: 'apicpPlaceholderBar 2.4s ease-in-out infinite',
   bgcolor: alpha(theme.palette.text.primary, 0.18),
   borderRadius: 999,
   flexShrink: 0,
@@ -151,8 +154,24 @@ export const ResourcePreviewPlaceholder = ({
           zIndex: 1,
         }}
       >
-        <Stack aria-hidden spacing={1} sx={{ mb: { sm: 4, xs: 3 }, width: '100%' }}>
-          {rows.map((row) => (
+        <Stack
+          aria-hidden
+          spacing={1}
+          sx={{
+            '@keyframes apicpPlaceholderBar': {
+              '0%, 100%': { opacity: 0.55 },
+              '50%': { opacity: 1 },
+            },
+            '@keyframes apicpPlaceholderRow': {
+              '0%, 4%': { opacity: 0, transform: 'translateY(8px)' },
+              '12%, 86%': { opacity: 'var(--row-opacity, 1)', transform: 'none' },
+              '94%, 100%': { opacity: 0, transform: 'none' },
+            },
+            mb: { sm: 4, xs: 3 },
+            width: '100%',
+          }}
+        >
+          {rows.map((row, index) => (
             <Stack
               direction="row"
               key={row.label}
@@ -170,8 +189,17 @@ export const ResourcePreviewPlaceholder = ({
                   minHeight: { sm: 40, xs: 38 },
                   px: 1.35,
                   py: 0.9,
+                  // The rows write themselves in one after another, hold, then
+                  // clear and start over; the tail of the list stays faint.
+                  '--row-opacity': row.ghost ? 0.35 : 1,
+                  '@media (prefers-reduced-motion: reduce)': {
+                    animation: 'none',
+                    opacity: 'var(--row-opacity, 1)',
+                  },
+                  animation: 'apicpPlaceholderRow 6s ease-out infinite',
+                  animationDelay: `${index * 0.25}s`,
                   // The tail of the list, trailing off rather than ending.
-                  ...(row.ghost && { opacity: 0.35, width: '86%' }),
+                  ...(row.ghost && { width: '86%' }),
                 };
               }}
             >
@@ -223,9 +251,7 @@ export const ResourcePreviewPlaceholder = ({
           <Typography sx={{ fontWeight: 700 }} variant="body1">
             {title ?? intl.formatMessage(messages.title)}
           </Typography>
-          <Typography color="text.secondary" variant="body2">
-            {description ?? intl.formatMessage(messages.description)}
-          </Typography>
+          <SecondaryText>{description ?? intl.formatMessage(messages.description)}</SecondaryText>
         </Stack>
       </Stack>
     </Box>
