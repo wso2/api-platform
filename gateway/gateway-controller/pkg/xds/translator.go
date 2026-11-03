@@ -676,6 +676,7 @@ func (t *Translator) createWeightedCluster(
 		if ep.Weight != nil && *ep.Weight > 0 {
 			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
 		}
+		lb.GetEndpoint().Hostname = endpointAuthority(ep.Host, uint32(ep.Port), tlsEnabled)
 
 		// Each endpoint in a weighted upstream can have a different hostname (round-robin/
 		// failover across distinct backends), so peer.service metadata is stamped per-endpoint
@@ -3047,6 +3048,23 @@ func (t *Translator) parseCipherSuites(ciphers string) []string {
 	return ciphersList
 }
 
+// endpointAuthority is the host name auto host rewrite writes into the Host header
+// of a request to an upstream endpoint: host:port when the port is not the scheme's
+// default, or "" when it is, which leaves Envoy's own default, the bare address, in
+// place. That default drops a non-default port, so the upstream would get a Host no
+// direct client sends it (RFC 9110 §7.2), and a request signed for the upstream URL
+// (aws-authentication's SigV4) would fail verification there.
+func endpointAuthority(host string, port uint32, tlsEnabled bool) string {
+	defaultPort := constants.HTTPDefaultPort
+	if tlsEnabled {
+		defaultPort = constants.HTTPSDefaultPort
+	}
+	if host == "" || port == defaultPort {
+		return ""
+	}
+	return net.JoinHostPort(host, strconv.FormatUint(uint64(port), 10))
+}
+
 // processEndpoint creates locality load endpoints for the given upstream URL and returns both
 // endpoints and transport socket match if TLS is enabled. tlsOpts/validationSecretName carry a
 // cluster's mTLS wiring; pass nil/"" for a cluster that does not honour tls blocks.
@@ -3086,6 +3104,8 @@ func (t *Translator) processEndpoint(
 			},
 		}},
 	}
+	localityLbEndpoints.LbEndpoints[0].GetEndpoint().Hostname =
+		endpointAuthority(upstreamURL.Hostname(), port, upstreamURL.Scheme == constants.SchemeHTTPS)
 
 	setEndpointPeerHostname(localityLbEndpoints.LbEndpoints[0], upstreamURL.Hostname())
 
