@@ -38,6 +38,8 @@ export type ProjectFixture = Schema<'Project'>;
 export type OrganizationFixture = Schema<'Organization'>;
 export type GatewayFixture = Schema<'GatewayResponse'>;
 export type DeploymentFixture = Schema<'DeploymentResponse'>;
+export type GraphQLApiFixture = Schema<'GraphQLAPI'>;
+export type GraphQLApiDetailFixture = Schema<'GraphQLAPIDetail'>;
 
 export const aRestApi = (
   overrides: Partial<RestApiFixture> = {}
@@ -50,6 +52,34 @@ export const aRestApi = (
   kind: 'REST',
   lifeCycleStatus: 'PUBLISHED',
   upstream: { main: { url: 'https://upstream.test' } },
+  ...overrides,
+});
+
+export const aGraphQLApi = (
+  overrides: Partial<GraphQLApiFixture> = {}
+): GraphQLApiFixture => ({
+  id: 'countries-graphql-api',
+  displayName: 'Countries GraphQL API',
+  context: '/countries-graphql-api/v1.0.0',
+  version: '1.0.0',
+  projectId: 'retail',
+  kind: 'GraphQLApi',
+  schemaSource: 'introspection',
+  upstream: { main: { url: 'https://upstream.test/graphql' } },
+  ...overrides,
+});
+
+/** The GET-by-id shape, distinct from `GraphQLAPI`: no `schemaSource`/`sdl`. */
+export const aGraphQLApiDetail = (
+  overrides: Partial<GraphQLApiDetailFixture> = {}
+): GraphQLApiDetailFixture => ({
+  id: 'countries-graphql-api',
+  displayName: 'Countries GraphQL API',
+  context: '/countries-graphql-api/v1.0.0',
+  version: '1.0.0',
+  projectId: 'retail',
+  kind: 'GraphQLApi',
+  upstream: { main: { url: 'https://upstream.test/graphql' } },
   ...overrides,
 });
 
@@ -132,6 +162,17 @@ export const aPublicationSummary = (
   ...overrides,
 });
 
+export type PublicationSelectionFixture = Schema<'PublicationSelection'>;
+
+/** Selected plans or documents that still exist and are unchanged; a bare id is named after itself. */
+export const publicationSelections = (
+  ...items: (string | Pick<PublicationSelectionFixture, 'displayName' | 'id'>)[]
+): PublicationSelectionFixture[] =>
+  items.map((item) => {
+    const { displayName, id } = typeof item === 'string' ? { displayName: item, id: item } : item;
+    return { displayName, id, sourceStatus: 'UNCHANGED' };
+  });
+
 export type PublicationDraftDetailsFixture = Schema<'PublicationDraftDetails'>;
 
 export const aPublicationDraftDetails = (
@@ -162,6 +203,8 @@ export type ApplicationFixture = Schema<'Application'>;
 export type SubscriptionFixture = Schema<'Subscription'>;
 export type SubscriptionPlanFixture = Schema<'SubscriptionPlan'>;
 export type SecretFixture = Schema<'SecretSummary'>;
+export type MeterFixture = Schema<'Meter'>;
+export type PlanPricingFixture = Schema<'SubscriptionPlanPricing'>;
 export type CustomPolicyFixture = Schema<'CustomPolicyResponse'>;
 
 export const anApplication = (
@@ -195,6 +238,38 @@ export const aSubscriptionPlan = (
   ...overrides,
 });
 
+export const aMeter = (overrides: Partial<MeterFixture> = {}): MeterFixture => ({
+  id: 'successful-calls',
+  displayName: 'Successful calls',
+  type: 'REQUEST_COUNT',
+  typeKey: null,
+  filterFields: [
+    { field: 'Status code', eventKey: 'response.status' },
+    { field: 'HTTP method', eventKey: 'request.verb' },
+    { field: 'Resource', eventKey: 'request.route' },
+  ],
+  ...overrides,
+});
+
+export const aPlanPricing = (overrides: Partial<PlanPricingFixture> = {}): PlanPricingFixture => ({
+  subscriptionPlanId: 'gold',
+  pricingType: 'USAGE_BASED',
+  currency: 'USD',
+  billingPeriod: 'MONTH',
+  flatAmount: null,
+  prices: [
+    {
+      meterId: 'successful-calls',
+      filters: [{ field: 'Status code', operator: 'IN', values: ['200'] }],
+      pricingModel: 'PER_UNIT',
+      unitAmount: '0.01',
+      unitQuantity: 1,
+      tiers: null,
+    },
+  ],
+  ...overrides,
+});
+
 export const aSecret = (
   overrides: Partial<SecretFixture> = {}
 ): SecretFixture => ({
@@ -202,6 +277,25 @@ export const aSecret = (
   displayName: 'Signing Key',
   type: 'GENERIC',
   status: 'ACTIVE',
+  ...overrides,
+});
+
+export type UserApiKeyFixture = Schema<'UserAPIKeyItem'>;
+
+/** One row of the caller-scoped `/me/api-keys` listing, spanning every artifact kind. */
+export const aUserApiKey = (
+  overrides: Partial<UserApiKeyFixture> = {}
+): UserApiKeyFixture => ({
+  id: 'key-1',
+  displayName: 'Production Key',
+  maskedApiKey: '••••••••1234',
+  status: 'active',
+  createdAt: '2026-01-01T00:00:00Z',
+  createdBy: 'jane.doe',
+  updatedAt: '2026-01-01T00:00:00Z',
+  allowedTargets: 'ALL',
+  artifactId: 'pizza-shack',
+  artifactType: 'RestApi',
   ...overrides,
 });
 

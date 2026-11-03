@@ -40,7 +40,7 @@ import { HelpCircle, PenLine, Upload } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
@@ -52,6 +52,7 @@ import {
 import NoData from '../../../../assets/images/NoData.svg';
 import { ExpandableResourceRow } from '../../../../Components/ResourceView';
 import { FormattedMessage } from 'react-intl';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 type ResourceItem = {
   method: string;
@@ -182,7 +183,10 @@ function buildOperationSpec(
 export default function ServiceProviderResourcesTab() {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
-  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  // Folded in with this artifact's own read-only flag: a read-only organization
+  // may not write at all, so every control these gate is disabled for that
+  // reason too, and no call site has to ask about both.
+  const isReadOnlyProvider = useOrgReadOnly() || Boolean(provider?.readOnly);
   const [resourceMode, setResourceMode] = useState<'allow' | 'deny'>('allow');
   const [pendingResourceMode, setPendingResourceMode] = useState<
     'allow' | 'deny' | null
@@ -201,7 +205,7 @@ export default function ServiceProviderResourcesTab() {
     []
   );
   const [openapiText, setOpenapiText] = useState('');
-  const { hasPermission } = useAppAuth();
+  const { hasPermission } = useAppAuthScopes();
   const { currentProject, currentOrganization } = useAppShell();
   const isProjectLevel = Boolean(currentProject?.id);
   const isAdminOrgLevel = hasPermission(SCOPES.LLM_PROVIDER_MANAGE) && !isProjectLevel;

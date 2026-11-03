@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 
 import { routes } from '../routes/paths';
 import { makeConsoleScope } from '../test/mockScope';
-import { navigationRegistry } from './navigationRegistry';
+import { findTargetAtScope, navigationRegistry } from './navigationRegistry';
 import { anOrganization, aProject } from '@/test/msw/fixtures';
 
 const definitionFor = (id: string) => {
@@ -59,6 +59,16 @@ const atApi = () =>
       projectHandler: aProject().id,
     },
   });
+const GRAPHQL_API = `${PROJECT}/graphql-apis/graphql-api-1`;
+const atGraphqlApi = () =>
+  makeConsoleScope({
+    isGraphQLApiScope: true,
+    params: {
+      graphqlApiHandler: 'graphql-api-1',
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
+    },
+  });
 
 /*
  * The sidebar has one item per *concern*, not per scope: Overview is the summary
@@ -80,12 +90,21 @@ describe('Overview adapts to the deepest scope', () => {
     expect(definitionFor('overview').to(atApi())).toBe(API);
   });
 
+  // A GraphQL API sets `params.graphqlApiHandler`, never `params.apiHandler`
+  // (see `graphqlApiPath`'s doc comment), so the 'api' tier needs its own
+  // `graphqlTo` to resolve — without it, Overview fell through to the
+  // project tier and landed on the project's own overview instead.
+  it('links to the GraphQL API overview once one is open, not the project overview', () => {
+    expect(definitionFor('overview').to(atGraphqlApi())).toBe(GRAPHQL_API);
+  });
+
   // Opening a project or an API navigates into a deeper tier of this same item,
   // so Overview has to stay lit rather than handing off to another item.
   it.each([
     ['organization home', `${ORG}/home`],
     ['project home', `${PROJECT}/home`],
     ['api overview', API],
+    ['graphql api overview', GRAPHQL_API],
   ])('stays active on the %s page', (_name, pathname) => {
     expect(matcherFor('overview')(pathname)).toBe(true);
   });
@@ -162,6 +181,28 @@ describe('API-level items', () => {
   it('leaves an API handled like a page suffix reachable', () => {
     expect(matcherFor('overview')(`${PROJECT}/apis/deploy`)).toBe(true);
     expect(matcherFor('deploy')(`${PROJECT}/apis/deploy`)).toBe(false);
+  });
+
+  // Pins the fix for a real bug: Deploy had no `graphqlTo` at all, so opening
+  // it from a GraphQL API resolved through the REST-only `apiLevelTo`, which
+  // ignores `graphqlApiHandler` and falls back to REST's scope-less alias —
+  // a page for a completely different (and unrelated) API, not this one.
+  it('links to the GraphQL API deploy page, not REST’s scope-less alias', () => {
+    expect(definitionFor('deploy').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/deploy`);
+    expect(matcherFor('deploy')(`${GRAPHQL_API}/deploy`)).toBe(true);
+  });
+});
+
+// Pins the fix for a real gap: Publish had no `graphqlTo` on its 'api' tier,
+// so a GraphQL API fell through to the project-level Portals page instead of
+// its own — inconsistent with every other API-level item once one exists.
+describe('Publish resolves to the GraphQL API-level page', () => {
+  it('links to GraphqlPublishPage once a GraphQL API is open, not the project Portals page', () => {
+    expect(definitionFor('publish').to(atGraphqlApi())).toBe(`${GRAPHQL_API}/publish`);
+  });
+
+  it('stays active on the GraphQL publish page', () => {
+    expect(matcherFor('publish')(`${GRAPHQL_API}/publish`)).toBe(true);
   });
 });
 
@@ -283,25 +324,92 @@ describe('organization-level items', () => {
   });
 
   /*
-   * Settings needs no scope of its own, so it never gates — but it does follow you
-   * down one level: the organization's settings while browsing the org, that
-   * project's once you are inside one. One pinned link at a time, never both,
-   * which is what `AppRoutes.orgSettings.test.tsx` exercises end to end.
+   * Manage replaced the Settings link: both of its pages are organization-scoped,
+   * so it points at the organization's tabs at every scope and never gates.
    */
-  it('follows the scope down to the project, and no further', () => {
-    const { to } = definitionFor('settings');
-    expect(to(atOrg())).toBe(`${ORG}/settings`);
-    expect(to(atProject())).toBe(`${PROJECT}/settings`);
-    // No API tier: an API has no settings page of its own, so inside one the item
-    // stays on the project's.
-    expect(to(atApi())).toBe(`${PROJECT}/settings`);
+  it('points at the organization-level pages at every scope', () => {
+    const { to, children } = definitionFor('manage');
+    expect(to(atOrg())).toBe(`${ORG}/subscription-plans`);
+    expect(to(atProject())).toBe(`${ORG}/subscription-plans`);
+    expect(children?.map((child) => child.id)).toEqual([
+      'manage-subscription-plans',
+      'manage-meters',
+    ]);
+    expect(children?.[1].to(atApi())).toBe(`${ORG}/meters`);
   });
 
-  it('lights Settings up at either of its entry points', () => {
-    const match = matcherFor('settings');
-    expect(match(`${ORG}/settings`)).toBe(true);
-    expect(match(`${PROJECT}/settings`)).toBe(true);
-    expect(match(`${API}/settings`)).toBe(false);
+  it('lights the page entry, not the Manage parent, on either page', () => {
+    const manage = definitionFor('manage');
+    expect(manage.match?.(`${ORG}/subscription-plans`)).toBe(false);
+    const [plans, meters] = manage.children ?? [];
+    expect(plans.match?.(`${ORG}/subscription-plans`)).toBe(true);
+    expect(plans.match?.(`${ORG}/meters`)).toBe(false);
+    expect(meters.match?.(`${ORG}/meters`)).toBe(true);
+    expect(meters.match?.(`${ORG}/settings`)).toBe(false);
+  });
+});
+
+/*
+ * The header's org/project/API switchers used to always send the user to the
+ * target scope's Home page, regardless of what page they were on — picking a
+ * project while on the organization's Settings tab landed on the project's
+ * Overview instead of carrying Settings down with it, and clearing the
+ * project back out landed on the organization's Overview rather than back on
+ * its own Settings. `findTargetAtScope` re-resolves whatever page the user is
+ * actually on at the target scope, in either direction.
+ */
+describe('findTargetAtScope', () => {
+  it('keeps the user on a Manage tab when dropping a project to its organization', () => {
+    const target = findTargetAtScope(`${ORG}/meters`, atProject(), {
+      orgHandle: anOrganization().id,
+    });
+    expect(target).toBe(`${ORG}/meters`);
+  });
+
+  it('keeps the user on an API-only page when dropping its API, via the scope-less alias', () => {
+    const target = findTargetAtScope(`${API}/deploy`, atApi(), {
+      orgHandle: anOrganization().id,
+      projectHandler: aProject().id,
+    });
+    expect(target).toBe(`${PROJECT}/select-scope/deploy`);
+  });
+
+  it('returns undefined for a URL no registry item claims, so callers can fall back to Home', () => {
+    expect(
+      findTargetAtScope('/not-a-real-page', atOrg(), { orgHandle: anOrganization().id }),
+    ).toBeUndefined();
+  });
+});
+
+describe('Manage menu', () => {
+  it('keeps Meters out of the sidebar while its page stays routable', () => {
+    const meters = definitionFor('manage').children?.find((child) => child.id === 'manage-meters');
+    expect(meters?.isVisible?.(atOrg())).toBe(false);
+    expect(meters?.to(atOrg())).toBe(`${ORG}/meters`);
+  });
+
+  it('shows Subscription Plans', () => {
+    const plans = definitionFor('manage').children?.find(
+      (child) => child.id === 'manage-subscription-plans',
+    );
+    expect(plans?.isVisible?.(atOrg()) ?? true).toBe(true);
+  });
+
+  it('sits in the same section as Insights and Observability, after them', () => {
+    const [insights, observability, manage] = ['insights', 'observability', 'manage'].map(
+      definitionFor,
+    );
+    expect(insights.group).toBe(manage.group);
+    expect(observability.group).toBe(manage.group);
+    expect(insights.order).toBeLessThan(observability.order);
+    expect(observability.order).toBeLessThan(manage.order);
+  });
+
+  it('keeps Insights and Observability out of the Develop to Publish section', () => {
+    const develop = definitionFor('develop');
+    expect(definitionFor('insights').group).not.toBe(develop.group);
+    expect(definitionFor('observability').group).not.toBe(develop.group);
+    expect(definitionFor('publish').group).toBe(develop.group);
   });
 });
 
@@ -310,7 +418,7 @@ describe('sidebar structure', () => {
     // Clusters separate; they are never rendered as text (see
     // NavigationDefinition.group), so they are keys, not labels.
     expect(new Set(navigationRegistry.map((item) => item.group))).toEqual(
-      new Set(['place', 'api', 'global']),
+      new Set(['place', 'api', 'operate']),
     );
   });
 
@@ -320,7 +428,7 @@ describe('sidebar structure', () => {
       .map((item) => item.group)
       .filter((group, index, all) => group !== all[index - 1]);
 
-    expect(clusterRun).toEqual(['place', 'api', 'global']);
+    expect(clusterRun).toEqual(['place', 'api', 'operate']);
   });
 
   it('leaves `level` to extensions, which need it for path building', () => {

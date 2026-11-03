@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -373,6 +374,36 @@ func (c *Client) IsReleaseDeployed(namespace, releaseName string) (bool, error) 
 	return rel.Info.Status == release.StatusDeployed, nil
 }
 
+// ReleaseChartName returns the name of the chart a release was installed from,
+// or "" when no such release exists.
+//
+// It exists so a caller about to uninstall a release it did not install in this
+// reconcile can first establish the release is one of ours at all. It answers
+// which chart, not which gateway — every gateway release shares one chart — so it
+// rules out an unrelated release that happens to carry the same name, and nothing
+// more.
+func (c *Client) ReleaseChartName(namespace, releaseName string) (string, error) {
+	actionConfig, err := c.newActionConfig(namespace)
+	if err != nil {
+		return "", fmt.Errorf("helm action config: %w", err)
+	}
+	rel, err := action.NewGet(actionConfig).Run(releaseName)
+	if err != nil {
+		if errors.Is(err, driver.ErrReleaseNotFound) || errors.Is(err, driver.ErrNoDeployedReleases) {
+			return "", nil
+		}
+		return "", fmt.Errorf("helm get release %q in namespace %q: %w", releaseName, namespace, err)
+	}
+	if rel == nil || rel.Chart == nil || rel.Chart.Metadata == nil {
+		return "", nil
+	}
+	return rel.Chart.Metadata.Name, nil
+}
+
+// ChartName is the gateway chart's own name, as recorded on any release installed
+// from it.
+func ChartName() string { return helmChartName }
+
 // newActionConfig creates a new Helm action configuration
 func (c *Client) newActionConfig(namespace string) (*action.Configuration, error) {
 	actionConfig := new(action.Configuration)
@@ -393,17 +424,64 @@ func (c *Client) newActionConfig(namespace string) (*action.Configuration, error
 }
 
 const (
-	helmReleaseNameSuffix   = "-gw"
-	maxHelmReleaseNameLen   = 53
+	helmReleaseNameSuffix = "-gw"
+	// maxDNS1123Label is the Kubernetes limit on a Service name.
+	maxDNS1123Label = 63
+	// helmChartName is the gateway chart's own name. Its fullname helper appends
+	// this to the release name unless the release name already contains it.
+	helmChartName = "gateway"
+	// runtimeServiceSuffix is the longest suffix the chart adds to that fullname
+	// to name a Service.
+	runtimeServiceSuffix    = "-gateway-runtime"
 	helmReleaseHashPrefix   = "gw-"
 	helmReleaseHashHexChars = 8
+	// maxHelmReleaseNameLen is Helm's own limit on a release name, and so the
+	// longest a legacy release name can be. It is not a budget for the names the
+	// chart derives — see maxReleaseNameLen for that.
+	maxHelmReleaseNameLen = 53
 )
 
-// GetReleaseName generates a stable Helm release name from a gateway name.
-// Helm release names must be DNS-1123 labels and at most 53 characters.
+// maxReleaseNameLen is how long a release name may be before the Services the
+// chart derives from it overflow a DNS-1123 label.
+//
+// The chart names a Service "<fullname><suffix>", and fullname is the release
+// name plus "-gateway" — except when the release name already contains
+// "gateway", where the chart uses the release name unchanged. So the budget
+// depends on the name itself: 47 when it carries the chart name already, 39
+// when the chart has to add it. Assuming the larger budget for every name is
+// what produced 71-character Service names for a hashed release.
+func maxReleaseNameLen(releaseName string) int {
+	budget := maxDNS1123Label - len(runtimeServiceSuffix)
+	if !strings.Contains(releaseName, helmChartName) {
+		budget -= len("-") + len(helmChartName)
+	}
+	return budget
+}
+
+// LegacyReleaseName returns the release a gateway was deployed under before the
+// bound above tightened, or "" when it cannot have one.
+//
+// Only the readable name ever moved. The hashed fallback is a digest of the
+// gateway name alone, so it is identical under every bound this operator has
+// used, and a gateway already on it stays on it. A gateway is therefore carrying
+// a legacy release exactly when its readable name is no longer the one chosen and
+// that readable name was short enough for Helm to have accepted it at the time.
+func LegacyReleaseName(gatewayName string) string {
+	readable := gatewayName + helmReleaseNameSuffix
+	if GetReleaseName(gatewayName) == readable {
+		return ""
+	}
+	if len(readable) > maxHelmReleaseNameLen {
+		return ""
+	}
+	return readable
+}
+
+// GetReleaseName generates a stable Helm release name from a gateway name,
+// short enough that the names the chart derives from it stay within 63.
 func GetReleaseName(gatewayName string) string {
 	candidate := gatewayName + helmReleaseNameSuffix
-	if len(candidate) <= maxHelmReleaseNameLen {
+	if len(candidate) <= maxReleaseNameLen(candidate) {
 		return candidate
 	}
 	sum := sha256.Sum256([]byte(gatewayName))

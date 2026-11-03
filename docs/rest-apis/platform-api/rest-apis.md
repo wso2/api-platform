@@ -20,7 +20,8 @@ curl -X GET https://localhost:9243/api/v0.9/rest-apis?projectId=default-project 
 
 Retrieves all REST APIs belonging to an organization.
 Requires the projectId query parameter to filter APIs by project.
-Provide name and version together to check uniqueness (empty result = name/version combination is available).
+To discover the versions of an API, or to check whether a version is available, use
+GET /rest-apis/versions instead.
 Access is validated against the organization in the JWT token.
 
 ### Authentication
@@ -539,6 +540,153 @@ Required scopes (the token must carry at least one of): `ap:rest_api:create`, `a
 |Status|Header|Type|Format|Description|
 |---|---|---|---|---|
 |201|Location|string|uri|URL of the newly created resource.|
+
+## List the versions of a REST API
+
+<a id="opIdListRESTAPIVersions"></a>
+
+`GET /rest-apis/versions`
+
+> Code samples
+
+```shell
+
+curl -X GET https://localhost:9243/api/v0.9/rest-apis/versions?displayName=reading-list-api \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
+
+```
+
+Returns every version of a REST API that shares the given displayName within the
+organization resolved from the JWT token.
+
+Versions of a single API are grouped by displayName: each version is a distinct REST API
+resource with its own id (handle), and they share a displayName while differing by version.
+
+Use this before creating a REST API to tell the two cases apart: versionsAvailable true
+means the displayName is already in use, so the create is a new version of an existing API;
+false means it is a brand-new API. The returned list gives the versions already taken.
+
+The lookup is organization-scoped and deliberately takes no project filter: uniqueness of
+(displayName, version) is enforced across the whole organization, so narrowing by project
+could report a displayName as free when a create for it would be rejected. Each returned
+version still carries the projectId it lives in.
+
+An empty result is a 200 with versionsAvailable false, not a 404.
+
+### Authentication
+
+<aside class="warning">
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `ap:rest_api:read`, `ap:rest_api:manage`
+
+</aside>
+
+<h3 id="list-the-versions-of-a-rest-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|displayName|query|string|true|**Display name** shared by every version of a REST API. Matched exactly|
+
+#### Detailed descriptions
+
+**displayName**: **Display name** shared by every version of a REST API. Matched exactly
+(case-sensitive) and scoped to the organization in the JWT token.
+
+Must hold at least one non-whitespace character; an empty or
+whitespace-only value is a 400. Surrounding whitespace is trimmed
+before the lookup, so it is accepted but not significant.
+
+> Example responses
+>
+> 200 Response
+
+```json
+{
+  "displayName": "reading-list-api",
+  "versionsAvailable": true,
+  "count": 2,
+  "list": [
+    {
+      "id": "69942b1952c01e01cb249a9b",
+      "version": "v1.0",
+      "projectId": "default-project",
+      "context": "/default-project/reading-list-api/v1.0",
+      "lifeCycleStatus": "PUBLISHED",
+      "createdAt": "2019-08-24T14:15:22Z"
+    }
+  ]
+}
+```
+
+> 400 Response
+
+```json
+{
+  "status": "error",
+  "code": "VALIDATION_FAILED",
+  "message": "The request failed validation.",
+  "errors": [
+    {
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
+    }
+  ]
+}
+```
+
+> 401 Response
+
+```json
+{
+  "status": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Authorization header is required, or the token is invalid or expired."
+}
+```
+
+> 403 Response
+
+```json
+{
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "You do not have permission to perform this action."
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "NOT_FOUND",
+  "message": "The specified resource does not exist."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_ERROR",
+  "message": "An unexpected error occurred.",
+  "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+}
+```
+
+<h3 id="list-the-versions-of-a-rest-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Versions retrieved successfully|[RESTAPIVersionListResponse](schemas.md#schemarestapiversionlistresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ## Get REST API by ID
 

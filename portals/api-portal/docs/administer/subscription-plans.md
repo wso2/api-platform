@@ -58,6 +58,43 @@ curl -k -X POST https://localhost:9543/api-portal/api/v0.9/subscription-plans \
 | `spec.type` | Yes | `requestcount` (rate-limited) or `eventcount` |
 | `spec.requestCount` | No | Maximum requests allowed. Use `-1` for unlimited |
 | `spec.description` | No | Additional description shown to developers |
+| `spec.pricing` | No | A paid plan's pricing: the same fields as `pricing` in JSON, under the same rules. A plan without it is free |
+
+A paid plan carries its pricing in `spec.pricing`. Pricing is given only when the plan is created and can't be updated after that. Write amounts as quoted decimals, as in JSON. A usage price names an existing meter by its id in `meterId`; create the meter first.
+
+```yaml
+# paid-plans.yaml
+apiVersion: api-portal.api-platform.wso2.com/v1
+kind: SubscriptionPlanList
+items:
+  - metadata:
+      name: starter
+    spec:
+      displayName: Starter
+      type: requestcount
+      requestCount: 10000
+      pricing:
+        pricingType: FLAT_RATE
+        currency: USD
+        billingPeriod: MONTH
+        flatAmount: "29.00"
+  - metadata:
+      name: pay-as-you-go
+    spec:
+      displayName: Pay as you go
+      pricing:
+        pricingType: USAGE_BASED
+        currency: USD
+        billingPeriod: MONTH
+        prices:
+          - meterId: successful-calls
+            pricingModel: PER_UNIT
+            unitAmount: "0.002"
+            filters:
+              - field: HTTP method
+                operator: IN
+                values: [GET, POST]
+```
 
 ### Bulk Create
 
@@ -137,7 +174,7 @@ curl -k -X DELETE "https://localhost:9543/api-portal/api/v0.9/subscription-plans
   -H "Authorization: Bearer $TOKEN"
 ```
 
-> **Note:** Deleting a plan that has active subscriptions will prevent those subscriptions from renewing. Verify there are no active subscribers before deleting a plan.
+> **Note:** A plan that has subscriptions cannot be deleted. The request is refused with `409` and code `PLAN_IN_USE`, for example "The plan Gold is in use and can't be deleted." Suspended subscriptions, and paid subscriptions that run until the end of their billing period, still count.
 
 ---
 

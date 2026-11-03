@@ -589,6 +589,26 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 
 // GetStaleTransitionalStatuses finds deployment_status rows stuck in DEPLOYING/UNDEPLOYING
 // for longer than the given timeout duration.
+// FailCurrentDeployment sets the status row of an artifact on a gateway to
+// FAILED with statusReason, but only while deploymentID is still the row's
+// current deployment: a fetch that finds a deployment unusable must not
+// overwrite the status of a newer deployment that replaced it meanwhile.
+// status_desired is left as it is, and performed_at is re-stamped with now so
+// an ack for the event that produced the old row no longer matches. Returns
+// the number of rows updated, 0 when the deployment is no longer current.
+func (r *DeploymentRepo) FailCurrentDeployment(artifactUUID, orgUUID, gatewayID, deploymentID, statusReason string) (int64, error) {
+	now := time.Now().UTC()
+	result, err := r.db.Exec(r.db.Rebind(`
+		UPDATE deployment_status
+		SET status = ?, status_reason = ?, performed_at = ?, updated_at = ?
+		WHERE artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ? AND deployment_uuid = ?
+	`), model.DeploymentStatusFailed, statusReason, now, now, artifactUUID, orgUUID, gatewayID, deploymentID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update deployment status: %w", err)
+	}
+	return result.RowsAffected()
+}
+
 func (r *DeploymentRepo) GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error) {
 	cutoff := time.Now().UTC().Add(-timeout)
 	query := `
@@ -929,7 +949,7 @@ func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]
 // current status and the desired terminal status. The gateway reconciles against
 // the desired status, so an operation still awaiting the gateway's acknowledgement
 // (DEPLOYING/UNDEPLOYING) is synced as the DEPLOYED/UNDEPLOYED it is driving towards.
-// Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp) to ensure
+// Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp -> AgentProxy) to ensure
 // dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
 // If since is provided, only returns deployments updated after that timestamp
 func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
@@ -963,7 +983,8 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 				WHEN 'LlmProvider' THEN 2
 				WHEN 'LlmProxy' THEN 3
 				WHEN 'Mcp' THEN 4
-				ELSE 5
+				WHEN 'AgentProxy' THEN 5
+				ELSE 6
 			END,
 			s.performed_at DESC`
 
@@ -1081,16 +1102,4 @@ func (r *DeploymentRepo) GetSecretHandlesByGateway(gatewayID, orgUUID string) ([
 		handles = append(handles, h)
 	}
 	return handles, rows.Err()
-}
-
-// joinStrings joins strings with a separator (helper for building IN clauses)
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
-	return result
 }

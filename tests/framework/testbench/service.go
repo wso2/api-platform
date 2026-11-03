@@ -20,6 +20,7 @@
 package testbench
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -58,6 +59,30 @@ type Service interface {
 	Stateful() bool
 }
 
+// TLSService is implemented by a Service that serves HTTPS rather than plain HTTP on its port.
+type TLSService interface {
+	// TLSConfig returns the server TLS configuration. It must carry a certificate.
+	TLSConfig() *tls.Config
+}
+
+// serverTLSConfig returns a copy of the service's TLS configuration, nil for a plain HTTP
+// service, or an error when a TLS service offers no certificate.
+func serverTLSConfig(s Service) (*tls.Config, error) {
+	secure, ok := s.(TLSService)
+	if !ok {
+		return nil, nil
+	}
+	config := secure.TLSConfig()
+	if config == nil || (len(config.Certificates) == 0 && config.GetCertificate == nil) {
+		return nil, fmt.Errorf("testbench: service %q serves TLS but has no certificate", s.Name())
+	}
+	config = config.Clone()
+	if config.MinVersion < tls.VersionTLS12 {
+		config.MinVersion = tls.VersionTLS12
+	}
+	return config, nil
+}
+
 // PartitionByBlock identifies the framework-guaranteed block partition.
 const PartitionByBlock = "block"
 
@@ -88,6 +113,9 @@ func (r *Registry) Register(s Service) error {
 	}
 	if isNil(s.Handler()) {
 		return fmt.Errorf("testbench: service %q has no handler", name)
+	}
+	if _, err := serverTLSConfig(s); err != nil {
+		return err
 	}
 
 	r.mu.Lock()

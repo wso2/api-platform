@@ -38,6 +38,7 @@ import proto.python_executor_pb2 as proto
 import proto.python_executor_pb2_grpc as proto_grpc
 from apip_sdk_core import (
     BodyProcessingMode,
+    FaultPolicy,
     ExecutionContext,
     HeaderProcessingMode,
     Policy,
@@ -60,6 +61,7 @@ class PolicyCapabilities:
     response_body: bool
     streaming_request: bool
     streaming_response: bool
+    on_fault: bool
 
 
 class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
@@ -75,6 +77,7 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         "needs_more_response_data": proto.PHASE_NEEDS_MORE_RESPONSE_DATA,
         "response_chunk": proto.PHASE_RESPONSE_BODY_CHUNK,
         "cancel_execution": proto.PHASE_CANCEL,
+        "fault_context": proto.PHASE_FAULT,
     }
 
     def __init__(
@@ -155,6 +158,7 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                 response_body=capabilities.response_body,
                 streaming_request=capabilities.streaming_request,
                 streaming_response=capabilities.streaming_response,
+                on_fault=capabilities.on_fault,
             ),
         )
 
@@ -453,6 +457,19 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
                     action,
                 )
 
+            if payload_name == "fault_context":
+                policy = self._require_policy_interface(record.policy, FaultPolicy, payload_name)
+                ctx = self._translator.to_python_error_context(
+                    request.fault_context.context,
+                    shared_ctx,
+                )
+                fault = policy.on_fault(execution_ctx, ctx, params)
+                return self._response_with_fault_response(
+                    request.request_id,
+                    shared_ctx.metadata,
+                    fault,
+                )
+
             if payload_name == "needs_more_request_data":
                 policy = self._require_policy_interface(record.policy, StreamingRequestPolicy, payload_name)
                 decision = policy.needs_more_request_data(
@@ -604,6 +621,10 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
             response_body=isinstance(instance, ResponsePolicy),
             streaming_request=isinstance(instance, StreamingRequestPolicy),
             streaming_response=isinstance(instance, StreamingResponsePolicy),
+            # Deliberately unconstrained by the processing modes: a fault policy is not
+            # phase-scheduled, so a notifier that implements on_fault and nothing else is a
+            # valid policy with every mode SKIP.
+            on_fault=isinstance(instance, FaultPolicy),
         )
 
     def _validate_policy_contract(
@@ -690,6 +711,20 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
         response.response_header_action.CopyFrom(
             self._translator.to_proto_response_header_action(action)
         )
+        return response
+
+    def _response_with_fault_response(self, request_id: str, metadata: dict, fault) -> proto.StreamResponse:
+        """Wrap an ``on_fault`` return in its own payload.
+
+        Separate from the response-action helper because a fault policy does not return a
+        response action — routing it through that helper would mean widening the union it
+        accepts, and a fault handler returning an ImmediateResponse by mistake would then
+        translate cleanly and be applied on a path where its ``headers`` field means something
+        different.
+        """
+        response = proto.StreamResponse(request_id=request_id)
+        response.updated_metadata.CopyFrom(self._translator.dict_to_struct(metadata))
+        response.fault_response_action.CopyFrom(self._translator.to_proto_fault_response(fault))
         return response
 
     def _response_with_response_action(self, request_id: str, metadata: dict, action) -> proto.StreamResponse:

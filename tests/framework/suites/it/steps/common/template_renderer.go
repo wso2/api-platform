@@ -21,14 +21,24 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/cucumber/godog"
 	"gopkg.in/yaml.v3"
+
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 )
 
 const templateValuePrefix = "${VALUE:"
+
+const (
+	// canonicalTemplateDir is the directory of canonical templates beneath a suite root.
+	canonicalTemplateDir = "resources/templates"
+	// embeddedSuiteRoot is where the framework's own suite sits in the repository.
+	embeddedSuiteRoot = "tests/framework/suites/it"
+)
 
 // RenderResourceTemplate renders a canonical or legacy suite resource template.
 func RenderResourceTemplate(ctx context.Context, name string, content []byte, table *godog.Table) (string, error) {
@@ -247,4 +257,62 @@ func templateValues(table *godog.Table) (map[string]string, error) {
 		values[key] = row.Cells[1].Value
 	}
 	return values, nil
+}
+
+// ResourceTemplatePath resolves a suite resource template name against the feature root,
+// refusing absolute names and any path, symlinked or not, that escapes the root. A canonical
+// template (resources/templates/<kind>.yaml) the root does not hold resolves to the copy the
+// framework ships, so a project supplies only the templates that differ from it.
+func ResourceTemplatePath(root, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("resource template path is required")
+	}
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("resource template path must be relative: %q", name)
+	}
+	if root == "" {
+		return "", fmt.Errorf("resource template root is not configured")
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve resource template root: %w", err)
+	}
+	clean := filepath.Clean(name)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("resource template path escapes the suite resource root: %q", name)
+	}
+	path := filepath.Join(root, clean)
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve resource template root: %w", err)
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err == nil && !isWithinPath(resolvedRoot, resolvedPath) {
+		return "", fmt.Errorf("resource template path escapes the suite resource root: %q", name)
+	}
+	if err != nil {
+		if shipped, ok := shippedTemplatePath(clean); ok {
+			return shipped, nil
+		}
+	}
+	return path, nil
+}
+
+// shippedTemplatePath returns the framework's copy of a canonical template, if it ships one.
+func shippedTemplatePath(clean string) (string, bool) {
+	relative := filepath.ToSlash(clean)
+	if !strings.HasPrefix(relative, canonicalTemplateDir+"/") {
+		return "", false
+	}
+	shipped := assets.Resolve("", embeddedSuiteRoot+"/"+relative)
+	if _, err := os.Stat(shipped); err != nil {
+		return "", false
+	}
+	return shipped, true
+}
+
+func isWithinPath(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }

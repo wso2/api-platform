@@ -1,0 +1,48 @@
+{{- $controller := .Values.gateway.controller -}}
+{{- $restApiTls := $controller.restApiTls -}}
+{{- $cm := $restApiTls.certManager -}}
+{{- if and $controller.deployment.enabled (dig "server" "tls" "enabled" false .Values.gateway.config.controller) (eq $restApiTls.certificateProvider "cert-manager") $cm.create }}
+{{- $svc := printf "%s-controller" (include "gateway-operator.fullname" .) -}}
+{{- $dnsNames := $cm.dnsNames -}}
+{{- if not $dnsNames -}}
+{{- $dnsNames = list $svc (printf "%s.%s" $svc .Release.Namespace) (printf "%s.%s.svc" $svc .Release.Namespace) (printf "%s.%s.svc.cluster.local" $svc .Release.Namespace) "localhost" -}}
+{{- /* A passthrough Route hands this certificate straight to external clients, so it must name the Route host. */ -}}
+{{- $route := .Values.openshift.routes.managementApi -}}
+{{- if and .Values.openshift.enabled $route.enabled $route.hostname (eq (dig "tls" "termination" "edge" $route) "passthrough") -}}
+{{- $dnsNames = append $dnsNames $route.hostname -}}
+{{- end -}}
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $svc }}-rest-api-tls
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "controller" dict) | nindent 4 }}
+  {{- with (include "gateway-operator.annotations" (list . dict)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  secretName: {{ $svc }}-rest-api-tls
+  commonName: {{ default $svc $cm.commonName | quote }}
+  dnsNames:
+    {{- range $dnsNames }}
+    - {{ . | quote }}
+    {{- end }}
+  duration: {{ $cm.duration | quote }}
+  renewBefore: {{ $cm.renewBefore | quote }}
+  issuerRef:
+    {{- if $cm.issuerRef.name }}
+    name: {{ $cm.issuerRef.name }}
+    kind: {{ $cm.issuerRef.kind | default "Issuer" }}
+    {{- with $cm.issuerRef.group }}
+    group: {{ . }}
+    {{- end }}
+    {{- else }}
+    name: {{ include "gateway-operator.fullname" . }}-selfsigned-issuer
+    kind: Issuer
+    {{- end }}
+  privateKey:
+    algorithm: RSA
+    size: 2048
+{{- end }}

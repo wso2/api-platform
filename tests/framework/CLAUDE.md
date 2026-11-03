@@ -129,6 +129,12 @@ Before adding a helper, step, or dependency:
   template and renderer tests pass.
 - `resources/apis/` is not a second template catalogue. Do not add runtime
   fixtures there when the canonical template can express the resource.
+- A control-plane resource authored through the Platform API, such as
+  `agent-proxy.yaml`, has a canonical template too. Its envelope is the
+  publisher-API payload rather than the gateway `apiVersion`/`kind`/`spec`
+  envelope; the step renders it and sends it as JSON. The same rules apply:
+  one template per resource kind, variation through the values table, and
+  omission preserved for every field the table does not supply.
 
 ## Version-Aware Product Contracts
 
@@ -156,19 +162,47 @@ Before adding a helper, step, or dependency:
   The Platform Gateway template binding translates the compatible policy shape
   and the LLM-provider assertion binding selects the returned field. Feature
   files must describe the attached-policy behavior, not either representation.
-- Gateway `1.1.0` semantic-cache configuration uses the legacy root Redis keys;
-  the semantic-AI overlay and Redis provisioner must keep those keys and the
-  per-topology password available alongside the current vector-store keys.
-  Gateway-version-specific semantic-cache behavior must be isolated in a
-  runner selector: the cross-authenticated-caller isolation scenario is gated
-  to Gateway `>=1.2.0`, where that contract exists. Do not weaken the
-  isolation assertion to make an older Gateway pass.
+- The Redis provisioner passes its per-topology password through both the
+  legacy root Redis key, which Gateway `1.1.0` semantic-cache reads, and the
+  current vector-store key. Keep both.
 - Keep version-specific response or request handling in the relevant product
   step package. Do not make generic JSON assertions silently accept multiple
   data types or response shapes.
 - Add unit tests for every supported contract and for unsupported or malformed
   version information. A new supported version must include its contract
   behavior before it is added to suite configuration.
+
+## Module Consumption and Embedded Assets
+
+The framework is imported as a Go module by projects that have no api-platform checkout, so
+every repository file the engine reads at run time must be available without one.
+
+- Read a repository-relative file through `core/assets` (`assets.Resolve`), never with
+  `filepath.Join(repoRoot, ...)` and `os.ReadFile`. It prefers the workspace copy and falls back
+  to the embedded copy.
+- A file under `tests/framework` that the engine reads (compose files, version profiles,
+  overlays) must be listed in the `go:embed` directive of `assets.go`.
+- A file outside the module (database schemas, data files) needs an entry in
+  `assets.SnapshotSources`. Its embedded copy is generated, never committed: the release workflow
+  runs `go run ./cmd/syncassets` and commits `snapshots/` on the release tag only. Run
+  `make snapshots` to use the module through a `replace` before a release.
+- Never snapshot key material, certificates or secrets. Generate them per process in
+  `core/catalog/shared` (as `GatewayListenerTLS` and `GatewayEncryptionKey` do) and mount them
+  through `GeneratedFiles` or a content-backed `FileMount`; the repository ignores `*.key` and a
+  secret scanner would flag an embedded copy.
+- Do not add `runtime.Caller` or checkout-relative lookups to code a released-gateway run reaches.
+  Such code works in the checkout and fails for every consumer.
+- Keep the public API of `core/suiterun` and the packages a consumer imports stable; the module
+  is versioned and consumers pin it.
+- The canonical resource templates in `suites/it/resources/templates` are embedded, and
+  `stepscommon.ResourceTemplatePath` falls back to them when the suite root does not hold the
+  named `resources/templates/<kind>.yaml`. A project supplies only the templates that differ; a
+  file it supplies replaces the framework's file of the same name, with no merging. Changing a
+  canonical template is a change to the module's public surface.
+- A consumer registers the gateway cleanup deleters with `platformgateway.RegisterDeleters` in
+  `suiterun.Options.CleanupDeleters` instead of writing its own; it deletes through the
+  controller's management API and, on releases with the snapshot race, waits for the controller
+  to apply each deletion. Add a resource kind to the deleters here, not in a consumer.
 
 ## Components and Runtime
 
@@ -467,6 +501,13 @@ duplicating it.
   shared block overlay. Malformed selectors, a missing Godog expression after
   `;`, or more than one `;` are configuration errors and must not be worked
   around with looser tags.
+- `-gateway-version` selects the Gateway release and its version-specific
+  configuration and management contracts. When the same release images are
+  published under another repository prefix, `-host` may be supplied with
+  `-gateway-version` to replace `ghcr.io/wso2/api-platform` for the Gateway
+  controller and runtime images only. The value is an image repository prefix,
+  such as `registry.example/test-gateway`, not a URL and not the Testcontainers host
+  override. Do not use `-host` without `-gateway-version`.
 - Use `defaults.components.platform-gateway.dbCompatibility` for Gateway database
   support boundaries shared by matrix blocks, for example
   `sqlserver: "gateway-version>=1.2.0"`. Its values use the same strict selector

@@ -18,6 +18,13 @@
 
 Feature: API Portal applications
 
+  # Key generation used to live on the application detail page as a card per key
+  # manager. That flow was removed when OAuth2 key generation moved to its own
+  # page and a key manager stopped being bound to an application, so the
+  # scenarios that drove those cards are gone with it. What remains here is what
+  # the page still does: the application lifecycle, and the sections that
+  # associate an already-created key with an application.
+
   Background:
     Given the user is signed in to the API Portal
     And the API Portal has an application fixture
@@ -25,34 +32,5 @@ Feature: API Portal applications
   Scenario: An administrator creates edits and deletes an application
     When the user creates edits and deletes the application
 
-  Scenario: An application with a key manager shows key controls
-    Given the API Portal has a key manager fixture
-    When the application detail shows key manager controls
-
-  Scenario: Application credentials can be added generated and revoked
-    Given the API Portal has a key manager fixture
-    When the user adds generates and revokes application credentials
-
-  Scenario: Multiple key managers render isolated controls
-    Given the API Portal has two key manager fixtures
-    When the application page shows isolated controls for both key managers
-
-  Scenario: Multiple key managers keep separate client mappings
-    Given the API Portal has two key manager fixtures
-    When the user links separate clients to both key managers
-
-  Scenario: The second key manager generates a token in its own modal
-    Given the API Portal has two key manager fixtures
-    When the user generates a token from the second key manager
-
-  Scenario: The first key manager generates a token in its own modal
-    Given the API Portal has two key manager fixtures
-    When the user generates a token from the first key manager
-
-  Scenario: A key manager token failure stays in its own card
-    Given the API Portal has two key manager fixtures
-    When the user generates a token with an invalid secret from the second key manager
-
-  Scenario: Revoking one key manager does not affect the other
-    Given the API Portal has two key manager fixtures
-    When the user revokes only the second key manager credentials
+  Scenario: An application detail page shows the key association sections
+    When the application detail shows the key association sections

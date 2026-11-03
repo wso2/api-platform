@@ -171,6 +171,29 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// ListAPIVersions returns the versions of a REST API with the given display name.
+// No match is a 200 with versionsAvailable false, not a 404.
+func (h *APIHandler) ListAPIVersions(w http.ResponseWriter, r *http.Request) error {
+	// Organization comes from the verified JWT claim (GO-AUTH-005).
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	displayName := strings.TrimSpace(r.URL.Query().Get("displayName"))
+	if displayName == "" {
+		return apperror.ValidationFailed.New("displayName query parameter is required")
+	}
+	response, err := h.apiService.GetAPIVersions(orgId, displayName)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to get API versions in org %s", orgId))
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+	return nil
+}
+
 // UpdateAPI updates an existing API identified by handle
 func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
@@ -431,13 +454,15 @@ func (h *APIHandler) GetOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 		return serviceError(err, "failed to resolve API "+restApiId+" in org "+orgId)
 	}
 
-	// Retrieve document
-	doc, err := h.apiDocumentService.GetDocument(artifactUUID, orgId)
+	// Retrieve document — strict match on handle AND type so a user doc that
+	// somehow registered at the reserved handle can't be returned here.
+	_, contentBytes, err := h.apiDocumentService.GetDocumentWithContent(artifactUUID, constants.DocumentHandleDefinition, orgId,
+		constants.DocumentTypeDefinition)
 	if err != nil {
 		return serviceError(err, "failed to fetch openapi spec for API "+restApiId)
 	}
 
-	content := string(doc.Content)
+	content := string(contentBytes)
 	httputil.WriteJSON(w, http.StatusOK, api.OpenAPIContent{Content: &content})
 	return nil
 }
@@ -510,15 +535,15 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 	}
 
 	// Update document
-	docReq := &dto.PutAPIDocumentRequest{
-		Type:             constants.DocumentTypeDefinition,
-		Handle:           constants.DocumentHandleDefinition,
-		DisplayName:      constants.DocumentDisplayNameDefinition,
-		FileName:         specFileName,
-		Content:		  specContent,
+	docReq := &dto.CreateAPIDocumentRequest{
+		Type:        constants.DocumentTypeDefinition,
+		Handle:      constants.DocumentHandleDefinition,
+		DisplayName: constants.DocumentDisplayNameDefinition,
+		FileName:    specFileName,
+		Content:     specContent,
 	}
 
-	if err := h.apiDocumentService.PutDocument(docReq, orgId, updatedBy, artifactUUID); err != nil {
+	if err := h.apiDocumentService.UpsertDocument(docReq, orgId, updatedBy, artifactUUID); err != nil {
 		h.slogger.Error("Failed to persist spec", "api", restApiId, "error", err)
 		if operationsUpdated {
 			if _, rollbackErr := h.apiService.UpdateAPIByHandle(restApiId, existingAPI, orgId, updatedBy); rollbackErr != nil {
@@ -661,6 +686,7 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/import-openapi", middleware.MapErrors(h.slogger, h.ImportOpenAPI))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPI))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIs))
+	mux.HandleFunc("GET "+base+"/versions", middleware.MapErrors(h.slogger, h.ListAPIVersions))
 	mux.HandleFunc("GET "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.GetAPI))
 	mux.HandleFunc("PUT "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.UpdateAPI))
 	mux.HandleFunc("DELETE "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.DeleteAPI))

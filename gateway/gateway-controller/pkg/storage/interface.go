@@ -281,6 +281,9 @@ type Storage interface {
 	// ListAPIKeysForArtifactsNotIn returns the minimal key info (uuid + artifact_uuid) for
 	// keys whose artifact_uuid is in artifactUUIDs but whose own UUID is not in keyUUIDs.
 	// Used to collect identifiers before deletion so callers can publish EventHub events.
+	// Only considers source='external' (control-plane-issued) keys — a source='local' key
+	// was never reported to the control plane, so its absence from keyUUIDs never makes it
+	// stale.
 	ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error)
 
 	// DeleteAPIKeysByUUIDs removes API keys by their UUIDs. Used after ListAPIKeysForArtifactsNotIn
@@ -354,10 +357,19 @@ type Storage interface {
 	// Returns an empty slice if no certificates exist.
 	ListCertificates() ([]*models.StoredCertificate, error)
 
+	// ListCertificatesByUsage retrieves certificates of the given usage,
+	// ordered by creation time. It returns an empty slice if there are none.
+	ListCertificatesByUsage(usage string) ([]*models.StoredCertificate, error)
+
 	// DeleteCertificate removes a certificate by ID.
 	//
 	// Returns an error if the certificate does not exist.
 	DeleteCertificate(id string) error
+
+	// UpdateCertificate replaces an existing certificate's material; name
+	// and usage are immutable. It returns an error if the certificate does
+	// not exist.
+	UpdateCertificate(cert *models.StoredCertificate) error
 
 	// SaveSecret persists a new encrypted secret.
 	//

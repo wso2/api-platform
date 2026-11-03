@@ -69,12 +69,13 @@ func withDeployedAt(req dto.ImportGatewayArtifactRequest, t time.Time) dto.Impor
 
 // importTestDeps bundles the import service with the repos and db needed for assertions.
 type importTestDeps struct {
-	svc          *ArtifactImportService
-	db           *database.DB
-	artifactRepo repository.ArtifactRepository
-	apiRepo      repository.APIRepository
-	templateRepo repository.LLMProviderTemplateRepository
-	deployment   repository.DeploymentRepository
+	svc            *ArtifactImportService
+	db             *database.DB
+	artifactRepo   repository.ArtifactRepository
+	apiRepo        repository.APIRepository
+	templateRepo   repository.LLMProviderTemplateRepository
+	deployment     repository.DeploymentRepository
+	graphqlAPIRepo repository.GraphQLAPIRepository
 }
 
 func setupImportTest(t *testing.T) *importTestDeps {
@@ -126,21 +127,24 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	deploymentRepo := repository.NewDeploymentRepo(db, reg)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
+	graphqlAPIRepo := repository.NewGraphQLAPIRepo(db, reg)
 
 	cfg := &config.Server{}
 	cfg.Deployments.MaxPerAPIGateway = 10
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewArtifactImportService(apiRepo, providerRepo, templateRepo, proxyRepo, mcpProxyRepo,
-		artifactRepo, deploymentRepo, gatewayRepo, projectRepo, cfg, logger, fakeMCPServerInfoFetcher{})
+	agentProxyRepo := repository.NewAgentProxyRepo(db)
+	svc := NewArtifactImportService(apiRepo, providerRepo, templateRepo, proxyRepo, mcpProxyRepo, agentProxyRepo, graphqlAPIRepo,
+		artifactRepo, deploymentRepo, gatewayRepo, projectRepo, cfg, logger, fakeMCPServerInfoFetcher{}, nil)
 
 	return &importTestDeps{
-		svc:          svc,
-		db:           db,
-		artifactRepo: artifactRepo,
-		apiRepo:      apiRepo,
-		templateRepo: templateRepo,
-		deployment:   deploymentRepo,
+		svc:            svc,
+		db:             db,
+		artifactRepo:   artifactRepo,
+		apiRepo:        apiRepo,
+		templateRepo:   templateRepo,
+		deployment:     deploymentRepo,
+		graphqlAPIRepo: graphqlAPIRepo,
 	}
 }
 
@@ -203,6 +207,264 @@ func TestArtifactImport_CreateRestAPI(t *testing.T) {
 	}
 	if depID == "" || status != model.DeploymentStatusDeployed {
 		t.Errorf("deployment status = (%q,%q), want non-empty DEPLOYED", depID, status)
+	}
+}
+
+func graphqlImportRequest(id, name, displayName string) dto.ImportGatewayArtifactRequest {
+	return dto.ImportGatewayArtifactRequest{
+		DPID:   id,
+		Status: "deployed",
+		Configuration: dto.ArtifactImportConfig{
+			APIVersion: "gateway.api-platform.wso2.com/v1",
+			Kind:       constants.GraphQLApi,
+			Metadata:   dto.ArtifactImportMetadata{Name: name, Annotations: projectAnnotations("default")},
+			Spec: map[string]interface{}{
+				"displayName": displayName,
+				"version":     "v1.0",
+				"context":     "/countries",
+				// upstream is deliberately omitted so resolveSchema's introspection
+				// fetch short-circuits without a real network call — this test only
+				// asserts the artifact lands, not schema resolution.
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
+
+func TestArtifactImport_CreateGraphQLAPI(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "55555555-5555-5555-5555-555555555555"
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, graphqlImportRequest(id, "countries-graphql", "Countries GraphQL API"))
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	// The control plane mints its own UUID; it must NOT reuse the data-plane UUID.
+	if resp.ID == "" || resp.ID == id {
+		t.Errorf("response ID = %q, want a freshly generated CP UUID (not the DP UUID %q)", resp.ID, id)
+	}
+	cpID := resp.ID
+	if resp.Origin != constants.OriginDP {
+		t.Errorf("response Origin = %q, want DP", resp.Origin)
+	}
+
+	// Artifact row should exist with origin DP and kind GraphQLApi under the
+	// CP-generated UUID.
+	art, err := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if err != nil || art == nil {
+		t.Fatalf("GetByUUID returned (%v, %v)", art, err)
+	}
+	if art.Origin != constants.OriginDP {
+		t.Errorf("artifact origin = %q, want DP", art.Origin)
+	}
+	if art.Type != constants.GraphQLApi {
+		t.Errorf("artifact kind = %q, want GraphQLApi", art.Type)
+	}
+
+	graphqlAPI, err := d.graphqlAPIRepo.GetByUUID(cpID, importTestOrgID)
+	if err != nil || graphqlAPI == nil {
+		t.Fatalf("GetByUUID returned (%v, %v)", graphqlAPI, err)
+	}
+	if graphqlAPI.Kind != constants.GraphQLApi {
+		t.Errorf("GraphQLAPI.Kind = %q, want GraphQLApi", graphqlAPI.Kind)
+	}
+
+	// Deployment status should be DEPLOYED on the gateway.
+	depID, status, _, err := d.deployment.GetStatus(cpID, importTestOrgID, importTestGatewayID)
+	if err != nil {
+		t.Fatalf("GetStatus error = %v", err)
+	}
+	if depID == "" || status != model.DeploymentStatusDeployed {
+		t.Errorf("deployment status = (%q,%q), want non-empty DEPLOYED", depID, status)
+	}
+}
+
+func TestArtifactImport_RestAPIFlatOperationsPreserved(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := restImportRequest("11111111-1111-1111-1111-111111111112", "flat-ops-api", "Flat Ops API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": "get", "path": "/weather/{city}"},
+		map[string]interface{}{
+			"method": "POST",
+			"path":   "/alerts",
+			"policies": []interface{}{
+				map[string]interface{}{"name": "set-headers", "version": "v1"},
+			},
+		},
+	}
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 2 {
+		t.Fatalf("stored %d operations, want 2", len(ops))
+	}
+	want := []struct{ method, path string }{{"GET", "/weather/{city}"}, {"POST", "/alerts"}}
+	for i, w := range want {
+		if ops[i].Request == nil {
+			t.Fatalf("operation %d has nil request", i)
+		}
+		if ops[i].Request.Method != w.method || ops[i].Request.Path != w.path {
+			t.Errorf("operation %d = (%q, %q), want (%q, %q)", i, ops[i].Request.Method, ops[i].Request.Path, w.method, w.path)
+		}
+	}
+	if p := ops[1].Request.Policies; len(p) != 1 || p[0].Name != "set-headers" || p[0].Version != "v1" {
+		t.Errorf("operation 1 policies = %+v, want [set-headers v1]", p)
+	}
+}
+
+func TestArtifactImport_RestAPIMatchOperationsPreserved(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := restImportRequest("11111111-1111-1111-1111-111111111114", "match-ops-api", "Match Ops API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{
+			// The match form takes precedence over the simple fields.
+			"method": "DELETE",
+			"path":   "/ignored",
+			"match": map[string]interface{}{
+				"method":  "post",
+				"path":    map[string]interface{}{"type": "Exact", "value": "/alerts/{id}"},
+				"headers": []interface{}{map[string]interface{}{"name": "x-tenant", "value": "a"}},
+			},
+			"policies": []interface{}{
+				map[string]interface{}{"name": "set-headers", "version": "v1"},
+			},
+		},
+	}
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 1 || ops[0].Request == nil {
+		t.Fatalf("stored operations = %+v, want 1 with a request", ops)
+	}
+	if r := ops[0].Request; r.Method != "POST" || r.Path != "/alerts/{id}" {
+		t.Errorf("operation = (%q, %q), want (POST, /alerts/{id}) from match", r.Method, r.Path)
+	}
+	if p := ops[0].Request.Policies; len(p) != 1 || p[0].Name != "set-headers" || p[0].Version != "v1" {
+		t.Errorf("operation policies = %+v, want [set-headers v1]", p)
+	}
+}
+
+func TestArtifactImport_RestAPIMatchOnlyOperation(t *testing.T) {
+	d := setupImportTest(t)
+
+	req := restImportRequest("11111111-1111-1111-1111-111111111116", "match-only-api", "Match Only API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		// No flat method/path: the match block is the only source of the request.
+		map[string]interface{}{
+			"match": map[string]interface{}{
+				"method": "patch",
+				"path":   map[string]interface{}{"value": "/alerts/{id}"},
+			},
+		},
+	}
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 1 || ops[0].Request == nil {
+		t.Fatalf("stored operations = %+v, want 1 with a request", ops)
+	}
+	if r := ops[0].Request; r.Method != "PATCH" || r.Path != "/alerts/{id}" {
+		t.Errorf("operation = (%q, %q), want (PATCH, /alerts/{id}) from match", r.Method, r.Path)
+	}
+}
+
+func TestArtifactImport_RestAPIOperationsReplacedOnNewerPush(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "11111111-1111-1111-1111-111111111115"
+	first := restImportRequest(id, "replace-ops-api", "Replace Ops API")
+	first.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": "GET", "path": "/alerts"},
+	}
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, withDeployedAt(first, baseDeployedAt))
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+
+	second := restImportRequest(id, "replace-ops-api", "Replace Ops API")
+	second.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": "PUT", "path": "/alerts/{id}"},
+	}
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, withDeployedAt(second, newerDeployedAt)); err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+
+	api, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil || api == nil {
+		t.Fatalf("GetAPIByUUID returned (%v, %v)", api, err)
+	}
+	ops := api.Configuration.Operations
+	if len(ops) != 1 || ops[0].Request == nil || ops[0].Request.Method != "PUT" || ops[0].Request.Path != "/alerts/{id}" {
+		t.Errorf("stored operations = %+v, want exactly the newer push's single PUT operation (replaced, not merged)", ops)
+	}
+}
+
+func TestArtifactImport_RestAPIMalformedOperationRejected(t *testing.T) {
+	d := setupImportTest(t)
+
+	// A non-string method passes the nested decode (which ignores it) but fails the flat one.
+	req := restImportRequest("11111111-1111-1111-1111-111111111113", "bad-ops-api", "Bad Ops API")
+	req.Configuration.Spec["operations"] = []interface{}{
+		map[string]interface{}{"method": 42, "path": "/weather"},
+	}
+
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); err == nil {
+		t.Fatal("Import() error = nil, want a decode error for a non-string method")
+	}
+}
+
+func TestNormalizeGatewayRestOperations_KeepsNestedRequest(t *testing.T) {
+	spec := map[string]interface{}{
+		"operations": []interface{}{
+			map[string]interface{}{"method": "post", "path": "/alerts"},
+			map[string]interface{}{
+				"name":    "getWeather",
+				"request": map[string]interface{}{"method": "GET", "path": "/weather/{city}"},
+			},
+		},
+	}
+	var cfg model.RestAPIConfig
+	cfg.Operations = []model.Operation{
+		{},
+		{Name: "getWeather", Request: &model.OperationRequest{Method: "GET", Path: "/weather/{city}"}},
+	}
+
+	if err := normalizeGatewayRestOperations(spec, &cfg); err != nil {
+		t.Fatalf("normalizeGatewayRestOperations() error = %v", err)
+	}
+
+	if r := cfg.Operations[0].Request; r == nil || r.Method != "POST" || r.Path != "/alerts" {
+		t.Errorf("flat operation request = %+v, want POST /alerts", r)
+	}
+	if op := cfg.Operations[1]; op.Name != "getWeather" || op.Request.Method != "GET" || op.Request.Path != "/weather/{city}" {
+		t.Errorf("nested operation = %+v (request %+v), want it unchanged", op, op.Request)
 	}
 }
 
@@ -726,6 +988,7 @@ func TestArtifactImport_AllSupportedKindsRegistered(t *testing.T) {
 		constants.LLMProviderTemplate,
 		constants.LLMProxy,
 		constants.MCPProxy,
+		constants.GraphQLApi,
 	} {
 		importer, ok := d.svc.importers[kind]
 		if !ok {

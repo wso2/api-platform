@@ -16,16 +16,54 @@
  * under the License.
  */
 
+import {
+  readAuthMode,
+  resolveAuthContract,
+  type AuthContract,
+  type AuthMode,
+} from './authContract';
+
+/**
+ * One gateway release the Quick Start step can offer a download for, keyed by
+ * `type` since the regular and event gateways ship as separate artifacts.
+ * Mirrors the Go `GatewayVersionEntry` in the BFF's
+ * internal/config/config.go, and the shape consumed by
+ * portals/cloud-plugins/apip-cloud-ui-gateways (its own hand-mirrored copy,
+ * since that package lives in a separate repo) — keep all three in sync.
+ */
+export type GatewayVersionEntry = {
+  type: 'ai' | 'regular' | 'event';
+  version: string;
+  /** Release tag, e.g. "v1.2.0". Defaults to `v${version}` when omitted. */
+  latestVersion?: string;
+  /** Zip/folder version, when it differs from `version`. */
+  distVersion?: string;
+  channel: 'STS' | 'LTS';
+};
+
 export type RuntimeConfig = {
   appBasePath: string;
   apiBaseUrl: string;
   /**
    * "basic" — the BFF's file-based login against Platform API's own user
    * store (no external IdP). "oidc" — the BFF runs a confidential/PKCE code
-   * exchange against a configured external IdP. Either way, the browser
-   * never sees a token; the BFF holds the session server-side.
+   * exchange against a configured external IdP. "external" — no BFF: a
+   * gateway or auth proxy in front of the console handles sign-in and holds
+   * the session. In every mode the browser never sees a token.
    */
-  authMode: 'basic' | 'oidc';
+  authMode: AuthMode;
+  /**
+   * The sign-in, session and sign-out endpoints for `authMode`, with any
+   * per-deployment overrides applied (see `config/authContract.ts`).
+   */
+  authContract: AuthContract;
+  /**
+   * The Test console's relay, which sends a request to a deployed gateway and
+   * returns its answer. This portal's BFF serves it at
+   * /api/gateway-relay/invoke; set it wherever the deployment serves the relay,
+   * whatever the auth mode.
+   */
+  gatewayRelayUrl: string;
   /**
    * Per-deployment default locale (BCP 47, e.g. "en"). Falls through
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
@@ -84,6 +122,12 @@ export type RuntimeConfig = {
    * gateway setup instructions. Defaults to the platformApiBaseUrl host.
    */
   gatewayControlPlaneHost: string;
+  /**
+   * The control-plane host only when the deployment sets it (`GATEWAY_CONTROL_PLANE_HOST`), and
+   * empty otherwise. `gatewayControlPlaneHost` falls back to a guess, which is fine for this
+   * console's own page but must not be handed to setup commands for a gateway running elsewhere.
+   */
+  gatewayControlPlaneHostOverride: string;
   /** Policy Hub API (catalog of mediation policies) + its web UI link. */
   policyHubBaseUrl: string;
   policyHubWebUrl: string;
@@ -105,6 +149,18 @@ export type RuntimeConfig = {
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  /**
+   * Catalog of self-hosted-gateway releases for the Quick Start download
+   * step, one entry per gateway type ("regular" | "event" for this
+   * deployment). Sourced from the BFF's [[gateway_versions]] config and
+   * JSON-encoded into the runtime config as a string — the first
+   * non-string value in it — so it's JSON.parsed back out here rather than
+   * read as-is like every other field.
+   */
+  gatewayVersions: GatewayVersionEntry[];
+  sanitizeHtmlDocsEnabled: boolean;
+  sanitizeHtmlDocsAdditionalAllowedTags: string[];
+  sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
 };
 
 type LegacyWindowConfig = Partial<{
@@ -143,6 +199,18 @@ type LegacyWindowConfig = Partial<{
   apiBaseUrl: string;
   baseUrl: string;
   authMode: string;
+  authLoginStyle: string;
+  authLoginUrl: string;
+  authCredentialsUrl: string;
+  authReturnParam: string;
+  authSessionUrl: string;
+  authSessionFormat: string;
+  authCheckSessionUrl: string;
+  authCheckSessionInterval: string | number;
+  authLogoutUrl: string;
+  authLogoutStyle: string;
+  authClaimMappings: string | Record<string, unknown>;
+  gatewayRelayUrl: string;
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
@@ -152,6 +220,10 @@ type LegacyWindowConfig = Partial<{
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
+  gatewayVersions: string;
+  sanitizeHtmlDocsEnabled: boolean | string;
+  sanitizeHtmlDocsAdditionalAllowedTags: string;
+  sanitizeHtmlDocsAdditionalAllowedAttributes: string;
 }>;
 
 declare global {
@@ -168,20 +240,83 @@ const fromWindow = (): LegacyWindowConfig => ({
 
 const splitCommaConfigList = (value?: string) => value?.split(',').filter(Boolean) ?? [];
 
+/** "video, iframe" → ["video", "iframe"]: trimmed, blanks dropped. */
+const splitTrimmedList = (value: string) =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+/**
+ * A JSON array of strings, or a comma-separated list. A value starting with
+ * `[` is treated as JSON only, so broken JSON is ignored rather than split.
+ */
+const parseJsonStringArray = (value: string | undefined): string[] => {
+  const raw = value?.trim();
+  if (!raw) return [];
+  if (!raw.startsWith('[')) return splitTrimmedList(raw);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')
+      ? (parsed as string[])
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * A JSON object whose values are string arrays or comma-separated strings
+ * ("hidden", "controls,poster"). Entries of any other shape are dropped.
+ */
+const parseJsonRecordOfStringArrays = (value: string | undefined): Record<string, string[]> => {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === 'string') {
+        const names = splitTrimmedList(v);
+        if (names.length > 0) out[k] = names;
+      } else if (Array.isArray(v) && v.every((item) => typeof item === 'string')) {
+        out[k] = v as string[];
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
+
+const readSanitizeHtmlDocsEnabled = (value: boolean | string | undefined) =>
+  String(value ?? '').trim().toLowerCase() !== 'false';
 
 const readDeploymentMode = (value: string | undefined): RuntimeConfig['deploymentMode'] =>
   value === 'cloud' ? 'cloud' : 'onprem';
-
-const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
-  value === 'oidc' ? 'oidc' : 'basic';
 
 const normalizeBasePath = (value?: string) => {
   if (!value || value === '/') return '';
   return `/${value.replace(/^\/|\/$/g, '')}`;
 };
 
-// VITE_ override wins so a local BML can be targeted in dev even when the
+// gatewayVersions arrives JSON-encoded (see config.GatewayVersionEntry /
+// buildRuntimeConfig on the BFF); an absent or malformed value yields an
+// empty catalog rather than throwing, consistent with every other field here
+// falling back to a safe default instead of crashing the SPA on bad config.
+const readGatewayVersions = (value?: string): GatewayVersionEntry[] => {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as GatewayVersionEntry[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+// VITE_ override wins so a local platform-api can be targeted in dev even when the
 // runtime config injects a hosted "connect" gateway URL.
 const resolvedPlatformApiBaseUrl =
   import.meta.env.VITE_PLATFORM_API_BASE_URL ||
@@ -200,6 +335,10 @@ const hostFromUrl = (url: string) => {
   }
 };
 
+const resolvedAuthMode = readAuthMode(
+  fromWindow().authMode || fromWindow().AUTH_MODE || import.meta.env.VITE_AUTH_MODE,
+);
+
 export const runtimeConfig: RuntimeConfig = {
   appBasePath: normalizeBasePath(
     fromWindow().appBasePath ||
@@ -213,9 +352,26 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().baseUrl ||
     import.meta.env.VITE_API_BASE_URL ||
     '',
-  authMode: readAuthMode(
-    fromWindow().authMode || fromWindow().AUTH_MODE || import.meta.env.VITE_AUTH_MODE,
-  ),
+  authMode: resolvedAuthMode,
+  authContract: resolveAuthContract(resolvedAuthMode, {
+    loginStyle: fromWindow().authLoginStyle || import.meta.env.VITE_AUTH_LOGIN_STYLE,
+    loginUrl: fromWindow().authLoginUrl || import.meta.env.VITE_AUTH_LOGIN_URL,
+    credentialsUrl: fromWindow().authCredentialsUrl || import.meta.env.VITE_AUTH_CREDENTIALS_URL,
+    returnParam: fromWindow().authReturnParam || import.meta.env.VITE_AUTH_RETURN_PARAM,
+    sessionUrl: fromWindow().authSessionUrl || import.meta.env.VITE_AUTH_SESSION_URL,
+    sessionFormat: fromWindow().authSessionFormat || import.meta.env.VITE_AUTH_SESSION_FORMAT,
+    checkSessionUrl:
+      fromWindow().authCheckSessionUrl || import.meta.env.VITE_AUTH_CHECK_SESSION_URL,
+    checkSessionInterval:
+      fromWindow().authCheckSessionInterval || import.meta.env.VITE_AUTH_CHECK_SESSION_INTERVAL,
+    logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
+    logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
+    claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
+  }),
+  gatewayRelayUrl:
+    fromWindow().gatewayRelayUrl ||
+    import.meta.env.VITE_GATEWAY_RELAY_URL ||
+    '/api/gateway-relay/invoke',
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
     fromWindow().defaultLocale ||
@@ -271,6 +427,8 @@ export const runtimeConfig: RuntimeConfig = {
     import.meta.env.VITE_GATEWAY_CONTROL_PLANE_HOST ||
     hostFromUrl(resolvedPlatformApiBaseUrl) ||
     'localhost:9243',
+  gatewayControlPlaneHostOverride:
+    fromWindow().GATEWAY_CONTROL_PLANE_HOST || import.meta.env.VITE_GATEWAY_CONTROL_PLANE_HOST || '',
   policyHubBaseUrl:
     fromWindow().POLICY_HUB_BASE_URL ||
     import.meta.env.VITE_POLICY_HUB_BASE_URL ||
@@ -316,4 +474,16 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().usersManagementApiUrl ||
     import.meta.env.VITE_USERS_MANAGEMENT_API_URL ||
     '',
+  gatewayVersions: readGatewayVersions(fromWindow().gatewayVersions),
+  sanitizeHtmlDocsEnabled: readSanitizeHtmlDocsEnabled(
+    fromWindow().sanitizeHtmlDocsEnabled ?? import.meta.env.VITE_SANITIZE_HTML_DOCS_ENABLED,
+  ),
+  sanitizeHtmlDocsAdditionalAllowedTags: parseJsonStringArray(
+    fromWindow().sanitizeHtmlDocsAdditionalAllowedTags ??
+      import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_TAGS,
+  ),
+  sanitizeHtmlDocsAdditionalAllowedAttributes: parseJsonRecordOfStringArrays(
+    fromWindow().sanitizeHtmlDocsAdditionalAllowedAttributes ??
+      import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_ATTRIBUTES,
+  ),
 };

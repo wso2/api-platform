@@ -1,6 +1,6 @@
 module ai-workspace-bff
 
-go 1.26.5
+go 1.26.10
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.5.0

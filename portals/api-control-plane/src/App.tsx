@@ -31,7 +31,12 @@ import { ProductActivation } from './hooks/ProductActivation';
 import { PermissionProvider, permissionMessages } from './permissions';
 import { AppRoutes } from './routes/AppRoutes';
 import { BrandLogoProvider, type BrandLogo } from './branding/BrandLogoProvider';
-import { ExtensionsProvider, type ApiControlPlaneExtension } from './extensions';
+import {
+  ExtensionsProvider,
+  type ApiControlPlaneCloudEntry,
+  type ApiControlPlaneExtension,
+} from './extensions';
+import { ResourceLimitsProvider } from './hooks/useResourceLimits';
 import { I18nProvider } from './i18n';
 import { useIntl } from 'react-intl';
 
@@ -91,12 +96,18 @@ function AppQueryProvider({ children }: { children: ReactNode }) {
 }
 
 export type AppProps = {
-  extensions?: readonly ApiControlPlaneExtension[];
+  extensions?: readonly ApiControlPlaneCloudEntry[];
   /** Logos used across branded surfaces; host applications may provide them. */
   brandLogo?: BrandLogo;
 };
 
 export default function App({ brandLogo, extensions = [] }: AppProps) {
+  // Routing and the nav pipeline only ever deal with entries that have a page.
+  // A header action has none, so it is dropped here rather than being given
+  // inert route fields just to pass through.
+  const navExtensions = extensions.filter(
+    (entry): entry is ApiControlPlaneExtension => 'routePath' in entry
+  );
   return (
     <I18nProvider>
       <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
@@ -109,9 +120,14 @@ export default function App({ brandLogo, extensions = [] }: AppProps) {
                     <PermissionProvider>
                       <ProductActivation />
                       <OrganizationBootstrap />
-                      <ExtensionsProvider extensions={extensions}>
-                        <AppRoutes extensions={extensions} />
-                      </ExtensionsProvider>
+                      {/* Above the shell, so AppLayout can read the value and
+                        hand it to extensions through the Port — the supplier
+                        that fills it is itself an extension, mounted inside. */}
+                      <ResourceLimitsProvider>
+                        <ExtensionsProvider extensions={extensions}>
+                          <AppRoutes extensions={navExtensions} />
+                        </ExtensionsProvider>
+                      </ResourceLimitsProvider>
                     </PermissionProvider>
                   </AuthProvider>
                 </BrowserRouter>

@@ -1,0 +1,8 @@
+# Present no client certificate to HTTPS backends whose upstream definition names no identity,
+# even when a gateway identity with role default exists.
+[router.upstream.tls]
+present_default_identity = false
+
+# The controller propagates a change to the runtime when it next polls the event hub.
+[controller.event_hub]
+poll_interval = "200ms"

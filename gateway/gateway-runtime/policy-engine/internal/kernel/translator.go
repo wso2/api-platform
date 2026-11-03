@@ -24,6 +24,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -235,7 +236,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				dropAction := mods.AnalyticsHeaderFilter
 				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
 					originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
-					shortCircuitAnalyticsData["request_headers"] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
+					shortCircuitAnalyticsData[analytics.RequestHeadersKey] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
 				}
 			}
 			if immResp.AnalyticsMetadata != nil {
@@ -370,8 +371,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					// Set the finalized headers to the analytics data
 					originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
 					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-					out.AnalyticsData["request_headers"] = finalizedHeaders
-					execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
+					out.AnalyticsData[analytics.RequestHeadersKey] = finalizedHeaders
+					execCtx.analyticsMetadata[analytics.RequestHeadersKey] = finalizedHeaders
 				}
 
 				// Handle UpstreamName for dynamic cluster routing (last one wins)
@@ -550,7 +551,7 @@ func mergePolicyAnalytics(
 ) {
 	maps.Copy(dest, metadata)
 	if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-		dest["request_headers"] = finalizeAnalyticsHeaders(dropAction, execCtx.requestBodyCtx.Headers.GetAll())
+		dest[analytics.RequestHeadersKey] = finalizeAnalyticsHeaders(dropAction, execCtx.requestBodyCtx.Headers.GetAll())
 	}
 }
 
@@ -657,8 +658,8 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
 			originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
 			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-			analyticsData["request_headers"] = finalizedHeaders
-			execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
+			analyticsData[analytics.RequestHeadersKey] = finalizedHeaders
+			execCtx.analyticsMetadata[analytics.RequestHeadersKey] = finalizedHeaders
 		}
 	}
 
@@ -688,6 +689,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
+	execCtx.noteRoutedPath(mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -739,6 +741,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
+	execCtx.noteRoutedPath(merged.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(merged.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -783,6 +786,7 @@ func TranslateRequestBodyActionsWithHeaderMerge(
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
+	execCtx.noteRoutedPath(merged.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(merged.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -890,8 +894,8 @@ func mergeRequestHeaderAndBodyResults(
 		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
 			originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
 			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-			analyticsData["request_headers"] = finalizedHeaders
-			execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
+			analyticsData[analytics.RequestHeadersKey] = finalizedHeaders
+			execCtx.analyticsMetadata[analytics.RequestHeadersKey] = finalizedHeaders
 		}
 	}
 
@@ -950,8 +954,8 @@ func mergeRequestHeaderAndBodyResults(
 		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
 			originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
 			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
-			analyticsData["request_headers"] = finalizedHeaders
-			execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
+			analyticsData[analytics.RequestHeadersKey] = finalizedHeaders
+			execCtx.analyticsMetadata[analytics.RequestHeadersKey] = finalizedHeaders
 		}
 	}
 
@@ -1062,8 +1066,8 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 	if responseHeaderDropAction != nil {
 		originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
 		finalizedHeaders := finalizeAnalyticsHeaders(*responseHeaderDropAction, originalHeaders)
-		analyticsData["response_headers"] = finalizedHeaders
-		execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
+		analyticsData[analytics.ResponseHeadersKey] = finalizedHeaders
+		execCtx.analyticsMetadata[analytics.ResponseHeadersKey] = finalizedHeaders
 	}
 
 	mergeHeaderMutations(headerMutation, headerOps)
@@ -1208,8 +1212,8 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 	if responseHeaderDropAction != nil {
 		originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
 		finalizedHeaders := finalizeAnalyticsHeaders(*responseHeaderDropAction, originalHeaders)
-		analyticsData["response_headers"] = finalizedHeaders
-		execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
+		analyticsData[analytics.ResponseHeadersKey] = finalizedHeaders
+		execCtx.analyticsMetadata[analytics.ResponseHeadersKey] = finalizedHeaders
 	}
 
 	// Re-compress body if a policy modified it and the original response was compressed.
@@ -1284,6 +1288,7 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	}
 
 	// Add analytics metadata
+	execCtx.noteRoutedPath(rsl.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(rsl.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -1319,6 +1324,7 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 	}
 
 	// Add analytics metadata
+	execCtx.noteRoutedPath(rsl.Mutations.Path)
 	analyticsStruct, err := buildAnalyticsStruct(rsl.AnalyticsData, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
@@ -1438,11 +1444,11 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	if responseHeaderDropAction != nil {
 		originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
 		finalizedHeaders := finalizeAnalyticsHeaders(*responseHeaderDropAction, originalHeaders)
-		analyticsData["response_headers"] = finalizedHeaders
+		analyticsData[analytics.ResponseHeadersKey] = finalizedHeaders
 
 		// Include request_headers from execution context if it was set in a previous phase
-		if _, exists := execCtx.analyticsMetadata["request_headers"]; exists {
-			analyticsData["request_headers"] = execCtx.analyticsMetadata["request_headers"]
+		if _, exists := execCtx.analyticsMetadata[analytics.RequestHeadersKey]; exists {
+			analyticsData[analytics.RequestHeadersKey] = execCtx.analyticsMetadata[analytics.RequestHeadersKey]
 		}
 	}
 
@@ -1648,6 +1654,7 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct, mutations *RequestMu
 		if namespace == constants.ExtProcFilterName {
 			// Prevent policies from overwriting reserved keys managed by the engine.
 			delete(metaStruct.Fields, "analytics_data")
+			delete(metaStruct.Fields, analytics.CorrelationTokenKey)
 			delete(metaStruct.Fields, "path")
 			delete(metaStruct.Fields, "method")
 			delete(metaStruct.Fields, "host")
@@ -1857,7 +1864,7 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 	// Seed with request-phase analytics so they are not lost when the final streaming
 	// chunk overwrites the analytics_data set by TranslateResponseHeaderActions.
 	for key, value := range execCtx.analyticsMetadata {
-		if key != "request_headers" {
+		if key != analytics.RequestHeadersKey {
 			analyticsData[key] = value
 		}
 	}

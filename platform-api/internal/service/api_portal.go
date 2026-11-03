@@ -274,10 +274,33 @@ func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, statu
 	// repository.ErrAPIPortalNotPending is a normal outcome for concurrent pollers
 	// racing the state machine (see repository docs); it flows through unchanged
 	// so plugin callers can detect it via errors.Is and drop their write silently.
-	if err := s.portalRepo.UpdateStatus(portal.ID, orgID, strings.TrimSpace(updatedBy), status); err != nil {
+	// A transition no user made keeps the row's updated_by; the audit names
+	// the user the row kept.
+	actor, err := s.portalRepo.UpdateStatus(portal.ID, orgID, strings.TrimSpace(updatedBy), status)
+	if err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, strings.TrimSpace(updatedBy))
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
+	return nil
+}
+
+// ReopenAPIPortal moves an active or failed portal back to pending, for a
+// change that takes it out of service until the change completes; the change's
+// owner later moves it on with UpdateAPIPortalStatus. A portal that is already
+// pending returns ErrAPIPortalPending (unwrapped, for errors.Is).
+func (s *APIPortalService) ReopenAPIPortal(handle, orgID, updatedBy string) error {
+	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
+	if err != nil {
+		return err
+	}
+	if portal == nil {
+		return apperror.APIPortalNotFound.New()
+	}
+	actor, err := s.portalRepo.Reopen(portal.ID, orgID, strings.TrimSpace(updatedBy))
+	if err != nil {
+		return err
+	}
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
 	return nil
 }
 
@@ -400,6 +423,16 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPort
 	}
 	if portal == nil {
 		return nil, apperror.APIPortalNotFound.New()
+	}
+	// A pending portal's URL is owned by its provisioner until it is active.
+	if req.Url != nil && portal.IsPending() {
+		requested, err := validateAPIPortalURL(*req.Url)
+		if err != nil {
+			return nil, err
+		}
+		if requested != portal.URL {
+			return nil, apperror.ValidationFailed.New("The url field cannot be changed while the API Portal is pending.")
+		}
 	}
 
 	if req.Name != nil {

@@ -20,6 +20,13 @@ import type { Deployment } from '@/api/resources/restApis/deployments';
 import type { RestApiGateway } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
 
 /**
+ * A gateway as either listing returns it. A REST API's own gateway listing
+ * reports `isDeployed`; the organization's gateway list, used for GraphQL APIs,
+ * does not, so deployment records alone decide there.
+ */
+type DeployableGateway = { id?: string; isDeployed?: boolean };
+
+/**
  * Which gateways an API can actually be tested against, most recently deployed
  * first.
  *
@@ -27,10 +34,10 @@ import type { RestApiGateway } from '@/api/resources/restApis/apiGateways/apiGat
  * offering it in the console's picker would produce requests that 404 for a
  * reason the user cannot see. Deployment state is the filter.
  */
-export const deployedGateways = (
-  gateways: readonly RestApiGateway[],
-  deployments: readonly Deployment[],
-): RestApiGateway[] => {
+export const deployedGateways = <G extends DeployableGateway = RestApiGateway>(
+  gateways: readonly G[],
+  deployments: readonly Pick<Deployment, 'createdAt' | 'gatewayId' | 'status'>[],
+): G[] => {
   const latestByGateway = new Map<string, number>();
 
   deployments

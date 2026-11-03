@@ -68,6 +68,46 @@ export interface PolicyHubPolicy {
 }
 
 /**
+ * One parameter a policy accepts, as the policy itself declares it.
+ *
+ * The configuration form is rendered from these rather than from a list held in
+ * the front end, so a policy that gains a parameter becomes configurable without
+ * a change here.
+ */
+export interface PolicyParameterDefinition {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array' | string;
+  displayName?: string;
+  description?: string;
+  required?: boolean;
+  default?: unknown;
+  enum?: unknown[];
+}
+
+/** Where a policy came from, which the picker shows so the two are told apart. */
+export type PolicySource = 'catalogue' | 'custom';
+
+/**
+ * A policy as the picker needs it: enough to list it, attribute it, and render
+ * its configuration form.
+ */
+export interface SelectablePolicy {
+  name: string;
+  displayName: string;
+  version: string;
+  source: PolicySource;
+  description?: string;
+  categories?: string[];
+  parameters?: PolicyParameterDefinition[];
+  /**
+   * The policy's declarations as published, when they arrive with the policy
+   * itself. Present for a gateway's own policies; catalogue policies publish
+   * theirs separately and are read on demand.
+   */
+  definition?: Record<string, unknown>;
+}
+
+/**
  * Response type for guardrails endpoint
  */
 export interface GuardrailsResponse {
@@ -595,6 +635,40 @@ export interface ProxyProviderConfig {
 }
 
 /**
+ * A translator attached to one provider, applied when that provider is the
+ * selected upstream.
+ */
+export interface ProxyProviderTransformer {
+  type: string;
+  version: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * One provider attached to a proxy.
+ *
+ * Every entry is uniform, and exactly one carries `isPrimary`. The primary
+ * supplies the proxy's provider identity and its default upstream; the rest are
+ * selectable upstreams a routing policy can choose between.
+ *
+ * `alias` is the name a client uses to select this provider, and it is read and
+ * carried back unchanged rather than edited here. Use `effectiveProviderName`
+ * to display it: an entry with no alias is selected by its id, so the two must
+ * not be shown as if they were different things.
+ *
+ * `auth.value` never arrives from the server — it is stripped from every
+ * response — so an entry read back holds the credential's type and header but
+ * not its secret.
+ */
+export interface ProxyProviderEntry {
+  id: string;
+  isPrimary: boolean;
+  alias?: string;
+  auth?: UpstreamAuth;
+  transformer?: ProxyProviderTransformer | null;
+}
+
+/**
  * LLM Proxy
  */
 export interface Proxy {
@@ -605,7 +679,21 @@ export interface Proxy {
   projectId?: string;
   context?: string;
   vhost?: string;
+  /**
+   * @deprecated Superseded by `providers`. Still returned by the server for
+   * clients written against the older contract, and deliberately not read here
+   * — every provider a proxy has appears in `providers`, including the primary.
+   */
   provider?: string | ProxyProviderConfig;
+  /** Every provider attached to this proxy, primary first. */
+  providers?: ProxyProviderEntry[];
+  /**
+   * Handle of the provider template describing the wire format this proxy
+   * accepts from clients. When absent the primary provider's own template is
+   * used, which is what a proxy created before the interface became selectable
+   * does.
+   */
+  inboundTemplate?: string;
   openapi?: string;
   globalPolicies?: GlobalPolicy[];
   operationPolicies?: OperationPolicy[];
@@ -651,7 +739,8 @@ export interface CreateProxyRequest {
   projectId: string;
   context: string;
   vhost?: string;
-  provider: ProxyProviderConfig;
+  providers: ProxyProviderEntry[];
+  inboundTemplate?: string;
   openapi: string;
   globalPolicies?: GlobalPolicy[];
   operationPolicies?: OperationPolicy[];
@@ -839,6 +928,180 @@ type MCPServerReadOnlyFields = 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 
  * Update MCP Server request - all fields optional, read-only excluded
  */
 export type UpdateMCPServerRequest = Partial<Omit<MCPServer, MCPServerReadOnlyFields>>;
+
+// ============================================================================
+// Agent Proxy Types
+// ============================================================================
+
+/**
+ * A2A transport exposed by the proxy
+ */
+export interface A2ATransport {
+  protocolBinding: 'JSONRPC' | 'HTTP+JSON';
+  pathPrefix?: string;
+}
+
+/**
+ * Agent Proxy timeout overrides
+ */
+export interface A2AResilience {
+  timeout?: string;
+  idleTimeout?: string;
+}
+
+/**
+ * Per-operation A2A configuration
+ */
+export interface A2AOperationConfig {
+  name: string;
+  policies?: GlobalPolicy[];
+  resilience?: A2AResilience;
+}
+
+/**
+ * Transport exposure plus agent-wide and per-operation A2A configuration
+ */
+export interface A2AOperationConfigs {
+  transports: A2ATransport[];
+  policies?: GlobalPolicy[];
+  operations?: A2AOperationConfig[];
+}
+
+/**
+ * How an Agent Card is served
+ */
+export type AgentCardMode = 'passthrough' | 'managed';
+
+/** Served verbatim — never re-serialized, so a signature stays valid */
+export type AgentCardDocument = Record<string, unknown>;
+
+/**
+ * Public Agent Card, served unauthenticated at a discovery path
+ */
+export interface A2APublicAgentCard {
+  mode?: AgentCardMode;
+  path?: string;
+  /** Passthrough only */
+  rewriteUrls?: boolean;
+  policies?: GlobalPolicy[];
+  /** Required in managed mode, forbidden in passthrough */
+  content?: AgentCardDocument;
+}
+
+/**
+ * Protected Agent Card, returned by the GetExtendedAgentCard operation
+ */
+export interface A2AProtectedAgentCard {
+  mode: AgentCardMode;
+  rewriteUrls?: boolean;
+  content?: AgentCardDocument;
+}
+
+/**
+ * Agent Card configuration
+ */
+export interface A2AAgentCardConfig {
+  public?: A2APublicAgentCard;
+  protected?: A2AProtectedAgentCard;
+}
+
+/**
+ * A2A protocol configuration. Omitting agentCard serves the public card passthrough.
+ */
+export interface A2AProtocolConfig {
+  protocolVersion: '1.0';
+  operationConfigs: A2AOperationConfigs;
+  agentCard?: A2AAgentCardConfig;
+}
+
+/** An omitted array empties the association set on update */
+export interface AgentProxyGatewayAssociation {
+  id: string;
+}
+
+/**
+ * Agent Proxy
+ */
+export interface AgentProxy {
+  id?: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  projectId: string;
+  context?: string;
+  vhost?: string;
+  upstream: Upstream;
+  kind?: 'AgentProxy';
+  /** Immutable after creation */
+  protocol: 'a2a';
+  a2a: A2AProtocolConfig;
+  resilience?: A2AResilience;
+  associatedGateways?: AgentProxyGatewayAssociation[];
+  readOnly?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+/**
+ * Agent Proxy list projection - protocol config and card content omitted
+ */
+export interface AgentProxyListItem {
+  id: string;
+  displayName: string;
+  description?: string;
+  version: string;
+  projectId: string;
+  protocol: 'a2a';
+  context?: string;
+  vhost?: string;
+  readOnly?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+/**
+ * Agent Proxies list API response
+ */
+export type AgentProxyListResponse = ApiListResponse<AgentProxyListItem>;
+
+/**
+ * Create Agent Proxy request - id is derived from displayName when omitted
+ */
+export type CreateAgentProxyRequest = AgentProxy;
+
+/** Read-only fields from API (excluded from update requests) */
+type AgentProxyReadOnlyFields =
+  | 'createdAt'
+  | 'createdBy'
+  | 'updatedAt'
+  | 'updatedBy'
+  | 'readOnly';
+
+/**
+ * Update Agent Proxy request - full replace, read-only excluded
+ */
+export type UpdateAgentProxyRequest = Omit<AgentProxy, AgentProxyReadOnlyFields>;
+
+/**
+ * Create Agent Proxy API key request - the shared platform CreateAPIKeyRequest
+ */
+export type CreateAgentProxyAPIKeyRequest = CreateLLMProxyAPIKeyRequest;
+
+/**
+ * Create Agent Proxy API key response - secret material is returned only here
+ */
+export type CreateAgentProxyAPIKeyResponse = CreateLLMProxyAPIKeyResponse;
+
+/**
+ * Fetch Agent Card request - a direct url, or a stored agentProxyId, never both
+ */
+export type FetchAgentCardRequest =
+  | { url: string; auth?: UpstreamAuth; agentProxyId?: never }
+  | { agentProxyId: string; url?: never; auth?: never };
 
 // ============================================================================
 // API Portal publication

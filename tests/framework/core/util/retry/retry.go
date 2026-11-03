@@ -34,6 +34,9 @@ const PropagationCeiling = 60 * time.Second
 // cannot hammer a component that is already behind.
 const BaseInterval = 750 * time.Millisecond
 
+// FastInterval is the poll cadence floor for a wait that asks for Options.Fast.
+const FastInterval = 100 * time.Millisecond
+
 // pacing widens the interval as the wait goes on: base for the first 20 seconds, then 1.5s,
 // then 3s.
 func pacing(elapsed, base time.Duration) time.Duration {
@@ -62,6 +65,9 @@ type Options struct {
 	Timeout time.Duration
 	// Interval is the base polling cadence.
 	Interval time.Duration
+	// Fast lowers the cadence floor from BaseInterval to FastInterval. Only for waits whose
+	// polls put no load on the component under test, such as log, listing and metrics reads.
+	Fast bool
 	// Retryable classifies an attempt error as transient. Nil means only errors matching
 	// IsTransient are retried.
 	Retryable func(error) bool
@@ -86,14 +92,21 @@ func (o Options) deadline(now time.Time) time.Time {
 	return now.Add(timeout)
 }
 
+func (o Options) floor() time.Duration {
+	if o.Fast {
+		return FastInterval
+	}
+	return BaseInterval
+}
+
 func (o Options) interval() time.Duration {
 	if o.Interval <= 0 {
-		return BaseInterval
+		return o.floor()
 	}
 	// Floored, so a step cannot poll faster than the suite's agreed cadence. The only way
 	// below it is subBaseIntervalForTests, which is unexported.
-	if o.Interval < BaseInterval && !o.subBaseIntervalForTests {
-		return BaseInterval
+	if o.Interval < o.floor() && !o.subBaseIntervalForTests {
+		return o.floor()
 	}
 	return o.Interval
 }

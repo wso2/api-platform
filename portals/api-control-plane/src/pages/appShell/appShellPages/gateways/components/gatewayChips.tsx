@@ -22,6 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
 import { relativeTime } from '@/utils/relativeTime';
+import { versionLabel } from '@/utils/versionLabel';
 import { gatewayMode, type GatewayFunctionality } from '../utils/gatewayDisplay';
 
 /**
@@ -111,7 +112,7 @@ export function GatewayVersion({ version }: { version?: string }) {
 
   return (
     <Typography color="text.secondary" component="div" noWrap variant="caption">
-      {`v${version}`}
+      {versionLabel(version)}
     </Typography>
   );
 }

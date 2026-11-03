@@ -34,15 +34,15 @@ const messages = defineMessages({
     defaultMessage: 'Create API',
     description: 'Browser tab title for the API creation wizard.',
   },
+  newProject: {
+    id: 'apiControlPlane.navigation.usePageTitle.newProject',
+    defaultMessage: 'Create project',
+    description: 'Browser tab title for the project creation page.',
+  },
   apiEdit: {
     id: 'apiControlPlane.navigation.usePageTitle.apiEdit',
     defaultMessage: 'Edit API',
     description: "Browser tab title for the page editing an API's basic information.",
-  },
-  settings: {
-    id: 'apiControlPlane.navigation.usePageTitle.settings',
-    defaultMessage: 'Settings',
-    description: 'Browser tab title for any Settings tab.',
   },
   monetize: {
     id: 'apiControlPlane.navigation.usePageTitle.monetize',
@@ -81,14 +81,9 @@ const messages = defineMessages({
  */
 const ROUTE_TITLES: readonly { message: MessageDescriptor; patterns: readonly string[] }[] = [
   { message: messages.newApi, patterns: [routes.newApi()] },
+  { message: messages.newProject, patterns: [routes.newProject()] },
   { message: messages.apiEdit, patterns: [routes.apiEdit()] },
   { message: messages.apis, patterns: projectScopedPaths(routes.apis) },
-  // Every tab below Settings, including the ones extensions add. The sidebar's
-  // own Settings item matches the bare `/settings` path only.
-  {
-    message: messages.settings,
-    patterns: [`${routes.settings()}/*`, `${routes.projectSettings()}/*`],
-  },
   { message: messages.monetize, patterns: apiScopedPaths(routes.apiManageMonetize) },
   { message: messages.lifecycle, patterns: apiScopedPaths(routes.apiManageLifecycle) },
   { message: messages.alerts, patterns: apiScopedPaths(routes.apiObservabilityAlerts) },

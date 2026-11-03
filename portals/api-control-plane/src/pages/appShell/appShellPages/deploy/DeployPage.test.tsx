@@ -136,6 +136,23 @@ describe('DeployPage', () => {
     });
   });
 
+  it('shows the gateway-managed banner and disables deploy actions for a read-only API', async () => {
+    server.use(
+      resource('/rest-apis/:restApiId', { ...api, readOnly: true }),
+      collection('/gateways', [gateway]),
+      collection('/rest-apis/:restApiId/deployments', [deployment]),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(/This API was created from a gateway/)).toBeInTheDocument();
+    // The deployment is still listed — read-only hides no state, only actions.
+    expect(await screen.findAllByText('Edge_Gateway_2026-01-01_1')).not.toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeDisabled();
+    // The first gateway auto-expands, so its DEPLOYED status panel offers Stop.
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled();
+  });
+
   it('offers gateway creation when the organization has none', async () => {
     server.use(
       resource('/rest-apis/:restApiId', api),

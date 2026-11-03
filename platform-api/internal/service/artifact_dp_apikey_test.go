@@ -81,6 +81,24 @@ func (c *dpCapturingAPIKeyRepo) Create(k *model.APIKey) error {
 	return nil
 }
 
+// GetByArtifactAndName reports no existing key by that name (used by
+// APIKeyService.resolveUniqueKeyName's collision check, and by
+// Update/RevokeAPIKey's ownership lookup once a key has been created).
+func (c *dpCapturingAPIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error) {
+	if c.created != nil && c.created.ArtifactUUID == artifactUUID && c.created.Name == name {
+		return c.created, nil
+	}
+	return nil, nil
+}
+
+// Revoke marks the captured key revoked, for tests exercising RevokeAPIKey.
+func (c *dpCapturingAPIKeyRepo) Revoke(artifactUUID, name, updatedBy string) error {
+	if c.created != nil && c.created.ArtifactUUID == artifactUUID && c.created.Name == name {
+		c.created.Status = "revoked"
+	}
+	return nil
+}
+
 func newDPKeyEventsService() *GatewayEventsService {
 	return NewGatewayEventsService(dpNoopEventHub{}, newTestIdentityService(), newTestLogger())
 }

@@ -1,0 +1,21 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+    name: compat-single
+spec:
+    displayName: Compat Single Provider
+    version: v1.0
+    context: /single
+    vhost: api.example.com
+    provider:
+        id: openai-provider
+        auth:
+            header: Authorization
+            type: api-key
+            value: '{{ secret "openai-loopback" }}'
+    globalPolicies:
+        - name: api-key-auth
+          params:
+            in: header
+            key: x-api-key
+          version: v1

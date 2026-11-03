@@ -27,6 +27,11 @@ const (
 	SubscriptionPlanStatusInactive SubscriptionPlanStatus = "INACTIVE"
 )
 
+// MaxSubscriptionPlanHandleChars is the width of subscription_plans.handle. The API Portal keeps
+// the handles of the plans it creates to the same width, so every plan made there can be copied
+// here.
+const MaxSubscriptionPlanHandleChars = 40
+
 // SubscriptionPlanUpdate holds fields for partial updates.
 // All pointer fields are only applied when non-nil (patch semantics).
 type SubscriptionPlanUpdate struct {
@@ -39,7 +44,11 @@ type SubscriptionPlanUpdate struct {
 	// submits an explicit empty "limits" array. Ignored if ThrottleLimitCount is set.
 	ClearLimit bool
 	ExpiryTime *time.Time
-	Status     *SubscriptionPlanStatus
+	// ClearExpiryTime removes the plan's expiry. Set when the caller submits an
+	// explicit null "expiryTime"; an omitted field leaves the expiry unchanged.
+	// Ignored if ExpiryTime is set.
+	ClearExpiryTime bool
+	Status          *SubscriptionPlanStatus
 }
 
 // SubscriptionPlan represents an organization-scoped subscription plan
@@ -63,4 +72,24 @@ type SubscriptionPlan struct {
 	UpdatedBy          string                 `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt          time.Time              `json:"createdAt" db:"created_at"`
 	UpdatedAt          time.Time              `json:"updatedAt" db:"updated_at"`
+}
+
+// SubscriptionPlanUsage counts what offers or uses a subscription plan here:
+//   - RESTAPIs: the REST APIs whose configuration lists the plan;
+//   - Drafts: the APIs whose publication draft for an API Portal offers it;
+//   - Publications: the APIs whose live publication on an API Portal offers it;
+//   - Subscriptions: the subscriptions on the plan.
+//
+// Each API is counted once per kind, however many portals it is on. Only counts are kept, not
+// names, since a plan may be offered by more APIs than a message can list.
+type SubscriptionPlanUsage struct {
+	RESTAPIs      int
+	Drafts        int
+	Publications  int
+	Subscriptions int
+}
+
+// InUse reports whether anything offers or uses the plan.
+func (u *SubscriptionPlanUsage) InUse() bool {
+	return u.RESTAPIs > 0 || u.Drafts > 0 || u.Publications > 0 || u.Subscriptions > 0
 }

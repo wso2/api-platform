@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	xdslog "github.com/envoyproxy/go-control-plane/pkg/log"
@@ -74,20 +75,26 @@ type SnapshotManager struct {
 	afterGetAll      func() // nil in production; test hook for deterministic race testing
 }
 
-// NewSnapshotManager creates a new snapshot manager
-func NewSnapshotManager(store *storage.ConfigStore, logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, cfg *config.Config) *SnapshotManager {
+// NewSnapshotManager creates a new snapshot manager. It returns an error
+// when the certificate store fails to load; the caller must refuse to start.
+func NewSnapshotManager(store *storage.ConfigStore, logger *slog.Logger, routerConfig *config.RouterConfig, db storage.Storage, cfg *config.Config) (*SnapshotManager, error) {
 	// Create a snapshot cache with a simple node ID hasher
 	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, &slogAdapter{logger: logger})
 
+	translator, err := NewTranslator(logger, routerConfig, db, cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	return &SnapshotManager{
 		cache:            snapshotCache,
-		translator:       NewTranslator(logger, routerConfig, db, cfg),
+		translator:       translator,
 		store:            store,
 		logger:           logger,
 		nodeID:           "router-node",
 		statusCallback:   nil,
 		sdsSecretManager: nil,
-	}
+	}, nil
 }
 
 // SetSDSSecretManager sets the SDS secret manager
@@ -137,18 +144,35 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		return fmt.Errorf("failed to translate configurations: %w", err)
 	}
 
-	// Add the SDS secret only when this snapshot's clusters actually reference it.
-	// Envoy never issues a watch for the Secret type URL unless a Cluster it accepted
-	// points at that secret name via SDS, so pushing it unconditionally just produces
-	// an "Ignoring unwatched type URL ... Secret" warning whenever no HTTPS-scheme
-	// upstream is configured.
-	if sm.sdsSecretManager != nil && ClusterResourcesReferenceUpstreamCASecret(resources[resource.ClusterType]) {
-		secret, err := sm.sdsSecretManager.GetSecret()
+	// Include only the secrets a cluster or listener in this snapshot
+	// references; Envoy ignores the rest. A failure here fails the snapshot.
+	if sm.sdsSecretManager != nil {
+		secrets, err := sm.sdsSecretManager.GetSecrets(sm.translator.GetUpstreamTLSSecretRefs())
 		if err != nil {
-			log.Warn("Failed to get SDS secret, continuing without it", slog.Any("error", err))
-		} else {
-			resources[resource.SecretType] = []types.Resource{secret}
-			log.Debug("Added SDS secret to snapshot", slog.String("secret_name", SecretNameUpstreamCA))
+			log.Error("Failed to build SDS secrets", slog.Any("error", err))
+			metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
+			metrics.TranslationErrorsTotal.WithLabelValues("sds_secrets_failed").Inc()
+			if sm.statusCallback != nil {
+				for _, cfg := range configs {
+					sm.statusCallback(cfg.UUID, false, correlationID)
+				}
+			}
+			return fmt.Errorf("failed to build SDS secrets: %w", err)
+		}
+
+		var included []types.Resource
+		for _, secret := range secrets {
+			s, ok := secret.(*tlsv3.Secret)
+			if !ok {
+				continue
+			}
+			if SnapshotReferencesSDSSecret(resources[resource.ClusterType], resources[resource.ListenerType], s.GetName()) {
+				included = append(included, secret)
+				log.Debug("Added SDS secret to snapshot", slog.String("secret_name", s.GetName()))
+			}
+		}
+		if len(included) > 0 {
+			resources[resource.SecretType] = included
 		}
 	}
 

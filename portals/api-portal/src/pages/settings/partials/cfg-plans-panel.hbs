@@ -16,6 +16,7 @@
               <tr>
                 <th>Name</th>
                 <th>Limits</th>
+                <th>Pricing</th>
                 <th style="width:90px;"></th>
               </tr>
             </thead>
@@ -27,6 +28,7 @@
                 data-display="{{displayName}}"
                 data-desc="{{description}}"
                 data-limits="{{{jsonAttr limits}}}"
+                data-pricing="{{{jsonAttr pricing}}}"
                 data-refid="{{refId}}">
                 <td>
                   <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
@@ -42,14 +44,23 @@
                   {{/if}}
                 </td>
                 <td>
+                  {{#if pricing}}
+                    <span style="font-size:.8125rem;color:#1a2433;">{{pricingText}}</span>
+                  {{else}}
+                    <span style="color:#9aa3af;font-size:.8rem;">{{pricingText}}</span>
+                  {{/if}}
+                </td>
+                <td>
                   <div class="cfg-row-actions">
                     <button class="cfg-icon-btn cfg-plan-edit-btn" type="button"
                       data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
-                      data-desc="{{description}}" data-limits="{{{jsonAttr limits}}}" data-refid="{{refId}}" title="Edit">
+                      data-desc="{{description}}" data-limits="{{{jsonAttr limits}}}" data-pricing="{{{jsonAttr pricing}}}"
+                      data-refid="{{refId}}" title="Edit">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="cfg-icon-btn cfg-icon-btn--danger cfg-plan-delete-btn" type="button"
-                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}" title="Delete">
+                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
+                      data-apis="{{apiCount}}" data-subscriptions="{{subscriptionCount}}" title="Delete">
                       <i class="bi bi-trash"></i>
                     </button>
                   </div>
@@ -57,7 +68,7 @@
               </tr>
               {{/orgPlans}}
               {{#unless orgPlans.length}}
-              <tr><td colspan="3" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
+              <tr><td colspan="4" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>

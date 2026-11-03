@@ -41,7 +41,9 @@ const crypto = require('crypto');
 const yaml = require('../../utils/yaml');
 const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
+const { formatValidationErrors } = require('../../utils/validationErrors');
 const constants = require('../../utils/constants');
+const { redactUrl } = require('../../utils/logRedaction');
 
 const { config } = require('../../config/configLoader');
 const logger = require('../../config/logger');
@@ -116,7 +118,7 @@ function notImplementedHandler(operationId, tag) {
             operationId,
             tag,
             method: req.method,
-            url: req.originalUrl,
+            url: redactUrl(req.originalUrl),
         });
         res.status(501).json({
             code: 501,
@@ -190,7 +192,7 @@ function resolveValidateResponsesOpt() {
             onError: (err, json, req) => {
                 logger.warn('OpenAPI response drift (log-only)', {
                     error: err.message,
-                    url: req.originalUrl,
+                    url: redactUrl(req.originalUrl),
                     method: req.method,
                     errors: err.errors,
                 });
@@ -238,7 +240,12 @@ function build() {
             // for all endpoints including API content ZIP uploads.
             fileUploader: {
                 storage: require('multer').memoryStorage(),
-                limits: { fileSize: config.uploads?.maxBytes || 10485760 },
+                limits: {
+                    fileSize: config.uploads?.maxBytes || 10485760,
+                    // Cap numeric array indexes in multipart field names (multer's default is
+                    // Infinity). No multipart field in the API Portal spec is an array.
+                    fieldArrayIndexLimit: 100,
+                },
             },
             // express-openapi-validator v5 (ajv 8): validateFormats is a boolean now
             // (the ajv6 'fast'/'full' modes are gone). true enables ajv-formats.
@@ -282,13 +289,19 @@ function build() {
                 tracking_id: trackingId,
             });
         }
-        // 4xx validation errors from the OpenAPI validator are safe to pass through.
+        // 4xx validation errors from the OpenAPI validator are safe to pass through. A 400 that lists what
+        // failed is answered with one plain sentence per field (validationErrors.js). The validator's own
+        // text, which lists every rule of every accepted shape, goes only to the log.
         logger.warn('OpenAPI router rejected request', {
             error: err.message,
             status,
             url: reqPath,
             method: req.method,
         });
+        if (status === 400 && Array.isArray(err.errors) && err.errors.length > 0) {
+            const { message, errors } = formatValidationErrors(err.errors);
+            return res.status(status).json({ code: status, message, errors });
+        }
         res.status(status).json({
             code: status,
             message: err.message || 'Request failed',

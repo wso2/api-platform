@@ -19,6 +19,12 @@
 import type { Policy, RestApi } from '@/api/resources/restApis';
 
 /**
+ * The part of an API this module reads: its own policies and, for a REST API,
+ * each operation's. A GraphQL API carries only the former.
+ */
+type PolicyCarrier = Pick<RestApi, 'policies'> & { operations?: RestApi['operations'] };
+
+/**
  * Determines whether the API requires an API key and where to send it.
  *
  * The gateway enforces API-key authentication only when the `api-key-auth`
@@ -35,8 +41,8 @@ export const API_KEY_AUTH_POLICY = 'api-key-auth';
  * Header the policy checks when it declares no `params.key`.
  *
  * The gateway's own documented default for `api-key-auth` — see
- * `tests/integration-e2e/steps_secured_test.go`, which pins it as the header a
- * secured API is invoked with. Guessing anything else here produces a 401 that
+ * `tests/framework/suites/it/features/management-portal/subscriptions/secured_api_invocation.feature`,
+ * which pins it as the header a secured API is invoked with. Guessing anything else here produces a 401 that
  * reads as a broken key rather than a misaddressed one.
  */
 export const DEFAULT_API_KEY_HEADER = 'API-Key';
@@ -66,13 +72,13 @@ const text = (value: unknown): string | undefined => {
  * for such an API and every secured call would 401 with nothing on screen to
  * explain it.
  */
-const allPolicies = (api: RestApi): Policy[] => [
+const allPolicies = (api: PolicyCarrier): Policy[] => [
   ...(api.policies ?? []),
   ...(api.operations ?? []).flatMap((operation) => operation.request?.policies ?? []),
 ];
 
 /** Reads the API's first case-insensitive `api-key-auth` policy, if any. */
-export const apiKeyAuthOf = (api: RestApi | undefined): ApiKeyAuth | undefined => {
+export const apiKeyAuthOf = (api: PolicyCarrier | undefined): ApiKeyAuth | undefined => {
   if (!api) return undefined;
 
   const policy = allPolicies(api).find(

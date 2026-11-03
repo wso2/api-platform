@@ -58,6 +58,17 @@ export type NavigationDefinition = {
    */
   children?: NavigationDefinition[];
   /**
+   * Marks a `requires: 'api'` submenu as also revealing its children while a
+   * GraphQL API is in scope, not just a REST one. Set by `submenu()` only
+   * when at least one child was built with a `graphqlTo` — Insights and
+   * Observability, which have no GraphQL-side pages at all, are deliberately
+   * left requiring REST scope only, so they keep behaving exactly as they did
+   * before GraphQL scope existed (hidden, parent links to the REST picker)
+   * rather than revealing children that would resolve to a REST scope-picker
+   * alias while browsing a GraphQL API.
+   */
+  revealsForGraphqlApi?: boolean;
+  /**
    * Scope this item's children need. Shares `ScopeGate`'s own union so the
    * sidebar and the page it opens can never disagree about what "in scope" means.
    */

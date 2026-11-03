@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -73,9 +74,17 @@ func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error
 	return storage, nil
 }
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
-// initSchema creates the database schema if it doesn't exist
+// previousSchemaVersion is the only older schema version this binary migrates
+// in place. Any other stored version is refused rather than skipped.
+const previousSchemaVersion = 5
+
+// initSchema creates the database schema if it doesn't exist, migrates a
+// previous-version schema in place, and creates anything a current-version
+// schema lacks. Every statement in gateway-controller-db.sql is CREATE ... IF
+// NOT EXISTS, so running it against an existing database only adds what is
+// missing.
 func (s *SQLiteStorage) initSchema() error {
 	var version int
 	err := s.db.QueryRow("PRAGMA user_version").Scan(&version)
@@ -83,18 +92,118 @@ func (s *SQLiteStorage) initSchema() error {
 		return fmt.Errorf("failed to query schema version: %w", err)
 	}
 
-	if version == 0 {
+	switch version {
+	case 0:
 		s.logger.Info("Initializing database schema", slog.Int("version", currentSchemaVersion))
 		if _, err := s.db.Exec(schemaSQL); err != nil {
 			return fmt.Errorf("failed to create schema: %w", err)
 		}
 		s.logger.Info("Database schema initialized successfully")
-	} else if version != currentSchemaVersion {
+	case previousSchemaVersion:
+		s.logger.Info("Migrating database schema",
+			slog.Int("from_version", version), slog.Int("to_version", currentSchemaVersion))
+		if err := s.migrateSchemaV5ToV6(); err != nil {
+			return fmt.Errorf("failed to migrate schema from version %d to %d: %w", version, currentSchemaVersion, err)
+		}
+		s.logger.Info("Database schema migrated successfully")
+	case currentSchemaVersion:
+		if err := s.createMissingSchemaObjects(); err != nil {
+			return err
+		}
+	default:
 		return fmt.Errorf("unsupported schema version %d, expected %d; delete the database to recreate", version, currentSchemaVersion)
 	}
 
 	s.logger.Info("Database schema up to date", slog.Int("version", currentSchemaVersion))
 	return nil
+}
+
+// migrateSchemaV5ToV6 adds the certificates usage, role, match_json,
+// private_key_ciphertext and key_algorithm columns to a version 5 database,
+// then runs the schema to create the tables and indexes version 6 added, such
+// as graphql_apis, and sets user_version to 6. usage and role are defaulted;
+// the rest are nullable. No existing column changes. graphql_apis must exist
+// before the controller starts: GetAllConfigs reads every builtin resource
+// table, so loading configurations fails without it.
+func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin migration transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN usage TEXT NOT NULL DEFAULT 'upstream'`); err != nil {
+		return fmt.Errorf("failed to add certificates.usage column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN role TEXT NOT NULL DEFAULT 'client'`); err != nil {
+		return fmt.Errorf("failed to add certificates.role column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN match_json TEXT`); err != nil {
+		return fmt.Errorf("failed to add certificates.match_json column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`); err != nil {
+		return fmt.Errorf("failed to add certificates.private_key_ciphertext column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`); err != nil {
+		return fmt.Errorf("failed to add certificates.key_algorithm column: %w", err)
+	}
+	if _, err := tx.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", currentSchemaVersion, err)
+	}
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion)); err != nil {
+		return fmt.Errorf("failed to set schema version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration: %w", err)
+	}
+	return nil
+}
+
+// createMissingSchemaObjects runs the schema against a current-version
+// database, creating any table or index it lacks, and logs what it created.
+// Earlier controllers migrated version 5 databases to version 6 without
+// graphql_apis, which left them unable to load configurations at startup.
+func (s *SQLiteStorage) createMissingSchemaObjects() error {
+	before, err := s.schemaObjectNames()
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to create missing schema objects: %w", err)
+	}
+	after, err := s.schemaObjectNames()
+	if err != nil {
+		return err
+	}
+	if created := slices.DeleteFunc(after, func(name string) bool { return slices.Contains(before, name) }); len(created) > 0 {
+		s.logger.Warn("Created tables and indexes missing from the database",
+			slog.Any("created", created), slog.Int("version", currentSchemaVersion))
+	}
+	return nil
+}
+
+// schemaObjectNames returns the names of the database's tables and indexes.
+func (s *SQLiteStorage) schemaObjectNames() ([]string, error) {
+	rows, err := s.db.Query(`SELECT name FROM sqlite_master WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list schema objects: %w", err)
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("failed to list schema objects: %w", err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to list schema objects: %w", err)
+	}
+	return names, nil
 }
 
 func isSQLiteUniqueConstraintError(err error) bool {

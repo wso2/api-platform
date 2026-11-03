@@ -37,6 +37,10 @@ export type ExternalServerStepBannerProps = {
   hasPolicies: boolean;
   hasDeployments: boolean;
   onStepClick?: (stepId: ExternalServerStepBannerStepId) => void;
+  /** Shown when serverName is empty. */
+  fallbackName?: string;
+  /** Line shown beneath the heading. */
+  description?: string;
 };
 
 const TOTAL_STEPS = 3;
@@ -68,10 +72,12 @@ export default function ExternalServerStepBanner({
   hasPolicies,
   hasDeployments,
   onStepClick,
+  fallbackName = 'External Server',
+  description = 'Click each step to configure and deploy your MCP Proxy.',
 }: ExternalServerStepBannerProps) {
   const [isVisible, setIsVisible] = useState(true);
 
-  const resolvedServerName = serverName?.trim() || 'External Server';
+  const resolvedServerName = serverName?.trim() || fallbackName;
   const completedSteps = 1 + (hasPolicies ? 1 : 0) + (hasDeployments ? 1 : 0);
   const progressValue = (completedSteps / TOTAL_STEPS) * 100;
 
@@ -147,7 +153,7 @@ export default function ExternalServerStepBanner({
               <Box component="span" sx={{ fontWeight: 700 }}>{resolvedServerName}</Box>
             </Typography>
             <Typography sx={{ mt: 0.35, fontSize: 12, color: '#667085', lineHeight: 1.4 }}>
-              Click each step to configure and deploy your MCP Proxy.
+              {description}
             </Typography>
           </Box>
 

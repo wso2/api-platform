@@ -55,19 +55,27 @@ const (
 //
 // maxBytes <= 0 falls back to defaultOpenAPISpecMaxFetchBytes.
 func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64) (string, error) {
+	return FetchDocumentFromURL(ctx, rawURL, maxBytes, "OpenAPI spec")
+}
+
+// FetchDocumentFromURL is FetchOpenAPISpecFromURL's hardened fetch for any text
+// document (e.g. a GraphQL SDL file). docLabel names the document in its errors
+// ("GraphQL SDL" → "GraphQL SDL URL returned an unexpected status") so a caller
+// fetching something other than an OpenAPI spec does not log a misleading message.
+func FetchDocumentFromURL(ctx context.Context, rawURL string, maxBytes int64, docLabel string) (string, error) {
 	if maxBytes <= 0 {
 		maxBytes = constants.DefaultOpenAPISpecMaxBytes
 	}
 
 	parsed, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
-		return "", fmt.Errorf("invalid OpenAPI spec URL")
+		return "", fmt.Errorf("invalid %s URL", docLabel)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", fmt.Errorf("OpenAPI spec URL must use http or https")
+		return "", fmt.Errorf("%s URL must use http or https", docLabel)
 	}
 	if parsed.Hostname() == "" {
-		return "", fmt.Errorf("OpenAPI spec URL must include a host")
+		return "", fmt.Errorf("%s URL must include a host", docLabel)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, openAPISpecFetchTimeout)
@@ -81,7 +89,7 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to build OpenAPI spec request")
+		return "", fmt.Errorf("failed to build %s request", docLabel)
 	}
 	req.Header.Set("Accept", "application/json, application/yaml, text/yaml, text/plain, */*")
 	req.Header.Set("User-Agent", "wso2-api-platform")
@@ -89,21 +97,21 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 	resp, err := client.Do(req)
 	if err != nil {
 		// Do not surface the underlying net error (it can leak resolved IPs/hosts).
-		return "", fmt.Errorf("failed to fetch OpenAPI spec")
+		return "", fmt.Errorf("failed to fetch %s", docLabel)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("OpenAPI spec URL returned an unexpected status")
+		return "", fmt.Errorf("%s URL returned an unexpected status", docLabel)
 	}
 
 	// Bound the body: read one extra byte so we can detect an over-limit response.
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return "", fmt.Errorf("failed to read OpenAPI spec response")
+		return "", fmt.Errorf("failed to read %s response", docLabel)
 	}
 	if int64(len(data)) > maxBytes {
-		return "", apperror.PayloadTooLarge.New("The OpenAPI spec fetched from the provided URL exceeds the maximum allowed size.")
+		return "", apperror.PayloadTooLarge.New(fmt.Sprintf("The %s fetched from the provided URL exceeds the maximum allowed size.", docLabel))
 	}
 
 	return string(data), nil

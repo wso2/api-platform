@@ -55,7 +55,7 @@ type MCPDeploymentService struct {
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
 	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
-	definitions ArtifactDefinitions, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
+	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
@@ -66,7 +66,7 @@ func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRe
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		utils:                &utils.MCPUtils{},
-		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		slogger:              slogger,
 	}
 }
@@ -248,6 +248,11 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
+	// A gateway whose release predates the artifact kind cannot run it;
+	// refuse before anything is stored or sent.
+	if err := gatewaytranslator.EnsureKindSupported(constants.MCPProxy, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	mcpProxy, err := s.mcpRepo.GetByUUID(proxyUUID, orgId)
 	if err != nil {
@@ -323,10 +328,11 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 	}
 	sourceDataVersion := gatewaytranslator.PlatformDataVersion(source.DataVersion)
-	targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
-	if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
+	translation, err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, gateway.Version, d)
+	if err != nil {
 		return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
 	}
+	LogTranslationWarnings(s.slogger, translation, constants.MCPProxy, deploymentID, gatewayID, gateway.Version)
 	contentBytes, err := yaml.Marshal(d)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
@@ -574,6 +580,10 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	if gateway == nil || gateway.OrganizationID != orgId {
 		return nil, apperror.GatewayNotFound.New()
 	}
+	// A restore sends the artifact to the gateway again, so the kind gate applies here too.
+	if err := gatewaytranslator.EnsureKindSupported(constants.MCPProxy, gateway.Version); err != nil {
+		return nil, err
+	}
 
 	// Transitional until the gateway acknowledges the artifact.
 	initialStatus := model.DeploymentStatusDeploying
@@ -757,16 +767,16 @@ func (s *MCPDeploymentService) getMCPProxyUUIDByHandle(handle, orgUUID string) (
 		return "", apperror.ValidationFailed.New("artifact handle is required")
 	}
 
-	artifact, err := s.artifactRepo.GetByHandle(handle, orgUUID)
+	// Handles are unique only WITHIN a kind, so the lookup is scoped to this
+	// endpoint's kind: an artifact of another kind sharing the handle neither
+	// resolves here nor hides this kind's artifact.
+	artifact, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(handle, constants.MCPProxy, orgUUID)
 	if err != nil {
 		return "", err
 	}
-	// Handles are unique only WITHIN a kind, and this lookup spans every kind's
-	// table, so an artifact of another kind that happens to share the handle must
-	// not be reachable through this endpoint.
-	if artifact == nil || artifact.Type != constants.MCPProxy {
+	if artifact == nil {
 		return "", apperror.MCPProxyNotFound.New()
 	}
 
-	return artifact.UUID, nil
+	return artifact.ID, nil
 }

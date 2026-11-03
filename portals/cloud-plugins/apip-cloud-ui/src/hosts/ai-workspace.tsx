@@ -31,6 +31,7 @@ import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
   AI_WORKSPACE_INSIGHTS_SLOT,
+  AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT,
   AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT,
   AI_WORKSPACE_MCP_DEPLOY_SLOT,
@@ -38,6 +39,11 @@ import {
   type AIWorkspaceExtension,
 } from "../../../../ai-workspace/src/extensions";
 import type { AIWorkspaceHostPort } from "../../../../ai-workspace/src/hostPort";
+import {
+  CONTROLPLANE_HOST,
+  DEFAULT_CONTROLPLANE_HOST,
+  PLATFORM_GATEWAY_VERSIONS,
+} from "../../../../ai-workspace/src/config.env";
 import {
   defineCloudPlugin,
   getCloudExtensions,
@@ -58,6 +64,25 @@ export const cloudBrandLogo: BrandLogo = {
  * fresh array on every render would make that request repeat.
  */
 const AI_GATEWAY_TYPES: GatewayType[] = ["ai"];
+
+/**
+ * `GatewaysFeature`'s port requires `gatewayVersions`, which this host's own
+ * `AIWorkspaceHostPort` (core, `ai-workspace/src/hostPort.tsx`) does not carry.
+ * AI Workspace already hardcodes its release catalog as `PLATFORM_GATEWAY_VERSIONS`
+ * (`ai-workspace/src/config.env.ts`) — every gateway here is an AI gateway, so
+ * `type` is always `'ai'`. `distVersion` is copied only when the catalog sets it:
+ * the zip's version defaults to the release tag, not to the unpack folder's
+ * `distFolderVersion`, so borrowing that would name a zip the release may not
+ * publish. Computed once at module scope, same as `AI_GATEWAY_TYPES` above, since the source array
+ * is itself a static, hardcoded catalog.
+ */
+const AI_GATEWAY_VERSIONS = PLATFORM_GATEWAY_VERSIONS.map((entry) => ({
+  type: "ai" as const,
+  version: entry.version,
+  latestVersion: entry.latestVersion,
+  distVersion: entry.distVersion,
+  channel: entry.channel,
+}));
 
 /**
  * Cloud features registered for the AI Workspace host. The host owns routing,
@@ -91,7 +116,7 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           id: "trial-status",
           slot: AI_WORKSPACE_HEADER_ACTIONS_SLOT,
           order: 10,
-          render: () => <TrialStatusFeature />,
+          render: (port: AIWorkspaceHostPort) => <TrialStatusFeature port={port} />,
         },
       ],
     }),
@@ -152,7 +177,17 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           icon: <Network size={20} />,
           hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
           render: (port: AIWorkspaceHostPort) => (
-            <GatewaysFeature gatewayTypes={AI_GATEWAY_TYPES} port={port} />
+            <GatewaysFeature
+              gatewayTypes={AI_GATEWAY_TYPES}
+              port={{
+                ...port,
+                gatewayVersions: AI_GATEWAY_VERSIONS,
+                // Only an address the deployment set: the local-Docker default is no address for a
+                // gateway running anywhere else, so the setup commands show a placeholder instead.
+                controlPlaneHost:
+                  CONTROLPLANE_HOST === DEFAULT_CONTROLPLANE_HOST ? undefined : CONTROLPLANE_HOST,
+              }}
+            />
           ),
         },
       ],
@@ -177,14 +212,14 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
       version: "0.1.0",
       // Registered once per artifact kind, each replacing that kind's built-in page
       // at its own route, so environments are what the AI Workspace shows for MCP
-      // servers, LLM proxies and LLM providers alike.
+      // servers, LLM proxies, Agent Proxies and LLM providers alike.
       //
-      // Two features, because the two kinds of artifact are deployed differently.
-      // MCP servers and LLM proxies belong to a PROJECT, so they are deployed through
-      // that project's pipeline: environments in promotion order, promoting between
-      // them. LLM providers belong to the ORGANIZATION — `llm_providers` has no
-      // project — so no pipeline can apply to them, and they are deployed straight to
-      // any of the organization's environments.
+      // Two shapes, because the two kinds of artifact are deployed differently.
+      // MCP servers, LLM proxies and Agent Proxies belong to a PROJECT, so they are
+      // deployed through that project's pipeline: environments in promotion order,
+      // promoting between them. LLM providers belong to the ORGANIZATION —
+      // `llm_providers` has no project — so no pipeline can apply to them, and they
+      // are deployed straight to any of the organization's environments.
       //
       // The artifact's handle comes from the route rather than the Port: these pages
       // are scoped to one artifact and the portal reads it off the URL (see
@@ -227,6 +262,23 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           render: (port, artifactHandle) => (
             <ProviderDeployFeature
               port={port}
+              artifactHandle={artifactHandle}
+            />
+          ),
+        },
+        {
+          id: "agent-proxy-deploy",
+          // Inert: a page override replaces one route's body, so there is nothing to
+          // order it against.
+          order: 0,
+          slot: AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT,
+          // An Agent Proxy belongs to a project, same as an MCP server or an LLM
+          // proxy, so it goes through that project's pipeline rather than the
+          // provider's flat per-organization deploy.
+          render: (port, artifactHandle) => (
+            <DeployFeature
+              port={port}
+              kind="AgentProxy"
               artifactHandle={artifactHandle}
             />
           ),

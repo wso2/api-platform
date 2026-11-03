@@ -240,8 +240,7 @@ func baseChainAndMeta() (*policyenginev1.PolicyChain, policyenginev1.Metadata) {
 		Policies: []policyenginev1.PolicyInstance{
 			{Name: "polA", Version: "v1", Enabled: true, Parameters: map[string]interface{}{"x": "1"}},
 			{Name: "polB", Version: "v1", Enabled: true, Parameters: map[string]interface{}{"y": "1"}},
-		},
-	}
+		}}
 	md := policyenginev1.Metadata{APIId: "apiA", APIName: "A", Version: "v1"}
 	return cfg, md
 }
@@ -321,8 +320,11 @@ func TestRouteSignatureView_Completeness(t *testing.T) {
 	}
 
 	mutators := map[string]func(*routeSignatureView){
-		"RouteKey":   func(v *routeSignatureView) { v.RouteKey = "r2" },
-		"Policies":   func(v *routeSignatureView) { v.Policies = []policyenginev1.PolicyInstance{{Name: "other"}} },
+		"RouteKey": func(v *routeSignatureView) { v.RouteKey = "r2" },
+		"Policies": func(v *routeSignatureView) { v.Policies = []policyenginev1.PolicyInstance{{Name: "other"}} },
+		"FaultPolicies": func(v *routeSignatureView) {
+			v.FaultPolicies = []policyenginev1.PolicyInstance{{Name: "fault-other"}}
+		},
 		"APIId":      func(v *routeSignatureView) { v.APIId = "i2" },
 		"APIName":    func(v *routeSignatureView) { v.APIName = "n2" },
 		"APIVersion": func(v *routeSignatureView) { v.APIVersion = "v2" },

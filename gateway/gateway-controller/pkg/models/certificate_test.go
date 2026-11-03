@@ -79,3 +79,13 @@ func TestStoredCertificate_MultipleCerts(t *testing.T) {
 	assert.Contains(t, string(cert.Certificate), "cert1")
 	assert.Contains(t, string(cert.Certificate), "cert2")
 }
+
+func TestStoredCertificate_EffectiveUsageAndRole(t *testing.T) {
+	empty := &StoredCertificate{}
+	assert.Equal(t, CertificateUsageUpstream, empty.EffectiveUsage())
+	assert.Equal(t, CertificateRoleClient, empty.EffectiveRole())
+
+	relay := &StoredCertificate{Usage: CertificateUsageDownstream, Role: CertificateRoleRelay}
+	assert.Equal(t, CertificateUsageDownstream, relay.EffectiveUsage())
+	assert.Equal(t, CertificateRoleRelay, relay.EffectiveRole())
+}

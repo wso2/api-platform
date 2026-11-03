@@ -135,3 +135,55 @@ func TestSPAHandlerPathTraversalContained(t *testing.T) {
 		})
 	}
 }
+
+// A missing hashed asset must 404, not fall back to index.html: an HTML body
+// under a `<script type="module">` URL fails the browser's MIME check with an
+// error that names neither the file nor the mismatch that caused it.
+func TestSPAHandlerMissingAssetIs404(t *testing.T) {
+	h := spaHandler(newStaticTestDir(t))
+	req := httptest.NewRequest(http.MethodGet, "/assets/index-DEADBEEF.js", nil)
+	// What a module script actually sends — never text/html.
+	req.Header.Set("Accept", "*/*")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing asset: got %d, want 404", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), indexBody) {
+		t.Fatal("missing asset served index.html; a module script would reject it on MIME grounds")
+	}
+}
+
+// Even a navigation-looking request under assets/ is a missing build artifact,
+// never a client-side route — the prefix decides, not the headers.
+func TestSPAHandlerMissingAssetIs404EvenForHTMLAccept(t *testing.T) {
+	h := spaHandler(newStaticTestDir(t))
+	req := httptest.NewRequest(http.MethodGet, "/assets/index-DEADBEEF.js", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing asset: got %d, want 404", rec.Code)
+	}
+}
+
+// Client-side routes still work: a browser navigation gets index.html.
+func TestSPAHandlerNavigationStillFallsBackToIndex(t *testing.T) {
+	h := spaHandler(newStaticTestDir(t))
+	req := httptest.NewRequest(http.MethodGet, "/gateways/abc123", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("navigation: got %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), indexBody) {
+		t.Fatal("navigation did not fall back to index.html")
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("navigation Cache-Control = %q, want no-store", got)
+	}
+}

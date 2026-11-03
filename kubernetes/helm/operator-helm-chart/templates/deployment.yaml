@@ -26,8 +26,15 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         control-plane: controller-manager
     spec:
+      {{- if .Values.debug.enabled }}
       securityContext:
-{{ include "gateway-operator.podSecurityContext" . | indent 8 }}
+        runAsUser: 0
+      {{- else }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       serviceAccountName: {{ .Values.serviceAccount.name }}
       terminationGracePeriodSeconds: 10
       containers:
@@ -67,6 +74,9 @@ spec:
               value: /tmp/helm/config
             - name: HELM_DATA_HOME
               value: /tmp/helm/data
+            # client-go discovery cache; defaults under $HOME, which is not writable
+            - name: KUBECACHEDIR
+              value: /tmp/kube-cache
           {{ if .Values.debug.enabled }}
           securityContext:
             capabilities:
@@ -87,12 +97,10 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+          {{- with .Values.securityContext }}
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-              - ALL
-            readOnlyRootFilesystem: true
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{ end }}
           resources:
 {{ toYaml .Values.resources | nindent 12 }}

@@ -18,7 +18,12 @@
 
 Feature: API Portal key managers
 
-  Scenario: A key manager enables key generation for a developer application
+  # "Enabled for a developer" no longer means controls appear on their
+  # application: a key manager is not bound to one. It means the developer can
+  # choose that key manager when creating an OAuth2 key, which is what this
+  # asserts.
+
+  Scenario: A key manager is offered to a developer creating an OAuth2 key
     Given the user is signed in to the API Portal
     When the administrator creates a key manager and a developer application
-    Then the developer application shows key-generation controls
+    Then the developer can choose that key manager when creating an OAuth2 key

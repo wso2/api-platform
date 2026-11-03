@@ -1440,54 +1440,6 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 	return res, rows.Err()
 }
 
-func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offset int) ([]*model.LLMProxy, error) {
-	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
-	args := append([]any{orgUUID, providerUUID}, pageArgs...)
-	query := `
-		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
-			project_uuid, description, created_by, updated_by, provider_uuid,
-			openapi_spec, configuration
-		FROM llm_proxies
-		WHERE organization_uuid = ? AND provider_uuid = ?
-		ORDER BY created_at DESC
-		` + pageClause
-	rows, err := r.db.Query(r.db.Rebind(query), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var res []*model.LLMProxy
-	for rows.Next() {
-		var p model.LLMProxy
-		var createdBy, updatedBy sql.NullString
-		var openAPISpec, configurationJSON []byte
-		err := rows.Scan(
-			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &p.ProviderUUID,
-			&openAPISpec, &configurationJSON,
-		)
-		if err != nil {
-			return nil, err
-		}
-		p.CreatedBy = createdBy.String
-		p.UpdatedBy = updatedBy.String
-		if len(openAPISpec) > 0 {
-			p.OpenAPISpec = string(openAPISpec)
-		}
-		if len(configurationJSON) > 0 {
-			if config, err := deserializeLLMProxyConfiguration(configurationJSON); err != nil {
-				return nil, fmt.Errorf("unmarshal configuration for proxy %s: %w", p.ID, err)
-			} else if config != nil {
-				p.Configuration = *config
-			}
-		}
-		res = append(res, &p)
-	}
-	return res, rows.Err()
-}
-
 func (r *LLMProxyRepo) Count(orgUUID string) (int, error) {
 	var count int
 	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ?`
@@ -1501,15 +1453,6 @@ func (r *LLMProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) 
 	var count int
 	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND project_uuid = ?`
 	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
-		return 0, err
-	}
-	return count, nil
-}
-
-func (r *LLMProxyRepo) CountByProvider(orgUUID, providerUUID string) (int, error) {
-	var count int
-	query := `SELECT COUNT(*) FROM llm_proxies WHERE organization_uuid = ? AND provider_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, providerUUID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil

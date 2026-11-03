@@ -82,6 +82,8 @@ export const ErrorCode = {
   POLICY_INVALID_STATE: 'POLICY_INVALID_STATE',
   // named only in the `code` field's own example
   REST_API_NOT_FOUND: 'REST_API_NOT_FOUND',
+  // API document domain
+  API_DOCUMENT_NAME_EXISTS: 'API_DOCUMENT_NAME_EXISTS',
 } as const;
 
 /**

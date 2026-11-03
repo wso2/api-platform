@@ -17,7 +17,7 @@
  */
 const { config } = require('../../config/configLoader');
 const eventDao = require('../../dao/eventDao');
-const { matchSubscribers } = require('./subscriberRegistry');
+const { matchSubscribers, UNREADABLE_SECRET } = require('./subscriberRegistry');
 const { onPublished } = require('./eventPublisher');
 const db = require('../../db/driver');
 const logger = require('../../config/logger');
@@ -30,7 +30,16 @@ const orgContext = require('../../utils/orgContext');
 const EVENTS_TABLE = 'events';
 
 let running = false;
+
+/** The organization to claim work for, or null for every organization (multi-organization mode). */
+async function claimScope() {
+    return orgContext.isMultiOrganizationEnabled() ? null : orgContext.getOrgUuid();
+}
 let intervalHandle = null;
+// True while a batch is in progress. tick() fires from both the poll interval and
+// every publish, so without this a burst of publishes (or a slow batch) would run
+// overlapping batches that compete for the same rows.
+let batchInProgress = false;
 
 /**
  * Process one batch of this organization's PENDING (non-key) events: resolve
@@ -38,24 +47,37 @@ let intervalHandle = null;
  *
  * Claims are scoped to the organization this instance serves — the events table is
  * shared with every other instance pointed at this database, and each one dispatches
- * only its own.
+ * only its own. In multi-organization mode this instance serves every organization
+ * under its portal_id, so it dispatches for all of them.
  */
 async function runBatch() {
     const delivery = config.webhooks && config.webhooks.delivery;
     const batchSize = (delivery && delivery.batchSize) || 50;
-    const events = await eventDao.claimPending(batchSize, await orgContext.getOrgUuid());
+    // Multi-organization mode delivers for every organization under this portal_id —
+    // this deployment owns it (see orgContext.isMultiOrganizationEnabled) — so the
+    // claim drops the organization filter there.
+    const events = await eventDao.claimPending(batchSize, await claimScope());
     if (events.length === 0) return;
 
     for (const event of events) {
         try {
-            const subscribers = await matchSubscribers(event.org_uuid, event.type);
+            const { subscribers, unreadable } = await matchSubscribers(event.org_uuid, event.type);
             if (subscribers.length === 0) {
-                // No matching subscribers — mark as delivered immediately.
-                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`,
-                    ['ALL_DELIVERED', event.uuid, orgContext.getPortalId()]);
+                // Nothing to deliver: delivered to everyone, or failed when a subscriber's
+                // secret couldn't be read.
+                await db.withTransaction(async (tx) => {
+                    await eventDao.recordUndeliverable(event.uuid, unreadable, UNREADABLE_SECRET, tx);
+                    await tx.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ? AND portal_id = ?`,
+                        [unreadable.length > 0 ? 'FAILED' : 'ALL_DELIVERED', event.uuid, orgContext.getPortalId()]);
+                });
                 continue;
             }
-            await eventDao.createDeliveries(event.uuid, subscribers, null, null);
+            // One transaction, so a failure here leaves no rows behind for the retry to
+            // collide with.
+            await db.withTransaction(async (tx) => {
+                await eventDao.recordUndeliverable(event.uuid, unreadable, UNREADABLE_SECRET, tx);
+                await eventDao.createDeliveries(event.uuid, subscribers, null, tx);
+            });
         } catch (err) {
             logger.error('Failed to create deliveries for event', {
                 eventId: event.uuid, error: err.message
@@ -83,6 +105,8 @@ function start() {
     const pollMs = (delivery && delivery.pollIntervalMs) || 2000;
 
     async function tick() {
+        if (batchInProgress) return;
+        batchInProgress = true;
         try {
             // runDetached() matters here specifically because of the onPublished(tick)
             // registration below: eventPublisher.js's bus.emit('event_published') fires
@@ -93,6 +117,8 @@ function start() {
             await db.runDetached(runBatch);
         } catch (err) {
             logger.error('Batch error', { error: err.message || String(err) });
+        } finally {
+            batchInProgress = false;
         }
     }
 

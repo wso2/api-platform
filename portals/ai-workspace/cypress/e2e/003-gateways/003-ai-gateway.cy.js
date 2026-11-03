@@ -26,6 +26,7 @@ describe('AI Workspace - AI gateway lifecycle', () => {
 
   it('creates and deletes an AI gateway using only the UI', () => {
     cy.contains('AI Gateways', { timeout: 30000 })
+      .scrollIntoView()
       .should('be.visible')
       .click();
 
@@ -54,6 +55,7 @@ describe('AI Workspace - AI gateway lifecycle', () => {
     cy.contains(gatewayName, { timeout: 30000 }).should('be.visible');
 
     cy.contains('AI Gateways', { timeout: 30000 })
+      .scrollIntoView()
       .should('be.visible')
       .click();
 

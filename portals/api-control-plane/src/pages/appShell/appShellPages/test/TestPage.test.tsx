@@ -46,6 +46,34 @@ import { TestPage } from './TestPage';
  * captured and asserted on explicitly.
  */
 
+vi.mock('./console/TestConsoleSpecViewer', () => ({
+  // `callMode` is surfaced as an attribute because it is what the page hands
+  // the transport: asserting the switch's own highlight would only prove the
+  // button moved, not that the next request would travel differently.
+  //
+  // The switch itself now lives inside the viewer, beside swagger's Execute
+  // button, so the page can no longer reach it. The stand-in button below
+  // plays its part: it exercises the page's half of the wiring — callback to
+  // state to persistence — while the control's own behaviour is covered in
+  // console/ExecuteModeSwitch.test.tsx.
+  default: ({
+    baseUrl,
+    callMode,
+    onCallModeChange,
+  }: {
+    baseUrl: string;
+    callMode: string;
+    onCallModeChange: (mode: string) => void;
+  }) => (
+    <div data-callmode={callMode} data-testid="spec-viewer">
+      {baseUrl}
+      <button onClick={() => onCallModeChange('direct')} type="button">
+        stand-in: switch to direct
+      </button>
+    </div>
+  ),
+}));
+
 const API = aRestApi({ context: '/payments', id: 'payments-api' });
 
 /**
@@ -108,6 +136,28 @@ const pathFor = (api: object) => [
   }),
 ];
 
+/** Every request the page makes on mount. */
+const happyPath = () => [
+  http.get(apiUrl('/rest-apis/payments-api'), () => HttpResponse.json(API)),
+  http.get(apiUrl('/rest-apis/payments-api/gateways'), () =>
+    HttpResponse.json(
+      listEnvelope([{ ...GATEWAY, associatedAt: '2026-01-01T00:00:00Z', isDeployed: true }]),
+    ),
+  ),
+  http.get(apiUrl('/rest-apis/payments-api/deployments'), () =>
+    HttpResponse.json(listEnvelope([aDeployment({ gatewayId: 'default-gateway' })])),
+  ),
+  openApiHandler(),
+  http.post(apiUrl('/rest-apis/payments-api/api-keys'), () =>
+    HttpResponse.json({
+      apiKey: 'live-test-credential',
+      keyId: 'k1',
+      message: 'ok',
+      status: 'success',
+    }),
+  ),
+];
+
 /** Every request the page makes when the API is deployed nowhere. */
 const undeployed = () => [
   http.get(apiUrl('/rest-apis/payments-api'), () => HttpResponse.json(API)),
@@ -156,6 +206,9 @@ let consoleErrors: string[] = [];
 
 beforeEach(() => {
   mintCalls = 0;
+  // The call mode persists across visits, so a choice made in one test would
+  // otherwise be the starting state of the next.
+  window.localStorage.clear();
   // Test keys are remembered for the browser session in a module-scoped map, so
   // without this a key minted by one test would satisfy the next and "mints a
   // key" assertions would pass on a request that never happened.
@@ -188,7 +241,9 @@ describe('TestPage — the cURL builder', () => {
   it('builds a command against the deployed gateway from the first operation', async () => {
     server.use(...pathFor(API));
 
-    renderPage();
+    const { user } = renderPage();
+    await screen.findByTestId('spec-viewer');
+    await user.click(screen.getByRole('button', { name: /cURL view/i }));
 
     // The builder seeds itself from the document's first operation, so the
     // command is addressed before anyone touches a control.
@@ -277,7 +332,9 @@ describe('TestPage — the api-key-auth gate', () => {
   it('renders no key panel for an API that needs no key', async () => {
     server.use(...pathFor(API));
 
-    renderPage();
+    const { user } = renderPage();
+    await screen.findByTestId('spec-viewer');
+    await user.click(screen.getByRole('button', { name: /cURL view/i }));
 
     await screen.findByText(/cURL command/i);
     expect(screen.queryByText(/Test key/i)).not.toBeInTheDocument();
@@ -455,6 +512,8 @@ describe('TestPage', () => {
     server.use(...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })));
 
     const { user } = renderPage();
+    await screen.findByTestId('spec-viewer');
+    await user.click(screen.getByRole('button', { name: /cURL view/i }));
 
     await waitFor(() => expect(curlText()).toMatch(/X-API-Key/));
     expect(curlText()).not.toMatch(/live-test-credential/);
@@ -479,6 +538,75 @@ describe('TestPage', () => {
     // real failure read as a working credential. Nothing masks it now.
     expect(await screen.findByText(/Could not create a test key/i)).toBeInTheDocument();
     expect(screen.queryByDisplayValue(/•/)).toBeNull();
+    expectNoRenderLoop();
+  });
+});
+
+describe('TestPage — proxy or direct', () => {
+  it('relays by default, and says what that buys', async () => {
+    server.use(...happyPath());
+
+    renderPage();
+
+    const viewer = await screen.findByTestId('spec-viewer');
+    // The relay is what makes a cloud-managed gateway testable at all, so a
+    // first visit must not land on the mode that needs a CORS policy.
+    expect(viewer).toHaveAttribute('data-callmode', 'proxy');
+    expectNoRenderLoop();
+  });
+
+  it('hands the console the direct mode, and warns what it now needs', async () => {
+    server.use(...happyPath());
+
+    const { user } = renderPage();
+    await screen.findByTestId('spec-viewer');
+
+    await user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
+
+    // The attribute is the whole point: the switch has to reach the transport,
+    // not just repaint.
+    await waitFor(() =>
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+    );
+    expectNoRenderLoop();
+  });
+
+  it('remembers the choice for the next visit', async () => {
+    server.use(...happyPath());
+
+    const first = renderPage();
+    await screen.findByTestId('spec-viewer');
+    await first.user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
+    await waitFor(() =>
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+    );
+    first.unmount();
+
+    renderPage();
+
+    // Direct is picked because of where the user's browser sits relative to
+    // the gateway, which does not change between page loads. Re-picking it
+    // every visit would make the escape hatch tiring to use.
+    await waitFor(() =>
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+    );
+    expectNoRenderLoop();
+  });
+
+  it('offers no transport choice in the cURL view', async () => {
+    server.use(...happyPath());
+
+    const { user } = renderPage();
+    await screen.findByTestId('spec-viewer');
+
+    await user.click(screen.getByRole('button', { name: /cURL view/i }));
+
+    // A copied command leaves from the user's own terminal, so neither mode
+    // applies to it — and the switch lives inside the console view, which is
+    // not rendered here at all.
+    await waitFor(() => expect(curlText()).toContain('curl -X'));
+    expect(screen.queryByTestId('spec-viewer')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Through proxy/i })).toBeNull();
     expectNoRenderLoop();
   });
 });

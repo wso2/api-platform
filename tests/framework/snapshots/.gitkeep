@@ -1,0 +1,14 @@
+This directory is intentionally empty in git.
+
+The framework embeds copies of the gateway files that live outside this module (the list is
+assets.SnapshotSources: the gateway config.toml, the LLM pricing file and the Postgres and SQL
+Server schemas), so a project that imports the module runs without an api-platform checkout.
+The copies are not committed:
+
+  - .github/workflows/tests-framework-release.yml generates them with `go run ./cmd/syncassets`
+    and commits them on the release tag only, so a released module carries them and main does not.
+  - go:embed (assets.go) does not compile unless this directory holds a file, which is why this
+    file exists.
+  - Inside an api-platform checkout the engine reads the repository files and ignores the
+    embedded copies, so nothing needs generating. To use the module without a release, through a
+    `replace` or an untagged revision, generate them with `make snapshots`.

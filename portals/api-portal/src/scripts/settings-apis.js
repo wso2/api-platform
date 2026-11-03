@@ -41,6 +41,14 @@
   var wizardIsMcp = false;
   var wizardEditType = null;
 
+  /* The reason a refusal gives. A coded refusal, such as ERR_BILLING_CATALOG, ERR_PLAN_SUB_EXIST or ERR_SUB_EXIST,
+     carries only its code as the message, and its reason as the first error. */
+  function reasonOf(err, fallback) {
+    var first = err && err.errors && err.errors[0];
+    if (first && first.message && /^ERR_[A-Z_]+$/.test(err.message || '')) return first.message;
+    return err.description || err.message || fallback;
+  }
+
   /* build id→api lookup and load all policies from server-rendered data blobs */
   var apiMap = {};
   (function() {
@@ -247,101 +255,17 @@
   }());
 
   /* ── tag chip input ──
-     Same chip markup and classes as the subscription-plan picker above, but tags are
-     free text: there is nothing to search, so a chip is committed from whatever was
-     typed rather than picked from a dropdown. */
-  var tagChips = [];
+     Free-text chips. The behaviour lives in cfg-chip-input.js, shared with the key
+     manager scopes field — it was duplicated the moment a second field wanted it,
+     and the markup and CSS (.cfg-chip-input-wrap and friends) were already common. */
+  var tagChips = window.cfgChipInput ? window.cfgChipInput.create({
+    wrapId: 'wz-tags-wrap',
+    chipsId: 'wz-tags-chips',
+    inputId: 'wz-tags-input',
+  }) : null;
 
-  function renderTagChips() {
-    var container = document.getElementById('wz-tags-chips');
-    if (!container) return;
-    container.innerHTML = '';
-    tagChips.forEach(function(tag) {
-      var chip = document.createElement('span');
-      chip.className = 'cfg-chip';
-      chip.innerHTML = esc(tag) +
-        '<button type="button" class="cfg-chip-remove" data-tag="'+esc(tag)+'" title="Remove ' + esc(tag) + '"><i class="bi bi-x"></i></button>';
-      chip.querySelector('.cfg-chip-remove').addEventListener('click', function(e) {
-        e.stopPropagation();
-        removeTag(e.currentTarget.dataset.tag);
-        var input = document.getElementById('wz-tags-input');
-        if (input) input.focus();
-      });
-      container.appendChild(chip);
-    });
-  }
-
-  /* Case-insensitive dedupe, keeping the casing first entered: "Travel" and "travel"
-     as separate chips is a typo every time, and unlike the old free-text field the
-     duplicate is now plainly visible. */
-  function addTag(raw) {
-    var tag = String(raw || '').trim();
-    if (!tag) return;
-    var lower = tag.toLowerCase();
-    if (tagChips.some(function(t){ return t.toLowerCase() === lower; })) return;
-    tagChips.push(tag);
-    renderTagChips();
-  }
-
-  function removeTag(tag) {
-    tagChips = tagChips.filter(function(t){ return t !== tag; });
-    renderTagChips();
-  }
-
-  /* Splits on commas so a pasted "a, b, c" — and anything typed in the old
-     comma-separated habit — still lands as separate chips. */
-  function commitTagInput() {
-    var input = document.getElementById('wz-tags-input');
-    if (!input) return;
-    input.value.split(',').forEach(addTag);
-    input.value = '';
-  }
-
-  function getTags() { return tagChips.slice(); }
-
-  function setTags(list) {
-    tagChips = [];
-    var items = Array.isArray(list) ? list : (list ? String(list).split(',') : []);
-    items.forEach(addTag);
-    renderTagChips();
-    var input = document.getElementById('wz-tags-input');
-    if (input) input.value = '';
-  }
-
-  (function() {
-    var wrap = document.getElementById('wz-tags-wrap');
-    var input = document.getElementById('wz-tags-input');
-    if (!input) return;
-    if (wrap) wrap.addEventListener('click', function() { input.focus(); });
-    input.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' || e.key === ',') {
-        // Enter would otherwise submit the wizard with the tag still uncommitted.
-        e.preventDefault();
-        commitTagInput();
-      } else if (e.key === 'Backspace' && !input.value && tagChips.length) {
-        e.preventDefault();
-        removeTag(tagChips[tagChips.length - 1]);
-      }
-    });
-    // Losing focus commits too — otherwise a typed-but-not-entered tag is silently
-    // dropped when the user clicks Save.
-    input.addEventListener('blur', commitTagInput);
-    input.addEventListener('paste', function(e) {
-      var clip = e.clipboardData || window.clipboardData;
-      var text = clip && clip.getData('text');
-      // No comma: nothing to split, so let the browser paste normally.
-      if (!text || text.indexOf(',') < 0) return;
-      e.preventDefault();
-      /* Splice the pasted text in at the caret (replacing any selection) rather than
-         committing it on its own, so a half-typed tag joins the paste instead of
-         being left orphaned in the input: "foo" with "bar, baz" pasted at the end
-         commits as "foobar" and "baz" — what typing those same characters would do. */
-      var start = input.selectionStart != null ? input.selectionStart : input.value.length;
-      var end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
-      input.value = input.value.slice(0, start) + text + input.value.slice(end);
-      commitTagInput();
-    });
-  }());
+  function getTags() { return tagChips ? tagChips.get() : []; }
+  function setTags(list) { if (tagChips) tagChips.set(list); }
 
   /* ── wizard show/hide ── */
   function showWizard(api, kindHint) {
@@ -501,7 +425,7 @@
     /* Belt and braces: the tag input commits on blur, which normally fires before the
        Save click lands. Committing here too means a tag typed but never Entered is
        saved rather than quietly discarded, whatever order those events arrive in. */
-    commitTagInput();
+    if (tagChips) tagChips.commit();
     var name    = v('wz-name');
     var version = v('wz-version');
     var handle  = v('wz-handle');
@@ -568,7 +492,7 @@
         window.location.reload();
       } else {
         var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
+        await showAlert('Failed: ' + reasonOf(err, res.statusText), 'error');
       }
     } catch(e) {
       await showAlert('Error: ' + e.message, 'error');
@@ -675,7 +599,7 @@
         pendingDelId = null;
       } else {
         var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error');
+        await showAlert('Delete failed: ' + reasonOf(err, res.statusText), 'error');
       }
     } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
   });
@@ -725,7 +649,7 @@
         window.location.reload();
       } else {
         var e2 = await putRes.json().catch(function(){ return {}; });
-        await showAlert('Failed: '+(e2.description||e2.message||putRes.statusText), 'error');
+        await showAlert('Failed: '+reasonOf(e2, putRes.statusText), 'error');
       }
     } catch(e) { await showAlert('Error: '+e.message, 'error'); }
   }

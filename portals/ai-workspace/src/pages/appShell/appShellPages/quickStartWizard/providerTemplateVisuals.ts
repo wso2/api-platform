@@ -56,7 +56,7 @@ const PROVIDER_FAMILIES = [
   },
 ] as const;
 
-const COMING_SOON_TEMPLATE_IDS = new Set(['awsbedrock', 'aws-bedrock']);
+const COMING_SOON_TEMPLATE_IDS = new Set<string>([]);
 
 function normalizeTemplateValue(value?: string): string {
   return (value ?? '').trim().toLowerCase();

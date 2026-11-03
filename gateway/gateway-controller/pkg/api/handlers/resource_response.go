@@ -20,6 +20,7 @@ package handlers
 
 import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -62,6 +63,16 @@ func buildResourceResponse(cfg any, status api.ResourceStatus) any {
 		v.Status = &status
 		return v
 	case *api.RestAPI:
+		if v == nil {
+			return nil
+		}
+		cp := *v
+		cp.Status = &status
+		return cp
+	case api.GraphQLAPI:
+		v.Status = &status
+		return v
+	case *api.GraphQLAPI:
 		if v == nil {
 			return nil
 		}
@@ -120,6 +131,26 @@ func buildResourceResponse(cfg any, status api.ResourceStatus) any {
 		return cp
 	}
 	return cfg
+}
+
+// buildRestAPIResourceResponseWithWarnings merges a resolved RestAPI with the
+// stored config's status and any warnings. resolvedCfg must never be
+// persisted, or the accept list would stop tracking pool changes.
+func buildRestAPIResourceResponseWithWarnings(resolvedCfg api.RestAPI, stored *models.StoredConfig, warnings []clientca.Warning) any {
+	status := buildResourceStatus(stored)
+	if len(warnings) > 0 {
+		apiWarnings := make([]api.Warning, len(warnings))
+		for i, w := range warnings {
+			code := api.WarningCode(w.Code)
+			apiWarnings[i] = api.Warning{
+				Code:    &code,
+				Field:   stringPtr(w.Field),
+				Message: stringPtr(w.Message),
+			}
+		}
+		status.Warnings = &apiWarnings
+	}
+	return buildResourceResponse(resolvedCfg, status)
 }
 
 // buildResourceResponseFromStored is a convenience wrapper that extracts the

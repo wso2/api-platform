@@ -18,21 +18,24 @@
 
 import { FormattedMessage } from 'react-intl';
 
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { AppPage } from '@/components/AppPage';
+import { ComingSoon } from '@/components/ComingSoon';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 
 export function MonetizePage() {
   return (
-    <ScopeGate prompt="Monetization is configured per API." requires="api" to={routes.apiManageMonetize}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.monetizePage.feature"
-            defaultMessage="Monetization for this API"
-          />
-        }
-      />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate prompt="Monetization is configured per API." requires="api" to={routes.apiManageMonetize}>
+        <ComingSoon
+          feature={
+            <FormattedMessage
+              id="appShell.monetizePage.feature"
+              defaultMessage="Monetization for this API"
+            />
+          }
+        />
+      </ScopeGate>
+    </AppPage>
   );
 }

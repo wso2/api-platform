@@ -19,16 +19,31 @@
 package transform
 
 import (
+	"crypto/rand"
+	"fmt"
+	"io"
+	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/testutil/pki"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
 // ptrStr is a helper to get a pointer to a string literal.
@@ -547,6 +562,76 @@ func TestRestAPITransformer_DefaultClusterReferencesRealCluster(t *testing.T) {
 	}
 }
 
+func TestUpstreamClusterKeySeparatesTLSSettings(t *testing.T) {
+	withBlock := func(identity string, verifyHostName bool, trustedCAs ...string) *models.UpstreamTLS {
+		return &models.UpstreamTLS{Enabled: true, HasTLSBlock: true, IdentityName: identity,
+			TrustedCANames: trustedCAs, VerifyHostName: verifyHostName}
+	}
+	key := func(scheme string, tls *models.UpstreamTLS) string {
+		return upstreamClusterKey("main", "backend", 8443, scheme, tls)
+	}
+
+	assert.Equal(t, "upstream_main_backend_8443", key("http", &models.UpstreamTLS{}),
+		"a plain http upstream keeps its host and port name")
+	assert.Equal(t, "upstream_main_backend_8443", key("https", &models.UpstreamTLS{Enabled: true}),
+		"an https upstream without a tls block keeps its host and port name")
+	assert.NotEqual(t, key("https", withBlock("identity-a", true)), key("https", withBlock("identity-b", true)),
+		"different identities are different clusters")
+	assert.NotEqual(t, key("https", &models.UpstreamTLS{Enabled: true}), key("https", withBlock("identity-a", true)),
+		"an upstream without a tls block does not share a cluster with one that presents an identity")
+	assert.NotEqual(t, key("https", withBlock("", true, "ca-a")), key("https", withBlock("", true, "ca-b")),
+		"different trusted authorities are different clusters")
+	assert.NotEqual(t, key("https", withBlock("", true)), key("https", withBlock("", false)),
+		"hostname verification on and off are different clusters")
+	assert.Equal(t, key("https", withBlock("identity-a", true, "ca-a", "ca-b")), key("https", withBlock("identity-a", true, "ca-b", "ca-a")),
+		"the same settings share a cluster whatever the order of trustedCAs")
+	assert.Regexp(t, `^upstream_main_backend_8443_[0-9a-f]{8}$`, key("https", withBlock("identity-a", true)))
+}
+
+func TestRestAPITransformer_APIsSharingABackendKeepTheirOwnIdentity(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	clusterFor := func(identity string) (string, *models.UpstreamCluster) {
+		tls := map[string]interface{}{"identity": identity}
+		upDefs := []api.UpstreamDefinition{{Name: "backend", Tls: &tls, Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "https://backend:8443"}}}}
+		apiData := api.APIConfigData{
+			DisplayName:         "api-" + identity,
+			Context:             "/" + identity,
+			Version:             "1.0.0",
+			UpstreamDefinitions: &upDefs,
+			Operations:          []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")}},
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{Ref: ptrStr("backend")},
+			},
+		}
+		cfg := &models.StoredConfig{
+			UUID:          "api-" + identity,
+			Kind:          string(api.RestAPIKindRestApi),
+			Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "api-" + identity}, Spec: apiData},
+		}
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		for _, r := range rdc.Routes {
+			return r.Upstream.ClusterKey, rdc.UpstreamClusters[r.Upstream.ClusterKey]
+		}
+		t.Fatal("the API produced no routes")
+		return "", nil
+	}
+
+	keyA, clusterA := clusterFor("identity-a")
+	keyB, clusterB := clusterFor("identity-b")
+	assert.NotEqual(t, keyA, keyB)
+	require.NotNil(t, clusterA)
+	require.NotNil(t, clusterB)
+	assert.Equal(t, "identity-a", clusterA.TLS.IdentityName)
+	assert.Equal(t, "identity-b", clusterB.TLS.IdentityName)
+}
+
 func upstreamClusterKeys(rdc *models.RuntimeDeployConfig) []string {
 	keys := make([]string, 0, len(rdc.UpstreamClusters))
 	for k := range rdc.UpstreamClusters {
@@ -948,4 +1033,478 @@ func TestRestAPITransformer_ConnectTimeoutFromDefinition(t *testing.T) {
 			assert.Nil(t, uc.ConnectTimeout, "cluster %q must have no connect timeout so the global default applies", name)
 		}
 	})
+}
+
+// certificateRows serves the certificate lookups the translator makes.
+type certificateRows struct {
+	storage.Storage
+	certs []*models.StoredCertificate
+}
+
+func (c *certificateRows) ListCertificates() ([]*models.StoredCertificate, error) {
+	return c.certs, nil
+}
+
+func (c *certificateRows) ListCertificatesByUsage(usage string) ([]*models.StoredCertificate, error) {
+	var out []*models.StoredCertificate
+	for _, cert := range c.certs {
+		if cert.EffectiveUsage() == usage {
+			out = append(out, cert)
+		}
+	}
+	return out, nil
+}
+
+func (c *certificateRows) GetCertificateByName(name string) (*models.StoredCertificate, error) {
+	for _, cert := range c.certs {
+		if cert.Name == name {
+			return cert, nil
+		}
+	}
+	return nil, fmt.Errorf("certificate %q not found", name)
+}
+
+func httpsUpstreamDefinition(name, host string, tls *map[string]interface{}) api.UpstreamDefinition {
+	return api.UpstreamDefinition{Name: name, Tls: tls, Upstreams: []struct {
+		Url    string `json:"url" yaml:"url"`
+		Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+	}{{Url: "https://" + host + ":8443"}}}
+}
+
+// restAPIWithEveryUpstreamShape has an inline https main and sandbox, a
+// definition without a tls block, one whose tls block only sets trustedCAs,
+// one whose tls block only sets verifyHostName, and one naming an identity.
+func restAPIWithEveryUpstreamShape(uuid, kind string, source any) *models.StoredConfig {
+	trusted := map[string]interface{}{"trustedCAs": []interface{}{"backend-ca"}}
+	verifyOnly := map[string]interface{}{"verifyHostName": false}
+	named := map[string]interface{}{"identity": "partner-identity"}
+	defs := []api.UpstreamDefinition{
+		httpsUpstreamDefinition("plain", uuid+"-plain.backend", nil),
+		httpsUpstreamDefinition("trusted", uuid+"-trusted.backend", &trusted),
+		httpsUpstreamDefinition("verify", uuid+"-verify.backend", &verifyOnly),
+		httpsUpstreamDefinition("named", uuid+"-named.backend", &named),
+	}
+	spec := api.APIConfigData{
+		DisplayName:         uuid,
+		Context:             "/" + uuid,
+		Version:             "v1.0",
+		UpstreamDefinitions: &defs,
+		Operations:          []api.Operation{{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/hello")}},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    api.Upstream{Url: ptrStr("https://" + uuid + "-main.backend:8443")},
+			Sandbox: &api.Upstream{Url: ptrStr("https://" + uuid + "-sandbox.backend:8443")},
+		},
+	}
+	return &models.StoredConfig{
+		UUID:                uuid,
+		Kind:                kind,
+		Handle:              uuid,
+		DesiredState:        models.StateDeployed,
+		Configuration:       api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: uuid}, Spec: spec},
+		SourceConfiguration: source,
+	}
+}
+
+// encryptedTestKey returns an encryption manager and a private key
+// ciphertext it decrypts, as a usage: identity row stores it.
+func encryptedTestKey(t *testing.T) (*encryption.ProviderManager, string) {
+	t.Helper()
+	keyPath := filepath.Join(t.TempDir(), "v1.key")
+	key := make([]byte, aesgcm.AESKeySize)
+	_, err := rand.Read(key)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(keyPath, key, 0o600))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	provider, err := aesgcm.NewAESGCMProvider([]aesgcm.KeyConfig{{Version: "v1", FilePath: keyPath}}, logger)
+	require.NoError(t, err)
+	mgr, err := encryption.NewProviderManager([]encryption.EncryptionProvider{provider}, logger)
+	require.NoError(t, err)
+	payload, err := mgr.Encrypt([]byte("-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n"))
+	require.NoError(t, err)
+	return mgr, encryption.MarshalPayload(payload)
+}
+
+// presentedClientCertificates maps each cluster to the SDS secrets its
+// endpoints present as a client certificate.
+func presentedClientCertificates(t *testing.T, translator *xds.Translator, configs []*models.StoredConfig) map[string][]string {
+	t.Helper()
+	resources, err := translator.TranslateConfigs(configs, "")
+	require.NoError(t, err)
+	out := map[string][]string{}
+	for _, res := range resources[resource.ClusterType] {
+		c := res.(*cluster.Cluster)
+		var names []string
+		for _, tsm := range c.GetTransportSocketMatches() {
+			var tlsCtx tlsv3.UpstreamTlsContext
+			require.NoError(t, tsm.GetTransportSocket().GetTypedConfig().UnmarshalTo(&tlsCtx))
+			for _, sds := range tlsCtx.GetCommonTlsContext().GetTlsCertificateSdsSecretConfigs() {
+				names = append(names, sds.GetName())
+			}
+		}
+		out[c.GetName()] = names
+	}
+	return out
+}
+
+// makeRestAPIStoredConfigWithFaultPolicies builds a REST API carrying fault policies.
+func makeRestAPIStoredConfigWithFaultPolicies(faultPolicies []api.Policy) *models.StoredConfig {
+	cfg := makeRestAPIStoredConfig(nil, nil)
+	restAPI := cfg.Configuration.(api.RestAPI)
+	restAPI.Spec.FaultPolicies = &faultPolicies
+	cfg.Configuration = restAPI
+	cfg.SourceConfiguration = restAPI
+	return cfg
+}
+
+// The fault policies must reach models.PolicyChain.FaultPolicies on EVERY route: that
+// field is what pkg/policyxds serializes to the engine. Populating only the builder in
+// pkg/policy (which nothing calls in production) would leave the feature inert.
+func TestRestAPITransformer_FaultPoliciesReachesPolicyChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cond := "response.ResponseStatus >= 400"
+	cfg := makeRestAPIStoredConfigWithFaultPolicies([]api.Policy{
+		{Name: "set-headers", Version: "v1"},
+		{Name: "set-headers", Version: "v1", ExecutionCondition: &cond},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotEmpty(t, rdc.PolicyChains)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		require.Len(t, chain.FaultPolicies, 2, "route %s must carry both fault entries", routeKey)
+		assert.Equal(t, "set-headers", chain.FaultPolicies[0].Name)
+		assert.Nil(t, chain.FaultPolicies[0].ExecutionCondition)
+		require.NotNil(t, chain.FaultPolicies[1].ExecutionCondition)
+		assert.Equal(t, cond, *chain.FaultPolicies[1].ExecutionCondition)
+	}
+}
+
+// A fault policy must never appear in the normal chain, or it would run on success.
+func TestRestAPITransformer_FaultPoliciesNotInNormalChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIStoredConfigWithFaultPolicies([]api.Policy{{Name: "set-headers", Version: "v1"}})
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		for _, p := range chain.Policies {
+			assert.NotEqual(t, "set-headers", p.Name,
+				"fault policy leaked into the normal chain for route %s — it would run on success", routeKey)
+		}
+	}
+}
+
+func TestRestAPITransformer_NoFaultPoliciesLeavesChainEmpty(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"header-mutate|v1.0.0": {Name: "header-mutate", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIStoredConfig([]api.Policy{{Name: "header-mutate", Version: "v1"}}, nil)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	for _, chain := range rdc.PolicyChains {
+		assert.Empty(t, chain.FaultPolicies)
+	}
+}
+
+// With analytics enabled, the collector is in every route's fault chain even when the API
+// declares no fault policies of its own — so a failure on any API is recorded with its fault
+// detail. It is the only entry, and it does not leak into the normal chain's tail.
+func TestRestAPITransformer_NoFaultPoliciesStillGetsTheCollectorWhenAnalyticsIsOn(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"header-mutate|v1.0.0": {Name: "header-mutate", Version: "v1.0.0"}}
+	sysCfg := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
+	transformer := NewRestAPITransformer(testRouterCfg(), sysCfg, defs)
+
+	cfg := makeRestAPIStoredConfig([]api.Policy{{Name: "header-mutate", Version: "v1"}}, nil)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotEmpty(t, rdc.PolicyChains)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		assert.Equal(t, []string{constants.ANALYTICS_SYSTEM_POLICY_NAME}, faultNames(chain),
+			"route %s must record its failures even with no fault policies declared", routeKey)
+	}
+}
+
+// makeRestAPIWithBothFaultLevels builds an API with two operations: the first carries its
+// own fault entries, the second carries none. Both share the API-level sequence.
+func makeRestAPIWithBothFaultLevels(apiFault, opFault []api.Policy) *models.StoredConfig {
+	apiData := api.APIConfigData{
+		DisplayName:   "Test API",
+		Context:       "/test",
+		Version:       "1.0.0",
+		FaultPolicies: &apiFault,
+		Operations: []api.Operation{
+			{
+				Method:        api.Ptr(api.OperationMethod("GET")),
+				Path:          api.Ptr("/scoped"),
+				FaultPolicies: &opFault,
+			},
+			{
+				Method: api.Ptr(api.OperationMethod("GET")),
+				Path:   api.Ptr("/plain"),
+			},
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: api.Upstream{Url: ptrStr("http://backend:8080")}},
+	}
+	restAPI := api.RestAPI{
+		Kind:     api.RestAPIKindRestApi,
+		Metadata: api.Metadata{Name: "test-api"},
+		Spec:     apiData,
+	}
+	return &models.StoredConfig{
+		UUID:          "test-api",
+		Kind:          string(api.RestAPIKindRestApi),
+		Configuration: restAPI,
+	}
+}
+
+func faultNames(chain *models.PolicyChain) []string {
+	out := make([]string, 0, len(chain.FaultPolicies))
+	for _, p := range chain.FaultPolicies {
+		out = append(out, p.Name)
+	}
+	return out
+}
+
+// Every API kind's upstreams without a tls identity present the default
+// identity, through the real transformers.
+func TestDefaultClientCertificate_EveryAPIKind(t *testing.T) {
+	routerCfg := testRouterCfg()
+	routerCfg.Upstream.TLS.PresentDefaultIdentity = true
+	routerCfg.LuaScriptPath = "../../lua/request_transformation.lua"
+	systemCfg := &config.Config{Router: *routerCfg}
+	mgr, ciphertext := encryptedTestKey(t)
+	db := &certificateRows{certs: []*models.StoredCertificate{
+		{UUID: "ca-1", Name: "backend-ca", Certificate: pki.NewRootCA(t, "Backend CA").PEM(), Usage: models.CertificateUsageUpstream},
+		{UUID: "named-1", Name: "partner-identity", Certificate: pki.NewSelfSignedLeaf(t, "partner").PEM(), Usage: models.CertificateUsageIdentity,
+			PrivateKeyCiphertext: ciphertext},
+		{UUID: "default-1", Name: "gateway-default", Certificate: pki.NewSelfSignedLeaf(t, "gateway").PEM(),
+			Usage: models.CertificateUsageIdentity, Role: models.CertificateRoleDefault, PrivateKeyCiphertext: ciphertext},
+	}}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	translator, err := xds.NewTranslator(logger, routerCfg, db, systemCfg)
+	require.NoError(t, err)
+	translator.GetCertStore().SetEncryptionManager(mgr)
+
+	restT := NewRestAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{})
+	llmT := NewLLMTransformer(storage.NewConfigStore(), db, routerCfg, systemCfg, map[string]models.PolicyDefinition{}, nil)
+	agentT := agentTransformer()
+	graphqlT := NewGraphQLAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{})
+	registry := NewRegistry(restT, llmT, agentT, graphqlT)
+	transformers := map[string]models.ConfigTransformer{}
+	for _, kind := range []string{models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindAgent} {
+		transformers[kind] = registry
+	}
+	translator.SetTransformers(transformers)
+
+	agent := testAgent()
+	agent.DesiredState = models.StateDeployed
+	configs := []*models.StoredConfig{
+		restAPIWithEveryUpstreamShape("rest", models.KindRestApi, nil),
+		restAPIWithEveryUpstreamShape("mcp", models.KindMcp, api.MCPProxyConfiguration{}),
+		restAPIWithEveryUpstreamShape("llm", models.KindLlmProvider, api.LLMProviderConfiguration{}),
+		agent,
+	}
+	presented := presentedClientCertificates(t, translator, configs)
+
+	defaultSecret := []string{xds.GatewayIdentitySecretName("gateway-default")}
+	want := map[string][]string{
+		"api-platform/policy-engine":         nil,
+		"upstream_main_weather.internal_443": defaultSecret,
+	}
+	for prefix, kind := range map[string]string{"rest": "RestApi", "mcp": "Mcp", "llm": "LlmProvider"} {
+		want["upstream_main_"+prefix+"-main.backend_8443"] = defaultSecret
+		want["upstream_sandbox_"+prefix+"-sandbox.backend_8443"] = defaultSecret
+		want["upstream_"+kind+"_"+prefix+"_plain"] = defaultSecret
+		want["upstream_"+kind+"_"+prefix+"_trusted"] = defaultSecret
+		want["upstream_"+kind+"_"+prefix+"_verify"] = defaultSecret
+		want["upstream_"+kind+"_"+prefix+"_named"] = []string{xds.GatewayIdentitySecretName("partner-identity")}
+	}
+	assert.Equal(t, want, presented)
+}
+
+// Every upstream TLS model built for an API's traffic is marked as such,
+// with or without a tls block.
+func TestUpstreamTLSFromParams_MarksAPITraffic(t *testing.T) {
+	verifyOnly := map[string]interface{}{"verifyHostName": false}
+	for name, tls := range map[string]*map[string]interface{}{"no tls block": nil, "tls block": &verifyOnly} {
+		for _, enabled := range []bool{true, false} {
+			assert.True(t, upstreamTLSFromParams(tls, enabled).APITraffic, "%s, https %v", name, enabled)
+		}
+	}
+}
+
+// The ordering decision. Operation-level entries execute FIRST, then API-level — matching
+// the order response policies execute in, where the operation is the more specific scope.
+//
+// Note the construction order here is the OPPOSITE of buildPolicyChain's (API then
+// operation). Both produce the same execution order, because the response chain is walked
+// back to front while a fault policy list is walked forward. Building this one API-first would
+// silently invert the precedence.
+func TestRestAPITransformer_FaultPoliciesOperationBeforeAPI(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(
+		[]api.Policy{{Name: "set-headers", Version: "v1"}},    // API level
+		[]api.Policy{{Name: "remove-headers", Version: "v1"}}, // operation level
+	)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	scoped := rdc.PolicyChains["GET|/test/scoped|main.local"]
+	require.NotNil(t, scoped, "route with an operation-level sequence must exist")
+	assert.Equal(t, []string{"remove-headers", "set-headers"}, faultNames(scoped),
+		"operation-level entries must come first, then API-level")
+}
+
+// An operation's entries must not leak onto a sibling route. The API-level sequence is
+// resolved once and shared, so a merge that mutated it in place would contaminate every
+// other operation.
+func TestRestAPITransformer_FaultPoliciesOperationScopeIsPerRoute(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(
+		[]api.Policy{{Name: "set-headers", Version: "v1"}},
+		[]api.Policy{{Name: "remove-headers", Version: "v1"}},
+	)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	plain := rdc.PolicyChains["GET|/test/plain|main.local"]
+	require.NotNil(t, plain)
+	assert.Equal(t, []string{"set-headers"}, faultNames(plain),
+		"an operation with no sequence of its own must carry the API's only")
+}
+
+// Each level is tagged with the scope that attached it, so a fault policy can tell whether
+// it was configured on the operation or API-wide.
+func TestRestAPITransformer_FaultPoliciesRecordsAttachedLevel(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(
+		[]api.Policy{{Name: "set-headers", Version: "v1"}},
+		[]api.Policy{{Name: "remove-headers", Version: "v1"}},
+	)
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	scoped := rdc.PolicyChains["GET|/test/scoped|main.local"]
+	require.Len(t, scoped.FaultPolicies, 2)
+	assert.Equal(t, "route", scoped.FaultPolicies[0].Params["attachedTo"],
+		"the operation-level entry must be tagged as route-scoped")
+	assert.Equal(t, "api", scoped.FaultPolicies[1].Params["attachedTo"])
+}
+
+// Only one level configured — both directions must still work, since mergeFaultPolicies
+// short-circuits when either side is empty.
+func TestRestAPITransformer_FaultPoliciesSingleLevel(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0":    {Name: "set-headers", Version: "v1.0.0"},
+		"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"},
+	}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	t.Run("operation only", func(t *testing.T) {
+		cfg := makeRestAPIWithBothFaultLevels(nil, []api.Policy{{Name: "remove-headers", Version: "v1"}})
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"remove-headers"},
+			faultNames(rdc.PolicyChains["GET|/test/scoped|main.local"]))
+		assert.Empty(t, faultNames(rdc.PolicyChains["GET|/test/plain|main.local"]))
+	})
+
+	t.Run("API only", func(t *testing.T) {
+		cfg := makeRestAPIWithBothFaultLevels([]api.Policy{{Name: "set-headers", Version: "v1"}}, nil)
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		for routeKey, chain := range rdc.PolicyChains {
+			assert.Equal(t, []string{"set-headers"}, faultNames(chain), "route %s", routeKey)
+		}
+	})
+}
+
+// An operation-level fault entry must never reach the normal chain, for the same reason an
+// API-level one must not: it would run on every successful response.
+func TestRestAPITransformer_OperationLevelFaultPoliciesNotInNormalChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"remove-headers|v1.0.0": {Name: "remove-headers", Version: "v1.0.0"}}
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+
+	cfg := makeRestAPIWithBothFaultLevels(nil, []api.Policy{{Name: "remove-headers", Version: "v1"}})
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	for routeKey, chain := range rdc.PolicyChains {
+		for _, p := range chain.Policies {
+			assert.NotEqual(t, "remove-headers", p.Name,
+				"route %s: a fault entry must not appear in the normal chain", routeKey)
+		}
+	}
+}
+
+// appendFaultSystemPolicies is the placement half of putting the collector on the fault
+// path, and "last" is the load-bearing part: the operator's entries may change the status,
+// body and description before the client sees them, so a collector running earlier would
+// record a failure that differs from the one delivered.
+func TestAppendFaultSystemPolicies_PlacesTheCollectorLast(t *testing.T) {
+	authored := []models.Policy{
+		{Name: "log-message", Version: "v1"},
+		{Name: "error-formatter", Version: "v1"},
+	}
+	systemFault := []models.Policy{{Name: "wso2_apip_sys_analytics", Version: "v1"}}
+
+	got := appendFaultSystemPolicies(authored, systemFault)
+
+	require.Len(t, got, 3)
+	assert.Equal(t, "log-message", got[0].Name, "the operator's order is preserved")
+	assert.Equal(t, "error-formatter", got[1].Name)
+	assert.Equal(t, "wso2_apip_sys_analytics", got[2].Name, "the collector runs last")
+}
+
+// The case that matters most in practice: most APIs declare no fault policies at all, and
+// those are exactly the APIs whose failures were previously unrecorded.
+func TestAppendFaultSystemPolicies_AppliesWithNothingAuthored(t *testing.T) {
+	systemFault := []models.Policy{{Name: "wso2_apip_sys_analytics", Version: "v1"}}
+
+	got := appendFaultSystemPolicies(nil, systemFault)
+
+	require.Len(t, got, 1)
+	assert.Equal(t, "wso2_apip_sys_analytics", got[0].Name,
+		"an API with no fault policies of its own still gets its failures recorded")
+}
+
+// With the collector disabled the authored list must come back untouched — and identical,
+// not merely equal, so a deployment with analytics off carries no fault chain it did not ask
+// for (which would also flip HasFaultPolicies for every route).
+func TestAppendFaultSystemPolicies_NoCollectorLeavesTheChainAlone(t *testing.T) {
+	assert.Nil(t, appendFaultSystemPolicies(nil, nil),
+		"no authored entries and no collector must stay nil, not become an empty slice")
+
+	authored := []models.Policy{{Name: "log-message", Version: "v1"}}
+	got := appendFaultSystemPolicies(authored, nil)
+	require.Len(t, got, 1)
+	assert.Equal(t, "log-message", got[0].Name)
 }

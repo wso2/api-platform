@@ -16,60 +16,110 @@
  * under the License.
  */
 
-import {
-  AppBreadcrumbs,
-  AppShell,
-  Box,
-  Footer,
-  NotificationPanel,
-  PageContent,
-  Stack,
-} from '@wso2/oxygen-ui';
-import type { BreadcrumbItem } from '@wso2/oxygen-ui';
+import { AppShell, Box, Footer, NotificationPanel } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
-import { Suspense } from 'react';
-import { matchPath, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Fragment, Suspense, useMemo } from 'react';
 
+import { useInvalidateApiPortals } from '../../api/resources/apiPortals';
+import { useInvalidateGateways } from '../../api/resources/gateways';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+
+import { getBillingOrganization } from '../../billing/organization';
+import { AppPage } from '../../components/AppPage';
+import ReadOnlyBanner from '../../components/common/ReadOnlyBanner';
 import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
+import { useResourceLimits } from '../../hooks/useResourceLimits';
 import { usePageTitle } from '../../navigation/usePageTitle';
-import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
-import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostPort';
+import { APP_GATE_SLOT, type ApiControlPlaneAppGate } from '../../extensions';
+import {
+  extensionApiFetch,
+  PortProvider,
+  type CloudHostPort,
+  type InvalidatableResource,
+} from '../../hostPort';
+import { useSlot } from '../../slots';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
-import { FormattedMessage, useIntl } from 'react-intl';
-
-/**
- * Full-page flows, which the shell renders without a breadcrumb trail.
- *
- * A creation wizard is building the very scope a trail would describe, and the
- * API publication page has its own back button to the list it came from, so the
- * crumbs can only repeat where the user came from — noise beside a form that
- * owns the whole page. Built from the route builders rather than written out,
- * so a path change cannot silently stop matching (`routes.*` is the single
- * source).
- */
-const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway(), routes.apiPortalPublish()];
+import { FormattedMessage } from 'react-intl';
 
 export default function AppLayout() {
-  const intl = useIntl();
   const navigate = useNavigate();
   const location = useLocation();
-  const { project, component, params } = useConsoleScope();
+  const { params } = useConsoleScope();
   const { notify } = useNotifications();
 
   // Every page inside the shell gets its tab title from here, so a new route
   // is named by its sidebar entry without touching the page itself.
   useDocumentTitle(usePageTitle());
 
-  const hidesBreadcrumbs = BREADCRUMB_FREE_ROUTES.some(
-    (path) => matchPath(path, location.pathname) !== null,
+  // Read rather than owned here: ResourceLimitsProvider sits above this
+  // component (App.tsx) so the value can ride the Port. A cloud extension
+  // mounted on `app.gate` supplies the numbers through `resourceLimits.set`;
+  // this portal only carries them, and with no such extension every field
+  // stays at its inert default.
+  const {
+    canCreate,
+    limitMessage,
+    setResourceLimits,
+    refresh,
+    refreshSignal,
+    readOnly,
+    readOnlyMessage,
+    readOnlyBanner,
+    setReadOnly,
+  } = useResourceLimits();
+
+  const resourceLimits = useMemo(
+    () => ({
+      canCreate,
+      limitMessage,
+      set: setResourceLimits,
+      refresh,
+      refreshSignal,
+      readOnly,
+      readOnlyMessage,
+      readOnlyBanner,
+      setReadOnly,
+    }),
+    [
+      canCreate,
+      limitMessage,
+      readOnly,
+      readOnlyBanner,
+      readOnlyMessage,
+      refresh,
+      refreshSignal,
+      setReadOnly,
+      setResourceLimits,
+    ]
+  );
+
+  // Headless policy entries. They render nothing; mounting them is what runs
+  // them, and the one that matters today is the entitlement supplier that
+  // fills `resourceLimits`. Empty in any deployment registering no extension.
+  const appGates = useSlot<ApiControlPlaneAppGate>(APP_GATE_SLOT);
+
+  // An extension writing through its own client cannot reach this cache, so it
+  // names what changed and the host maps that to the resource's invalidation
+  // hook, which clears the whole org root: a create or delete moves counts
+  // and pagination elsewhere too.
+  const invalidateGateways = useInvalidateGateways();
+  const invalidateApiPortals = useInvalidateApiPortals();
+  const resources = useMemo(
+    () => ({
+      invalidate: (resource: InvalidatableResource) => {
+        if (resource === 'gateways') invalidateGateways();
+        else invalidateApiPortals();
+      },
+    }),
+    [invalidateGateways, invalidateApiPortals]
   );
 
   // Built once per render from this portal's own hooks, then handed down as
@@ -83,38 +133,14 @@ export default function AppLayout() {
     navigate,
     notify,
     apiFetch: extensionApiFetch,
+    billing: { organization: getBillingOrganization },
+    gatewayVersions: runtimeConfig.gatewayVersions,
+    // Only an explicitly configured host: the console's own fallback can be `localhost`, which
+    // is no address for a gateway running somewhere else to dial.
+    gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHostOverride || undefined,
+    resourceLimits,
+    resources,
   };
-
-  const crumbs: BreadcrumbItem[] = [];
-  if (params.orgHandle) {
-    crumbs.push({
-      key: 'org',
-      label: intl.formatMessage({
-        id: 'appLayout.breadcrumb.home',
-        defaultMessage: 'Home',
-      }),
-      onClick: () => navigate(routes.organizationHome(params.orgHandle!)),
-    });
-  }
-  if (params.orgHandle && params.projectHandler) {
-    crumbs.push({
-      key: 'project',
-      label: project?.displayName || params.projectHandler,
-      onClick: () => navigate(routes.projectHome(params.orgHandle!, params.projectHandler!)),
-    });
-  }
-  if (params.orgHandle && params.projectHandler && params.apiHandler) {
-    crumbs.push({
-      key: 'api',
-      label: component?.displayName || params.apiHandler,
-      onClick: () =>
-        navigate(routes.api(params.orgHandle!, params.projectHandler!, params.apiHandler!)),
-    });
-  }
-  // The final crumb is the current page — render it as plain text (no nav).
-  const breadcrumbItems = crumbs.map((crumb, index) =>
-    index === crumbs.length - 1 ? { ...crumb, onClick: undefined } : crumb,
-  );
 
   return (
     <PortProvider value={port}>
@@ -131,41 +157,55 @@ export default function AppLayout() {
         </AppShell.Sidebar>
 
         <AppShell.Main>
-          <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
-            <PageContent fullWidth sx={{ py: 5 }}>
-              <Stack spacing={1}>
-                {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
-                  <Box sx={{ pb: 1 }}>
-                    <AppBreadcrumbs
-                      items={breadcrumbItems}
-                      sx={(theme) => ({
-                        '& .MuiBreadcrumbs-li .MuiTypography-root': {
-                          fontSize: theme.typography.body2.fontSize,
-                          opacity: 0.55,
-                        },
-                        '& .MuiBreadcrumbs-li:last-of-type .MuiTypography-root': {
-                          color: 'text.primary',
-                          fontWeight: theme.typography.fontWeightMedium,
-                          opacity: 1,
-                        },
-                        '& .MuiBreadcrumbs-separator': {
-                          opacity: 0.45,
-                        },
-                      })}
-                    />
-                  </Box>
-                )}
-                {/* Error boundary scoped to routed page only; resets on pathname change */}
-                <ErrorBoundary
-                  fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
-                  resetKeys={[location.pathname]}
+          {/* `AppShell.Main` is a fragment, and the shell's own Box is a ROW
+            flex container. With one child that never showed; a second would
+            sit beside the page at half width. Stack explicitly, hand the
+            shell one item. */}
+          <Box
+            sx={{
+              display: 'flex',
+              flex: 1,
+              flexDirection: 'column',
+              // So a wide page scrolls inside itself rather than stretching
+              // this column past the viewport.
+              minHeight: 0,
+              minWidth: 0,
+            }}
+          >
+            {/* Headless — each returns null. Mounted inside PortProvider so a
+              gate receives the live Port, and inside the shell so it runs on
+              every in-shell route. */}
+            {appGates.map((gate) => (
+              <Fragment key={gate.id}>{gate.render(port)}</Fragment>
+            ))}
+
+            {/* Above the page, below the header: a user meeting a page of
+              disabled controls needs the one sentence that explains why. The
+              content is the supplier's own markup; this portal writes none of
+              it. Never rendered when nothing reports read-only. */}
+            {readOnly && <ReadOnlyBanner content={readOnlyBanner ?? readOnlyMessage} />}
+
+          {/* Pages render their own container (`AppPage`, or `PageContent`
+            directly), so the shell adds none and a page owns its width and
+            padding. The fallbacks stand in for a page, so they bring one of
+            their own. */}
+            <Box sx={{ flex: 1, minWidth: 0, width: '100%', p: 1 }}>
+              {/* Error boundary scoped to routed page only; resets on pathname change */}
+              <ErrorBoundary
+                fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
+                resetKeys={[location.pathname]}
+              >
+                <Suspense
+                  fallback={
+                    <AppPage>
+                      <LoadingState label="Loading" />
+                    </AppPage>
+                  }
                 >
-                  <Suspense fallback={<LoadingState label="Loading" />}>
-                    <Outlet />
-                  </Suspense>
-                </ErrorBoundary>
-              </Stack>
-            </PageContent>
+                  <Outlet />
+                </Suspense>
+              </ErrorBoundary>
+            </Box>
           </Box>
         </AppShell.Main>
 

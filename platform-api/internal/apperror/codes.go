@@ -22,17 +22,18 @@ package apperror
 // the fallback used by NewErrorResponse when a handler hasn't been
 // migrated to a more specific domain code via NewErrorResponseWithCode.
 const (
-	CodeCommonValidationFailed    = "VALIDATION_FAILED"
-	CodeCommonUnauthorized        = "UNAUTHORIZED"
-	CodeCommonForbidden           = "FORBIDDEN"
-	CodeCommonNotFound            = "NOT_FOUND"
-	CodeCommonConflict            = "CONFLICT"
-	CodeCommonNotAcceptable       = "NOT_ACCEPTABLE"
-	CodeCommonUnprocessableEntity = "UNPROCESSABLE_ENTITY"
-	CodeCommonInternalError       = "INTERNAL_ERROR"
-	CodeCommonServiceUnavailable  = "SERVICE_UNAVAILABLE"
-	CodeCommonTooManyRequests     = "TOO_MANY_REQUESTS"
-	CodeCommonPayloadTooLarge     = "PAYLOAD_TOO_LARGE"
+	CodeCommonValidationFailed     = "VALIDATION_FAILED"
+	CodeCommonUnauthorized         = "UNAUTHORIZED"
+	CodeCommonForbidden            = "FORBIDDEN"
+	CodeCommonNotFound             = "NOT_FOUND"
+	CodeCommonConflict             = "CONFLICT"
+	CodeCommonNotAcceptable        = "NOT_ACCEPTABLE"
+	CodeCommonUnprocessableEntity  = "UNPROCESSABLE_ENTITY"
+	CodeCommonInternalError        = "INTERNAL_ERROR"
+	CodeCommonServiceUnavailable   = "SERVICE_UNAVAILABLE"
+	CodeCommonTooManyRequests      = "TOO_MANY_REQUESTS"
+	CodeCommonPayloadTooLarge      = "PAYLOAD_TOO_LARGE"
+	CodeCommonUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
 )
 
 // LLM provider/proxy domain codes, matching the examples documented in
@@ -95,6 +96,12 @@ const (
 	CodeDeploymentGatewayMismatch = "DEPLOYMENT_GATEWAY_MISMATCH"
 	CodeDeploymentActive          = "DEPLOYMENT_ACTIVE"
 	CodeDeploymentInvalidStatus   = "DEPLOYMENT_INVALID_STATUS"
+	// CodeDeploymentKindUnsupportedByGateway: the target gateway's release does not
+	// have the artifact kind (e.g. an Agent proxy on an LTS gateway).
+	CodeDeploymentKindUnsupportedByGateway = "DEPLOYMENT_KIND_UNSUPPORTED_BY_GATEWAY"
+	// CodeDeploymentSecretResolutionFailed: a gateway that needs secrets inlined
+	// fetched a deployment and a secret it references could not be resolved.
+	CodeDeploymentSecretResolutionFailed = "DEPLOYMENT_SECRET_RESOLUTION_FAILED"
 )
 
 // REST API domain codes.
@@ -114,6 +121,15 @@ const (
 	CodeMCPProxyExists                     = "MCP_PROXY_EXISTS"
 	CodeMCPProxyDeploymentValidationFailed = "MCP_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 	CodeMCPProxyUpstreamUnauthorized       = "MCP_PROXY_UPSTREAM_UNAUTHORIZED"
+)
+
+// Agent proxy domain codes.
+const (
+	CodeAgentProxyNotFound                   = "AGENT_PROXY_NOT_FOUND"
+	CodeAgentProxyExists                     = "AGENT_PROXY_EXISTS"
+	CodeAgentProxyUpstreamUnreachable        = "AGENT_PROXY_UPSTREAM_UNREACHABLE"
+	CodeAgentProxyDeploymentValidationFailed = "AGENT_PROXY_DEPLOYMENT_VALIDATION_FAILED"
+	CodeAgentProxyDeploymentNotUndeployed    = "AGENT_PROXY_DEPLOYMENT_NOT_UNDEPLOYED"
 )
 
 // Organization domain codes.
@@ -180,6 +196,11 @@ const (
 	CodeArtifactDeployed         = "ARTIFACT_DEPLOYED"
 )
 
+// API document domain codes.
+const (
+	CodeAPIDocumentNameExists = "API_DOCUMENT_NAME_EXISTS"
+)
+
 // Custom policy domain codes.
 const (
 	CodeCustomPolicyNotFound        = "CUSTOM_POLICY_NOT_FOUND"
@@ -200,6 +221,14 @@ const (
 	CodeWebSubAPIExists      = "WEBSUB_API_EXISTS"
 	CodeWebBrokerAPINotFound = "WEBBROKER_API_NOT_FOUND"
 	CodeWebBrokerAPIExists   = "WEBBROKER_API_EXISTS"
+)
+
+// GraphQL API domain codes (GraphQL is a core artifact kind, not a plugin).
+const (
+	CodeGraphQLAPINotFound                   = "GRAPHQL_API_NOT_FOUND"
+	CodeGraphQLAPIExists                     = "GRAPHQL_API_EXISTS"
+	CodeGraphQLAPISchemaResolveFailed        = "GRAPHQL_API_SCHEMA_RESOLVE_FAILED"
+	CodeGraphQLAPIDeploymentValidationFailed = "GRAPHQL_API_DEPLOYMENT_VALIDATION_FAILED"
 )
 
 // HMAC secret domain codes (WebSub subscriber callback signing secrets).
@@ -234,4 +263,24 @@ const (
 	// CodeAPIPublicationDraftChanged: the draft was saved while a publish of it
 	// was in flight, so the copy sent to the portal is no longer the draft.
 	CodeAPIPublicationDraftChanged = "PUBLICATION_DRAFT_CHANGED"
+	// CodeAPIPublicationPlanPricingConflict: the API Portal already has a plan with
+	// a published plan's handle, priced differently. The portal cannot change a
+	// plan's pricing, so the plan is not published there.
+	CodeAPIPublicationPlanPricingConflict = "PUBLICATION_PLAN_PRICING_CONFLICT"
+	// CodeAPIPublicationMeterConflict: the API Portal already has a meter with the same id as one a
+	// published plan charges for, but with other settings. The plan is not published there.
+	CodeAPIPublicationMeterConflict = "PUBLICATION_METER_CONFLICT"
+
+	// Monetization: meters and plan pricing made in the Management Portal are kept here and reach an
+	// API Portal with the plans published there.
+	CodeMeterNotFound                   = "METER_NOT_FOUND"
+	CodeMeterExists                     = "METER_EXISTS"
+	CodeMeterInUse                      = "METER_IN_USE"
+	CodeSubscriptionPlanPricingNotFound = "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"
+	// CodeSubscriptionPlanPricingLocked: a request that would change a plan's pricing, which is set
+	// once.
+	CodeSubscriptionPlanPricingLocked = "SUBSCRIPTION_PLAN_PRICING_LOCKED"
+	// CodeSubscriptionPlanInUse: a plan to delete, or whose name or limit would change, is still
+	// offered or used here.
+	CodeSubscriptionPlanInUse = "SUBSCRIPTION_PLAN_IN_USE"
 )

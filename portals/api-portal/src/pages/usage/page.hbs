@@ -1,0 +1,69 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ -->
+
+{{#pageHead}}
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/subscriptions-page.css">
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/usage-page.css">
+{{/pageHead}}
+{{#pageScripts}}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" defer></script>
+  <script src="{{basePath}}/technical-scripts/usage-page.js" defer></script>
+{{/pageScripts}}
+<div class="page-container usage-page" id="usagePage">
+  <div class="usage-header">
+    <div class="usage-header-text">
+      <h1 class="page-title">Usage</h1>
+      <p class="page-desc">Billable usage of your paid subscriptions. Totals update periodically and may not include the most recent requests.</p>
+    </div>
+    <div class="usage-filters" id="usageFilters" hidden>
+      <label class="usage-filter">Subscription
+        <select id="usageSubscription" class="form-select"></select>
+      </label>
+      <label class="usage-filter">Period
+        <select id="usagePeriod" class="form-select">
+          <option value="CURRENT">Current billing period</option>
+          <option value="PREVIOUS">Previous billing period</option>
+          <option value="LAST_30_DAYS">Last 30 days</option>
+          <option value="LAST_7_DAYS">Last 7 days</option>
+          <option value="LAST_24_HOURS">Last 24 hours</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div id="usageLoading" class="usage-loader" role="status">
+    <span class="usage-spinner" aria-hidden="true"></span>
+    <span class="visually-hidden">Loading usage</span>
+  </div>
+
+  <div class="dp-empty" id="usageEmpty" hidden>
+    <span class="dp-empty-icon"><i class="bi bi-bar-chart"></i></span>
+    <h2 class="dp-empty-title">No usage-based subscriptions</h2>
+    <p class="dp-empty-desc">Usage appears here when you subscribe to a plan that charges for usage.</p>
+  </div>
+
+  <div id="usageContent" hidden>
+    <p id="usagePaymentPending" class="sub-payment-pending" role="status" hidden>Payment pending. Requests to this API are blocked until the outstanding invoice is paid.</p>
+    <p id="usageUnavailable" class="usage-notice" role="status" hidden>Usage could not be loaded right now. Try again later.</p>
+
+    <div class="usage-cards" id="usageCards"></div>
+
+    <div id="usageCharts"></div>
+
+  </div>
+</div>

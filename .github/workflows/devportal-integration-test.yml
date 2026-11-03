@@ -42,12 +42,18 @@ jobs:
       - name: Build platform-api image
         run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-api-portal
 
+      # Instrumented, so the suite below produces V8 coverage. The flag affects
+      # this test image only — the published image is built by another workflow,
+      # without it.
       - name: Build API Portal image
-        run: make -C portals/api-portal build
+        run: make -C portals/api-portal build ENABLE_COVERAGE=true
 
       - name: Run REST API integration tests (${{ matrix.db }}, ${{ matrix.mode }} mode)
         env:
           PLATFORM_API_IMAGE: platform-api:it-api-portal
+          # Adds the compose overlay that points NODE_V8_COVERAGE at a mounted
+          # directory. Without it this is the run it has always been.
+          IT_COVERAGE: '1'
         run: |
           if [ "${{ matrix.db }}" = "postgres" ]; then
             make -C portals/api-portal/it test-rest-api-postgres-${{ matrix.mode }}
@@ -55,12 +61,41 @@ jobs:
             make -C portals/api-portal/it test-rest-api-${{ matrix.mode }}
           fi
 
+      # The suite writes raw V8 profiles carrying container paths; this rewrites
+      # them to the checkout and renders lcov. It exits 0 when there is nothing
+      # to convert, so it cannot fail a build over a run that produced none.
+      - name: Render REST API coverage
+        if: always()
+        run: make -C portals/api-portal/it rest-api-lcov
+
+      # One flag for the whole REST suite. Every matrix leg uploads under it and
+      # Codecov unions them, so the sqlite/postgres and role/scope legs add up
+      # rather than overwrite one another.
+      - name: Upload API Portal REST integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/api-portal/it/reports/lcov.info
+          flags: api-portal-rest-integration
+
+      # The raw and normalised V8 profiles are excluded deliberately. They are
+      # large (megabytes each), they are an intermediate of the lcov above rather
+      # than a test report, and the container writes them 0600 as its own uid —
+      # which made this step fail outright on a permission error before
+      # `rest-api-lcov` took ownership of them. Excluding them keeps this step
+      # independent of that having run at all.
       - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: rest-api-test-reports-${{ matrix.db }}-${{ matrix.mode }}
-          path: portals/api-portal/it/reports/
+          path: |
+            portals/api-portal/it/reports/
+            !portals/api-portal/it/reports/coverage-raw
+            !portals/api-portal/it/reports/coverage-normalized
           retention-days: 7
 
       - name: Debug on failure - dump container logs

@@ -18,13 +18,13 @@
 
 import { Box } from '@wso2/oxygen-ui';
 
-import type { RestApi } from '@/api/resources/restApis';
+import type { ListableApi } from './apiListItem';
 import { ApiCard } from './components/ApiCard';
 
 type ApiGridViewProps = {
-  apis: RestApi[];
-  onOpen: (api: RestApi) => void;
-  onDelete?: (api: RestApi) => void;
+  apis: ListableApi[];
+  onOpen: (api: ListableApi) => void;
+  onDelete?: (api: ListableApi) => void;
 };
 
 /** Auto-fill card grid, same density as the gateways page. */

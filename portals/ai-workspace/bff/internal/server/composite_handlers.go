@@ -279,10 +279,22 @@ func (s *Server) handlePublishMCPProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reaches the Platform API directly, not through handleProxy, so it must
+	// resolve the upstream token the same way — platformDo sets whatever it is
+	// given as the bearer verbatim. Without this both calls below carry the
+	// LOGIN token, which the Platform API rejects on issuer mismatch (401), and
+	// which carries no organization scope even where it is accepted.
+	upstreamJWT, exchErr := s.upstreamToken(r.Context(), jwt)
+	if exchErr != nil {
+		slog.Warn("token exchange failed for publish request", "path", r.URL.Path, "err", exchErr)
+		s.writeExchangeError(w, r, exchErr)
+		return
+	}
+
 	base := paths.PlatformAPI + "/api-portals/" + url.PathEscape(apiPortalID) +
 		"/apis/" + mcpProxyAPIType + "/" + url.PathEscape(mcpProxyID)
 
-	draftResp, err := s.platformDo(r.Context(), jwt, http.MethodPut, base+"/draft", r.Header, body)
+	draftResp, err := s.platformDo(r.Context(), upstreamJWT, http.MethodPut, base+"/draft", r.Header, body)
 	if err != nil {
 		slog.Error("bff: platform API call failed", "path", base+"/draft", "err", err)
 		writeServerErrorJSON(w, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "upstream request failed", w.Header().Get("X-Request-Id"))
@@ -299,7 +311,7 @@ func (s *Server) handlePublishMCPProxy(w http.ResponseWriter, r *http.Request) {
 	// connection returns to the pool.
 	_, _ = io.Copy(io.Discard, draftResp.Body)
 
-	publishResp, err := s.platformDo(r.Context(), jwt, http.MethodPost, base+"/publish", nil, nil)
+	publishResp, err := s.platformDo(r.Context(), upstreamJWT, http.MethodPost, base+"/publish", nil, nil)
 	if err != nil {
 		slog.Error("bff: platform API call failed", "path", base+"/publish", "err", err)
 		writeServerErrorJSON(w, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "upstream request failed", w.Header().Get("X-Request-Id"))

@@ -16,7 +16,9 @@
  * under the License.
  */
 
-export type AuthMode = 'basic' | 'oidc';
+import type { AuthMode } from '../../config/authContract';
+
+export type { AuthMode };
 
 export type AuthOrg = {
   id: string;
@@ -28,11 +30,16 @@ export type AuthUser = {
   name: string;
   email: string;
   /**
-   * Resolved server-side by the BFF from the session token's org claims (see
-   * `bff/internal/session/claims.go`'s `UserFromClaims`) — never decoded from
-   * a token in the browser, which never holds one.
+   * Resolved from the session's org claims: server-side by the BFF (see
+   * `bff/internal/session/claims.go`'s `UserFromClaims`), or, behind a gateway
+   * or auth proxy, from the claims its session endpoint returns (see
+   * `userFromClaims.ts`). Never decoded from a token in the browser, which
+   * never holds one.
    */
   org?: AuthOrg | null;
+  /** Avatar URL from the IDP's picture claim; the header falls back to
+   * initials when the IDP supplies none. */
+  picture?: string;
   scopes?: string[],
   role?: string,
 };
@@ -41,7 +48,9 @@ export type AuthStatus =
   | 'loading'
   | 'authenticated'
   | 'unauthenticated'
-  | 'expired';
+  | 'expired'
+  /** The session endpoint failed (5xx or no answer) before any session was known. */
+  | 'unavailable';
 
 export type AuthState = {
   error?: string;
@@ -50,9 +59,13 @@ export type AuthState = {
   isLoading: boolean;
   isAuthenticated: boolean;
   user?: AuthUser;
-  /** oidc mode: redirects to the BFF, which performs the whole flow server-side. */
+  /**
+   * Redirect sign-in (`oidc`, `external`): sends the browser to the sign-in
+   * endpoint, which runs the whole flow server-side. `returnTo` is a path
+   * inside the app; it defaults to the current page.
+   */
   login: (returnTo?: string) => void;
-  /** basic mode: posts credentials to the BFF. Resolves false on invalid credentials. */
+  /** Form sign-in (`basic`): posts credentials. Resolves false on invalid credentials. */
   loginWithCredentials: (
     username: string,
     password: string,

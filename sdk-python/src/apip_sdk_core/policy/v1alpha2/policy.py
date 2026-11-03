@@ -22,12 +22,14 @@ from typing import Any
 from .actions import (
     RequestAction,
     RequestHeaderAction,
+    FaultResponse,
     ResponseAction,
     ResponseHeaderAction,
     StreamingRequestAction,
     StreamingResponseAction,
 )
 from .types import (
+    FaultContext,
     ExecutionContext,
     ProcessingMode,
     RequestContext,
@@ -101,6 +103,37 @@ class ResponsePolicy(Policy, ABC):
         params: dict[str, Any],
     ) -> ResponseAction:
         """Handle the buffered response-body phase."""
+
+
+class FaultPolicy(Policy, ABC):
+    """Runs when a request FAILS, over the error response the gateway produced.
+
+    A fault policy is attached through ``faultPolicies`` — ``globalFaultPolicies`` on the LLM kinds —
+    rather than the normal chain, and never runs on a successful response. Implementing this
+    interface is what makes a policy eligible: the gateway checks for ``on_fault`` when it
+    builds the chain and refuses to attach a policy that does not define it.
+
+    It is independent of every other interface — a policy may implement this and nothing else,
+    leaving every processing mode SKIP, which is the usual shape for a notifier.
+
+    Returning ``None`` leaves the error exactly as it was, which is what a handler that only
+    notifies or records should do. Returning a :class:`FaultResponse` changes what the client
+    receives — but check ``ctx.response_committed`` first: when it is True the response has
+    already reached the client and any change is discarded.
+
+    The return is a ``FaultResponse``, not a response action. The response-phase union asks a
+    policy to choose between forwarding and replacing, and there is nothing to forward on this
+    path.
+    """
+
+    @abstractmethod
+    def on_fault(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: FaultContext,
+        params: dict[str, Any],
+    ) -> FaultResponse | None:
+        """Handle a failed request."""
 
 
 class StreamingRequestPolicy(RequestPolicy, ABC):

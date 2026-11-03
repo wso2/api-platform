@@ -22,12 +22,15 @@ import type { ApiError } from '../../core/errors';
 import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
 import {
-  deprecateRestApiOnApiPortal,
-  publishRestApiToApiPortal,
+  type DraftDefinitionBody,
+  type PublishableApiType,
+  deprecateApiOnApiPortal,
+  publishApiToApiPortal,
   saveApiPublicationDraft,
   saveApiPublicationDraftDefinition,
-  unpublishRestApiFromApiPortal,
-  type DraftDefinitionDocument,
+  saveApiPublicationDraftLandingPage,
+  saveApiPublicationDraftThumbnail,
+  unpublishApiFromApiPortal,
   type ListApiPublicationsQuery,
   type Publication,
   type PublicationDraftDetails,
@@ -101,6 +104,66 @@ export const useApiPublicationDraftDefinition = (
   });
 };
 
+/** The draft's landing page. Pass `undefined` for `apiId` unless `hasLandingPage` is set; it 404s otherwise. */
+export const useApiPublicationDraftLandingPage = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.draftLandingPage(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
+/** The draft's thumbnail. Pass `undefined` for `apiId` unless `hasThumbnail` is set; it 404s otherwise. */
+export const useApiPublicationDraftThumbnail = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.draftThumbnail(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
+/** The live thumbnail. Pass `undefined` for `apiId` unless `hasThumbnail` is set; it 404s otherwise. */
+export const useApiPublicationThumbnail = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.publicationThumbnail(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
+/** The live landing page. Pass `undefined` for `apiId` unless `hasLandingPage` is set; it 404s otherwise. */
+export const useApiPublicationLandingPage = (
+  apiPortalId: string | undefined,
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...apiPublicationQueries.publicationLandingPage(org!, apiPortalId!, apiType!, apiId!),
+    enabled: Boolean(org && apiPortalId && apiType && apiId),
+  });
+};
+
 /** The live listing on one portal. 404s (`PUBLICATION_NOT_FOUND`) when not currently published. */
 export const useApiPublication = (
   apiPortalId: string | undefined,
@@ -132,23 +195,67 @@ export const useApiPublicationDefinition = (
 };
 
 /**
- * Invalidation shared by every write below: a save/publish/unpublish/deprecate can shift
- * the draft, the publication, and the rollup's status/timestamps all at once,
- * so the whole resource is invalidated rather than one specific key.
+ * What the writes below do to the cache. A save, publish, unpublish or deprecate
+ * can shift the draft, the publication and the rollup's status and timestamps
+ * all at once, so the whole resource is marked stale rather than one key — but
+ * marking stale and reading again are separate, and a screen that is about to
+ * leave, or is already showing the answer, has no use for the second.
  */
-const useInvalidateApiPublications = (orgId?: string) => {
+const useApiPublicationCache = (orgId?: string) => {
   const queryClient = useQueryClient();
   const { org } = useApiScope({ orgId });
 
-  return () => {
-    if (!org) return;
-    void queryClient.invalidateQueries({ queryKey: apiPublicationKeys.all(org) });
+  return {
+    /**
+     * Marks every publication query stale. `active` also reads the mounted ones
+     * again; `none` leaves them as shown and lets the next visit revalidate.
+     */
+    markStale: (refetchType: 'active' | 'none') => {
+      if (!org) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: apiPublicationKeys.all(org), refetchType });
+    },
+
+    /**
+     * Reads the rollups again now, mounted or not, so the listing that opens
+     * next is already current rather than showing the old status and then
+     * changing. Awaited by the write, which therefore settles once it is. A
+     * failure here is not the write's failure: the listing revalidates itself.
+     */
+    refreshRollups: async () => {
+      if (!org) return;
+      await queryClient
+        .refetchQueries({ queryKey: apiPublicationKeys.lists(org), type: 'all' })
+        .catch(() => undefined);
+    },
+
+    /** Stores a draft the server just returned, so reading it again is unnecessary. */
+    setDraft: async (apiPortalId: string, apiType: string, apiId: string, draft: PublicationDraftDetails) => {
+      if (!org) return;
+      const { queryKey } = apiPublicationQueries.draft(org, apiPortalId, apiType, apiId);
+      // A read still in flight would otherwise land after this and replace the saved draft.
+      await queryClient.cancelQueries({ queryKey });
+      queryClient.setQueryData(queryKey, draft);
+    },
   };
+};
+
+/**
+ * Settles a publish, unpublish or deprecate. On success the screen leaves for the
+ * listing, so only the listing is brought up to date; on failure the screen
+ * stays, and what it shows is read again to find out where things stand.
+ */
+const settleStatusChange = async (cache: ReturnType<typeof useApiPublicationCache>, error: ApiError | null) => {
+  if (error) {
+    await cache.markStale('active');
+    return;
+  }
+  await cache.markStale('none');
+  await cache.refreshRollups();
 };
 
 export const useSaveApiPublicationDraft = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
-  const invalidate = useInvalidateApiPublications(orgId);
+  const cache = useApiPublicationCache(orgId);
 
   return useMutation<
     PublicationDraftDetails,
@@ -157,7 +264,11 @@ export const useSaveApiPublicationDraft = (overrides: { orgId?: string } = {}) =
   >({
     mutationFn: ({ apiPortalId, apiType, apiId, body }) =>
       saveApiPublicationDraft(apiPortalId, apiType, apiId, body, { orgId }),
-    onSuccess: () => invalidate(),
+    onSuccess: async (draft, { apiPortalId, apiType, apiId }) => {
+      // The response is the draft as saved, so it replaces the cached one outright.
+      await cache.setDraft(apiPortalId, apiType, apiId, draft);
+      await cache.markStale('none');
+    },
   });
 };
 
@@ -165,53 +276,92 @@ export const useSaveApiPublicationDraftDefinition = (
   overrides: { handlesErrors?: boolean; orgId?: string } = {},
 ) => {
   const { orgId } = useApiScope(overrides);
-  const invalidate = useInvalidateApiPublications(orgId);
+  const cache = useApiPublicationCache(orgId);
 
   return useMutation<
     void,
     ApiError,
-    { apiPortalId: string; apiType: string; apiId: string; body: DraftDefinitionDocument }
+    { apiPortalId: string; apiType: string; apiId: string; body: DraftDefinitionBody }
   >({
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: ({ apiPortalId, apiType, apiId, body }) =>
       saveApiPublicationDraftDefinition(apiPortalId, apiType, apiId, body, { orgId }),
-    onSuccess: () => invalidate(),
+    onSuccess: () => cache.markStale('none'),
   });
 };
 
-export const usePublishRestApiToApiPortal = (overrides: { orgId?: string } = {}) => {
+export const useSaveApiPublicationDraftLandingPage = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
   const { orgId } = useApiScope(overrides);
-  const invalidate = useInvalidateApiPublications(orgId);
+  const cache = useApiPublicationCache(orgId);
 
-  return useMutation<Publication, ApiError, { apiPortalId: string; apiId: string }>({
-    mutationFn: ({ apiPortalId, apiId }) =>
-      publishRestApiToApiPortal(apiPortalId, apiId, { orgId }),
-    onSuccess: () => invalidate(),
+  return useMutation<
+    void,
+    ApiError,
+    { apiPortalId: string; apiType: string; apiId: string; markdown: string }
+  >({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
+    mutationFn: ({ apiPortalId, apiType, apiId, markdown }) =>
+      saveApiPublicationDraftLandingPage(apiPortalId, apiType, apiId, markdown, { orgId }),
+    onSuccess: () => cache.markStale('none'),
   });
 };
 
-export const useUnpublishRestApiFromApiPortal = (overrides: { orgId?: string } = {}) => {
+export const useSaveApiPublicationDraftThumbnail = (
+  overrides: { handlesErrors?: boolean; orgId?: string } = {},
+) => {
   const { orgId } = useApiScope(overrides);
-  const invalidate = useInvalidateApiPublications(orgId);
+  const cache = useApiPublicationCache(orgId);
 
-  return useMutation<void, ApiError, { apiPortalId: string; apiId: string }>({
-    mutationFn: ({ apiPortalId, apiId }) =>
-      unpublishRestApiFromApiPortal(apiPortalId, apiId, { orgId }),
+  return useMutation<
+    void,
+    ApiError,
+    { apiPortalId: string; apiType: string; apiId: string; file: Blob }
+  >({
+    meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
+    mutationFn: ({ apiPortalId, apiType, apiId, file }) =>
+      saveApiPublicationDraftThumbnail(apiPortalId, apiType, apiId, file, { orgId }),
+    onSuccess: () => cache.markStale('none'),
+  });
+};
+
+export const usePublishApiToApiPortal = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+  const cache = useApiPublicationCache(orgId);
+
+  return useMutation<Publication, ApiError, { apiPortalId: string; apiType: PublishableApiType; apiId: string }>({
+    mutationFn: ({ apiPortalId, apiType, apiId }) =>
+      publishApiToApiPortal(apiPortalId, apiType, apiId, { orgId }),
+    // On success the publish consumed the draft and the screen is on its way
+    // out; on failure (e.g. the draft was already consumed elsewhere) it stays
+    // and re-reads what it shows.
+    onSettled: (_data, error) => settleStatusChange(cache, error),
+  });
+};
+
+export const useUnpublishApiFromApiPortal = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+  const cache = useApiPublicationCache(orgId);
+
+  return useMutation<void, ApiError, { apiPortalId: string; apiType: PublishableApiType; apiId: string }>({
+    mutationFn: ({ apiPortalId, apiType, apiId }) =>
+      unpublishApiFromApiPortal(apiPortalId, apiType, apiId, { orgId }),
     // Settled, not success-only: a failed unpublish (e.g. 409 PUBLICATION_STATE_CONFLICT
     // after another session already changed the listing) must re-read the real status.
-    onSettled: () => invalidate(),
+    onSettled: (_data, error) => settleStatusChange(cache, error),
   });
 };
 
-export const useDeprecateRestApiOnApiPortal = (overrides: { orgId?: string } = {}) => {
+export const useDeprecateApiOnApiPortal = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
-  const invalidate = useInvalidateApiPublications(orgId);
+  const cache = useApiPublicationCache(orgId);
 
-  return useMutation<Publication, ApiError, { apiPortalId: string; apiId: string }>({
-    mutationFn: ({ apiPortalId, apiId }) =>
-      deprecateRestApiOnApiPortal(apiPortalId, apiId, { orgId }),
+  return useMutation<Publication, ApiError, { apiPortalId: string; apiType: PublishableApiType; apiId: string }>({
+    mutationFn: ({ apiPortalId, apiType, apiId }) =>
+      deprecateApiOnApiPortal(apiPortalId, apiType, apiId, { orgId }),
     // Settled, not success-only, for the same reason as unpublish: a 409
     // PUBLICATION_STATE_CONFLICT must re-read the real status.
-    onSettled: () => invalidate(),
+    onSettled: (_data, error) => settleStatusChange(cache, error),
   });
 };

@@ -132,8 +132,7 @@ func TestValidatePolicyChainConfig_PolicyMissingName(t *testing.T) {
 		RouteKey: "test-route",
 		Policies: []policyenginev1.PolicyInstance{
 			{Name: "", Version: "v1"},
-		},
-	}
+		}}
 
 	err := handler.validatePolicyChainConfig(config)
 
@@ -152,8 +151,7 @@ func TestValidatePolicyChainConfig_PolicyMissingVersion(t *testing.T) {
 		RouteKey: "test-route",
 		Policies: []policyenginev1.PolicyInstance{
 			{Name: "test-policy", Version: ""},
-		},
-	}
+		}}
 
 	err := handler.validatePolicyChainConfig(config)
 
@@ -172,8 +170,7 @@ func TestValidatePolicyChainConfig_PolicyNotInRegistry(t *testing.T) {
 		RouteKey: "test-route",
 		Policies: []policyenginev1.PolicyInstance{
 			{Name: "nonexistent-policy", Version: "v1"},
-		},
-	}
+		}}
 
 	err := handler.validatePolicyChainConfig(config)
 
@@ -490,8 +487,7 @@ func TestBuildPolicyChain_UnknownPolicy(t *testing.T) {
 				Name:    "unknown-policy",
 				Version: "v1",
 				Enabled: true,
-			},
-		},
+			}},
 	}
 
 	metadata := policyenginev1.Metadata{

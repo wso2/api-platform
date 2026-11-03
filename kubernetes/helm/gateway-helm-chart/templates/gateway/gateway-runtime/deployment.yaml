@@ -121,7 +121,14 @@ spec:
               value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.gatewayControllerHost | quote }}
             - name: LOG_LEVEL
               value: {{ default "info" $deployment.env.logLevel | quote }}
-            {{- if $deployment.env.moesifKey }}
+            {{- $moesifKeySecretRef := $deployment.env.moesifKeySecretRef | default dict }}
+            {{- if $moesifKeySecretRef.name }}
+            - name: MOESIF_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $moesifKeySecretRef.name }}
+                  key: {{ $moesifKeySecretRef.key | default "moesif-key" }}
+            {{- else if $deployment.env.moesifKey }}
             - name: MOESIF_KEY
               value: {{ $deployment.env.moesifKey | quote }}
             {{- end }}

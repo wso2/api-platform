@@ -50,6 +50,6 @@ export {
   useIsPolicyHubConfigured,
   usePolicyDefinition,
   usePolicyHubCategories,
-  usePolicyHubPolicies,
+  usePolicyHubInfinitePolicies,
   usePolicyVersions,
 } from './policyHub.hooks';

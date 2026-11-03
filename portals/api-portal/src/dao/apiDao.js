@@ -222,16 +222,21 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
     const owners = apiMetadata.owners || {};
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
     const updatedAt = new Date();
+    // The publisher always sends referenceId; the portal UI never does. Only touch
+    // ref_id when the caller included it, so UI edits keep the publisher's value.
+    // undefined counts as absent: the YAML parser maps a missing key to it.
+    const setsRefId = apiMetadata.referenceId !== undefined;
 
     const portalId = getPortalId();
     const { rowCount } = await exec.execute(
         `UPDATE ${API_METADATA_TABLE}
-         SET ref_id = ?, status = ?, name = ?, description = ?, version = ?, type = ?, agent_visibility = ?,
+         SET ${setsRefId ? 'ref_id = ?, ' : ''}status = ?, name = ?, description = ?, version = ?, type = ?, agent_visibility = ?,
              technical_owner = ?, technical_owner_email = ?, business_owner_email = ?, business_owner = ?,
              sandbox_url = ?, production_url = ?, metadata_search = ?, updated_by = ?, updated_at = ?
          WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
         [
-            apiMetadata.referenceId, apiMetadata.status, apiMetadata.name, apiMetadata.description,
+            ...(setsRefId ? [apiMetadata.referenceId || null] : []),
+            apiMetadata.status, apiMetadata.name, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner,
             owners.technicalOwnerEmail, owners.businessOwnerEmail, owners.businessOwner,
             apiMetadata.endPoints.sandboxURL, apiMetadata.endPoints.productionURL, apiMetadata,

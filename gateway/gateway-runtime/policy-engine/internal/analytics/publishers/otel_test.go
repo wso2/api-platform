@@ -35,6 +35,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1583,6 +1584,32 @@ func TestBuildRecordHeaderAttributes(t *testing.T) {
 	}
 }
 
+// The policy engine produces headers in the multi-value format (e.g. when
+// analytics-header-filter is applied); each header must still map to one
+// attribute, keeping every value and skipping empty ones.
+func TestBuildRecordHeaderAttributesMultiValueFormat(t *testing.T) {
+	event := headerEventRaw(`{"X-Forwarded-For":["1.1.1.1","2.2.2.2"],"X-Tenant":["acme"],"X-Empty":[""],"X-None":[]}`)
+	event.Properties[dto.PropKeyResponseHeaders] = `{"Content-Type":["application/json"]}`
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string][]string{
+		"http.request.header.x-forwarded-for": {"1.1.1.1", "2.2.2.2"},
+		"http.request.header.x-tenant":        {"acme"},
+		"http.response.header.content-type":   {"application/json"},
+	} {
+		if values, ok := got[key].([]string); !ok || !slices.Equal(values, want) {
+			t.Errorf("%s = %#v, want %v", key, got[key], want)
+		}
+	}
+	for _, key := range []string{"http.request.header.x-empty", "http.request.header.x-none"} {
+		if _, present := got[key]; present {
+			t.Errorf("%s emitted for a header with no values", key)
+		}
+	}
+}
+
 // No header-filter policy attached means no header properties on the event, and
 // therefore no header attributes — never an empty or partial set.
 func TestBuildRecordNoHeaderAttributesWhenAbsent(t *testing.T) {
@@ -1615,8 +1642,54 @@ func headerEventRaw(serialized string) *dto.Event {
 
 func headerEventWrongType() *dto.Event {
 	event := restEvent()
-	event.Properties[dto.PropKeyRequestHeaders] = map[string]string{"not": "a string"}
+	event.Properties[dto.PropKeyRequestHeaders] = 42
 	return event
+}
+
+// On a correlation-store hit, prepareAnalyticEvent hands the headers over as an
+// already-decoded map rather than a JSON string. Both shapes must produce the same
+// attributes (regression: the map shape used to produce none).
+func TestBuildRecordHeaderAttributesFromStoreMap(t *testing.T) {
+	event := restEvent()
+	event.Properties[dto.PropKeyRequestHeaders] = map[string]string{"Content-Type": "application/json", "X-Tenant": "acme"}
+	event.Properties[dto.PropKeyResponseHeaders] = map[string]string{"Cache-Control": "no-store"}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	for key, want := range map[string]string{
+		"http.request.header.content-type":   "application/json",
+		"http.request.header.x-tenant":       "acme",
+		"http.response.header.cache-control": "no-store",
+	} {
+		values, ok := got[key].([]string)
+		if !ok || len(values) != 1 || values[0] != want {
+			t.Errorf("%s = %#v, want [%q]", key, got[key], want)
+		}
+	}
+}
+
+// A repeated header kept separate by an analytics header filter exports one array
+// element per value, whether it arrives through Envoy metadata (a JSON string) or
+// the correlation store (a map).
+func TestBuildRecordHeaderAttributesKeepRepeatedValues(t *testing.T) {
+	for name, raw := range map[string]interface{}{
+		"metadata": `{"x-multi":["a=1","b=2"]}`,
+		"store":    map[string][]string{"x-multi": {"a=1", "b=2"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			event := restEvent()
+			event.Properties[dto.PropKeyRequestHeaders] = raw
+
+			o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+			got := attrMap(t, o.buildRecord(event))
+
+			values, ok := got["http.request.header.x-multi"].([]string)
+			if !ok || len(values) != 2 || values[0] != "a=1" || values[1] != "b=2" {
+				t.Errorf("http.request.header.x-multi = %#v, want [\"a=1\" \"b=2\"]", got["http.request.header.x-multi"])
+			}
+		})
+	}
 }
 
 // HTTP/2 pseudo-headers are not headers. Envoy surfaces them next to the real

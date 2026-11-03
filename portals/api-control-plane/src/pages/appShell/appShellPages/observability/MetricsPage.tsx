@@ -18,21 +18,29 @@
 
 import { FormattedMessage } from 'react-intl';
 
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { AppPage } from '@/components/AppPage';
+import { ComingSoon } from '@/components/ComingSoon';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 
 export function MetricsPage() {
   return (
-    <ScopeGate prompt="Metrics are reported per API." requires="api" to={routes.apiObservabilityMetrics}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.metricsPage.feature"
-            defaultMessage="Observability metrics for this API"
-          />
-        }
-      />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        graphqlTo={routes.graphqlApiObservabilityMetrics}
+        prompt="Metrics are reported per API."
+        requires="api"
+        to={routes.apiObservabilityMetrics}
+      >
+        <ComingSoon
+          feature={
+            <FormattedMessage
+              id="appShell.metricsPage.feature"
+              defaultMessage="Observability metrics for this API"
+            />
+          }
+        />
+      </ScopeGate>
+    </AppPage>
   );
 }

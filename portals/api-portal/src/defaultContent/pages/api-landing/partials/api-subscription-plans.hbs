@@ -1,12 +1,14 @@
 {{#if subscriptionPlans.length}}
-<section id="subscriptionPlans" class="aov-plans-wrap" data-org-id="{{@root.orgId}}">
+<section id="subscriptionPlans" class="aov-plans-wrap" data-org-id="{{@root.orgId}}"
+  data-api-id="{{@root.apiMetadata.id}}" data-api-name="{{or @root.apiMetadata.title @root.apiMetadata.name}}"
+  data-api-version="{{@root.apiMetadata.version}}">
 
   <h2 class="aov-plans-title">Subscription plans</h2>
 
   {{#each subscriptionPlans}}
   <div class="aov-plan-card subscription-card{{#if (isCurrentPlan id @root.subscriptions)}} aov-plan-card--subscribed{{/if}}"
     id="subscriptionCard-{{id}}"
-    data-policy-name="{{id}}">
+    data-policy-name="{{id}}"{{#if paid}} data-paid{{/if}}{{#if pricing}} data-billing-period="{{pricing.billingPeriod}}"{{#if pricing.flatAmount}} data-flat-fee{{/if}}{{#if pricing.prices.length}} data-usage-prices="{{pricing.prices.length}}"{{/if}}{{/if}}>
     <div class="aov-plan-ribbon" aria-hidden="true">
       <div class="aov-plan-ribbon-label api-ribbon-label">SUBSCRIBED</div>
     </div>
@@ -16,11 +18,13 @@
           <i class="bi bi-lightning-charge-fill"></i>
         </span>
         <span class="aov-plan-name">{{#if displayName}}{{displayName}}{{else}}{{id}}{{/if}}</span>
+        {{#if paid}}<span class="aov-plan-badge aov-plan-badge--paid">Paid</span>{{/if}}
       </div>
       {{#unless (isCurrentPlan id @root.subscriptions)}}
       <span class="aov-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
+    {{> plan-price}}
     <div class="aov-plan-limit">
       {{#if limits.length}}{{#each limits}}
       <span class="aov-plan-count">{{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}</span>
@@ -29,7 +33,7 @@
       <span class="aov-plan-count">{{requestCount}}</span>
       <span class="aov-plan-unit">requests / min</span>
       {{else}}
-      <span class="aov-plan-count">—</span>
+      <span class="aov-plan-unit">Unlimited requests</span>
       {{/if}}
     </div>
     <div class="position-relative">
@@ -44,6 +48,18 @@
           <i class="bi bi-eye"></i> View subscription
         </button>
         {{else}}
+        {{#if paid}}
+        {{!-- A paid plan is bought through Stripe's checkout, in a dialog (api-subscription-plans.js);
+              the button shows only to a user allowed to start one. --}}
+        {{#if @root.access.checkout}}
+        <button id="subscribe-btn-{{id}}" type="button"
+          class="dp-btn dp-btn--outline dp-btn--block paid-subscribe-btn"
+          data-api-id="{{../apiMetadata.id}}"
+          data-plan-id="{{id}}"
+          data-display-name="{{displayName}}"
+          ><span class="aov-plan-spinner"></span>Subscribe</button>
+        {{/if}}
+        {{else if @root.access.subscribe}}
         <button id="subscribe-btn-{{id}}" type="button"
           class="dp-btn dp-btn--outline dp-btn--block subscribe-btn"
           data-org-id="{{@root.orgId}}"
@@ -53,6 +69,7 @@
           data-display-name="{{displayName}}"
           onclick="handlePlanSubscription(this)"
           ><span class="aov-plan-spinner"></span>Subscribe</button>
+        {{/if}}
         {{/if}}
       {{else}}
       {{!-- Unauthenticated Subscribe links to login, which 404s in design mode — disable it there. --}}
@@ -70,9 +87,14 @@
   </div>
   {{/each}}
 
+
   <script id="existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
   <script src='{{basePath}}/technical-scripts/api-subscription-plans.js' defer></script>
 </section>
+
+{{#if hasPaidPlans}}
+{{> plan-checkout}}
+{{/if}}
 
 <!-- Subscription created token modal -->
 <div id="apiTokenModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
@@ -126,6 +148,7 @@
         <span class="mc-manage-status-label">Status</span>
         <span id="apiManageStatusBadge" class="mc-manage-status-badge mc-manage-status-badge--active">Active</span>
       </div>
+      <p id="apiManageEnds" class="mc-manage-ends" hidden></p>
       <div class="mc-token-label" style="margin-top:1.25rem;">
         <i class="bi bi-key" style="color:#637282;"></i>
         <span>Subscription token</span>
@@ -154,6 +177,9 @@
         </button>
         <button id="apiManageUnsubBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub">
           <i class="bi bi-trash"></i> Unsubscribe
+        </button>
+        <button id="apiManageEndNowBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--unsub" hidden>
+          <i class="bi bi-x-circle"></i> End now
         </button>
       </div>
     </div>

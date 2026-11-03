@@ -101,7 +101,7 @@ func GatewayController() *components.Definition {
 
 		Files: []components.FileMount{
 			{
-				HostPath:      "gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin",
+				Content:       shared.GatewayEncryptionKey(),
 				ContainerPath: "/app/data/aesgcm-keys/default-aesgcm256-v1.bin",
 				Mode:          0o644,
 			},

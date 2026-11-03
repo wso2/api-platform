@@ -395,7 +395,6 @@ export function DefinitionPanel() {
   const [specUrl, setSpecUrl] = useState('');
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
   const [urlImportInvalidMessage, setUrlImportInvalidMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -595,7 +594,6 @@ export function DefinitionPanel() {
     const isEmpty = !content.trim();
 
     if (!isEmpty) {
-      setIsValidating(true);
       setSaveValidationErrors(null);
       try {
         const validation = await validateSpec.mutateAsync({ text: content });
@@ -606,8 +604,6 @@ export function DefinitionPanel() {
       } catch {
         setSaveValidationErrors([intl.formatMessage(messages.saveValidationUnavailable)]);
         return;
-      } finally {
-        setIsValidating(false);
       }
     }
 

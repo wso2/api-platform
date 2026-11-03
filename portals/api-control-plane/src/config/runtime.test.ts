@@ -107,6 +107,92 @@ describe('runtimeConfig', () => {
     );
   });
 
+  it('keeps the BFF routes for the existing auth modes', async () => {
+    window.__RUNTIME_CONFIG__ = { authMode: 'oidc' };
+
+    const { authContract } = await loadRuntimeConfig();
+
+    expect(authContract).toMatchObject({
+      loginStyle: 'redirect',
+      loginUrl: '/api/auth/login',
+      returnParam: 'return',
+      sessionUrl: '/api/session',
+      sessionFormat: 'bff',
+      logoutUrl: '/api/logout',
+      logoutStyle: 'post-json',
+    });
+  });
+
+  it('reads external mode and its endpoints from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      authMode: 'external',
+      authLoginUrl: '/api-platform/auth/login',
+      authReturnParam: 'returnTo',
+      authSessionUrl: '/api-platform/auth/session',
+      authLogoutUrl: '/api-platform/auth/logout',
+      authClaimMappings: '{"username":"name","organization":"ouId"}',
+    };
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.authMode).toBe('external');
+    expect(runtimeConfig.authContract).toMatchObject({
+      loginStyle: 'redirect',
+      loginUrl: '/api-platform/auth/login',
+      returnParam: 'returnTo',
+      sessionUrl: '/api-platform/auth/session',
+      sessionFormat: 'claims',
+      logoutUrl: '/api-platform/auth/logout',
+      logoutStyle: 'navigate',
+    });
+    expect(runtimeConfig.authContract.claimMappings.username).toBe('name');
+    expect(runtimeConfig.authContract.claimMappings.organization).toBe('ouId');
+  });
+
+  it('reads the check-session endpoint and interval from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      authMode: 'external',
+      authCheckSessionUrl: '/api-platform/auth/checksession',
+      authCheckSessionInterval: 45,
+    };
+
+    const { authContract } = await loadRuntimeConfig();
+
+    expect(authContract.checkSessionUrl).toBe('/api-platform/auth/checksession');
+    expect(authContract.checkSessionInterval).toBe(45);
+  });
+
+  it('reads the auth endpoints from build configuration when runtime config has none', async () => {
+    vi.stubEnv('VITE_AUTH_MODE', 'external');
+    vi.stubEnv('VITE_AUTH_SESSION_URL', '/auth/session');
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.authMode).toBe('external');
+    expect(runtimeConfig.authContract.sessionUrl).toBe('/auth/session');
+  });
+
+  // The Test console's relay is not part of signing in: any auth mode can move it.
+  it.each([
+    ['defaults to the BFF relay', {}, '/api/gateway-relay/invoke'],
+    ['is set from runtime config in a BFF mode', { authMode: 'basic', gatewayRelayUrl: '/relay' }, '/relay'],
+    ['is set from runtime config in external mode', { authMode: 'external', gatewayRelayUrl: '/relay' }, '/relay'],
+  ])('gatewayRelayUrl %s', async (_case, config, expected) => {
+    window.__RUNTIME_CONFIG__ = config;
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayRelayUrl).toBe(expected);
+  });
+
+  it('gatewayRelayUrl is read from build configuration when runtime config has none', async () => {
+    vi.stubEnv('VITE_GATEWAY_RELAY_URL', '/build/relay');
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayRelayUrl).toBe('/build/relay');
+  });
+
   it('an unrecognized authMode value falls back to basic', async () => {
     window.__RUNTIME_CONFIG__ = { authMode: 'something-else' };
 
@@ -137,5 +223,108 @@ describe('runtimeConfig', () => {
 
     expect(runtimeConfig.cloudProxyEnabled).toBe(true);
     expect(runtimeConfig.moesifAppUrl).toBe('https://www.moesif.com');
+  });
+
+  it('gatewayVersions defaults to an empty array when absent', async () => {
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayVersions).toEqual([]);
+  });
+
+  it('parses the JSON-encoded gatewayVersions runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      gatewayVersions: JSON.stringify([
+        { type: 'regular', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+        { type: 'event', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+      ]),
+    };
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayVersions).toEqual([
+      { type: 'regular', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+      { type: 'event', version: '1.0', latestVersion: 'v1.0.0', channel: 'LTS' },
+    ]);
+  });
+
+  it('gatewayVersions falls back to an empty array on malformed JSON', async () => {
+    window.__RUNTIME_CONFIG__ = { gatewayVersions: 'not-json' };
+
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.gatewayVersions).toEqual([]);
+  });
+
+  describe('sanitizeHtmlDocsEnabled', () => {
+    it('defaults to on when unset', async () => {
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(true);
+    });
+
+    it.each(['false', 'FALSE', 'False', ' false ', 'fAlSe'])('turns off for %j in any letter case', async (value) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(false);
+    });
+
+    it('turns off for a boolean false', async () => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: false };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(false);
+    });
+
+    it.each(['true', 'TRUE', '', 'no', '0', 'off', 'flase'])('stays on for %j', async (value) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(true);
+    });
+
+    it('reads the build-time flag case-insensitively too', async () => {
+      vi.stubEnv('VITE_SANITIZE_HTML_DOCS_ENABLED', 'False');
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(false);
+    });
+
+    it('prefers the BFF runtime value over the build-time flag', async () => {
+      vi.stubEnv('VITE_SANITIZE_HTML_DOCS_ENABLED', 'false');
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsEnabled: 'true' };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(true);
+    });
+  });
+
+  it('reads the sanitize allowlist additions the BFF emits as JSON strings', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      sanitizeHtmlDocsAdditionalAllowedAttributes: '{"video":["controls","poster"],"*":["hidden"]}',
+      sanitizeHtmlDocsAdditionalAllowedTags: '["video"]',
+    };
+    const runtimeConfig = await loadRuntimeConfig();
+    expect(runtimeConfig.sanitizeHtmlDocsAdditionalAllowedTags).toEqual(['video']);
+    expect(runtimeConfig.sanitizeHtmlDocsAdditionalAllowedAttributes).toEqual({
+      '*': ['hidden'],
+      video: ['controls', 'poster'],
+    });
+  });
+  describe('sanitizeHtmlDocsAdditionalAllowedTags', () => {
+    it.each([
+      ['a JSON array', '["video","iframe"]', ['video', 'iframe']],
+      ['a comma-separated list', 'video, iframe,,', ['video', 'iframe']],
+      ['a single tag', ' video ', ['video']],
+      ['broken JSON', '["video","iframe"', []],
+      ['a JSON array with a non-string', '["video",1]', []],
+      ['a blank value', '  ', []],
+    ])('reads %s', async (_label, value, expected) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsAdditionalAllowedTags: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsAdditionalAllowedTags).toEqual(expected);
+    });
+  });
+
+  describe('sanitizeHtmlDocsAdditionalAllowedAttributes', () => {
+    it.each([
+      ['string arrays', '{"video":["controls","poster"]}', { video: ['controls', 'poster'] }],
+      ['a single string', '{"div":"hidden"}', { div: ['hidden'] }],
+      ['a comma-separated string', '{"video":"controls, poster"}', { video: ['controls', 'poster'] }],
+      ['a blank string', '{"div":" ","img":["loading"]}', { img: ['loading'] }],
+      ['an entry of another shape', '{"div":1,"p":["hidden",2],"img":["loading"]}', { img: ['loading'] }],
+      ['a top-level array', '["src"]', {}],
+      ['broken JSON', '{"iframe":["src"]', {}],
+    ])('reads %s', async (_label, value, expected) => {
+      window.__RUNTIME_CONFIG__ = { sanitizeHtmlDocsAdditionalAllowedAttributes: value };
+      expect((await loadRuntimeConfig()).sanitizeHtmlDocsAdditionalAllowedAttributes).toEqual(expected);
+    });
   });
 });

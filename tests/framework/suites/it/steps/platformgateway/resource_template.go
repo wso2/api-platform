@@ -24,21 +24,21 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/cucumber/godog"
 	"gopkg.in/yaml.v3"
 
+	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	stepscommon "github.com/wso2/api-platform/tests/framework/suites/it/steps/common"
 )
 
 func (g *Gateway) registerResourceTemplateSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) from "([^"]*)" with values:$`,
+	sc.Step(`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) from "([^"]*)" with values:$`,
 		g.createResourceFromTemplate)
-	sc.Step(`^I update (API|LLM provider|LLM provider template|MCP proxy|LLM proxy) "([^"]*)" from "([^"]*)" with values:$`,
+	sc.Step(`^I update (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)" from "([^"]*)" with values:$`,
 		g.updateResourceFromTemplate)
 	sc.Step(`^the first attached LLM provider policy should be "([^"]*)" version "([^"]*)"$`,
 		g.firstLLMProviderPolicyIs)
@@ -87,23 +87,58 @@ func (g *Gateway) createResourceFromTemplate(
 func (g *Gateway) renderResourceTemplate(
 	ctx context.Context, kind, templateName string, content []byte, table *godog.Table,
 ) (string, error) {
+	return renderForRelease(ctx, gatewayVersion(g.topo), kind, templateName, content, table)
+}
+
+// RenderResourceTemplate renders the canonical template of a resource kind ("API", "MCP
+// proxy", ...) with a scenario's values table, in the request contract of the Gateway release
+// under test. It is for steps that hand the document to another client, such as the ap CLI,
+// instead of posting it to the management API themselves.
+func RenderResourceTemplate(
+	ctx context.Context, topo *frameworkruntime.Topology, featureRoot, kind, templateName string, table *godog.Table,
+) (string, error) {
+	if topo == nil {
+		return "", fmt.Errorf("rendering resource template %q: topology is required", templateName)
+	}
+	if _, ok := resourceKinds[kind]; !ok {
+		return "", fmt.Errorf("unknown resource kind %q", kind)
+	}
+	path, err := stepscommon.ResourceTemplatePath(featureRoot, templateName)
+	if err != nil {
+		return "", err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read resource template %q: %w", templateName, err)
+	}
+	definition, err := renderForRelease(ctx, gatewayVersion(topo), kind, templateName, content, table)
+	if err != nil {
+		return "", fmt.Errorf("resource template %q: %w", templateName, err)
+	}
+	return definition, nil
+}
+
+// renderForRelease renders a template and translates it to the contract of a Gateway release.
+func renderForRelease(
+	ctx context.Context, version, kind, templateName string, content []byte, table *godog.Table,
+) (string, error) {
 	definition, err := stepscommon.RenderResourceTemplate(ctx, templateName, content, table)
 	if err != nil {
 		return "", err
 	}
-	if kind == "API" && usesLegacyUpstreamPath(gatewayVersion(g.topo)) {
+	if kind == "API" && usesLegacyUpstreamPath(version) {
 		definition, err = legacyRestAPIUpstreamDefinition(definition)
 		if err != nil {
 			return "", err
 		}
 	}
-	if kind == "API" && usesLegacyGatewayContract(gatewayVersion(g.topo)) {
+	if kind == "API" && usesLegacyGatewayContract(version) {
 		definition, err = legacySemanticCacheDefinition(definition)
 		if err != nil {
 			return "", err
 		}
 	}
-	if !usesLegacyLLMResource(kind, gatewayVersion(g.topo)) {
+	if !usesLegacyLLMResource(kind, version) {
 		return definition, nil
 	}
 	return legacyLLMPolicyDefinition(definition)
@@ -405,38 +440,5 @@ func (g *Gateway) firstLLMProviderPolicyIs(ctx context.Context, wantName, wantVe
 }
 
 func (g *Gateway) templatePath(name string) (string, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", fmt.Errorf("resource template path is required")
-	}
-	if filepath.IsAbs(name) {
-		return "", fmt.Errorf("resource template path must be relative: %q", name)
-	}
-	root := g.featureRoot
-	if root == "" {
-		return "", fmt.Errorf("resource template root is not configured")
-	}
-	root, err := filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("resolve resource template root: %w", err)
-	}
-	clean := filepath.Clean(name)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("resource template path escapes the suite resource root: %q", name)
-	}
-	path := filepath.Join(root, clean)
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return "", fmt.Errorf("resolve resource template root: %w", err)
-	}
-	resolvedPath, err := filepath.EvalSymlinks(path)
-	if err == nil && !isWithinPath(resolvedRoot, resolvedPath) {
-		return "", fmt.Errorf("resource template path escapes the suite resource root: %q", name)
-	}
-	return path, nil
-}
-
-func isWithinPath(root, path string) bool {
-	relative, err := filepath.Rel(root, path)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return stepscommon.ResourceTemplatePath(g.featureRoot, name)
 }

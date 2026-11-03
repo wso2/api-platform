@@ -17,8 +17,23 @@
  */
 
 import { useState } from 'react';
-import { Button, ButtonGroup, Menu, MenuItem, Stack } from '@wso2/oxygen-ui';
-import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
+import {
+  Box,
+  Button,
+  ButtonGroup,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Stack,
+} from '@wso2/oxygen-ui';
+import {
+  ChevronDown,
+  CircleX,
+  Megaphone,
+  RefreshCw,
+  TriangleAlert,
+} from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 const messages = defineMessages({
@@ -53,6 +68,8 @@ export type PublishActionsBarProps = {
   isPublished: boolean;
   /** Whether the live listing is in the published state — what enables Deprecate. */
   canDeprecate: boolean;
+  /** Whether there are edits to save; Save Draft is off until there are. */
+  canSaveDraft: boolean;
   deprecating: boolean;
   onDeprecate: () => void;
   onPublish: () => void;
@@ -64,6 +81,23 @@ export type PublishActionsBarProps = {
 };
 
 type PrimaryAction = 'publish' | 'unpublish' | 'deprecate';
+
+const ICON_SIZE = 16;
+
+const ACTION_ICON = {
+  deprecate: <TriangleAlert size={ICON_SIZE} />,
+  publish: <Megaphone size={ICON_SIZE} />,
+  republish: <RefreshCw size={ICON_SIZE} />,
+  unpublish: <CircleX size={ICON_SIZE} />,
+} as const;
+
+/** Every label the main button can show. */
+const ACTION_LABELS = [
+  messages.publish,
+  messages.republish,
+  messages.deprecate,
+  messages.unpublish,
+];
 
 const ACTION_COLOR = { publish: 'primary', unpublish: 'error', deprecate: 'warning' } as const;
 
@@ -78,6 +112,7 @@ const ACTION_COLOR = { publish: 'primary', unpublish: 'error', deprecate: 'warni
  */
 export function PublishActionsBar({
   canDeprecate,
+  canSaveDraft,
   deprecating,
   isPublished,
   onDeprecate,
@@ -118,17 +153,35 @@ export function PublishActionsBar({
   );
   // Publish reads as "Republish" once the listing is already published — canDeprecate
   // is only true in that exact state — so a re-push isn't mistaken for the first one.
-  const actionLabel = (action: PrimaryAction) => (action === 'publish' && canDeprecate ? messages.republish : messages[action]);
+  const isRepublish = (action: PrimaryAction) => action === 'publish' && canDeprecate;
+  const actionLabel = (action: PrimaryAction) =>
+    isRepublish(action) ? messages.republish : messages[action];
+  const actionIcon = (action: PrimaryAction) =>
+    ACTION_ICON[isRepublish(action) ? 'republish' : action];
 
   return (
-    <Stack direction="row" spacing={2} sx={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-      <Button disabled={busy} onClick={onSaveDraft} variant="outlined">
+    <Stack direction="row" spacing={2} sx={{ alignItems: 'stretch', justifyContent: 'flex-end' }}>
+      <Button disabled={busy || !canSaveDraft} onClick={onSaveDraft} variant="outlined">
         <FormattedMessage {...messages.saveDraft} />
       </Button>
 
       <ButtonGroup color={ACTION_COLOR[effectiveAction]} disabled={busy} variant="contained">
-        <Button onClick={run[effectiveAction]}>
-          <FormattedMessage {...actionLabel(effectiveAction)} />
+        <Button onClick={run[effectiveAction]} startIcon={actionIcon(effectiveAction)}>
+          {/* Every label shares one cell and only the current one shows, so the button is always as wide as the longest. */}
+          <Box component="span" sx={{ display: 'inline-grid', textAlign: 'center' }}>
+            {ACTION_LABELS.map((label) => (
+              <Box
+                component="span"
+                key={label.id}
+                sx={{
+                  gridArea: '1 / 1',
+                  visibility: label === actionLabel(effectiveAction) ? 'visible' : 'hidden',
+                }}
+              >
+                <FormattedMessage {...label} />
+              </Box>
+            ))}
+          </Box>
         </Button>
         <Button
           aria-label={intl.formatMessage(messages.moreActions)}
@@ -155,7 +208,10 @@ export function PublishActionsBar({
               setArmedAction(action);
             }}
           >
-            <FormattedMessage {...actionLabel(action)} />
+            <ListItemIcon>{actionIcon(action)}</ListItemIcon>
+            <ListItemText>
+              <FormattedMessage {...actionLabel(action)} />
+            </ListItemText>
           </MenuItem>
         ))}
       </Menu>

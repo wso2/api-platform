@@ -54,14 +54,14 @@ func TestBearerTokenRequiresEnvironmentToken(t *testing.T) {
 
 func TestCloudAPIURLUsesResolvedEndpointAsBase(t *testing.T) {
 	require.Equal(t,
-		"https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9/projects",
-		cloudAPIURL("https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9/", "/projects"))
+		"https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9/projects",
+		cloudAPIURL("https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9/", "/projects"))
 }
 
 func TestCloudResourceURLEscapesID(t *testing.T) {
 	require.Equal(t,
-		"https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9/projects/id%2Fwith%20separator",
-		cloudResourceURL("https://cloud.example.com/apip-bml-apip-bml-endpoint/api/v0.9", "/projects", "id/with separator"))
+		"https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9/projects/id%2Fwith%20separator",
+		cloudResourceURL("https://cloud.example.com/apip-platform-api-apip-platform-api-endpoint/api/v0.9", "/projects", "id/with separator"))
 }
 
 func TestResolveCloudDataPlaneURLRequiresHTTPSAndApproval(t *testing.T) {
@@ -179,4 +179,19 @@ func TestStringField(t *testing.T) {
 	require.ErrorContains(t, err, "missing or empty")
 	_, err = stringField(&httpx.Response{Body: []byte("invalid")}, "id")
 	require.Error(t, err)
+}
+
+func TestGatewayDeploymentID(t *testing.T) {
+	items := []map[string]any{
+		{"gatewayId": "other", "deploymentId": "dep-other"},
+		{"gatewayId": "gw-1", "deploymentId": "dep-1"},
+	}
+	got, err := gatewayDeploymentID(items, "gw-1")
+	require.NoError(t, err)
+	require.Equal(t, "dep-1", got)
+
+	_, err = gatewayDeploymentID(items, "missing")
+	require.ErrorContains(t, err, "no deployment was made")
+	_, err = gatewayDeploymentID([]map[string]any{{"gatewayId": "gw-1"}}, "gw-1")
+	require.ErrorContains(t, err, "has no deploymentId")
 }

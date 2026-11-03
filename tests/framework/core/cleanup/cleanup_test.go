@@ -152,8 +152,8 @@ func TestAllDefinedKindsFollowTheirConfiguredOrder(t *testing.T) {
 	r := NewRegistry(nil)
 	kinds := []Kind{
 		KindEnvironment, KindCertificate, KindSharedScope, KindPolicy, KindMCPServer,
-		KindMCPProxy, KindAPI, KindAPIProduct, KindAPIKey, KindApplication, KindSubscription,
-		KindSecret, KindLLMProxy, KindLLMProvider,
+		KindMCPProxy, KindAgent, KindAPI, KindAPIProduct, KindAPIKey, KindApplication, KindSubscription,
+		KindSecret, KindLLMProxy, KindLLMProvider, KindSubscriptionPlan,
 	}
 	for i, kind := range kinds {
 		require.NoError(t, r.Register(Resource{Kind: kind, ID: string(rune('a' + i)), Actor: "admin"}))

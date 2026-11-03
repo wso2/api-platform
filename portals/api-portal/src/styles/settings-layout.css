@@ -636,6 +636,235 @@
 
 .cfg-form-input--mono { font-family: var(--font-family-mono); font-size: 0.8125rem; }
 
+/* Explanatory line under a field. Matches .ok-form-hint on the OAuth2 Keys page
+   so the two forms read alike. Used only where the field name genuinely is not
+   enough — the scopes and resource-indicator inputs. */
+.cfg-form-hint {
+  margin: 7px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-subtle);
+}
+
+/* A text field with an action that operates on what was typed into it, rather
+   than on the form. The button sizes to its own text and the input takes the
+   rest, so a long URL keeps the room instead of the label. `align-items` is
+   stretch so the two meet at the same height whatever the button's padding. */
+.cfg-input-with-action {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.cfg-input-with-action .cfg-form-input {
+  flex: 1 1 auto;
+  min-width: 0; /* a flex item defaults to min-content; without this a long placeholder widens the row */
+}
+
+.cfg-input-with-action > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cfg-input-with-action > button[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* A square icon button sized to sit beside a text input. Shares the pill
+   button's colours but not its shape: a round-ended 38px button reads as a
+   status dot rather than something to press. */
+.cfg-icon-action {
+  /* Height comes from the row's `align-items: stretch`, so the button always
+     matches the input beside it whatever that input's padding works out to — a
+     fixed height would pin it to one input size and leave a notch beside every
+     other. Width is set outright rather than derived with `aspect-ratio`: a flex
+     item resolves its main size before the stretched cross size is known, so an
+     aspect ratio here would silently do nothing. */
+  align-self: stretch;
+  width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--primary);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cfg-icon-action:hover:not(:disabled) { background: var(--primary-surface); }
+
+/* The busy state. With no text to swap for "Fetching…", the spin is the only
+   signal the request is in flight, so it is applied to the glyph rather than
+   the button — a rotating border would turn the square box into a blur. */
+.cfg-icon-action.is-busy i {
+  display: inline-block;
+  animation: cfg-spin 0.9s linear infinite;
+}
+
+@keyframes cfg-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Honour a reduced-motion preference: the button still reports itself as busy
+   by dimming, it just does not rotate. */
+@media (prefers-reduced-motion: reduce) {
+  .cfg-icon-action.is-busy i { animation: none; }
+}
+
+/* The hint line doubles as this control's result, so it says which it is. The
+   neutral state keeps --text-subtle from .cfg-form-hint. */
+.cfg-form-hint.is-error { color: var(--danger, #c62828); }
+.cfg-form-hint.is-success { color: var(--success, #2e7d32); }
+
+/* A question whose answers need a sentence each, so radio cards rather than a
+   dropdown. `.cfg-form-legend` matches `.cfg-form-group label` exactly — it is
+   the same thing visually, but it labels a group rather than one control, so it
+   must not be a <label> pointing at a single input. */
+.cfg-form-legend {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 8px;
+}
+
+.cfg-choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Scoped `.cfg-form-group .cfg-choice` (0,2,0) so it beats `.cfg-form-group
+   label` (0,1,1)... which it does not on specificity alone — (0,2,0) and (0,1,1)
+   are equal, and the later rule wins. This file's form-label rule comes first, so
+   this one wins by order; every property it sets is restated here anyway rather
+   than relying on that. */
+.cfg-form-group .cfg-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 0;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--white);
+  font-weight: 400;
+  cursor: pointer;
+  transition: border-color 0.13s, background 0.13s;
+}
+
+.cfg-form-group .cfg-choice:hover { border-color: var(--border-strong); }
+
+/* :has() lets the whole card show the selection, not just the dot. Browsers
+   without it still work — the radio itself is always visible. */
+.cfg-form-group .cfg-choice:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--surface-sunken);
+}
+
+.cfg-choice input[type="radio"] {
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.cfg-choice-body { display: flex; flex-direction: column; gap: 3px; }
+
+.cfg-choice-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.cfg-choice-desc {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-subtle);
+}
+
+/* Two short answers side by side rather than stacked. The stacked default is for
+   choices that need a sentence each; Production/Sandbox do not, and stacking them
+   pushes the rest of a long form further down for no gain. Falls back to the
+   column layout below the breakpoint, where side-by-side would squeeze both. */
+.cfg-choice-group--inline { flex-direction: row; }
+.cfg-choice-group--inline > .cfg-choice { flex: 1 1 0; }
+
+@media (max-width: 560px) {
+  .cfg-choice-group--inline { flex-direction: column; }
+}
+
+/* A disabled card must not keep offering itself — no hover lift, no pointer. The
+   radio stays visible (never `display:none`) so the settled answer is still
+   readable, which is the whole reason edit shows this rather than hiding it. */
+.cfg-form-group .cfg-choice:has(input:disabled) {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.cfg-form-group .cfg-choice:has(input:disabled):hover { border-color: var(--border); }
+.cfg-choice input[type="radio"]:disabled { cursor: default; }
+
+/* Checkbox list for a multi-answer restriction (grant types). Wraps, because the
+   number of options is the driver's to decide and a fixed column count would
+   either waste a row or overflow. */
+.cfg-check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.cfg-form-group .cfg-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 0;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.cfg-check input[type="checkbox"],
+.cfg-check input[type="radio"] {
+  flex: none;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* Environment badge, used in the key manager list and beside an OAuth2 key.
+   Production is deliberately unmarked: it is the default and the common case, so
+   badging it would put a label on every row and make neither stand out. */
+.cfg-env-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--info, #0b6bcb);
+  background: color-mix(in srgb, var(--info, #0b6bcb) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info, #0b6bcb) 28%, transparent);
+  white-space: nowrap;
+}
+
+/* The settled-fact field in edit mode: readable, clearly not editable. */
+.cfg-form-input:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+
+
 /* Read-only fields — handles, and values the operator sets elsewhere. A handle is
    a resource's identity and is immutable after creation, so the field must not
    look typeable. Attribute selector (0,2,0) outranks .cfg-form-input (0,1,0),
@@ -985,10 +1214,37 @@
   margin: 0 0 24px;
 }
 
+/* Modal body paragraphs */
+.cfg-modal-body > p { margin: 0; }
+.cfg-modal-body > p + p { margin-top: 8px; }
+.cfg-modal-ask { color: var(--text-strong); }
+
 .cfg-modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+/* Note beside the modal buttons */
+.cfg-modal-actions-note {
+  margin-right: auto;
+  align-self: center;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* The key manager's Enabled switch, shown only when editing. Pinned to the left
+   of the action row by its own auto margin, so the buttons stay right-aligned
+   exactly as they are in every other modal. */
+.cfg-km-enabled {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto 0 0;
+  font-size: 0.844rem;
+  font-weight: 500;
+  color: var(--text-strong);
+  cursor: pointer;
 }
 
 .cfg-btn-danger {
@@ -1004,6 +1260,10 @@
 }
 
 .cfg-btn-danger:hover { opacity: 0.9; }
+
+/* Secondary button, destructive */
+.cfg-btn-secondary--danger { border-color: var(--danger); color: var(--danger); }
+.cfg-btn-secondary--danger:hover { background: var(--danger-surface); color: var(--danger); }
 .cfg-btn-danger:disabled { opacity: 0.45; cursor: default; pointer-events: none; }
 
 /* ── Responsive additions ────────────────────────────────── */
@@ -1168,6 +1428,40 @@
   gap: 6px;
 }
 
+/* The Status control in the key manager list. A radio, because the cell reports a
+   state rather than offering a multi-select — the click toggles, and the script
+   re-renders it from the server's answer. Scoped under .cfg-table so it inherits
+   none of the form-label rules. */
+/* The Bootstrap switch from the LLM instructions page, laid out for a table cell.
+   Bootstrap positions the input by floating it into `.form-switch`'s 2.5em
+   padding-left — which the explicit 2.5rem width overruns at this cell's smaller
+   font size, putting the knob under the label. So the padding/negative-margin
+   pair is replaced with a flex row here, and only the switch's own appearance
+   (track, knob, :checked fill) is left to Bootstrap. */
+.cfg-table .cfg-status-toggle.form-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 0;
+  padding-left: 0;
+  margin: 0;
+}
+
+.cfg-table .cfg-status-toggle .form-check-input {
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Config-declared: shown so the state stays readable, inert because PUT answers
+   409. Hover is excluded for the same reason the row's icon buttons exclude it —
+   a control that lights up under the cursor reads as clickable. */
+.cfg-table .cfg-status-toggle.is-fixed,
+.cfg-table .cfg-status-toggle.is-fixed .form-check-input {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .cfg-icon-btn {
   width: 32px;
   height: 32px;
@@ -1184,10 +1478,27 @@
   padding: 0;
 }
 
-.cfg-icon-btn:hover { background: var(--surface-sunken); border-color: var(--border-strong); }
+/* Hover is a promise that the control does something, so both hover rules exclude
+   :disabled. A config-declared key manager's buttons are rendered disabled because
+   PUT and DELETE answer 409 for one — but they still lit up under the cursor, which
+   reads as clickable and teaches exactly the "this page is broken" impression the
+   disabled state exists to prevent. */
+.cfg-icon-btn:hover:not(:disabled) { background: var(--surface-sunken); border-color: var(--border-strong); }
 
 .cfg-icon-btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, var(--surface)); }
-.cfg-icon-btn--danger:hover { background: var(--danger-surface); border-color: #e88; }
+.cfg-icon-btn--danger:hover:not(:disabled) { background: var(--danger-surface); border-color: #e88; }
+
+/* Scoped `.cfg-icon-btn:disabled` (0,2,0) so it also beats `.cfg-icon-btn--danger`
+   (0,1,0) — otherwise a disabled delete button stays red and still looks armed.
+   `cursor` is restated for the same reason the colours are: the base rule sets
+   `pointer`, which on its own tells the cursor this is clickable. */
+.cfg-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+  color: var(--text-muted);
+  background: var(--white);
+  border-color: var(--border);
+}
 
 /* ── Subscription plans table extras ──────────────────── */
 
@@ -1467,6 +1778,15 @@
   box-shadow: 0 0 0 3px rgba(31,111,235,.12);
 }
 
+/* Scopes are opaque identifiers, so they keep the monospace treatment the plain
+   input had (.cfg-form-input--mono) — both the committed chips and what is being
+   typed, or a value changes appearance the moment it becomes a chip. */
+.cfg-chip-input-wrap--mono .cfg-chip,
+.cfg-chip-input-wrap--mono .cfg-chip-text-input {
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+}
+
 .cfg-chip {
   display: inline-flex;
   align-items: center;
@@ -1581,6 +1901,233 @@
 }
 .cfg-form-input--error:focus {
   box-shadow: 0 0 0 3px rgba(198,40,40,.12) !important;
+}
+
+/* ── Plan pricing (plan modal) ──────────────────────────── */
+.cfg-pricing-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.cfg-pricing-row .cfg-form-group { margin: 0; }
+.pol-model-fields { margin-bottom: 16px; }
+
+/* Currency picker */
+.cfg-currency-combo { position: relative; }
+.cfg-currency-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.cfg-currency-current {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cfg-currency-trigger .bi-chevron-expand { font-size: 0.75rem; color: var(--text-muted); }
+.cfg-currency-menu {
+  left: 0;
+  right: auto;
+  width: max(100%, 280px);
+}
+.cfg-currency-menu .cfg-view-combo-option[hidden] { display: none; }
+/* Filter values picked from a list */
+.cfg-filter-row > .cfg-pick-combo { flex: 1.6 1 0; min-width: 0; }
+.cfg-pick-combo .cfg-currency-menu { width: 100%; }
+.cfg-pick-placeholder { color: var(--text-subtle); }
+
+.cfg-price-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+/* Amount input with currency symbol */
+.cfg-money { position: relative; display: inline-flex; width: 140px; }
+.cfg-money .cfg-form-input { text-align: right; }
+.cfg-price-quantity { width: 100px; }
+
+.cfg-tier-head,
+.cfg-tier-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 16px 140px 12px 140px 28px;
+  align-items: center;
+  gap: 8px;
+}
+.cfg-tier-head {
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.cfg-tier-head-range { grid-column: 1 / 3; }
+.cfg-tier-head-price:nth-of-type(2) { grid-column: 3; }
+.cfg-tier-head-price:nth-of-type(3) { grid-column: 5; }
+.cfg-tier-row { margin-bottom: 8px; }
+.cfg-tier-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+.cfg-tier-range .cfg-form-input { flex: 1 1 auto; min-width: 0; }
+.cfg-tier-from { white-space: nowrap; font-family: var(--font-family-mono); font-size: 0.8125rem; }
+.cfg-tier-sign { color: var(--text-subtle); text-align: center; }
+.pol-add-tier-btn { margin-top: 4px; }
+
+/* Usage price */
+.cfg-price-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px 4px;
+  margin-bottom: 12px;
+}
+.cfg-price-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.cfg-price-box > .cfg-form-group { margin-bottom: 12px; }
+.cfg-price-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.cfg-price-grid .cfg-form-group { margin: 0; }
+.cfg-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cfg-filter-row > .cfg-form-input { flex: 1 1 0; min-width: 0; }
+.cfg-filter-row > .pol-filter-values { flex-grow: 1.6; }
+.cfg-filter-row > .cfg-icon-btn { flex: none; }
+/* Filter field name column */
+.cfg-filter-name {
+  flex: 0 0 150px;
+  font-size: 0.875rem;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+/* Read-only value, kept in strong text */
+.cfg-key-input[readonly] { color: var(--text-strong); cursor: text; text-overflow: ellipsis; }
+/* Meter fields and their event keys */
+.cfg-key-grid {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+}
+.cfg-key-grid > .cfg-form-group { margin: 0; }
+.cfg-key-head {
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+#pol-add-price-btn:disabled { opacity: 0.55; cursor: default; pointer-events: none; }
+
+/* Text box with suggestions (cfg-suggest-combo.js) */
+.cfg-key-combo { position: relative; min-width: 0; }
+.cfg-filter-row > .cfg-key-combo { flex: 1.6 1 0; }
+.cfg-key-combo > .cfg-form-input { padding-right: 36px; }
+.cfg-key-combo-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.cfg-key-combo-toggle:disabled { cursor: default; opacity: 0.5; }
+.cfg-key-combo .cfg-view-combo-menu { left: 0; right: auto; width: max(100%, 320px); }
+/* Price value list, as wide as its box */
+.cfg-price-box .cfg-key-combo .cfg-view-combo-menu { width: 100%; }
+.cfg-key-option { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cfg-key-option-key {
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Read-only fieldsets: saved plan pricing, priced meters */
+.cfg-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.cfg-fieldset:disabled .cfg-icon-btn,
+.cfg-fieldset:disabled .cfg-btn-sm { display: none; }
+.cfg-fieldset:disabled label,
+.cfg-fieldset:disabled input { cursor: default; }
+#pol-pricing-fields:enabled > label { cursor: pointer; }
+
+@media (max-width: 560px) {
+  .cfg-pricing-row { grid-template-columns: 1fr; }
+  .cfg-price-grid { grid-template-columns: 1fr; }
+  /* Meter filter rows: event key under its filter */
+  .cfg-key-head { display: none; }
+  .cfg-filter-row.cfg-key-grid { grid-template-columns: minmax(0, 1fr) 32px; margin-bottom: 14px; }
+  .cfg-filter-row.cfg-key-grid > .cfg-key-input,
+  .cfg-filter-row.cfg-key-grid > .cfg-key-combo { grid-column: 1; grid-row: 2; }
+  .cfg-filter-row { flex-wrap: wrap; }
+  .cfg-filter-row > .cfg-form-input,
+  .cfg-filter-row > .cfg-key-combo { flex-basis: 40%; }
+  .cfg-filter-row > .cfg-filter-name { flex-basis: 100%; }
+  .cfg-tier-head { display: none; }
+  .cfg-tier-row { grid-template-columns: minmax(0, 1fr) 28px; }
+  .cfg-tier-row .cfg-tier-sign { display: none; }
+  .cfg-tier-row .cfg-money { width: 100%; }
+}
+
+/* Secret input with show/hide button */
+.cfg-secret-input { position: relative; }
+.cfg-secret-input .cfg-form-input { padding-right: 42px; }
+.cfg-secret-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+}
+.cfg-secret-toggle:hover { color: var(--text-strong); background: var(--surface-sunken); }
+.cfg-secret-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+/* Field error */
+.cfg-field-error {
+  margin: 5px 0 0;
+  font-size: 0.75rem;
+  color: var(--danger);
 }
 
 /* ── Spec-on-file indicator (edit mode) ─────────────────── */
@@ -1862,4 +2409,413 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+/* ── Billing panel ───────────────────────────────────────── */
+
+.cfg-billing-mode-badge {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cfg-billing-mode-badge--test { background: var(--warning-surface); color: var(--warning); }
+
+/* Billing configuration card */
+.cfg-billing-configuration {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--white);
+}
+
+.cfg-billing-provider {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+}
+.cfg-billing-provider + .cfg-billing-provider { border-top: 1px solid var(--border); }
+
+.cfg-billing-provider-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.cfg-billing-provider-main { flex: 1 1 auto; min-width: 0; }
+.cfg-billing-provider-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.cfg-billing-provider-role { margin-top: 2px; font-size: 0.8125rem; color: var(--text-muted); }
+
+.cfg-billing-webhook { margin-top: 18px; }
+.cfg-billing-webhook-label { font-size: 0.8125rem; font-weight: 600; color: var(--text-strong); margin-bottom: 6px; }
+.cfg-billing-webhook-url { display: flex; align-items: center; gap: 6px; }
+/* Webhook URL, cut with an ellipsis */
+.cfg-billing-webhook-url .cfg-name-chip { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-billing-webhook-url .cfg-btn-sm { flex: none; }
+.cfg-billing-webhook-warning { margin: 6px 0 0; font-size: 0.75rem; color: var(--warning); }
+
+/* Billing key card */
+.cfg-billing-key-card {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--white);
+}
+.cfg-billing-key-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.cfg-billing-key-card-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  color: var(--text-strong);
+}
+.cfg-billing-key-card-heading { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cfg-billing-key-card-name { font-size: 0.9375rem; font-weight: 600; color: var(--text-strong); }
+.cfg-billing-key-card-desc { font-size: 0.75rem; line-height: 1.45; color: var(--text-subtle); }
+
+/* Paid plan notice: billing not set up */
+.cfg-paid-notice { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: 0.8125rem; color: var(--text-strong); }
+.cfg-paid-notice[hidden] { display: none; }
+.cfg-paid-notice > .bi { color: var(--warning); margin-top: 1px; }
+.cfg-paid-notice a { font-weight: 600; }
+.cfg-billing-key-card-role {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.cfg-billing-key-card > .cfg-form-group { padding: 0 18px; }
+.cfg-billing-key-card-head + .cfg-form-group { padding-top: 16px; }
+
+/* Set up billing steps */
+.cfg-stepper--modal { max-width: 320px; margin: 0 0 4px; }
+.cfg-stepper--modal .cfg-step-circle .bi { font-size: 0.75rem; line-height: 1; }
+
+.cfg-billing-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.cfg-billing-empty > .bi { font-size: 1.75rem; color: var(--text-subtle); }
+.cfg-billing-empty-title { margin-top: 8px; font-weight: 600; color: var(--text-strong); }
+.cfg-billing-empty-text { margin: 6px auto 18px; max-width: 460px; font-size: 0.8125rem; color: var(--text-muted); }
+
+/* Billing not set up */
+.cfg-billing-setup {
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  padding: 24px;
+}
+.cfg-billing-setup-title { font-weight: 600; color: var(--text-strong); }
+.cfg-billing-setup-text { margin: 4px 0 0; max-width: 560px; font-size: 0.8125rem; color: var(--text-muted); }
+.cfg-billing-prereq-title { margin: 20px 0 4px; }
+.cfg-billing-prereq-intro { margin: 0 0 10px; font-size: 0.8125rem; color: var(--text-muted); }
+.cfg-billing-prereq-steps { margin: 0 0 20px; padding-left: 20px; font-size: 0.8125rem; line-height: 1.5; color: var(--text-muted); }
+.cfg-billing-prereq-steps > li + li { margin-top: 6px; }
+.cfg-billing-prereq-steps strong { color: var(--text-strong); }
+
+/* Key scopes, collapsed by default */
+.cfg-billing-scopes { margin-top: 4px; }
+.cfg-billing-scopes > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  list-style: none;
+}
+.cfg-billing-scopes > summary::-webkit-details-marker { display: none; }
+.cfg-billing-scopes > summary::before {
+  content: "\F285"; /* bi-chevron-right */
+  font-family: "bootstrap-icons";
+  font-size: 0.625rem;
+  transition: transform 0.15s ease;
+}
+.cfg-billing-scopes[open] > summary::before { transform: rotate(90deg); }
+.cfg-billing-scopes-body {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  font-size: 0.75rem;
+}
+.cfg-billing-scopes-body > p { margin: 0 0 4px; }
+.cfg-billing-scopes-body > ul { margin: 0; padding-left: 16px; color: var(--text); }
+.cfg-billing-scopes-body > ul + p { margin-top: 8px; }
+.cfg-billing-scopes-cols { columns: 3 160px; column-gap: 24px; }
+
+.cfg-billing-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 0.8125rem;
+}
+
+/* ── Usage & Revenue ─────────────────────────────────────── */
+.cfg-revenue-header {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.cfg-revenue-period {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.cfg-revenue-period .form-select {
+  min-height: 38px;
+  width: auto;
+  font-weight: 400;
+}
+
+.cfg-revenue-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.cfg-revenue-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.cfg-revenue-search .bi-search {
+  position: absolute;
+  left: 12px;
+  font-size: 0.875rem;
+  color: var(--text-subtle);
+  pointer-events: none;
+}
+
+.cfg-revenue-search .form-control {
+  min-height: 38px;
+  width: 240px;
+  max-width: 100%;
+  padding-left: 34px;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 600px) {
+  .cfg-revenue-controls,
+  .cfg-revenue-search,
+  .cfg-revenue-search .form-control {
+    width: 100%;
+  }
+}
+
+.cfg-revenue-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  transition: opacity 0.15s ease;
+}
+
+.cfg-revenue-body[hidden] {
+  display: none;
+}
+
+/* Reading another period over the report shown: the report dims under a spinner until it is replaced. */
+.cfg-revenue-body.is-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.cfg-revenue-body.is-loading::after {
+  content: "";
+  position: absolute;
+  top: 3rem;
+  left: 50%;
+  width: 2rem;
+  height: 2rem;
+  margin-left: -1rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: cfg-spin 0.7s linear infinite;
+}
+
+/* Loading spinner */
+.cfg-loader {
+  display: flex;
+  justify-content: center;
+  padding: 4rem 0;
+}
+
+.cfg-loader[hidden] {
+  display: none;
+}
+
+.cfg-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: cfg-spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cfg-spinner,
+  .cfg-revenue-body.is-loading::after {
+    animation-duration: 2s;
+  }
+}
+
+.cfg-revenue-muted {
+  margin: 0;
+  font-size: 0.78125rem;
+  color: var(--text-muted);
+}
+
+.cfg-revenue-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  gap: 14px;
+}
+
+.cfg-revenue-card {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cfg-revenue-card-label,
+.cfg-revenue-card-note {
+  font-size: 0.78125rem;
+  color: var(--text-muted);
+}
+
+.cfg-revenue-card-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.cfg-revenue-card-note.cfg-revenue-warn { color: var(--warning); }
+
+.cfg-revenue-section {
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cfg-revenue-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.cfg-revenue-chart {
+  height: 200px;
+  display: flex;
+  align-items: flex-end;
+  gap: min(24px, 2%);
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Month slot: full chart height, so any month can be selected */
+.cfg-revenue-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cfg-revenue-slot:hover {
+  background: var(--surface-sunken);
+}
+
+.cfg-revenue-slot:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.cfg-revenue-bar {
+  width: 100%;
+  max-width: 72px;
+  min-height: 1px;
+  border-radius: 4px 4px 0 0;
+  background: var(--primary);
+}
+
+.cfg-revenue-chart.has-selection .cfg-revenue-slot:not(.is-selected) .cfg-revenue-bar {
+  opacity: 0.35;
+}
+
+.cfg-revenue-axis {
+  display: flex;
+  gap: min(24px, 2%);
+  padding: 6px 12px 0;
+  font-size: 0.71875rem;
+  color: var(--text-muted);
+}
+
+.cfg-revenue-axis span {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
 }

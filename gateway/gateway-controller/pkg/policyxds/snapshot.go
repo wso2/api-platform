@@ -62,6 +62,11 @@ type SnapshotManager struct {
 	nodeID            string
 	mu                sync.RWMutex
 	translator        *Translator
+
+	// gatewayConfigs are gateway-owned runtime configs (the JWKS route) that
+	// belong in every snapshot whatever is deployed. They are not in the
+	// runtime store, which holds deployed resources only.
+	gatewayConfigs []*models.RuntimeDeployConfig
 }
 
 // NewSnapshotManager creates a new policy snapshot manager with LinearCaches for custom type URLs.
@@ -92,6 +97,15 @@ func NewSnapshotManager(logger *slog.Logger) *SnapshotManager {
 // SetRuntimeStore sets the RuntimeConfigStore for the new API path.
 func (sm *SnapshotManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
 	sm.runtimeStore = store
+}
+
+// SetGatewayRuntimeConfigs sets the gateway-owned runtime configs included in
+// every snapshot alongside the deployed ones. Set once at startup, before the
+// first UpdateSnapshot.
+func (sm *SnapshotManager) SetGatewayRuntimeConfigs(rdcs ...*models.RuntimeDeployConfig) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.gatewayConfigs = rdcs
 }
 
 // SetConfigStore sets the ConfigStore for translating WebSubApi configs to EventChannelConfig resources.
@@ -130,7 +144,9 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		return nil
 	}
 
-	rdcs := sm.runtimeStore.GetAll()
+	deployed := sm.runtimeStore.GetAll()
+	rdcs := make([]*models.RuntimeDeployConfig, 0, len(deployed)+len(sm.gatewayConfigs))
+	rdcs = append(append(rdcs, deployed...), sm.gatewayConfigs...)
 
 	sm.logger.Info("Updating policy snapshot",
 		slog.Int("rdc_count", len(rdcs)),
@@ -320,27 +336,24 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 // createPolicyChainResource creates a PolicyChainConfig xDS resource.
 func (t *Translator) createPolicyChainResource(routeKey string, chain *models.PolicyChain, metadata models.Metadata, sensitiveValues []string) (types.Resource, error) {
 	// Build the policy chain data
-	policies := make([]map[string]interface{}, 0, len(chain.Policies))
-	for _, p := range chain.Policies {
-		pol := map[string]interface{}{
-			"name":       p.Name,
-			"version":    p.Version,
-			"enabled":    true,
-			"parameters": p.Params,
-		}
-		if p.ExecutionCondition != nil {
-			pol["executionCondition"] = *p.ExecutionCondition
-		}
-		policies = append(policies, pol)
+	policies := encodePolicyList(chain.Policies)
+	// The fault policies travels in its own field, so the engine can keep it out of
+	// the normal phases. Omitted entirely when empty to keep snapshots unchanged for
+	// APIs that configure none.
+	faultPolicies := encodePolicyList(chain.FaultPolicies)
+
+	routeEntry := map[string]interface{}{
+		"route_key": routeKey,
+		"policies":  policies,
+	}
+	if len(faultPolicies) > 0 {
+		routeEntry["faultPolicies"] = faultPolicies
 	}
 
 	data := map[string]interface{}{
 		"configuration": map[string]interface{}{
 			"routes": []map[string]interface{}{
-				{
-					"route_key": routeKey,
-					"policies":  policies,
-				},
+				routeEntry,
 			},
 			"metadata": map[string]interface{}{
 				"api_name": metadata.DisplayName,
@@ -506,4 +519,27 @@ func (a slogAdapter) Warnf(format string, args ...interface{}) {
 
 func (a slogAdapter) Errorf(format string, args ...interface{}) {
 	a.logger.Error(fmt.Sprintf(format, args...))
+}
+
+// encodePolicyList converts a policy list into the wire form the policy engine
+// unmarshals. Shared by the normal chain and the fault policies so the two can never
+// drift in how a policy is represented.
+func encodePolicyList(policies []models.Policy) []map[string]interface{} {
+	if len(policies) == 0 {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(policies))
+	for _, p := range policies {
+		pol := map[string]interface{}{
+			"name":       p.Name,
+			"version":    p.Version,
+			"enabled":    true,
+			"parameters": p.Params,
+		}
+		if p.ExecutionCondition != nil {
+			pol["executionCondition"] = *p.ExecutionCondition
+		}
+		out = append(out, pol)
+	}
+	return out
 }

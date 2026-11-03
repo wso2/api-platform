@@ -10,34 +10,54 @@
     "defaultMessage": "Nothing was created. Check the details you entered and try again."
   },
   "api.create.ApiCreationProgress.failed.title": {
-    "defaultMessage": "We could not create this API proxy"
+    "defaultMessage": "We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}"
+  },
+  "api.create.ApiCreationProgress.node.backend": {
+    "defaultMessage": "Backend"
+  },
+  "api.create.ApiCreationProgress.node.client": {
+    "defaultMessage": "Client"
   },
   "api.create.ApiCreationProgress.progress.label": {
-    "defaultMessage": "API proxy creation progress",
-    "description": "Accessible name for the circular progress indicator."
+    "defaultMessage": "{kind, select, graphql {GraphQL API} other {API proxy}} creation progress",
+    "description": "Accessible name for the progress bar."
   },
   "api.create.ApiCreationProgress.progress.value": {
     "defaultMessage": "{value}%",
     "description": "Share of the creation flow completed so far."
   },
-  "api.create.ApiCreationProgress.stage.creating": {
-    "defaultMessage": "Creating API Proxy",
-    "description": "Status shown while the platform is creating the API proxy."
-  },
   "api.create.ApiCreationProgress.stage.done": {
-    "defaultMessage": "API Proxy created. Taking you there…"
+    "defaultMessage": "{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…"
   },
-  "api.create.ApiCreationProgress.stage.finalizing": {
-    "defaultMessage": "Finalizing setup"
+  "api.create.ApiCreationProgress.step.configuring": {
+    "defaultMessage": "{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}"
   },
-  "api.create.ApiCreationProgress.stage.validating": {
-    "defaultMessage": "Validating configuration"
+  "api.create.ApiCreationProgress.step.connecting": {
+    "defaultMessage": "Connecting to backend"
+  },
+  "api.create.ApiCreationProgress.step.deploying": {
+    "defaultMessage": "{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}"
+  },
+  "api.create.ApiCreationProgress.step.state.active": {
+    "defaultMessage": "In progress",
+    "description": "Screen-reader text for the step currently running."
+  },
+  "api.create.ApiCreationProgress.step.state.done": {
+    "defaultMessage": "Completed",
+    "description": "Screen-reader text for a finished step."
+  },
+  "api.create.ApiCreationProgress.step.state.pending": {
+    "defaultMessage": "Pending",
+    "description": "Screen-reader text for a step not yet started."
+  },
+  "api.create.ApiCreationProgress.step.validating": {
+    "defaultMessage": "Validating API definition"
   },
   "api.create.ApiCreationProgress.title": {
-    "defaultMessage": "We are in the process of creating your API Proxy"
+    "defaultMessage": "We are in the process of creating your {kind, select, graphql {GraphQL API} other {API Proxy}}"
   },
   "api.create.ApiCreationProgress.titleWithName": {
-    "defaultMessage": "We are in the process of creating your {name} API Proxy",
+    "defaultMessage": "We are in the process of creating your {name} {kind, select, graphql {GraphQL API} other {API Proxy}}",
     "description": "{name} is the display name the user gave the API. Never translated."
   },
   "api.create.ApiCreationSteps.step.apiType": {
@@ -365,7 +385,7 @@
   },
   "api.create.fromContract.upload.uploadedFile": {
     "defaultMessage": "Uploaded file",
-    "description": "Heading above the selected API contract file."
+    "description": "Heading above the selected file — an API contract, or a GraphQL schema."
   },
   "api.create.fromContract.url.invalid": {
     "defaultMessage": "Enter a valid HTTP or HTTPS URL."
@@ -435,7 +455,7 @@
     "defaultMessage": "Name"
   },
   "api.create.generalForm.rejected.title": {
-    "defaultMessage": "We could not create this API proxy",
+    "defaultMessage": "We could not create this {kind, select, graphql {GraphQL API} other {API proxy}}",
     "description": "Heading of the summary shown when the server rejected the submitted form."
   },
   "api.create.generalForm.section.backendEndpoint": {
@@ -466,7 +486,7 @@
     "defaultMessage": "Enter a version."
   },
   "api.create.generalForm.version.helper": {
-    "defaultMessage": "e.g. 1.0.0"
+    "defaultMessage": "e.g. 1.0"
   },
   "api.create.generalForm.version.label": {
     "defaultMessage": "Version"
@@ -508,6 +528,172 @@
   },
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
+  },
+  "api.create.graphql.configureForm.endpoint.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com/graphql."
+  },
+  "api.create.graphql.configureForm.endpoint.error.required": {
+    "defaultMessage": "Enter the GraphQL endpoint URL."
+  },
+  "api.create.graphql.configureForm.endpoint.label": {
+    "defaultMessage": "Query and Mutation URL"
+  },
+  "api.create.graphql.configureForm.identifier.status.unavailable": {
+    "defaultMessage": "This identifier is already in use."
+  },
+  "api.create.graphql.configureForm.identifier.status.unavailableIcon": {
+    "defaultMessage": "Identifier is already in use",
+    "description": "Accessible label for the warning icon shown beside a taken identifier."
+  },
+  "api.create.graphql.definePanel.schema.description": {
+    "defaultMessage": "Import from a URL or upload a schema file."
+  },
+  "api.create.graphql.definePanel.schema.title": {
+    "defaultMessage": "Start with a schema"
+  },
+  "api.create.graphql.definePanel.scratch.description": {
+    "defaultMessage": "Start blank, or seed the schema from a backend endpoint."
+  },
+  "api.create.graphql.definePanel.scratch.title": {
+    "defaultMessage": "Start from scratch"
+  },
+  "api.create.graphql.introspection.checking": {
+    "defaultMessage": "Checking the endpoint for a schema…",
+    "description": "Status line while the endpoint is being introspected in the background."
+  },
+  "api.create.graphql.introspection.disabledHint": {
+    "defaultMessage": "If introspection is disabled on the endpoint, the schema stays empty."
+  },
+  "api.create.graphql.introspection.endpoint.description": {
+    "defaultMessage": "Every operation goes through this single endpoint to a running service. Calls are proxied through as soon as you deploy."
+  },
+  "api.create.graphql.introspection.endpoint.required": {
+    "defaultMessage": "Enter the GraphQL endpoint to introspect."
+  },
+  "api.create.graphql.introspection.status": {
+    "defaultMessage": "Introspection enabled · SDL fetched · {typeCount, plural, one {# type} other {# types}}"
+  },
+  "api.create.graphql.introspection.unresolved": {
+    "defaultMessage": "Could not derive a schema from that endpoint — introspection may be disabled. You can still continue; the API starts with an empty schema."
+  },
+  "api.create.graphql.schemaExplorer.action.download": {
+    "defaultMessage": "Download SDL"
+  },
+  "api.create.graphql.schemaExplorer.empty.body": {
+    "defaultMessage": "Types appear once a schema is fetched or created."
+  },
+  "api.create.graphql.schemaExplorer.empty.title": {
+    "defaultMessage": "Schema will show here"
+  },
+  "api.create.graphql.schemaExplorer.field.deprecated": {
+    "defaultMessage": "deprecated"
+  },
+  "api.create.graphql.schemaExplorer.filter.allKinds": {
+    "defaultMessage": "All kinds"
+  },
+  "api.create.graphql.schemaExplorer.invalidSdl": {
+    "defaultMessage": "This schema could not be parsed: {reason}"
+  },
+  "api.create.graphql.schemaExplorer.mutations.count": {
+    "defaultMessage": "{count, plural, one {# mutation} other {# mutations}}",
+    "description": "Subtitle of the collapsible Mutations group: how many mutation fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.mutations.title": {
+    "defaultMessage": "Mutations",
+    "description": "Heading of the collapsible group listing a GraphQL schema's mutation fields."
+  },
+  "api.create.graphql.schemaExplorer.operation.arguments": {
+    "defaultMessage": "Arguments",
+    "description": "Heading over the list of arguments a GraphQL query, mutation or subscription accepts."
+  },
+  "api.create.graphql.schemaExplorer.operation.noArguments": {
+    "defaultMessage": "No arguments",
+    "description": "Shown under the Arguments heading when a GraphQL operation takes no arguments."
+  },
+  "api.create.graphql.schemaExplorer.operation.returns": {
+    "defaultMessage": "Returns",
+    "description": "Heading over the type a GraphQL query, mutation or subscription returns."
+  },
+  "api.create.graphql.schemaExplorer.queries.count": {
+    "defaultMessage": "{count, plural, one {# query} other {# queries}}",
+    "description": "Subtitle of the collapsible Queries group: how many query fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.queries.title": {
+    "defaultMessage": "Queries",
+    "description": "Heading of the collapsible group listing a GraphQL schema's query fields."
+  },
+  "api.create.graphql.schemaExplorer.resolutionFailed.sdlErrorWithLocation": {
+    "defaultMessage": "Line {line}, column {column}: {message}",
+    "description": "{line}/{column} are 1-based positions in the SDL the user submitted; {message} is the parser's own error text."
+  },
+  "api.create.graphql.schemaExplorer.search.noMatches": {
+    "defaultMessage": "Nothing in this schema matches \"{query}\".",
+    "description": "Shown when the schema search box matches no operation, type, field, enum value or union member."
+  },
+  "api.create.graphql.schemaExplorer.search.placeholder": {
+    "defaultMessage": "Search types and fields"
+  },
+  "api.create.graphql.schemaExplorer.subscriptions.count": {
+    "defaultMessage": "{count, plural, one {# subscription} other {# subscriptions}}",
+    "description": "Subtitle of the collapsible Subscriptions group: how many subscription fields it lists."
+  },
+  "api.create.graphql.schemaExplorer.subscriptions.title": {
+    "defaultMessage": "Subscriptions",
+    "description": "Heading of the collapsible group listing a GraphQL schema's subscription fields."
+  },
+  "api.create.graphql.schemaExplorer.title": {
+    "defaultMessage": "Schema"
+  },
+  "api.create.graphql.schemaExplorer.type.fieldCount": {
+    "defaultMessage": "{count, plural, one {# field} other {# fields}}"
+  },
+  "api.create.graphql.schemaExplorer.type.memberCount": {
+    "defaultMessage": "{count, plural, one {# member} other {# members}}",
+    "description": "Number of member types a UNION type declares."
+  },
+  "api.create.graphql.schemaExplorer.type.valueCount": {
+    "defaultMessage": "{count, plural, one {# value} other {# values}}",
+    "description": "Number of values an ENUM type declares."
+  },
+  "api.create.graphql.schemaExplorer.types.count": {
+    "defaultMessage": "{count, plural, one {# type} other {# types}}",
+    "description": "Subtitle of the collapsible Types group: how many named types it lists."
+  },
+  "api.create.graphql.schemaExplorer.types.title": {
+    "defaultMessage": "Types",
+    "description": "Heading of the collapsible group listing every non-root type in a GraphQL schema."
+  },
+  "api.create.graphql.schemaExplorer.view.explorer": {
+    "defaultMessage": "Explorer"
+  },
+  "api.create.graphql.schemaExplorer.view.sdl": {
+    "defaultMessage": "SDL"
+  },
+  "api.create.graphql.urlUpload.action.sampleUrl": {
+    "defaultMessage": "Try with Sample Schema"
+  },
+  "api.create.graphql.urlUpload.source.label": {
+    "defaultMessage": "Import the schema from"
+  },
+  "api.create.graphql.urlUpload.status.validating": {
+    "defaultMessage": "Validating schema…",
+    "description": "Shown while a URL/file just supplied is being checked, which starts on its own."
+  },
+  "api.create.graphql.urlUpload.unresolved": {
+    "defaultMessage": "That schema could not be resolved. Check it is valid GraphQL SDL."
+  },
+  "api.create.graphql.urlUpload.upload.title": {
+    "defaultMessage": "Upload GraphQL Schema",
+    "description": "Heading of the empty dropzone where a GraphQL schema (SDL) file is dropped or picked."
+  },
+  "api.create.graphql.urlUpload.url.label": {
+    "defaultMessage": "Schema URL"
+  },
+  "api.create.graphql.urlUpload.url.placeholder": {
+    "defaultMessage": "Enter URL for GraphQL Schema here"
+  },
+  "api.create.graphql.urlUpload.url.required": {
+    "defaultMessage": "Enter the URL of the SDL file."
   },
   "api.create.specIssue.missingTitle": {
     "defaultMessage": "No title in this definition — name the API on the next step."
@@ -577,6 +763,10 @@
     "defaultMessage": "Delete {apiName}",
     "description": "Accessible label for the API delete button."
   },
+  "apiCard.deleteLabel": {
+    "defaultMessage": "Delete",
+    "description": "Visible text of the labelled delete button on an API row."
+  },
   "apiCard.gatewayManaged.label": {
     "defaultMessage": "Gateway-managed",
     "description": "Chip marking an API the console discovered from a gateway and cannot edit."
@@ -628,6 +818,38 @@
   "apiControlPlane.components.ErrorFallback.stale.title": {
     "defaultMessage": "A newer version of the console is available"
   },
+  "apiControlPlane.components.ImportApiIllustration.backendUrl": {
+    "defaultMessage": "Backend URL"
+  },
+  "apiControlPlane.components.ImportApiIllustration.endpoints": {
+    "defaultMessage": "Discovered endpoints"
+  },
+  "apiControlPlane.components.ImportApiIllustration.ready": {
+    "defaultMessage": "API ready"
+  },
+  "apiControlPlane.components.MeterIllustration.charged": {
+    "defaultMessage": "Charged in Gold plan"
+  },
+  "apiControlPlane.components.MeterIllustration.skipped": {
+    "defaultMessage": "skipped"
+  },
+  "apiControlPlane.components.StateViews.forbiddenDescription": {
+    "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
+    "description": "Explanation under the forbidden heading. Names who can fix it, and deliberately not which scope is missing — that is meaningless to the reader and tells a probing caller what to look for."
+  },
+  "apiControlPlane.components.StateViews.forbiddenTitle": {
+    "defaultMessage": "You don't have permission to view this",
+    "description": "Heading shown in place of a page the signed-in user lacks the scope to read."
+  },
+  "apiControlPlane.components.SubscriptionPlanIllustration.enabledOn": {
+    "defaultMessage": "Enabled on"
+  },
+  "apiControlPlane.components.SubscriptionPlanIllustration.tooManyRequests": {
+    "defaultMessage": "Too many requests"
+  },
+  "apiControlPlane.components.SubscriptionPlanIllustration.usage": {
+    "defaultMessage": "Mobile app · this minute"
+  },
   "apiControlPlane.components.SwaggerOperationsView.PolicyIndicator.overflow": {
     "defaultMessage": "{count, plural, one {# more policy} other {# more policies}}: {names}",
     "description": "Tooltip on the \"+N\" circle standing for policies too numerous to draw. {names} is a comma-separated list of policy names, which are not translated."
@@ -673,6 +895,26 @@
     "defaultMessage": "Open {name}",
     "description": "Accessible name of a card or row that opens what it describes."
   },
+  "apiControlPlane.hooks.useResourceLimits.componentGateways": {
+    "defaultMessage": "gateways",
+    "description": "Plural noun for gateways, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.componentPortals": {
+    "defaultMessage": "portals",
+    "description": "Plural noun for developer portals, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
+    "defaultMessage": "APIs",
+    "description": "Plural noun for APIs, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.limitReached": {
+    "defaultMessage": "You cannot create more {component} because your organization has reached the maximum of {max}.",
+    "description": "Tooltip on a create action disabled because a limit is reached. {component} is a plural noun such as \"APIs\"; {max} is the ceiling."
+  },
+  "apiControlPlane.hooks.useResourceLimits.readOnlyDefault": {
+    "defaultMessage": "Your organization is read-only, so nothing can be created or changed.",
+    "description": "Shown when something reports the organization as read-only but gives no reason of its own."
+  },
   "apiControlPlane.navigation.usePageTitle.admin": {
     "defaultMessage": "Admin",
     "description": "Browser tab title for the API admin page."
@@ -701,17 +943,9 @@
     "defaultMessage": "Create API",
     "description": "Browser tab title for the API creation wizard."
   },
-  "apiControlPlane.navigation.usePageTitle.settings": {
-    "defaultMessage": "Settings",
-    "description": "Browser tab title for any Settings tab."
-  },
-  "apiControlPlane.components.StateViews.forbiddenTitle": {
-    "defaultMessage": "You don't have permission to view this",
-    "description": "Heading shown in place of a page the signed-in user lacks the scope to read."
-  },
-  "apiControlPlane.navigation.useSettingsTabs.generalTab": {
-    "defaultMessage": "General",
-    "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
+  "apiControlPlane.navigation.usePageTitle.newProject": {
+    "defaultMessage": "Create project",
+    "description": "Browser tab title for the project creation page."
   },
   "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
     "defaultMessage": "APIs"
@@ -765,20 +999,43 @@
     "defaultMessage": "Edit API details",
     "description": "Accessible label and tooltip for the button beside the API name, which opens the edit page."
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged": {
-    "defaultMessage": "Gateway-managed",
-    "description": "Chip marking an API that was discovered from a gateway and cannot be edited here."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint": {
-    "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
-    "description": "Tooltip explaining the gateway-managed chip."
-  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
     "defaultMessage": "Transports",
     "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.unknownCreator": {
     "defaultMessage": "—"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.viewDeployments": {
+    "defaultMessage": "View Deployments",
+    "description": "Button on the API overview header that opens the API's deployment page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.changeThumbnail": {
+    "defaultMessage": "Change thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteButton": {
+    "defaultMessage": "Remove"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteMessage": {
+    "defaultMessage": "Are you sure you want to delete the thumbnail of this API?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteTitle": {
+    "defaultMessage": "Remove API thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.deleteSuccess": {
+    "defaultMessage": "Thumbnail removed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.errorSize": {
+    "defaultMessage": "The image must be 1 MB or smaller."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.errorType": {
+    "defaultMessage": "Only JPEG and PNG images are supported."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.removeThumbnail": {
+    "defaultMessage": "Remove thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.uploadSuccess": {
+    "defaultMessage": "Thumbnail updated."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.create.components.ApiDesignerBanner.action": {
     "defaultMessage": "Open API Designer",
@@ -1089,15 +1346,29 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DeployedGatewaysPanel.title": {
     "defaultMessage": "Deployed gateways"
   },
-  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.description": {
-    "defaultMessage": "Guides, references, and specifications published with this API."
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.create": {
+    "defaultMessage": "Create Document",
+    "description": "Opens the form for a new API document. Shown when the API has none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.empty": {
+    "defaultMessage": "No Documents available for this API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.loadError": {
+    "defaultMessage": "Unable to load documents."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.loading": {
+    "defaultMessage": "Loading documents…"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.title": {
     "defaultMessage": "Documents"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.updated": {
-    "defaultMessage": "2 days ago",
-    "description": "Temporary relative update time for demo document data."
+    "defaultMessage": "Updated {when}",
+    "description": "{when} is a relative time, e.g. \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.DocumentsPanel.viewMore": {
+    "defaultMessage": "View More",
+    "description": "Opens the API’s Documents page to see every document."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.cancel": {
     "defaultMessage": "Cancel"
@@ -1117,8 +1388,16 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.endpointRequired": {
     "defaultMessage": "Enter a valid endpoint URL."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway, so its endpoint is managed by the gateway and cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured": {
     "defaultMessage": "No endpoint configured"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notEditable": {
+    "defaultMessage": "This endpoint cannot be edited here.",
+    "description": "Tooltip on the disabled Edit endpoint button when no more specific reason applies."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.save": {
     "defaultMessage": "Save"
@@ -1207,6 +1486,10 @@
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.emptyTitle": {
     "defaultMessage": "No gateway added yet",
     "description": "Empty state when the organization has no gateways to deploy to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.gatewayManaged": {
+    "defaultMessage": "This API was created from a gateway. You can view its deployments, but deploy, redeploy, restore and undeploy actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Deploy page of a read-only API, i.e. one that a gateway pushed to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.deploy.DeployPage.loading": {
     "defaultMessage": "Loading deploy state",
@@ -1415,17 +1698,12 @@
     "defaultMessage": "Select Deployment to Restore",
     "description": "Heading of the drawer for picking an earlier deployment to put back in service."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.detail": {
-    "defaultMessage": "You will be able to publish guides, references, and release notes alongside the API so consumers can read them in the Developer Portal."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.DocumentsTab.feature": {
-    "defaultMessage": "Documents for this API"
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.cancel": {
-    "defaultMessage": "Cancel"
+    "defaultMessage": "Discard",
+    "description": "Throws away the unsaved edits and restores the last saved state. Verb."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.save": {
-    "defaultMessage": "Save",
+    "defaultMessage": "Save changes",
     "description": "Default label on the save bar button. Verb phrase."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.saving": {
@@ -1435,6 +1713,225 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.unsaved": {
     "defaultMessage": "You have unsaved changes",
     "description": "Shown on the save bar while the panel has edits that have not been saved yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.unsavedCount": {
+    "defaultMessage": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+    "description": "Shown on the save bar. {count} is how many edits have not been saved yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentBody.empty": {
+    "defaultMessage": "This document has no content."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentBody.error": {
+    "defaultMessage": "Unable to load the content of this document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentBody.loading": {
+    "defaultMessage": "Loading content"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentBody.unsupported": {
+    "defaultMessage": "This document’s format can’t be previewed here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.back": {
+    "defaultMessage": "Back to documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentHint": {
+    "defaultMessage": "Markdown supported: headings, lists, links, code blocks and quotes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentLabel": {
+    "defaultMessage": "Content"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.contentPlaceholder": {
+    "defaultMessage": "# Write your document in Markdown…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.create": {
+    "defaultMessage": "Create",
+    "description": "Submits the new document. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.createSubtitle": {
+    "defaultMessage": "Choose a type, name it and write the content in Markdown."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.createTitle": {
+    "defaultMessage": "Create Document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.created": {
+    "defaultMessage": "Created \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeInvalid": {
+    "defaultMessage": "Use only letters, numbers, spaces, hyphens and underscores."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeLabel": {
+    "defaultMessage": "Custom type",
+    "description": "Label for the free-text type name shown when the document type is \"Other\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypePlaceholder": {
+    "defaultMessage": "e.g. Changelog"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeReserved": {
+    "defaultMessage": "This is a reserved document type."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.customTypeTooLong": {
+    "defaultMessage": "Keep under {max} bytes (non-Latin letters count as more than one)."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.editSubtitle": {
+    "defaultMessage": "Update the type, name or Markdown content of this document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.editTitle": {
+    "defaultMessage": "Edit Document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.layout": {
+    "defaultMessage": "Editor layout",
+    "description": "Accessible name of the Source / Split / Preview switch."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveMessage": {
+    "defaultMessage": "You have unsaved changes. Are you sure you want to leave?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveNo": {
+    "defaultMessage": "No",
+    "description": "Answers \"Are you sure you want to leave?\": stays on the form with the changes kept."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveTitle": {
+    "defaultMessage": "Unsaved changes",
+    "description": "Title of the dialog asking whether to leave the document form without saving."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveYes": {
+    "defaultMessage": "Yes",
+    "description": "Answers \"Are you sure you want to leave?\": leaves the form and discards unsaved changes."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.loadError": {
+    "defaultMessage": "Unable to load this document for editing."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.loading": {
+    "defaultMessage": "Loading document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.markdownPane": {
+    "defaultMessage": "Markdown"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameExists": {
+    "defaultMessage": "A document with this name already exists for this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.nameLabel": {
+    "defaultMessage": "Name",
+    "description": "Label for the document name field. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.namePlaceholder": {
+    "defaultMessage": "e.g. Getting started"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.notEditable": {
+    "defaultMessage": "This document’s format can’t be edited here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.preview": {
+    "defaultMessage": "Preview"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.previewEmpty": {
+    "defaultMessage": "Nothing to preview yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.save": {
+    "defaultMessage": "Save",
+    "description": "Saves changes to the document. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.saved": {
+    "defaultMessage": "Saved \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.saving": {
+    "defaultMessage": "Saving…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.source": {
+    "defaultMessage": "Source"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.split": {
+    "defaultMessage": "Split",
+    "description": "Editor layout showing the Markdown source and its preview side by side."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.tooLarge": {
+    "defaultMessage": "The document is too large to save."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.typeLabel": {
+    "defaultMessage": "Document type"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentGroupHeader.toggleGroup": {
+    "defaultMessage": "{type} ({count})",
+    "description": "Accessible name of a document-type group header that expands or collapses the group."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.heading": {
+    "defaultMessage": "All documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.loadingMore": {
+    "defaultMessage": "Loading documents…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.total": {
+    "defaultMessage": "{count, plural, one {# document} other {# documents}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentList.updated": {
+    "defaultMessage": "Updated {when}",
+    "description": "Secondary line of a document in the list. {when} is a relative time, e.g. \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.howTo": {
+    "defaultMessage": "How To",
+    "description": "Document type: a step-by-step guide."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.other": {
+    "defaultMessage": "Other",
+    "description": "Document type: anything that fits no other type."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.publicForum": {
+    "defaultMessage": "Public Forum",
+    "description": "Document type: a link to or notes about a public community forum."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.sampleSdk": {
+    "defaultMessage": "Samples & SDK",
+    "description": "Document type: code samples and client SDKs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentTypes.supportForum": {
+    "defaultMessage": "Support Forum",
+    "description": "Document type: a link to or notes about a support channel."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.delete": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.deleteMessage": {
+    "defaultMessage": "\"{name}\" will be permanently removed from this API. This can’t be undone."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.deleteTitle": {
+    "defaultMessage": "Delete document?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.deleted": {
+    "defaultMessage": "Deleted \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.edit": {
+    "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.loadError": {
+    "defaultMessage": "Unable to load this document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.loading": {
+    "defaultMessage": "Loading document"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentViewer.notFound": {
+    "defaultMessage": "This document no longer exists. It may have been deleted."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.create": {
+    "defaultMessage": "Create Document",
+    "description": "Button that opens the form for a new API document. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.empty": {
+    "defaultMessage": "No Documents available for this API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.loadError": {
+    "defaultMessage": "Unable to load the documents for this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.loading": {
+    "defaultMessage": "Loading documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.subtitle": {
+    "defaultMessage": "Guides, samples and support resources that describe this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentsBrowser.title": {
+    "defaultMessage": "Documents"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.addPolicy": {
     "defaultMessage": "Add Policy",
@@ -1456,6 +1953,10 @@
     "defaultMessage": "Policies",
     "description": "Heading over the list of policies attached at this scope. Noun."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.inheritedFromGlobal": {
+    "defaultMessage": "Inherited from global",
+    "description": "Legend for the dashed chips: policies this resource gets from the API-level section."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.remove": {
     "defaultMessage": "Remove",
     "description": "Tooltip on the button that detaches a policy. Verb."
@@ -1464,12 +1965,21 @@
     "defaultMessage": "Remove policy",
     "description": "Accessible label for the remove button on one attached policy."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.reorderHint": {
+    "defaultMessage": "Drag to reorder this resource’s policies",
+    "description": "Hint under a resource’s policy chips."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.allCategories": {
     "defaultMessage": "All",
     "description": "Placeholder shown when no category filters are selected."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categories": {
-    "defaultMessage": "Categories"
+    "defaultMessage": "Categories",
+    "description": "Accessible name of the category filter dropdown. Plural noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categoriesSelected": {
+    "defaultMessage": "{count} categories",
+    "description": "Shown in the category dropdown when several categories are selected. {count} is a number."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription": {
     "defaultMessage": "No policies match the filter."
@@ -1484,20 +1994,20 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.loadError": {
     "defaultMessage": "Unable to load policies from the Policy Hub."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.next": {
-    "defaultMessage": "Next",
-    "description": "Pagination button for the next page of the catalog."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.policyHub": {
     "defaultMessage": "Policy Hub",
     "description": "Link opening the Policy Hub website. Product name — leave untranslated."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.previous": {
-    "defaultMessage": "Previous",
-    "description": "Pagination button for the previous page of the catalog."
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.retry": {
+    "defaultMessage": "Retry",
+    "description": "Loads the policy catalog again after a failed request. Verb."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.searchPlaceholder": {
     "defaultMessage": "Search policies"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.subtitle": {
+    "defaultMessage": "Drag onto Global policies or a resource",
+    "description": "Hint under the catalog heading about how to attach a policy."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.version": {
     "defaultMessage": "v{version}",
@@ -1515,6 +2025,30 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.scopePrompt": {
     "defaultMessage": "Policies are attached to a single API.",
     "description": "Explains why an API must be picked before this page can render."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.subtitle": {
+    "defaultMessage": "Policies the gateway applies to this API’s traffic, such as authentication, rate limiting and header changes.",
+    "description": "Description under the Policies page heading."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPageTitle.title": {
+    "defaultMessage": "Policies",
+    "description": "Heading of the Policies page of an API. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyChip.edit": {
+    "defaultMessage": "Edit",
+    "description": "Tooltip on the button that reconfigures an attached policy. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyChip.editLabel": {
+    "defaultMessage": "Edit policy",
+    "description": "Accessible label for the edit button on one attached policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyChip.removeLabel": {
+    "defaultMessage": "Remove policy",
+    "description": "Accessible label for the remove button on one attached policy."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.appliesTo": {
+    "defaultMessage": "Applies to {target}",
+    "description": "Under the drawer heading, naming where the policy attaches. {target} is \"Global policies\" or a resource such as \"GET /orders\"; resources are not translated."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy": {
     "defaultMessage": "Attach policy",
@@ -1541,6 +2075,14 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.noParameters": {
     "defaultMessage": "This policy has no configurable parameters."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.readyToAttach": {
+    "defaultMessage": "Ready to attach",
+    "description": "Footer status when every parameter is valid and the policy can be attached."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.readyToSave": {
+    "defaultMessage": "Ready to save",
+    "description": "Footer status when every parameter is valid and the edits can be saved."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.savePolicy": {
     "defaultMessage": "Save policy",
     "description": "Confirms edits to an already-attached policy. Verb phrase."
@@ -1550,16 +2092,17 @@
     "description": "Drawer heading. {policyName} is the policy’s catalog name, backend data; do not translate it."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.allMethods": {
-    "defaultMessage": "All methods"
+    "defaultMessage": "All methods",
+    "description": "Option that shows resources of every HTTP method."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalDescription": {
-    "defaultMessage": "Policies applied here will affect all API resources"
+    "defaultMessage": "Applied to every resource in this API"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalEmpty": {
     "defaultMessage": "Drag and drop policies here to apply across all resources"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalPolicies": {
-    "defaultMessage": "Global policies (API level)",
+    "defaultMessage": "Global policies",
     "description": "Section for policies applying to every resource of the API."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.heading": {
@@ -1573,6 +2116,10 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.hubUnavailable": {
     "defaultMessage": "Policy Hub is not configured; policies cannot be added.",
     "description": "Shown instead of the instruction when no Policy Hub URL is set."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.methodFilterLabel": {
+    "defaultMessage": "Filter resources by method",
+    "description": "Accessible name of the group of HTTP method filter buttons."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noMatchingResources": {
     "defaultMessage": "No resources match the filters."
@@ -1590,57 +2137,180 @@
     "description": "Toast after editing an attached policy; the change is not persisted until Save."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty": {
-    "defaultMessage": "Drag and drop policies here, or use Add Policy.",
-    "description": "\"Add Policy\" is the label of a button in this same list."
+    "defaultMessage": "Drag and drop policies here",
+    "description": "Drop hint inside a resource that has no policies yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resources": {
-    "defaultMessage": "Resource-wise policies",
+    "defaultMessage": "Resource policies",
     "description": "Section listing the API's operations, each with its own policies. Noun."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourcesDescription": {
-    "defaultMessage": "Attach policies only to the specific resources"
+    "defaultMessage": "Run after global policies, only on the selected resource"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved": {
     "defaultMessage": "Policies saved."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.searchResources": {
-    "defaultMessage": "Search resources"
+    "defaultMessage": "Search resources by path"
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry": {
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.ReadOnlyPoliciesNotice.body": {
+    "defaultMessage": "This API was created from a gateway. You can view its policies, but attach, edit, remove and reorder actions are managed by the gateway and are unavailable in the API Control Plane.",
+    "description": "Info banner on the Policies page of a read-only API, i.e. one that a gateway pushed to the control plane."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.addEntry": {
     "defaultMessage": "Add entry",
     "description": "Adds another key/value pair to a map parameter. Verb phrase."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addItem": {
-    "defaultMessage": "Add item",
-    "description": "Adds another entry to a list parameter. Verb phrase."
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.booleanFalse": {
+    "defaultMessage": "false",
+    "description": "Text beside a switch that is off."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.advancedSettings": {
-    "defaultMessage": "Advanced Settings",
-    "description": "Toggle revealing the parameters the policy marks as advanced."
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.booleanTrue": {
+    "defaultMessage": "true",
+    "description": "Text beside a switch that is on."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.keyPlaceholder": {
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.deleteEntry": {
+    "defaultMessage": "Delete {name}",
+    "description": "Accessible label for the button removing one key/value pair. {name} is the entry key, or the word for an unnamed entry."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.hideValue": {
+    "defaultMessage": "Hide {label}",
+    "description": "Accessible label for the button masking a field again. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.keyLabel": {
     "defaultMessage": "Key",
-    "description": "Placeholder for the name side of a key/value parameter pair. Noun."
+    "description": "Accessible label for the name side of a key/value pair. Noun."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeEntryLabel": {
-    "defaultMessage": "Remove entry",
-    "description": "Accessible label for the button deleting one key/value pair."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeItemLabel": {
-    "defaultMessage": "Remove item",
-    "description": "Accessible label for the button deleting one entry of a list parameter."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.requiredMarker": {
-    "defaultMessage": "*",
-    "description": "Marker appended to a required field’s label. Includes its leading space; adjust or drop the space to suit the locale’s typography."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.selectPlaceholder": {
-    "defaultMessage": "Select…",
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.selectPlaceholder": {
+    "defaultMessage": "Select...",
     "description": "Empty option shown before a value is chosen from a dropdown."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.valuePlaceholder": {
-    "defaultMessage": "Value",
-    "description": "Placeholder for the value side of a key/value parameter pair. Noun."
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.showValue": {
+    "defaultMessage": "Show {label}",
+    "description": "Accessible label for the button revealing a masked field. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.tagPlaceholder": {
+    "defaultMessage": "Type a value and press enter",
+    "description": "Placeholder of the input that collects a list of values."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.FieldRenderers.unnamedEntry": {
+    "defaultMessage": "entry",
+    "description": "Stands in for the key of a key/value pair that has none yet. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.add": {
+    "defaultMessage": "Add",
+    "description": "Confirms a new policy configuration. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Dismisses the form without saving. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.close": {
+    "defaultMessage": "Close",
+    "description": "Dismisses a read-only view of the policy. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.fixFields": {
+    "defaultMessage": "{count, plural, one {Fix the highlighted field to continue.} other {Fix the # highlighted fields to continue.}}",
+    "description": "Banner above the form after a submit attempt with validation problems. {count} is how many fields have one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.goToField": {
+    "defaultMessage": "Go to field",
+    "description": "Scrolls to and focuses the field a validation problem is about. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.needsAttention": {
+    "defaultMessage": "Needs attention",
+    "description": "Heading of the panel listing the validation problems still to fix."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.ready": {
+    "defaultMessage": "Ready",
+    "description": "Footer status shown when the form has no validation problems. Adjective."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.rootPath": {
+    "defaultMessage": "Parameters",
+    "description": "Names the whole form in a validation message that is not about one field. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.showAllErrors": {
+    "defaultMessage": "Show all errors",
+    "description": "Checkbox that reveals every validation error in the form at once."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.showLess": {
+    "defaultMessage": "Show less",
+    "description": "Collapses an expanded description. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.showMore": {
+    "defaultMessage": "Show more",
+    "description": "Expands a truncated description. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.statusToFix": {
+    "defaultMessage": "{count} to fix",
+    "description": "Chip showing how many validation problems remain. {count} is a number."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.toggleProblems": {
+    "defaultMessage": "Show or hide the list of problems",
+    "description": "Accessible label for the chip that expands or collapses the validation problems panel."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.PolicyParameterEditor.update": {
+    "defaultMessage": "Update",
+    "description": "Confirms edits to an existing policy configuration. Verb."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.addItem": {
+    "defaultMessage": "Add Item",
+    "description": "Adds another entry to a list of objects. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.advancedSettings": {
+    "defaultMessage": "Advanced Settings",
+    "description": "Accessible label for the section holding the parameters the policy marks as advanced."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.advancedSettingsCount": {
+    "defaultMessage": "Advanced settings ({count})",
+    "description": "Heading of the advanced parameters section. {count} is how many it holds."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.chooseAtLeastOne": {
+    "defaultMessage": "Configure at least one",
+    "description": "Legend of a group of options where any combination may be selected."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.chooseOne": {
+    "defaultMessage": "Choose one",
+    "description": "Legend of a group of options where exactly one is selected."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.clearField": {
+    "defaultMessage": "Clear {label}",
+    "description": "Accessible label for the button resetting an optional section. {label} is the section name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.collapseField": {
+    "defaultMessage": "Collapse {label}",
+    "description": "Accessible label for the button hiding a field’s contents. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.deleteItem": {
+    "defaultMessage": "Delete Item {number}",
+    "description": "Accessible label for the button removing one list entry. {number} is its 1-based position."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.deprecated": {
+    "defaultMessage": "Deprecated",
+    "description": "Badge on a parameter the policy marks as deprecated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.expandField": {
+    "defaultMessage": "Expand {label}",
+    "description": "Accessible label for the button revealing a field’s contents. {label} is the field name from the policy definition; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.gatewayDefaultHint": {
+    "defaultMessage": "Leave empty to use the gateway’s configured value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.itemLabel": {
+    "defaultMessage": "Item {number}",
+    "description": "Label of one entry in a list. {number} is its 1-based position."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.requiredMarker": {
+    "defaultMessage": "*",
+    "description": "Marker beside the label of a required parameter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.showLess": {
+    "defaultMessage": "Show less",
+    "description": "Collapses an expanded description. Verb phrase."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.parameterEditor.SchemaTree.showMore": {
+    "defaultMessage": "Show more",
+    "description": "Expands a truncated description. Verb phrase."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.routings.ResourcesPanel.add": {
     "defaultMessage": "Add"
@@ -1881,6 +2551,64 @@
     "defaultMessage": "Version",
     "description": "Column header over the gateway version."
   },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.components.GraphqlApiPageGuard.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.deploy.GraphqlDeployPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopDocumentsPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlDevelopPoliciesPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.empty": {
+    "defaultMessage": "Drag a policy here, or select one from Available policies.",
+    "description": "\"Available policies\" is the heading of the policy catalog panel beside this list."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.globalDescription": {
+    "defaultMessage": "These policies apply to every request this API receives — a GraphQL API has a single endpoint, so there is no per-resource scope the way a REST API has."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.develop.GraphqlPolicyPanel.redeployReminder": {
+    "defaultMessage": "Redeploy this API for the change to reach its gateways.",
+    "description": "Toast shown alongside \"Policies saved.\" — saving updates the definition only."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://api.example.com/graphql."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.error.required": {
+    "defaultMessage": "Enter the GraphQL endpoint URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.helper": {
+    "defaultMessage": "The GraphQL backend the gateway routes requests to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.EditGraphqlApiForm.endpoint.label": {
+    "defaultMessage": "Endpoint URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.notFound": {
+    "defaultMessage": "GraphQL API not found",
+    "description": "Shown when the API to edit could not be loaded."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.edit.GraphqlApiEditPage.subtitle": {
+    "defaultMessage": "Change the name, description, context, version and endpoint of this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.overview.GraphqlApiDetailPage.notFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.publish.GraphqlPublishPage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.apiNotFound": {
+    "defaultMessage": "GraphQL API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.fetchFailed": {
+    "defaultMessage": "Could not reach the gateway. Check that the API has a CORS policy allowing this console, and that your browser trusts the gateway’s certificate.",
+    "description": "Shown when the browser request to the API's gateway fails with no HTTP response — the browser reports only \"Failed to fetch\". The console calls the gateway directly, so a missing CORS policy, an untrusted gateway certificate or an unreachable gateway all end up here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.graphqlApis.testConsole.GraphqlTestConsolePage.subtitle": {
+    "defaultMessage": "Send queries and mutations to a deployed gateway."
+  },
   "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.action": {
     "defaultMessage": "Open Moesif Insights",
     "description": "Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated."
@@ -1896,6 +2624,27 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.insights.InsightsPage.title": {
     "defaultMessage": "Insights"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.MetersPage.clearSearch": {
+    "defaultMessage": "Clear search"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.SubscriptionPlansPage.clearSearch": {
+    "defaultMessage": "Clear search"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanPricingSection.comingSoon": {
+    "defaultMessage": "Coming soon"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.expiry.optional": {
+    "defaultMessage": "(optional)"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.limits.unlimited": {
+    "defaultMessage": "Unlimited requests"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.create": {
+    "defaultMessage": "Define usage limits and availability for this plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.edit": {
+    "defaultMessage": "Update usage limits and availability for this plan."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.ExploreMoreCard.designAttachPolicies": {
     "defaultMessage": "Attach and Manage Policies"
@@ -1950,7 +2699,7 @@
     "defaultMessage": "Design and build APIs inside projects, run them on gateways, and publish them to developer portals for your consumers."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle": {
-    "defaultMessage": "Welcome to {organizationName}",
+    "defaultMessage": "Hello, {organizationName}",
     "description": "{organizationName} is the display name of the organization. Never translated."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.deleteAriaLabel": {
@@ -2021,16 +2770,10 @@
     "defaultMessage": "Choose a project"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsAdd": {
-    "defaultMessage": "New project"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsEmpty": {
-    "defaultMessage": "No projects match your search."
+    "defaultMessage": "Create Project"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsNone": {
     "defaultMessage": "No projects yet."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsSearch": {
-    "defaultMessage": "Search projects"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.projectsTitle": {
     "defaultMessage": "Projects"
@@ -2070,6 +2813,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.subtitle": {
     "defaultMessage": "Choose the portal to publish this API to."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.summary": {
+    "defaultMessage": "Published to {published} of {total, plural, one {# portal} other {# portals}}",
+    "description": "Page summary: how many of the organization's portals this API is published to."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
     "defaultMessage": "Publish {apiName}",
     "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
@@ -2097,11 +2844,26 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated": {
     "defaultMessage": "Deprecated on {portalName}."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerMeta": {
+    "defaultMessage": "Deprecated {time}",
+    "description": "Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta": {
+    "defaultMessage": "Edited {time}",
+    "description": "Banner byline. {time} is a relative time such as \"5 minutes ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMetaUnsaved": {
+    "defaultMessage": "Edited {time} · <unsaved>Unsaved changes</unsaved>",
+    "description": "Banner byline when the fields on screen differ from the saved draft. {time} is a relative time such as \"5 minutes ago\". <unsaved> sets the warning in colour."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing": {
     "defaultMessage": "Unable to save the draft. Your changes are still on this page. Try again."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSaved": {
     "defaultMessage": "Draft saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSavedDetailsOnly": {
+    "defaultMessage": "Details saved. The specification has an error and was not saved."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.errorMessage": {
     "defaultMessage": "Unable to load the publish details."
@@ -2112,9 +2874,13 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published": {
     "defaultMessage": "Published to {portalName}."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.publishedBannerMeta": {
+    "defaultMessage": "Updated {time}",
+    "description": "Banner byline. {time} is a relative time such as \"2 days ago\"."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.subtitle": {
-    "defaultMessage": "{apiName} · v{version}",
-    "description": "Byline under the heading. Both values are user-supplied; do not translate them."
+    "defaultMessage": "To <name>{portalName}</name>",
+    "description": "Byline under the heading, naming the portal being published to. {portalName} is the API Portal display name, user-supplied; do not translate it. <name> sets it in bold."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.tabDetails": {
     "defaultMessage": "API Details"
@@ -2132,8 +2898,8 @@
     "defaultMessage": "Subscription Plans"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.title": {
-    "defaultMessage": "Publish to {portalName}",
-    "description": "Page heading. {portalName} is the API Portal display name; do not translate it."
+    "defaultMessage": "Publish <name>{apiName}</name>",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it. <name> sets it in bold."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublishConfirmMessage": {
     "defaultMessage": "This removes the API \"{name}\" from {portalName}. You can publish it again later."
@@ -2144,11 +2910,33 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unpublished": {
     "defaultMessage": "Unpublished from {portalName}."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.unsavedBannerMeta": {
+    "defaultMessage": "<unsaved>Unsaved changes</unsaved>",
+    "description": "Banner byline when the fields on screen have been edited but no draft has been saved yet. <unsaved> sets the warning in colour."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityDescription": {
+    "defaultMessage": "Let agents in the API Portal discover and invoke this API on behalf of users."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityTitle": {
+    "defaultMessage": "Make this API discoverable by AI agents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.changeThumbnail": {
+    "defaultMessage": "Change thumbnail"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.chooseGatewayUrl": {
+    "defaultMessage": "Choose from gateway URLs"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.clearUrl": {
+    "defaultMessage": "Clear"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionLabel": {
     "defaultMessage": "Description"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.descriptionPlaceholder": {
     "defaultMessage": "What this API does, in one or two sentences."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.enterCustomUrl": {
+    "defaultMessage": "Enter a custom URL"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.nameLabel": {
     "defaultMessage": "Name"
@@ -2159,12 +2947,176 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel": {
     "defaultMessage": "Sandbox URL"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.showGatewayUrls": {
+    "defaultMessage": "Show gateway URLs"
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.versionLabel": {
     "defaultMessage": "Version"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.addToListing": {
+    "defaultMessage": "Add to listing"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.clearAll": {
+    "defaultMessage": "Clear all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.closePreview": {
+    "defaultMessage": "Close"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnActions": {
+    "defaultMessage": "Actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnName": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.columnType": {
+    "defaultMessage": "Type"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.deletedPublishedHint": {
+    "defaultMessage": "This document was deleted. Republish to remove it from the listing.",
+    "description": "Tooltip on the name of a published document whose source no longer exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.edited": {
+    "defaultMessage": "Edited",
+    "description": "Chip after the name of a published document that was changed after it was last published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.editedPublishedHint": {
+    "defaultMessage": "Document was edited after publishing. Republish to apply changes.",
+    "description": "Tooltip on the Edited chip of a published document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.emptyDescription": {
+    "defaultMessage": "Add documents to this API in Develop to choose from here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.emptyTitle": {
+    "defaultMessage": "No documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.error": {
+    "defaultMessage": "Unable to load documents."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.loading": {
+    "defaultMessage": "Loading documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.preview": {
+    "defaultMessage": "Preview"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.previewDocument": {
+    "defaultMessage": "Preview {name}",
+    "description": "Accessible name of the button that opens a document's content; {name} is the document's name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.publishedEmptyTitle": {
+    "defaultMessage": "This listing has no documents."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.publishedSummary": {
+    "defaultMessage": "{count, plural, one {<n>#</n> document published} other {<n>#</n> documents published}}",
+    "description": "<n> wraps the number, which is styled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.removeFromListing": {
+    "defaultMessage": "Remove from listing"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectAll": {
+    "defaultMessage": "Select all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectRow": {
+    "defaultMessage": "Select row",
+    "description": "Accessible name of the checkbox that adds a document to the listing; the row it sits in names the document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.selectedSummary": {
+    "defaultMessage": "{count} of {total} documents selected",
+    "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.typeUnknown": {
+    "defaultMessage": "—",
+    "description": "Type cell of a deleted document, whose type is no longer known."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.DocumentsTab.unselectRow": {
+    "defaultMessage": "Unselect row",
+    "description": "Accessible name of the checkbox that takes a document out of the listing; the row it sits in names the document."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.blankNotice": {
+    "defaultMessage": "A blank landing page is not published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.create": {
+    "defaultMessage": "Create from API details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.editorLabel": {
+    "defaultMessage": "Landing page (Markdown)",
+    "description": "Accessible name for the text area holding the landing page’s Markdown."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.editorPlaceholder": {
+    "defaultMessage": "# Write your landing page in Markdown…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.editorTitle": {
+    "defaultMessage": "Markdown"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.emptyDescription": {
+    "defaultMessage": "The portal currently shows its default page with your endpoints and resources. Add a landing page to replace it with your own content."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.emptyTitle": {
+    "defaultMessage": "No landing page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.error": {
+    "defaultMessage": "Unable to load the landing page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.loading": {
+    "defaultMessage": "Loading the landing page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.notice": {
+    "defaultMessage": "Copied from your API details when created. Update it here if they change. Publishing replaces the portal’s default section."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.preview": {
+    "defaultMessage": "Preview",
+    "description": "Title of the rendered view of the landing page beside its editor."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.previewEmpty": {
+    "defaultMessage": "Your landing page appears here as you write."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.publishedEmpty": {
+    "defaultMessage": "Nothing is published yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.publishedEmptyDescription": {
+    "defaultMessage": "The portal shows its default page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.LandingPageTab.publishedTitle": {
+    "defaultMessage": "Published page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedPublishedHint": {
+    "defaultMessage": "This plan was deleted. Republish to remove it from the listing.",
+    "description": "Tooltip on a published plan card whose plan no longer exists."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.deletedSincePublish": {
+    "defaultMessage": "Deleted since last publish",
+    "description": "Helper text on a published plan card whose plan was deleted after it was last published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.edited": {
+    "defaultMessage": "Edited",
+    "description": "Chip after the name of a published plan that was changed after it was last published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedPublishedHint": {
+    "defaultMessage": "Plan was edited after publishing. Republish to apply changes.",
+    "description": "Tooltip on a published plan card whose plan was edited."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.editedSincePublish": {
+    "defaultMessage": "Edited since last publish",
+    "description": "Helper text on a published plan card whose plan was changed after it was last published."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
+    "defaultMessage": "Inactive",
+    "description": "Chip after the name of a published plan whose subscription plan is inactive."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactivePublishedHint": {
+    "defaultMessage": "Plan is inactive. Republish to remove it from the listing.",
+    "description": "Tooltip on a published plan card whose plan is inactive."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue": {
+    "defaultMessage": "Unlimited",
+    "description": "Plan card value when the plan has no configured limit."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
-    "defaultMessage": "Go To Publish",
+    "defaultMessage": "Go to Publish",
     "description": "Card action opening the publish flow for this API on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
+    "defaultMessage": "Status",
+    "description": "Row label for the API's publication status on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.viewInPortal": {
     "defaultMessage": "View in Portal",
@@ -2175,6 +3127,18 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationLoadError.forbiddenTitle": {
     "defaultMessage": "You don’t have permission"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationVersionToggle.draft": {
+    "defaultMessage": "Draft",
+    "description": "Button showing the editable working copy of the listing. Noun."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationVersionToggle.groupLabel": {
+    "defaultMessage": "Version to show",
+    "description": "Accessible name for the Draft / Published buttons that choose which version of the listing is on screen."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublicationVersionToggle.published": {
+    "defaultMessage": "Published",
+    "description": "Button showing the live, read-only version of the listing. Adjective."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
     "defaultMessage": "Deprecate"
@@ -2194,12 +3158,15 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
     "defaultMessage": "Unpublish"
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.edit": {
-    "defaultMessage": "Edit"
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.error": {
+    "defaultMessage": "Unable to load the published specification."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.loading": {
+    "defaultMessage": "Loading the published specification"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
     "defaultMessage": "API definition ({format})",
-    "description": "Accessible name for the editor holding the definition’s own text. {format} is JSON or YAML."
+    "description": "Accessible name for the editor holding the definition’s own text. {format} is JSON, YAML or GraphQL."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLoading": {
     "defaultMessage": "Loading editor"
@@ -2208,21 +3175,46 @@
     "defaultMessage": "Source format",
     "description": "Accessible name for the YAML / JSON toggle buttons."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.invalidOpenApi": {
-    "defaultMessage": "This is not a valid OpenAPI definition:",
-    "description": "Heading above the list of OpenAPI validation errors."
-  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",
-    "description": "{format} is JSON or YAML; {detail} is the parser’s own message naming the line."
+    "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
+    "defaultMessage": "Clear all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription": {
+    "defaultMessage": "Create subscription plans in Manage › Subscription Plans to choose from here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyTitle": {
+    "defaultMessage": "No subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.error": {
+    "defaultMessage": "Unable to load subscription plans."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.loading": {
+    "defaultMessage": "Loading subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedEmptyTitle": {
+    "defaultMessage": "This listing has no subscription plans."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedSummary": {
+    "defaultMessage": "{count, plural, one {<n>#</n> plan published} other {<n>#</n> plans published}}",
+    "description": "<n> wraps the number, which is styled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll": {
+    "defaultMessage": "Select all"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectedSummary": {
+    "defaultMessage": "{count} of {total} plans selected",
+    "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.deprecated": {
     "defaultMessage": "Deprecated",
     "description": "Status chip: this API is still listed on this portal but flagged as deprecated."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.draft": {
-    "defaultMessage": "Draft",
-    "description": "Status chip: this API has unpublished changes saved as a draft on this portal."
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.notPublished": {
+    "defaultMessage": "Not published",
+    "description": "Status chip: this API has never been published to this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationDisplay.published": {
     "defaultMessage": "Published",
@@ -2231,19 +3223,88 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.displayNameRequired": {
     "defaultMessage": "Enter a name."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailSize": {
+    "defaultMessage": "The image must be 2 MB or smaller."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.thumbnailType": {
+    "defaultMessage": "Only JPEG and PNG images are supported."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.urlInvalid": {
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
     "defaultMessage": "Enter a version."
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.gridView": {
-    "defaultMessage": "Grid view",
-    "description": "Accessible label for the button switching to the card grid."
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.noRequestCap": {
+    "defaultMessage": "no request cap"
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectListPage.listView": {
-    "defaultMessage": "List view",
-    "description": "Accessible label for the button switching to the table rows."
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitBandwidth": {
+    "defaultMessage": "{unit} / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Bandwidth limit unit. {unit} is the server-supplied limitCountUnit (e.g. \"MB\"); {amount} and {timeUnit} describe the window."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequests": {
+    "defaultMessage": "requests / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Request-count limit unit. {amount} is how many time units the window spans; {timeUnit} is MINUTE, HOUR, DAY or MONTH."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitTokens": {
+    "defaultMessage": "tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "Token-count limit unit. {amount} and {timeUnit} describe the window."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.back": {
+    "defaultMessage": "Back to projects"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.create": {
+    "defaultMessage": "Create"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.creating": {
+    "defaultMessage": "Creating…",
+    "description": "Label on the submit button while the project is being created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.description.label": {
+    "defaultMessage": "Description",
+    "description": "Label for the project description field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.description.placeholder": {
+    "defaultMessage": "What is this project for?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.id.edit": {
+    "defaultMessage": "Edit project ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.id.error.length": {
+    "defaultMessage": "Project ID must be {min}–{max} characters."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.id.label": {
+    "defaultMessage": "Project ID",
+    "description": "Label for the project handle field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.error.required": {
+    "defaultMessage": "Enter a project name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.error.tooLong": {
+    "defaultMessage": "Name must be {max} characters or fewer."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.label": {
+    "defaultMessage": "Name",
+    "description": "Label for the project name field. A noun, not a command."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.name.placeholder": {
+    "defaultMessage": "e.g. Customer Support Platform"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.notification.createFailed": {
+    "defaultMessage": "Failed to create project"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.notification.created": {
+    "defaultMessage": "Project created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.optional": {
+    "defaultMessage": "(optional)",
+    "description": "Suffix after a field label marking the field as not required."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.title": {
+    "defaultMessage": "Create a project"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectsList.deleteLabel": {
     "defaultMessage": "Delete {name}",
@@ -2271,47 +3332,8 @@
     "defaultMessage": "Updated",
     "description": "Column header over the last-updated timestamp."
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.cancel": {
-    "defaultMessage": "Cancel"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.create": {
-    "defaultMessage": "Create"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.action.creating": {
-    "defaultMessage": "Creating…",
-    "description": "Label on the submit button while the project is being created."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.description.label": {
-    "defaultMessage": "Description",
-    "description": "Label for the project description field. A noun, not a command."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.description.placeholder": {
-    "defaultMessage": "What this project is for (optional)"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.error.tooLong": {
-    "defaultMessage": "Name must be {max} characters or fewer."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.helper": {
-    "defaultMessage": "A unique name for the project within this organization."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.label": {
-    "defaultMessage": "Name",
-    "description": "Label for the project name field. A noun, not a command."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.name.placeholder": {
-    "defaultMessage": "e.g. Retail APIs"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.notification.createFailed": {
-    "defaultMessage": "Failed to create project"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.notification.created": {
-    "defaultMessage": "Project created"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.NewProjectDialog.title": {
-    "defaultMessage": "Create project"
-  },
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.created": {
-    "defaultMessage": "<muted>Created</muted> {date}"
+    "defaultMessage": "Created"
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.descriptionFallback": {
     "defaultMessage": "Add an API to this project."
@@ -2322,23 +3344,752 @@
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.owner": {
     "defaultMessage": "<muted>Owned by</muted> {owner}"
   },
-  "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.settings": {
-    "defaultMessage": "Project settings"
-  },
   "apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.unknown": {
     "defaultMessage": "Unknown"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.mvpScope": {
-    "defaultMessage": "Advanced organization admin settings, governance, marketplace, and developer portal configuration are intentionally excluded from the MVP replacement app.",
-    "description": "Body copy explaining which settings areas the MVP deliberately leaves out."
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.create": {
+    "defaultMessage": "Create meter"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.subtitle": {
-    "defaultMessage": "Minimal settings overview for {subject}.",
-    "description": "Sub-heading of the Settings page. {subject} is the display name of the organization or project being configured — never translated."
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.delete": {
+    "defaultMessage": "Delete {name}",
+    "description": "Accessible name of the per-row delete icon button; {name} is the meter."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title": {
-    "defaultMessage": "Settings",
-    "description": "Heading of the Settings page."
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.action.edit": {
+    "defaultMessage": "Edit {name}",
+    "description": "Accessible name of the per-row edit icon button; {name} is the meter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.actions": {
+    "defaultMessage": "Actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.filters": {
+    "defaultMessage": "Filters",
+    "description": "Column of the names of the properties the prices of each meter may filter on."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.name": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.column.type": {
+    "defaultMessage": "Type"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.blockedMessage": {
+    "defaultMessage": "\"{name}\" is in use and can't be deleted.",
+    "description": "Shown in the delete dialog, with Delete disabled, for a meter that plans price."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.confirmAction": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.failed": {
+    "defaultMessage": "Failed to delete the meter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.message": {
+    "defaultMessage": "This permanently deletes \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.succeeded": {
+    "defaultMessage": "Deleted meter \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.delete.title": {
+    "defaultMessage": "Delete meter"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.action": {
+    "defaultMessage": "Create meter"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.description": {
+    "defaultMessage": "A meter counts the usage a paid plan charges for. Create one, then charge for it in a plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.empty.title": {
+    "defaultMessage": "Create your first meter"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.error.message": {
+    "defaultMessage": "Unable to load meters"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.loading": {
+    "defaultMessage": "Loading meters"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noFilters": {
+    "defaultMessage": "None",
+    "description": "Filters cell of a meter whose prices cannot filter on any property."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noMatches.description": {
+    "defaultMessage": "Try a different search term."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.noMatches.title": {
+    "defaultMessage": "No matching meters"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.next": {
+    "defaultMessage": "Next page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.previous": {
+    "defaultMessage": "Previous page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.range": {
+    "defaultMessage": "{from}–{to} of {count, number}",
+    "description": "Pager summary: the meter rows shown on this page out of the total."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.pagination.rowsPerPage": {
+    "defaultMessage": "Meters per page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.searchPlaceholder": {
+    "defaultMessage": "Search meters"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.subtitle": {
+    "defaultMessage": "Define the usage that paid subscription plans charge for."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.MetersPage.title": {
+    "defaultMessage": "Meters"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.create": {
+    "defaultMessage": "Create plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.delete": {
+    "defaultMessage": "Delete {name}",
+    "description": "Accessible name of the per-row delete icon button; {name} is the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.action.edit": {
+    "defaultMessage": "Edit {name}",
+    "description": "Accessible name of the per-row edit icon button; {name} is the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.actions": {
+    "defaultMessage": "Actions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.limits": {
+    "defaultMessage": "Limits"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.name": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.pricing": {
+    "defaultMessage": "Pricing"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.status": {
+    "defaultMessage": "Status"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.blockedMessage": {
+    "defaultMessage": "\"{name}\" is in use and can't be deleted.",
+    "description": "Shown in the delete dialog, with Delete disabled, for a plan in use."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.checking": {
+    "defaultMessage": "Checking whether \"{name}\" is in use…",
+    "description": "Shown in the delete dialog while the plan's usage is read; Delete is disabled meanwhile."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.confirmAction": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.confirmInputLabel": {
+    "defaultMessage": "Type the plan name to confirm"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.failed": {
+    "defaultMessage": "Failed to delete the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.message": {
+    "defaultMessage": "This permanently deletes \"{name}\". This can’t be undone."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.succeeded": {
+    "defaultMessage": "Deleted plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.delete.title": {
+    "defaultMessage": "Delete plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.action": {
+    "defaultMessage": "Create plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.description": {
+    "defaultMessage": "Plans define how many requests an app can make in a time window. Enable one on the APIs you publish."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.title": {
+    "defaultMessage": "Create your first subscription plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.error.message": {
+    "defaultMessage": "Unable to load subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.limitChip": {
+    "defaultMessage": "req · {count} / {amount, plural, one {} other {# }}{unit, select, MINUTE {min} HOUR {hr} DAY {day} MONTH {mo} other {}}",
+    "description": "Compact monospace tag summarizing one throttling limit, e.g. \"req · 1000 / hr\" or \"req · 100000 / 2 hr\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.loading": {
+    "defaultMessage": "Loading subscription plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.noMatches.description": {
+    "defaultMessage": "Try a different search term."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.noMatches.title": {
+    "defaultMessage": "No matching plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.notification.activated": {
+    "defaultMessage": "Activated plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.notification.deactivated": {
+    "defaultMessage": "Deactivated plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.next": {
+    "defaultMessage": "Next page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.previous": {
+    "defaultMessage": "Previous page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.range": {
+    "defaultMessage": "{from}–{to} of {count, number}",
+    "description": "Pager summary: the plan rows shown on this page out of the total."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.pagination.rowsPerPage": {
+    "defaultMessage": "Plans per page"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.searchPlaceholder": {
+    "defaultMessage": "Search plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.status.active": {
+    "defaultMessage": "{name}, active",
+    "description": "Accessible name of the per-row status switch when the plan is active."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.status.inactive": {
+    "defaultMessage": "{name}, inactive",
+    "description": "Accessible name of the per-row status switch when the plan is inactive."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.subtitle": {
+    "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.title": {
+    "defaultMessage": "Subscription Plans"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.unlimitedChip": {
+    "defaultMessage": "req · ∞",
+    "description": "Chip shown for a plan with no configured limits."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.update.failed": {
+    "defaultMessage": "Failed to update the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.addFilter": {
+    "defaultMessage": "Add filter",
+    "description": "Opens the list of properties to add to a meter's filters: our gateway's, then Custom."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.close": {
+    "defaultMessage": "Close"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.createFailed": {
+    "defaultMessage": "Failed to add the meter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.created": {
+    "defaultMessage": "Added meter \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.custom": {
+    "defaultMessage": "Custom",
+    "description": "The last choice when adding a filter property: a property with an empty name and key to fill in."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.descriptionLabel": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.editTitle": {
+    "defaultMessage": "Edit meter"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKey": {
+    "defaultMessage": "Key",
+    "description": "The field in the gateway's events that a filter property reads, such as \"request.verb\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyInvalid": {
+    "defaultMessage": "Use 1 to 255 characters with no spaces.",
+    "description": "Shown under an event key that is too long or has spaces."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyRepeated": {
+    "defaultMessage": "More than one property reads the event key {value}.",
+    "description": "Shown under the filters of a meter; {value} is the event key, such as \"request.verb\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.eventKeyRequired": {
+    "defaultMessage": "Enter the event key to add up.",
+    "description": "Shown under the empty event key of a Tokens meter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filterField": {
+    "defaultMessage": "Property",
+    "description": "Accessible name of the name of a filter row: the name of a property, such as \"HTTP method\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filterHeading": {
+    "defaultMessage": "Property",
+    "description": "Column heading over the name of each property in a meter's filters, such as \"HTTP method\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.filtersLabel": {
+    "defaultMessage": "Filters",
+    "description": "Heading of the list of properties a meter's prices may filter on."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.lockedSave": {
+    "defaultMessage": "There are plans using this meter.",
+    "description": "Shown next to the turned-off Save of a meter that plans price, which cannot be updated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameLabel": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.namePlaceholder": {
+    "defaultMessage": "e.g. Requests"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameRequired": {
+    "defaultMessage": "Enter a name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyKeyRequired": {
+    "defaultMessage": "Enter the event key of each property.",
+    "description": "Shown under a meter's filters when a property's event key is empty."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyNameInvalid": {
+    "defaultMessage": "Give each property a name of 1 to 40 characters.",
+    "description": "Shown under a meter's filters when a property's name is empty or too long."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyNameRepeated": {
+    "defaultMessage": "The meter has the property {value} more than once.",
+    "description": "Shown under the filters of a meter; {value} is the name, such as \"Region\", which counts once whatever its case."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.removeFilter": {
+    "defaultMessage": "Remove {field}",
+    "description": "Accessible name of the remove button of a filter row; {field} is the property, such as \"HTTP method\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.removeUnnamed": {
+    "defaultMessage": "Remove this property",
+    "description": "Accessible name of the remove button of a filter row whose name is empty."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.saveChanges": {
+    "defaultMessage": "Save changes"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.saving": {
+    "defaultMessage": "Saving…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.submitCreate": {
+    "defaultMessage": "Add Meter"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.titleCreate": {
+    "defaultMessage": "Add Meter"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.tokenKeyLabel": {
+    "defaultMessage": "Token key",
+    "description": "Label of a Tokens meter's key: the event key whose number of tokens the meter adds up."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.typeLabel": {
+    "defaultMessage": "Type",
+    "description": "What a meter counts: requests or tokens."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.updateFailed": {
+    "defaultMessage": "Failed to save the meter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.updated": {
+    "defaultMessage": "Saved meter \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterPicker.loading": {
+    "defaultMessage": "Loading meters"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterPicker.noMatches": {
+    "defaultMessage": "No matching meters"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterPicker.placeholder": {
+    "defaultMessage": "Search meters",
+    "description": "Placeholder of the meter field of a usage price, before a meter is picked."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.addCondition": {
+    "defaultMessage": "Add a condition on {field}",
+    "description": "Accessible name of the button adding a second comparison on a property, e.g. \"Prompt tokens\", so the two make a range."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.addPrice": {
+    "defaultMessage": "Add price"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.addTier": {
+    "defaultMessage": "Add tier"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.amountLabel": {
+    "defaultMessage": "Amount",
+    "description": "What a flat rate plan charges every billing period."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.chargeEvery": {
+    "defaultMessage": "Charge every"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.createHint": {
+    "defaultMessage": "Pricing can't be updated once the plan is created.",
+    "description": "Shown under the Paid plan switch of a new plan once it is turned on: the pricing given now is final."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.currency": {
+    "defaultMessage": "Currency"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.eventLabel": {
+    "defaultMessage": "Event",
+    "description": "What the chosen meter counts, shown beside it: \"Requests\" or \"Tokens\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.filterOperator": {
+    "defaultMessage": "Filter operator"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.filterValues": {
+    "defaultMessage": "Filter values"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.filtersHint": {
+    "defaultMessage": "Leave a filter empty to count every value."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.filtersLabel": {
+    "defaultMessage": "Filters",
+    "description": "Which of the meter's requests a usage price counts."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.lockedHint": {
+    "defaultMessage": "Pricing can't be updated once a plan is created.",
+    "description": "Shown under the Paid plan switch of an existing plan, whose pricing is shown but cannot be edited."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.meter": {
+    "defaultMessage": "Meter"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.model": {
+    "defaultMessage": "Pricing model"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.model.graduated": {
+    "defaultMessage": "Graduated tiers"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.model.perUnit": {
+    "defaultMessage": "Per unit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.model.volume": {
+    "defaultMessage": "Volume tiers"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noCurrencies": {
+    "defaultMessage": "No currencies match",
+    "description": "Shown in the currency list when no currency matches what was typed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noFilters": {
+    "defaultMessage": "This meter has no filters.",
+    "description": "Shown under Filters of a usage price whose meter lists no properties to filter on."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noMeters": {
+    "defaultMessage": "Create a meter in Settings › Meters to charge for usage."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidHelper": {
+    "defaultMessage": "Subscribers pay through each API Portal the plan is published to. An API Portal gets this pricing when the plan is first published there."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidLabel": {
+    "defaultMessage": "Paid plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.per": {
+    "defaultMessage": "per",
+    "description": "Between a unit price and its batch size, e.g. \"$ 0.01 per 1 request\" or \"$ 2.50 per 1000000 tokens\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.period.month": {
+    "defaultMessage": "Month"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.period.year": {
+    "defaultMessage": "Year"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.priceTitle": {
+    "defaultMessage": "Price {position}",
+    "description": "Heading of one usage price of a plan, numbered from 1."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.pricesLabel": {
+    "defaultMessage": "Prices"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.pricing": {
+    "defaultMessage": "Pricing",
+    "description": "Whether a paid plan charges a flat rate or for usage."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.pricing.flatRate": {
+    "defaultMessage": "Flat rate"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.pricing.usageBased": {
+    "defaultMessage": "Usage based"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.amount": {
+    "defaultMessage": "Enter the unit price of price {position} as an amount such as 0.01."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.conflict": {
+    "defaultMessage": "Price {position}: {field} takes one filter, or one or two comparisons.",
+    "description": "{field} is the name of a property, such as \"Prompt tokens\"; two comparisons make a range, such as more than 100 and at most 500."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.filterNotAllowed": {
+    "defaultMessage": "Price {position} filters on {field}, which the meter {meter} doesn't have.",
+    "description": "{meter} is the meter's id; {field} is the name of a property, such as \"HTTP method\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.flatAmount": {
+    "defaultMessage": "Enter the flat rate as an amount above zero, such as 20.00."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.meterMissing": {
+    "defaultMessage": "Pick the meter that counts the units of price {position}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.noPrices": {
+    "defaultMessage": "Add at least one price."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.number": {
+    "defaultMessage": "Price {position}: the value of {field} must be a whole number from 0 to 1,000,000,000,000.",
+    "description": "{field} is the name of a property, such as \"Prompt tokens\", compared with a number by more than, at least, less than or at most."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.overlap": {
+    "defaultMessage": "Prices {position} and {other} both count the same requests of the meter {meter}; give them different filters."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.quantity": {
+    "defaultMessage": "The units of price {position} must be a whole number from 1 to 1,000,000,000."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.range": {
+    "defaultMessage": "Price {position}: the conditions on {field} can't all be true.",
+    "description": "{field} is the name of a property, such as \"Prompt tokens\"; its two comparisons leave no number, e.g. more than 500 and at most 100."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tiers": {
+    "defaultMessage": "Each tier of price {position} needs a unit price, a flat fee or both; upper bounds must increase, and the last tier has none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.tooManyFilters": {
+    "defaultMessage": "Price {position} has more than 20 filters; empty some of them."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.problem.values": {
+    "defaultMessage": "Price {position}: {field} takes one value for equals, does not equal and starts with, and 1 to 20 for is one of and is not one of, each at most 255 characters.",
+    "description": "{field} is the name of a property, such as \"HTTP method\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.quantity": {
+    "defaultMessage": "Units per price"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removeCondition": {
+    "defaultMessage": "Remove this condition on {field}",
+    "description": "Accessible name of the button removing the second comparison on a property, e.g. \"Prompt tokens\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removePrice": {
+    "defaultMessage": "Remove price {position}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.removeTier": {
+    "defaultMessage": "Remove tier"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierFlat": {
+    "defaultMessage": "Flat fee"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierFrom": {
+    "defaultMessage": "{start} –",
+    "description": "Start of a tier's unit range, before its upper bound, e.g. \"1001 –\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierUnit": {
+    "defaultMessage": "Per unit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierUnits": {
+    "defaultMessage": "Units"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.tierUpTo": {
+    "defaultMessage": "Up to"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.unitPrice": {
+    "defaultMessage": "Unit price"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.units": {
+    "defaultMessage": "{unit, select, request {{quantity, plural, one {request} other {requests}}} token {{quantity, plural, one {token} other {tokens}}} other {{quantity, plural, one {unit} other {units}}}}",
+    "description": "Follows the batch size of a unit price, in what the chosen meter counts, e.g. \"per 1 request\" or \"per 1000000 tokens\"; \"unit\" until a meter is chosen."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.valuesPlaceholder": {
+    "defaultMessage": "Separate values with commas",
+    "description": "Placeholder of the values of an \"is one of\" or \"is not one of\" filter."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.addPlan": {
+    "defaultMessage": "Add plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.adding": {
+    "defaultMessage": "Adding…",
+    "description": "Label on the submit button while a new plan is being created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.close": {
+    "defaultMessage": "Close",
+    "description": "Accessible name of the icon button that dismisses the dialog."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.saveChanges": {
+    "defaultMessage": "Save changes"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.saving": {
+    "defaultMessage": "Saving…",
+    "description": "Label on the submit button while edits to an existing plan are being saved."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.addLimit": {
+    "defaultMessage": "Add limit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.conflict.message": {
+    "defaultMessage": "A plan named \"{name}\" already exists in this organization. Choose a different name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.conflict.title": {
+    "defaultMessage": "Plan not created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.error.invalid": {
+    "defaultMessage": "Enter a valid date"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.helper": {
+    "defaultMessage": "The plan stops accepting subscriptions after this date."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.label": {
+    "defaultMessage": "Expiry date"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.inUseNote": {
+    "defaultMessage": "This plan is in use. To change its name or limit, create a new plan.",
+    "description": "Shown when editing a plan that APIs offer or subscriptions use; the name and limit fields are disabled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.countLabel": {
+    "defaultMessage": "Request count",
+    "description": "Accessible name of the numeric field holding how many requests are allowed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.error": {
+    "defaultMessage": "Enter a whole number of at least 1."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.per": {
+    "defaultMessage": "/ per"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.remove": {
+    "defaultMessage": "Remove limit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.bandwidth": {
+    "defaultMessage": "Bandwidth"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.comingSoon": {
+    "defaultMessage": "Coming soon",
+    "description": "Chip shown next to a limit type that is not selectable yet."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.requestCount": {
+    "defaultMessage": "Request count"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.tokenCount": {
+    "defaultMessage": "Token count"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.typeLabel": {
+    "defaultMessage": "Limit type"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.unitLabel": {
+    "defaultMessage": "Time window unit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.helper": {
+    "defaultMessage": "Leave empty for an unlimited plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.label": {
+    "defaultMessage": "Limits"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.conflict": {
+    "defaultMessage": "A plan with this name already exists"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.invalidChars": {
+    "defaultMessage": "Use letters or numbers in the name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.required": {
+    "defaultMessage": "Enter a display name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.label": {
+    "defaultMessage": "Plan name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.placeholder": {
+    "defaultMessage": "e.g. Gold"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.createFailed": {
+    "defaultMessage": "Failed to create the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.created": {
+    "defaultMessage": "Created plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.updateFailed": {
+    "defaultMessage": "Failed to update the plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.updated": {
+    "defaultMessage": "Updated plan \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.helper": {
+    "defaultMessage": "Reject requests that exceed the limit."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.label": {
+    "defaultMessage": "Block requests when quota is reached"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.create": {
+    "defaultMessage": "Add subscription plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.edit": {
+    "defaultMessage": "Edit subscription plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.day": {
+    "defaultMessage": "Day"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.hour": {
+    "defaultMessage": "Hour"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.minute": {
+    "defaultMessage": "Minute"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.month": {
+    "defaultMessage": "Month"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.equals": {
+    "defaultMessage": "equals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.greaterThan": {
+    "defaultMessage": "more than"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.greaterThanOrEqual": {
+    "defaultMessage": "at least"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.in": {
+    "defaultMessage": "is one of"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.lessThan": {
+    "defaultMessage": "less than"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.lessThanOrEqual": {
+    "defaultMessage": "at most"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.notEquals": {
+    "defaultMessage": "does not equal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.notIn": {
+    "defaultMessage": "is not one of"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.startsWith": {
+    "defaultMessage": "starts with",
+    "description": "A filter that matches the values beginning with the given text: /orders matches /orders/{id} and /orders-archive."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.apiType": {
+    "defaultMessage": "API type",
+    "description": "A property our gateway reports for each request, offered as a filter property: the kind of API it went to, such as a REST API or an LLM provider."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.completionTokens": {
+    "defaultMessage": "Completion tokens",
+    "description": "A token count our gateway reports for each AI API request: the tokens of the answer the model returns."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.mcpMethod": {
+    "defaultMessage": "MCP method",
+    "description": "A property our gateway reports for each request, offered as a filter property: the JSON-RPC method of a request to an MCP server, such as tools/call. Keep \"MCP\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.method": {
+    "defaultMessage": "HTTP method",
+    "description": "A property our gateway reports for each request, offered as a filter property: its HTTP method, such as GET."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.promptTokens": {
+    "defaultMessage": "Prompt tokens",
+    "description": "A token count our gateway reports for each AI API request: the tokens of the prompt sent to the model."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.resource": {
+    "defaultMessage": "Resource",
+    "description": "A property our gateway reports for each request, offered as a filter property: the resource of the API definition it matched, such as /orders/{id}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.statusCode": {
+    "defaultMessage": "Status code",
+    "description": "A property our gateway reports for each request, offered as a filter property: the HTTP status code of the response."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.tool": {
+    "defaultMessage": "Tool",
+    "description": "A property our gateway reports for each request, offered as a filter property: the name of the MCP server tool a tool call runs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.preset.totalTokens": {
+    "defaultMessage": "Total tokens",
+    "description": "A token count our gateway reports for each AI API request: the prompt and completion tokens together."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.type.requestCount": {
+    "defaultMessage": "Requests"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.type.tokens": {
+    "defaultMessage": "Tokens"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.pricingFormat.fee": {
+    "defaultMessage": "{amount} / {period, select, YEAR {year} other {month}}",
+    "description": "A flat rate plan, e.g. \"$20.00 / month\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.pricingFormat.free": {
+    "defaultMessage": "Free"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.pricingFormat.graduated": {
+    "defaultMessage": "Graduated tiers, billed {period, select, YEAR {yearly} other {monthly}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.pricingFormat.perUnit": {
+    "defaultMessage": "{amount} per {unit, select, request {{quantity, plural, one {request} other {# requests}}} token {{quantity, plural, one {token} other {# tokens}}} other {{quantity, plural, one {unit} other {# units}}}}, billed {period, select, YEAR {yearly} other {monthly}}",
+    "description": "A usage based plan with one per-unit price, e.g. \"$0.01 per request, billed monthly\" or \"$2.50 per 1,000,000 tokens, billed monthly\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.pricingFormat.usagePrices": {
+    "defaultMessage": "{prices, plural, one {# usage price} other {# usage prices}}, billed {period, select, YEAR {yearly} other {monthly}}",
+    "description": "A usage based plan with several prices, e.g. \"3 usage prices, billed monthly\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.pricingFormat.volume": {
+    "defaultMessage": "Volume tiers, billed {period, select, YEAR {yearly} other {monthly}}"
   },
   "apiControlPlane.pages.appShell.appShellPages.system.NotFoundPage.body": {
     "defaultMessage": "Legacy routes that are outside the MVP are intentionally not exposed."
@@ -2719,6 +4470,26 @@
     "defaultMessage": "cURL command",
     "description": "Heading of the generated command block. A noun."
   },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.callModeLabel": {
+    "defaultMessage": "Send requests through the proxy or directly",
+    "description": "Accessible label for the toggle between the two ways of sending a request."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.directHint": {
+    "defaultMessage": "Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.",
+    "description": "Tooltip shown while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.directMode": {
+    "defaultMessage": "Direct",
+    "description": "Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyHint": {
+    "defaultMessage": "Requests go through the portal server, so the gateway does not need a CORS policy.",
+    "description": "Tooltip shown while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching."
+  },
+  "apiControlPlane.pages.test.console.ExecuteModeSwitch.proxyMode": {
+    "defaultMessage": "Through proxy",
+    "description": "Toggle option relaying the request via the portal server. Describes the route a request takes, not a command."
+  },
   "apiControlPlane.pages.test.console.GatewaySection.copyEndpoint": {
     "defaultMessage": "Copy endpoint URL",
     "description": "Accessible label for the button copying the gateway invoke URL."
@@ -2791,6 +4562,20 @@
     "defaultMessage": "Test key",
     "description": "Accessible label for the field showing the test key."
   },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.allMethods": {
+    "defaultMessage": "All methods",
+    "description": "Option that leaves the resource list unfiltered by HTTP method."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.methodLabel": {
+    "defaultMessage": "Filter by method",
+    "description": "Accessible label for the HTTP method filter above the resource list."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.noResources": {
+    "defaultMessage": "No resources match your search."
+  },
+  "apiControlPlane.pages.test.console.TestConsoleSpecViewer.searchPlaceholder": {
+    "defaultMessage": "Search resources by path or summary"
+  },
   "apiControlPlane.pages.test.console.TestKeySection.expired": {
     "defaultMessage": "The key has expired.",
     "description": "Replaces the countdown once the test key is no longer valid. A whole sentence, because it follows another one in the same line."
@@ -2823,23 +4608,66 @@
     "defaultMessage": "Test key",
     "description": "Heading of the section holding the credential the console sends. A noun."
   },
+  "apiControlPlane.pages.test.console.proxyTransport.apiNotFound": {
+    "defaultMessage": "This API could not be found. Try reloading the page.",
+    "description": "Shown when the control plane does not return the API being tested."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.busy": {
+    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
+    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayNoEndpoint": {
+    "defaultMessage": "The selected gateway has no endpoint configured."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayNotDeployed": {
+    "defaultMessage": "This API is not deployed to the selected gateway. Deploy it first, then try again.",
+    "description": "Actionable: the gateway exists but the API has not been deployed to it."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.gatewayUnsupportedScheme": {
+    "defaultMessage": "The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.invalidRequest": {
+    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
+    "description": "Shown when the portal refused to send the request the form describes."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.noTarget": {
+    "defaultMessage": "Select a deployed gateway before sending a request."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.sessionExpired": {
+    "defaultMessage": "Your session has expired. Sign in again to continue testing."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.targetNotAllowed": {
+    "defaultMessage": "The portal is not configured to reach this gateway. Ask an administrator to allow it.",
+    "description": "Shown only when the egress policy refuses the target — an operator setting, not something the user can fix. Deliberately vague about the policy itself."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.tooLarge": {
+    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.unreachable": {
+    "defaultMessage": "The portal could not reach this gateway.",
+    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
+  },
+  "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
+    "defaultMessage": "The gateway did not respond in time."
+  },
+  "apiControlPlane.permissions.useCan.denied": {
+    "defaultMessage": "You don't have permission to perform this action.",
+    "description": "Shown when the signed-in user's scopes do not allow an action; as a tooltip on the disabled control, and as a toast when the server refuses the request. Deliberately does not name the missing scope: that would tell a probing caller what to look for, and means nothing to the person reading it."
+  },
   "apiControlPlane.projects.ProjectQuickActions.importApi": {
     "defaultMessage": "Import an OpenAPI definition"
-  },
-  "apiControlPlane.projects.ProjectQuickActions.inviteMember": {
-    "defaultMessage": "Invite a team member"
   },
   "apiControlPlane.projects.ProjectQuickActions.title": {
     "defaultMessage": "Quick actions"
   },
   "apiControlPlane.projects.ProjectStatistics.apis": {
-    "defaultMessage": "APIs"
+    "defaultMessage": "API types"
   },
   "apiControlPlane.projects.ProjectStatistics.async": {
     "defaultMessage": "Async / events"
-  },
-  "apiControlPlane.projects.ProjectStatistics.deployments": {
-    "defaultMessage": "Deployments"
   },
   "apiControlPlane.projects.ProjectStatistics.graphql": {
     "defaultMessage": "GraphQL"
@@ -2853,13 +4681,14 @@
   "apiControlPlane.projects.ProjectStatistics.selectType": {
     "defaultMessage": "Filter APIs by {type}"
   },
-  "apiControlPlane.permissions.useCan.denied": {
-    "defaultMessage": "You don't have permission to perform this action.",
-    "description": "Shown when the signed-in user's scopes do not allow an action; as a tooltip on the disabled control, and as a toast when the server refuses the request. Deliberately does not name the missing scope: that would tell a probing caller what to look for, and means nothing to the person reading it."
+  "apiControlPlane.projects.ProjectStatistics.total": {
+    "defaultMessage": "Total"
   },
-  "apiListPage.count": {
-    "defaultMessage": "{count, plural, one {# API} other {# APIs}}",
-    "description": "Heading above the listing, counting every match, not the page."
+  "apiListPage.clearFilters": {
+    "defaultMessage": "Clear filters"
+  },
+  "apiListPage.clearSearch": {
+    "defaultMessage": "Clear search"
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",
@@ -2913,10 +4742,6 @@
   "apiListPage.searchPlaceholder": {
     "defaultMessage": "Search APIs"
   },
-  "apiListPage.title": {
-    "defaultMessage": "APIs",
-    "description": "Page title for the API list page"
-  },
   "apiListPage.view.grid": {
     "defaultMessage": "Grid view",
     "description": "Accessible label for the button switching to the card grid."
@@ -2926,16 +4751,16 @@
     "description": "Accessible label for the button switching to compact rows."
   },
   "apiListView.column.api": {
-    "defaultMessage": "API"
+    "defaultMessage": "Name"
+  },
+  "apiListView.column.description": {
+    "defaultMessage": "Description"
   },
   "apiListView.column.type": {
     "defaultMessage": "Type"
   },
   "apiListView.column.updated": {
-    "defaultMessage": "Updated"
-  },
-  "apiListView.column.version": {
-    "defaultMessage": "Version"
+    "defaultMessage": "Last Updated"
   },
   "appLayout.breadcrumb.home": {
     "defaultMessage": "Home"
@@ -3188,6 +5013,10 @@
     "defaultMessage": "The specification is not a valid OpenAPI document:",
     "description": "Heading above spec validation errors shown either after an import or when Save is clicked."
   },
+  "develop.definition.DefinitionPanel.saveValidationUnavailable": {
+    "defaultMessage": "The specification could not be validated. Please try again.",
+    "description": "Shown in the save-bar error list when the backend validation call itself fails (network / server error), so the user knows the save was blocked but not by their spec content."
+  },
   "develop.definition.DefinitionPanel.title": {
     "defaultMessage": "Definition"
   },
@@ -3323,9 +5152,17 @@
   "gateways.create.type.regular.title": {
     "defaultMessage": "API Gateway"
   },
+  "gateways.create.version.badge.latest": {
+    "defaultMessage": "Latest",
+    "description": "Badge marking the newest gateway release offered for the chosen type."
+  },
   "gateways.create.version.badge.lts": {
     "defaultMessage": "LTS",
     "description": "Badge marking a long-term-support gateway build."
+  },
+  "gateways.create.version.badge.sts": {
+    "defaultMessage": "STS",
+    "description": "Badge marking a short-term-support gateway build."
   },
   "gateways.create.version.error.required": {
     "defaultMessage": "Choose a gateway version."
@@ -3333,9 +5170,13 @@
   "gateways.create.version.label": {
     "defaultMessage": "Gateway Version"
   },
+  "gateways.create.version.noneConfigured": {
+    "defaultMessage": "No release of this gateway type is configured for this console. It is registered as version {version}.",
+    "description": "Shown under a disabled version list when the chosen gateway type has no configured releases. {version} is a number such as 1.0."
+  },
   "gateways.create.version.option": {
-    "defaultMessage": "api-gateway v{version}",
-    "description": "One entry in the gateway version list; {version} is a number such as 1.0."
+    "defaultMessage": "{distribution} v{version}",
+    "description": "One entry in the gateway version list. {distribution} is a distribution name such as api-gateway (do not translate); {version} is a number such as 1.2."
   },
   "gateways.detail.GetStarted.download.intro": {
     "defaultMessage": "Run this command in your terminal to download the gateway:"
@@ -3387,6 +5228,10 @@
   "gateways.detail.GetStarted.reconfiguring": {
     "defaultMessage": "Generating…"
   },
+  "gateways.detail.GetStarted.setup.intro": {
+    "defaultMessage": "Run the setup script. It creates the listener TLS certificate, the encryption key, and the api-platform.env file:",
+    "description": "api-platform.env is a file name — keep it exactly as written."
+  },
   "gateways.detail.GetStarted.start.enter": {
     "defaultMessage": "1. Navigate to the gateway folder."
   },
@@ -3394,14 +5239,29 @@
     "defaultMessage": "2. Run this command to start the gateway using the configs/keys.env file created in Step 2:",
     "description": "configs/keys.env is a file path — keep it exactly as written."
   },
+  "gateways.detail.GetStarted.start.runSetupScript": {
+    "defaultMessage": "2. Run this command to start the gateway using the api-platform.env file:",
+    "description": "api-platform.env is a file name — keep it exactly as written."
+  },
   "gateways.detail.GetStarted.step.configure": {
     "defaultMessage": "Step 2: Configure the Gateway"
+  },
+  "gateways.detail.GetStarted.step.configureAfterSetup": {
+    "defaultMessage": "Step 3: Configure the Gateway",
+    "description": "Configure step heading for gateway releases that have a setup step before it."
   },
   "gateways.detail.GetStarted.step.download": {
     "defaultMessage": "Step 1: Download the Gateway"
   },
+  "gateways.detail.GetStarted.step.setup": {
+    "defaultMessage": "Step 2: Set up the Gateway"
+  },
   "gateways.detail.GetStarted.step.start": {
     "defaultMessage": "Step 3: Start the Gateway"
+  },
+  "gateways.detail.GetStarted.step.startAfterSetup": {
+    "defaultMessage": "Step 4: Start the Gateway",
+    "description": "Start step heading for gateway releases that have a setup step before it."
   },
   "gateways.detail.GetStarted.tab.docker": {
     "defaultMessage": "Docker",
@@ -3648,10 +5508,6 @@
     "defaultMessage": "List view",
     "description": "Accessible label for the button switching to compact rows."
   },
-  "project.card.actionsLabel": {
-    "defaultMessage": "Project actions",
-    "description": "Accessible label for the button opening the card overflow menu."
-  },
   "project.card.apiCount": {
     "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
   },
@@ -3663,8 +5519,8 @@
     "defaultMessage": "DEFAULT",
     "description": "Badge marking the organization’s default project."
   },
-  "project.card.delete": {
-    "defaultMessage": "Delete"
+  "project.card.deleteNamed": {
+    "defaultMessage": "Delete {name}"
   },
   "project.card.deployedCount": {
     "defaultMessage": "{count} deployed"
@@ -3684,8 +5540,9 @@
     "defaultMessage": "Updated {relative}",
     "description": "Footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
   },
-  "project.list.count": {
-    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
+  "project.list.clearSearch": {
+    "defaultMessage": "Clear search",
+    "description": "Button that empties the search box when no project matches it."
   },
   "project.list.createProjectButton": {
     "defaultMessage": "Create Project"
@@ -3736,26 +5593,6 @@
   },
   "project.list.searchPlaceholder": {
     "defaultMessage": "Search projects"
-  },
-  "project.list.sort.nameAscending": {
-    "defaultMessage": "Name (A–Z)",
-    "description": "Sort option: alphabetical by project name, ascending."
-  },
-  "project.list.sort.nameDescending": {
-    "defaultMessage": "Name (Z–A)",
-    "description": "Sort option: alphabetical by project name, descending."
-  },
-  "project.list.sort.newest": {
-    "defaultMessage": "Newest first",
-    "description": "Sort option: by creation date, most recent project first."
-  },
-  "project.list.sort.oldest": {
-    "defaultMessage": "Oldest first",
-    "description": "Sort option: by creation date, earliest project first."
-  },
-  "project.list.sortLabel": {
-    "defaultMessage": "Sort by",
-    "description": "Label for the control choosing the project list order."
   },
   "project.list.subHeader.default": {
     "defaultMessage": "Select a project to manage APIs."
@@ -3813,5 +5650,8 @@
   },
   "summary.card.see.more": {
     "defaultMessage": "See more"
+  },
+  "test.feature": {
+    "defaultMessage": "Compliance reporting"
   }
 }

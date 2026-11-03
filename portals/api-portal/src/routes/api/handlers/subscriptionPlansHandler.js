@@ -21,11 +21,13 @@
  * Tag: Subscription Plans
  */
 const apiMetadataService = require('../../../services/apiMetadataService');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
     listSubscriptionPlans: apiMetadataService.listSubscriptionPlans,
-    addSubscriptionPlans: apiMetadataService.addSubscriptionPlans,
-    putSubscriptionPlans: apiMetadataService.putSubscriptionPlans,
+    addSubscriptionPlans: compose(requireCsrfForMutatingApi, apiMetadataService.addSubscriptionPlans),
+    putSubscriptionPlans: compose(requireCsrfForMutatingApi, apiMetadataService.putSubscriptionPlans),
     getSubscriptionPlan: apiMetadataService.getSubscriptionPlan,
-    deleteSubscriptionPlan: apiMetadataService.deleteSubscriptionPlan,
+    deleteSubscriptionPlan: compose(requireCsrfForMutatingApi, apiMetadataService.deleteSubscriptionPlan),
 };

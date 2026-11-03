@@ -91,7 +91,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             lastName: req.user.lastName,
             email: req.user.email,
             imageURL: req.user.imageURL,
-            isAdmin: req.user.isAdmin,
+            isAdmin: req.user.isAdmin && !req.foreignOrgSession,
         } : null;
         const resolvedFlows = apiWorkflows.map(flow => {
             const sources = extractSourceDescriptions(flow);
@@ -130,7 +130,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             const themedLayout = styleContent
                 ? rewriteViewStyles(dbLayout, orgId, viewName)
                 : dbLayout;
-            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
+            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent, orgId);
         } else {
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/api-workflows', viewName);
         }
@@ -174,7 +174,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             lastName: req.user.lastName,
             email: req.user.email,
             imageURL: req.user.imageURL,
-            isAdmin: req.user.isAdmin,
+            isAdmin: req.user.isAdmin && !req.foreignOrgSession,
         } : null;
         const rawContent = apiWorkflow.file_content;
         let fileContentStr = '';
@@ -215,7 +215,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             const themedLayout = styleContent
                 ? rewriteViewStyles(dbLayout, orgId, viewName)
                 : dbLayout;
-            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
+            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent, orgId);
         } else {
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/api-workflows/detail', viewName);
         }

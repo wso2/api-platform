@@ -35,7 +35,8 @@ import { routes } from '@/routes/paths';
 // Same cap `ApiPortalPublicationsList` uses to read every portal in one page.
 const LIST_LIMIT = 100;
 
-const messages = defineMessages({
+/** The stepper's step labels, shared with the other API kinds' banners. */
+export const progressStepMessages = defineMessages({
   stepCreate: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ProgressBanner.step.create',
     defaultMessage: 'Create',
@@ -64,7 +65,7 @@ const messages = defineMessages({
 
 type StepState = 'complete' | 'active' | 'upcoming';
 
-type ProgressStep = {
+export type ProgressStep = {
   key: string;
   label: string;
   Icon: LucideIcon;
@@ -109,33 +110,42 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   const steps: ProgressStep[] = [
     {
       key: 'create',
-      label: intl.formatMessage(messages.stepCreate),
+      label: intl.formatMessage(progressStepMessages.stepCreate),
       Icon: FilePlus2,
       complete: true,
     },
     {
       key: 'deploy',
-      label: intl.formatMessage(messages.stepDeploy),
+      label: intl.formatMessage(progressStepMessages.stepDeploy),
       Icon: Rocket,
       complete: deployComplete,
       onClick: () => navigate(routes.apiDeploy(orgHandle, projectHandler, apiHandler)),
     },
     {
       key: 'test',
-      label: intl.formatMessage(messages.stepTest),
+      label: intl.formatMessage(progressStepMessages.stepTest),
       Icon: FlaskConical,
       complete: testComplete,
       onClick: () => navigate(routes.apiTest(orgHandle, projectHandler, apiHandler)),
     },
     {
       key: 'publish',
-      label: intl.formatMessage(messages.stepPublish),
+      label: intl.formatMessage(progressStepMessages.stepPublish),
       Icon: Globe,
       complete: published,
       onClick: () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler)),
     },
   ];
 
+  return <ProgressStepper steps={steps} />;
+}
+
+/**
+ * The stepper itself: one pill per step, joined by connectors, with the first
+ * incomplete step as the current one. Shared by every API kind's progress
+ * banner — each decides its own steps and what completes them.
+ */
+export function ProgressStepper({ steps }: { steps: ProgressStep[] }) {
   // The first not-yet-complete step is the current, actionable one.
   const activeIndex = steps.findIndex((step) => !step.complete);
 

@@ -45,28 +45,38 @@ func (s *Steps) obtainToken(ctx context.Context) error {
 	return nil
 }
 
+// defaultProjectID is the project every organization is given at onboarding, and
+// the one the REST API scenarios deploy into.
+const defaultProjectID = "default"
+
+// findDefaultProject asks for the project by id rather than scanning the list.
+//
+// /projects is paginated and answers with 20 of them by default, so on an
+// organization with more projects than that the default is simply on a later
+// page. Scanning the first page reported it missing and sent the reader looking
+// for a broken organization: one real organization held 213 projects, with the
+// default among them the whole time.
 func (s *Steps) findDefaultProject(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects", nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+defaultProjectID, nil)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return tcontext.Set(ctx, keyProjectID, defaultProjectID)
+	case http.StatusNotFound:
+		return fmt.Errorf("the organization has no %q project", defaultProjectID)
+	default:
 		return responseError(resp)
 	}
-	items, err := listItems(resp)
-	if err != nil {
-		return fmt.Errorf("decoding APIP projects: %w", err)
-	}
-	for _, item := range items {
-		if item["id"] == "default" {
-			return tcontext.Set(ctx, keyProjectID, "default")
-		}
-	}
-	return fmt.Errorf("APIP project list does not contain the default project")
 }
 
+// findActiveGateway reads through the managed-gateway endpoint rather than the
+// generic gateway one. A cloud scenario should exercise the same route a console
+// user drives, so the managed-gateway view is part of what is under test here;
+// reading the generic endpoint would skip it.
 func (s *Steps) findActiveGateway(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/gateways", nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways", nil)
 	if err != nil {
 		return err
 	}
@@ -77,29 +87,50 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
+	// Record why each candidate was rejected. Skipping silently and reporting
+	// only "none found" hides the difference between an organization with no
+	// gateways and one whose gateways were all filtered out here.
+	skipped := make([]string, 0, len(items))
 	for _, item := range items {
-		active, ok := item["isActive"].(bool)
-		if !ok || !active {
+		id, _ := item["id"].(string)
+		id = strings.TrimSpace(id)
+		if id == "" {
+			skipped = append(skipped, "<no id>")
 			continue
 		}
-		id, ok := item["id"].(string)
-		if !ok || strings.TrimSpace(id) == "" {
+		if active, ok := item["isActive"].(bool); !ok || !active {
+			skipped = append(skipped, id+": not active")
 			continue
 		}
 		endpoints, ok := item["endpoints"].([]any)
 		if !ok || len(endpoints) == 0 {
+			skipped = append(skipped, id+": no endpoints")
 			continue
 		}
 		endpoint, ok := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
 		if !ok {
+			skipped = append(skipped, id+": no endpoint passed the data-plane host check")
+			continue
+		}
+		// The deploy names the environment as well as the gateway, so a gateway the list
+		// reports without one cannot be deployed to.
+		environment, _ := item["environment"].(string)
+		if strings.TrimSpace(environment) == "" {
+			skipped = append(skipped, id+": no environment")
 			continue
 		}
 		if err := tcontext.Set(ctx, keyGatewayID, id); err != nil {
 			return err
 		}
+		if err := tcontext.Set(ctx, keyGatewayEnv, environment); err != nil {
+			return err
+		}
 		return tcontext.Set(ctx, keyGatewayEndpoint, endpoint)
 	}
-	return fmt.Errorf("APIP gateway list does not contain an active gateway with an endpoint")
+	if len(items) == 0 {
+		return fmt.Errorf("the organization has no APIP gateways")
+	}
+	return fmt.Errorf("no usable APIP gateway among %d listed: %s", len(items), strings.Join(skipped, "; "))
 }
 
 func (s *Steps) createAPI(ctx context.Context) error {
@@ -151,7 +182,13 @@ func (s *Steps) createAPI(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIID, createdID)
 }
 
+// deployAPI deploys through the project's pipeline route, the one the console's deploy
+// page uses, to the active gateway in its own environment.
 func (s *Steps) deployAPI(ctx context.Context) error {
+	projectID, err := requiredValue(ctx, keyProjectID)
+	if err != nil {
+		return err
+	}
 	apiID, err := requiredValue(ctx, keyAPIID)
 	if err != nil {
 		return err
@@ -160,20 +197,45 @@ func (s *Steps) deployAPI(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/rest-apis/"+url.PathEscape(apiID)+"/deployments", map[string]string{
-		"name": apiID + "-deploy", "base": "current", "gatewayId": gatewayID,
-	})
+	environment, err := requiredValue(ctx, keyGatewayEnv)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPost,
+		"/projects/"+url.PathEscape(projectID)+"/apis/"+url.PathEscape(apiID)+"/deployments?kind=RestApi",
+		map[string]any{
+			"environment": environment,
+			"gateways":    []map[string]string{{"gatewayId": gatewayID}},
+		})
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return responseError(resp)
 	}
-	deploymentID, err := stringField(resp, "deploymentId")
+	items, err := listItems(resp)
+	if err != nil {
+		return fmt.Errorf("deploying APIP REST API: %w", err)
+	}
+	deploymentID, err := gatewayDeploymentID(items, gatewayID)
 	if err != nil {
 		return fmt.Errorf("deploying APIP REST API: %w", err)
 	}
 	return tcontext.Set(ctx, keyDeploymentID, deploymentID)
+}
+
+// gatewayDeploymentID picks the deployment a pipeline deploy made on the gateway.
+func gatewayDeploymentID(items []map[string]any, gatewayID string) (string, error) {
+	for _, item := range items {
+		if item["gatewayId"] != gatewayID {
+			continue
+		}
+		if id, ok := item["deploymentId"].(string); ok && strings.TrimSpace(id) != "" {
+			return id, nil
+		}
+		return "", fmt.Errorf("the deployment on gateway %q has no deploymentId", gatewayID)
+	}
+	return "", fmt.Errorf("no deployment was made on gateway %q", gatewayID)
 }
 
 func (s *Steps) waitDeployment(ctx context.Context) error {
@@ -256,7 +318,7 @@ func (s *Steps) assertAPIResponse(ctx context.Context) error {
 }
 
 var approvedCloudDataPlaneHost = regexp.MustCompile(
-	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?-wso2cloud\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
+	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
 )
 
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
@@ -537,7 +599,13 @@ func (s *Steps) createManagedGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := generateResourceAndStore(ctx, "syn-gateway", keyManagedGatewayID); err != nil {
+	// "sgw", not "syn-gateway": a managed gateway's handle is bounded by the
+	// release label the control plane renders from it, which spends the
+	// environment name twice and leaves 15 characters in a "development"
+	// environment. Unique() adds 11 ("-<suffix8>-<n>"), so the base has to fit in
+	// the rest. A longer base is accepted at create time and then fails to apply,
+	// leaving a gateway that never becomes ready.
+	if err := generateResourceAndStore(ctx, "sgw", keyManagedGatewayID); err != nil {
 		return err
 	}
 	name, err := requiredValue(ctx, keyManagedGatewayID)
@@ -582,7 +650,7 @@ func (s *Steps) getManagedGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/gateways/"+url.PathEscape(id), nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways/"+url.PathEscape(id), nil)
 	if err != nil {
 		return err
 	}
@@ -622,7 +690,7 @@ func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := s.awaitNotFound(ctx, "/gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
+	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
 		return err
 	}
 	deregister(ctx, cleanup.KindGateway, id)
@@ -656,7 +724,7 @@ func (s *Steps) doAuthenticatedRaw(ctx context.Context, method, path string, bod
 	if err != nil {
 		return nil, err
 	}
-	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPBML)
+	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	if err != nil {
 		return nil, err
 	}

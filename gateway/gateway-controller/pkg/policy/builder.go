@@ -119,9 +119,12 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 				vhosts = append(vhosts, effectiveSandboxVHost)
 			}
 
-			// Populate props for system policies (currently no-op but maintains structure for future use)
-			props := make(map[string]any)
-			// populatePropsForSystemPolicies(cfg.SourceConfiguration, props)
+			// api_kind lets the analytics system policy skip body processing for
+			// kinds whose analytics do not need the body, as the REST transformer
+			// does (see transform/restapi.go).
+			props := map[string]any{
+				utils.SharedParamsKey: map[string]interface{}{"api_kind": cfg.Kind},
+			}
 
 			for _, vhost := range vhosts {
 				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)

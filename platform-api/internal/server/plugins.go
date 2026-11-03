@@ -52,6 +52,8 @@ type pluginWiring struct {
 	// against the recorded core routes by installCoreRoutes, which is what holds
 	// the recorder.
 	overrides map[string]routeOverride
+	// mcpTools are the MCP tools plugins add, in plugin order.
+	mcpTools []pdk.MCPTool
 }
 
 // routeOverride is one plugin's claim on a core route pattern.
@@ -185,6 +187,11 @@ func initPlugins(
 				}
 				w.overrides[ov.Pattern] = routeOverride{plugin: p.Name(), wrap: ov.Wrap}
 			}
+		}
+
+		// externalPlugin forwards pdk.MCPToolProvider, so this covers both tiers.
+		if tp, ok := p.(pdk.MCPToolProvider); ok {
+			w.mcpTools = append(w.mcpTools, tp.MCPTools()...)
 		}
 	}
 

@@ -537,7 +537,7 @@ func TestAPIPortalRepo_UpdateStatus_HappyPath(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
+	if _, err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
 		t.Fatalf("UpdateStatus: %v", err)
 	}
 	got, err := repo.GetByUUID(portal.ID, orgUUID)
@@ -552,6 +552,40 @@ func TestAPIPortalRepo_UpdateStatus_HappyPath(t *testing.T) {
 	}
 }
 
+// A transition with no actor keeps the user who last changed the portal.
+func TestAPIPortalRepo_UpdateStatus_EmptyActorKeepsUpdatedBy(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-status-keep-actor"
+	createTestAPIPortalOrg(t, db, orgUUID)
+
+	repo := NewAPIPortalRepo(db)
+	portal := newTestAPIPortal("portal-keep", orgUUID, "keep-target")
+	portal.Status = constants.APIPortalStatusPending
+	portal.CreatedBy = "user-1"
+	portal.UpdatedBy = "user-1"
+	if err := repo.Create(portal); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	kept, err := repo.UpdateStatus(portal.ID, orgUUID, "", constants.APIPortalStatusActive)
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	got, err := repo.GetByUUID(portal.ID, orgUUID)
+	if err != nil {
+		t.Fatalf("GetByUUID: %v", err)
+	}
+	if kept != "user-1" {
+		t.Errorf("returned updater = %q, want user-1", kept)
+	}
+	if got.Status != constants.APIPortalStatusActive || got.UpdatedBy != "user-1" || got.CreatedBy != "user-1" {
+		t.Errorf("want active, created/updated by user-1; got status %q created %q updated %q",
+			got.Status, got.CreatedBy, got.UpdatedBy)
+	}
+}
+
 func TestAPIPortalRepo_UpdateStatus_MissingRow(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -560,7 +594,7 @@ func TestAPIPortalRepo_UpdateStatus_MissingRow(t *testing.T) {
 	// UpdateStatus must return an error when no row matches; a silent zero-rows
 	// update would let the poller mark a deleted portal as active/failed against
 	// a row that no longer exists.
-	err := repo.UpdateStatus("nonexistent-uuid", "nonexistent-org", "poller", constants.APIPortalStatusActive)
+	_, err := repo.UpdateStatus("nonexistent-uuid", "nonexistent-org", "poller", constants.APIPortalStatusActive)
 	if err == nil {
 		t.Fatal("UpdateStatus on missing row must return an error")
 	}
@@ -585,13 +619,13 @@ func TestAPIPortalRepo_UpdateStatus_RejectsNonPendingSource(t *testing.T) {
 	if err := repo.Create(portal); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
+	if _, err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusActive); err != nil {
 		t.Fatalf("first UpdateStatus (pending -> active) must succeed: %v", err)
 	}
 	// Second UpdateStatus on the now-active row is the race we're protecting
 	// against: a late poller tick from a lagging replica trying to write
 	// "failed" over a portal that has already reached "active".
-	err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusFailed)
+	_, err := repo.UpdateStatus(portal.ID, orgUUID, "poller", constants.APIPortalStatusFailed)
 	if !errors.Is(err, ErrAPIPortalNotPending) {
 		t.Fatalf("update on non-pending row must return ErrAPIPortalNotPending; got %v", err)
 	}
@@ -803,4 +837,95 @@ func TestAPIPortalRepo_ListByStatus_CrossOrg(t *testing.T) {
 	if !seen["a-pending-1"] || !seen["b-pending-1"] {
 		t.Errorf("cross-org selection missed a row; got %+v", seen)
 	}
+}
+
+// Reopen takes an active or a failed portal back to pending; a portal that is
+// already pending is refused, so two changes cannot run at once.
+func TestAPIPortalRepo_Reopen(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const orgUUID = "org-portal-reopen"
+	createTestAPIPortalOrg(t, db, orgUUID)
+	repo := NewAPIPortalRepo(db)
+
+	for _, from := range []string{constants.APIPortalStatusActive, constants.APIPortalStatusFailed} {
+		portal := newTestAPIPortal("portal-reopen-"+from, orgUUID, "reopen-"+from)
+		portal.Status = from
+		portal.UpdatedBy = "user-1"
+		if err := repo.Create(portal); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		kept, err := repo.Reopen(portal.ID, orgUUID, "user-2")
+		if err != nil {
+			t.Fatalf("Reopen from %s: %v", from, err)
+		}
+		if kept != "user-2" {
+			t.Errorf("returned updater = %q, want user-2", kept)
+		}
+		got, err := repo.GetByUUID(portal.ID, orgUUID)
+		if err != nil {
+			t.Fatalf("GetByUUID: %v", err)
+		}
+		if got.Status != constants.APIPortalStatusPending || got.UpdatedBy != "user-2" {
+			t.Errorf("from %s: status %q updated_by %q", from, got.Status, got.UpdatedBy)
+		}
+		if _, err := repo.Reopen(portal.ID, orgUUID, "user-3"); !errors.Is(err, ErrAPIPortalPending) {
+			t.Errorf("second Reopen from %s: %v, want ErrAPIPortalPending", from, err)
+		}
+	}
+	if _, err := repo.Reopen("no-such-portal", orgUUID, "user-1"); err == nil || errors.Is(err, ErrAPIPortalPending) {
+		t.Errorf("missing portal: %v", err)
+	}
+}
+
+// A status transition reports database failures as errors, not as a result
+// or as "not pending".
+func TestAPIPortalRepo_TransitionStatusReportsDatabaseErrors(t *testing.T) {
+	const orgUUID = "org-transition-errors"
+	updateOrg := `UPDATE organizations SET handle = handle WHERE uuid = ?`
+
+	t.Run("begin", func(t *testing.T) {
+		db, cleanup := setupTestDB(t)
+		repo := NewAPIPortalRepo(db)
+		cleanup()
+		if _, err := repo.UpdateStatus("p", orgUUID, "", constants.APIPortalStatusActive); err == nil {
+			t.Fatal("want an error from a closed database")
+		}
+	})
+	t.Run("update", func(t *testing.T) {
+		db, cleanup := setupTestDB(t)
+		defer cleanup()
+		repo := NewAPIPortalRepo(db).(*APIPortalRepo)
+		_, err := repo.transitionStatus(`UPDATE api_portals SET no_such_column = 1`, nil, "p", orgUUID, ErrAPIPortalPending)
+		if err == nil || errors.Is(err, ErrAPIPortalPending) {
+			t.Fatalf("err = %v, want the update error", err)
+		}
+	})
+	// With api_portals gone, the update below (on another table) succeeds and
+	// the portal reads that follow it fail.
+	dropPortals := func(t *testing.T) (*APIPortalRepo, func()) {
+		t.Helper()
+		db, cleanup := setupTestDBWithoutForeignKeys(t)
+		createTestAPIPortalOrg(t, db, orgUUID)
+		if _, err := db.Exec(`DROP TABLE api_portals`); err != nil {
+			t.Fatalf("drop api_portals: %v", err)
+		}
+		return NewAPIPortalRepo(db).(*APIPortalRepo), cleanup
+	}
+	t.Run("existence check", func(t *testing.T) {
+		repo, cleanup := dropPortals(t)
+		defer cleanup()
+		_, err := repo.transitionStatus(updateOrg, []any{"no-such-org"}, "p", orgUUID, ErrAPIPortalPending)
+		if err == nil || errors.Is(err, ErrAPIPortalPending) {
+			t.Fatalf("err = %v, want the existence check error", err)
+		}
+	})
+	t.Run("read back", func(t *testing.T) {
+		repo, cleanup := dropPortals(t)
+		defer cleanup()
+		if _, err := repo.transitionStatus(updateOrg, []any{orgUUID}, "p", orgUUID, ErrAPIPortalPending); err == nil {
+			t.Fatal("want the read-back error")
+		}
+	})
 }

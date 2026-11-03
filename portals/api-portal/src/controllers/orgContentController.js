@@ -25,7 +25,7 @@ const orgDao = require('../dao/organizationDao');
 
 const loadOrganizationContent = async (req, res, next) => {
 
-    let html = "";
+    let html;
     if (config.designMode?.enabled) {
         html = await loadOrgContentFromFile(req, res);
     } else {
@@ -62,7 +62,7 @@ const loadOrgContentFromAPI = async (req, res, next) => {
                 firstName: req.user.firstName,
                 lastName: req.user.lastName,
                 email: req.user.email,
-                isAdmin: req.user.isAdmin,
+                isAdmin: req.user.isAdmin && !req.foreignOrgSession,
             }
         }
         templateContent = {

@@ -95,6 +95,9 @@ scope = "openid ap:project:read"
 [ai_workspace.auth.oidc.token_exchange]
 enabled = true
 audience = "platform-api"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -130,6 +133,9 @@ audience = "platform-api"
 client_id = "exchange-client"
 client_secret = "exchange-secret"
 scope = "ap:project:read"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -161,6 +167,9 @@ enabled = true
 audience = "platform-api"
 client_id = "public-exchange-client"
 client_auth = "none"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -200,6 +209,9 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled = true
 audience = "platform-api"
 client_id = "exchange-client"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err == nil {
 		t.Fatal("a client_id with no secret and no client_auth = none must fail startup, not inherit the login secret")
@@ -229,6 +241,9 @@ audience = "platform-api"
 client_id = "exchange-client"
 client_secret = "exchange-secret"
 client_auth = "none"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err == nil {
 		t.Fatal("client_auth = none alongside a configured client_secret must fail startup")
@@ -261,6 +276,9 @@ authority = "https://idp.example.com"
 client_id = "login-client"
 client_secret = "login-secret"
 redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `
 	for _, tc := range []struct {
 		name    string
@@ -425,6 +443,9 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 [ai_workspace.auth.oidc.token_exchange]
 enabled = true
 audience = "platform-api"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `,
 		},
 		{
@@ -444,6 +465,9 @@ enabled = true
 grant_type = "jwt_bearer"
 scope = "api://platform-api/.default"
 token_endpoint = "https://login.microsoftonline.com/tenant/oauth2/v2.0/token"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `,
 		},
 		{
@@ -462,6 +486,9 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled = true
 grant_type = "Token_Exchange"
 audience = "platform-api"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `,
 		},
 	} {
@@ -489,6 +516,9 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 [ai_workspace.auth.oidc.token_exchange]
 enabled = true
 audience = "platform-api"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -524,6 +554,9 @@ subject_token_type = "urn:ietf:params:oauth:token-type:access_token"
 requested_token_type = "urn:ietf:params:oauth:token-type:jwt"
 cache_enabled = false
 min_validity = "90s"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -567,6 +600,9 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 [ai_workspace.auth.token_exchange]
 enabled = true
 audience = "platform-api"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -639,6 +675,9 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled = true
 grant_type = "`+tc.spelling+`"
 scope = "api://platform-api/.default"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 			if err != nil {
 				t.Fatalf("Load: %v", err)
@@ -691,6 +730,9 @@ redirect_url  = "https://localhost:9643/ai-workspace/api/auth/callback"
 enabled        = true
 audience       = "platform-api"
 token_endpoint = "%s"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `
 
 	for _, tc := range []struct {
@@ -703,6 +745,80 @@ token_endpoint = "%s"
 		{"http://localhost:8080/oauth2/token", false},
 		{"http://127.0.0.1:8080/oauth2/token", false},
 		{"http://[::1]:8080/oauth2/token", false},
+	} {
+		_, err := loadWithAuth(t, fmt.Sprintf(tmpl, tc.endpoint))
+		if tc.wantErr && err == nil {
+			t.Errorf("token_endpoint %q: expected a validation error", tc.endpoint)
+		}
+		if !tc.wantErr && err != nil {
+			t.Errorf("token_endpoint %q: unexpected error: %v", tc.endpoint, err)
+		}
+	}
+}
+
+// TestOIDCRequireHTTPSDefaultsOn: an OIDC config that never mentions require_https
+// keeps the secure default; only an explicit false turns the check off.
+func TestOIDCRequireHTTPSDefaultsOn(t *testing.T) {
+	const tmpl = `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority     = "https://idp.example.com"
+client_id     = "login-client"
+client_secret = "login-secret"
+redirect_url  = "https://localhost:9643/ai-workspace/api/auth/callback"
+%s
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
+`
+	for _, tc := range []struct {
+		line string
+		want bool
+	}{
+		{"", true},
+		{"require_https = true", true},
+		{"require_https = false", false},
+	} {
+		cfg, err := loadWithAuth(t, fmt.Sprintf(tmpl, tc.line))
+		if err != nil {
+			t.Fatalf("%q: unexpected error: %v", tc.line, err)
+		}
+		if cfg.Auth.OIDC.RequireHTTPS != tc.want {
+			t.Errorf("%q: RequireHTTPS = %v, want %v", tc.line, cfg.Auth.OIDC.RequireHTTPS, tc.want)
+		}
+	}
+}
+
+// TestTokenExchangeAllowsPlaintextWhenHTTPSNotRequired: require_https = false lifts
+// the plaintext check on token_endpoint for a local setup, and only that check.
+func TestTokenExchangeAllowsPlaintextWhenHTTPSNotRequired(t *testing.T) {
+	const tmpl = `
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
+authority     = "http://idp.example.com"
+client_id     = "login-client"
+client_secret = "login-secret"
+redirect_url  = "https://localhost:9643/ai-workspace/api/auth/callback"
+require_https = false
+
+[ai_workspace.auth.oidc.token_exchange]
+enabled        = true
+audience       = "platform-api"
+token_endpoint = "%s"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
+`
+	for _, tc := range []struct {
+		endpoint string
+		wantErr  bool
+	}{
+		{"http://idp.example.com/oauth2/token", false},
+		{"http://user:pw@idp.example.com/oauth2/token", true},
 	} {
 		_, err := loadWithAuth(t, fmt.Sprintf(tmpl, tc.endpoint))
 		if tc.wantErr && err == nil {
@@ -743,6 +859,9 @@ audience = "platform-api"
 [ai_workspace.auth.oidc.token_exchange.claim_mappings]
 organization = "organization.uuid"
 org_handle = "organization.handle"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -783,6 +902,9 @@ redirect_url = "https://localhost:9643/ai-workspace/api/auth/callback"
 [ai_workspace.auth.oidc.token_exchange]
 enabled = true
 audience = "platform-api"
+
+[ai_workspace.session.cookie]
+encryption_key = "test-session-key-at-least-32-characters"
 `)
 	if err != nil {
 		t.Fatalf("Load: %v", err)

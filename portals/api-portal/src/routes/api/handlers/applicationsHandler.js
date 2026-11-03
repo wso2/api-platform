@@ -21,11 +21,13 @@
  * Tag: Applications
  */
 const apiPortalController = require('../../../controllers/apiPortalController');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
     listApplications: apiPortalController.listApplications,
     getApplication: apiPortalController.getApplication,
-    saveApplication: apiPortalController.saveApplication,
-    updateApplication: apiPortalController.updateApplication,
-    deleteApplication: apiPortalController.deleteApplication,
+    saveApplication: compose(requireCsrfForMutatingApi, apiPortalController.saveApplication),
+    updateApplication: compose(requireCsrfForMutatingApi, apiPortalController.updateApplication),
+    deleteApplication: compose(requireCsrfForMutatingApi, apiPortalController.deleteApplication),
 };

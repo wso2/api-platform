@@ -42,6 +42,7 @@ type ClaimMapping struct {
 	OrgID     string
 	OrgName   string
 	OrgHandle string
+	Picture   string
 
 	// AuthzMode mirrors auth.authorization.mode: "scope" (default) reads
 	// effective scopes from the scope claim; "role" derives them from the roles
@@ -69,6 +70,7 @@ func DefaultClaimMapping() ClaimMapping {
 		OrgID:     "organization",
 		OrgName:   "org_name",
 		OrgHandle: "org_handle",
+		Picture:   "picture",
 	}
 }
 
@@ -165,10 +167,11 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	roleList := strSliceClaim(claims, m.Roles)
 
 	u := User{
-		Name:   first(get(m.Username), get(m.Email), get("sub")),
-		Email:  get(m.Email),
-		Role:   strings.Join(roleList, " "),
-		Scopes: effectiveScopes(claims, roleList, m),
+		Name:    first(get(m.Username), get(m.Email), get("sub")),
+		Email:   get(m.Email),
+		Role:    strings.Join(roleList, " "),
+		Scopes:  effectiveScopes(claims, roleList, m),
+		Picture: get(m.Picture),
 	}
 
 	orgID := strClaim(claims, m.OrgID)

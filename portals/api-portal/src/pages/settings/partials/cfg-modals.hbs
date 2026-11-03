@@ -52,7 +52,10 @@
       <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
       <h2 class="cfg-modal-title">Delete Plan</h2>
     </div>
-    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? Applications subscribed under it will need a new plan. This action can't be undone.</p>
+    <p class="cfg-modal-body" id="cfg-del-plan-ask">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? This action can't be undone.</p>
+    {{!-- A plan an API offers, or that has subscriptions, can't be deleted: settings-plans.js shows this instead,
+          with Delete disabled. --}}
+    <p class="cfg-modal-body" id="cfg-del-plan-blocked" style="display:none;"></p>
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-del-plan-cancel">Cancel</button>
       <button type="button" class="cfg-btn-danger" id="cfg-del-plan-confirm">Delete plan</button>
@@ -217,9 +220,253 @@
       <input type="text" id="pol-refid" class="cfg-form-input cfg-form-input--mono" placeholder="e.g. 7c9e6679-7425-40de-944b-e07fc1f90ae7" />
       <p class="cfg-field-hint">UUID linking this plan to an external billing or quota system.</p>
     </div>
+    {{!-- Pricing is given only when a plan is created. settings-plans.js disables this fieldset when a
+          saved plan is edited, so its pricing shows read-only. --}}
+    <fieldset class="cfg-form-group cfg-fieldset" id="pol-pricing-fields" data-billing-ready="{{#if billingConfiguration}}true{{/if}}" style="margin-bottom:24px;padding-top:16px;border-top:1px solid #e5e9ef;">
+      <label style="display:flex;align-items:center;gap:8px;margin:0;">
+        <input type="checkbox" id="pol-paid" />
+        <span>Paid plan</span>
+      </label>
+      <p class="cfg-paid-notice" id="pol-paid-notice" role="status" hidden>
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+        <span>To create a paid plan, set up billing first. <a href="#cfg-billing" id="pol-paid-setup">Set up billing</a></span>
+      </p>
+      <p class="cfg-field-hint">Pricing can't be updated once the plan is created.</p>
+      <div id="pol-pricing" style="display:none;margin-top:12px;"
+        data-meters="{{{jsonAttr orgMeters}}}">
+        <div class="cfg-pricing-row">
+          <div class="cfg-form-group">
+            <label id="pol-currency-label" for="pol-currency-trigger">Currency</label>
+            <div class="cfg-currency-combo" id="pol-currency-combo">
+              <button type="button" id="pol-currency-trigger" class="cfg-form-input cfg-currency-trigger"
+                aria-haspopup="listbox" aria-expanded="false" aria-controls="pol-currency-list">
+                <span class="cfg-currency-current">USD — US Dollar</span>
+                <i class="bi bi-chevron-expand" aria-hidden="true"></i>
+              </button>
+              <div class="cfg-view-combo-menu cfg-currency-menu" hidden>
+                <div class="cfg-view-combo-search">
+                  <i class="bi bi-search" aria-hidden="true"></i>
+                  <input type="text" class="cfg-view-combo-input" placeholder="Search currencies" aria-label="Search currencies"
+                    role="combobox" aria-expanded="true" aria-controls="pol-currency-list" autocomplete="off">
+                </div>
+                <div class="cfg-view-combo-list" id="pol-currency-list" role="listbox" aria-labelledby="pol-currency-label">
+                  {{#each currencies}}
+                  <div role="option" tabindex="-1" class="cfg-view-combo-option" aria-selected="false"
+                    data-value="{{code}}" data-name="{{name}}">
+                    <i class="bi bi-check2" aria-hidden="true"></i><span>{{code}} — {{name}}</span>
+                  </div>
+                  {{/each}}
+                </div>
+                <div class="cfg-view-combo-empty" hidden>No currencies match</div>
+              </div>
+              <input type="hidden" id="pol-currency" value="USD">
+            </div>
+          </div>
+          <div class="cfg-form-group">
+            <label for="pol-period">Charge every</label>
+            <select id="pol-period" class="cfg-form-input">
+              <option value="MONTH">Month</option>
+              <option value="YEAR">Year</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <span class="cfg-form-legend" id="pol-pricing-type-label">Pricing</span>
+          <div class="cfg-check-group" role="radiogroup" aria-labelledby="pol-pricing-type-label">
+            <label class="cfg-check"><input type="radio" name="pol-pricing-type" value="FLAT_RATE" checked /> Flat rate</label>
+            <label class="cfg-check"><input type="radio" name="pol-pricing-type" value="USAGE_BASED" /> Usage based</label>
+          </div>
+        </div>
+
+        <div class="cfg-form-group pol-type-fields" data-type="FLAT_RATE" style="margin-bottom:0;">
+          <label for="pol-flat-amount">Amount</label>
+          <span class="cfg-money"><input type="text" id="pol-flat-amount" class="cfg-form-input cfg-form-input--mono" inputmode="decimal" placeholder="0.00" /></span>
+        </div>
+
+        <div class="cfg-form-group pol-type-fields" data-type="USAGE_BASED" style="margin-bottom:0;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <label style="margin:0;">Prices</label>
+            <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="pol-add-price-btn"><i class="bi bi-plus"></i> Add price</button>
+          </div>
+          <p class="cfg-paid-notice" id="pol-meter-notice" role="status" hidden>
+            <i class="bi bi-info-circle" aria-hidden="true"></i>
+            <span>To charge for usage, add a meter first. <a href="#cfg-meters" id="pol-meter-setup">Add a meter</a></span>
+          </p>
+          <div id="pol-prices-list"></div>
+        </div>
+      </div>
+    </fieldset>
+
+    {{!-- One usage price of the plan, copied by settings-plans.js for each price. The ids of its
+          fields are set when it is copied, so each label names its own field. --}}
+    <template id="pol-price-template">
+      <div class="cfg-price-box">
+        <div class="cfg-price-box-head">
+          <span class="pol-price-title"></span>
+          <button type="button" class="cfg-icon-btn cfg-icon-btn--danger pol-price-remove" title="Remove price"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="cfg-price-grid">
+          <div class="cfg-form-group">
+            <label data-for="meter">Meter</label>
+            <select class="cfg-form-input pol-price-meter" data-field="meter"></select>
+          </div>
+          <div class="cfg-form-group">
+            <label data-for="event">Event</label>
+            <input type="text" class="cfg-form-input cfg-key-input pol-price-event" data-field="event" readonly />
+          </div>
+        </div>
+        <div class="cfg-form-group pol-filters-group">
+          <span class="cfg-form-legend" style="margin:0;">Filters</span>
+          <p class="cfg-field-hint pol-filters-hint" style="margin:2px 0 12px;">Leave a filter empty to count every value.</p>
+          <p class="cfg-field-hint pol-no-filters" style="margin:2px 0 0;">This meter has no filters.</p>
+          <div class="pol-filters-list"></div>
+        </div>
+        <div class="cfg-price-grid">
+          <div class="cfg-form-group">
+            <label data-for="model">Pricing model</label>
+            <select class="cfg-form-input pol-price-model" data-field="model">
+              <option value="PER_UNIT">Per unit</option>
+              <option value="VOLUME">Volume tiers</option>
+              <option value="GRADUATED">Graduated tiers</option>
+            </select>
+          </div>
+        </div>
+        <div class="cfg-form-group pol-model-fields" data-models="PER_UNIT">
+          <label data-for="unit-amount">Price</label>
+          <div class="cfg-price-line">
+            <span class="cfg-money"><input type="text" class="cfg-form-input cfg-form-input--mono pol-price-unit-amount" data-field="unit-amount" inputmode="decimal" placeholder="0.00" /></span>
+            <span>per</span>
+            <input type="number" class="cfg-form-input cfg-form-input--mono cfg-price-quantity pol-price-unit-quantity" min="1" step="1" value="1" aria-label="Units" />
+            <span>unit(s)</span>
+          </div>
+        </div>
+        <div class="cfg-form-group pol-model-fields" data-models="VOLUME GRADUATED">
+          <div class="cfg-tier-head">
+            <span class="cfg-tier-head-range pol-tier-range-label"></span>
+            <span class="cfg-tier-head-price">Per unit</span>
+            <span class="cfg-tier-head-price">Flat fee</span>
+          </div>
+          <div class="pol-tiers-list"></div>
+          <button type="button" class="cfg-btn-secondary cfg-btn-sm pol-add-tier-btn"><i class="bi bi-plus"></i> Add tier</button>
+        </div>
+      </div>
+    </template>
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-plan-modal-cancel">Cancel</button>
       <button type="button" class="cfg-btn-primary" id="cfg-plan-modal-save">Add plan</button>
+    </div>
+  </div>
+</div>
+
+{{> cfg-billing-form}}
+
+<!-- Remove Billing modal -->
+<div class="cfg-modal-overlay" id="cfg-billing-remove-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Remove Billing Configuration</h2>
+    </div>
+    <div class="cfg-modal-body" id="cfg-billing-remove-ask">
+      <p class="cfg-modal-ask">Are you sure you want to remove the billing configuration?</p>
+      <p>Your billing keys will be deleted. Paid plans will no longer be offered.</p>
+    </div>
+    {{!-- Shown instead while paid subscriptions are active (settings-billing.js), with Remove disabled. --}}
+    <div class="cfg-modal-body" id="cfg-billing-remove-blocked" style="display:none;">
+      <p class="cfg-modal-ask">Billing can't be removed yet.</p>
+      <p>Paid subscriptions are active. Billing can be removed once they have ended.</p>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-billing-remove-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-billing-remove-confirm">Remove billing</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Meter modal -->
+<div class="cfg-modal-overlay" id="cfg-meter-modal" style="display:none;"
+  data-registry="{{{jsonAttr meterRegistry}}}">
+  {{!-- As wide as the plan dialog, so our gateway's event keys show whole. --}}
+  <div class="cfg-form-modal cfg-form-modal--xwide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-meter-modal-title">Add Meter</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-meter-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    {{!-- A meter that a plan prices can't change: settings-meters.js disables this fieldset for it. --}}
+    <fieldset class="cfg-fieldset" id="mtr-fields">
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="mtr-display">Name <span class="required">*</span></label>
+        <input type="text" id="mtr-display" class="cfg-form-input" maxlength="255" placeholder="e.g. Requests" />
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="mtr-desc">Description</label>
+        <textarea id="mtr-desc" class="cfg-form-input" rows="2" maxlength="1023" placeholder="e.g. Counts requests"></textarea>
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:24px;">
+        <label for="mtr-type">Type <span class="required">*</span></label>
+        <select id="mtr-type" class="cfg-form-input">
+          <option value="REQUEST_COUNT">Requests</option>
+          <option value="TOKENS">Tokens</option>
+        </select>
+      </div>
+      {{!-- A Tokens meter adds up the number at this key (typeKey). settings-meters.js shows it for a
+            Tokens meter only. The key is typed, or picked from our gateway's token keys. --}}
+      <div class="cfg-form-group" id="mtr-token-row" style="display:none;margin-bottom:24px;">
+        <label for="mtr-type-key">Token key <span class="required">*</span></label>
+        <div class="cfg-key-combo" id="mtr-token-key-combo">
+          <input type="text" id="mtr-type-key" class="cfg-form-input cfg-form-input--mono cfg-key-input" maxlength="255"
+            placeholder="{{meterRegistry.tokenEventKey}}" role="combobox" aria-required="true"
+            aria-autocomplete="none" aria-expanded="false" aria-controls="mtr-token-key-list" autocomplete="off" spellcheck="false" />
+          <button type="button" class="cfg-key-combo-toggle" id="mtr-token-key-toggle" tabindex="-1" aria-label="Token keys"
+            aria-controls="mtr-token-key-list" aria-expanded="false"><i class="bi bi-chevron-expand" aria-hidden="true"></i></button>
+          <div class="cfg-view-combo-menu" hidden>
+            <div class="cfg-view-combo-list" id="mtr-token-key-list" role="listbox" aria-label="Token keys">
+              {{#each meterRegistry.tokenEventKeys}}
+              <div role="option" tabindex="-1" class="cfg-view-combo-option" aria-selected="false" data-value="{{key}}"
+                aria-label="{{label}}, {{key}}">
+                <i class="bi bi-check2" aria-hidden="true"></i>
+                <span class="cfg-key-option">
+                  <span>{{label}}</span>
+                  <span class="cfg-key-option-key">{{key}}</span>
+                </span>
+              </div>
+              {{/each}}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <span class="cfg-form-legend" style="margin:0;">Filters</span>
+          <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="mtr-add-filter-btn"><i class="bi bi-plus" aria-hidden="true"></i> Add filter</button>
+        </div>
+        <div class="cfg-key-grid cfg-key-head" id="mtr-filters-head"><span>Property</span><span>Key</span></div>
+        <div id="mtr-filters-list"></div>
+      </div>
+    </fieldset>
+    <div class="cfg-modal-actions">
+      {{!-- Why Save is off for a meter that plans price (settings-meters.js). --}}
+      <span class="cfg-modal-actions-note" id="mtr-locked-note" hidden>There are subscription plans using this meter.</span>
+      <button type="button" class="cfg-btn-secondary" id="cfg-meter-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-meter-modal-save" aria-describedby="mtr-locked-note">Add Meter</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Meter modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-meter-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Meter</h2>
+    </div>
+    <p class="cfg-modal-body" id="cfg-del-meter-ask">Are you sure you want to delete <strong id="cfg-del-meter-name-txt"></strong>? This action can't be undone.</p>
+    {{!-- A meter that plans price can't be deleted: settings-meters.js shows this instead, with Delete disabled. --}}
+    <p class="cfg-modal-body" id="cfg-del-meter-blocked" style="display:none;"></p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-meter-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-meter-confirm">Delete meter</button>
     </div>
   </div>
 </div>
@@ -235,21 +482,219 @@
       <label for="km-display">Name <span class="required">*</span></label>
       <input type="text" id="km-display" class="cfg-form-input" placeholder="e.g. Production" />
     </div>
+    {{!-- Asked before the type, because it is the prior question: the type names
+          the driver, and this names what the key manager is for. It used to be one
+          of the type options, which read as a fifth driver and silently emptied the
+          form below when picked. Add only — a key manager's answer here is fixed at
+          creation, so editing shows the settled fact instead (km-creation-field). --}}
+    <div class="cfg-form-group" id="km-mode-field" style="margin-bottom:16px;">
+      <span class="cfg-form-legend">Where are OAuth2 applications managed? <span class="required">*</span></span>
+      <div class="cfg-choice-group">
+        <label class="cfg-choice">
+          <input type="radio" name="km-mode" id="km-mode-register" value="register" checked />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">In the portal</span>
+            <span class="cfg-choice-desc">The portal registers an application on the identity server when a developer asks for keys, then updates and deletes it from here — so they get a client ID and secret without leaving the portal.</span>
+          </span>
+        </label>
+        <label class="cfg-choice">
+          <input type="radio" name="km-mode" id="km-mode-import" value="import" />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">In the identity server</span>
+            <span class="cfg-choice-desc">Applications are created and maintained there. A developer pastes the client ID here and the portal only records it, registering nothing.</span>
+          </span>
+        </label>
+      </div>
+    </div>
+    {{!-- Edit only, and only for a key manager that imports. Showing its driver
+          name — "Provision" — in a field labelled "Key manager type" reads as a
+          setting among the other drivers, which is the confusion this whole
+          section exists to remove. This states what the key manager is instead. --}}
+    <div class="cfg-form-group" id="km-creation-field" style="margin-bottom:16px;" hidden>
+      <label for="km-creation">OAuth2 applications</label>
+      <input type="text" id="km-creation" class="cfg-form-input" value="Managed in the identity server" disabled />
+      <p class="cfg-form-hint">Applications are created in the identity server and imported here. Fixed at creation — add a new key manager to register keys from the portal.</p>
+    </div>
+    <div class="cfg-form-group" id="km-type-field" style="margin-bottom:16px;">
+      <label for="km-type">Key manager type <span class="required">*</span></label>
+      <select id="km-type" class="cfg-form-input">
+        {{!-- Every option here registers applications: the one that does not is
+              filtered out by the controller and chosen with the control above. So
+              a default no longer risks quietly selecting a driver that cannot
+              register — which is what an empty placeholder used to guard against.
+              The script picks it, so a build without that driver falls back to the
+              first option rather than submitting an empty value. --}}
+        {{!-- Label only. The value stays the driver id exactly as the registry
+              spells it, which is what the API is given, so nothing has to undo
+              this on the way out. The label comes from the registry too, beside
+              the type it names. --}}
+        {{!-- The grant types this driver declares ride along on the option, so the
+              grant-type checkboxes below can be rebuilt when the type changes
+              without a second trip to the server. jsonAttr escapes it for an
+              attribute; the script parses it back. --}}
+        {{#each keyManagerTypes}}
+        <option value="{{value}}" data-grants="{{jsonAttr grantTypes}}">{{label}}</option>
+        {{/each}}
+      </select>
+    </div>
+    {{!-- Which environment this key manager issues keys for. A deployment runs one
+          key manager per environment, so this is asked once here rather than on
+          every key — every key created on it inherits the answer.
+
+          Fixed at creation: the keys already issued were created as that kind, and
+          the API answers 409 to a change. Edit shows it disabled rather than
+          hiding it, so an admin can still see which one they are looking at. --}}
+    <div class="cfg-form-group" id="km-keytype-field" style="margin-bottom:16px;">
+      <span class="cfg-form-legend">Key type <span class="required">*</span></span>
+      <div class="cfg-choice-group cfg-choice-group--inline">
+        <label class="cfg-choice cfg-choice--compact">
+          <input type="radio" name="km-keytype" id="km-keytype-production" value="PRODUCTION" checked />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">Production</span>
+            <span class="cfg-choice-desc">Keys for live traffic.</span>
+          </span>
+        </label>
+        <label class="cfg-choice cfg-choice--compact">
+          <input type="radio" name="km-keytype" id="km-keytype-sandbox" value="SANDBOX" />
+          <span class="cfg-choice-body">
+            <span class="cfg-choice-title">Sandbox</span>
+            <span class="cfg-choice-desc">Keys for testing against sandbox endpoints.</span>
+          </span>
+        </label>
+      </div>
+      <p class="cfg-form-hint" id="km-keytype-hint" hidden>Fixed when the key manager was created — add a new key manager for the other environment.</p>
+    </div>
+    {{!-- Add only. A shortcut for filling the endpoint fields below, not a setting:
+          nothing here is sent when the form is saved, and the key manager keeps no
+          record of where its endpoints were read from. Editing hides it, where the
+          endpoints are already settled and re-reading them would overwrite what an
+          admin may have corrected by hand. --}}
+    <div class="cfg-form-group" id="km-discovery-field" style="margin-bottom:16px;">
+      <label for="km-discovery-url">Discovery URL</label>
+      <div class="cfg-input-with-action">
+        <input type="text" id="km-discovery-url" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/token/.well-known/openid-configuration" />
+        {{!-- Icon only, so a long .well-known URL keeps the width. The word it
+              replaces lives in the title/aria-label, and the hint line below spells
+              out what the control does — so nothing rests on reading the glyph. --}}
+        <button type="button" class="cfg-icon-action" id="km-discovery-fetch"
+          title="Fetch endpoints" aria-label="Fetch endpoints from this discovery URL">
+          <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+        </button>
+      </div>
+      <p class="cfg-form-hint" id="km-discovery-status">Optional. Reads the server's own metadata document and fills in the endpoints below, so they need not be transcribed. They stay editable, and the URL itself is not saved.</p>
+    </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>
       <input type="text" id="km-token-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/token" />
     </div>
-    <div class="cfg-form-group" style="margin-bottom:24px;">
-      <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
-        <span class="wh-toggle">
-          <input type="checkbox" id="km-enabled" checked />
-          <span class="wh-toggle-slider"></span>
-        </span>
-        Enabled
-      </label>
+    {{!-- Key generation. Name, type and the token endpoint are enough to proxy token
+          requests for an OAuth application created directly in the key manager; the
+          rest is what additionally lets the portal create those applications itself,
+          over Dynamic Client Registration.
+
+          No wrapper and no heading of its own: filling these in is the normal case.
+          Still optional — leaving them all blank saves a key manager that only
+          proxies token requests. --}}
+    {{!-- Dynamic Client Registration only. Hidden when the type is Provision,
+          where applications are created in the key manager and imported here,
+          so there is no endpoint for the portal to register at and no
+          credential for it to present. --}}
+    <div id="km-dcr-only">
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="km-authorize-endpoint">Authorization endpoint</label>
+        <input type="text" id="km-authorize-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/authorize" />
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="km-registration-endpoint">Registration endpoint <span class="required">*</span></label>
+        <input type="text" id="km-registration-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/oauth2/dcr/register" />
+      </div>
+      {{!-- Which grants a developer may pick when creating a key here. Populated
+            from the chosen driver's own declared options, so it cannot name a grant
+            this key manager was never going to offer. Leaving every box clear means
+            no restriction — whatever the driver offers — which is the default and
+            what every existing key manager already does.
+
+            Not cosmetic: the same list is enforced on POST/PUT /oauth2-keys, so a
+            request sent by hand is refused too. --}}
+      <div class="cfg-form-group" id="km-grants-field" style="margin-bottom:16px;">
+        <span class="cfg-form-legend">Grant types developers may use</span>
+        <div class="cfg-check-group" id="km-grants"></div>
+        <p class="cfg-form-hint">Optional. Leave all clear to allow every grant type this key manager supports.</p>
+      </div>
+      <div class="cfg-form-group" style="margin-bottom:16px;">
+        <label for="km-auth-method">How the portal authenticates to it <span class="required">*</span></label>
+        <select id="km-auth-method" class="cfg-form-input">
+          <option value="client_credentials">Client credentials</option>
+          <option value="basic">Basic authentication</option>
+          <option value="api_key">API key</option>
+        </select>
+      </div>
+
+      <div id="km-auth-cc">
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-client-id">Client ID <span class="required">*</span></label>
+          <input type="text" id="km-client-id" class="cfg-form-input cfg-form-input--mono" />
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-client-secret">Client secret <span class="required" id="km-client-secret-req">*</span></label>
+          <input type="password" id="km-client-secret" class="cfg-form-input cfg-form-input--mono" autocomplete="new-password" />
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-scopes">Scopes</label>
+          {{!-- Chip input, same markup and classes as the API wizard's Tags field.
+                A scope is an opaque token with no delimiter of its own, so the old
+                space-separated box gave no feedback about where one ended and the
+                next began -- a stray double space or a trailing one looked
+                identical to a correct value. --}}
+          <div class="cfg-chip-input-wrap cfg-chip-input-wrap--mono" id="km-scopes-wrap">
+            <div id="km-scopes-chips" style="display:contents;"></div>
+            <input type="text" class="cfg-chip-text-input" id="km-scopes"
+              placeholder="internal_client_management" autocomplete="off" aria-describedby="km-scopes-hint" />
+          </div>
+          <p class="cfg-form-hint" id="km-scopes-hint">Requested when minting the provisioning token. Press space or Enter to add; Backspace removes the last scope.</p>
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-resource">Resource indicator</label>
+          <input type="text" id="km-resource" class="cfg-form-input cfg-form-input--mono" placeholder="https://idp.example.com/api" />
+          <p class="cfg-form-hint">RFC 8707. Some key managers will not issue a usable token without it.</p>
+        </div>
+      </div>
+
+      <div id="km-auth-apikey" hidden>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-header-name">Header name</label>
+          <input type="text" id="km-header-name" class="cfg-form-input cfg-form-input--mono" placeholder="Authorization" />
+          <p class="cfg-form-hint">Where the key is sent. Defaults to Authorization.</p>
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-scheme">Scheme</label>
+          <input type="text" id="km-scheme" class="cfg-form-input cfg-form-input--mono" placeholder="Bearer" />
+          <p class="cfg-form-hint">The word before the key. Leave blank to send the key on its own.</p>
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-api-key">API key <span class="required" id="km-api-key-req">*</span></label>
+          <input type="password" id="km-api-key" class="cfg-form-input cfg-form-input--mono" autocomplete="new-password" />
+        </div>
+      </div>
+
+      <div id="km-auth-basic" hidden>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-username">Username <span class="required">*</span></label>
+          <input type="text" id="km-username" class="cfg-form-input cfg-form-input--mono" />
+        </div>
+        <div class="cfg-form-group" style="margin-bottom:16px;">
+          <label for="km-password">Password <span class="required" id="km-password-req">*</span></label>
+          <input type="password" id="km-password" class="cfg-form-input cfg-form-input--mono" autocomplete="new-password" />
+        </div>
+      </div>
     </div>
+
+
     <div class="cfg-modal-actions">
-      <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
+      {{!-- Enabling is not edited here. It is one flag, changed often and on its
+              own, so it lives as a control in the Status column of the list — a
+              modal round trip to flip it read as heavier than the change is. --}}
+              <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
       <button type="button" class="cfg-btn-primary" id="cfg-km-modal-save">Add key manager</button>
     </div>
   </div>

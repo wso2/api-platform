@@ -37,7 +37,7 @@ class APIDocDTO {
 
     getDocType(docType) {
 
-        let type = "";
+        let type;
         if (docType === constants.DOC_TYPES.API_DEFINITION) {
             type = constants.DOC_TYPES.DOCS.API_DEFINITION;
         } else {

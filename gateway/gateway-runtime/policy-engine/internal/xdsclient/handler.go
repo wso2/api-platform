@@ -698,6 +698,8 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 		supportsResponseStreaming = false
 	}
 
+	faultPolicies, faultSpecs, faultHasConditions := h.buildFaultPolicies(routeKey, config, apiMetadata)
+
 	chain := &registry.PolicyChain{
 		Policies:                  policyList,
 		PolicySpecs:               policySpecs,
@@ -708,7 +710,95 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 		HasExecutionConditions:    hasExecutionConditions,
 		SupportsRequestStreaming:  supportsRequestStreaming,
 		SupportsResponseStreaming: supportsResponseStreaming,
+
+		FaultPolicies:               faultPolicies,
+		FaultPolicySpecs:            faultSpecs,
+		HasFaultPolicies:            len(faultPolicies) > 0,
+		FaultHasExecutionConditions: faultHasConditions,
 	}
 
+	// Fault policies run in the response-body phase, which only executes when the
+	// chain requires the response body. Attaching a sequence therefore has to turn that
+	// on, or the fault chain would silently never fire for an API whose own policies do not
+	// need the body. See ApplyFaultPoliciesBodyRequirement for the full reasoning.
+	kernel.ApplyFaultPoliciesBodyRequirement(chain)
+
 	return chain, nil
+}
+
+// buildFaultPolicies instantiates the route's fault policies — the policies that run
+// only when the request is failing. They are kept out of Policies so they can never
+// execute in the normal request/response phases.
+//
+// Body-mode and streaming flags are deliberately NOT derived from these policies. The
+// fault policies run over an error response through the response-header contract only,
+// so letting a fault policy's Mode() force request-body buffering would make every
+// successful request pay for a handler that may never run.
+//
+// An entry that fails to instantiate is dropped rather than failing the whole chain:
+// a misconfigured fault handler must not take the API's normal traffic down with it.
+func (h *ResourceHandler) buildFaultPolicies(
+	routeKey string,
+	config *policyenginev1.PolicyChain,
+	apiMetadata policyenginev1.Metadata,
+) ([]policy.Policy, []policy.PolicySpec, bool) {
+	if len(config.FaultPolicies) == 0 {
+		return nil, nil, false
+	}
+
+	policies := make([]policy.Policy, 0, len(config.FaultPolicies))
+	specs := make([]policy.PolicySpec, 0, len(config.FaultPolicies))
+	hasConditions := false
+
+	for _, policyConfig := range config.FaultPolicies {
+		metadata := policy.PolicyMetadata{
+			RouteName:  routeKey,
+			APIId:      apiMetadata.APIId,
+			APIName:    apiMetadata.APIName,
+			APIVersion: apiMetadata.Version,
+		}
+		if val, ok := policyConfig.Parameters["attachedTo"]; ok {
+			if attachedTo, ok := val.(string); ok {
+				metadata.AttachedTo = policy.Level(attachedTo)
+			}
+		}
+
+		impl, mergedParams, err := h.registry.GetInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
+		if err != nil {
+			slog.Error("[chain-build] skipping fault-policies policy that failed to instantiate",
+				"policy", policyConfig.Name, "version", policyConfig.Version, "route", routeKey, "error", err)
+			continue
+		}
+
+		// A fault entry MUST implement OnFault. Dropped here rather than warned about,
+		// because the alternative is a per-request error on the fault path — the worst place
+		// to discover a configuration mistake, since the client is already receiving an
+		// error. Dropping one entry leaves the rest of the fault chain working, matching how an
+		// entry that fails to instantiate is handled above.
+		if _, ok := impl.(policy.FaultPolicy); !ok {
+			slog.Error("[chain-build] skipping fault-policies policy that does not implement OnFault",
+				"policy", policyConfig.Name, "version", policyConfig.Version, "route", routeKey,
+				"hint", "a fault policy must implement the FaultPolicy contract (OnFault in Go, on_fault in Python); "+
+					"a response-phase policy cannot be used on the fault path")
+			continue
+		}
+
+		if policyConfig.ExecutionCondition != nil && *policyConfig.ExecutionCondition != "" {
+			hasConditions = true
+		}
+
+		policies = append(policies, impl)
+		specs = append(specs, policy.PolicySpec{
+			Name:               policyConfig.Name,
+			Version:            policyConfig.Version,
+			Enabled:            policyConfig.Enabled,
+			ExecutionCondition: policyConfig.ExecutionCondition,
+			Parameters:         policy.PolicyParameters{Raw: mergedParams},
+		})
+	}
+
+	slog.Debug("[chain-build] fault policies built",
+		"route", routeKey, "policy_count", len(policies), "has_conditions", hasConditions)
+
+	return policies, specs, hasConditions
 }

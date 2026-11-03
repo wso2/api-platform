@@ -1,0 +1,169 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { useState } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+
+import { fireEvent, renderWithProviders, screen } from '@/test/utils';
+import { FileDropzone, type FileDropzoneRejection, type FileFieldError } from './FileDropzone';
+
+const GRAPHQL_EXTENSIONS = ['.graphql', '.gql', '.json'];
+
+/** Wires `FileDropzone`'s controlled props to local state, like a real caller would. */
+function Harness({
+  extensions = GRAPHQL_EXTENSIONS,
+  onReject,
+  onSelect,
+}: {
+  extensions?: string[];
+  onReject?: (reason: FileDropzoneRejection) => void;
+  onSelect?: (file: File) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<FileFieldError>(null);
+
+  return (
+    <FileDropzone
+      error={error}
+      extensions={extensions}
+      file={file}
+      onReject={(reason) => {
+        setFile(null);
+        setError(reason === 'unsupported' ? 'unsupported' : null);
+        onReject?.(reason);
+      }}
+      onSelect={(next) => {
+        setFile(next);
+        setError(null);
+        onSelect?.(next);
+      }}
+    />
+  );
+}
+
+const filePicker = (container: HTMLElement): HTMLInputElement => {
+  const input = container.querySelector('input[type="file"]');
+  if (input === null) throw new Error('file input not rendered');
+  return input as HTMLInputElement;
+};
+
+/**
+ * `user.upload` honours the input's `accept` attribute and refuses to hand
+ * over a mismatched file at all, so a rejection case has to fire the change
+ * event directly — the same thing a real drop, or an OS picker that ignores
+ * the filter, would still send. Matches `ContractSourceForm.test.tsx`'s own
+ * pattern for the same reason.
+ */
+const dropFile = (input: HTMLInputElement, name: string, content = 'type Query { hello: String }') => {
+  fireEvent.change(input, {
+    target: { files: [new File([content], name)] },
+  });
+};
+
+describe('FileDropzone — accepted extensions', () => {
+  it.each(['schema.graphql', 'schema.gql', 'schema.json', 'SCHEMA.GRAPHQL'])(
+    'accepts %s',
+    async (name) => {
+      const onSelect = vi.fn();
+      const { container } = renderWithProviders(<Harness onSelect={onSelect} />);
+
+      dropFile(filePicker(container), name);
+
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText(name)).toBeInTheDocument();
+    },
+  );
+
+  // A `..` substring alone isn't path traversal on a browser `File.name` — it
+  // can't carry a path at all — so a legitimate name containing one (a
+  // version suffix, a doubled separator from how the file was originally
+  // named) must not be rejected. Pins the fix for isUnsafeFileName treating
+  // `..` as unsafe on its own, which it no longer does.
+  it.each(['api..json', 'schema..graphql'])('accepts %s (a bare ".." is not path traversal here)', async (name) => {
+    const onSelect = vi.fn();
+    const { container } = renderWithProviders(<Harness onSelect={onSelect} />);
+
+    dropFile(filePicker(container), name);
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(name)).toBeInTheDocument();
+  });
+});
+
+describe('FileDropzone — extension validation', () => {
+  it.each(['schema.txt', 'schema.exe', 'schema', 'schema.graphql.exe'])(
+    'rejects %s as unsupported',
+    async (name) => {
+      const onSelect = vi.fn();
+      const onReject = vi.fn();
+      const { container } = renderWithProviders(<Harness onReject={onReject} onSelect={onSelect} />);
+
+      dropFile(filePicker(container), name);
+
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onReject).toHaveBeenCalledWith('unsupported');
+      expect(
+        await screen.findByText(/That file type is not supported\. Accepted types:/),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it('matches the extension case-insensitively against the allowlist, not a bare suffix', () => {
+    // A name ending in an allowed extension's letters but not as its actual
+    // last extension must still be judged on the real extension.
+    const onSelect = vi.fn();
+    const { container } = renderWithProviders(<Harness onSelect={onSelect} />);
+
+    dropFile(filePicker(container), 'schema.graphql.txt');
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+// Defense-in-depth mirroring the backend's own `validateSDLFileName`
+// (platform-api's graphql_multipart.go) — a browser-picked `File` can't
+// actually carry a path that escapes anywhere, but a name shaped like an
+// attempt is rejected outright here too, rather than silently trusted.
+describe('FileDropzone — unsafe filenames', () => {
+  const backslashTraversalName = ['..', 'windows', 'win.ini.graphql'].join(String.fromCharCode(92));
+  // Built by joining on the runtime character, not a literal escape in
+  // source — a `\x00`-style escape risks being mangled into a raw control
+  // byte the next time this file is edited (see the matching note on
+  // `isUnsafeFileName` in FileDropzone.tsx).
+  const nullByteName = ['a', String.fromCharCode(0), 'b.graphql'].join('');
+
+  it.each([
+    '../../etc/passwd.graphql',
+    backslashTraversalName,
+    '/etc/passwd.graphql',
+    'a/b.graphql',
+    nullByteName,
+  ])('rejects an unsafe filename as unsupported rather than accepting it', async (name) => {
+    const onSelect = vi.fn();
+    const onReject = vi.fn();
+    const { container } = renderWithProviders(<Harness onReject={onReject} onSelect={onSelect} />);
+
+    dropFile(filePicker(container), name);
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledWith('unsupported');
+    expect(
+      await screen.findByText(/That file type is not supported\. Accepted types:/),
+    ).toBeInTheDocument();
+  });
+});

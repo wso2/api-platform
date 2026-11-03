@@ -84,6 +84,10 @@ import {
   extractSecretHandle,
 } from '../../../../apis/secretApis';
 import { getGuardrails } from '../../../../apis/policyHubApis';
+import {
+  buildApiPortalMcpUrl,
+  resolveApiPortalUrl,
+} from '../../../../apis/apiPortalApis';
 import { getMCPServerDeployments } from '../../../../apis/MCP/mcpServerDeployApis';
 import { getGateways } from '../../../../apis/gatewayApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
@@ -123,6 +127,7 @@ import {
   NO_PERMISSION_TOOLTIP,
   SCOPES,
 } from '../../../../auth/permissions';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -272,7 +277,15 @@ export default function ExternalServersOverview(): JSX.Element {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [activeDeploymentCount, setActiveDeploymentCount] = useState<number | null>(null);
-  const isReadOnlyServer = Boolean(server?.readOnly);
+  // Whether the artifact itself was created from a gateway, which owns its
+  // runtime configuration. Kept separate from the flag below because only this
+  // one is true of the artifact: the gateway-managed banners and warnings speak
+  // about the gateway, and must not appear merely because the organization has
+  // gone read-only.
+  const isGatewayManagedServer = Boolean(server?.readOnly);
+  // Everything that only disables a control reads this one: an organization
+  // that may not write at all disables the same controls the gateway does.
+  const isReadOnlyServer = useOrgReadOnly() || isGatewayManagedServer;
 
   // API Portal publish state. isAPIPortalAvailable depends only on local
   // state (feature flag + at least one active gateway deployment), never on
@@ -280,6 +293,14 @@ export default function ExternalServersOverview(): JSX.Element {
   const [isAPIPortalAvailable, setIsAPIPortalAvailable] = useState(false);
   const [isPublished, setIsPublished] = useState(false)
   const [isPublishStatusUnknown, setIsPublishStatusUnknown] = useState(true);
+  /**
+   * The PORTAL's own address, resolved once per organization (see
+   * `resolveApiPortalUrl`) rather than taken from the listing's
+   * `endpoints.productionUrl`, which is the API's invocation endpoint — for an
+   * MCP proxy, the gateway URL — and sent this link at the gateway instead of
+   * the portal. It is only the base: "View in API Portal" points at this
+   * proxy's own listing beneath it (see `apiPortalListingUrl`).
+   */
   const [apiPortalUrl, setApiPortalUrl] = useState<string | undefined>();
   const [isPublishStatusLoading, setIsPublishStatusLoading] = useState(false);
   const [isPublishActionLoading, setIsPublishActionLoading] = useState(false);
@@ -457,7 +478,7 @@ export default function ExternalServersOverview(): JSX.Element {
   }, [organizationId, serverId, apimBaseUrl]);
 
   useEffect(() => {
-    if (!organizationId || !serverId || !isReadOnlyServer || !canDeleteMcpProxy) {
+    if (!organizationId || !serverId || !isGatewayManagedServer || !canDeleteMcpProxy) {
       setActiveDeploymentCount(null);
       return;
     }
@@ -484,17 +505,17 @@ export default function ExternalServersOverview(): JSX.Element {
     return () => {
       isCancelled = true;
     };
-  }, [organizationId, serverId, isReadOnlyServer, canDeleteMcpProxy, apimBaseUrl]);
+  }, [organizationId, serverId, isGatewayManagedServer, canDeleteMcpProxy, apimBaseUrl]);
 
   const deleteBlockedReason = useMemo(() => {
-    if (!isReadOnlyServer || activeDeploymentCount === null || activeDeploymentCount === 0) {
+    if (!isGatewayManagedServer || activeDeploymentCount === null || activeDeploymentCount === 0) {
       return null;
     }
     return activeDeploymentDeleteBlockedReason(
       'MCP Proxy',
       activeDeploymentCount
     );
-  }, [isReadOnlyServer, activeDeploymentCount]);
+  }, [isGatewayManagedServer, activeDeploymentCount]);
 
   const handleDeleteConfirm = async () => {
     if (!server || !serverId || isDeleting) return;
@@ -984,11 +1005,37 @@ export default function ExternalServersOverview(): JSX.Element {
     setIsAPIPortalAvailable(API_PORTAL_ENABLED && deployedGateways.length > 0);
   }, [deployedGateways]);
 
+  // The portal's address, not the listing's: read once per organization, and
+  // independent of whether this server is published — it is the same portal for
+  // every listing, so it is not re-read on publish/unpublish.
+  useEffect(() => {
+    if (!isAPIPortalAvailable || !organizationId) return;
+    let cancelled = false;
+    void (async () => {
+      const url = await resolveApiPortalUrl(DEFAULT_API_PORTAL_ID, apimBaseUrl);
+      if (!cancelled) setApiPortalUrl(url);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apimBaseUrl, isAPIPortalAvailable, organizationId]);
+
+  // Where "View in API Portal" actually goes: this proxy's listing, not the
+  // portal's home page, which is all the bare portal address reached.
+  const apiPortalListingUrl = useMemo(
+    () =>
+      buildApiPortalMcpUrl(
+        apiPortalUrl,
+        currentOrganization?.handle,
+        server?.id
+      ),
+    [apiPortalUrl, currentOrganization?.handle, server?.id]
+  );
+
   useEffect(() => {
     if (!isAPIPortalAvailable || isLoading || !server || !organizationId) return;
     setIsPublishStatusUnknown(true);
     setIsPublished(false);
-    setApiPortalUrl(undefined);
     let cancelled = false;
     void (async () => {
       setIsPublishStatusLoading(true);
@@ -1000,14 +1047,12 @@ export default function ExternalServersOverview(): JSX.Element {
         );
         if (cancelled) return;
         setIsPublished(true);
-        setApiPortalUrl(publication.endpoints?.productionUrl);
         setIsPublishStatusUnknown(false);
       } catch (err) {
         if (cancelled) return;
         if (getHttpStatus(err) === 404) {
           // No publication record — not published, not an error.
           setIsPublished(false);
-          setApiPortalUrl(undefined);
           setIsPublishStatusUnknown(false);
         } else {
           // Status is genuinely unknown (e.g. the publish backend for this
@@ -1084,13 +1129,12 @@ export default function ExternalServersOverview(): JSX.Element {
         },
       };
 
-      const publication = await mcpProxiesApis.publishMcpProxyToApiPortal(
+      await mcpProxiesApis.publishMcpProxyToApiPortal(
         DEFAULT_API_PORTAL_ID,
         server.id,
         draft
       );
       setIsPublished(true);
-      setApiPortalUrl(publication.endpoints?.productionUrl);
       showSnackbar('MCP Proxy published to the API Portal.', 'success');
     } catch (err) {
       showSnackbar(getErrorMessage(err, 'Failed to publish MCP Proxy.'), 'error');
@@ -1106,7 +1150,6 @@ export default function ExternalServersOverview(): JSX.Element {
     try {
       await mcpProxiesApis.unpublishMcpProxyFromApiPortal(DEFAULT_API_PORTAL_ID, server.id, apimBaseUrl);
       setIsPublished(false);
-      setApiPortalUrl(undefined);
       showSnackbar('MCP Proxy unpublished from the API Portal.', 'success');
     } catch (err) {
       showSnackbar(getErrorMessage(err, 'Failed to unpublish MCP Proxy.'), 'error');
@@ -1369,15 +1412,6 @@ export default function ExternalServersOverview(): JSX.Element {
                       {formatRelativeTime(server.updatedAt)}
                     </Typography>
                   </Stack>
-                  {server.createdBy && (
-                    <Typography variant="caption" color="text.secondary">
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.createdBy"
-                        defaultMessage="Created by: {createdBy}"
-                        values={{ createdBy: server.createdBy }}
-                      />
-                    </Typography>
-                  )}
                 </Stack>
               </Stack>
             </Box>
@@ -1459,10 +1493,10 @@ export default function ExternalServersOverview(): JSX.Element {
                       {isPublished ? 'Unpublish from API Portal' : 'Publish to API Portal'}
                     </Button>
                   </DisabledActionTooltip>
-                  {isPublished && apiPortalUrl ? (
+                  {isPublished && apiPortalListingUrl ? (
                     <Box
                       component="a"
-                      href={apiPortalUrl}
+                      href={apiPortalListingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       sx={{
@@ -1657,7 +1691,7 @@ export default function ExternalServersOverview(): JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
-              {isReadOnlyServer && (
+              {isGatewayManagedServer && (
                 <GatewayArtifactReadOnlyBanner message="Policies are managed by the gateway that created this MCP proxy and are read-only here." />
               )}
               <PolicyMapper
@@ -1672,7 +1706,7 @@ export default function ExternalServersOverview(): JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={2}>
-              {isReadOnlyServer && (
+              {isGatewayManagedServer && (
                 <GatewayArtifactReadOnlyBanner message="Backend connection is managed by the gateway that created this MCP proxy and is read-only here." />
               )}
               <Stack spacing={2} sx={{ maxWidth: 640 }}>
@@ -1839,7 +1873,7 @@ export default function ExternalServersOverview(): JSX.Element {
       >
         <DialogTitle>Delete MCP Proxy</DialogTitle>
         <DialogContent>
-          {isReadOnlyServer ? (
+          {isGatewayManagedServer ? (
             <GatewayArtifactDeleteWarning
               artifactType="MCP Proxy"
               artifactName={server.displayName}

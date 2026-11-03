@@ -33,7 +33,7 @@ import (
 func (h *exchangeTestHarness) switchOrgRequest(subject, org string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, h.server.path("/api/session/org"), strings.NewReader(`{"org":"`+org+`"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: h.server.cfg.Cookie.Name, Value: subject})
+	addSessionCookies(req, h.server.cfg.Cookie, subject)
 	rec := httptest.NewRecorder()
 	h.server.handleSwitchOrg(rec, req)
 	return rec

@@ -23,6 +23,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable
 
+from .actions import FaultDetails
+
 
 class HeaderProcessingMode(Enum):
     SKIP = "SKIP"
@@ -45,6 +47,7 @@ class ExecutionPhase(Enum):
     NEEDS_MORE_RESPONSE_DATA = "needs_more_response_data"
     RESPONSE_BODY_CHUNK = "response_body_chunk"
     CANCEL = "cancel"
+    FAULT = "fault"
 
 
 @dataclass(slots=True)
@@ -329,6 +332,91 @@ class ResponseStreamContext:
     response_status: int = 200
     downstream: DownstreamContext | None = None
     upstream: UpstreamResponseContext | None = None
+
+
+@dataclass(slots=True)
+class FaultContext:
+    """What a fault policy receives through ``on_fault``.
+
+    Declares its response fields directly rather than subclassing :class:`ResponseContext`.
+    The inheritance made the two look interchangeable when they are not — a fault handler
+    reads a response that has already failed and cannot forward it — and it meant a handler
+    could be passed to a function annotated for the response phase and type-check cleanly.
+    The field set is otherwise identical, so a handler reads the same values by the same
+    names.
+
+    The fields below the response set describe WHY the fault flow is running.
+
+    ``source`` names which actor produced the failure, so a handler can tell a policy rejection
+    from an upstream failure. There is deliberately no "trigger": which phase noticed a failure
+    is an engine routing concern and nothing a handler should branch on.
+
+    Note what ``source`` is NOT for. It says who produced the response, never what went wrong:
+    read ``fault.type`` for the class of failure, ``fault.code`` for exactly what went wrong, an
+    empty ``policy`` for "no policy caused this". Expect ``fault`` to be None precisely when
+    ``source`` is ``backend`` — another service's 500 is not the gateway's to classify.
+    """
+
+    shared: SharedContext
+    #: The originating request (read-only, from the request phase).
+    request_headers: Headers = field(default_factory=Headers)
+    request_body: Body | None = None
+    request_path: str = ""
+    request_method: str = ""
+    #: The rest of the request identity. Carried on the two request-phase contexts and
+    #: neither response-phase one, so the gateway supplies them from whichever phase context
+    #: holds them — a handler reads the same three values whatever phase failed. Empty when
+    #: the request never reached the phase that knows them.
+    request_authority: str = ""
+    request_scheme: str = ""
+    request_vhost: str = ""
+    #: The response the client is receiving. ``response_body`` is None when there is none.
+    response_headers: Headers = field(default_factory=Headers)
+    response_body: Body | None = None
+    response_status: int = 200
+    #: Snapshot of the client request headers, captured before any policy mutation.
+    downstream: DownstreamContext | None = None
+    #: The route's resolved upstream target, and the snapshot of the upstream response
+    #: headers captured before any policy mutation. Populated for a REQUEST-phase failure
+    #: too, where the request never reached the target: ``response`` stays None, because no
+    #: upstream response existed. Reading ``name``/``url`` is what tells a handler which
+    #: backend a rejected request was bound for.
+    upstream: UpstreamResponseContext | None = None
+
+    #: The status before a policy changed it, and 0 when nothing did. Not otherwise
+    #: recoverable — once a guardrail turns a 200 into a 422 the upstream's own status is gone.
+    original_status: int = 0
+    #: The policy that caused the failure. EMPTY means no policy did (a router failure),
+    #: never "unknown".
+    policy: str = ""
+    policy_version: str = ""
+    #: The phase the failing policy was executing in — one of the ExecutionPhase values, as
+    #: a plain string. Completes the attribution the two fields above start: which policy,
+    #: which version, doing what.
+    #:
+    #: EMPTY exactly when ``policy`` is, and for the same reason. A router failure names no
+    #: policy, so there is no policy phase to name; reporting whichever phase the engine
+    #: happened to be in would answer "where did the gateway notice this?" — a different
+    #: question, and deliberately not on offer. Also empty for a failure raised mid-stream,
+    #: which attributes no policy.
+    policy_phase: str = ""
+    #: True when the status, headers and at least one body chunk have ALREADY reached the
+    #: client, so nothing this handler returns can change what they see. True only for a
+    #: failure raised mid-stream. Read it to do the part that still works — notify, record —
+    #: and skip the part that cannot.
+    response_committed: bool = False
+    #: The matched route, for correlating a fault with deployed configuration.
+    route_key: str = ""
+    #: Which actor produced this error response — one of the :class:`FaultSource` values.
+    #: Never empty on the fault path.
+    #:
+    #: The distinction no status can express: a backend answering 503 and the router failing
+    #: to reach that backend are both 503, and they mean opposite things. One says the API is
+    #: up and refusing, the other that the gateway never got there.
+    source: str = ""
+    #: What the producing policy — or, for a router failure, the gateway — said about the
+    #: failure. ``None`` when nothing described it, which includes every BACKEND error.
+    fault: FaultDetails | None = None
 
 
 @dataclass(slots=True)

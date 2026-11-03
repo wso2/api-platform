@@ -113,6 +113,24 @@ func TestFetchOpenAPISpecFromURL_BlocksLinkLocalAddress(t *testing.T) {
 	}
 }
 
+// TestFetchDocumentFromURL_ErrorNamesDocument asserts a non-OpenAPI caller's errors
+// name its own document, while FetchOpenAPISpecFromURL keeps its OpenAPI wording.
+func TestFetchDocumentFromURL_ErrorNamesDocument(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	_, err := FetchDocumentFromURL(context.Background(), srv.URL, 0, "GraphQL SDL")
+	if err == nil || err.Error() != "GraphQL SDL URL returned an unexpected status" {
+		t.Fatalf("expected a GraphQL SDL status error, got: %v", err)
+	}
+	_, err = FetchOpenAPISpecFromURL(context.Background(), srv.URL, 0)
+	if err == nil || err.Error() != "OpenAPI spec URL returned an unexpected status" {
+		t.Fatalf("expected an OpenAPI spec status error, got: %v", err)
+	}
+}
+
 func TestFetchOpenAPISpecFromURL_FetchAndSizeLimit(t *testing.T) {
 	// No policy override needed: the shared test client (see TestMain) already permits
 	// loopback/private addresses under netguard.PermitPrivateBlockMetadata(), exactly what's

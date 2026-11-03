@@ -224,7 +224,7 @@ func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
 }
 
 // ListAPIKeysByUser retrieves API keys within an org, optionally filtered by artifact kinds.
-// If kinds is empty, all supported kinds (RestApi, LlmProvider, LlmProxy) are returned.
+// If kinds is empty, all supported kinds (RestApi, LlmProvider, LlmProxy, AgentProxy) are returned.
 //
 // allUsers selects the scope of the listing and must be set deliberately by the caller:
 // false restricts results to keys created by username; true drops the creator filter and
@@ -240,7 +240,7 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, allUsers bool, 
 	}
 
 	if len(kinds) == 0 {
-		kinds = []string{constants.RestApi, constants.LLMProvider, constants.LLMProxy}
+		kinds = []string{constants.RestApi, constants.LLMProvider, constants.LLMProxy, constants.AgentProxy}
 	}
 
 	// creatorFilter is one of two fixed, code-controlled literals — never built from input.

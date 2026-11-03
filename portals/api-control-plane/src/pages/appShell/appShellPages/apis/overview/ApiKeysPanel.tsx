@@ -34,10 +34,11 @@ import {
 import { ChevronLeft, Clock, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useMyApiKeys, useRevokeApiKey } from '@/api/resources/apiKeys';
+import { useMyApiKeys } from '@/api/resources/apiKeys';
 import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
 
+import { API_KEY_KINDS, useRevokeApiKeyForKind, type ApiKeyApiKind } from './apiKeyKinds';
 import { CreateApiKeyDialog } from './CreateApiKeyDialog';
 import { Can } from '@/permissions/Can';
 
@@ -153,25 +154,34 @@ const EMPTY_VALUE = '-';
  * name is what the dialog and the toast show. */
 type RevokeTarget = { id: string; displayName: string };
 
+export type ApiKeysPanelProps = {
+  /** The API's id (its handle), as the key endpoints address it. */
+  apiId: string;
+  /** Which kind of API `apiId` names; selects its key endpoints and permissions. */
+  apiKind?: ApiKeyApiKind;
+};
+
 /**
- * API Keys section of the Overview tab (ai-workspace layout). The server mints
- * the key, stores only a hash and broadcasts it to the gateways the API is
- * deployed on; the plaintext exists once, in `CreateApiKeyDialog`'s second
- * step, and is never readable again — hence the masked values listed here.
+ * API Keys section of the Overview tab (ai-workspace layout), shared by REST and
+ * GraphQL APIs. The server mints the key, stores only a hash and broadcasts it
+ * to the gateways the API is deployed on; the plaintext exists once, in
+ * `CreateApiKeyDialog`'s second step, and is never readable again — hence the
+ * masked values listed here.
  */
-export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
+export function ApiKeysPanel({ apiId, apiKind = 'rest' }: ApiKeysPanelProps) {
+  const kind = API_KEY_KINDS[apiKind];
   const intl = useIntl();
   const { dateTime, relativeTime } = useFormatters();
   const { notify } = useNotifications();
   // The spec has no per-API key listing — the only read is the caller's own
-  // inventory across artifacts, so this narrows to REST API keys server-side
+  // inventory across artifacts, so this narrows to this kind's keys server-side
   // and to this API here. It therefore shows the signed-in user's keys only.
   //
   // `limit` is explicit because filtering to this API happens in the browser.
   // With the server default page size (20), relevant keys could be omitted.
   // `API_KEY_PAGE_SIZE` is the spec max and yields the widest single request.
-  const keysQuery = useMyApiKeys({ limit: API_KEY_PAGE_SIZE, type: ['RestApi'] });
-  const revokeMutation = useRevokeApiKey();
+  const keysQuery = useMyApiKeys({ limit: API_KEY_PAGE_SIZE, type: [kind.artifactType] });
+  const revokeMutation = useRevokeApiKeyForKind(apiKind);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -180,27 +190,24 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
   const keys = useMemo(
     () =>
       (keysQuery.data?.list ?? [])
-        .filter((key) => key.artifactId === restApiId && key.status === 'active')
+        .filter((key) => key.artifactId === apiId && key.status === 'active')
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [keysQuery.data, restApiId],
+    [keysQuery.data, apiId],
   );
 
   const revoke = () => {
     if (!revokeTarget) return;
     const { displayName: name } = revokeTarget;
-    revokeMutation.mutate(
-      { restApiId, apiKeyId: revokeTarget.id },
-      {
-        onSuccess: () => {
-          notify(intl.formatMessage(messages.revokeSucceeded, { name }), 'success');
-          setRevokeTarget(null);
-        },
-        onError: (error) => {
-          notify(error.message || intl.formatMessage(messages.revokeFailed), 'error');
-          setRevokeTarget(null);
-        },
+    revokeMutation.mutate(apiId, revokeTarget.id, {
+      onSuccess: () => {
+        notify(intl.formatMessage(messages.revokeSucceeded, { name }), 'success');
+        setRevokeTarget(null);
       },
-    );
+      onError: (error) => {
+        notify(error.message || intl.formatMessage(messages.revokeFailed), 'error');
+        setRevokeTarget(null);
+      },
+    });
   };
 
   const recentKeys = keys.slice(0, 5);
@@ -217,7 +224,7 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
               <FormattedMessage {...messages.description} />
             </Typography>
           </Box>
-          <Can do="CreateAPIKey" denied="disable">
+          <Can do={kind.createOperation} denied="disable">
             <Button
               onClick={() => setDialogOpen(true)}
               size="small"
@@ -270,7 +277,7 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
                     </Tooltip>
                   </Stack>
                 </Box>
-                <Can do="RevokeAPIKey" denied="hide">
+                <Can do={kind.revokeOperation} denied="hide">
                   <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
                     <span>
                       <IconButton
@@ -354,7 +361,7 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
                     </Typography>
                   </Stack>
                 </Box>
-                <Can do="RevokeAPIKey" denied="hide">
+                <Can do={kind.revokeOperation} denied="hide">
                   <Tooltip title={intl.formatMessage(messages.revokeTooltip)}>
                     <span>
                       <IconButton
@@ -378,7 +385,8 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
       <CreateApiKeyDialog
         onClose={() => setDialogOpen(false)}
         open={dialogOpen}
-        restApiId={restApiId}
+        apiId={apiId}
+        apiKind={apiKind}
       />
 
       {/* Revoke confirmation */}

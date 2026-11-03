@@ -29,6 +29,7 @@ import (
 	v3 "github.com/envoyproxy/go-control-plane/envoy/service/accesslog/v3"
 	"github.com/wso2/api-platform/common/collector"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 
@@ -53,11 +54,17 @@ func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
 }
 
 // newAccessLogServiceServer creates a new instance of the Access Log Service Server.
-func newAccessLogServiceServer(cfg *config.Config) *AccessLogServiceServer {
-	analytics := analytics.NewAnalytics(cfg)
+// corrStore may be nil (collector disabled elsewhere) -- Analytics treats a nil
+// store as "always miss", falling back to decoding headers from the access-log
+// entry's own metadata exactly as it did before this store existed.
+func newAccessLogServiceServer(cfg *config.Config, corrStore *correlation.Store) *AccessLogServiceServer {
+	analyticsInstance := analytics.NewAnalytics(cfg)
+	if corrStore != nil {
+		analyticsInstance.SetCorrelationStore(corrStore)
+	}
 	return &AccessLogServiceServer{
 		cfg:       cfg,
-		analytics: analytics,
+		analytics: analyticsInstance,
 	}
 }
 
@@ -87,9 +94,9 @@ func (s *AccessLogServiceServer) StreamAccessLogs(stream v3.AccessLogService_Str
 // shutdown ordering: stop the gRPC server first so no new events arrive, then call
 // Analytics.Close to flush publishers that buffer (the traffic-log HTTP sink,
 // Moesif). Without that flush, an in-flight batch is lost on every pod restart.
-func StartAccessLogServiceServer(cfg *config.Config) (*grpc.Server, *analytics.Analytics) {
+func StartAccessLogServiceServer(cfg *config.Config, corrStore *correlation.Store) (*grpc.Server, *analytics.Analytics) {
 	// Create a new instance of the Access Log Service Server
-	accessLogServiceServer := newAccessLogServiceServer(cfg)
+	accessLogServiceServer := newAccessLogServiceServer(cfg, corrStore)
 
 	kaParams := keepalive.ServerParameters{
 		Time:    2 * time.Hour, // Ping the client if it is idle for 2 hours

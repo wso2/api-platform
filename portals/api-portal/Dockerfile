@@ -54,6 +54,10 @@ RUN --mount=type=bind,from=coverage-scripts,source=instrument-browser-coverage.j
         NODE_PATH=/tmp/coverage-npm-cache/node_modules node /tmp/instrument-browser-coverage.js src/scripts; \
     fi
 
+# Remove the npm CLI bundled with the base image. The entrypoint runs node directly,
+# so npm/npx are never used at runtime (the coverage step above is the last use).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # Expose the application port
 EXPOSE 9543
 
@@ -63,9 +67,10 @@ RUN addgroup -g 10001 appgroup && adduser -u 10001 -G appgroup -s /bin/sh -D -H 
 # Pre-create the logs and data directories owned by the non-root user so the
 # app can write log files and its database. The TLS certificate is bind-mounted
 # read-only at /etc/api-portal/tls (generated host-side by setup.sh) — never
-# written to by the container.
-RUN mkdir -p /app/logs /app/data && chown -R 10001:10001 /app/logs /app/data
-RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown 10001:10001 /coverage; fi
+# written to by the container. Both are owned by the root group with group perms
+# matching the owner, so OpenShift's arbitrary UID (always in GID 0) can write to them.
+RUN mkdir -p /app/logs /app/data && chown -R 10001:0 /app/logs /app/data && chmod -R g=u /app/logs /app/data
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown 10001:0 /coverage && chmod g=u /coverage; fi
 
 RUN chmod +x /app/docker-entrypoint.sh
 

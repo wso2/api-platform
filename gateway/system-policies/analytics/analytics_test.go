@@ -757,6 +757,30 @@ func TestExtractMCPResponseAnalyticsProps_ResultType(t *testing.T) {
 	}
 }
 
+func TestDeriveGraphQLOperationType(t *testing.T) {
+	cases := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{"anonymous shorthand", "{ countries { code name } }", "query"},
+		{"explicit query keyword", "query GetCountries { countries { code } }", "query"},
+		{"explicit mutation keyword", "mutation CreatePost($title: String!) { createPost(title: $title) { id } }", "mutation"},
+		{"explicit subscription keyword", "subscription OnComment { commentAdded { id } }", "subscription"},
+		{"leading whitespace before keyword", "\n\t  mutation Foo { foo }", "mutation"},
+		{"mixed case keyword", "MUTATION Foo { foo }", "mutation"},
+		{"empty query defaults to query", "", "query"},
+		{"keyword-like field name is not a real keyword match", "mutationLikeName { foo }", "query"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := deriveGraphQLOperationType(c.query); got != c.want {
+				t.Errorf("deriveGraphQLOperationType(%q) = %q, want %q", c.query, got, c.want)
+			}
+		})
+	}
+}
+
 // The identity moved from the initialize result into every result's _meta. Both are read, so one
 // function serves both eras.
 func TestExtractMCPResponseAnalyticsProps_ServerInfoFromEitherEra(t *testing.T) {
@@ -803,6 +827,28 @@ func TestExtractMCPResponseAnalyticsProps_ServerInfoFromEitherEra(t *testing.T) 
 			}
 			if props.ServerInfo.Name != c.wantName || props.ServerInfo.Version != c.wantVersion {
 				t.Fatalf("ServerInfo = %+v, want %s/%s", *props.ServerInfo, c.wantName, c.wantVersion)
+			}
+		})
+	}
+}
+
+func TestDeriveGraphQLRequestType(t *testing.T) {
+	cases := []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{"schema introspection", "{ __schema { types { name } } }", graphqlRequestTypeIntrospection},
+		{"type introspection with argument", `{ __type(name: "Country") { name } }`, graphqlRequestTypeIntrospection},
+		{"typename meta-field is not introspection", "{ node(id: \"1\") { __typename } }", graphqlRequestTypeOperation},
+		{"regular query", "{ countries { code } }", graphqlRequestTypeOperation},
+		{"regular mutation", "mutation CreatePost($title: String!) { createPost(title: $title) { id } }", graphqlRequestTypeOperation},
+		{"empty query", "", graphqlRequestTypeOperation},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := deriveGraphQLRequestType(c.query); got != c.want {
+				t.Errorf("deriveGraphQLRequestType(%q) = %q, want %q", c.query, got, c.want)
 			}
 		})
 	}
@@ -1070,6 +1116,295 @@ func TestOnRequestHeaders_MCPFactsFromResolver(t *testing.T) {
 	}
 }
 
+// OnRequestBody must extract operationName/operationType from a GraphQL POST body into
+// analytics metadata, unconditionally (no opt-in payload-capture flag required) — mirroring
+// how MCP's request-properties extraction is gated only on ctx.Body being present.
+func TestOnRequestBody_GraphQL_ExtractsOperationProperties(t *testing.T) {
+	t.Run("named mutation", func(t *testing.T) {
+		body := `{"operationName":"CreatePost","query":"mutation CreatePost($title: String!) { createPost(title: $title) { id } }","variables":{"title":"hi"}}`
+		reqCtx := &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			Body:          &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), reqCtx, nil)
+		mods, ok := action.(policy.UpstreamRequestModifications)
+		if !ok {
+			t.Fatalf("expected UpstreamRequestModifications, got %T", action)
+		}
+		raw, ok := mods.AnalyticsMetadata["graphql_request_properties"].(string)
+		if !ok {
+			t.Fatalf("expected graphql_request_properties to be set, got metadata: %v", mods.AnalyticsMetadata)
+		}
+		var props GraphQLRequestAnalyticsProperties
+		if err := json.Unmarshal([]byte(raw), &props); err != nil {
+			t.Fatalf("unmarshal graphql_request_properties: %v", err)
+		}
+		if props.OperationName != "CreatePost" {
+			t.Errorf("OperationName = %q, want CreatePost", props.OperationName)
+		}
+		if props.OperationType != "mutation" {
+			t.Errorf("OperationType = %q, want mutation", props.OperationType)
+		}
+		if props.RequestType != graphqlRequestTypeOperation {
+			t.Errorf("RequestType = %q, want %q", props.RequestType, graphqlRequestTypeOperation)
+		}
+		if props.Transport != graphqlTransportHTTP {
+			t.Errorf("Transport = %q, want %q", props.Transport, graphqlTransportHTTP)
+		}
+		if props.VariableCount == nil || *props.VariableCount != 1 {
+			t.Errorf("VariableCount = %v, want 1", props.VariableCount)
+		}
+		if len(props.VariableNames) != 1 || props.VariableNames[0] != "title" {
+			t.Errorf("VariableNames = %v, want [title]", props.VariableNames)
+		}
+		if props.IsBatched {
+			t.Error("IsBatched = true, want false")
+		}
+	})
+
+	t.Run("anonymous query has no operation name", func(t *testing.T) {
+		body := `{"query":"{ countries { code } }"}`
+		reqCtx := &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			Body:          &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), reqCtx, nil)
+		mods, ok := action.(policy.UpstreamRequestModifications)
+		if !ok {
+			t.Fatalf("expected UpstreamRequestModifications, got %T", action)
+		}
+		var props GraphQLRequestAnalyticsProperties
+		if err := json.Unmarshal([]byte(mods.AnalyticsMetadata["graphql_request_properties"].(string)), &props); err != nil {
+			t.Fatalf("unmarshal graphql_request_properties: %v", err)
+		}
+		if props.OperationName != "" {
+			t.Errorf("OperationName = %q, want empty", props.OperationName)
+		}
+		if props.OperationType != "query" {
+			t.Errorf("OperationType = %q, want query", props.OperationType)
+		}
+		if props.VariableCount == nil || *props.VariableCount != 0 {
+			t.Errorf("VariableCount = %v, want 0", props.VariableCount)
+		}
+		if props.VariableNames != nil {
+			t.Errorf("VariableNames = %v, want unset when there are no variables", props.VariableNames)
+		}
+	})
+
+	t.Run("multiple variables are captured by name only, sorted", func(t *testing.T) {
+		body := `{"operationName":"CreatePost","query":"mutation CreatePost($title: String!, $body: String!, $draft: Boolean) { createPost(title: $title, body: $body, draft: $draft) { id } }","variables":{"title":"hi","body":"lorem ipsum","draft":true}}`
+		reqCtx := &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			Body:          &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), reqCtx, nil)
+		mods := action.(policy.UpstreamRequestModifications)
+		var props GraphQLRequestAnalyticsProperties
+		if err := json.Unmarshal([]byte(mods.AnalyticsMetadata["graphql_request_properties"].(string)), &props); err != nil {
+			t.Fatalf("unmarshal graphql_request_properties: %v", err)
+		}
+		if props.VariableCount == nil || *props.VariableCount != 3 {
+			t.Errorf("VariableCount = %v, want 3", props.VariableCount)
+		}
+		want := []string{"body", "draft", "title"} // sorted, and never the variable values ("hi", "lorem ipsum", true)
+		if len(props.VariableNames) != len(want) {
+			t.Fatalf("VariableNames = %v, want %v", props.VariableNames, want)
+		}
+		for i, name := range want {
+			if props.VariableNames[i] != name {
+				t.Errorf("VariableNames[%d] = %q, want %q", i, props.VariableNames[i], name)
+			}
+		}
+	})
+
+	t.Run("introspection query is classified as requestType introspection", func(t *testing.T) {
+		body := `{"query":"{ __schema { types { name } } }"}`
+		reqCtx := &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			Body:          &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), reqCtx, nil)
+		mods := action.(policy.UpstreamRequestModifications)
+		var props GraphQLRequestAnalyticsProperties
+		if err := json.Unmarshal([]byte(mods.AnalyticsMetadata["graphql_request_properties"].(string)), &props); err != nil {
+			t.Fatalf("unmarshal graphql_request_properties: %v", err)
+		}
+		if props.RequestType != graphqlRequestTypeIntrospection {
+			t.Errorf("RequestType = %q, want %q", props.RequestType, graphqlRequestTypeIntrospection)
+		}
+	})
+
+	t.Run("__typename meta-field alone is not introspection", func(t *testing.T) {
+		body := `{"query":"{ node(id: \"1\") { __typename } }"}`
+		reqCtx := &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			Body:          &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), reqCtx, nil)
+		mods := action.(policy.UpstreamRequestModifications)
+		var props GraphQLRequestAnalyticsProperties
+		if err := json.Unmarshal([]byte(mods.AnalyticsMetadata["graphql_request_properties"].(string)), &props); err != nil {
+			t.Fatalf("unmarshal graphql_request_properties: %v", err)
+		}
+		if props.RequestType != graphqlRequestTypeOperation {
+			t.Errorf("RequestType = %q, want %q", props.RequestType, graphqlRequestTypeOperation)
+		}
+	})
+
+	t.Run("batched request sets isBatched and omits single-operation fields", func(t *testing.T) {
+		body := `[{"operationName":"A","query":"query A { a }"},{"operationName":"B","query":"mutation B { b }"}]`
+		reqCtx := &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			Body:          &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), reqCtx, nil)
+		mods, ok := action.(policy.UpstreamRequestModifications)
+		if !ok {
+			t.Fatalf("expected UpstreamRequestModifications, got %T", action)
+		}
+		var props GraphQLRequestAnalyticsProperties
+		if err := json.Unmarshal([]byte(mods.AnalyticsMetadata["graphql_request_properties"].(string)), &props); err != nil {
+			t.Fatalf("unmarshal graphql_request_properties: %v", err)
+		}
+		if !props.IsBatched {
+			t.Error("IsBatched = false, want true")
+		}
+		if props.Transport != graphqlTransportHTTP {
+			t.Errorf("Transport = %q, want %q", props.Transport, graphqlTransportHTTP)
+		}
+		if props.OperationName != "" || props.OperationType != "" || props.RequestType != "" || props.VariableCount != nil || props.VariableNames != nil {
+			t.Errorf("expected single-operation fields to be omitted for a batched request, got: %+v", props)
+		}
+	})
+
+	t.Run("no body means no analytics action", func(t *testing.T) {
+		reqCtx := &policy.RequestContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			Body:          &policy.Body{Content: nil, Present: false},
+		}
+		action := (&AnalyticsPolicy{}).OnRequestBody(context.Background(), reqCtx, nil)
+		if action != nil {
+			t.Errorf("expected nil action when no body is present, got %T", action)
+		}
+	})
+}
+
+func TestExtractGraphQLResponseAnalyticsProps(t *testing.T) {
+	cases := []struct {
+		name          string
+		payload       string
+		wantNil       bool
+		wantIsError   bool
+		wantErrCount  int
+		wantErrorCode string
+		// wantPartialSuccess is nil when IsPartialSuccess is expected to be unset
+		// (only ever the case when IsError is false), or a pointer to the expected value.
+		wantPartialSuccess *bool
+	}{
+		{
+			name:    "no errors field at all",
+			payload: `{"data":{"countries":[]}}`,
+			wantNil: true,
+		},
+		{
+			name:         "errors field explicitly empty",
+			payload:      `{"data":{"countries":[]},"errors":[]}`,
+			wantNil:      false,
+			wantIsError:  false,
+			wantErrCount: 0,
+		},
+		{
+			name:               "single error with extensions.code and no data is a full failure",
+			payload:            `{"data":null,"errors":[{"message":"Field not found","extensions":{"code":"BAD_USER_INPUT"}}]}`,
+			wantNil:            false,
+			wantIsError:        true,
+			wantErrCount:       1,
+			wantErrorCode:      "BAD_USER_INPUT",
+			wantPartialSuccess: boolPtr(false),
+		},
+		{
+			name:               "partial success with data and errors both present",
+			payload:            `{"data":{"countries":[{"code":"US"}]},"errors":[{"message":"Some field failed"}]}`,
+			wantNil:            false,
+			wantIsError:        true,
+			wantErrCount:       1,
+			wantPartialSuccess: boolPtr(true),
+		},
+		{
+			name:               "multiple errors, code taken from the first, no data field is a full failure",
+			payload:            `{"errors":[{"message":"first","extensions":{"code":"FIRST_CODE"}},{"message":"second","extensions":{"code":"SECOND_CODE"}}]}`,
+			wantNil:            false,
+			wantIsError:        true,
+			wantErrCount:       2,
+			wantErrorCode:      "FIRST_CODE",
+			wantPartialSuccess: boolPtr(false),
+		},
+		{
+			name:               "error without extensions.code leaves ErrorCode empty",
+			payload:            `{"errors":[{"message":"no code here"}]}`,
+			wantNil:            false,
+			wantIsError:        true,
+			wantErrCount:       1,
+			wantPartialSuccess: boolPtr(false),
+		},
+		{
+			name:    "errors field is not an array is ignored",
+			payload: `{"errors":"not-an-array"}`,
+			wantNil: true,
+		},
+		{
+			name:    "null errors field is ignored",
+			payload: `{"data":{},"errors":null}`,
+			wantNil: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(c.payload), &payload); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			props := extractGraphQLResponseAnalyticsProps(payload)
+			if c.wantNil {
+				if props != nil {
+					t.Fatalf("expected nil props, got %+v", props)
+				}
+				return
+			}
+			if props == nil {
+				t.Fatal("expected non-nil props")
+			}
+			if props.IsError == nil {
+				t.Fatal("expected IsError to always be set when props is non-nil")
+			}
+			if *props.IsError != c.wantIsError {
+				t.Errorf("IsError = %v, want %v", *props.IsError, c.wantIsError)
+			}
+			if props.ErrorCount == nil {
+				t.Fatal("expected ErrorCount to always be set when props is non-nil")
+			}
+			if *props.ErrorCount != c.wantErrCount {
+				t.Errorf("ErrorCount = %d, want %d", *props.ErrorCount, c.wantErrCount)
+			}
+			if props.ErrorCode != c.wantErrorCode {
+				t.Errorf("ErrorCode = %q, want %q", props.ErrorCode, c.wantErrorCode)
+			}
+			if c.wantPartialSuccess == nil {
+				if props.IsPartialSuccess != nil {
+					t.Errorf("IsPartialSuccess = %v, want unset", *props.IsPartialSuccess)
+				}
+			} else {
+				if props.IsPartialSuccess == nil {
+					t.Fatal("expected IsPartialSuccess to be set")
+				}
+				if *props.IsPartialSuccess != *c.wantPartialSuccess {
+					t.Errorf("IsPartialSuccess = %v, want %v", *props.IsPartialSuccess, *c.wantPartialSuccess)
+				}
+			}
+		})
+	}
+}
+
 // A route with no resolver carries no marker, so the header phase publishes nothing and the body
 // phase does the parsing instead.
 func TestOnRequestHeaders_NoResolverPublishesNoMCPProperties(t *testing.T) {
@@ -1082,4 +1417,62 @@ func TestOnRequestHeaders_NoResolverPublishesNoMCPProperties(t *testing.T) {
 	if got := mcpPropsFromHeaderPhase(t, ctx, nil); got != "" {
 		t.Fatalf("expected no mcp_request_properties on a route with no resolver, got %s", got)
 	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+// OnResponseBody must extract GraphQL-level error info (the "errors" array, which rides
+// inside an HTTP 200 body) into analytics metadata for buffered GraphQL responses.
+func TestOnResponseBody_GraphQL_ExtractsErrorProperties(t *testing.T) {
+	t.Run("response with errors array", func(t *testing.T) {
+		body := `{"data":null,"errors":[{"message":"boom","extensions":{"code":"INTERNAL_SERVER_ERROR"}}]}`
+		respCtx := &policy.ResponseContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			ResponseBody:  &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnResponseBody(context.Background(), respCtx, nil)
+		mods, ok := action.(policy.DownstreamResponseModifications)
+		if !ok {
+			t.Fatalf("expected DownstreamResponseModifications, got %T", action)
+		}
+		raw, ok := mods.AnalyticsMetadata["graphql_response_properties"].(string)
+		if !ok {
+			t.Fatalf("expected graphql_response_properties to be set, got metadata: %v", mods.AnalyticsMetadata)
+		}
+		var props GraphQLResponseAnalyticsProperties
+		if err := json.Unmarshal([]byte(raw), &props); err != nil {
+			t.Fatalf("unmarshal graphql_response_properties: %v", err)
+		}
+		if props.IsError == nil || !*props.IsError {
+			t.Errorf("IsError = %v, want true", props.IsError)
+		}
+		if props.ErrorCode != "INTERNAL_SERVER_ERROR" {
+			t.Errorf("ErrorCode = %q, want INTERNAL_SERVER_ERROR", props.ErrorCode)
+		}
+	})
+
+	t.Run("clean response has no error metadata", func(t *testing.T) {
+		body := `{"data":{"countries":[{"code":"US"}]}}`
+		respCtx := &policy.ResponseContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			ResponseBody:  &policy.Body{Content: []byte(body), Present: true},
+		}
+		action := (&AnalyticsPolicy{}).OnResponseBody(context.Background(), respCtx, nil)
+		if mods, ok := action.(policy.DownstreamResponseModifications); ok {
+			if _, exists := mods.AnalyticsMetadata["graphql_response_properties"]; exists {
+				t.Errorf("expected no graphql_response_properties for a clean response, got: %v", mods.AnalyticsMetadata)
+			}
+		}
+	})
+
+	t.Run("no body means no analytics action", func(t *testing.T) {
+		respCtx := &policy.ResponseContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindGraphQL},
+			ResponseBody:  &policy.Body{Content: nil, Present: false},
+		}
+		action := (&AnalyticsPolicy{}).OnResponseBody(context.Background(), respCtx, nil)
+		if action != nil {
+			t.Errorf("expected nil action when no response body is present, got %T", action)
+		}
+	})
 }

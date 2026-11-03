@@ -26,8 +26,19 @@ const orgContext = require('../utils/orgContext');
 const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
+const meterDao = require('../dao/meterDao');
+const billingConfigurationService = require('../services/billing/billingConfigurationService');
+const { FILTER_PRESETS, filterFieldsLabel, meterTypeLabel } = require('../utils/meterLabels');
+const { DEFAULT_TOKEN_EVENT_KEY, MAX_FILTER_FIELDS, MAX_NAME_LENGTH, TOKEN_EVENT_KEYS } = require('../services/billing/meterValidation');
+const { pricingSummary } = require('../utils/pricingLabels');
+const { CURRENCIES } = require('../utils/currencies');
+const PlanPricingDTO = require('../dto/planPricingDto');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const kmDao = require('../dao/keyManagerDao');
+const kmRegistry = require('../services/keyManagerRegistry');
+const kmConfigDao = require('../dao/keyManagerConfigurationDao');
+require('../keymanagers/drivers'); // built-in drivers self-register on require
+const { registeredTypeOptions } = require('../keymanagers/core/registry');
 const { KeyManagerDTO } = require('../dto/keyManagerDto');
 const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
 const { groupWebhookEventTypes } = require('../utils/webhookEventGroups');
@@ -92,7 +103,7 @@ const loadSettingsPage = async (req, res) => {
         templateContent.views = views;
         const requestedView = typeof req.query.view === 'string' ? req.query.view : '';
         const viewExists = (name) => views.some(v => v.id === name);
-        let viewName = await orgContext.getFallbackViewHandle();
+        let viewName = await orgContext.getFallbackViewHandle(orgId);
         if (requestedView && viewExists(requestedView)) {
             viewName = requestedView;
         }
@@ -155,7 +166,18 @@ const loadSettingsPage = async (req, res) => {
         let orgPlans = [];
         try {
             const plansRaw = await subscriptionPlanDao.list(orgId);
+            const metersByHandle = new Map((await meterDao.list(orgId)).map(m => [m.handle, m]));
+            // A plan an API offers, or that has subscriptions, can't be deleted: the delete dialog says it is in use.
+            const apiCounts = new Map();
+            for (const api of allAPIs) {
+                for (const plan of api.subscription_plans || []) {
+                    apiCounts.set(plan.handle, (apiCounts.get(plan.handle) || 0) + 1);
+                }
+            }
+            const subscriptionCounts = await subscriptionPlanDao.countSubscriptionsByPlan(orgId);
             orgPlans = plansRaw.map(p => ({
+                apiCount: apiCounts.get(p.handle) || 0,
+                subscriptionCount: subscriptionCounts.get(p.uuid) || 0,
                 planId: p.handle,
                 planName: p.handle,
                 displayName: p.display_name,
@@ -167,11 +189,58 @@ const loadSettingsPage = async (req, res) => {
                     timeAmount: l.time_amount,
                     limitCount: Number(l.limit_count),
                 })),
-            }));
+                pricing: p.pricing ? new PlanPricingDTO(p.pricing) : null,
+            })).map(p => ({ ...p, pricingText: pricingSummary(p.pricing, metersByHandle) }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });
         }
         templateContent.orgPlans = orgPlans;
+
+        try {
+            templateContent.billingConfiguration = await billingConfigurationService.describeConfiguration(orgId);
+        } catch (err) {
+            logger.warn('Failed to load the billing configuration for settings page', { error: err.message });
+        }
+        templateContent.billingEngines = billingConfigurationService.BILLING_ENGINES;
+        templateContent.billingHasChoice = billingConfigurationService.BILLING_HAS_CHOICE;
+        templateContent.billingPaymentProviders = billingConfigurationService.PAYMENT_PROVIDERS;
+        // Keys the deployment supplies are not asked for.
+        templateContent.billingKeysFromDeployment = billingConfigurationService.deploymentFields().length > 0;
+
+        let orgMeters = [];
+        try {
+            const meters = await meterDao.list(orgId);
+            const usage = await meterDao.listPlanHandlesByMeter(orgId, meters.map(m => m.uuid));
+            orgMeters = meters.map(m => {
+                const plans = usage.get(m.uuid) || [];
+                return {
+                    id: m.handle,
+                    displayName: m.display_name,
+                    description: m.description || '',
+                    type: m.type,
+                    typeKey: m.type_key || null,
+                    typeLabel: meterTypeLabel(m.type),
+                    filterFields: m.filter_fields.map(f => ({ field: f.field, eventKey: f.eventKey })),
+                    filterFieldsText: filterFieldsLabel(m.filter_fields),
+                    // A priced meter can't change or be deleted: the page says by how many plans, not which.
+                    planCount: plans.length,
+                };
+            });
+        } catch (err) {
+            logger.warn('Failed to load meters for settings page', { error: err.message });
+        }
+        templateContent.orgMeters = orgMeters;
+        // What the meter form offers, from our gateway's events: the token key a TOKENS meter adds up
+        // (with the token keys it suggests) and the filter properties, with their names and keys. The
+        // administrator can change them.
+        templateContent.meterRegistry = {
+            tokenEventKey: DEFAULT_TOKEN_EVENT_KEY,
+            tokenEventKeys: TOKEN_EVENT_KEYS,
+            maxFilterFields: MAX_FILTER_FIELDS,
+            maxNameLength: MAX_NAME_LENGTH,
+            presets: FILTER_PRESETS,
+        };
+        templateContent.currencies = CURRENCIES;
 
         let webhookSubscribers = [];
         try {
@@ -186,14 +255,73 @@ const loadSettingsPage = async (req, res) => {
         // shows up without editing the template.
         templateContent.webhookEventGroups = groupWebhookEventTypes(VALID_EVENT_TYPES);
 
+        // Both sources, through the one resolver — the same list GET /key-managers
+        // returns. Reading kmDao directly here would show only the stored rows, so a
+        // config-declared key manager would be missing from the very screen an admin
+        // goes to in order to see what exists, while appearing everywhere else.
         let keyManagers = [];
         try {
-            const keyManagerRecords = await kmDao.list(orgId);
-            keyManagers = keyManagerRecords.map(r => new KeyManagerDTO(r));
+            const keyManagerRecords = await kmRegistry.list(orgId, { includeDisabled: true });
+            // The same projection the REST API applies, so the panel and
+            // GET /key-managers agree on which entries can generate keys and what
+            // their provisioning holds. One query for the page, not one per row.
+            let configs = new Map();
+            try {
+                configs = await kmConfigDao.listByOrg(orgId);
+            } catch (cfgErr) {
+                logger.warn('Could not load key manager provisioning for the settings page', {
+                    error: cfgErr.message, orgId,
+                });
+            }
+            keyManagers = keyManagerRecords.map((r) => new KeyManagerDTO(
+                r.source === kmRegistry.SOURCE_CONFIG
+                    // A config-declared key manager carries its driver config in the
+                    // deployed TOML, so it can always generate keys and has no row to show.
+                    ? { ...r, canGenerateKeys: true }
+                    : {
+                        ...r,
+                        canGenerateKeys: configs.has(r.uuid),
+                        provisioning: configs.get(r.uuid) || undefined,
+                    }
+            ));
         } catch (err) {
-            logger.warn('Failed to load key managers for settings page', { error: err.message });
+            // The registry also builds the configured key managers, so a bad entry (an
+            // unreadable mTLS certificate, say) throws here. Fall back to the stored rows
+            // rather than showing nothing: an incomplete list an admin can still work with
+            // beats an empty one that looks like the data is gone.
+            logger.warn('Failed to merge configured key managers for the settings page; falling back to stored rows', {
+                error: err.message,
+            });
+            try {
+                const stored = await kmDao.list(orgId);
+                keyManagers = stored.map(r => new KeyManagerDTO({ ...r, source: kmRegistry.SOURCE_API }));
+            } catch (daoErr) {
+                logger.warn('Failed to load key managers for settings page', { error: daoErr.message });
+            }
         }
         templateContent.keyManagers = keyManagers;
+        // The driver types this build ships, for the key manager form's selector.
+        // Read from the registry rather than hardcoded in the template: adding a
+        // driver is a code change, and the list must follow it without a second
+        // edit that could be forgotten.
+        /*
+         * Only the drivers that register applications. The one that records a
+         * client id created elsewhere is not a kind of key manager in the same
+         * sense — it answers "who creates the applications", which the modal now
+         * asks first, on its own control. Filtered by what the driver does rather
+         * than by its name, so a second driver of either kind lands in the right
+         * place without editing this.
+         */
+        templateContent.keyManagerTypes = registeredTypeOptions()
+            .filter((option) => option.keyCreation !== 'provide')
+            /*
+             * Named products first, in the registry's own order; the generic driver
+             * last. It is the fallback for a key manager with no driver of its own,
+             * so an admin should reach it after looking for their product and not
+             * finding it — which an alphabetical list, where "Custom" sorts second,
+             * actively works against.
+             */
+            .sort((a, b) => (a.value === 'custom' ? 1 : 0) - (b.value === 'custom' ? 1 : 0));
 
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
@@ -214,10 +342,10 @@ const loadSettingsPage = async (req, res) => {
         const dbLayout = orgId ? await loadLayoutFromAPI(orgId, viewName) : '';
         let html;
         if (dbLayout) {
-            html = await renderGivenTemplate(templateResponse, dbLayout, templateContent);
+            html = await renderGivenTemplate(templateResponse, dbLayout, templateContent, orgId);
         } else {
             const layoutResponse = fs.readFileSync(layoutPath, constants.CHARSET_UTF8);
-            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
+            html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent, orgId);
         }
         res.send(html);
     } catch (error) {

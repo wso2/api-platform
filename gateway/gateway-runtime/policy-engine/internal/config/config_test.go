@@ -80,7 +80,8 @@ func validConfig() *Config {
 		// receiver defaults mirror production so transport validation passes and the
 		// deprecated alias stays neutral (no spurious migration).
 		Collector: CollectorConfig{
-			Server: defaultAccessLogsServiceConfig(),
+			Server:           defaultAccessLogsServiceConfig(),
+			CorrelationStore: defaultCorrelationStoreConfig(),
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:              false,
@@ -1779,6 +1780,48 @@ func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
 	assert.Contains(t, err.Error(), "traffic_logging.max_payload_size")
 }
 
+func TestValidate_CorrelationStoreConfig(t *testing.T) {
+	t.Run("not validated when collector disabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Collector.CorrelationStore.Capacity = 0
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("capacity must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Collector.CorrelationStore.Capacity = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "collector.correlation_store.capacity")
+	})
+
+	t.Run("ttl must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Collector.CorrelationStore.TTL = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "collector.correlation_store.ttl")
+	})
+
+	t.Run("shards must be positive when collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.Collector.CorrelationStore.Shards = 0
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "collector.correlation_store.shards")
+	})
+
+	t.Run("valid correlation config with collector enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Analytics.Enabled = true
+		cfg.Analytics.EnabledPublishers = []string{}
+		require.NoError(t, cfg.Validate())
+	})
+}
+
 func TestValidate_TrafficLogging(t *testing.T) {
 	t.Run("exclude_fields set -> valid", func(t *testing.T) {
 		cfg := validConfig()
@@ -2275,4 +2318,54 @@ func TestValidate_ExtProcMessageLimits(t *testing.T) {
 			assert.Regexp(t, `max_(recv|send)_msg_bytes is \d+, which is below the \d+ required`, err.Error())
 		})
 	}
+}
+
+// The fault-flow-for-upstream-errors flag must be off when nothing configures it. This is
+// the assertion that protects the shipped behaviour: every previous generation of this
+// gateway ran an upstream error through the response policies, so a config file that says
+// nothing must keep doing that.
+func TestLoad_HandleUpstreamFaultsDefaultsOff(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	// Deliberately no [policy_engine.fault_policies] section at all.
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.False(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
+		"an unconfigured deployment must keep upstream errors on the response policies")
+}
+
+// And it must actually load when set — a flag nothing reads is worse than no flag, since it
+// looks configured and changes nothing.
+func TestLoad_HandleUpstreamFaultsOptIn(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.fault_policies]
+handle_upstream_faults = true
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
+		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
 }

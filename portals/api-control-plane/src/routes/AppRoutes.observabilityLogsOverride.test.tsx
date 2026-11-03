@@ -49,7 +49,8 @@ describe('AppRoutes observability logs page override', () => {
       collection('/projects', [project]),
       resource('/projects/:projectId', project),
       collection('/rest-apis', [api]),
-      resource('/rest-apis/:restApiId', api)
+      resource('/rest-apis/:restApiId', api),
+      collection('/graphql-apis', [])
     );
   });
   afterEach(() => vi.unstubAllEnvs());

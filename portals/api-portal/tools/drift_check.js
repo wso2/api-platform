@@ -205,9 +205,6 @@ const SAMPLES = [
         createdBy: 'alice@example.com', updatedBy: 'alice@example.com',
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }]],
-    ['addSubscriptionPlans', 200, {
-        message: "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the API Portal.",
-    }],
 
     // API Workflows — apiWorkflowService.js. createAPIWorkflow:
     // `res.status(201).json({ id: apiWorkflow.handle, displayName: apiWorkflow.display_name,

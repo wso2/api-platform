@@ -18,6 +18,7 @@
 package repository
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -96,5 +97,52 @@ func TestOrganizationRepo_IdpOrgRefUUIDEmptyForFileBased(t *testing.T) {
 	// A lookup on an empty IDP reference must not match the file-based org.
 	if match, err := repo.GetOrganizationByIdpOrgRefUUID(""); err != nil || match != nil {
 		t.Errorf("GetOrganizationByIdpOrgRefUUID(\"\") = (%v, %v), want (nil, nil)", match, err)
+	}
+}
+
+// TestLifecycle_OrganizationPagination drives the real repository layer through
+// create + paginated list, exercising DB.PaginationClause. On SQL Server this
+// is the code path that previously failed with "Incorrect syntax near 'LIMIT'".
+func TestLifecycle_OrganizationPagination(t *testing.T) {
+	tdb := openSchemaDB(t)
+	orgRepo := NewOrganizationRepo(tdb.db)
+
+	baseline, err := orgRepo.ListOrganizations(1_000_000, 0)
+	if err != nil {
+		t.Fatalf("baseline list failed: %v", err)
+	}
+
+	const n = 5
+	for i := range n {
+		org := &model.Organization{ID: id(), Handle: "lc-" + id()[:8], Name: fmt.Sprintf("org %d", i), Region: "us"}
+		if err := orgRepo.CreateOrganization(org); err != nil {
+			t.Fatalf("create org failed: %v", err)
+		}
+	}
+	total := len(baseline) + n
+
+	// Page through in steps of 2 and confirm full, non-overlapping coverage.
+	seen := map[string]bool{}
+	for offset := 0; offset < total; offset += 2 {
+		page, err := orgRepo.ListOrganizations(2, offset)
+		if err != nil {
+			t.Fatalf("ListOrganizations(2,%d) failed: %v", offset, err)
+		}
+		want := 2
+		if rem := total - offset; rem < want {
+			want = rem
+		}
+		if len(page) != want {
+			t.Fatalf("page at offset %d: want %d rows, got %d", offset, want, len(page))
+		}
+		for _, o := range page {
+			if seen[o.ID] {
+				t.Fatalf("pagination overlap at offset %d: id %s seen twice", offset, o.ID)
+			}
+			seen[o.ID] = true
+		}
+	}
+	if len(seen) != total {
+		t.Fatalf("paging covered %d rows, want %d", len(seen), total)
 	}
 }

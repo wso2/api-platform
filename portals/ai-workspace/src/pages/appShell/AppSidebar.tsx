@@ -16,28 +16,26 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import React, { useMemo } from 'react';
+import { NavLink } from 'react-router-dom';
 import { Box, Sidebar } from '@wso2/oxygen-ui';
 import {
   BarChart3,
+  Bot,
   Dock,
   Handshake,
   Home,
   Layers,
   Network,
-  Rocket,
   Settings,
   Workflow,
 } from '@wso2/oxygen-ui-icons-react';
 import McpMenuIcon from '../../assets/icons/McpMenuIcon';
 import { useAppShell } from '../../contexts/AppShellContext';
-import { useAppAuth } from '../../contexts/AppAuthContext';
+import { useAppAuthScopes } from '../../contexts/AppAuthContext';
 import { SCOPES } from '../../auth/permissions';
+import { isFeatureEnabled } from '../../config.env';
 import { buildOrgPath, buildProjectPath } from '../../utils/projectRouting';
-import QuickStartIntroPopup, {
-  QS_INTRO_STORAGE_KEY,
-} from './QuickStartIntroPopup';
 import {
   AI_WORKSPACE_GATEWAYS_NAV_REGION,
   AI_WORKSPACE_GATEWAYS_SLOT,
@@ -65,13 +63,7 @@ export default function AppSidebar({
   projectCount,
 }: Props) {
   const { currentProject, currentOrganization } = useAppShell();
-  const { hasPermission, isAuthenticated } = useAppAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const quickStartRef = useRef<HTMLDivElement>(null);
-  const [showIntro, setShowIntro] = useState(
-    () => !localStorage.getItem(QS_INTRO_STORAGE_KEY)
-  );
+  const { hasPermission, isAuthenticated } = useAppAuthScopes();
   const sidebarExtensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
   // A page override may carry its own nav placement (see `AIWorkspacePageOverride`).
   // Those render here rather than where the built-in item sits, so a cloud build
@@ -98,16 +90,11 @@ export default function AppSidebar({
     [sidebarExtensions, gatewayOverrides, canReadGateways]
   );
 
-  const handleDismissIntro = () => {
-    localStorage.setItem(QS_INTRO_STORAGE_KEY, '1');
-    setShowIntro(false);
-  };
   const orgHomePath = buildOrgPath(currentOrganization, '/home');
   const orgProjectsListPath = buildOrgPath(
     currentOrganization,
     '/projects/list'
   );
-  const orgQuickStartPath = buildOrgPath(currentOrganization, '/quick-start');
   const orgApplicationsPath = buildOrgPath(
     currentOrganization,
     '/applications'
@@ -121,6 +108,10 @@ export default function AppSidebar({
     currentOrganization,
     '/mcp-proxy'
   );
+  const orgAgentProxiesPath = buildOrgPath(
+    currentOrganization,
+    '/agent-proxy'
+  );
   const orgGatewaysPath = buildOrgPath(currentOrganization, '/gateways');
   const orgInsightsPath = buildOrgPath(currentOrganization, '/insights');
   const orgSettingsPath = buildOrgPath(currentOrganization, '/settings');
@@ -129,16 +120,6 @@ export default function AppSidebar({
     currentProject,
     '/home'
   );
-  const quickStartPath = currentProject
-    ? buildProjectPath(currentOrganization, currentProject, '/quick-start')
-    : orgQuickStartPath;
-
-  useEffect(() => {
-    if (showIntro && location.pathname !== quickStartPath) {
-      navigate(quickStartPath, { replace: true });
-    }
-  }, [showIntro, location.pathname, quickStartPath, navigate]);
-
   const applicationsPath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/applications')
     : orgApplicationsPath;
@@ -151,6 +132,9 @@ export default function AppSidebar({
   const externalServersPath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/mcp-proxy')
     : orgExternalServersPath;
+  const agentProxiesPath = currentProject
+    ? buildProjectPath(currentOrganization, currentProject, '/agent-proxy')
+    : orgAgentProxiesPath;
   const gatewaysPath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/gateways')
     : orgGatewaysPath;
@@ -173,39 +157,7 @@ export default function AppSidebar({
     >
       <Sidebar.Nav>
         <Sidebar.Category>
-          <Box
-            ref={quickStartRef}
-            style={
-              showIntro
-                ? {
-                    borderRadius: 6,
-                    outlineOffset: 1,
-                  }
-                : undefined
-            }
-          >
-            <NavLink to={quickStartPath} style={navLinkStyle}>
-              <Sidebar.Item id="quick-start">
-                <Sidebar.ItemIcon>
-                  <Rocket size={20} />
-                </Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>Quick Start</Sidebar.ItemLabel>
-                <Sidebar.ItemBadge
-                  sx={{
-                    background: 'linear-gradient(135deg, #F87644, #e8501a)',
-                    borderRadius: 0.3,
-                  }}
-                >
-                  New
-                </Sidebar.ItemBadge>
-              </Sidebar.Item>
-            </NavLink>
-          </Box>
-          <Box
-            style={
-              showIntro ? { opacity: 0.25, pointerEvents: 'none' } : undefined
-            }
-          >
+          <Box>
             <NavLink
               to={currentProject ? projectRoot : orgHomePath}
               style={navLinkStyle}
@@ -234,18 +186,7 @@ export default function AppSidebar({
           </Box>
         </Sidebar.Category>
 
-        {showIntro && (
-          <QuickStartIntroPopup
-            anchorRef={quickStartRef}
-            onDismiss={handleDismissIntro}
-          />
-        )}
-
-        <Box
-          style={
-            showIntro ? { opacity: 0.25, pointerEvents: 'none' } : undefined
-          }
-        >
+        <Box>
           {(hasPermission(SCOPES.LLM_PROVIDER_READ) || hasPermission(SCOPES.LLM_PROXY_READ)) && (
             <>
               <Sidebar.Category>
@@ -297,6 +238,38 @@ export default function AppSidebar({
                       <McpMenuIcon size={20} aria-hidden />
                     </Sidebar.ItemIcon>
                     <Sidebar.ItemLabel>MCP Proxies</Sidebar.ItemLabel>
+                  </Sidebar.Item>
+                </NavLink>
+              </Sidebar.Category>
+              <Box sx={{ borderTop: '1px solid', borderColor: 'divider', mx: 1.5, my: 0.5 }} />
+            </>
+          )}
+
+          {isFeatureEnabled('agent-proxy') &&
+            hasPermission(SCOPES.AGENT_PROXY_READ) && (
+            <>
+              <Sidebar.Category>
+                <Sidebar.CategoryLabel>
+                  <Box
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+                  >
+                    <span style={{ fontSize: '0.8rem' }}>Agents</span>
+                  </Box>
+                </Sidebar.CategoryLabel>
+                <NavLink to={agentProxiesPath} style={navLinkStyle}>
+                  <Sidebar.Item id="agent-proxies">
+                    <Sidebar.ItemIcon>
+                      <Bot size={20} aria-hidden />
+                    </Sidebar.ItemIcon>
+                    <Sidebar.ItemLabel>Agent Proxies</Sidebar.ItemLabel>
+                    <Sidebar.ItemBadge
+                      sx={{
+                        background: 'linear-gradient(135deg, #F87644, #e8501a)',
+                        borderRadius: 0.3,
+                      }}
+                    >
+                      New
+                    </Sidebar.ItemBadge>
                   </Sidebar.Item>
                 </NavLink>
               </Sidebar.Category>

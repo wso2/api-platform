@@ -54,18 +54,15 @@ ifeq ($(origin VERSION),environment)
 CLOUD_IMAGE_TAG := $(VERSION)
 endif
 
-# Integration test configuration
-IT_PROJECT ?= platform-api-it
-MSSQL_PASSWORD ?= Strong!Passw0rd
-# On Apple Silicon, override with: MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest
-MSSQL_IMAGE ?= mcr.microsoft.com/mssql/server:2022-latest
-
 # Doc generation
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/platform-api
 
-.PHONY: help build cloud-build test push build-and-push-multiarch cloud-build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
+# Pinned so every developer and CI run generates byte-identical models.
+OAPI_CODEGEN_VERSION := v2.8.0
+
+.PHONY: help build cloud-build test push build-and-push-multiarch cloud-build-and-push-multiarch generate generate-apidocs setup-local-dev run-local
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
@@ -86,44 +83,6 @@ run-local: ## Run Platform API standalone via `go run` against config/config.loc
 test: ## Run tests with coverage report
 	@echo "Running tests..."
 	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
-
-it: it-sqlite ## Run cross-database integration tests on SQLite (alias of it-sqlite)
-
-it-sqlite: ## Run cross-database integration tests on SQLite
-	@echo "Running integration tests on SQLite..."
-	@IT_DB=sqlite go test -tags integration -count=1 -v ./internal/integration/...
-
-it-postgres: ## Run cross-database integration tests on PostgreSQL (spins up a container)
-	@echo "Starting PostgreSQL for integration tests..."
-	@docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml up -d --wait
-	@IT_DB=postgres IT_DB_HOST=localhost IT_DB_PORT=55432 IT_DB_USER=postgres \
-		IT_DB_PASSWORD=postgres IT_DB_NAME=platform_api_it \
-		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
-		docker compose -p $(IT_PROJECT) -f it/docker-compose.postgres.yaml down -v >/dev/null 2>&1; \
-		exit $$rc
-
-it-sqlserver: ## Run cross-database integration tests on SQL Server (spins up a container)
-	@echo "Starting SQL Server ($(MSSQL_IMAGE)) for integration tests..."
-	@MSSQL_IMAGE=$(MSSQL_IMAGE) MSSQL_PASSWORD='$(MSSQL_PASSWORD)' \
-		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml up -d
-	@IT_DB=sqlserver IT_DB_HOST=localhost IT_DB_PORT=14333 IT_DB_USER=sa \
-		IT_DB_PASSWORD='$(MSSQL_PASSWORD)' IT_DB_NAME=platform_api_it \
-		go test -tags integration -count=1 -v ./internal/integration/...; rc=$$?; \
-		docker compose -p $(IT_PROJECT) -f it/docker-compose.sqlserver.yaml down -v >/dev/null 2>&1; \
-		exit $$rc
-
-it-all-dbs: ## Run integration tests across SQLite, PostgreSQL and SQL Server
-	@$(MAKE) it-sqlite
-	@$(MAKE) it-postgres
-	@$(MAKE) it-sqlserver
-
-e2e: ## Run the combined platform-api + gateway Cucumber e2e (E2E_DB=postgres|sqlite|sqlserver)
-	@cd ../tests/integration-e2e && E2E_DB=$${E2E_DB:-postgres} go test -run TestFeatures -count=1 -v -timeout 25m ./...
-
-e2e-all-dbs: ## Run the combined Cucumber e2e across all three databases
-	@cd ../tests/integration-e2e && E2E_DB=sqlite go test -run TestFeatures -count=1 -v -timeout 25m ./...
-	@cd ../tests/integration-e2e && E2E_DB=postgres go test -run TestFeatures -count=1 -v -timeout 25m ./...
-	@cd ../tests/integration-e2e && E2E_DB=sqlserver go test -run TestFeatures -count=1 -v -timeout 25m ./...
 
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
@@ -152,13 +111,10 @@ cloud-build: ## Build cloud Docker image with the event-gateway plugin (EXPERIME
 		.
 
 generate: ## Generate API server code from OpenAPI spec
-	@echo "Adding bindings to OpenAPI spec..."
-	@command -v yq >/dev/null 2>&1 || { echo "Error: yq is not installed. Install it via 'brew install yq' or 'go install github.com/mikefarah/yq/v4@latest'"; exit 1; }
-	@yq '.components.schemas[].properties |= (. as $$props | (parent | .required[]) as $$req_field | select($$props | has($$req_field)) | .[$$req_field]."x-oapi-codegen-extra-tags".binding = "required")' resources/openapi.yaml > resources/openapi_with_binding.yaml
-	@echo "Generating API server code from OpenAPI spec with bindings..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml resources/openapi_with_binding.yaml
+	@echo "Generating API models from the Platform API OpenAPI spec..."
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) --config=oapi-codegen.yaml resources/openapi.yaml
 	@echo "Generating API models for the eventgateway plugin spec..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-eventgateway.yaml plugins/eventgateway/openapi.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) --config=oapi-codegen-eventgateway.yaml plugins/eventgateway/openapi.yaml
 
 generate-apidocs: ## Generate REST API docs (Markdown) from the Platform API OpenAPI spec
 	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }
@@ -235,3 +191,38 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 		exit 1; \
 	fi; \
 	echo "$$VERSION"
+
+# ---------------------------------------------------------------------------
+# v1 → v2 database migration client (cmd/migrate) — operator bundles
+# ---------------------------------------------------------------------------
+# Static (CGO_ENABLED=0), -trimpath, VCS-stamping off: the binary depends only
+# on the source at MIGRATE_COMMIT plus the ldflags below, so a rebuild at the
+# same commit with the same Go toolchain yields the same bytes. BuildDate is
+# the COMMIT date (not "now") for the same reason.
+MIGRATE_DIST_DIR   ?= dist/migrate
+MIGRATE_PLATFORMS  ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+MIGRATE_COMMIT     := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+MIGRATE_VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null | tr '/' '-' || echo dev)
+MIGRATE_BUILD_DATE := $(shell git log -1 --format=%cI 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
+MIGRATE_PKG        := github.com/wso2/api-platform/platform-api/internal/migration
+MIGRATE_LDFLAGS    := -s -w -X $(MIGRATE_PKG).Version=$(MIGRATE_VERSION) -X $(MIGRATE_PKG).Commit=$(MIGRATE_COMMIT) -X $(MIGRATE_PKG).BuildDate=$(MIGRATE_BUILD_DATE)
+MIGRATE_GOBUILD    := CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "$(MIGRATE_LDFLAGS)"
+
+migrate-build: ## Build the v1→v2 migration client for the host platform (./migrate) and print its --version
+	$(MIGRATE_GOBUILD) -o migrate ./cmd/migrate
+	@./migrate --version
+
+migrate-dist: ## Build operator bundles of the migration client (binary + README + SHA256SUMS) for MIGRATE_PLATFORMS into MIGRATE_DIST_DIR
+	@rm -rf $(MIGRATE_DIST_DIR) && mkdir -p $(MIGRATE_DIST_DIR)
+	@for p in $(MIGRATE_PLATFORMS); do \
+	  os=$${p%/*}; arch=$${p#*/}; name=platform-api-migrate_$(MIGRATE_VERSION)_$${os}_$${arch}; \
+	  stage=$(MIGRATE_DIST_DIR)/$$name; mkdir -p $$stage; \
+	  echo "building $$name"; \
+	  GOOS=$$os GOARCH=$$arch $(MIGRATE_GOBUILD) -o $$stage/migrate ./cmd/migrate || exit 1; \
+	  printf 'platform-api v1 -> v2 database migration client\nversion %s, commit %s, built %s, %s\n\n  ./migrate --version   # must print the version/commit above\n  ./migrate -h          # all flags; passwords and the key come from the environment only\n\nSHA256SUMS  checksums of the files in this bundle (sha256sum -c SHA256SUMS).\n' \
+	    "$(MIGRATE_VERSION)" "$(MIGRATE_COMMIT)" "$(MIGRATE_BUILD_DATE)" "$$p" > $$stage/README.txt; \
+	  (cd $$stage && (sha256sum migrate README.txt 2>/dev/null || shasum -a 256 migrate README.txt) > SHA256SUMS); \
+	  COPYFILE_DISABLE=1 tar --no-xattrs -C $(MIGRATE_DIST_DIR) -czf $(MIGRATE_DIST_DIR)/$$name.tar.gz $$name && rm -rf $$stage; \
+	done
+	@cd $(MIGRATE_DIST_DIR) && (sha256sum *.tar.gz 2>/dev/null || shasum -a 256 *.tar.gz) > SHA256SUMS
+	@echo; echo "bundles in $(MIGRATE_DIST_DIR) (version $(MIGRATE_VERSION), commit $(MIGRATE_COMMIT)):"; cat $(MIGRATE_DIST_DIR)/SHA256SUMS

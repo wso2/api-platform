@@ -18,6 +18,7 @@
 
 import { ColorSchemeImage, ColorSchemeToggle, Header, UserMenu } from '@wso2/oxygen-ui';
 import { LogOut, Menu } from '@wso2/oxygen-ui-icons-react';
+import { Fragment } from 'react';
 import { useIntl } from 'react-intl';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -25,13 +26,38 @@ import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
 import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
 import { useAuth } from '@/contexts/auth/AuthProvider';
+import { HEADER_ACTIONS_SLOT, type ApiControlPlaneHeaderAction } from '@/extensions';
+import { usePort } from '@/hostPort';
 import { routes } from '@/routes/paths';
 import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
+import { useSlot } from '@/slots';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
 const BRAND_LOGO_HEIGHT = 32;
 /** Matches Oxygen's own Header.Toggle icon size, so swapping the glyph doesn't resize the button. */
 const TOGGLE_ICON_SIZE = 20;
+
+/**
+ * Renders the header's cloud extension entries.
+ *
+ * Split out so `usePort` is called only when there is an entry to render: the
+ * Port is a cloud concern, and a standalone console registers no entry and so
+ * needs no provider. AppHeader itself stays renderable without one.
+ */
+function HeaderExtensionActions({
+  entries,
+}: {
+  entries: readonly ApiControlPlaneHeaderAction[];
+}) {
+  const port = usePort();
+  return (
+    <>
+      {entries.map((entry) => (
+        <Fragment key={entry.id}>{entry.render(port)}</Fragment>
+      ))}
+    </>
+  );
+}
 
 export function AppHeader() {
   const intl = useIntl();
@@ -40,9 +66,12 @@ export function AppHeader() {
   // const { actions } = useAppShell();
   const auth = useAuth();
   const brandLogo = useBrandLogo();
+  // Cloud-only entries; empty in a standalone console, which registers none.
+  const headerActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_ACTIONS_SLOT);
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
+  const userPicture = auth.user?.picture || undefined;
 
   const { orgHandle } = getRouteParamsFromPathname(location.pathname);
   const goToOrganizationHome = () => {
@@ -50,7 +79,18 @@ export function AppHeader() {
   };
 
   return (
-    <Header>
+    // `position`/`zIndex` are load-bearing, not cosmetic. The header is an
+    // `AppBar`, and the theme's `MuiPaper` override gives every Paper a
+    // `backdrop-filter` — which makes the header a stacking context. Its own
+    // `position: static` nullifies `AppBar`'s `zIndex`, so that context sits at
+    // `auto`, before the main content in DOM order. Anything rendered inside
+    // the header that must float over the page — the trial badge's usage panel
+    // uses `disablePortal`, so it renders here rather than at the body — is
+    // trapped below the page whatever z-index it asks for. Positioning the
+    // header lets its `appBar` level apply, lifting the whole context above
+    // the content. Portalled surfaces (menus, modals, tooltips) sit higher
+    // still and are unaffected.
+    <Header sx={{ position: 'relative', zIndex: 'appBar' }}>
       <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
       <Header.Brand
         aria-label={intl.formatMessage({
@@ -86,6 +126,8 @@ export function AppHeader() {
       <Header.Spacer />
 
       <Header.Actions>
+        {headerActions.length > 0 && <HeaderExtensionActions entries={headerActions} />}
+
         <ColorSchemeToggle />
         {/* Commenting out the notification bell for now, as it is not yet implemented. */}
         {/* <Tooltip title={intl.formatMessage({ id: 'appShell.header.notifications', defaultMessage: 'Notifications' })}>
@@ -100,8 +142,8 @@ export function AppHeader() {
           </IconButton>
         </Tooltip> */}
         <UserMenu>
-          <UserMenu.Trigger name={userName} />
-          <UserMenu.Header name={userName} email={userEmail} />
+          <UserMenu.Trigger name={userName} avatar={userPicture} />
+          <UserMenu.Header name={userName} email={userEmail} avatar={userPicture} />
           <UserMenu.Divider />
           <UserMenu.Item
             icon={<LogOut />}

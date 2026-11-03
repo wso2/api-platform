@@ -145,6 +145,21 @@ config:
       orgCallback: false         # redirect to the org's own landing page after login
       silentSso: true
       tokenRefreshTimeoutMs: 10000
+      # Per-organization issuers (multi-organization mode only), for IDPs that issue
+      # each organization's tokens under its own issuer and signing keys — WSO2 IS
+      # and Asgardeo sub-organizations issue as .../o/<orgId>/oauth2/token. A bearer
+      # token whose `iss` fits issuerTemplate is verified against jwksUrlTemplate
+      # with the same {org} (or jwksUrl when that is empty), and the claim named by
+      # templateOrgClaim (claimMappings.organization when empty) must equal that
+      # {org}. Each template must contain exactly one {org}; jwksUrlTemplate must
+      # use https. Both empty (the default) means a single issuer. Has no effect
+      # unless multi-organization mode is on — enable it through configToml:
+      #   [api_portal.multi_organization]
+      #   enabled = true
+      # See portals/api-portal/docs/administer/multi-organization.md.
+      issuerTemplate: ""         # e.g. https://idp.example.com/o/{org}/oauth2/token
+      jwksUrlTemplate: ""        # e.g. https://idp.example.com/o/{org}/oauth2/jwks
+      templateOrgClaim: ""       # e.g. org_id, when {org} differs from claimMappings.organization
 
     # --- Authorization: what a verified token may do ---
     # Outside auth.local/auth.idp on purpose — a token carries the same roles claim
@@ -185,6 +200,9 @@ config:
     handle: default                         # URL slug: /{handle}/views/{viewName}; required
     displayName: ""                         # seed-time only; empty means "use the handle"
     autoCreateSubscriptionPlans: true       # auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
+    # Identifier this portal instance is pinned to; required, no whitespace.
+    # Instances sharing one database need distinct values, except replicas of the same portal.
+    portalId: portal_id
 
   # --- Artifacts: which types this portal serves (allowlist) ---
   # A type left out gets no nav entry, no landing-page section, and 404s on its
@@ -275,6 +293,37 @@ service:
 
 # Port the portal process listens on (matches the image's native default/EXPOSE).
 containerPort: 9543
+
+# ----------------------------------------------------------------------------
+# openshift: OpenShift Routes, rendered only when openshift.enabled=true.
+# Security contexts are configured under deployment.podSecurityContext and
+# deployment.securityContext.
+# ----------------------------------------------------------------------------
+openshift:
+  enabled: false
+  routes:
+    # Default TLS settings; the route's own `tls` block overrides them key by key.
+    tls:
+      # passthrough | reencrypt (the Service serves HTTPS only, so edge cannot reach it)
+      termination: passthrough
+      # None | Redirect
+      insecureEdgeTerminationPolicy: None
+      # PEM certificate, key and CA chain served by the router (reencrypt only).
+      # Leave empty to use the router's default certificate.
+      certificate: ""
+      key: ""
+      caCertificate: ""
+      # PEM CA that signed the backend certificate (reencrypt only). Required for reencrypt unless
+      # tls.certificateProvider=secret holds a certificate signed by the OpenShift service CA.
+      destinationCACertificate: ""
+    # API Portal.
+    apiPortal:
+      enabled: true
+      # Empty lets OpenShift generate <route-name>-<namespace>.<apps-domain>.
+      hostname: ""
+      annotations: {}
+      labels: {}
+      tls: {}
 
 # ----------------------------------------------------------------------------
 # tls — certificate for the portal's HTTPS listener (APIP_AP_TLS_*)

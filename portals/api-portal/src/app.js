@@ -23,13 +23,17 @@ const session = require('express-session');
 const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
+const { SENSITIVE_FIELDS, redactUrl } = require('./utils/logRedaction');
 const authRoute = require('./routes/pages/authRoute');
 const orgContent = require('./routes/pages/orgContentRoute');
 const apiContent = require('./routes/pages/apiContentRoute');
 const applicationContent = require('./routes/pages/applicationsContentRoute');
 const customContent = require('./routes/pages/customPageRoute');
 const subscriptionsContent = require('./routes/pages/subscriptionsContentRoute');
+const usageContent = require('./routes/pages/usageContentRoute');
+const billingContent = require('./routes/pages/billingContentRoute');
 const apiKeysOverviewContent = require('./routes/pages/apiKeysOverviewRoute');
+const oauth2KeysContent = require('./routes/pages/oauth2KeysRoute');
 const mcpRegistryRoute = require('./routes/pages/mcpRegistryRoute');
 const { config } = require('./config/configLoader');
 const Handlebars = require('handlebars');
@@ -148,6 +152,10 @@ const tryoutProxy = require('./routes/pages/tryoutProxyRoute');
 const skipForTryoutProxy = (parser) => (req, res, next) =>
     (tryoutProxy.BODY_PARSER_SKIP_PATTERN.test(req.path) ? next() : parser(req, res, next));
 
+// Stripe webhook events: raw body, no session, verified by Stripe's signature. Registered
+// ahead of the parsers below so they never consume the body it verifies.
+require('./routes/billingWebhookRoute').mount(app);
+
 app.use(skipForTryoutProxy(express.json({ limit: bodyLimit })));
 app.use(skipForTryoutProxy(express.urlencoded({ extended: true, limit: bodyLimit })));
 
@@ -158,7 +166,7 @@ const BP = constants.ROUTE.BASE_PATH;
 app.use(auditMiddleware({
     excludePaths: ['/health', '/metrics', '/favicon.ico', `${BP}/health`,
         `${BP}/styles`, `${BP}/scripts`, `${BP}/images`, `${BP}/technical-styles`, `${BP}/technical-scripts`],
-    sensitiveFields: ['password', 'token', 'secret', 'key', 'authorization', 'idToken', 'accessToken', 'refreshToken']
+    sensitiveFields: SENSITIVE_FIELDS,
 }));
 
 // Session and everything that reads it stay scoped to BASE_PATH. passport.session()
@@ -231,6 +239,10 @@ portal.use((req, res, next) => {
 const apiPortalRouter = require('./routes/api/apiPortalRouter');
 portal.use(constants.ROUTE.DEFAULT, apiPortalRouter);
 
+// The page renderers are not given the request. This keeps it available to them while a page
+// request runs, so they offer only the account actions the signed-in user may take (utils/pageAccess).
+portal.use(require('./utils/requestContext').middleware);
+
 // MCP Server Registry (OpenAPI v0.1)
 portal.use('/registry/:orgHandle', mcpRegistryRoute);
 portal.use('/:orgHandle/registry', mcpRegistryRoute);
@@ -261,7 +273,11 @@ if (config.designMode?.enabled) {
     portal.use(constants.ROUTE.DEFAULT, settingsRoute);
     portal.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     portal.use(constants.ROUTE.DEFAULT, subscriptionsContent);
+    portal.use(constants.ROUTE.DEFAULT, usageContent);
+    portal.use(constants.ROUTE.DEFAULT, billingContent);
     portal.use(constants.ROUTE.DEFAULT, apiKeysOverviewContent);
+    portal.use(constants.ROUTE.DEFAULT, oauth2KeysContent);
+    // customContent is the catch-all page router and must stay last.
     portal.use(constants.ROUTE.DEFAULT, customContent);
 }
 
@@ -296,7 +312,7 @@ app.use(async (err, req, res, next) => {
         logger.error('Application error', {
             error: err.message,
             stack: err.stack,
-            url: req.url,
+            url: redactUrl(req.url),
             method: req.method,
             operation: 'expressErrorHandler'
         });
@@ -317,7 +333,7 @@ app.use(async (err, req, res, next) => {
         if (!Handlebars.partials[name]) Handlebars.registerPartial(name, '');
     });
 
-    const errorType = status === 404 ? '404' : status === 403 ? '403' : '500';
+    const errorType = err.errorType || (status === 404 ? '404' : status === 403 ? '403' : '500');
     // Always this instance's own organization — never the first path segment of the
     // failed request. A 404 from orgGuard means that segment named some *other*
     // organization, and echoing it back would point the error page's "home" link
@@ -326,11 +342,20 @@ app.use(async (err, req, res, next) => {
     // view that exists after that one has been renamed or deleted. Never throws — see
     // orgContext.getFallbackViewHandle — which matters on this path above all others.
     const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + await orgContext.getFallbackViewHandle();
-    const templateContent = {
-        baseUrl,
-        errorType,
-        profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,
-    };
+    let profile = typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null;
+    // The page's links point at the configured organization; in multi-organization mode a
+    // user of another one is no administrator there (see orgGuard). Compared with the
+    // stored idp_ref_id — what sign-ins are matched against, which auth.idp_org_id need
+    // not equal (an unset setting leaves the stored value alone). Must not throw on this
+    // path, so a failed lookup counts as foreign: a missing admin link is the safe
+    // default.
+    if (profile && orgContext.isMultiOrganizationEnabled()) {
+        const idpRefId = await orgContext.getConfiguredOrgIdpRefId().catch(() => null);
+        if (orgContext.isForeignOrgSession(profile, { idp_ref_id: idpRefId })) {
+            profile = { ...profile, isAdmin: false };
+        }
+    }
+    const templateContent = { baseUrl, errorType, profile, signUpEnabled: Boolean(config.auth?.idp?.signUpUrl) };
 
     const html = util.renderTemplate('../pages/error-page/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
     res.status(status).send(html);

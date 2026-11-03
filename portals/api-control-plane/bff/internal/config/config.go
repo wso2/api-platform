@@ -28,11 +28,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/v2"
+
+	"api-control-plane-bff/internal/egress"
 )
 
 // Config is the fully-resolved BFF configuration. Its shape mirrors the
@@ -50,13 +55,151 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
+	// GatewayVersions is the catalog of self-hosted-gateway releases the SPA's
+	// Quick Start "download the gateway" step offers, one entry per gateway
+	// type. Top-level (a sibling of PolicyHub, not nested under ControlPlane)
+	// because it is a public, static catalog the browser reads verbatim —
+	// unrelated to the control_plane upstream's connection settings — exactly
+	// like PolicyHub sits beside ControlPlane rather than inside it. Mirrors
+	// AI Workspace's `GatewayVersionEntry` shape (its own
+	// PLATFORM_GATEWAY_VERSIONS, hardcoded in that SPA's config.env.ts) plus a
+	// `type` discriminator, since this BFF serves both "regular" and "event"
+	// gateway types rather than AI Workspace's single "ai" type.
+	GatewayVersions []GatewayVersionEntry `koanf:"gateway_versions"`
+	// Gateway is what a self-hosted gateway's setup instructions need from this
+	// deployment ([api_control_plane.gateway]). Mirrors AI Workspace's own
+	// [ai_workspace.gateway] table.
+	Gateway      GatewayConfig      `koanf:"gateway"`
+	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
+
+	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
+}
+
+// GatewayVersionEntry is one [[gateway_versions]] entry: the release of one
+// self-hosted gateway type that the SPA's Quick Start download step may offer.
+// Field names match the TS contract declared in
+// portals/cloud-plugins/apip-cloud-ui-gateways/src/hostPort.ts (koanf tags
+// read the TOML's snake_case keys; json tags are the camelCase names that
+// contract — and the SPA's JSON.parse of the runtime config — expect).
+type GatewayVersionEntry struct {
+	// Type is "regular" or "event" for this BFF (AI Workspace owns "ai").
+	Type    string `koanf:"type" json:"type"`
+	Version string `koanf:"version" json:"version"`
+	// LatestVersion is the release tag, e.g. "v1.2.0". Defaults to
+	// "v"+Version client-side when omitted.
+	LatestVersion string `koanf:"latest_version" json:"latestVersion,omitempty"`
+	// DistVersion is the zip/folder version, when it differs from Version.
+	DistVersion string `koanf:"dist_version" json:"distVersion,omitempty"`
+	// Channel is "STS" or "LTS".
+	Channel string `koanf:"channel" json:"channel"`
+}
+
+// GatewayConfig is [api_control_plane.gateway].
+type GatewayConfig struct {
+	// ControlPlaneHost is the self-hosted gateway controller's control-plane
+	// address, `host[:port][/path]` without a scheme, shown in setup commands.
+	// It varies by environment; empty means unset and uses a fallback or
+	// placeholder.
+	ControlPlaneHost string `koanf:"controlplane_host"`
+}
+
+// controlPlaneHostPattern validates the `host[:port][/path]` format before the
+// value is used in shell and Helm commands. The port, when present, is
+// captured so validControlPlaneHost can range-check it.
+var controlPlaneHostPattern = regexp.MustCompile(
+	`^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::([0-9]{1,5}))?(?:/[A-Za-z0-9._~-]+)*$`)
+
+// validControlPlaneHost reports whether host matches controlPlaneHostPattern
+// and any port it carries is a usable TCP port (1-65535).
+func validControlPlaneHost(host string) bool {
+	m := controlPlaneHostPattern.FindStringSubmatch(host)
+	if m == nil {
+		return false
+	}
+	if m[1] == "" {
+		return true
+	}
+	port, err := strconv.Atoi(m[1])
+	return err == nil && port >= 1 && port <= 65535
+}
+
+// GatewayRelayConfig configures the bounded relay for the Test page's Swagger console.
+type GatewayRelayConfig struct {
+	// Enabled turns the relay on. When false the route 404s and no outbound
+	// client is built at all.
+	Enabled bool `koanf:"enabled"`
+
+	// RequestTimeout limits the relayed call from dialing through response-body
+	// processing. It should remain below the route's write deadline.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// MaxRequestBytes bounds the decoded relayed request body. The JSON envelope
+	// may be larger due to base64 encoding and JSON escaping.
+	MaxRequestBytes int64 `koanf:"max_request_bytes"`
+	// MaxResponseBytes limits the gateway response body. If exceeded, the body is
+	// truncated and flagged instead of failing the request.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
+
+	// MaxConcurrent is how many relayed calls may be in flight at once.
+	MaxConcurrent int `koanf:"max_concurrent"`
+	// MaxPending limits queued calls; excess calls are rejected with 503.
+	MaxPending int `koanf:"max_pending"`
+
+	// ResolveCacheTTL controls how long resolved invoke URLs are reused before
+	// Platform API is consulted again; keep it short to limit revoked access.
+	ResolveCacheTTL time.Duration `koanf:"resolve_cache_ttl"`
+	// ResolveCacheSize bounds the number of cached entries.
+	ResolveCacheSize int `koanf:"resolve_cache_size"`
+
+	// CAFile is a PEM bundle to trust for gateway TLS certificates, appended to
+	// the system roots. Ignored when TLSSkipVerify is true.
+	CAFile string `koanf:"ca_file"`
+	// TLSSkipVerify disables gateway certificate verification. Use only for
+	// development or demonstrations. This is an operator setting, not a
+	// per-request option, to prevent clients from bypassing TLS verification.
+	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+
+	// Egress bounds where the relay may connect. See internal/egress.
+	Egress EgressConfig `koanf:"egress"`
+}
+
+// Policy parses this block into the object that enforces it.
+func (e EgressConfig) Policy() (*egress.Policy, error) {
+	policy, err := egress.Parse(egress.Spec{AllowHosts: e.AllowHosts})
+	if err != nil {
+		return nil, fmt.Errorf("[gateway_relay.egress] %w", err)
+	}
+	return policy, nil
+}
+
+// EgressConfig is [gateway_relay.egress]: where the relay may connect.
+//
+// One rule: nothing is reachable unless an allow_hosts entry matches it. See
+// internal/egress.
+type EgressConfig struct {
+	// AllowHosts is the complete set of targets the relay may dial. Each entry
+	// has the form "[scheme://]host[:port]"; "*" may appear anywhere in host.
+	// Scheme and port constrain matching only when specified.
+	//
+	// An empty list permits no targets by design.
+	AllowHosts []string `koanf:"allow_hosts"`
 }
 
 // PolicyHubConfig configures the public catalog called directly by the browser.
 type PolicyHubConfig struct {
 	BaseURL string `koanf:"base_url"`
+}
+
+// SanitizeHTMLDocsConfig is the optional [sanitize_html_docs] section, passed
+// to the SPA as-is; the SPA parses the values and ignores anything malformed.
+// Each key may be a string (tags as a JSON array or comma-separated list,
+// attributes as a JSON object) or the native TOML bool, array or table.
+// Attribute names are camelCase hast property names (className, dataDocId).
+type SanitizeHTMLDocsConfig struct {
+	Enabled                     any `koanf:"enabled"`
+	AdditionalAllowedTags       any `koanf:"additional_allowed_tags"`
+	AdditionalAllowedAttributes any `koanf:"additional_allowed_attributes"`
 }
 
 // ServerConfig is [api_control_plane.server]: two independent listeners,
@@ -251,6 +394,9 @@ type ClaimMappingConfig struct {
 	OrgID     string `koanf:"organization"`
 	OrgName   string `koanf:"org_name"`
 	OrgHandle string `koanf:"org_handle"`
+	// Picture is the claim holding the user's avatar URL. Left unset it reads the
+	// standard OIDC "picture" claim.
+	Picture string `koanf:"picture"`
 }
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request,
@@ -285,7 +431,8 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
 	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
 	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
-	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
+	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
+	" ap:docs:read ap:docs:manage ap:thumbnail:read ap:thumbnail:manage"
 
 // Load resolves configuration from one or more config.toml files. At least one
 // path is required and each must exist and parse — there is no default path and
@@ -303,12 +450,22 @@ func Load(paths ...string) (*Config, error) {
 	}
 
 	cfg := defaultConfig()
+	// A catalog written in the config replaces the built-in one outright. Left in place, the
+	// decoder would merge each [[gateway_versions]] entry onto the default entry at the same
+	// index, so an override that omits a field (latest_version, say) would silently inherit
+	// another release's value, and the built-in entries could never be dropped.
+	if k.Exists("gateway_versions") {
+		cfg.GatewayVersions = nil
+	}
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
 			Result:           cfg,
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				commaSeparatedStringToSliceHook,
+			),
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -321,6 +478,21 @@ func Load(paths ...string) (*Config, error) {
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg)
 	return cfg, nil
+}
+
+// commaSeparatedStringToSliceHook supports comma-separated strings for []string
+// values, trimming entries and dropping blanks.
+func commaSeparatedStringToSliceHook(from, to reflect.Type, data any) (any, error) {
+	if from.Kind() != reflect.String || to.Kind() != reflect.Slice || to.Elem().Kind() != reflect.String {
+		return data, nil
+	}
+	out := []string{}
+	for entry := range strings.SplitSeq(data.(string), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			out = append(out, entry)
+		}
+	}
+	return out, nil
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config
@@ -337,6 +509,7 @@ func (c *Config) normalize() {
 	if c.PolicyHub.BaseURL == "" {
 		c.PolicyHub.BaseURL = defaultPolicyHubBaseURL
 	}
+	c.Gateway.ControlPlaneHost = strings.TrimRight(strings.TrimSpace(c.Gateway.ControlPlaneHost), "/")
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
@@ -375,6 +548,13 @@ func (c *Config) validate() error {
 	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
 		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
 	}
+	if err := c.validateGatewayRelay(); err != nil {
+		return err
+	}
+	if v, ok := runtimeValue(c.SanitizeHTMLDocs.Enabled); ok && strings.EqualFold(strings.TrimSpace(v), "false") {
+		slog.Warn("[sanitize_html_docs] enabled = false: raw HTML in API documents is rendered unsanitized. " +
+			"Keep sanitization on unless every document author is trusted.")
+	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")
 	}
@@ -411,6 +591,20 @@ func (c *Config) validate() error {
 		if err := validateAbsoluteURL("[policy_hub] base_url", c.PolicyHub.BaseURL); err != nil {
 			return err
 		}
+	}
+	for i, gv := range c.GatewayVersions {
+		if gv.Type != "regular" && gv.Type != "event" && gv.Type != "ai" {
+			return fmt.Errorf("[[gateway_versions]] entry %d has invalid type %q: must be \"regular\", \"event\", or \"ai\"", i, gv.Type)
+		}
+		if gv.Version == "" {
+			return fmt.Errorf("[[gateway_versions]] entry %d is missing version", i)
+		}
+		if gv.Channel != "STS" && gv.Channel != "LTS" {
+			return fmt.Errorf("[[gateway_versions]] entry %d has invalid channel %q: must be \"STS\" or \"LTS\"", i, gv.Channel)
+		}
+	}
+	if h := c.Gateway.ControlPlaneHost; h != "" && !validControlPlaneHost(h) {
+		return fmt.Errorf("[gateway] controlplane_host %q is invalid: must be host[:port][/path] with no scheme, e.g. \"cp.example.com:443\"", h)
 	}
 	seen := map[string]bool{}
 	for _, u := range c.ControlPlane.Upstreams {
@@ -487,5 +681,60 @@ func validateAbsoluteURL(label, rawURL string) error {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("%s must be an absolute http:// or https:// URL, got %q", label, rawURL)
 	}
+	return nil
+}
+
+// validateGatewayRelay checks the relay's bounds and builds its egress policy.
+//
+// The policy is parsed here, not at wiring time, so a bad range refuses the
+// process at startup with the key that caused it — and so exactly one parse of
+// those strings exists, by the package that also enforces them.
+func (c *Config) validateGatewayRelay() error {
+	t := &c.GatewayRelay
+	if !t.Enabled {
+		return nil
+	}
+	if t.RequestTimeout <= 0 {
+		return fmt.Errorf("[gateway_relay] request_timeout must be positive when enabled = true, got %s", t.RequestTimeout)
+	}
+	if t.MaxRequestBytes <= 0 {
+		return fmt.Errorf("[gateway_relay] max_request_bytes must be positive when enabled = true, got %d", t.MaxRequestBytes)
+	}
+	if t.MaxResponseBytes <= 0 {
+		return fmt.Errorf("[gateway_relay] max_response_bytes must be positive when enabled = true, got %d", t.MaxResponseBytes)
+	}
+	if t.MaxConcurrent <= 0 {
+		return fmt.Errorf("[gateway_relay] max_concurrent must be positive when enabled = true, got %d", t.MaxConcurrent)
+	}
+	if t.ResolveCacheTTL < 0 {
+		return fmt.Errorf("[gateway_relay] resolve_cache_ttl must not be negative, got %s", t.ResolveCacheTTL)
+	}
+	if t.ResolveCacheSize < 0 {
+		return fmt.Errorf("[gateway_relay] resolve_cache_size must not be negative, got %d", t.ResolveCacheSize)
+	}
+	if t.MaxPending < 0 {
+		return fmt.Errorf("[gateway_relay] max_pending must not be negative, got %d", t.MaxPending)
+	}
+	if t.TLSSkipVerify && t.CAFile != "" {
+		return fmt.Errorf("[gateway_relay] ca_file and tls_skip_verify are mutually exclusive — skipping verification ignores the bundle entirely")
+	}
+
+	// Parsed here only to fail at startup, with the offending key named,
+	// rather than at wiring time. The server parses it again for real; it is
+	// the same pure function, so the two cannot disagree.
+	policy, err := t.Egress.Policy()
+	if err != nil {
+		return err
+	}
+	if len(t.Egress.AllowHosts) == 0 {
+		slog.Warn("[gateway_relay.egress] allow_hosts is empty, so every gateway-relay request will be refused. " +
+			"List the gateway targets the relay may dial, or set [gateway_relay] enabled = false.")
+	}
+
+	if t.TLSSkipVerify {
+		slog.Warn("[gateway_relay] tls_skip_verify = true — gateway certificate verification is DISABLED for gateway-relay requests. " +
+			"Trust the gateway certificate with ca_file instead.")
+	}
+	slog.Info("gateway-relay egress policy", "policy", policy.Describe())
 	return nil
 }

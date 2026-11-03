@@ -285,6 +285,18 @@ CREATE TABLE IF NOT EXISTS key_managers (
     display_name VARCHAR(255) NOT NULL,
     enabled SMALLINT NOT NULL DEFAULT 1,
     token_endpoint VARCHAR(255) NOT NULL,
+    -- PRODUCTION | SANDBOX. Which environment the keys this key manager issues
+    -- belong to. A deployment runs one key manager per environment, so this is a
+    -- property of the key manager rather than a per-key choice; every key it
+    -- creates inherits it (oauth2_consumer_keys.key_type).
+    --
+    -- Fixed at creation and refused on update, for the same reason the driver type
+    -- is: keys already issued were created as one kind, and relabelling the key
+    -- manager cannot change what they are.
+    --
+    -- Not a CHECK constraint (R4-NO-ENUM-CHECK) — validated in the service layer
+    -- against constants.KEY_TYPE.
+    key_type VARCHAR(20) NOT NULL DEFAULT 'PRODUCTION',
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
@@ -410,6 +422,207 @@ CREATE TABLE IF NOT EXISTS api_key_app_mappings (
 CREATE INDEX IF NOT EXISTS idx_api_key_app_mappings_app_uuid ON api_key_app_mappings(app_uuid);
 
 -- API Workflows table (portal-scoped agent/automation workflows published under a view)
+-- ---------------------------------------------------------------------------
+-- OAuth2 consumer keys — one row per OAuth application this portal registered
+-- on a key manager via Dynamic Client Registration (RFC 7591).
+--
+-- Only the identity of the registered client, plus whatever RFC 7592 gave the
+-- portal to manage it with. Deliberately absent:
+--   * the client secret — the key manager returns it once and never again;
+--   * the client metadata (redirect_uris, grant_types, …) — it lives at the
+--     key manager and is re-read from there, so there is one copy.
+--
+-- The RFC 7592 registration access token and client configuration URI ARE kept,
+-- in registration_access_token_enc (encrypted at rest) and
+-- registration_client_uri — see the notes on those columns. Both are NULL for a
+-- key manager that issues no such token, and a key in that state is managed with
+-- the portal's provisioning credential against a constructed
+-- <registration_endpoint>/<consumer_key>, which is what every key did before
+-- these columns existed.
+--
+-- key_manager_id is deliberately NOT a foreign key: key managers are declared
+-- in configuration ([[api_portal.key_manager]]), not rows in key_managers, so
+-- there is nothing to reference.
+--
+-- The key↔application association lives in oauth2_consumer_key_app_mappings, not
+-- as a column here.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS oauth2_consumer_keys (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    -- The `id` of an [[api_portal.key_manager]] config entry. Not an FK; see above.
+    key_manager_id VARCHAR(255) NOT NULL,
+    -- The OAuth2 client_id the key manager issued.
+    consumer_key VARCHAR(255) NOT NULL,
+    -- What the developer called this when they created it. The consumer key
+    -- alone is not something a person can recognise in a list. Nullable: a
+    -- driver need not collect a name, and a key imported by an older client
+    -- may not carry one -- the UI falls back to the consumer key.
+    name VARCHAR(255),
+    -- RFC 7592 client-configuration credentials, when the key manager issued them.
+    --
+    -- A conforming server returns a registration access token alongside the new
+    -- client, and read/update/delete of THAT client authenticate with it rather
+    -- than the portal's own provisioning credential. It may also rotate: Keycloak
+    -- returns a new token from every update and kills the old one immediately, so
+    -- these columns are rewritten from each response, not just at creation.
+    --
+    -- registration_client_uri is stored rather than rebuilt because RFC 7592 S3
+    -- makes it REQUIRED in the response precisely so the configuration endpoint
+    -- can sit on a different host or path than the registration endpoint --
+    -- Keycloak's does. NULL in both means this key is managed with the
+    -- provisioning credential against a constructed URL, which is how every key
+    -- on a key manager that issues no token behaves.
+    -- PRODUCTION | SANDBOX, copied from the key manager when the key was created.
+    --
+    -- Stored rather than derived from the key manager for two reasons: a
+    -- config-declared key manager has no row to join to, so a query for sandbox
+    -- keys would have nowhere to look; and it is a historical fact about what this
+    -- credential was issued as, which should not change if the key manager's own
+    -- flag ever did.
+    --
+    -- Resolved from the key manager in exactly one place today. When a per-key
+    -- choice is added later, that one line becomes `body.keyType ?? km.keyType`
+    -- and this column needs no change.
+    key_type VARCHAR(20) NOT NULL DEFAULT 'PRODUCTION',
+    registration_access_token_enc BYTEA,
+    registration_client_uri VARCHAR(1023),
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- (portal_id, uuid) matches every sibling table, and is required for the
+    -- composite FK below: organizations' own key is (portal_id, uuid), so a
+    -- single-column reference to organizations(uuid) cannot be created.
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+
+-- The list query filters org_uuid + created_by, so that compound leads; it is
+-- also a covering prefix for org-only lookups, hence no separate org index.
+CREATE INDEX IF NOT EXISTS idx_oauth2_consumer_key_org_created_by ON oauth2_consumer_keys(org_uuid, created_by, portal_id);
+CREATE INDEX IF NOT EXISTS idx_oauth2_consumer_key_km_id ON oauth2_consumer_keys(key_manager_id, portal_id);
+CREATE INDEX IF NOT EXISTS idx_oauth2_consumer_key_status ON oauth2_consumer_keys(status);
+
+-- Which application an OAuth2 key belongs to.
+--
+-- Its own table rather than a column on oauth2_consumer_keys: the association is
+-- optional, is set and cleared independently of the key, and is written by a
+-- different operation. A nullable column would also have made "no application"
+-- and "application deleted" indistinguishable.
+--
+-- Shaped to match api_key_app_mappings, which solves the identical problem for
+-- API keys. key_uuid is the whole key: a key belongs to at most one application,
+-- so re-associating upserts this row rather than inserting a second one, and
+-- created_by records who last did it. An application holds any number of keys,
+-- which is why app_uuid is not part of the key and carries its own index.
+--
+-- Both foreign keys are composite. oauth2_consumer_keys and applications are each
+-- keyed on (portal_id, uuid), so a single-column reference to either `uuid` has no
+-- unique index to point at and cannot be created.
+--
+-- CASCADE on both sides: this row is meaningless without either end. Deleting the
+-- key at the key manager already deletes its row here; deleting the application
+-- drops the association without touching the key, which stays usable and simply
+-- becomes unassociated.
+CREATE TABLE IF NOT EXISTS oauth2_consumer_key_app_mappings (
+    key_uuid VARCHAR(40) NOT NULL,
+    app_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    created_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, key_uuid),
+    FOREIGN KEY (portal_id, key_uuid) REFERENCES oauth2_consumer_keys(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, app_uuid) REFERENCES applications(portal_id, uuid) ON DELETE CASCADE
+);
+
+-- app_uuid is not the leading column of the primary key, so the per-application
+-- listing (GET /applications/{id}/oauth2-keys) needs its own index.
+CREATE INDEX IF NOT EXISTS idx_oauth2_key_app_mapping_app ON oauth2_consumer_key_app_mappings(app_uuid);
+
+
+-- The driver configuration that makes a `key_managers` row usable for Dynamic
+-- Client Registration. Separate from `key_managers` because that table has
+-- shipped: it holds a handle, a display name and a token endpoint, and adding
+-- half a dozen columns to it — one of them a credential — is not an additive
+-- change anyone wants to make to a table already in customer databases.
+--
+-- A config-declared key manager ([[api_portal.key_manager]]) has no row here at
+-- all; its equivalent lives in the deployed TOML. A row exists only for a key
+-- manager created through the REST API, and only once someone supplies enough
+-- detail for it to register clients. A `key_managers` row with no row here is
+-- still valid — it just cannot generate keys.
+--
+-- Deliberately absent: the TLS and address-range escapes
+-- (insecure_skip_verify, allow_private_endpoints, allow_http_endpoints). Those
+-- relax the SSRF guard, and an endpoint set through an authenticated API is
+-- exactly the case that guard exists for. They stay operator-only, settable in
+-- configuration and nowhere else, so an API-created key manager always gets the
+-- safe defaults.
+CREATE TABLE IF NOT EXISTS key_manager_configurations (
+    -- The key manager this configures. The FK pair IS the identity, so it is the
+    -- primary key: no surrogate uuid, and the 1:0..1 invariant is enforced by the
+    -- key itself rather than a separate UNIQUE constraint.
+    key_manager_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    org_uuid VARCHAR(40) NOT NULL,
+    -- Which built-in driver handles it: thunderid | wso2is | asgardeo | keycloak | custom | provision. Resolved
+    -- against the driver registry at use time. Not a CHECK constraint
+    -- (R4-NO-ENUM-CHECK): the valid set is the registered drivers, which ship in
+    -- the image and change with it.
+    driver_type VARCHAR(40) NOT NULL,
+    registration_endpoint VARCHAR(255) NOT NULL,
+    -- Nullable: a key manager issuing only client_credentials tokens has no
+    -- interactive authorization endpoint.
+    authorize_endpoint VARCHAR(255),
+    description VARCHAR(1023),
+    -- How the portal authenticates ITSELF to this key manager to register
+    -- clients: client_credentials | basic | mtls.
+    auth_method VARCHAR(20) NOT NULL,
+    -- The method-specific remainder — client_id, scopes, resource,
+    -- send_credentials_in_body, username, cert paths. JSON precisely so that a
+    -- new credential field is a code change rather than three dialect ALTERs
+    -- plus a migration this component cannot express. NEVER the secret.
+    auth_config JSONB,
+    -- Operator-chosen options for this key manager, as a JSON object. A bag rather
+    -- than a column each, because these accumulate: a new option is then a code
+    -- change in the DAO instead of three dialect ALTERs on a shipped table.
+    --
+    -- It is NOT an open bag. The DAO parses a closed set of known keys and drops
+    -- anything else, so this is a typed structure that happens to be stored as
+    -- JSON — the same treatment the (since reverted) connection_policy column had.
+    -- Unparseable JSON falls back to "no options set", never to a partial read.
+    --
+    -- Known keys:
+    --   supportedGrantTypes — string[]. The subset of the driver's declared grant
+    --     types a portal user may pick. Absent/empty means "whatever the driver
+    --     offers", which is the backwards-compatible default. An admin restriction,
+    --     not a capability statement: the key manager may well support more.
+    --
+    -- VARCHAR(1023), not TEXT (R3-NO-TEXT) and not JSONB (R3-JSONB) — no repository
+    -- query reads inside it; it is fetched whole with the row and parsed in JS.
+    settings VARCHAR(1023),
+    -- The client secret / basic password, encrypted with security.encryption_key
+    -- (AES-256-GCM), never plaintext, and decrypted only when a driver is built.
+    -- Same treatment as webhook_subscribers.secret_enc.
+    auth_secret_enc BYTEA,
+    created_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, key_manager_uuid),
+    -- Owned by the parent: deleting a key manager deletes its configuration.
+    FOREIGN KEY (portal_id, key_manager_uuid) REFERENCES key_managers(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+
+-- One configuration per key manager, and the lookup every read uses.
+CREATE INDEX IF NOT EXISTS idx_key_manager_config_org ON key_manager_configurations(org_uuid, portal_id);
+
+
+
 CREATE TABLE IF NOT EXISTS api_workflows (
     uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
@@ -551,3 +764,166 @@ CREATE TABLE IF NOT EXISTS webhook_subscribers (
     FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_subscriber_org_handle ON webhook_subscribers(org_uuid, handle, portal_id);
+
+-- Meters (monetization): what a paid plan charges for.
+--   - type REQUEST_COUNT counts requests; type TOKENS adds up a number from each request's event,
+--     read at type_key (such as metadata.aiTokenUsage.promptTokens; null for REQUEST_COUNT).
+--   - filter_fields lists the properties the prices on this meter may filter on, each a name and
+--     the event key it is read from (a JSON array of { "field", "eventKey" }; empty for none).
+-- A meter has no filters of its own: each price picks the requests it counts with its own filters
+-- (in subscription_plan_pricing.prices).
+CREATE TABLE IF NOT EXISTS meters (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(20) NOT NULL,
+    type_key VARCHAR(255),
+    filter_fields BYTEA NOT NULL,
+    created_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_meter_org_handle ON meters(org_uuid, handle, portal_id);
+
+-- Plan pricing (monetization): one row per paid subscription plan; a plan with no row here is free.
+-- prices is a JSON array, each price with its own uuid:
+--   - a flat rate plan has one entry, { uuid, pricing_model: FLAT, amount }, charged every billing
+--     period;
+--   - a usage based plan has 1 to 20 prices, each { uuid, meter_handle, filters, pricing_model,
+--     unit_amount, unit_quantity, tiers }: it charges for what the meter named by meter_handle
+--     counts, narrowed by its filters ([{ field, operator, values }], each on one of the meter's
+--     filter_fields; empty for none), in one pricing model (PER_UNIT: unit_amount per unit_quantity units;
+--     VOLUME or GRADUATED: tiers).
+-- Amounts are decimal strings. Pricing is set when the plan is created and never changes; deleting
+-- the plan deletes it. A meter that a price names cannot be deleted.
+CREATE TABLE IF NOT EXISTS subscription_plan_pricing (
+    subscription_plan_uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    currency VARCHAR(3) NOT NULL,
+    billing_period VARCHAR(20) NOT NULL DEFAULT 'MONTH',
+    prices BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, subscription_plan_uuid),
+    FOREIGN KEY (portal_id, subscription_plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_org ON subscription_plan_pricing(org_uuid, portal_id);
+
+-- Billing configuration (monetization): how one organization's portal sells paid plans; at most one
+-- per organization.
+--   - billing_provider is the billing engine (MOESIF: Moesif meters usage and keeps the billing
+--     catalog), and payment_provider the payment provider it bills through (STRIPE: customers,
+--     subscriptions, invoices and payments).
+--   - provider_settings holds their public settings as JSON, one object per provider, such as
+--     { "stripe": { "publishableKey", "webhookEndpointId", "webhookBaseUrl" } }.
+--   - provider_secrets_enc holds their keys the same way, such as { "moesif": { "collectorApplicationId",
+--     "managementKey" }, "stripe": { "apiKey", "webhookSecret" } }, each value encrypted on its own
+--     with security.encryption_key (AES-256-GCM) and bound to its path, the organization and the
+--     portal.
+-- Deleting the configuration deletes its customers, their checkouts, and its API plans.
+CREATE TABLE IF NOT EXISTS billing_configurations (
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    billing_provider VARCHAR(20) NOT NULL DEFAULT 'MOESIF',
+    payment_provider VARCHAR(20) NOT NULL DEFAULT 'STRIPE',
+    provider_settings BYTEA NOT NULL,
+    provider_secrets_enc BYTEA NOT NULL,
+    created_by VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, org_uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+
+-- Billing API plans (monetization): one paid plan as sold on one API, and what the billing engine
+-- holds for it (items, a JSON array). With Moesif, each part of the plan (a flat rate plan's fee, or
+-- each usage price) is a Moesif plan with one price, and a usage price also has a Moesif billing
+-- meter, which counts the price's requests and reports them to the payment provider. An item is
+-- { priceUuid, planRef, priceRef, meterRef }: the plan's price, and the billing engine's plan, price
+-- and billing meter (null for the fee). priceRef is the payment provider's price, and each item
+-- becomes one item of the subscriber's subscription there.
+-- A row is written once, by the request that offers the plan on the API, and never changes. When it
+-- is deleted, its objects are archived with the billing engine.
+CREATE TABLE IF NOT EXISTS billing_api_plans (
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    api_uuid VARCHAR(40) NOT NULL,
+    plan_uuid VARCHAR(40) NOT NULL,
+    items BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, org_uuid, api_uuid, plan_uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES billing_configurations(portal_id, org_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, api_uuid) REFERENCES api_metadata(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+CREATE INDEX IF NOT EXISTS idx_billing_api_plan_api ON billing_api_plans(api_uuid, portal_id);
+CREATE INDEX IF NOT EXISTS idx_billing_api_plan_plan ON billing_api_plans(plan_uuid, portal_id);
+
+-- Billing customers (monetization): the payment provider's customer of a portal user, one per user
+-- per organization, created at the user's first paid checkout (customer_ref is the provider's id).
+-- With Moesif, customer_ref is also the user's Moesif company id: the gateway sends it with each
+-- request event (metadata.billingCustomerId), and Moesif's billing meters count usage by it.
+CREATE TABLE IF NOT EXISTS billing_customers (
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    user_uuid VARCHAR(255) NOT NULL,
+    customer_ref VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, org_uuid, user_uuid),
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES billing_configurations(portal_id, org_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+
+-- Billing checkouts (monetization): one per checkout the portal started with the payment provider.
+-- A checkout is open until the provider confirms the payment; then the
+-- subscription is created and subscription_uuid names it. A checkout that ends unpaid is deleted.
+-- checkout_ref is the provider's checkout, null until it is started there.
+-- A completed checkout keeps naming its API, plan and subscription after they are deleted.
+CREATE TABLE IF NOT EXISTS billing_checkouts (
+    uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    user_uuid VARCHAR(255) NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
+    plan_uuid VARCHAR(40) NOT NULL,
+    checkout_ref VARCHAR(255),
+    subscription_uuid VARCHAR(40),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, uuid),
+    FOREIGN KEY (portal_id, org_uuid, user_uuid) REFERENCES billing_customers(portal_id, org_uuid, user_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+-- A user has at most one open checkout per API (and one subscription per API): starting another
+-- checkout for the API reuses or ends the open one. startCheckout checks this under a lock on the
+-- user's billing_customers row, and this index serves that check and the link to the customer.
+CREATE INDEX IF NOT EXISTS idx_billing_checkout_user_api ON billing_checkouts(portal_id, org_uuid, user_uuid, api_uuid);
+
+-- Subscription billing (monetization): the billing state of each paid subscription: the payment
+-- provider's subscription (subscription_ref), its status, its current period, and ends_at when it is
+-- set to end. Deleting the subscription deletes this row. Its customer is the billing_customers row
+-- of the subscription's organization and subscriber (created_by), and what it was sold as is the
+-- billing_api_plans row of the subscription's API and plan.
+CREATE TABLE IF NOT EXISTS subscription_billing (
+    subscription_uuid VARCHAR(40) NOT NULL,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
+    subscription_ref VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    current_period_start TIMESTAMPTZ,
+    current_period_end TIMESTAMPTZ,
+    ends_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (portal_id, subscription_uuid),
+    FOREIGN KEY (portal_id, subscription_uuid) REFERENCES subscriptions(portal_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY (portal_id, org_uuid) REFERENCES organizations(portal_id, uuid) ON DELETE NO ACTION
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_billing_org ON subscription_billing(org_uuid, portal_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_billing_ref ON subscription_billing(portal_id, subscription_ref);

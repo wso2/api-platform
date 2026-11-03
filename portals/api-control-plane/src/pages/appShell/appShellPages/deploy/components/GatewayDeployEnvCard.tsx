@@ -16,21 +16,17 @@
  * under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { alpha, Box, Button, IconButton, Typography, useTheme } from '@wso2/oxygen-ui';
 import { PackageOpen, SquarePen } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
-import {
-  useRestoreDeployment,
-  useUndeployDeployment,
-  type Deployment,
-} from '@/api/resources/restApis/deployments';
+import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
 import { useFormatters } from '@/i18n/useFormatters';
-import { GatewayDeploymentSelector } from './GatewayDeploymentSelector';
 import { Can } from '@/permissions/Can';
+import { GatewayDeploymentSelector, type UseDeploymentMutationHook } from './GatewayDeploymentSelector';
 
 /**
  * Explanations for the `statusReason` codes platform-api returns on a failed
@@ -175,25 +171,37 @@ const messages = defineMessages({
 
 type GatewayDeployEnvCardProps = {
   /** Handle of the API these deployments belong to. */
-  restApiId: string;
+  apiId: string;
   gateway: Gateway;
   /** Deployments on this gateway, newest first. */
   deployments: Deployment[];
   currentDeployment?: Deployment;
   isGatewayActive: boolean;
+  /** Gateway-created API: Stop, Redeploy and Change deployment are disabled. */
+  readOnly?: boolean;
+  /** The caller's own undeploy/restore mutations, adapted to a uniform shape —
+   * REST's and GraphQL's hooks each expect a differently keyed variables
+   * object (`restApiId`/`graphqlApiId`). `useRestore` is also passed straight
+   * through to `GatewayDeploymentSelector`'s own restore drawer. */
+  useUndeploy: UseDeploymentMutationHook;
+  useRestore: UseDeploymentMutationHook;
 };
 
 /**
  * Left panel of an expanded gateway card: deployment status bar, failure
  * reason, deployment info box, and Stop / Redeploy actions (ai-workspace
- * GatewayDeployEnvCard).
+ * GatewayDeployEnvCard). Shared between REST and GraphQL APIs — see
+ * `DeployPage`/`GraphqlDeployPage` for the `useUndeploy`/`useRestore` adapters.
  */
 export function GatewayDeployEnvCard({
-  restApiId,
+  apiId,
   gateway,
   deployments,
   currentDeployment,
   isGatewayActive,
+  readOnly = false,
+  useUndeploy,
+  useRestore,
 }: GatewayDeployEnvCardProps) {
   const theme = useTheme();
   const intl = useIntl();
@@ -201,9 +209,13 @@ export function GatewayDeployEnvCard({
   // that one freezes its locale at import, so it never follows a locale switch.
   const { relativeTime } = useFormatters();
   const { notify } = useNotifications();
-  const undeployMutation = useUndeployDeployment();
-  const restoreMutation = useRestoreDeployment();
+  const undeployMutation = useUndeploy();
+  const restoreMutation = useRestore();
   const [selectorOpen, setSelectorOpen] = useState(false);
+  // An open restore drawer must not outlive the API turning read-only.
+  useEffect(() => {
+    if (readOnly) setSelectorOpen(false);
+  }, [readOnly]);
 
   const status = currentDeployment?.status;
   // When the gateway is offline the deployment state is unknowable — show
@@ -242,7 +254,7 @@ export function GatewayDeployEnvCard({
   // already notifies, so a local handler would only duplicate the toast.
   const handleUndeploy = () => {
     undeployMutation.mutate(
-      { restApiId, deploymentId: currentDeployment.deploymentId },
+      { apiId, deploymentId: currentDeployment.deploymentId },
       {
         onSuccess: () =>
           notify(
@@ -257,7 +269,7 @@ export function GatewayDeployEnvCard({
 
   const handleRedeploy = () => {
     restoreMutation.mutate(
-      { restApiId, deploymentId: currentDeployment.deploymentId },
+      { apiId, deploymentId: currentDeployment.deploymentId },
       {
         onSuccess: () =>
           notify(
@@ -326,7 +338,7 @@ export function GatewayDeployEnvCard({
           <Can do="DeleteDeployment" denied="disable">
             <Button
               color="error"
-              disabled={!isGatewayActive || busy || isDeploying}
+              disabled={readOnly || !isGatewayActive || busy || isDeploying}
               onClick={handleUndeploy}
               size="small"
               variant="outlined"
@@ -341,7 +353,7 @@ export function GatewayDeployEnvCard({
           <Can do="RestoreDeployment" denied="disable">
             <Button
               color="primary"
-              disabled={!isGatewayActive || busy || isUndeploying}
+              disabled={readOnly || !isGatewayActive || busy || isUndeploying}
               onClick={handleRedeploy}
               size="small"
               variant="outlined"
@@ -426,7 +438,7 @@ export function GatewayDeployEnvCard({
             aria-label={intl.formatMessage(messages.changeDeploymentLabel, {
               gatewayName: gateway.displayName,
             })}
-            disabled={!isGatewayActive}
+            disabled={readOnly || !isGatewayActive}
             onClick={() => setSelectorOpen(true)}
             size="small"
           >
@@ -436,10 +448,12 @@ export function GatewayDeployEnvCard({
       </Box>
 
       <GatewayDeploymentSelector
+        apiId={apiId}
         deployments={deployments}
-        restApiId={restApiId}
         onClose={() => setSelectorOpen(false)}
         open={selectorOpen}
+        readOnly={readOnly}
+        useRestore={useRestore}
       />
     </Box>
   );

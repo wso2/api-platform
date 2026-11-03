@@ -1,0 +1,6 @@
+
+# v1→v2 migration client build outputs (make migrate-build / migrate-dist)
+/migrate
+/dist/
+/migration-checkpoint.json
+/migration-handles.csv

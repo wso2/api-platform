@@ -13,7 +13,14 @@
   "state": "deployed",
   "createdAt": "2026-04-24T07:21:13Z",
   "updatedAt": "2026-04-24T07:21:13Z",
-  "deployedAt": "2026-04-24T07:21:13Z"
+  "deployedAt": "2026-04-24T07:21:13Z",
+  "warnings": [
+    {
+      "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+      "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+      "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+    }
+  ]
 }
 
 ```
@@ -29,6 +36,7 @@ Server-managed lifecycle information for a resource
 |createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
 |updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
 |deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
+|warnings|[[Warning](#schemawarning)]|false|read-only|Non-fatal deploy-time findings (e.g. a policy's parameters resolved to something other than what was written, such as an omitted accept list inheriting the whole client-CA pool). Present only when non-empty.|
 
 ##### Enumerated Values
 
@@ -36,6 +44,46 @@ Server-managed lifecycle information for a resource
 |---|---|
 |state|deployed|
 |state|undeployed|
+
+## Warning
+
+<a id="schemawarning"></a>
+<a id="schema_Warning"></a>
+<a id="tocSwarning"></a>
+<a id="tocswarning"></a>
+
+```json
+{
+  "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+  "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+  "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+}
+
+```
+
+A non-fatal, deploy-time finding attached to a resource's status.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|code|string|false|none|none|
+|field|string|false|none|none|
+|message|string|false|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|code|MTLS_ACCEPT_INHERITS_POOL|
+|code|MTLS_ACCEPT_UNNARROWED|
+|code|MTLS_AUTH_NOT_FIRST|
+|code|MTLS_ACCEPT_NAMES_RELAY_AUTHORITY|
+|code|MTLS_THUMBPRINT_NORMALISED|
+|code|HEADER_CERT_BYPASS_ACTIVE|
+|code|MTLS_HOSTNAME_NOT_SCOPED|
+|code|TLS_VERIFY_HOSTNAME_DISABLED|
+|code|TLS_IDENTITY_EXPIRED|
 
 ## RestAPIRequest
 
@@ -279,19 +327,28 @@ and
           "url": "http://prod-backend-1:5000",
           "weight": 80
         }
-      ]
+      ],
+      "tls": {
+        "identity": "partner-identity",
+        "trustedCAs": [
+          "partner-ca"
+        ],
+        "verifyHostName": true
+      }
     }
   ],
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
       "ref": "string",
-      "hostRewrite": "auto"
+      "hostRewrite": "auto",
+      "tls": {}
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
       "ref": "string",
-      "hostRewrite": "auto"
+      "hostRewrite": "auto",
+      "tls": {}
     }
   },
   "vhosts": {
@@ -303,6 +360,14 @@ and
     "Silver"
   ],
   "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "faultPolicies": [
     {
       "name": "cors",
       "version": "v1",
@@ -340,6 +405,14 @@ and
           "params": {}
         }
       ],
+      "faultPolicies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
       "resilience": {
         "timeout": "15s",
         "idleTimeout": "0s"
@@ -367,6 +440,7 @@ and
 |» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
 |subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
 |policies|[[Policy](#schemapolicy)]|false|none|List of API-level policies applied to all operations unless overridden|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |operations|[[Operation](#schemaoperation)]|true|none|List of HTTP operations/routes|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
@@ -377,6 +451,176 @@ and
 |---|---|
 |deploymentState|deployed|
 |deploymentState|undeployed|
+
+## GraphQLAPIConfigData
+
+<a id="schemagraphqlapiconfigdata"></a>
+<a id="schema_GraphQLAPIConfigData"></a>
+<a id="tocSgraphqlapiconfigdata"></a>
+<a id="tocsgraphqlapiconfigdata"></a>
+
+```json
+{
+  "displayName": "Countries GraphQL API",
+  "version": "v1.0",
+  "context": "/countries/$version/graphql",
+  "upstream": {
+    "main": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    },
+    "sandbox": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    }
+  },
+  "subscriptionPlans": [
+    "Gold",
+    "Silver"
+  ],
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "deploymentState": "deployed"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
+|version|string|true|none|Semantic version of the API. Both major-only (v1) and major.minor (v1.0) forms are accepted.|
+|context|string|true|none|Base path for the single GraphQL endpoint (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /countries/$version resolves to /countries/v1.0). A GraphQLApi always exposes exactly one POST route at this path — there is no per-operation path list. Suggested (not enforced) convention: end the path with /graphql, matching how most standalone GraphQL servers name their single endpoint (e.g. /countries/$version/graphql) — this is not validated or required.|
+|upstream|object|true|none|API-level upstream configuration. A GraphQLApi has exactly one logical endpoint (no per-operation paths), so upstream.main.url is the single GraphQL endpoint to proxy to. Only a direct inline url is supported — GraphQLAPIConfigData has no upstreamDefinitions list, so upstream.ref (used by RestApi to reference a predefined upstreamDefinition) cannot be resolved and is rejected.|
+|» main|[Upstream](#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
+|» sandbox|[Upstream](#schemaupstream)|false|none|Upstream backend configuration (single target or reference)|
+|subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied to the GraphQL route(s). A GraphQLApi has<br>no operations[] list to add an explicit `OPTIONS` entry to the way<br>a RestApi does, so when a `cors` policy is attached, the gateway<br>synthesizes an OPTIONS route for the same path itself, sharing this<br>same policy chain — this is what lets `cors` (and every other<br>policy in this list, in declared order) answer a browser's<br>preflight request.|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
+## GraphQLAPIRequest
+
+<a id="schemagraphqlapirequest"></a>
+<a id="schema_GraphQLAPIRequest"></a>
+<a id="tocSgraphqlapirequest"></a>
+<a id="tocsgraphqlapirequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "GraphQLApi",
+  "metadata": {
+    "name": "countries-graphql-api-v1.0"
+  },
+  "spec": {
+    "displayName": "Countries-GraphQL-API",
+    "version": "v1.0",
+    "context": "/countries/$version/graphql",
+    "upstream": {
+      "main": {
+        "url": "https://countries.trevorblades.com/graphql"
+      }
+    },
+    "policies": [
+      {
+        "name": "jwt-auth",
+        "version": "v1"
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|API specification version|
+|kind|string|true|none|API type|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[GraphQLAPIConfigData](#schemagraphqlapiconfigdata)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|GraphQLApi|
+
+## GraphQLAPI
+
+<a id="schemagraphqlapi"></a>
+<a id="schema_GraphQLAPI"></a>
+<a id="tocSgraphqlapi"></a>
+<a id="tocsgraphqlapi"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "GraphQLApi",
+  "metadata": {
+    "name": "countries-graphql-api-v1.0"
+  },
+  "spec": {
+    "displayName": "Countries-GraphQL-API",
+    "version": "v1.0",
+    "context": "/countries/$version/graphql",
+    "upstream": {
+      "main": {
+        "url": "https://countries.trevorblades.com/graphql"
+      }
+    },
+    "policies": [
+      {
+        "name": "jwt-auth",
+        "version": "v1"
+      }
+    ]
+  },
+  "status": {
+    "id": "countries-graphql-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-08-11T10:00:00Z",
+    "updatedAt": "2026-08-11T10:00:00Z",
+    "deployedAt": "2026-08-11T10:00:00Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[GraphQLAPIRequest](#schemagraphqlapirequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
 ## UpstreamDefinition
 
@@ -397,7 +641,14 @@ and
       "url": "http://prod-backend-1:5000",
       "weight": 80
     }
-  ]
+  ],
+  "tls": {
+    "identity": "partner-identity",
+    "trustedCAs": [
+      "partner-ca"
+    ],
+    "verifyHostName": true
+  }
 }
 
 ```
@@ -414,6 +665,7 @@ Reusable upstream configuration with optional timeout and load balancing setting
 |upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
 |» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
 |» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
+|tls|object|false|none|Optional mutual-TLS presentation and trust for this backend. `identity` (string) names a gateway identity — a certificate uploaded to POST /certificates with usage: identity — to present on the connection. `trustedCAs` (array of string) lists usage: upstream certificates to trust for this backend in place of the gateway-wide trust bundle; omit to use the gateway bundle. `verifyHostName` (boolean, default true) controls SAN/hostname verification against the target. Every target in a definition carrying `tls` must use https://. Unknown keys are rejected at deploy time.|
 
 ## UpstreamTimeout
 
@@ -472,7 +724,8 @@ Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be 
 {
   "url": "http://prod-backend:5000/api/v2",
   "ref": "string",
-  "hostRewrite": "auto"
+  "hostRewrite": "auto",
+  "tls": {}
 }
 
 ```
@@ -486,6 +739,7 @@ Upstream backend configuration (single target or reference)
 |url|string(uri)|false|none|Direct backend URL to route traffic to|
 |ref|string|false|none|Reference to a predefined upstreamDefinition|
 |hostRewrite|string|false|none|Controls how the Host header is handled when routing to the upstream. `auto` delegates host rewriting to Envoy, which rewrites the Host header using the upstream cluster host. `manual` disables automatic rewriting and expects explicit configuration.|
+|tls|object|false|none|Not supported on an inline upstream (a `url`-based main/sandbox entry); a tls block placed here is rejected at deploy time. Put it on the upstreamDefinitions entry referenced via `ref`.|
 
 oneOf
 
@@ -539,6 +793,14 @@ xor
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "resilience": {
     "timeout": "15s",
     "idleTimeout": "0s"
@@ -557,6 +819,7 @@ An operation is matched either by the simple top-level method+path form, or by t
 |path|string|false|none|Route path with optional {param} placeholders (simple form; ignored when 'match' is set)|
 |match|[OperationMatch](#schemaoperationmatch)|false|none|Request matching criteria for an operation. Extensible with query params, cookies, etc.|
 |policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 
 ## OperationMethod
@@ -1010,16 +1273,18 @@ Details of an API key
 
 ```
 
+Partial update. Fields that are omitted are left unchanged.
+
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|planName|string|false|none|none|
-|billingPlan|string|false|none|none|
+|planName|string|false|none|New plan name. Must not be empty or already used by another plan. APIs refer to plans<br>by name, so an API that lists the old name no longer accepts this plan after a rename.|
+|billingPlan|string¦null|false|none|Send an explicit null (or an empty string) to remove the billing plan.|
 |stopOnQuotaReach|boolean|false|none|none|
-|throttleLimitCount|integer|false|none|none|
-|throttleLimitUnit|string|false|none|none|
-|expiryTime|string(date-time)|false|none|none|
+|throttleLimitCount|integer¦null|false|none|Set together with throttleLimitUnit. Send an explicit null for both fields to remove the<br>limit, which makes the plan unlimited.|
+|throttleLimitUnit|string¦null|false|none|Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.|
+|expiryTime|string(date-time)¦null|false|none|Send an explicit null to remove the expiry time.|
 |status|string|false|none|none|
 
 ##### Enumerated Values
@@ -1125,6 +1390,7 @@ Details of an API key
 
 ```json
 {
+  "externalRefId": "apim-sub-7f1c2a9e",
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
   "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
@@ -1140,6 +1406,7 @@ Details of an API key
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|externalRefId|string|false|none|Optional caller-supplied reference ID. When provided, it is used as the subscription ID<br>instead of a gateway-generated one. Must be unique within the gateway.|
 |apiId|string|true|none|API identifier (deployment ID or handle)|
 |subscriptionToken|string|true|none|Opaque subscription token for API invocation (required; stored as hash only)|
 |applicationId|string|false|none|Application identifier (from DevPortal/STS). Optional for token-based subscriptions.|
@@ -1165,16 +1432,22 @@ Details of an API key
 
 ```json
 {
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "subscriptionPlanId": "string",
+  "subscriptionToken": "string"
 }
 
 ```
+
+Partial update. Fields that are omitted are left unchanged.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|false|none|none|
+|subscriptionPlanId|string¦null|false|none|Subscription plan UUID. The plan must exist, be ACTIVE and be enabled for the subscribed API.<br>Send an explicit null to remove the plan from the subscription.|
+|subscriptionToken|string|false|write-only|New opaque subscription token. Rotates the token in place.|
 
 ##### Enumerated Values
 
@@ -1194,6 +1467,7 @@ Details of an API key
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1213,6 +1487,7 @@ Details of an API key
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|none|
+|externalRefId|string|false|none|Caller-facing reference ID of the subscription.|
 |apiId|string|false|none|none|
 |applicationId|string|false|none|none|
 |subscriptionToken|string|false|none|Opaque subscription token (returned only on create; use Platform-API to retrieve for existing subscriptions)|
@@ -1244,6 +1519,7 @@ Details of an API key
   "subscriptions": [
     {
       "id": "string",
+      "externalRefId": "string",
       "apiId": "string",
       "applicationId": "string",
       "subscriptionToken": "string",
@@ -1495,6 +1771,7 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |policies|[[Policy](#schemapolicy)]|false|none|List of MCP Proxy level policies applied|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |tools|[[MCPTool](#schemamcptool)]|false|none|none|
 |resources|[[MCPResource](#schemamcpresource)]|false|none|none|
 |prompts|[[MCPPrompt](#schemamcpprompt)]|false|none|none|
@@ -1906,7 +2183,14 @@ continued
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z"
+    "deployedAt": "2026-04-24T07:21:13Z",
+    "warnings": [
+      {
+        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+      }
+    ]
   }
 }
 
@@ -1952,13 +2236,21 @@ and
           "url": "http://prod-backend-1:5000",
           "weight": 80
         }
-      ]
+      ],
+      "tls": {
+        "identity": "partner-identity",
+        "trustedCAs": [
+          "partner-ca"
+        ],
+        "verifyHostName": true
+      }
     }
   ],
   "upstream": {
     "url": "http://prod-backend:5000/api/v2",
     "ref": "string",
     "hostRewrite": "auto",
+    "tls": {},
     "auth": {
       "type": "api-key",
       "policyName": "string",
@@ -1990,10 +2282,26 @@ and
           "params": {}
         }
       ],
+      "faultPolicies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
       "operations": [
         {
           "name": "SendMessage",
           "policies": [
+            {
+              "name": "cors",
+              "version": "v1",
+              "executionCondition": "request.metadata[authenticated] != true",
+              "params": {}
+            }
+          ],
+          "faultPolicies": [
             {
               "name": "cors",
               "version": "v1",
@@ -2120,10 +2428,26 @@ continued
         "params": {}
       }
     ],
+    "faultPolicies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
     "operations": [
       {
         "name": "SendMessage",
         "policies": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ],
+        "faultPolicies": [
           {
             "name": "cors",
             "version": "v1",
@@ -2225,10 +2549,26 @@ A2A-specific agent configuration.
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "operations": [
     {
       "name": "SendMessage",
       "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "faultPolicies": [
         {
           "name": "cors",
           "version": "v1",
@@ -2254,6 +2594,7 @@ Transport exposure and common or operation-specific configuration for A2A operat
 |---|---|---|---|---|
 |transports|[[A2ATransport](#schemaa2atransport)]|true|none|Ordered A2A protocol bindings and their gateway-facing path prefixes. This is runtime routing configuration, not Agent Card transformation or transport conversion.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied to every A2A operation, before operation-level policies. These policies do not apply to the public Agent Card discovery route.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every A2A operation, and like policies above it does not apply to the public Agent Card discovery route — that route declares its own under agentCard.public.faultPolicies.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |operations|[[A2AOperationConfig](#schemaa2aoperationconfig)]|false|none|Optional per-operation configuration keyed by canonical A2A operation name. This array is not an allowlist: unlisted standard operations still receive spec.a2a.operationConfigs.policies. Public Agent Card discovery is configured separately.|
 
 ## A2ATransport
@@ -2361,6 +2702,14 @@ Canonical A2A operation name. These names match the standard JSON-RPC and gRPC m
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "resilience": {
     "timeout": "15s",
     "idleTimeout": "0s"
@@ -2377,6 +2726,7 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
 |---|---|---|---|---|
 |name|[A2AOperationName](#schemaa2aoperationname)|true|none|Canonical A2A operation name. These names match the standard JSON-RPC and gRPC method names, but identify the binding-independent A2A operation. The effective set is closed and is the one defined by the agent's spec.a2a.protocolVersion; the values below are A2A 1.0's eleven operations, that being the only protocol version currently supported. A name outside the selected version's set is rejected at deploy time.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied after spec.a2a.operationConfigs.policies when this operation is selected.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when this operation fails, over the error response.<br><br>Both levels run and the operation-level entries run FIRST. They are additive rather than an override: a fault entry is a handler, not a setting, so an operation-specific notification and an agent-wide audit hook both fire.|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 
 ## A2AAgentCard
@@ -2463,6 +2813,14 @@ The whole block is optional, and so is `public`. When either is omitted the gate
       "params": {}
     }
   ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
   "rewriteUrls": true,
   "content": {
     "name": "Weather Agent",
@@ -2529,6 +2887,7 @@ Public Agent Card serving. `mode` selects whether the card is proxied from the u
 |mode|string|false|none|How the public Agent Card is produced. Defaults to `passthrough`, which is also what an omitted `public` or `agentCard` block resolves to.|
 |path|[A2AAgentCardPath](#schemaa2aagentcardpath)|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied only to public Agent Card serving.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when serving the public Agent Card fails, over the error response.<br><br>Separate from spec.a2a.operationConfigs.faultPolicies for the same reason the policies list is: discovery is reachable before any operation is invoked, and an agent that leaves its card unauthenticated while guarding its operations would otherwise have the operations' handlers fire for a discovery failure.|
 |rewriteUrls|[A2ACardRewriteUrls](#schemaa2acardrewriteurls)|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
 |content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
 |signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
@@ -3914,13 +4273,21 @@ and
           "url": "http://prod-backend-1:5000",
           "weight": 80
         }
-      ]
+      ],
+      "tls": {
+        "identity": "partner-identity",
+        "trustedCAs": [
+          "partner-ca"
+        ],
+        "verifyHostName": true
+      }
     }
   ],
   "upstream": {
     "url": "http://prod-backend:5000/api/v2",
     "ref": "string",
     "hostRewrite": "auto",
+    "tls": {},
     "auth": {
       "type": "api-key",
       "policyName": "string",
@@ -3980,6 +4347,30 @@ and
       ]
     }
   ],
+  "globalFaultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationFaultPolicies": [
+    {
+      "name": "token-based-ratelimit",
+      "version": "v1",
+      "executionCondition": "string",
+      "paths": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "GET"
+          ],
+          "params": {}
+        }
+      ]
+    }
+  ],
   "deploymentState": "deployed",
   "resilience": {
     "timeout": "15s",
@@ -4021,6 +4412,8 @@ continued
 |globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
+|globalFaultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
+|operationFaultPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Provider (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
@@ -4122,6 +4515,7 @@ continued
 ```json
 {
   "id": "wso2-openai-provider",
+  "as": "openai-upstream",
   "auth": {
     "type": "api-key",
     "policyName": "string",
@@ -4129,6 +4523,11 @@ continued
     "policyParams": {},
     "header": "string",
     "value": "string"
+  },
+  "transformer": {
+    "type": "openai-to-anthropic",
+    "version": "v1",
+    "params": {}
   }
 }
 
@@ -4139,7 +4538,50 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Unique id of a deployed llm provider|
+|as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique across the primary and all additional providers. Defaults to `id` when omitted.|
 |auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
+|transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
+
+## LLMProxyProviderEntry
+
+<a id="schemallmproxyproviderentry"></a>
+<a id="schema_LLMProxyProviderEntry"></a>
+<a id="tocSllmproxyproviderentry"></a>
+<a id="tocsllmproxyproviderentry"></a>
+
+```json
+{
+  "id": "anthropic-provider",
+  "alias": "anthropic-upstream",
+  "isPrimary": true,
+  "auth": {
+    "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
+    "header": "string",
+    "value": "string"
+  },
+  "transformer": {
+    "type": "openai-to-anthropic",
+    "version": "v1",
+    "params": {}
+  }
+}
+
+```
+
+One provider attached to this proxy in the canonical `providers` list. Every entry is uniform: exactly one carries `isPrimary: true` and becomes the proxy's provider identity and default upstream; the rest are selectable upstreams. Equivalent to the legacy `provider` plus `additionalProviders` shape, which remains supported.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Unique id of a deployed llm provider|
+|alias|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted. The same field as `as` in the legacy shape.|
+|isPrimary|boolean|true|none|Marks this entry as the proxy's primary provider. Exactly one entry in the list must set it to true.|
+|auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
+|transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
 
 ## LLMProxyAdditionalProvider
 
@@ -4491,6 +4933,7 @@ and
   "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
+    "as": "openai-upstream",
     "auth": {
       "type": "api-key",
       "policyName": "string",
@@ -4498,8 +4941,34 @@ and
       "policyParams": {},
       "header": "string",
       "value": "string"
+    },
+    "transformer": {
+      "type": "openai-to-anthropic",
+      "version": "v1",
+      "params": {}
     }
   },
+  "providers": [
+    {
+      "id": "anthropic-provider",
+      "alias": "anthropic-upstream",
+      "isPrimary": true,
+      "auth": {
+        "type": "api-key",
+        "policyName": "string",
+        "policyVersion": "string",
+        "policyParams": {},
+        "header": "string",
+        "value": "string"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
+  "inboundTemplate": "openai",
   "globalPolicies": [
     {
       "name": "cors",
@@ -4558,6 +5027,30 @@ and
       ]
     }
   ],
+  "globalFaultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "operationFaultPolicies": [
+    {
+      "name": "token-based-ratelimit",
+      "version": "v1",
+      "executionCondition": "string",
+      "paths": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "GET"
+          ],
+          "params": {}
+        }
+      ]
+    }
+  ],
   "deploymentState": "deployed",
   "resilience": {
     "timeout": "15s",
@@ -4575,11 +5068,15 @@ and
 |version|string|true|none|Semantic version of the LLM proxy|
 |context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
-|provider|[LLMProxyProvider](#schemallmproxyprovider)|true|none|none|
+|provider|[LLMProxyProvider](#schemallmproxyprovider)|false|none|none|
+|providers|[[LLMProxyProviderEntry](#schemallmproxyproviderentry)]|false|none|Canonical list of providers attached to this proxy. Each entry is uniform and exactly one carries `isPrimary: true`. Mutually exclusive with the legacy `provider` plus `additionalProviders` pair - supplying both is rejected. The legacy shape remains supported indefinitely.|
+|inboundTemplate|string|false|none|Handle of the provider template describing the wire format this proxy accepts from clients. Drives the extraction fields (model and token locations) merged into every attached policy. When omitted, the primary provider's own template is used, preserving existing behaviour.|
 |globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |additionalProviders|[[LLMProxyAdditionalProvider](#schemallmproxyadditionalprovider)]|false|none|Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies (e.g. an OpenAI translator) can route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
+|globalFaultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
+|operationFaultPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Proxy (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
@@ -4775,7 +5272,8 @@ and
 
 ```json
 {
-  "name": "my-custom-ca",
+  "name": "partner-a-root",
+  "usage": "downstream",
   "certificate": "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV\n...\n-----END CERTIFICATE-----\n"
 }
 
@@ -4785,8 +5283,52 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|Unique name for the certificate. Must be unique across all certificates.|
+|name|string|true|none|Unique name for the certificate. Must be unique across all certificates, regardless of usage.|
 |certificate|string|true|none|PEM-encoded X.509 certificate(s). Can contain multiple certificates.|
+|usage|string|false|none|What the certificate is for: backend trust used to verify HTTPS<br>upstream connections (upstream, the default), a pooled client<br>certificate authority that authenticates mutual-TLS callers<br>(downstream), or a gateway identity (identity): a certificate chain,<br>leaf first, plus its private key, presented to backends that<br>require mutual TLS.|
+|role|string|false|none|How the gateway uses the certificate. With usage downstream,<br>"client" (the default) means the authority validates a client<br>certificate presented directly on the mTLS connection; "relay"<br>means it validates a client certificate relayed via a header<br>(e.g. from a terminating load balancer) instead. With usage<br>identity, "default" makes this the identity presented to HTTPS<br>backends whose upstream definition names no tls identity, when<br>router.upstream.tls.present_default_identity is on; at most one<br>identity has it. Any other combination of role and usage is<br>rejected. The role cannot be changed after upload.|
+|match|[CertificateMatch](#schemacertificatematch)|false|none|Only valid for role: relay. Narrows which connections<br>authenticated as this relay entry can make a relayed header<br>believed. Omit to accept any connection presenting a certificate<br>from this authority, with no further narrowing.|
+|privateKey|string|false|write-only|Required (and only valid) when usage is identity: a PEM-encoded, unencrypted private key matching the leaf certificate (RSA/ECDSA/Ed25519, PKCS#8/PKCS#1/SEC1). Encrypted at rest by the gateway; never returned by any response.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|usage|upstream|
+|usage|downstream|
+|usage|identity|
+|role|client|
+|role|relay|
+|role|default|
+
+## CertificateMatch
+
+<a id="schemacertificatematch"></a>
+<a id="schema_CertificateMatch"></a>
+<a id="tocScertificatematch"></a>
+<a id="tocscertificatematch"></a>
+
+```json
+{
+  "dnsSANs": [
+    "lb.corp.test"
+  ],
+  "uriSANs": [
+    "urn:partner-a:edge-lb"
+  ]
+}
+
+```
+
+Narrows a role: relay pool entry to the connections it vouches for.
+Each list, when present, must name at least one non-empty SAN.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|dnsSANs|[string]|false|none|none|
+|uriSANs|[string]|false|none|none|
 
 ## CertificateResponse
 
@@ -4798,11 +5340,15 @@ and
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
-  "name": "my-custom-ca",
-  "subject": "CN=My CA,O=My Organization,C=US",
-  "issuer": "CN=My CA,O=My Organization,C=US",
+  "name": "partner-a-root",
+  "subject": "CN=Partner A Root,O=Partner A,C=US",
+  "issuer": "CN=Partner A Root,O=Partner A,C=US",
   "notAfter": "2026-11-26 06:07:26",
   "count": 1,
+  "usage": "downstream",
+  "role": "client",
+  "isLeaf": false,
+  "referencedByApis": 0,
   "message": "Certificate uploaded and SDS updated successfully",
   "status": "success"
 }
@@ -4815,10 +5361,18 @@ and
 |---|---|---|---|---|
 |id|string|false|none|Unique identifier (UUID) for the certificate|
 |name|string|false|none|Name of the certificate|
-|subject|string|false|none|Certificate subject DN (for first cert if bundle)|
-|issuer|string|false|none|Certificate issuer DN (for first cert if bundle)|
-|notAfter|string(date-time)|false|none|Certificate expiration date (for first cert if bundle)|
+|subject|string|false|none|Certificate subject DN (identity certificate, for a client-CA bundle)|
+|issuer|string|false|none|Certificate issuer DN (identity certificate, for a client-CA bundle)|
+|notAfter|string(date-time)|false|none|Certificate expiration date (identity certificate, for a client-CA bundle)|
 |count|integer|false|none|Number of certificates in the file|
+|usage|string|false|none|Whether this is upstream/backend trust, a pooled client certificate authority, or a gateway identity.|
+|role|string|false|none|Present for usage downstream: whether the authority validates a<br>directly-presented (client) or header-relayed (relay) client<br>certificate. Present for usage identity only as "default", on<br>the identity presented to backends whose upstream definition<br>names no tls identity.|
+|match|[CertificateMatch](#schemacertificatematch)|false|none|Only present for role relay entries that were stored with a narrowing match.|
+|isLeaf|boolean|false|none|True when the identity certificate is not itself a certificate authority (pooled as a one-member authority).|
+|keyAlgorithm|string|false|none|Only present for usage identity. The leaf private key's algorithm (RSA, ECDSA or Ed25519).|
+|chainLength|integer|false|none|Only present for usage identity. Number of certificates in the uploaded chain.|
+|warnings|[[CertificateWarning](#schemacertificatewarning)]|false|none|Non-fatal findings about the upload (e.g. leaf certificate, not yet valid). Omitted when there are none.|
+|referencedByApis|integer|false|none|Number of deployed APIs referencing this certificate — a client authority (accept/pool) or a gateway identity (upstreamDefinitions[].tls.identity). Only present for usage downstream or identity.|
 |message|string|false|none|Success or informational message|
 |status|string|false|none|none|
 
@@ -4826,8 +5380,47 @@ and
 
 |Property|Value|
 |---|---|
+|usage|upstream|
+|usage|downstream|
+|usage|identity|
+|role|client|
+|role|relay|
+|role|default|
 |status|success|
 |status|error|
+
+## CertificateWarning
+
+<a id="schemacertificatewarning"></a>
+<a id="schema_CertificateWarning"></a>
+<a id="tocScertificatewarning"></a>
+<a id="tocscertificatewarning"></a>
+
+```json
+{
+  "code": "CLIENT_CA_IS_LEAF",
+  "field": "certificate",
+  "message": "the certificate is not a certificate authority; it is pooled as a one-member authority that trusts exactly this certificate"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|code|string|false|none|none|
+|field|string|false|none|none|
+|message|string|false|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|code|CLIENT_CA_IS_LEAF|
+|code|CLIENT_CA_NOT_YET_VALID|
+|code|CERT_EXPIRES_SOON|
+|code|IDENTITY_NO_CLIENTAUTH_EKU|
 
 ## CertificateListResponse
 
@@ -4841,11 +5434,15 @@ and
   "certificates": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "my-custom-ca",
-      "subject": "CN=My CA,O=My Organization,C=US",
-      "issuer": "CN=My CA,O=My Organization,C=US",
+      "name": "partner-a-root",
+      "subject": "CN=Partner A Root,O=Partner A,C=US",
+      "issuer": "CN=Partner A Root,O=Partner A,C=US",
       "notAfter": "2026-11-26 06:07:26",
       "count": 1,
+      "usage": "downstream",
+      "role": "client",
+      "isLeaf": false,
+      "referencedByApis": 0,
       "message": "Certificate uploaded and SDS updated successfully",
       "status": "success"
     }

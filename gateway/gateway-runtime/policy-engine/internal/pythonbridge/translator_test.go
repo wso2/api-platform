@@ -353,3 +353,240 @@ func TestTranslatorToProtoSharedContextNilIsSafe(t *testing.T) {
 	assert.Empty(t, result.GetResolvedOperation())
 	assert.Nil(t, result.GetResolutionAttributes())
 }
+
+// A Python policy's fault declaration must survive the bridge, and the three shapes that mean
+// different things must stay distinguishable on the Go side.
+//
+// The error-only case is the one worth pinning: it is NOT a fault, yet the description has to
+// arrive, because that is how a Python policy returns a deliberate non-failing response with an
+// error-shaped body — a canned 404, an auth challenge, a cache miss.
+func TestTranslator_CarriesTheFaultDeclaration(t *testing.T) {
+	tr := &Translator{}
+
+	t.Run("declared and described", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 401,
+			IsFault:    true,
+			Fault: &proto.FaultDetails{
+				Code: "900902", Type: "authentication", Direction: "Request",
+				Message: "Valid credentials required", Description: "detail",
+			},
+		})
+		assert.True(t, got.IsFault)
+		require.NotNil(t, got.Fault)
+		assert.Equal(t, "900902", got.Fault.Code)
+		assert.Equal(t, "authentication", got.Fault.Type)
+		assert.Equal(t, "Request", got.Fault.Direction)
+		// Description crosses the bridge even though no renderer emits it: a Python fault
+		// handler reporting to an audit sink is exactly who needs it.
+		assert.Equal(t, "detail", got.Fault.Description)
+		assert.True(t, got.IsFault)
+	})
+
+	t.Run("described but not declared stays out of the fault flow", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 404,
+			Fault:      &proto.FaultDetails{Code: "961000", Message: "No such widget"},
+		})
+		assert.False(t, got.IsFault)
+		require.NotNil(t, got.Fault, "the description must still arrive — it shapes the body")
+		assert.Equal(t, "961000", got.Fault.Code)
+		assert.False(t, got.IsFault, "describing an error does not opt in")
+	})
+
+	t.Run("nothing declared", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{StatusCode: 404})
+		assert.False(t, got.IsFault)
+		assert.Nil(t, got.Fault, "absent must stay distinguishable from an empty description")
+		assert.False(t, got.IsFault)
+	})
+
+	t.Run("a response modification that only sets a status is not rejecting", func(t *testing.T) {
+		status := int32(503)
+		got := tr.toGoDownstreamResponseModifications(&proto.DownstreamResponseModifications{
+			StatusCode: wrapperspb.Int32(status),
+		})
+		assert.False(t, got.IsFault, "a Python policy relabelling the backend's error is not a fault")
+		require.NotNil(t, got.StatusCode)
+		assert.Equal(t, 503, *got.StatusCode)
+	})
+
+	t.Run("a stream termination declares", func(t *testing.T) {
+		got := tr.toGoTerminateResponseChunk(&proto.TerminateResponseChunk{
+			IsFault: true,
+			Fault:   &proto.FaultDetails{Code: "906000", Type: "guardrail"},
+		})
+		assert.True(t, got.IsFault)
+		require.NotNil(t, got.Fault)
+		assert.Equal(t, "906000", got.Fault.Code)
+	})
+}
+
+// The JSON-RPC block has to survive the bridge in both directions, and "unset" has to stay
+// unset. A Python MCP policy that states -32602 loses the distinction between "invalid params"
+// and the generic "invalid request" if the code flattens; a policy that echoes the request id
+// loses call correlation if the id does.
+func TestTranslator_CarriesTheJSONRPCBlock(t *testing.T) {
+	tr := &Translator{}
+
+	t.Run("code and id arrive from Python", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 400,
+			IsFault:    true,
+			Fault: &proto.FaultDetails{
+				Message: "Invalid MCP request params",
+				Jsonrpc: &proto.JSONRPCError{
+					Code: wrapperspb.Int32(-32602),
+					Id:   structpb.NewStringValue("call-7"),
+				},
+			},
+		})
+		require.NotNil(t, got.Fault)
+		require.NotNil(t, got.Fault.JSONRPC)
+		require.NotNil(t, got.Fault.JSONRPC.Code)
+		assert.Equal(t, -32602, *got.Fault.JSONRPC.Code)
+		assert.Equal(t, "call-7", got.Fault.JSONRPC.ID)
+	})
+
+	// A numeric id must not become a string on the way across: JSON-RPC lets the client choose,
+	// and a client matching on the number it sent would not recognise "7".
+	t.Run("a numeric id keeps its type", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 400,
+			Fault: &proto.FaultDetails{
+				Jsonrpc: &proto.JSONRPCError{Id: structpb.NewNumberValue(7)},
+			},
+		})
+		require.NotNil(t, got.Fault.JSONRPC)
+		assert.Equal(t, float64(7), got.Fault.JSONRPC.ID)
+	})
+
+	// An absent code must arrive as nil, not 0. Zero is not a valid JSON-RPC code, and treating
+	// it as one would suppress the engine's status-derived code with nonsense.
+	t.Run("an unset code stays unset", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 429,
+			Fault:      &proto.FaultDetails{Jsonrpc: &proto.JSONRPCError{Id: structpb.NewStringValue("x")}},
+		})
+		require.NotNil(t, got.Fault.JSONRPC)
+		assert.Nil(t, got.Fault.JSONRPC.Code, "absent must not flatten to 0")
+	})
+
+	// Absent block stays absent — a non-MCP policy must not acquire an empty JSON-RPC block
+	// just by describing an error.
+	t.Run("no block stays nil", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 500,
+			Fault:      &proto.FaultDetails{Message: "boom"},
+		})
+		require.NotNil(t, got.Fault)
+		assert.Nil(t, got.Fault.JSONRPC)
+	})
+
+	// The inbound direction: a Python fault handler must see the code and id the failing
+	// policy supplied, so it can report the specific failure rather than re-deriving it.
+	t.Run("round trips into a Python fault handler", func(t *testing.T) {
+		code := -32700
+		out := toProtoErrorResponse(&policy.FaultDetails{
+			Message: "Parse error",
+			JSONRPC: &policy.JSONRPCError{Code: &code, ID: "abc"},
+		})
+		require.NotNil(t, out.GetJsonrpc())
+		assert.Equal(t, int32(-32700), out.GetJsonrpc().GetCode().GetValue())
+		assert.Equal(t, "abc", out.GetJsonrpc().GetId().GetStringValue())
+
+		back := toGoErrorResponse(out)
+		require.NotNil(t, back.JSONRPC)
+		require.NotNil(t, back.JSONRPC.Code)
+		assert.Equal(t, code, *back.JSONRPC.Code)
+		assert.Equal(t, "abc", back.JSONRPC.ID)
+	})
+}
+
+// The guardrail block has to survive the bridge in both directions, or a Python guardrail
+// cannot return an assessment at all — the gap this closes.
+//
+// The distinction that matters here is between an ABSENT block and a block with no
+// assessments. Absent means "no guardrail was involved", which is what the renderers test.
+// Present-but-empty means "a guardrail acted and the operator did not opt into showing what it
+// found" — showAssessment: false. Collapsing the two would either hide every intervention or
+// disclose every assessment.
+func TestTranslator_CarriesTheGuardrailBlock(t *testing.T) {
+	tr := &Translator{}
+
+	t.Run("a full block arrives from Python", func(t *testing.T) {
+		assessments, err := structpb.NewStruct(map[string]any{
+			"assessments": "Expected word count to be between 10 and 500 words.",
+		})
+		require.NoError(t, err)
+
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 422,
+			IsFault:    true,
+			Fault: &proto.FaultDetails{
+				Code: "906000", Type: "guardrail", Direction: "Response",
+				Message: "Violation of applied word count constraints detected",
+				Guardrail: &proto.GuardrailDetails{
+					InterveningGuardrail: "word-count-guardrail-py",
+					Action:               policy.GuardrailActionIntervened,
+					ActionReason:         "too many words",
+					Assessments:          assessments,
+				},
+			},
+		})
+		require.NotNil(t, got.Fault)
+		require.NotNil(t, got.Fault.Guardrail)
+		assert.Equal(t, "word-count-guardrail-py", got.Fault.Guardrail.InterveningGuardrail)
+		assert.Equal(t, policy.GuardrailActionIntervened, got.Fault.Guardrail.Action)
+		assert.Equal(t, "too many words", got.Fault.Guardrail.ActionReason)
+		assert.Equal(t, "Expected word count to be between 10 and 500 words.",
+			got.Fault.Guardrail.Assessments["assessments"])
+	})
+
+	// showAssessment: false — the block is sent, the evidence is not.
+	t.Run("metadata without assessments still arrives", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 422,
+			Fault: &proto.FaultDetails{
+				Guardrail: &proto.GuardrailDetails{
+					InterveningGuardrail: "regex-guardrail-py",
+					Action:               policy.GuardrailActionIntervened,
+				},
+			},
+		})
+		require.NotNil(t, got.Fault.Guardrail)
+		assert.Equal(t, "regex-guardrail-py", got.Fault.Guardrail.InterveningGuardrail)
+		assert.Empty(t, got.Fault.Guardrail.Assessments,
+			"an unset assessments Struct must not become a populated map")
+	})
+
+	// A non-guardrail policy must not acquire an empty block just by describing an error.
+	t.Run("no block stays nil", func(t *testing.T) {
+		got := tr.toGoImmediateResponse(&proto.ImmediateResponse{
+			StatusCode: 401,
+			Fault:      &proto.FaultDetails{Code: "900902", Message: "Unauthorized"},
+		})
+		require.NotNil(t, got.Fault)
+		assert.Nil(t, got.Fault.Guardrail)
+	})
+
+	// Inbound: a Python fault handler must see which guardrail acted and why.
+	t.Run("round trips into a Python fault handler", func(t *testing.T) {
+		out := toProtoErrorResponse(&policy.FaultDetails{
+			Message: "Blocked",
+			Guardrail: &policy.GuardrailDetails{
+				InterveningGuardrail: "url-guardrail",
+				Action:               policy.GuardrailActionIntervened,
+				ActionReason:         "disallowed host",
+				Assessments:          map[string]any{"matched": "evil.example"},
+			},
+		})
+		require.NotNil(t, out.GetGuardrail())
+		assert.Equal(t, "url-guardrail", out.GetGuardrail().GetInterveningGuardrail())
+		assert.Equal(t, "disallowed host", out.GetGuardrail().GetActionReason())
+
+		back := toGoErrorResponse(out)
+		require.NotNil(t, back.Guardrail)
+		assert.Equal(t, "evil.example", back.Guardrail.Assessments["matched"])
+	})
+}

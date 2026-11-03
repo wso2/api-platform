@@ -131,7 +131,15 @@ func Serve(ctx context.Context, reg *Registry, log *slog.Logger) error {
 		})
 		mux.Handle("/", svc.Handler())
 
+		tlsConfig, err := serverTLSConfig(svc)
+		if err != nil {
+			for _, opened := range listeners {
+				_ = opened.Close()
+			}
+			return err
+		}
 		srv := &http.Server{
+			TLSConfig:         tlsConfig,
 			Addr:              fmt.Sprintf(":%d", svc.Port()),
 			Handler:           observability(svc.Name(), limitBody(mux)),
 			ReadTimeout:       readTimeout,
@@ -152,8 +160,12 @@ func Serve(ctx context.Context, reg *Registry, log *slog.Logger) error {
 		go func(svc Service, srv *http.Server) {
 			defer wg.Done()
 			log.Info("testbench service listening",
-				"service", svc.Name(), "port", svc.Port(), "stateful", svc.Stateful())
-			if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				"service", svc.Name(), "port", svc.Port(), "stateful", svc.Stateful(), "tls", srv.TLSConfig != nil)
+			serve := srv.Serve
+			if srv.TLSConfig != nil {
+				serve = func(l net.Listener) error { return srv.ServeTLS(l, "", "") }
+			}
+			if err := serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- fmt.Errorf("testbench: service %q: %w", svc.Name(), err)
 			}
 		}(svc, server)

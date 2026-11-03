@@ -27,32 +27,41 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/client"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
 	"gopkg.in/yaml.v3"
 )
 
 // HTTPPortalPublisher is the real PortalPublisher implementation: an
-// existence check (GET /apis/{handle}) decides whether the
-// metadata+definition push uses create (POST /apis) or update (PUT
-// /apis/{handle}), both addressed by the API's own handle — no
-// portal-returned reference ID is stored locally.
+// existence check (GET /{collection}/{handle}) decides whether the
+// metadata+definition push uses create (POST /{collection}) or update (PUT
+// /{collection}/{handle}), both addressed by the API's own handle — no
+// portal-returned reference ID is stored locally. The collection comes from
+// the listing type (see portalListingType).
 //
-// Only the metadata and definition are pushed; the content ZIP (thumbnail,
-// landing page, documents) is not implemented yet.
+// Documents, thumbnail and landing page travel separately, as a content ZIP (PublishContent).
 type HTTPPortalPublisher struct {
-	client       *client.RetryableHTTPClient
-	authRegistry *APIPortalAuthRegistry
+	client *client.RetryableHTTPClient
+	// listingClient carries the listing push, whose attempt limit may be longer: with
+	// monetization the portal creates the API's new paid plans before it answers.
+	listingClient *client.RetryableHTTPClient
+	// contentClient carries the content push under a longer attempt limit.
+	contentClient *client.RetryableHTTPClient
+	authRegistry  *APIPortalAuthRegistry
+	// plansListingTimeout bounds the plan listing, all its pages together.
+	plansListingTimeout time.Duration
 }
 
 // NewHTTPPortalPublisher returns a PortalPublisher that pushes to the real
 // API Portal over HTTP, authenticating via the shared-key S2S auth scheme —
 // the raw key is resolved per-portal through authRegistry (each api_portals
 // row carries its own encrypted key), never a single server-wide secret.
-func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, retryClient *client.RetryableHTTPClient) PortalPublisher {
-	return &HTTPPortalPublisher{client: retryClient, authRegistry: authRegistry}
+func NewHTTPPortalPublisher(authRegistry *APIPortalAuthRegistry, lightClient, listingClient, contentClient *client.RetryableHTTPClient, plansListingTimeout time.Duration) PortalPublisher {
+	return &HTTPPortalPublisher{client: lightClient, listingClient: listingClient, contentClient: contentClient, authRegistry: authRegistry, plansListingTimeout: plansListingTimeout}
 }
 
 // authHeader resolves the Authorization header for this specific portal via
@@ -82,8 +91,10 @@ type portalErrorEnvelope struct {
 // phrase. Raw portal error text is never forwarded to the client
 // (error-handling.md); any other code falls back to defaultPortalConflictReason.
 var knownPortalConflictReasons = map[string]string{
-	"ERR_SUB_EXIST": "active subscriptions are removed",
-	"ERR_KEY_EXIST": "active API keys are removed",
+	"ERR_SUB_EXIST":       "active subscriptions are removed",
+	"ERR_KEY_EXIST":       "active API keys are removed",
+	"ERR_BILLING_CATALOG": "its paid plans can be created with the billing provider",
+	"ERR_PLAN_SUB_EXIST":  "the subscriptions to the plans being removed from the API have ended",
 }
 
 // defaultPortalConflictReason is the fallback for any portal response that
@@ -139,45 +150,58 @@ func portalRejection(resp *http.Response, message string) *PortalConflictError {
 // the portal root, without this prefix.
 const portalRESTBase = "/api-portal/api/v0.9"
 
-// apisURL is the portal's API collection URL.
-func apisURL(portal *model.APIPortal) string {
-	return strings.TrimRight(portal.URL, "/") + portalRESTBase + "/apis"
+// listingsURL is the portal's collection URL for listings of one type.
+func listingsURL(portal *model.APIPortal, listing portalListingType) string {
+	return strings.TrimRight(portal.URL, "/") + portalRESTBase + "/" + listing.collection
 }
 
-// apiURL is the portal's URL for the listing with the given handle.
-func apiURL(portal *model.APIPortal, apiHandle string) string {
-	return apisURL(portal) + "/" + url.PathEscape(apiHandle)
+// plansURL is the portal's subscription plan collection URL.
+func plansURL(portal *model.APIPortal) string {
+	return strings.TrimRight(portal.URL, "/") + portalRESTBase + "/subscription-plans"
+}
+
+// listingURL is the portal's URL for the listing with the given handle.
+func listingURL(portal *model.APIPortal, listing portalListingType, apiHandle string) string {
+	return listingsURL(portal, listing) + "/" + url.PathEscape(apiHandle)
 }
 
 // Publish implements PortalPublisher.
-func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
-	exists, err := p.checkExists(ctx, portal, apiHandle)
+func (p *HTTPPortalPublisher) Publish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, pub *model.Publication, definition *model.PublicationContent) error {
+	listing, err := portalListingFor(apiType)
+	if err != nil {
+		return err
+	}
+	exists, err := p.checkExists(ctx, portal, listing, apiHandle)
 	if err != nil {
 		return err
 	}
 
-	method, path := http.MethodPost, apisURL(portal)
+	method, path := http.MethodPost, listingsURL(portal, listing)
 	if exists {
-		method, path = http.MethodPut, apiURL(portal, apiHandle)
+		method, path = http.MethodPut, listingURL(portal, listing, apiHandle)
 	}
 
 	// The portal itself decides whether an empty definition is acceptable.
 	if definition == nil {
 		definition = &model.PublicationContent{}
 	}
-	return p.pushMetadata(ctx, portal, method, path, apiHandle, model.PublicationStatusPublished, pub, definition)
+	return p.pushMetadata(ctx, portal, method, path, listing, apiHandle, model.PublicationStatusPublished, pub, definition)
 }
 
 // Deprecate implements PortalPublisher. The portal has no status-only call, so the
 // live metadata is re-sent unchanged apart from the status; no definition is sent.
-func (p *HTTPPortalPublisher) Deprecate(ctx context.Context, portal *model.APIPortal, apiHandle string, live *model.Publication) error {
-	return p.pushMetadata(ctx, portal, http.MethodPut, apiURL(portal, apiHandle), apiHandle, model.PublicationStatusDeprecated, live, nil)
+func (p *HTTPPortalPublisher) Deprecate(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, live *model.Publication) error {
+	listing, err := portalListingFor(apiType)
+	if err != nil {
+		return err
+	}
+	return p.pushMetadata(ctx, portal, http.MethodPut, listingURL(portal, listing, apiHandle), listing, apiHandle, model.PublicationStatusDeprecated, live, nil)
 }
 
 // pushMetadata sends the metadata (and the definition, if non-nil) to path and maps
 // the portal's response to the PortalPublisher error contract.
-func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.APIPortal, method, path, apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) error {
-	body, contentType, err := buildPortalMetadataMultipart(apiHandle, status, pub, definition)
+func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.APIPortal, method, path string, listing portalListingType, apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) error {
+	body, contentType, err := buildPortalMetadataMultipart(listing, apiHandle, status, pub, definition)
 	if err != nil {
 		return err
 	}
@@ -187,17 +211,14 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, method, path, body)
+	req, err := http.NewRequestWithContext(ctx, method, path, body)
 	if err != nil {
 		return fmt.Errorf("failed to build portal metadata request: %w", err)
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", authHeader)
 
-	resp, err := p.client.Do(req)
+	resp, err := p.listingClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("portal metadata push failed: %w", err)
 	}
@@ -215,20 +236,21 @@ func (p *HTTPPortalPublisher) pushMetadata(ctx context.Context, portal *model.AP
 	}
 }
 
-// Unpublish implements PortalPublisher: DELETE /apis/{handle} on the portal. A
+// Unpublish implements PortalPublisher: DELETE on the listing's URL on the portal. A
 // 404 counts as already removed, so a retry after a successful removal
 // converges. Any other 4xx (most commonly 409, when active subscriptions or API
 // keys are still attached) is returned as a PortalConflictError.
-func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPortal, apiHandle string) error {
+func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string) error {
+	listing, err := portalListingFor(apiType)
+	if err != nil {
+		return err
+	}
 	authHeader, err := p.authHeader(ctx, portal)
 	if err != nil {
 		return err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, apiURL(portal, apiHandle), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, listingURL(portal, listing, apiHandle), nil)
 	if err != nil {
 		return fmt.Errorf("failed to build portal unpublish request: %w", err)
 	}
@@ -252,18 +274,15 @@ func (p *HTTPPortalPublisher) Unpublish(ctx context.Context, portal *model.APIPo
 	}
 }
 
-// checkExists issues GET /apis/{handle} on the portal. 200 means it exists
+// checkExists issues GET on the listing's URL on the portal. 200 means it exists
 // (update); 404 means it doesn't (create).
-func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.APIPortal, apiHandle string) (bool, error) {
+func (p *HTTPPortalPublisher) checkExists(ctx context.Context, portal *model.APIPortal, listing portalListingType, apiHandle string) (bool, error) {
 	authHeader, err := p.authHeader(ctx, portal)
 	if err != nil {
 		return false, err
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, p.client.TotalTimeout())
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, apiURL(portal, apiHandle), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, listingURL(portal, listing, apiHandle), nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to build portal existence-check request: %w", err)
 	}
@@ -336,15 +355,42 @@ type portalMetadataBusinessInfo struct {
 	TechnicalOwnerEmail string `yaml:"technicalOwnerEmail,omitempty"`
 }
 
+// portalListingType is how the API Portal lists one publication apiType: the
+// envelope's kind, the spec's type keyword (REST, GRAPHQL, MCP, ...) and the
+// REST collection the listing lives under. MCP servers are a collection of
+// their own, and the portal refuses an MCP-typed listing on /apis.
+type portalListingType struct {
+	kind        string
+	typeKeyword string
+	collection  string
+}
+
+// portalListingTypes maps a publication apiType to its portal listing type. A
+// type with no entry cannot be pushed — it is refused rather than listed as REST.
+var portalListingTypes = map[string]portalListingType{
+	constants.PublicationAPITypeRestAPI:    {kind: "RestApi", typeKeyword: "REST", collection: "apis"},
+	constants.PublicationAPITypeGraphQLAPI: {kind: "GraphQLApi", typeKeyword: "GRAPHQL", collection: "apis"},
+	constants.PublicationAPITypeMCPProxy:   {kind: "MCP", typeKeyword: "MCP", collection: "mcp-servers"},
+}
+
+// portalListingFor returns apiType's listing type, or an error for a type the portal cannot list.
+func portalListingFor(apiType string) (portalListingType, error) {
+	listing, ok := portalListingTypes[apiType]
+	if !ok {
+		return portalListingType{}, fmt.Errorf("API type %q has no API Portal listing type", apiType)
+	}
+	return listing, nil
+}
+
 // buildPortalMetadataMultipart builds the request body: a "metadata" part and,
 // when definition is non-nil, a "definition" part.
-func buildPortalMetadataMultipart(apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) (*bytes.Buffer, string, error) {
+func buildPortalMetadataMultipart(listing portalListingType, apiHandle, status string, pub *model.Publication, definition *model.PublicationContent) (*bytes.Buffer, string, error) {
 	envelope := portalMetadataEnvelope{
 		APIVersion: "api-portal.api-platform.wso2.com/v1",
-		Kind:       "RestApi",
+		Kind:       listing.kind,
 		Metadata:   portalMetadataName{Name: apiHandle},
 		Spec: portalMetadataSpecBody{
-			Type:            "REST",
+			Type:            listing.typeKeyword,
 			DisplayName:     pub.DisplayName,
 			Version:         pub.Version,
 			Description:     pub.Description,

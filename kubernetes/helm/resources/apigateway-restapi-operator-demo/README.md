@@ -107,16 +107,13 @@ kubectl get restapi hello-normal-api -n apigateway-demo -o yaml
 kubectl get llmprovidertemplate,llmprovider,llmproxy,mcp,managedsecret,certificate,apikey,subscriptionplan,subscription -n apigateway-demo
 ```
 
-### LLM upstream mock (integration-test parity)
+### LLM upstream mock
 
-Gateway IT wires the URL **`http://mock-openapi:4010/openai/v1`** in `gateway/it/docker-compose.test.yaml` as two services on a shared Docker network:
+The LLM upstream is an OpenAI-compatible mock: **`mock-openapi`** (`stoplight/prism:5.14.3` serving an OpenAPI spec on HTTP **4010**) fronted by **`mock-openapi-https`** (`nginx:1.25` terminating TLS on **8443** and proxying to **`http://mock-openapi:4010`**).
 
-- **`mock-openapi`**: `stoplight/prism:5.14.3` runs `mock /api/openapi.yaml` with `gateway/it/mock-api` mounted read-only (HTTP **4010**).
-- **`mock-openapi-https`**: `nginx:1.25` terminates TLS on **8443** (host **9443**), proxies to **`http://mock-openapi:4010`**, using **`gateway/it/mock-api/nginx.conf`** and **`gateway/gateway-controller/listener-certs`**.
+The demo manifest **`05b0-mock-openapi-https.yaml`** runs that pair in-cluster (same namespace as the gateway): Prism with a **bundled** OpenAPI containing **`/health`** and **`/openai/v1/chat/completions`** (aligned with `llm-mock-openapi-it/mock-api/paths/openai/chat.yaml`), plus nginx and a small demo **TLS Secret** whose SANs cover **`mock-openapi-https`**, **`mock-openapi-https.apigateway-demo`**, **`mock-openapi-https.apigateway-demo-apim`**, and cluster FQDNs. The **Service** listens on **9449** (targeting nginx **8443**) so **`LlmProvider`** uses **`https://mock-openapi-https:9449/...`**, avoiding port clashes with **Rancher** which often binds **9443**. Apply **`05b0`** **before** **`05b-llm-resources.yaml`**.
 
-The demo manifest **`05b0-mock-openapi-https.yaml`** recreates that pattern in-cluster (same namespace as the gateway): Prism with a **bundled** OpenAPI containing **`/health`** and **`/openai/v1/chat/completions`** (aligned with `gateway/it/mock-api/paths/openai/chat.yaml`), plus nginx and a small demo **TLS Secret** whose SANs cover **`mock-openapi-https`**, **`mock-openapi-https.apigateway-demo`**, **`mock-openapi-https.apigateway-demo-apim`**, and cluster FQDNs. The **Service** listens on **9449** (targeting nginx **8443**) so **`LlmProvider`** uses **`https://mock-openapi-https:9449/...`**, avoiding port clashes with **Rancher** which often binds **9443** (IT docker-compose still maps **9443** on the host). Apply **`05b0`** **before** **`05b-llm-resources.yaml`**.
-
-For the **full** multi-path OpenAPI tree used in IT, build the optional image from **`llm-mock-openapi-it/Dockerfile`** (see comments in that file) and swap the Prism `Deployment` image.
+For the **full** multi-provider OpenAPI tree (**`llm-mock-openapi-it/mock-api`**), build the optional image from **`llm-mock-openapi-it/Dockerfile`** (see comments in that file) and swap the Prism `Deployment` image.
 
 Quick check from another pod in the same namespace:
 

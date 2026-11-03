@@ -20,12 +20,15 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
@@ -99,6 +102,47 @@ func createTestSchema(db *database.DB) error {
 	}
 
 	return nil
+}
+
+// schemaDB is a SQLite database opened through database.NewConnection, as the
+// server opens one (foreign keys on, UTC timestamps), with the real schema
+// applied through InitSchema.
+type schemaDB struct {
+	db *database.DB
+}
+
+func openSchemaDB(t *testing.T) *schemaDB {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := &config.Database{Driver: "sqlite3", Path: filepath.Join(t.TempDir(), "test.db")}
+	db, err := database.NewConnection(cfg, logger)
+	if err != nil {
+		t.Fatalf("open SQLite database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.InitSchema("../database/schema.sql", logger); err != nil {
+		t.Fatalf("InitSchema failed: %v", err)
+	}
+	return &schemaDB{db: db}
+}
+
+// count returns the number of rows in table whose col equals val.
+func (s *schemaDB) count(t *testing.T, table, col, val string) int {
+	t.Helper()
+	var n int
+	q := s.db.Rebind(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s = ?", table, col))
+	if err := s.db.QueryRow(q, val).Scan(&n); err != nil {
+		t.Fatalf("count(%s) failed: %v", table, err)
+	}
+	return n
+}
+
+// exec runs a `?`-placeholder statement.
+func (s *schemaDB) exec(t *testing.T, query string, args ...any) {
+	t.Helper()
+	if _, err := s.db.Exec(s.db.Rebind(query), args...); err != nil {
+		t.Fatalf("exec failed: %v\nquery: %s", err, query)
+	}
 }
 
 // createTestAPI creates a test API in the database with specific UUIDs
@@ -753,5 +797,57 @@ func TestGetLatestDeploymentRevision(t *testing.T) {
 	createTestGateway(t, db, gw2, orgUUID)
 	if rev, err = repo.GetLatestDeploymentRevision(apiUUID, gw2, orgUUID); err != nil || rev != "" {
 		t.Errorf("revision for other gateway = %q (err %v), want empty", rev, err)
+	}
+}
+
+// FailCurrentDeployment marks only the deployment that is still current: a
+// stale deployment ID updates nothing, status_desired is left alone, and
+// performed_at moves so an ack for the earlier event no longer matches.
+func TestFailCurrentDeployment(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	const orgUUID, gatewayUUID, apiUUID = "org-001", "gateway-001", "api-fail-current"
+	createTestAPI(t, db, apiUUID, orgUUID)
+	createTestGateway(t, db, gatewayUUID, orgUUID)
+	insertDeployment(t, db, "deploy-current", "Current", apiUUID, orgUUID, gatewayUUID, time.Now())
+	eventAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := repo.SetCurrentWithDetails(apiUUID, orgUUID, gatewayUUID, "deploy-current",
+		model.DeploymentStatusDeploying, string(model.DeploymentStatusDeployed), &eventAt, ""); err != nil {
+		t.Fatalf("SetCurrentWithDetails: %v", err)
+	}
+
+	rows, err := repo.FailCurrentDeployment(apiUUID, orgUUID, gatewayUUID, "deploy-stale", "SECRET_RESOLUTION_FAILED")
+	if err != nil || rows != 0 {
+		t.Fatalf("stale deployment: rows=%d err=%v, want 0 rows", rows, err)
+	}
+	_, status, _, reason, err := repo.GetStatusFull(apiUUID, orgUUID, gatewayUUID)
+	if err != nil || status != model.DeploymentStatusDeploying || reason != "" {
+		t.Fatalf("after stale call: status=%s reason=%q err=%v, want unchanged", status, reason, err)
+	}
+
+	rows, err = repo.FailCurrentDeployment(apiUUID, orgUUID, gatewayUUID, "deploy-current", "SECRET_RESOLUTION_FAILED")
+	if err != nil || rows != 1 {
+		t.Fatalf("current deployment: rows=%d err=%v, want 1 row", rows, err)
+	}
+	_, status, performedAt, reason, err := repo.GetStatusFull(apiUUID, orgUUID, gatewayUUID)
+	if err != nil {
+		t.Fatalf("GetStatusFull: %v", err)
+	}
+	if status != model.DeploymentStatusFailed || reason != "SECRET_RESOLUTION_FAILED" {
+		t.Errorf("status=%s reason=%q, want FAILED/SECRET_RESOLUTION_FAILED", status, reason)
+	}
+	if performedAt == nil || performedAt.Equal(eventAt) {
+		t.Errorf("performed_at = %v, want re-stamped away from the event's %v", performedAt, eventAt)
+	}
+	var desired string
+	if err := db.QueryRow(`SELECT status_desired FROM deployment_status WHERE artifact_uuid = ?`, apiUUID).Scan(&desired); err != nil || desired != "DEPLOYED" {
+		t.Errorf("status_desired = %q (err %v), want DEPLOYED", desired, err)
+	}
+
+	db.Close()
+	if _, err := repo.FailCurrentDeployment(apiUUID, orgUUID, gatewayUUID, "deploy-current", "X"); err == nil {
+		t.Error("a database error must be returned")
 	}
 }

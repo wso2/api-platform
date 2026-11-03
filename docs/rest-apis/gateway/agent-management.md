@@ -315,7 +315,14 @@ Required roles: `admin`, `developer`
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z"
+    "deployedAt": "2026-04-24T07:21:13Z",
+    "warnings": [
+      {
+        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+      }
+    ]
   }
 }
 ```
@@ -500,7 +507,14 @@ Required roles: `admin`, `developer`
         "state": "deployed",
         "createdAt": "2026-04-24T07:21:13Z",
         "updatedAt": "2026-04-24T07:21:13Z",
-        "deployedAt": "2026-04-24T07:21:13Z"
+        "deployedAt": "2026-04-24T07:21:13Z",
+        "warnings": [
+          {
+            "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+            "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+            "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+          }
+        ]
       }
     }
   ]
@@ -550,6 +564,7 @@ Status Code **200**
 |»»»»» upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
 |»»»»»» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
 |»»»»»» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
+|»»»»» tls|object|false|none|Optional mutual-TLS presentation and trust for this backend. `identity` (string) names a gateway identity — a certificate uploaded to POST /certificates with usage: identity — to present on the connection. `trustedCAs` (array of string) lists usage: upstream certificates to trust for this backend in place of the gateway-wide trust bundle; omit to use the gateway bundle. `verifyHostName` (boolean, default true) controls SAN/hostname verification against the target. Every target in a definition carrying `tls` must use https://. Unknown keys are rejected at deploy time.|
 |»»»» upstream|any|true|none|The backend A2A agent and its auth configuration. Set exactly one of `url` (a direct backend URL) or `ref` (the name of an entry in `upstreamDefinitions`, resolved to that definition's first URL and `basePath`). The resolved URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
 
 *allOf*
@@ -560,6 +575,7 @@ Status Code **200**
 |»»»»»» url|string(uri)|false|none|Direct backend URL to route traffic to|
 |»»»»»» ref|string|false|none|Reference to a predefined upstreamDefinition|
 |»»»»»» hostRewrite|string|false|none|Controls how the Host header is handled when routing to the upstream. `auto` delegates host rewriting to Envoy, which rewrites the Host header using the upstream cluster host. `manual` disables automatic rewriting and expects explicit configuration.|
+|»»»»»» tls|object|false|none|Not supported on an inline upstream (a `url`-based main/sandbox entry); a tls block placed here is rejected at deploy time. Put it on the upstreamDefinitions entry referenced via `ref`.|
 
 *oneOf*
 
@@ -605,15 +621,18 @@ Status Code **200**
 |»»»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |»»»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |»»»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
+|»»»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every A2A operation, and like policies above it does not apply to the public Agent Card discovery route — that route declares its own under agentCard.public.faultPolicies.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |»»»»»» operations|[[A2AOperationConfig](schemas.md#schemaa2aoperationconfig)]|false|none|Optional per-operation configuration keyed by canonical A2A operation name. This array is not an allowlist: unlisted standard operations still receive spec.a2a.operationConfigs.policies. Public Agent Card discovery is configured separately.|
 |»»»»»»» name|[A2AOperationName](schemas.md#schemaa2aoperationname)|true|none|Canonical A2A operation name. These names match the standard JSON-RPC and gRPC method names, but identify the binding-independent A2A operation. The effective set is closed and is the one defined by the agent's spec.a2a.protocolVersion; the values below are A2A 1.0's eleven operations, that being the only protocol version currently supported. A name outside the selected version's set is rejected at deploy time.|
 |»»»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered policies applied after spec.a2a.operationConfigs.policies when this operation is selected.|
+|»»»»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered list of policies executed only when this operation fails, over the error response.<br><br>Both levels run and the operation-level entries run FIRST. They are additive rather than an override: a fault entry is a handler, not a setting, so an operation-specific notification and an agent-wide audit hook both fire.|
 |»»»»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |»»»»» agentCard|[A2AAgentCard](schemas.md#schemaa2aagentcard)|false|none|Public Agent Card configuration and optional protected Agent Card configuration for the authenticated A2A GetExtendedAgentCard operation.<br>The whole block is optional, and so is `public`. When either is omitted the gateway serves the public Agent Card in `passthrough` mode at /.well-known/agent-card.json, with `rewriteUrls` disabled and no public Agent Card policies — the same configuration as writing that block out explicitly. Omitting `protected` is *not* equivalent to omitting `public`: it keeps the compatibility behaviour described on that schema and is never turned into an explicit protected configuration by defaulting.|
 |»»»»»» public|[A2APublicAgentCard](schemas.md#schemaa2apublicagentcard)|false|none|Public Agent Card serving. `mode` selects whether the card is proxied from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`), and defaults to `passthrough` when omitted. Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse or sign a proxied card, and only `passthrough` accepts `rewriteUrls`.|
 |»»»»»»» mode|string|false|none|How the public Agent Card is produced. Defaults to `passthrough`, which is also what an omitted `public` or `agentCard` block resolves to.|
 |»»»»»»» path|[A2AAgentCardPath](schemas.md#schemaa2aagentcardpath)|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
 |»»»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered policies applied only to public Agent Card serving.|
+|»»»»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered list of policies executed only when serving the public Agent Card fails, over the error response.<br><br>Separate from spec.a2a.operationConfigs.faultPolicies for the same reason the policies list is: discovery is reachable before any operation is invoked, and an agent that leaves its card unauthenticated while guarding its operations would otherwise have the operations' handlers fire for a discovery failure.|
 |»»»»»»» rewriteUrls|[A2ACardRewriteUrls](schemas.md#schemaa2acardrewriteurls)|false|none|Whether the gateway rewrites `supportedInterfaces[].url` in a proxied Agent Card response so each entry points at the gateway endpoint serving that protocol binding, using the original request's HTTP or HTTPS scheme and the authority the client reached the gateway on.<br>Valid only in `passthrough` mode, and rejected at deploy time in `managed` mode, where the gateway already owns the document and its interfaces are validated against the configured transports instead.<br>Defaults to true. A proxied card advertises the URLs the agent is reachable at, so forwarding it unchanged tells every client to bypass the gateway that was put in front of the agent — the default therefore points those URLs at the gateway. Only the bindings the Agent's configured transports expose are rewritten; an interface the gateway does not serve keeps the agent's own URL, and a client selecting that binding reaches the agent directly. The gateway buffers the card response (up to 1 MiB) and drops the upstream `signatures` block, which no longer covers the returned bytes; it never signs a passthrough card, so a rewritten card is unsigned. Enabling it does not make the card's security declarations verifiable.<br>Set it to false to forward the proxied response — signatures included — byte-for-byte, accepting that clients configured from the card will not traverse the gateway.|
 |»»»»»»» content|[A2AAgentCardDocument](schemas.md#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
 |»»»»»»» signing|[A2ACardSigning](schemas.md#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
@@ -635,6 +654,10 @@ Status Code **200**
 |»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
 |»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
 |»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
+|»»»» warnings|[[Warning](schemas.md#schemawarning)]|false|read-only|Non-fatal deploy-time findings (e.g. a policy's parameters resolved to something other than what was written, such as an omitted accept list inheriting the whole client-CA pool). Present only when non-empty.|
+|»»»»» code|string|false|none|none|
+|»»»»» field|string|false|none|none|
+|»»»»» message|string|false|none|none|
 
 #### Enumerated Values
 
@@ -670,6 +693,15 @@ Status Code **200**
 |mode|passthrough|
 |state|deployed|
 |state|undeployed|
+|code|MTLS_ACCEPT_INHERITS_POOL|
+|code|MTLS_ACCEPT_UNNARROWED|
+|code|MTLS_AUTH_NOT_FIRST|
+|code|MTLS_ACCEPT_NAMES_RELAY_AUTHORITY|
+|code|MTLS_THUMBPRINT_NORMALISED|
+|code|HEADER_CERT_BYPASS_ACTIVE|
+|code|MTLS_HOSTNAME_NOT_SCOPED|
+|code|TLS_VERIFY_HOSTNAME_DISABLED|
+|code|TLS_IDENTITY_EXPIRED|
 
 ## Get Agent by id
 
@@ -844,7 +876,14 @@ Required roles: `admin`, `developer`
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z"
+    "deployedAt": "2026-04-24T07:21:13Z",
+    "warnings": [
+      {
+        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+      }
+    ]
   }
 }
 ```
@@ -1175,7 +1214,14 @@ Required roles: `admin`, `developer`
     "state": "deployed",
     "createdAt": "2026-04-24T07:21:13Z",
     "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z"
+    "deployedAt": "2026-04-24T07:21:13Z",
+    "warnings": [
+      {
+        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+      }
+    ]
   }
 }
 ```

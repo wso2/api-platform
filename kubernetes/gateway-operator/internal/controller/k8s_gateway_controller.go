@@ -161,7 +161,14 @@ func (r *K8sGatewayReconciler) reconcileDeletion(ctx context.Context, gw *gatewa
 	log.Info("attempting Helm uninstall for Gateway deletion",
 		slog.String("namespace", ns),
 		slog.String("name", gw.Name))
-	if err := helmgateway.Uninstall(ctx, log, r.Config, gw.Name, ns); err != nil {
+	if err := helmgateway.Uninstall(ctx, helmgateway.UninstallInput{
+		Logger:         log,
+		Config:         r.Config,
+		Client:         r.Client,
+		GatewayName:    gw.Name,
+		Namespace:      ns,
+		FromGatewayAPI: true,
+	}); err != nil {
 		if isHelmReleaseNotFoundError(err) {
 			log.Info("Helm release not found during Gateway deletion; continuing finalizer removal",
 				slog.String("namespace", ns),
@@ -445,6 +452,8 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 			Config:         r.Config,
 			GatewayName:    gw.Name,
 			Namespace:      ns,
+			Client:         r.Client,
+			FromGatewayAPI: true,
 			ValuesYAML:     valuesYAML,
 			ValuesFilePath: valuesFile,
 			DockerUsername: dockerUser,

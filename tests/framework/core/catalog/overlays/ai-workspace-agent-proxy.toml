@@ -1,0 +1,8 @@
+# Shows the Agent proxy feature in the AI Workspace UI.
+#
+# A feature flag is absent from the shipped config while its feature rolls out,
+# and an absent flag leaves the feature hidden: no navigation entry, no route,
+# and no entry on the project overview. A block whose scenarios drive those
+# screens turns it on here.
+[ai_workspace.feature_flags]
+agent_proxy_enabled = true

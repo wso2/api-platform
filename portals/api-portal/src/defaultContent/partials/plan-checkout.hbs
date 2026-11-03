@@ -1,0 +1,79 @@
+{{!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+--}}
+{{!-- The dialogs that buy a paid plan on an API or MCP server page (plan-checkout.js): the plan's prices,
+      Stripe's checkout form, and the result. --}}
+<!-- Subscribe to a paid plan -->
+<div id="paidSubscribeModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="paidSubscribeTitle">
+  <div class="mc-token-modal">
+    <button class="mc-modal-close paid-modal-close" aria-label="Close">&times;</button>
+    <div class="mc-token-modal-header" style="text-align:left;">
+      <h2 class="mc-token-modal-title" id="paidSubscribeTitle"></h2>
+      <p class="mc-token-modal-sub" id="paidSubscribeApi"></p>
+    </div>
+    <div class="mc-token-modal-body">
+      <div class="mc-token-label"><span>Pricing</span></div>
+      <table class="aov-usage-pricing-table" style="margin-bottom:12px;">
+        <tbody id="paidSubscribePricing"></tbody>
+      </table>
+      <p class="aov-plans-note" id="paidSubscribeTerms"></p>
+      <p class="aov-plans-note">Your subscription becomes active once the payment is confirmed.</p>
+      <div class="mc-token-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="dp-btn dp-btn--outline paid-modal-close">Cancel</button>
+        <button id="paidSubscribeContinue" class="dp-btn dp-btn--primary">Continue to payment</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Payment: Stripe's checkout form, mounted in this dialog by api-subscription-plans.js -->
+<div id="checkoutPayModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="checkoutPayTitle">
+  <div class="mc-token-modal checkout-pay-modal">
+    <button class="mc-modal-close checkout-pay-close" aria-label="Close">&times;</button>
+    <div class="mc-token-modal-header" style="text-align:left;">
+      <h2 class="mc-token-modal-title" id="checkoutPayTitle"></h2>
+      <p class="mc-token-modal-sub" id="checkoutPayApi"></p>
+    </div>
+    <div class="checkout-pay-body">
+      <div id="checkoutPayLoading" class="checkout-pay-loading" role="status">
+        <span class="checkout-pay-spinner" aria-hidden="true"></span>
+        <span class="visually-hidden">Loading the payment form</span>
+      </div>
+      <div id="checkoutPayMount"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Checkout result: activating, failed, or not completed -->
+<div id="checkoutStatusModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="checkoutStatusTitle">
+  <div class="mc-token-modal">
+    <button class="mc-modal-close checkout-status-close" aria-label="Close">&times;</button>
+    <div class="mc-token-modal-header">
+      <h2 class="mc-token-modal-title" id="checkoutStatusTitle"></h2>
+      <p class="mc-token-modal-sub" id="checkoutStatusText"></p>
+    </div>
+    <div class="mc-token-modal-body">
+      <p class="aov-plans-note" id="checkoutStatusHint"></p>
+      <div class="mc-token-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="dp-btn dp-btn--outline checkout-status-close">Close</button>
+        <button id="checkoutStatusRetry" class="dp-btn dp-btn--primary" style="display:none;">Try again</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src='{{basePath}}/technical-scripts/plan-checkout.js' defer></script>

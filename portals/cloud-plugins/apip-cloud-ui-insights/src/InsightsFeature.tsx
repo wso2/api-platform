@@ -20,8 +20,10 @@ import { PageContent } from '@wso2/oxygen-ui';
 import { useEffect, useMemo, useState, type FC, type ReactNode } from 'react';
 
 import { resolveProjectScope } from './api/analyticsApi';
+import ComingSoon from './components/ComingSoon';
 import { ErrorState, LoadingState } from './components/StateViews';
 import { ENABLE_ACP_PROJECT_FILTER } from './config/acpProjectFilter';
+import { SHOW_INSIGHTS_COMING_SOON } from './config/comingSoon';
 import type { InsightsHostPort } from './hostPort';
 import InsightsEmbed from './InsightsEmbed';
 import type { InsightsEmbedProfile, InsightsScopeLevel } from './types';
@@ -32,7 +34,8 @@ export { ENABLE_ACP_PROJECT_FILTER } from './config/acpProjectFilter';
 
 /**
  * AI Workspace pages own their PageContent (the shell does not wrap the outlet).
- * ACP already wraps the outlet in PageContent — do not nest another here.
+ * ACP wraps this extension's route in `PageContent` at the registration site
+ * instead (see the host's `api-control-plane.tsx`), so it isn't duplicated here.
  */
 function withHostPageChrome(
   embedProfile: InsightsEmbedProfile,
@@ -178,6 +181,10 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
       embedProfile,
       <LoadingState label="Preparing Insights" />
     );
+  }
+
+  if (SHOW_INSIGHTS_COMING_SOON) {
+    return withHostPageChrome(embedProfile, <ComingSoon />);
   }
 
   return withHostPageChrome(

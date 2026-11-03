@@ -21,6 +21,7 @@ import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useParams } from 'react-router-dom';
 
+import { AppPage } from '@/components/AppPage';
 import { useGateway } from '@/api/resources/gateways';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
@@ -74,6 +75,14 @@ type GatewayTab = 'configurations' | 'policies';
  * gateway finally connects updates the banner and the header on its own.
  */
 export function GatewayDetailPage() {
+  return (
+    <AppPage>
+      <GatewayDetailPageContent />
+    </AppPage>
+  );
+}
+
+function GatewayDetailPageContent() {
   const { orgHandle = '', gatewayId = '' } = useParams();
   const intl = useIntl();
   const gatewayQuery = useGateway(gatewayId, { poll: true });
@@ -138,6 +147,7 @@ export function GatewayDetailPage() {
                 controlPlaneHost={runtimeConfig.gatewayControlPlaneHost}
                 gateway={gateway}
                 gatewayId={gatewayId}
+                gatewayVersions={runtimeConfig.gatewayVersions}
               />
             ) : (
               <GatewayPoliciesPanel gatewayId={gatewayId} />

@@ -64,8 +64,12 @@ const messages = defineMessages({
  * definition with fifty operations would otherwise run far past the form beside
  * it and take the whole page's scrollbar with it. The clamp keeps it usable on
  * a laptop screen without leaving a stubby box on a tall one.
+ *
+ * Exported so `GraphqlSchemaExplorer` (the GraphQL wizard/detail page's own
+ * schema preview) can be bounded the same way — one definition of "how tall a
+ * definition-preview pane gets" rather than a second copy of the clamp.
  */
-const PANE_HEIGHT = 'clamp(420px, calc(100vh - 260px), 560px)';
+export const PANE_HEIGHT = 'clamp(420px, calc(100vh - 260px), 560px)';
 
 /** Returns 'json' when rawText starts with `{`, otherwise 'yaml'. */
 const detectFormat = (rawText: string | undefined): SpecFormat =>

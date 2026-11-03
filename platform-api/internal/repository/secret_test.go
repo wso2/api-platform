@@ -984,3 +984,35 @@ func TestUpsertDeploymentSecretRefs_DoesNotAffectArtifactLevelRows(t *testing.T)
 		t.Errorf("artifact-level row should survive undeploy, count = %d", count)
 	}
 }
+
+// Rows written outside platform-api (the v1 -> v2 migration) leave the
+// nullable description, created_by and updated_by columns NULL. Every read
+// path shares one scan, and it must still read such a row.
+func TestSecretRepo_NullableColumnsAreReadable(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	orgID := "org-sec-null"
+	createTestOrganizationAndProject(t, db, orgID, "proj-sec-null")
+	repo := NewSecretRepo(db)
+	insertSecret(t, repo, orgID, "migrated")
+	if _, err := db.Exec(`UPDATE secrets SET description = NULL, created_by = NULL, updated_by = NULL WHERE organization_uuid = ? AND handle = ?`,
+		orgID, "migrated"); err != nil {
+		t.Fatalf("null the columns: %v", err)
+	}
+
+	got, err := repo.GetByHandle(orgID, "migrated")
+	if err != nil {
+		t.Fatalf("GetByHandle: %v", err)
+	}
+	if got.Description != "" || got.CreatedBy != "" || got.UpdatedBy != "" {
+		t.Errorf("NULL columns should read as empty, got %q/%q/%q", got.Description, got.CreatedBy, got.UpdatedBy)
+	}
+	list, err := repo.List(orgID, 10, 0, nil)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("List returned %d secrets, want 1", len(list))
+	}
+}

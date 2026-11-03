@@ -57,6 +57,8 @@ under `auth.idp`, because the same mapping applies in local auth mode.
 | `auth.claim_mappings.organization` | `org_name` | JWT claim for the organization. Asgardeo B2B uses `org_name`. Supports dot-notation (e.g. `org.id`). |
 | `auth.claim_mappings.roles` | `roles` | JWT claim for the user's roles. Supports dot-notation (e.g. `realm_access.roles` for Keycloak). |
 | `auth.claim_mappings.groups` | `groups` | JWT claim for groups |
+| `auth.claim_mappings.org_name` | *(empty)* | Optional claim carrying the organization's name; used to name organizations provisioned in [multi-organization mode](multi-organization.md#provisioning) |
+| `auth.claim_mappings.org_handle` | *(empty)* | Optional claim carrying the organization's URL handle; a provisioned organization takes it as its handle when usable (see [Provisioning](multi-organization.md#provisioning)) |
 | `auth.idp.fidp` | `{}` | Map of `?fidp=<key>` query param values to IDP identifiers for federated login hints |
 
 > Claim names can also be overridden per-organization in the database (via the admin API), allowing different orgs to use different IDPs or claim structures.
@@ -252,6 +254,8 @@ active.
 
 ## Multi-Organization Isolation
 
+> This section describes how organization claims are checked. To have one portal serve many organizations, see [Multi-Organization Mode](multi-organization.md).
+
 When multiple devportal organizations share one IDP, the portal enforces per-org isolation using the `ORGANIZATION_IDENTIFIER` field on each organization (stored in the database, set via the admin API).
 
 **How it works:**
@@ -267,6 +271,32 @@ When multiple devportal organizations share one IDP, the portal enforces per-org
 - If a user navigates from Org A to Org B's protected pages while logged in as Org A, they see a 403. They must log out and log in again on Org B.
 
 > The mechanism for passing the org identifier to the IDP is IDP-specific. Asgardeo uses an `org=<identifier>` query parameter on the authorization URL. Other IDPs may use different approaches (e.g. tenant-specific realm URLs in Keycloak). The `ORGANIZATION_IDENTIFIER` mismatch check runs regardless of IDP type.
+
+### Organization claims
+
+Which organization an IDP credential (a login or a bearer token) acts in is decided by
+its organization claim, `auth.claim_mappings.organization`. This behaviour is fixed;
+there is no setting for it.
+
+| Claim in the credential | Single-organization mode | [Multi-organization mode](multi-organization.md) |
+|---|---|---|
+| This portal's organization | allowed | allowed |
+| Another existing organization | `403` | allowed, as that organization |
+| An organization that doesn't exist yet | `403` | created from the claim, then allowed |
+| No organization claim | allowed, as the configured organization | allowed, as the configured organization |
+
+A credential with no organization claim belongs to `organization.handle` and keeps its
+own roles or scopes. So:
+
+- Make sure the IDP puts the organization claim on every user's tokens. In
+  multi-organization mode, a user whose token comes without it lands in the configured
+  organization with their own roles — an administrator of their organization becomes an
+  administrator of the configured one.
+- Check that `auth.claim_mappings.organization` names the claim your IDP actually sends.
+  A wrong name makes every credential claimless, so everyone is admitted to the
+  configured organization instead of being refused.
+- Set `auth.idp.audience`. Without it, a token the same IDP issued to another application
+  is accepted as well. Multi-organization mode requires it.
 
 ---
 
@@ -319,3 +349,5 @@ Any OIDC-compliant IDP works. You need to set:
 ## Guides
 
 - [Asgardeo Setup](asgardeo-setup.md) — end-to-end production walkthrough for WSO2 Asgardeo
+- [Multi-Organization Mode](multi-organization.md) — one portal for every organization in your IDP
+- [WSO2 Identity Server Setup](wso2-is-setup.md) — WSO2 IS B2B sub-organizations with multi-organization mode

@@ -16,41 +16,68 @@
  * under the License.
  */
 
-import type { UseQueryResult } from '@tanstack/react-query';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ApiError } from '@/api/core/errors';
-import type { RestApi, RestApiListResponse } from '@/api/resources/restApis';
+import type { RestApi } from '@/api/resources/restApis';
+import type { GraphQLApiListItem } from '@/api/resources/graphqlApis';
 import { routes } from '@/routes/paths';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen } from '@/test/utils';
 
 vi.mock('@/api/resources/restApis', async (importActual) => ({
   ...(await importActual<typeof import('@/api/resources/restApis')>()),
-  useRestApis: vi.fn(),
+  useAllRestApis: vi.fn(),
+}));
+vi.mock('@/api/resources/graphqlApis', async (importActual) => ({
+  ...(await importActual<typeof import('@/api/resources/graphqlApis')>()),
+  useAllGraphQLApis: vi.fn(),
 }));
 
-import { useRestApis } from '../api/resources/restApis';
+import { useAllRestApis } from '../api/resources/restApis';
+import { useAllGraphQLApis } from '../api/resources/graphqlApis';
 import { ScopeGate } from './ScopeGate';
-import { anOrganization } from '@/test/msw';
+import { anOrganization, aProject } from '@/test/msw';
 
-const API_LIST = [
+const REST_API_LIST = [
   {
     context: '/orders',
     displayName: 'Orders API',
     id: 'orders-api',
+    kind: 'RestApi',
     projectId: 'retail-apis',
     upstream: { main: { url: 'https://backend.example.com' } },
     version: '1.0.0',
   },
 ] as RestApi[];
 
-const listQuery = (list: RestApi[]) =>
-  ({
-    data: { count: list.length, list },
-    isPending: false,
-  }) as UseQueryResult<RestApiListResponse, ApiError>;
+const GRAPHQL_API_LIST = [
+  {
+    context: '/countries',
+    displayName: 'Countries API',
+    id: 'countries-graphql-api',
+    kind: 'GraphQLApi',
+    projectId: 'retail-apis',
+    upstream: { main: { url: 'https://countries.example.com/graphql' } },
+    version: '1.0.0',
+  },
+] as GraphQLApiListItem[];
+
+/** Mirrors `useAllRestApis`'s own return shape, not `useQuery`'s. */
+const restApisResult = (list: RestApi[]) => ({
+  data: list.length ? { list, pagination: { limit: 100, offset: 0, total: list.length } } : undefined,
+  error: undefined,
+  isPending: false,
+  isPlaceholderData: false,
+});
+
+/** Mirrors `useAllGraphQLApis`'s own return shape, not `useQuery`'s. */
+const graphqlApisResult = (list: GraphQLApiListItem[]) => ({
+  data: list.length ? { list, pagination: { limit: 100, offset: 0, total: list.length } } : undefined,
+  error: undefined,
+  isPending: false,
+  isPlaceholderData: false,
+});
 
 // `makeConsoleScope` seeds itself from these fixtures, and `ScopeGate` reads the
 // org handle from scope rather than from the URL — so the routes under test have
@@ -73,6 +100,14 @@ const projectScope = () =>
     projects: [PROJECT_OPTION] as ReturnType<typeof makeConsoleScope>['projects'],
   });
 
+/**
+ * `makeConsoleScope()`'s own default project (fixture id `'retail'`) is
+ * unrelated to `PROJECT` ('retail-apis') above — the mock scope isn't derived
+ * from the rendered route, so a test asserting *where* submit navigated to
+ * needs a scope whose project actually matches.
+ */
+const apiScope = () => makeConsoleScope({ project: aProject({ id: PROJECT }) });
+
 /** The select's own control — `getByLabelText` also matches the visible label. */
 const selectFor = (name: string) => screen.getByRole('combobox', { name });
 
@@ -91,7 +126,8 @@ function Located() {
 describe('ScopeGate', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useRestApis).mockReturnValue(listQuery(API_LIST));
+    vi.mocked(useAllRestApis).mockReturnValue(restApisResult(REST_API_LIST));
+    vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult([]));
   });
 
   const renderGate = (
@@ -185,6 +221,45 @@ describe('ScopeGate', () => {
     ).toBeInTheDocument();
   });
 
+  // Pins the fix for apisPending not being gated on a chosen project: both
+  // API hooks are disabled (no project chosen yet), so React Query v5
+  // reports isPending: true for a disabled query — the same shape a real
+  // render would see, unlike this file's other tests which hardcode
+  // isPending: false. `projectScope()`'s own `project: undefined` override is
+  // not enough on its own — `makeConsoleScope`'s `project ?? aProject()`
+  // falls back to a default project fixture whose id still populates
+  // `params.projectHandler`, so `params.projectHandler` needs its own
+  // explicit override to actually be undefined here.
+  it('does not show "Loading APIs" while no project is chosen', () => {
+    vi.mocked(useAllRestApis).mockReturnValue({
+      data: undefined,
+      error: undefined,
+      isPending: true,
+      isPlaceholderData: false,
+    });
+    vi.mocked(useAllGraphQLApis).mockReturnValue({
+      data: undefined,
+      error: undefined,
+      isPending: true,
+      isPlaceholderData: false,
+    });
+
+    renderGate(
+      routes.apiDeploy(ORG, null, null),
+      <ScopeGate requires="api" to={routes.apiDeploy}>
+        <span>page body</span>
+      </ScopeGate>,
+      makeConsoleScope({
+        isProjectScope: false,
+        project: undefined,
+        projects: [PROJECT_OPTION] as ReturnType<typeof makeConsoleScope>['projects'],
+        params: { orgHandle: ORG, projectHandler: undefined },
+      }),
+    );
+
+    expect(screen.queryByText(/Loading APIs/i)).not.toBeInTheDocument();
+  });
+
   it('asks only for the API when the route already has a project', () => {
     renderGate(
       routes.apiDeploy(ORG, PROJECT, null),
@@ -196,5 +271,91 @@ describe('ScopeGate', () => {
 
     expect(selectFor('API')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Project' })).not.toBeInTheDocument();
+  });
+
+  describe('GraphQL APIs in the picker', () => {
+    beforeEach(() => {
+      vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult(GRAPHQL_API_LIST));
+    });
+
+    it('lists a GraphQL API alongside REST APIs', async () => {
+      const { user } = renderGate(
+        routes.apiDeploy(ORG, PROJECT, null),
+        <ScopeGate requires="api" to={routes.apiDeploy}>
+          <span>page body</span>
+        </ScopeGate>,
+        makeConsoleScope(),
+      );
+
+      await user.click(selectFor('API'));
+
+      expect(optionFor(/Orders API/)).toBeInTheDocument();
+      expect(optionFor(/Countries API/)).toBeInTheDocument();
+    });
+
+    it('routes a chosen GraphQL API to graphqlTo when the page has one', async () => {
+      const { user } = renderGate(
+        routes.apiDeploy(ORG, PROJECT, null),
+        <>
+          <ScopeGate graphqlTo={routes.graphqlApiDeploy} requires="api" to={routes.apiDeploy}>
+            <span>page body</span>
+          </ScopeGate>
+          <Located />
+        </>,
+        apiScope(),
+      );
+
+      await user.click(selectFor('API'));
+      await user.click(optionFor(/Countries API/));
+      await user.click(screen.getByRole('button', { name: 'Go to API Level' }));
+
+      expect(
+        screen.getByText(`at ${routes.graphqlApiDeploy(ORG, PROJECT, 'countries-graphql-api')}`),
+      ).toBeInTheDocument();
+    });
+
+    it('falls back to the GraphQL API’s Overview page when the page has no GraphQL destination', async () => {
+      // e.g. Develop/Insights/Observability/Manage/Admin — none of these have
+      // a GraphQL-specific implementation yet, so `graphqlTo` is left unset.
+      const { user } = renderGate(
+        routes.apiDevelopPolicies(ORG, PROJECT, null),
+        <>
+          <ScopeGate requires="api" to={routes.apiDevelopPolicies}>
+            <span>page body</span>
+          </ScopeGate>
+          <Located />
+        </>,
+        apiScope(),
+      );
+
+      await user.click(selectFor('API'));
+      await user.click(optionFor(/Countries API/));
+      await user.click(screen.getByRole('button', { name: 'Go to API Level' }));
+
+      expect(
+        screen.getByText(`at ${routes.graphqlApi(ORG, PROJECT, 'countries-graphql-api')}`),
+      ).toBeInTheDocument();
+    });
+
+    it('still routes a chosen REST API through the page’s own builder', async () => {
+      const { user } = renderGate(
+        routes.apiDeploy(ORG, PROJECT, null),
+        <>
+          <ScopeGate graphqlTo={routes.graphqlApiDeploy} requires="api" to={routes.apiDeploy}>
+            <span>page body</span>
+          </ScopeGate>
+          <Located />
+        </>,
+        apiScope(),
+      );
+
+      await user.click(selectFor('API'));
+      await user.click(optionFor(/Orders API/));
+      await user.click(screen.getByRole('button', { name: 'Go to API Level' }));
+
+      expect(
+        screen.getByText(`at ${routes.apiDeploy(ORG, PROJECT, 'orders-api')}`),
+      ).toBeInTheDocument();
+    });
   });
 });

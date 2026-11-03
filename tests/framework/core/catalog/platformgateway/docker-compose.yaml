@@ -46,7 +46,8 @@ services:
 
   gateway-runtime${INSTANCE:-}:
     image: ${PG_RUNTIME_IMAGE:-ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT}
-    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    # Access log lines are flushed every 500 ms, so a scenario reads its request's line promptly.
+    command: ["--pol.config", "/etc/policy-engine/config.toml", "--rtr.file-flush-interval-msec", "500"]
     stop_grace_period: 30s
     env_file:
       - api-platform.env
@@ -57,9 +58,11 @@ services:
       - ROUTER_ADMIN_HOST=0.0.0.0
       - ROUTER_DRAIN_TIME_SECONDS=2
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://testbench:3006
+      - SSL_CERT_DIR=/etc/ssl/certs:/etc/testbench-ca
       - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro
+      - ./testbench-ca/jev.pem:/etc/testbench-ca/jev.pem:ro
       - ./llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
     ports:
       - "8080"

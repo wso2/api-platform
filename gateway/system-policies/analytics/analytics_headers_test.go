@@ -1,7 +1,6 @@
 package analytics
 
 import (
-	"encoding/json"
 	"testing"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
@@ -30,31 +29,27 @@ func TestGetHeaderFlags(t *testing.T) {
 	}
 }
 
-func TestSerializeHeaders(t *testing.T) {
-	// Empty headers -> empty string.
-	if got := serializeHeaders(policy.NewHeaders(nil)); got != "" {
-		t.Fatalf("serializeHeaders(empty) = %q, want \"\"", got)
+func TestFlattenHeaders(t *testing.T) {
+	// Empty headers -> nil.
+	if got := flattenHeaders(policy.NewHeaders(nil)); got != nil {
+		t.Fatalf("flattenHeaders(empty) = %v, want nil", got)
 	}
 
 	h := policy.NewHeaders(map[string][]string{
 		"Authorization": {"Bearer secret"},
 		"X-Foo":         {"a", "b"},
 	})
-	got := serializeHeaders(h)
-	if got == "" {
-		t.Fatal("serializeHeaders returned empty for non-empty headers")
+	got := flattenHeaders(h)
+	if len(got) == 0 {
+		t.Fatal("flattenHeaders returned empty for non-empty headers")
 	}
 
-	var decoded map[string]string
-	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
-		t.Fatalf("output is not valid JSON: %v (%q)", err, got)
-	}
 	// NewHeaders lower-cases keys; multi-value headers are joined with ", ".
-	if decoded["authorization"] != "Bearer secret" {
-		t.Errorf("authorization = %q, want %q", decoded["authorization"], "Bearer secret")
+	if got["authorization"] != "Bearer secret" {
+		t.Errorf("authorization = %q, want %q", got["authorization"], "Bearer secret")
 	}
-	if decoded["x-foo"] != "a, b" {
-		t.Errorf("x-foo = %q, want %q", decoded["x-foo"], "a, b")
+	if got["x-foo"] != "a, b" {
+		t.Errorf("x-foo = %q, want %q", got["x-foo"], "a, b")
 	}
 }
 

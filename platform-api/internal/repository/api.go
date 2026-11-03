@@ -571,10 +571,77 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 	return count > 0, nil
 }
 
+// GetAPIVersionsByDisplayName returns every REST API sharing the given display name in an
+// organization, ordered by version.
+func (r *APIRepo) GetAPIVersionsByDisplayName(orgUUID, displayName string) ([]*model.API, error) {
+	query := `
+		SELECT uuid, handle, display_name, description, version, created_by, updated_by,
+			project_uuid, organization_uuid, lifecycle_status, configuration, origin, data_version, created_at, updated_at
+		FROM rest_apis
+		WHERE organization_uuid = ? AND display_name = ?`
+	args := []interface{}{orgUUID, displayName}
+
+	// Fixed sort columns - no caller input reaches the identifier position.
+	query += " ORDER BY version ASC, handle ASC"
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		apiModel, err := r.scanAPI(rows)
+		if err != nil {
+			return nil, err
+		}
+		apis = append(apis, apiModel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return apis, nil
+}
+
 // CreateAPIAssociation creates a gateway-API association in artifact_gateway_mappings.
-// created_by/updated_by are seeded from association.CreatedBy (the acting user); on create
-// updated_by mirrors created_by. Both are stored as NULL when the actor is unknown.
+// Delegates to the kind-agnostic createArtifactGatewayAssociation helper — see that
+// function's doc comment (this method exists only to satisfy APIRepository).
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
+	return createArtifactGatewayAssociation(r.db, association)
+}
+
+// UpdateAPIAssociation updates the updated_at timestamp and updated_by actor for a
+// gateway-API association. Delegates to updateArtifactGatewayAssociation.
+func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID, updatedBy string) error {
+	return updateArtifactGatewayAssociation(r.db, apiUUID, resourceId, orgUUID, updatedBy)
+}
+
+// GetAPIAssociations retrieves all gateway associations for an API.
+// associationType is accepted for interface compatibility but only 'gateway' associations are stored.
+// Delegates to getArtifactGatewayAssociations.
+func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error) {
+	return getArtifactGatewayAssociations(r.db, apiUUID, orgUUID)
+}
+
+// GetAPIGatewaysWithDetails retrieves all gateways associated with an API including
+// deployment details. Delegates to getArtifactGatewaysWithDetails.
+func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
+	return getArtifactGatewaysWithDetails(r.db, apiUUID, orgUUID)
+}
+
+// createArtifactGatewayAssociation creates a gateway-artifact association in
+// artifact_gateway_mappings. created_by/updated_by are seeded from
+// association.CreatedBy (the acting user); on create updated_by mirrors created_by.
+// Both are stored as NULL when the actor is unknown.
+//
+// This helper (and its update/get/getWithDetails siblings below) is kind-agnostic —
+// artifact_gateway_mappings is keyed solely on artifact_uuid, with no REST-specific
+// columns — so both *APIRepo and *GraphQLAPIRepo delegate to the exact same SQL
+// rather than each maintaining their own copy. Any future kind's gateway-association
+// repo methods should do the same.
+func createArtifactGatewayAssociation(db *database.DB, association *model.APIAssociation) error {
 	association.CreatedAt = time.Now().UTC()
 	association.UpdatedAt = association.CreatedAt
 	if association.UpdatedBy == "" {
@@ -585,34 +652,35 @@ func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error 
 		INSERT INTO artifact_gateway_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_by, updated_by, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(r.db.Rebind(query),
+	_, err := db.Exec(db.Rebind(query),
 		association.ArtifactID, association.OrganizationID, association.GatewayID,
 		association.CreatedBy, association.UpdatedBy,
 		association.CreatedAt, association.UpdatedAt)
 	return err
 }
 
-// UpdateAPIAssociation updates the updated_at timestamp and updated_by actor for a
-// gateway-API association.
-func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID, updatedBy string) error {
+// updateArtifactGatewayAssociation updates the updated_at timestamp and updated_by
+// actor for a gateway-artifact association. See createArtifactGatewayAssociation for
+// why this is a shared, kind-agnostic helper.
+func updateArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, updatedBy string) error {
 	query := `
 		UPDATE artifact_gateway_mappings
 		SET updated_at = ?, updated_by = ?
 		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), time.Now().UTC(), updatedBy, apiUUID, resourceId, orgUUID)
+	_, err := db.Exec(db.Rebind(query), time.Now().UTC(), updatedBy, artifactUUID, gatewayUUID, orgUUID)
 	return err
 }
 
-// GetAPIAssociations retrieves all gateway associations for an API.
-// associationType is accepted for interface compatibility but only 'gateway' associations are stored.
-func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error) {
+// getArtifactGatewayAssociations retrieves all gateway associations for an artifact.
+// See createArtifactGatewayAssociation for why this is a shared, kind-agnostic helper.
+func getArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID string) ([]*model.APIAssociation, error) {
 	query := `
 		SELECT artifact_uuid, organization_uuid, gateway_uuid, created_by, updated_by, created_at, updated_at
 		FROM artifact_gateway_mappings
 		WHERE artifact_uuid = ? AND organization_uuid = ?
 	`
-	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, orgUUID)
+	rows, err := db.Query(db.Rebind(query), artifactUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -635,8 +703,10 @@ func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) (
 	return associations, rows.Err()
 }
 
-// GetAPIGatewaysWithDetails retrieves all gateways associated with an API including deployment details.
-func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
+// getArtifactGatewaysWithDetails retrieves all gateways associated with an artifact,
+// including deployment details. See createArtifactGatewayAssociation for why this is
+// a shared, kind-agnostic helper.
+func getArtifactGatewaysWithDetails(db *database.DB, artifactUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
 	query := `
 		SELECT
 			g.uuid as id,
@@ -647,6 +717,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			g.properties,
 			g.is_critical,
 			g.gateway_functionality_type as functionality_type,
+			g.version,
 			g.is_active,
 			g.created_at,
 			g.updated_at,
@@ -664,7 +735,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		ORDER BY aa.created_at DESC, ge.id ASC
 	`
 
-	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, string(model.DeploymentStatusDeployed), apiUUID, orgUUID)
+	rows, err := db.Query(db.Rebind(query), artifactUUID, string(model.DeploymentStatusDeployed), artifactUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -678,6 +749,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 		var deployedAt sql.NullTime
 		var deploymentId, endpointURL sql.NullString
 		var id, organizationID, name, handle, description, functionalityType string
+		var version sql.NullString
 		var createdAt, updatedAt, associatedAt, associationUpdatedAt time.Time
 		var isDeployed bool
 
@@ -690,6 +762,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 			&propertiesBytes,
 			&isCritical,
 			&functionalityType,
+			&version,
 			&isActive,
 			&createdAt,
 			&updatedAt,
@@ -714,6 +787,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 				Description:          description,
 				IsCritical:           isCritical != 0,
 				FunctionalityType:    functionalityType,
+				Version:              version.String,
 				IsActive:             isActive != 0,
 				CreatedAt:            createdAt,
 				UpdatedAt:            updatedAt,

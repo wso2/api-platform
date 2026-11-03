@@ -43,6 +43,7 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 type FormState = {
   name: string;
@@ -154,6 +155,12 @@ export default function ApplicationNew() {
     }
   };
 
+  // When the organization is read-only, that — not the user's role — is why
+  // creation is unavailable, and saying "contact your admin" would send them
+  // after the wrong fix. Empty while the organization may write, so the
+  // permission wording stands.
+  const { readOnlyMessage } = useResourceLimits();
+
   if (!hasPermission(SCOPES.APPLICATION_CREATE)) {
     return (
       <PageContent fullWidth>
@@ -165,12 +172,14 @@ export default function ApplicationNew() {
             />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationNew.creation.unavailable.description"
-              defaultMessage={
-                'You do not have permission to create GenAI Applications. Please contact your admin.'
-              }
-            />
+            {readOnlyMessage || (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationNew.creation.unavailable.description"
+                defaultMessage={
+                  'You do not have permission to create GenAI Applications. Please contact your admin.'
+                }
+              />
+            )}
           </Typography>
         </Stack>
       </PageContent>

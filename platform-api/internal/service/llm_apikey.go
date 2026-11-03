@@ -114,19 +114,7 @@ func ownedAPIKeyItems(keys []*model.APIKey, userID string, keyAdmin bool, identi
 		if !canManageAPIKey(k.CreatedBy, userID, keyAdmin) {
 			continue
 		}
-		item := api.APIKeyItem{
-			Id:             &k.Name,
-			DisplayName:    k.DisplayName,
-			MaskedApiKey:   k.MaskedAPIKey,
-			Status:         api.APIKeyItemStatus(k.Status),
-			CreatedAt:      k.CreatedAt,
-			CreatedBy:      utils.StringPtrIfNotEmpty(k.CreatedBy),
-			UpdatedAt:      k.UpdatedAt,
-			ExpiresAt:      k.ExpiresAt,
-			Issuer:         k.Issuer,
-			AllowedTargets: k.AllowedTargets,
-		}
-		items = append(items, item)
+		items = append(items, APIKeyItemFromModel(k))
 		createdByFields = append(createdByFields, &items[len(items)-1].CreatedBy)
 	}
 	if err := identity.ResolveIdentityFields(createdByFields); err != nil {
@@ -191,7 +179,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 
 	for _, gateway := range filterAPIGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
 		gatewayID := gateway.ID
-		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
+		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEventFor(gateway, existingKey.CreatedBy, userID, event); err != nil {
 			s.slogger.Error("Failed to broadcast LLM provider API key revoked event", "providerId", providerID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
 		} else {
 			s.slogger.Info("Successfully broadcast LLM provider API key revoked event", "providerId", providerID, "gatewayId", gatewayID, "keyName", keyName)

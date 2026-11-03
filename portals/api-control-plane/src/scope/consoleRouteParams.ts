@@ -75,6 +75,10 @@ export const getRouteParamsFromPathname = (
     apiHandler: handleAfter(segments, 'apis'),
     deploymentId: handleAfter(segments, 'deployments'),
     environmentId: handleAfter(segments, 'environments'),
+    // Additive: a distinct literal segment from `apis` above, so this never
+    // interferes with `apiHandler`'s resolution — see `graphqlApiHandler`'s
+    // doc comment on `ConsoleRouteParams`.
+    graphqlApiHandler: handleAfter(segments, 'graphql-apis'),
     orgHandle: handleAfter(segments, 'organizations'),
     projectHandler: handleAfter(segments, 'projects'),
   };

@@ -22,4 +22,6 @@
 
 export { ProjectListPage } from './ProjectListPage';
 
+export { ProjectCreatePage } from './ProjectCreatePage';
+
 export { ProjectHomePage } from './ProjectHomePage';

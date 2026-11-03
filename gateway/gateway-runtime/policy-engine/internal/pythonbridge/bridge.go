@@ -155,6 +155,47 @@ func (b *bridge) OnResponseBody(ctx context.Context, respCtx *policy.ResponseCon
 	return action
 }
 
+// faultBridge is a bridge whose Python policy defines on_fault, so it may be attached as a
+// fault policy. It exists as a separate type because eligibility is a Go type assertion: a
+// plain bridge must NOT satisfy policy.FaultPolicy, or chain build would accept every Python
+// policy onto the fault path and the missing handler would surface as a per-request failure
+// while the client is already receiving an error.
+type faultBridge struct {
+	*bridge
+}
+
+var _ policy.FaultPolicy = (*faultBridge)(nil)
+
+// OnFault runs the Python policy's on_fault handler over a failure.
+//
+// Unlike every other hook there is no Mode() gate: fault entries are not phase-scheduled, and
+// this type is only constructed when the executor reported the on_fault capability.
+//
+// A bridge failure returns nil rather than the error ImmediateResponse the other hooks return.
+// On the fault path the client already has an error, and the engine's contract is that a
+// failing fault entry leaves the response untouched — turning a bridge hiccup into a 500 would
+// replace the real failure with one the operator never configured.
+func (b *faultBridge) OnFault(ctx context.Context, faultCtx *policy.FaultContext, params map[string]interface{}) *policy.FaultResponse {
+	req, err := b.buildErrorRequest(ctx, faultCtx, params)
+	if err != nil {
+		b.slogger.ErrorContext(ctx, "Failed to build fault payload", "error", err)
+		return nil
+	}
+
+	resp, err := b.execute(ctx, req, faultCtx.SharedContext)
+	if err != nil {
+		b.slogger.ErrorContext(ctx, "Failed to execute Python fault policy", "error", err)
+		return nil
+	}
+
+	fault, err := b.translator.ToGoFaultResponse(resp)
+	if err != nil {
+		b.slogger.ErrorContext(ctx, "Failed to translate Python fault response", "error", err)
+		return nil
+	}
+	return fault
+}
+
 func (b *bridge) NeedsMoreRequestData(accumulated []byte) bool {
 	if b.mode.RequestBodyMode != policy.BodyModeStream {
 		return false

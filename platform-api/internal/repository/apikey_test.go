@@ -18,6 +18,7 @@
 package repository
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
@@ -154,5 +155,105 @@ func TestAPIKeyRepo_UpdateAndRevoke_SetUpdatedByWithoutTouchingCreatedBy(t *test
 	}
 	if afterRevoke.CreatedBy != "creator-user" {
 		t.Fatalf("Revoke must not touch created_by, got %q", afterRevoke.CreatedBy)
+	}
+}
+
+// TestLifecycle_APIKeyCreateListRevoke drives the real APIKeyRepo through key
+// creation, lookup, listing, update and revocation. The key hangs off a REST
+// API artifact created via APIRepo, so this exercises the api_keys ->
+// artifacts foreign key alongside the API key generation flow.
+func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
+	tdb := openSchemaDB(t)
+	orgID, projID := seedOrgProject(t, tdb, "key")
+
+	// An API key references an artifact; create a REST API to back it.
+	apiRepo := NewAPIRepo(tdb.db)
+	api := &model.API{
+		Handle:          "key-api-" + id()[:8],
+		Name:            "Key API " + id()[:6],
+		Version:         "v1.0",
+		ProjectID:       projID,
+		OrganizationID:  orgID,
+		LifeCycleStatus: "CREATED",
+		Configuration:   model.RestAPIConfig{Name: "Key API", Version: "v1.0"},
+	}
+	if err := apiRepo.CreateAPI(api); err != nil {
+		t.Fatalf("CreateAPI (for key) failed: %v", err)
+	}
+	artifactUUID := api.ID
+
+	keyRepo := NewAPIKeyRepo(tdb.db, NewArtifactTableRegistry())
+
+	// --- Create two API keys on the same artifact ---
+	const n = 2
+	for i := range n {
+		key := &model.APIKey{
+			UUID:           id(),
+			ArtifactUUID:   artifactUUID,
+			Name:           fmt.Sprintf("key-%d", i),
+			DisplayName:    fmt.Sprintf("Key %d", i),
+			MaskedAPIKey:   "ab12",
+			APIKeyHashes:   `{"sha256":"` + id() + `"}`,
+			Status:         "active",
+			CreatedBy:      "it-user",
+			UpdatedBy:      "it-user",
+			AllowedTargets: "ALL",
+		}
+		if err := keyRepo.Create(key); err != nil {
+			t.Fatalf("APIKey Create %d failed: %v", i, err)
+		}
+	}
+
+	// --- Read back a single key and confirm the round-trip ---
+	got, err := keyRepo.GetByArtifactAndName(artifactUUID, "key-0")
+	if err != nil {
+		t.Fatalf("GetByArtifactAndName failed: %v", err)
+	}
+	if got == nil || got.ArtifactUUID != artifactUUID || got.Status != "active" {
+		t.Fatalf("GetByArtifactAndName round-trip mismatch: %+v", got)
+	}
+	if got.AllowedTargets != "ALL" {
+		t.Fatalf("APIKey allowed_targets did not round-trip: %q", got.AllowedTargets)
+	}
+
+	// --- List by artifact ---
+	keys, err := keyRepo.ListByArtifact(artifactUUID)
+	if err != nil {
+		t.Fatalf("ListByArtifact failed: %v", err)
+	}
+	if len(keys) != n {
+		t.Fatalf("ListByArtifact: want %d, got %d", n, len(keys))
+	}
+
+	// --- Update the key material ---
+	got.MaskedAPIKey = "cd34"
+	got.APIKeyHashes = `{"sha256":"` + id() + `"}`
+	if err := keyRepo.Update(got); err != nil {
+		t.Fatalf("APIKey Update failed: %v", err)
+	}
+	afterUpdate, err := keyRepo.GetByArtifactAndName(artifactUUID, "key-0")
+	if err != nil {
+		t.Fatalf("GetByArtifactAndName after update failed: %v", err)
+	}
+	if afterUpdate.MaskedAPIKey != "cd34" {
+		t.Fatalf("APIKey Update did not persist masked key: %q", afterUpdate.MaskedAPIKey)
+	}
+
+	// --- Revoke the key ---
+	if err := keyRepo.Revoke(artifactUUID, "key-0", "it-revoker"); err != nil {
+		t.Fatalf("APIKey Revoke failed: %v", err)
+	}
+	revoked, err := keyRepo.GetByArtifactAndName(artifactUUID, "key-0")
+	if err != nil {
+		t.Fatalf("GetByArtifactAndName after revoke failed: %v", err)
+	}
+	if revoked.Status != "revoked" {
+		t.Fatalf("APIKey Revoke did not persist status: %q", revoked.Status)
+	}
+	if revoked.UpdatedBy != "it-revoker" {
+		t.Fatalf("APIKey Revoke did not persist updated_by actor: %q", revoked.UpdatedBy)
+	}
+	if revoked.CreatedBy != "it-user" {
+		t.Fatalf("APIKey Revoke must not touch created_by: %q", revoked.CreatedBy)
 	}
 }

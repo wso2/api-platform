@@ -291,7 +291,7 @@ func initMetrics() {
 			Name:      "certificates_total",
 			Help:      "Total number of certificates",
 		},
-		[]string{"type"},
+		[]string{"usage"},
 	)
 
 	CertificateOperationsTotal = newCounterVec(

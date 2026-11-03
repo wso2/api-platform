@@ -46,6 +46,7 @@ const (
 	keyProjectID        = "cloudProjectID"
 	keyGatewayID        = "cloudGatewayID"
 	keyGatewayEndpoint  = "cloudGatewayEndpoint"
+	keyGatewayEnv       = "cloudGatewayEnvironment"
 	keyAPIID            = "cloudAPIID"
 	keyDeploymentID     = "cloudDeploymentID"
 	keyEnvironmentName  = "cloudEnvironmentName"
@@ -101,7 +102,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 
 	sc.Step(`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment)
 	sc.Step(`^I create a synthetic managed APIP gateway$`, s.createManagedGateway)
-	sc.Step(`^the managed APIP gateway should be retrievable through the gateways endpoint$`, s.getManagedGateway)
+	sc.Step(`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway)
 	sc.Step(`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway)
 	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
 }
@@ -132,7 +133,7 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 
 func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collection string, waitForNotFound bool) cleanup.Deleter {
 	return func(ctx context.Context, resource cleanup.Resource) error {
-		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPBML)
+		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 		if err != nil {
 			return err
 		}

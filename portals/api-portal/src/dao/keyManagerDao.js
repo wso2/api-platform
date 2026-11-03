@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
+const constants = require('../utils/constants');
 const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'key_managers';
@@ -37,9 +38,12 @@ const create = async (orgId, kmData, createdBy) => {
 
     try {
         await db.execute(
-            `INSERT INTO ${TABLE} (uuid, org_uuid, portal_id, handle, display_name, enabled, token_endpoint, created_by, created_at, updated_by, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, orgId, getPortalId(), kmData.handle, kmData.displayName, enabled, kmData.tokenEndpoint, createdBy, now, createdBy, now]
+            `INSERT INTO ${TABLE} (uuid, org_uuid, portal_id, handle, display_name, enabled, token_endpoint, key_type, created_by, created_at, updated_by, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            // key_type is validated by the service against constants.KEY_TYPE; the
+            // fallback keeps the column's own default for a caller that omits it.
+            [uuid, orgId, getPortalId(), kmData.handle, kmData.displayName, enabled, kmData.tokenEndpoint,
+                kmData.keyType || constants.KEY_TYPE.PRODUCTION, createdBy, now, createdBy, now]
         );
     } catch (error) {
         // Let the raw driver error (pg 23505 / sqlite UNIQUE / mssql 2601-2627) propagate
@@ -58,6 +62,7 @@ const create = async (orgId, kmData, createdBy) => {
         display_name: kmData.displayName,
         enabled,
         token_endpoint: kmData.tokenEndpoint,
+        key_type: kmData.keyType || constants.KEY_TYPE.PRODUCTION,
         created_by: createdBy,
         created_at: now,
         updated_by: createdBy,
@@ -76,6 +81,9 @@ const update = async (orgId, kmId, kmData, updatedBy) => {
     if (kmData.displayName) { setClauses.push('display_name = ?'); params.push(kmData.displayName); }
     if (kmData.enabled !== undefined) { setClauses.push('enabled = ?'); params.push(kmData.enabled ? 1 : 0); }
     if (kmData.tokenEndpoint) { setClauses.push('token_endpoint = ?'); params.push(kmData.tokenEndpoint); }
+    // key_type is absent on purpose. It is fixed at creation — keys already issued
+    // were created as one kind, and relabelling the key manager cannot change what
+    // they are — so the service answers 409 rather than this silently applying it.
     params.push(kmId, orgId, getPortalId());
 
     try {

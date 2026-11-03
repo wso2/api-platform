@@ -2118,6 +2118,90 @@ func TestValidateLLMProxy_ReservedHealthPath(t *testing.T) {
 	})
 }
 
+// The gateway JWKS endpoint (constants.GatewayJWKSPath) is reserved as an
+// LLMProvider spec.context while the endpoint is enabled, and free otherwise.
+// Not parallel: the reservation is a package-level switch.
+func TestValidateLLMProvider_ReservedJWKSPath(t *testing.T) {
+	validator := NewLLMValidator()
+
+	newProvider := func(context *string) api.LLMProviderConfiguration {
+		return api.LLMProviderConfiguration{
+			ApiVersion: "gateway.api-platform.wso2.com/v1",
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   "my-provider",
+				Version:       "v1.0",
+				Template:      "openai",
+				Context:       context,
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		}
+	}
+
+	t.Run("context at the JWKS endpoint is rejected", func(t *testing.T) {
+		provider := newProvider(stringPtr(constants.GatewayJWKSPath))
+		errs := validator.Validate(&provider)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	// spec.context is passed through raw, so the reservation's own leading-slash
+	// normalization is what catches a relative form.
+	t.Run("relative context naming the JWKS endpoint is rejected", func(t *testing.T) {
+		provider := newProvider(stringPtr(strings.TrimPrefix(constants.GatewayJWKSPath, "/")))
+		errs := validator.Validate(&provider)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	t.Run("context is free while the endpoint is disabled", func(t *testing.T) {
+		SetGatewayJWKSPathReserved(false)
+		t.Cleanup(func() { SetGatewayJWKSPathReserved(true) })
+
+		provider := newProvider(stringPtr(constants.GatewayJWKSPath))
+		assert.Empty(t, validator.Validate(&provider))
+	})
+}
+
+// Same reservation, checked against an LLMProxy's spec.context.
+func TestValidateLLMProxy_ReservedJWKSPath(t *testing.T) {
+	validator := NewLLMValidator()
+
+	newProxy := func(context *string) api.LLMProxyConfiguration {
+		return api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
+			Metadata:   api.Metadata{Name: "openai-proxy"},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "my-proxy",
+				Version:     "v1.0",
+				Context:     context,
+				Provider:    &api.LLMProxyProvider{Id: "openai"},
+			},
+		}
+	}
+
+	t.Run("context at the JWKS endpoint is rejected", func(t *testing.T) {
+		proxy := newProxy(stringPtr(constants.GatewayJWKSPath))
+		errs := validator.Validate(&proxy)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	t.Run("relative context naming the JWKS endpoint is rejected", func(t *testing.T) {
+		proxy := newProxy(stringPtr(strings.TrimPrefix(constants.GatewayJWKSPath, "/")))
+		errs := validator.Validate(&proxy)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	t.Run("context is free while the endpoint is disabled", func(t *testing.T) {
+		SetGatewayJWKSPathReserved(false)
+		t.Cleanup(func() { SetGatewayJWKSPathReserved(true) })
+
+		proxy := newProxy(stringPtr(constants.GatewayJWKSPath))
+		assert.Empty(t, validator.Validate(&proxy))
+	})
+}
+
 func TestValidateLLMProvider_Resilience(t *testing.T) {
 	validator := NewLLMValidator()
 

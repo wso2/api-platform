@@ -359,11 +359,13 @@ Status Code **200**
 |»»»»» upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
 |»»»»»» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
 |»»»»»» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
+|»»»»» tls|object|false|none|Optional mutual-TLS presentation and trust for this backend. `identity` (string) names a gateway identity — a certificate uploaded to POST /certificates with usage: identity — to present on the connection. `trustedCAs` (array of string) lists usage: upstream certificates to trust for this backend in place of the gateway-wide trust bundle; omit to use the gateway bundle. `verifyHostName` (boolean, default true) controls SAN/hostname verification against the target. Every target in a definition carrying `tls` must use https://. Unknown keys are rejected at deploy time.|
 |»»»» upstream|object|true|none|API-level upstream configuration|
 |»»»»» main|[Upstream](schemas.md#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
 |»»»»»» url|string(uri)|false|none|Direct backend URL to route traffic to|
 |»»»»»» ref|string|false|none|Reference to a predefined upstreamDefinition|
 |»»»»»» hostRewrite|string|false|none|Controls how the Host header is handled when routing to the upstream. `auto` delegates host rewriting to Envoy, which rewrites the Host header using the upstream cluster host. `manual` disables automatic rewriting and expects explicit configuration.|
+|»»»»»» tls|object|false|none|Not supported on an inline upstream (a `url`-based main/sandbox entry); a tls block placed here is rejected at deploy time. Put it on the upstreamDefinitions entry referenced via `ref`.|
 
 *oneOf*
 
@@ -391,6 +393,7 @@ Status Code **200**
 |»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
+|»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |»»»»» timeout|string|false|none|Maximum time for the entire route (request to upstream response). "0s" disables the timeout.|
 |»»»»» idleTimeout|string|false|none|Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.|
@@ -407,6 +410,7 @@ Status Code **200**
 |»»»»»»» value|string|true|none|Header value to match|
 |»»»»»»» type|string|false|none|Header match type|
 |»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|»»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Fault policies that apply only to this operation, in addition to any declared at the API level. Both levels run, operation-level entries first.|
 |»»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |»»»» deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
 
@@ -421,6 +425,10 @@ Status Code **200**
 |»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
 |»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
 |»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
+|»»»» warnings|[[Warning](schemas.md#schemawarning)]|false|read-only|Non-fatal deploy-time findings (e.g. a policy's parameters resolved to something other than what was written, such as an omitted accept list inheriting the whole client-CA pool). Present only when non-empty.|
+|»»»»» code|string|false|none|none|
+|»»»»» field|string|false|none|none|
+|»»»»» message|string|false|none|none|
 
 #### Enumerated Values
 
@@ -452,6 +460,15 @@ Status Code **200**
 |deploymentState|undeployed|
 |state|deployed|
 |state|undeployed|
+|code|MTLS_ACCEPT_INHERITS_POOL|
+|code|MTLS_ACCEPT_UNNARROWED|
+|code|MTLS_AUTH_NOT_FIRST|
+|code|MTLS_ACCEPT_NAMES_RELAY_AUTHORITY|
+|code|MTLS_THUMBPRINT_NORMALISED|
+|code|HEADER_CERT_BYPASS_ACTIVE|
+|code|MTLS_HOSTNAME_NOT_SCOPED|
+|code|TLS_VERIFY_HOSTNAME_DISABLED|
+|code|TLS_IDENTITY_EXPIRED|
 
 ## Get RestAPI by id
 
@@ -1285,6 +1302,7 @@ Required roles: `admin`
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription plan created|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Request body exceeds the maximum allowed size|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List subscription plans
@@ -1482,7 +1500,10 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan updated|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request (invalid field values, or throttle limits not set or cleared together)|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - another subscription plan already uses this planName|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Request body exceeds the maximum allowed size|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Delete a subscription plan
@@ -1501,7 +1522,7 @@ curl -X DELETE http://localhost:9090/api/management/v1/subscription-plans/{planI
 
 ```
 
-Delete a subscription plan from the Gateway.
+Delete a subscription plan from the Gateway. A plan that any subscription still uses cannot be deleted.
 
 ### Authentication
 
@@ -1541,6 +1562,7 @@ Required roles: `admin`
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription plan deleted|None|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - the subscription plan is still used by one or more subscriptions|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Create a subscription
@@ -1567,6 +1589,7 @@ Subscribe an application to a RestAPI in the Gateway.
 
 ```json
 {
+  "externalRefId": "apim-sub-7f1c2a9e",
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
   "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
@@ -1599,6 +1622,7 @@ Required roles: `admin`
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1618,7 +1642,8 @@ Required roles: `admin`
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription created|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - subscription already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - the subscription conflicts with an existing subscription|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Request body exceeds the maximum allowed size|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List subscriptions
@@ -1673,6 +1698,7 @@ Required roles: `admin`
   "subscriptions": [
     {
       "id": "string",
+      "externalRefId": "string",
       "apiId": "string",
       "applicationId": "string",
       "subscriptionToken": "string",
@@ -1736,6 +1762,7 @@ Required roles: `admin`
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1781,7 +1808,9 @@ Update an existing subscription in the Gateway.
 
 ```json
 {
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "subscriptionPlanId": "string",
+  "subscriptionToken": "string"
 }
 ```
 
@@ -1808,6 +1837,7 @@ Required roles: `admin`
 ```json
 {
   "id": "string",
+  "externalRefId": "string",
   "apiId": "string",
   "applicationId": "string",
   "subscriptionToken": "string",
@@ -1826,7 +1856,10 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription updated|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request (invalid status, invalid token, or plan not found, not active or not enabled for the API)|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - the subscription conflicts with an existing subscription|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|413|[Payload Too Large](https://tools.ietf.org/html/rfc7231#section-6.5.11)|Request body exceeds the maximum allowed size|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Delete a subscription

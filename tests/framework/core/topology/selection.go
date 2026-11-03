@@ -19,13 +19,22 @@
 package topology
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"maps"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/components"
 )
+
+// ErrNothingToRun reports that a policy selection left no runner to execute, for example
+// because every selected policy is gated to a newer Gateway release. Callers treat it as a
+// skip, not a failure.
+var ErrNothingToRun = errors.New("topology: the policy selection has nothing to run")
 
 // Selection narrows the blocks, runners, and coverage mode used for a run.
 type Selection struct {
@@ -52,11 +61,26 @@ type Selection struct {
 	// Coverage enables instrumented images and runtime coverage collection.
 	Coverage bool
 
-	// GatewayVersion overrides the image version for platform-gateway components.
+	// GatewayVersion overrides the image version for platform-gateway components. A release
+	// such as "1.2.0" pulls that release and uses its configuration and contract. "latest"
+	// pulls the images published nightly from main, and uses the current configuration and
+	// contract, as a source build does.
 	GatewayVersion string
+
+	// GatewayHost overrides the image repository prefix for platform-gateway
+	// controller and runtime images.
+	GatewayHost string
 
 	// CloudEnvironment selects the external cloud environment used by cloud-console.
 	CloudEnvironment string
+
+	// Policies names the policies whose integration runners are taken from the policy tree
+	// by blocks declaring runnersFrom. Empty means every policy that declares runners.
+	Policies []string
+
+	// RepoRoot is the project root that relative policy trees resolve against. It is required
+	// when a block takes its runners from a policy tree.
+	RepoRoot string
 }
 
 // Flags registers selection flags on fs.
@@ -73,15 +97,73 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 		"godog tag filter applied to every runner: ',' is OR, '&&' is AND, '~' is NOT "+
 			"(e.g. \"@metrics,@certificates\"). NOT cucumber's and/or/not words — those parse "+
 			"as one literal tag name and silently match nothing")
+	fs.Func("policies", "comma-separated policies whose integration runners to run "+
+		"(default: every policy that declares runners)", func(v string) error {
+		s.Policies = append(s.Policies, splitList(v)...)
+		return nil
+	})
 	fs.IntVar(&s.Parallel, "block-parallel", 0, "override how many blocks run concurrently")
 	fs.IntVar(&s.RunnerParallel, "runner-parallel", 0,
 		"override how many runners run concurrently within each block")
 	fs.BoolVar(&s.Coverage, "coverage", false,
 		"build instrumented source images and collect runtime coverage")
 	fs.StringVar(&s.GatewayVersion, "gateway-version", "",
-		"override the platform-gateway image version for this run")
+		"override the platform-gateway image version for this run: a release such as 1.2.0, or latest for the images published nightly from main")
+	fs.StringVar(&s.GatewayHost, "host", "",
+		"override the platform-gateway image repository prefix (requires -gateway-version)")
 	fs.StringVar(&s.CloudEnvironment, "cloud-env", "",
 		"select the cloud environment for external cloud-console components")
+}
+
+func normalizeGatewayHost(raw string) (string, error) {
+	host := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if host == "" {
+		return "", nil
+	}
+	if strings.Contains(host, "://") || strings.ContainsAny(host, " \t\r\n?#") {
+		return "", fmt.Errorf("topology: -host must be an image repository prefix such as registry.example/test-gateway")
+	}
+	return host, nil
+}
+
+func withGatewayHost(def *components.Definition, host string) *components.Definition {
+	if def == nil || host == "" {
+		return def
+	}
+	out := *def
+	out.Image = withGatewayImageHost(def.Image, host)
+	if def.Compose == nil {
+		return &out
+	}
+	compose := *def.Compose
+	if def.Compose.Env != nil {
+		compose.Env = maps.Clone(def.Compose.Env)
+		for key, ref := range compose.Env {
+			if strings.HasSuffix(key, "_IMAGE") {
+				compose.Env[key] = rewriteGatewayImageHost(ref, host)
+			}
+		}
+	}
+	out.Compose = &compose
+	return &out
+}
+
+func withGatewayImageHost(image components.ImageRef, host string) components.ImageRef {
+	image.Ref = rewriteGatewayImageHost(image.Ref, host)
+	if len(image.ByArch) > 0 {
+		image.ByArch = maps.Clone(image.ByArch)
+		for arch, ref := range image.ByArch {
+			image.ByArch[arch] = rewriteGatewayImageHost(ref, host)
+		}
+	}
+	return image
+}
+
+func rewriteGatewayImageHost(ref, host string) string {
+	if !strings.HasPrefix(ref, shared.GatewayReleaseRegistry+"/") {
+		return ref
+	}
+	return host + strings.TrimPrefix(ref, shared.GatewayReleaseRegistry)
 }
 
 func splitList(v string) []string {
@@ -109,6 +191,13 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	if strings.TrimSpace(s.GatewayVersion) != "" && s.Coverage {
 		return nil, fmt.Errorf("topology: -gateway-version cannot be combined with -coverage; coverage requires framework-built gateway images")
 	}
+	gatewayHost, err := normalizeGatewayHost(s.GatewayHost)
+	if err != nil {
+		return nil, err
+	}
+	if gatewayHost != "" && strings.TrimSpace(s.GatewayVersion) == "" {
+		return nil, fmt.Errorf("topology: -host requires -gateway-version")
+	}
 	out := &Resolved{
 		Name:     resolved.Name,
 		Parallel: resolved.Parallel,
@@ -130,6 +219,7 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 
 	matchedInclude := map[string]bool{}
 	matchedExclude := map[string]bool{}
+	policyRunnersUsed := false
 
 	for i := range resolved.Blocks {
 		block := cloneBlock(resolved.Blocks[i])
@@ -137,10 +227,18 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			for j := range block.Components {
 				component := &block.Components[j]
 				if component.Def != nil && component.Def.Name == "platform-gateway" {
-					var err error
-					component.Def, err = component.Def.WithReleaseVersion(version)
-					if err != nil {
-						return nil, fmt.Errorf("topology: block %q: %w", block.Name, err)
+					if isLatestGatewayVersion(version) {
+						version = LatestGatewayVersion
+						component.Def = component.Def.WithImageVersion(version)
+					} else {
+						var err error
+						component.Def, err = component.Def.WithReleaseVersion(version)
+						if err != nil {
+							return nil, fmt.Errorf("topology: block %q: %w", block.Name, err)
+						}
+					}
+					if gatewayHost != "" {
+						component.Def = withGatewayHost(component.Def, gatewayHost)
 					}
 					component.Version = version
 					component.BuildFromSource = false
@@ -187,6 +285,25 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			}
 			out.SkippedBlocks = append(out.SkippedBlocks, *skipped)
 			continue
+		}
+
+		if block.RunnersFrom != "" {
+			if s.RepoRoot == "" {
+				return nil, fmt.Errorf("topology: block %q takes its runners from a policy tree, which needs Selection.RepoRoot", block.Name)
+			}
+			policyRunners, skipped, err := expandPolicyRunners(&block, s.RepoRoot, s.Policies)
+			if err != nil {
+				return nil, fmt.Errorf("topology: block %q: %w", block.Name, err)
+			}
+			policyRunnersUsed = true
+			out.SkippedRunners = append(out.SkippedRunners, skipped...)
+			if len(policyRunners) == 0 {
+				continue
+			}
+			block.Runners = policyRunners
+			if err := validateExpandedRunners(&block); err != nil {
+				return nil, err
+			}
 		}
 
 		runners, skippedRunners, err := selectGatewayVersionRunners(&block)
@@ -275,7 +392,14 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			strings.Join(unmatched, ", "), strings.Join(available, ", "))
 	}
 
+	if len(s.Policies) > 0 && !policyRunnersUsed {
+		return nil, fmt.Errorf("topology: -policies selects policies, but no selected block takes its runners from a policy tree")
+	}
+
 	if len(out.Blocks) == 0 {
+		if len(s.Policies) > 0 {
+			return nil, nothingToRun(out)
+		}
 		if len(out.SkippedBlocks) > 0 {
 			reasons := make([]string, 0, len(out.SkippedBlocks))
 			for _, skipped := range out.SkippedBlocks {
@@ -296,6 +420,30 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	}
 
 	return out, nil
+}
+
+// validateExpandedRunners applies the runner checks of a static block to runners resolved at
+// selection time.
+func validateExpandedRunners(block *ResolvedBlock) error {
+	static := *block
+	static.RunnersFrom = ""
+	return validateBlockRunners(&static, map[string]map[string]featureOwner{})
+}
+
+// nothingToRun describes a policy selection that left no block to run.
+func nothingToRun(out *Resolved) error {
+	reasons := make([]string, 0, len(out.SkippedBlocks)+len(out.SkippedRunners))
+	for _, skipped := range out.SkippedBlocks {
+		reasons = append(reasons, fmt.Sprintf("%s: %s", skipped.Block, skipped.Reason))
+	}
+	for _, skipped := range out.SkippedRunners {
+		reasons = append(reasons, fmt.Sprintf("%s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason))
+	}
+	sort.Strings(reasons)
+	if len(reasons) == 0 {
+		return ErrNothingToRun
+	}
+	return fmt.Errorf("%w (%s)", ErrNothingToRun, strings.Join(reasons, "; "))
 }
 
 // combineTags combines runner and selection tag expressions.

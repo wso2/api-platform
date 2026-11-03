@@ -18,21 +18,28 @@
 
 import { FormattedMessage } from 'react-intl';
 
-import { ComingSoon } from '../../../../components/ComingSoon';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
+import { AppPage } from '@/components/AppPage';
+import { ComingSoon } from '@/components/ComingSoon';
+import { routes } from '@/routes/paths';
+import { ScopeGate } from '@/scope/ScopeGate';
 
 export function AdminPage() {
   return (
-    <ScopeGate prompt="Administration is scoped to a single API." requires="api" to={routes.apiAdmin}>
-      <ComingSoon
-        feature={
-          <FormattedMessage
-            id="appShell.adminPage.feature"
-            defaultMessage="Administration for this API"
-          />
-        }
-      />
-    </ScopeGate>
+    <AppPage>
+      <ScopeGate
+        prompt="Administration is scoped to a single API."
+        requires="api"
+        to={routes.apiAdmin}
+      >
+        <ComingSoon
+          feature={
+            <FormattedMessage
+              id="appShell.adminPage.feature"
+              defaultMessage="Administration for this API"
+            />
+          }
+        />
+      </ScopeGate>
+    </AppPage>
   );
 }

@@ -324,7 +324,7 @@ function MCPProxyQuickStartInner({
   const handleCreateMCPServer = async () => {
     if (!selectedProject?.id || !isStep2Valid) return;
 
-    const gatewayId = createdGateway?.id ?? preferredGatewayId;
+    const gatewayId = preferredGatewayId ?? createdGateway?.id ?? null;
     let serverId = createdServerId;
     const isNewServer = !serverId;
 
@@ -407,7 +407,7 @@ function MCPProxyQuickStartInner({
   };
 
   const handleRedeploy = async () => {
-    const gatewayId = createdGateway?.id ?? preferredGatewayId;
+    const gatewayId = preferredGatewayId ?? createdGateway?.id ?? null;
     if (!createdServerId || !gatewayId) {
       return;
     }

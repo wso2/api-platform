@@ -1,0 +1,5 @@
+apiVersion: ${VALUE:apiVersion}
+kind: GraphQLApi
+metadata:
+  name: ${VALUE:name}
+spec: {}

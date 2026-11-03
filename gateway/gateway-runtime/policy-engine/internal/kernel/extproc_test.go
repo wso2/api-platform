@@ -99,7 +99,7 @@ func TestNewExternalProcessorServer(t *testing.T) {
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	tracingConfig := config.TracingConfig{}
 
-	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "test-service", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "test-service", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	require.NotNil(t, server)
 	assert.Equal(t, kernel, server.kernel)
@@ -120,7 +120,7 @@ func TestNewExternalProcessorServer_NonPositiveDecompressionCaps(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := NewExternalProcessorServer(NewKernel(), executor.NewChainExecutor(nil, nil, nil),
-				config.TracingConfig{}, "", tc.req, tc.resp)
+				config.TracingConfig{}, "", tc.req, tc.resp, nil)
 
 			require.NotNil(t, server)
 			assert.Equal(t, config.DefaultMaxDecompressedBytes, server.maxRequestDecompressedBytes)
@@ -134,7 +134,7 @@ func TestNewExternalProcessorServer_DefaultServiceName(t *testing.T) {
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	tracingConfig := config.TracingConfig{}
 
-	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	require.NotNil(t, server)
 	// Tracer should be created with default name
@@ -148,7 +148,7 @@ func TestNewExternalProcessorServer_DefaultServiceName(t *testing.T) {
 func TestGenerateRequestID(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	id1 := server.generateRequestID()
 	id2 := server.generateRequestID()
@@ -167,7 +167,7 @@ func TestGenerateRequestID(t *testing.T) {
 func TestSkipAllProcessing(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	routeMetadata := RouteMetadata{
 		RouteName:  "test-route",
@@ -202,7 +202,7 @@ func TestSkipAllProcessing(t *testing.T) {
 func TestProcess_EmptyStream(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{})
 
@@ -215,7 +215,7 @@ func TestProcess_EmptyStream(t *testing.T) {
 func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
@@ -333,7 +333,7 @@ func TestTraceContextCarrier(t *testing.T) {
 func TestProcess_UnknownRequestType(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	// Create a request with nil Request field
 	req := &extprocv3.ProcessingRequest{}
@@ -355,7 +355,7 @@ func TestProcess_UnknownRequestType(t *testing.T) {
 func TestProcess_RecvError(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{})
 	stream.recvErr = errors.New("receive error")
@@ -368,7 +368,7 @@ func TestProcess_RecvError(t *testing.T) {
 func TestProcess_ContextCanceled(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{})
 	stream.recvErr = context.Canceled
@@ -382,7 +382,7 @@ func TestProcess_ContextCanceled(t *testing.T) {
 func TestProcess_SendError(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
@@ -405,7 +405,7 @@ func TestProcess_SendError(t *testing.T) {
 func TestHandleProcessingPhase_RequestBody_NoContext(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestBody{
@@ -437,7 +437,7 @@ func TestHandleProcessingPhase_RequestBody_NoContext(t *testing.T) {
 func TestHandleProcessingPhase_ResponseHeaders_NoContext(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_ResponseHeaders{
@@ -472,7 +472,7 @@ func TestHandleProcessingPhase_ResponseHeaders_NoContext(t *testing.T) {
 func TestHandleProcessingPhase_ResponseBody_NoContext(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_ResponseBody{
@@ -504,7 +504,7 @@ func TestHandleProcessingPhase_ResponseBody_NoContext(t *testing.T) {
 func TestInitializeExecutionContext_NoPolicyChain(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
@@ -548,7 +548,7 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{"test-route": rc})
 
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
@@ -586,4 +586,80 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	assert.NotNil(t, execCtx.requestBodyCtx)
 	assert.Equal(t, "/api/v1/pets", execCtx.requestBodyCtx.Path)
 	assert.Equal(t, "GET", execCtx.requestBodyCtx.Method)
+}
+
+// =============================================================================
+// extractDownstreamTLS
+// =============================================================================
+
+// TestExtractDownstreamTLS_AttributesNil guards that a nil attributes map
+// yields a nil DownstreamTLS, so a policy sees the attributes as absent.
+func TestExtractDownstreamTLS_AttributesNil(t *testing.T) {
+	assert.Nil(t, extractDownstreamTLS(nil))
+}
+
+// TestExtractDownstreamTLS_ExtProcFilterEmpty covers an ext_proc entry with
+// no fields: the struct exists, so the result is a non-nil, MTLS-false value.
+func TestExtractDownstreamTLS_ExtProcFilterEmpty(t *testing.T) {
+	attrs := map[string]*structpb.Struct{constants.ExtProcFilter: {}}
+
+	tls := extractDownstreamTLS(attrs)
+
+	require.NotNil(t, tls)
+	assert.False(t, tls.MTLS)
+	assert.Nil(t, tls.PeerCertValid)
+}
+
+// TestExtractDownstreamTLS_AllFieldsPresent guards the field mapping for a
+// fully populated mTLS connection, with PeerCertValid a non-nil true.
+func TestExtractDownstreamTLS_AllFieldsPresent(t *testing.T) {
+	attrs := map[string]*structpb.Struct{
+		constants.ExtProcFilter: {
+			Fields: map[string]*structpb.Value{
+				constants.ExtProcAttrConnectionMTLS:                   structpb.NewBoolValue(true),
+				constants.ExtProcAttrConnectionPeerCertificateDigest:  structpb.NewStringValue("deadbeef"),
+				constants.ExtProcAttrConnectionSubjectPeerCertificate: structpb.NewStringValue("CN=client-valid"),
+				constants.ExtProcAttrConnectionURISANPeerCertificate:  structpb.NewStringValue("urn:partner-a:payments"),
+				constants.ExtProcAttrConnectionDNSSANPeerCertificate:  structpb.NewStringValue("client-valid.partner-a.test"),
+				constants.ExtProcAttrConnectionPeerCertificate:        structpb.NewStringValue("-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----\n"),
+				constants.ExtProcAttrConnectionTLSVersion:             structpb.NewStringValue("TLSv1.3"),
+				constants.ExtProcAttrConnectionRequestedServerName:    structpb.NewStringValue("api.example.com"),
+				constants.ExtProcAttrConnectionPeerCertificateValid:   structpb.NewBoolValue(true),
+			},
+		},
+	}
+
+	tls := extractDownstreamTLS(attrs)
+
+	require.NotNil(t, tls)
+	assert.True(t, tls.MTLS)
+	assert.Equal(t, "deadbeef", tls.SHA256Thumbprint)
+	assert.Equal(t, "CN=client-valid", tls.SubjectDN)
+	assert.Equal(t, "urn:partner-a:payments", tls.FirstURISAN)
+	assert.Equal(t, "client-valid.partner-a.test", tls.FirstDNSSAN)
+	assert.Equal(t, "-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----\n", tls.PeerCertificatePEM)
+	assert.Equal(t, "TLSv1.3", tls.TLSVersion)
+	assert.Equal(t, "api.example.com", tls.RequestedServerName)
+	require.NotNil(t, tls.PeerCertValid)
+	assert.True(t, *tls.PeerCertValid)
+}
+
+// TestExtractDownstreamTLS_PeerCertValid_FalsePointer guards that a false
+// verdict becomes a non-nil pointer to false, distinct from an absent one.
+func TestExtractDownstreamTLS_PeerCertValid_FalsePointer(t *testing.T) {
+	attrs := map[string]*structpb.Struct{
+		constants.ExtProcFilter: {
+			Fields: map[string]*structpb.Value{
+				constants.ExtProcAttrConnectionMTLS:                 structpb.NewBoolValue(true),
+				constants.ExtProcAttrConnectionPeerCertificateValid: structpb.NewBoolValue(false),
+			},
+		},
+	}
+
+	tls := extractDownstreamTLS(attrs)
+
+	require.NotNil(t, tls)
+	assert.True(t, tls.MTLS)
+	require.NotNil(t, tls.PeerCertValid)
+	assert.False(t, *tls.PeerCertValid)
 }

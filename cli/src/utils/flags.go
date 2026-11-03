@@ -79,12 +79,16 @@ const (
 	FlagExpiryTime             = "expiry-time"
 	FlagSubscriptionPlanID     = "subscription-plan-id"
 	FlagSubscriptionToken      = "subscription-token"
+	FlagClearSubscriptionPlan  = "clear-subscription-plan"
+	FlagRotateToken            = "rotate-token"
 	FlagBillingCustomerID      = "billing-customer-id"
 	FlagBillingSubscriptionID  = "billing-subscription-id"
 	FlagReferenceID            = "reference-id"
 	FlagGatewayType            = "gateway-type"
 	FlagProjectID              = "project-id"
 	FlagEnvFile                = "env-file"
+	FlagExpiresInDuration      = "expires-in-duration"
+	FlagExpiresInUnit          = "expires-in-unit"
 )
 
 var shortFlags = map[string]string{

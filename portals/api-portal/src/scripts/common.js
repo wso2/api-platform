@@ -209,6 +209,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const apisLink = document.getElementById('apis');
         const applicationsLink = document.getElementById('applications');
         const mcpLink = document.getElementById('mcps');
+        const keysSubmenu = document.getElementById('keys-submenu');
+        const keysLink = document.getElementById('keys');
+        const billingSubmenu = document.getElementById('billing-submenu');
+        const billingLink = document.getElementById('billing');
 
         // Function to extract base path from links in the sidebar
         const extractBasePath = () => {
@@ -246,9 +250,17 @@ document.addEventListener("DOMContentLoaded", function () {
             apisLink?.classList.remove('has-active-submenu');
         } else if (firstSegment === 'api-workflows') {
             document.getElementById('api-workflows')?.classList.add('active');
-        } else if (firstSegment === 'api-keys') {
-            // Global API Keys page (distinct from the per-API /api/:id/api-keys submenu item)
-            document.getElementById('api-keys')?.classList.add('active');
+        } else if (firstSegment === 'api-keys' || firstSegment === 'oauth2-keys') {
+            // Both live under "Keys": API keys the portal issues itself, OAuth2 keys it
+            // has an identity server issue. Either arrival opens the section and marks
+            // the parent, then the entry that matches.
+            // Distinct from the per-API /api/:id/api-keys submenu item, which is matched
+            // by the 'api' branch below.
+            keysSubmenu?.classList.add('show');
+            keysLink?.classList.add('active');
+            keysLink?.classList.add('has-active-submenu');
+            const keysEntry = firstSegment === 'api-keys' ? 'api-keys' : 'oauth2-keys-nav';
+            document.getElementById(keysEntry)?.classList.add('active');
         } else if (firstSegment === 'api') {
             apiSubmenu?.classList.add('show');
             apisLink?.classList.add('active');
@@ -313,6 +325,13 @@ document.addEventListener("DOMContentLoaded", function () {
             mcpLink?.classList.remove('has-active-submenu');
         } else if (firstSegment === 'subscriptions') {
             document.getElementById('subscriptions')?.classList.add('active');
+        } else if (firstSegment === 'billing' || firstSegment === 'usage') {
+            // The Invoices page (/billing/invoices) and the Usage page (/usage) are both under the
+            // Billing menu: open the menu and highlight the current page in it.
+            billingSubmenu?.classList.add('show');
+            billingLink?.classList.add('active');
+            billingLink?.classList.add('has-active-submenu');
+            document.getElementById(firstSegment === 'usage' ? 'usage' : 'billing-invoices')?.classList.add('active');
         } else if (firstSegment === 'settings' || currentPath.includes('/settings')) {
             document.getElementById('admin-settings')?.classList.add('active');
         }

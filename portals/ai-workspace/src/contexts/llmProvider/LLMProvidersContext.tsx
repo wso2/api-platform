@@ -21,6 +21,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useCallback,
 } from 'react';
@@ -41,11 +42,13 @@ import {
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 import {
   trackLLMProviderCreate,
   trackLLMProviderUpdate,
   trackLLMProviderDelete,
 } from '../../utils/app-insights';
+import { useResourceLimits } from '../../hooks/useResourceLimits';
 
 // ============================================================================
 // LLM Providers List Context - For managing the list of all providers
@@ -104,9 +107,17 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
   const [error, setError] = useState<Error | null>(null);
 
   const organizationId = currentOrganization?.uuid ?? '';
+  // Asks whichever extension supplies the component ceilings to re-read them
+  // after a create or a delete — see hooks/useResourceLimits.
+  const { refresh: refreshResourceLimits } = useResourceLimits();
+
+  // Switching organizations leaves the previous fetch in flight; only the
+  // most recent request is allowed to write its result.
+  const providersRequestRef = useRef(0);
 
   // Fetch all providers
   const fetchProviders = useCallback(async () => {
+    const requestId = (providersRequestRef.current += 1);
     if (!organizationId) {
       setProvidersResponse(EMPTY_PROVIDERS_RESPONSE);
       setIsLoading(false);
@@ -116,20 +127,26 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await llmProviderApis.getLLMProviders(
-        organizationId,
-        PLATFORM_API_BASE_URL
+      // The collection endpoint defaults to limit=20 when unpaged, and this
+      // list has no pager of its own — walk every page so organizations with
+      // more than 20 providers aren't silently truncated.
+      const response = await fetchAllPages<LLMProvider>((limit, offset) =>
+        llmProviderApis.getLLMProviders(organizationId, PLATFORM_API_BASE_URL, limit, offset)
       );
+      if (providersRequestRef.current !== requestId) return;
       // Store the full API response as-is
       setProvidersResponse(response as LLMProvidersResponse);
     } catch (err) {
+      if (providersRequestRef.current !== requestId) return;
       logger.error('Failed to fetch LLM providers:', err);
       setError(
         err instanceof Error ? err : new Error('Failed to fetch providers')
       );
       // Keep existing response on error
     } finally {
-      setIsLoading(false);
+      if (providersRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [organizationId, PLATFORM_API_BASE_URL]);
 
@@ -231,13 +248,18 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           provider.template ?? 'custom'
         );
 
+        // The organization's LLM-provider count behind `canCreate` was read before
+        // this create; without a re-read the create button stays enabled past the
+        // ceiling until the next navigation.
+        refreshResourceLimits();
+
         return newProvider;
       } catch (err) {
         logger.error('Failed to create LLM provider:', err);
         throw err;
       }
     },
-    [organizationId, PLATFORM_API_BASE_URL]
+    [organizationId, PLATFORM_API_BASE_URL, refreshResourceLimits]
   );
 
   const updateProvider = useCallback(
@@ -378,6 +400,10 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
           },
         }));
 
+        // Frees a slot — re-read so a create button disabled on the ceiling comes
+        // back without a navigation.
+        refreshResourceLimits();
+
         // Track LLM Provider deletion
         trackLLMProviderDelete(
           organizationId,
@@ -389,7 +415,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         throw err;
       }
     },
-    [organizationId, PLATFORM_API_BASE_URL]
+    [organizationId, PLATFORM_API_BASE_URL, refreshResourceLimits]
   );
 
   const refreshProviders = useCallback(async (): Promise<void> => {

@@ -24,6 +24,6 @@ Feature: APIP cloud managed gateway lifecycle
     Given I obtain an APIP cloud console token
     And I select an existing APIP environment for a managed gateway
     When I create a synthetic managed APIP gateway
-    Then the managed APIP gateway should be retrievable through the gateways endpoint
+    Then the managed APIP gateway should be retrievable through the managed-gateway endpoint
     When I delete the synthetic managed APIP gateway
     Then the managed APIP gateway should eventually be absent

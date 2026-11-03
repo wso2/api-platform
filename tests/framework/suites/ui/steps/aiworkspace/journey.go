@@ -608,7 +608,11 @@ func (u *Steps) deploysToGateway(ctx context.Context) error {
 	}).First().Click(); err != nil {
 		return fmt.Errorf("opening the deploy screen: %w", err)
 	}
-	if err := page.Locator("button").Filter(playwright.LocatorFilterOptions{
+	card, err := u.blockGatewayCard(ctx, page)
+	if err != nil {
+		return err
+	}
+	if err := card.Locator("button").Filter(playwright.LocatorFilterOptions{
 		HasText: regexp.MustCompile(`^Deploy$`),
 	}).First().Click(); err != nil {
 		return fmt.Errorf("clicking Deploy on the gateway card: %w", err)
@@ -621,10 +625,74 @@ func (u *Steps) seesDeploymentActive(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	card, err := u.blockGatewayCard(ctx, page)
+	if err != nil {
+		return err
+	}
 	// The same row reads "Deployment Status Failed" on a broken deployment, so the
-	// assertion pins the label's own row, not a stray "Active" elsewhere on the page.
-	row := page.GetByText("Deployment Status").First().Locator("xpath=..")
-	return u.expect.Locator(row.GetByText("Active")).ToBeVisible()
+	// assertion pins the label's own row, not a stray "Active" elsewhere on the card.
+	// Exact, because a gateway that is not connected reads "Not Active".
+	row := card.GetByText("Deployment Status").First().Locator("xpath=..")
+	return u.expect.Locator(row.GetByText("Active", playwright.LocatorGetByTextOptions{
+		Exact: playwright.Bool(true),
+	})).ToBeVisible()
+}
+
+// blockGatewayCard returns the deploy screen's card for the block's connected gateway,
+// expanded. The screen lists every registered gateway as a collapsible card and expands only
+// the first, so while another runner has a gateway registered the block's own card can be
+// collapsed, or not be the first card at all.
+func (u *Steps) blockGatewayCard(ctx context.Context, page playwright.Page) (playwright.Locator, error) {
+	name, err := u.connectedGatewayName(ctx)
+	if err != nil {
+		return nil, err
+	}
+	card := page.Locator(".MuiAccordion-root").Filter(playwright.LocatorFilterOptions{
+		Has: page.GetByText(name, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)}),
+	}).First()
+	summary := card.Locator(".MuiAccordionSummary-root").First()
+	expanded, err := summary.GetAttribute("aria-expanded")
+	if err != nil {
+		return nil, fmt.Errorf("finding the deploy card for gateway %q: %w", name, err)
+	}
+	if expanded != "true" {
+		if err := summary.Click(); err != nil {
+			return nil, fmt.Errorf("expanding the deploy card for gateway %q: %w", name, err)
+		}
+	}
+	return card, nil
+}
+
+// connectedGatewayName is the display name of the block's gateway: the registered gateway
+// that is connected to platform-api. Gateways other runners register are never connected.
+func (u *Steps) connectedGatewayName(ctx context.Context) (string, error) {
+	page, base, token, err := u.platformAPI(ctx)
+	if err != nil {
+		return "", err
+	}
+	resp, err := page.Context().Request().Get(base+"/api/v0.9/gateways",
+		playwright.APIRequestContextGetOptions{
+			Headers:           map[string]string{"Authorization": "Bearer " + token},
+			IgnoreHttpsErrors: playwright.Bool(true),
+		})
+	if err != nil {
+		return "", fmt.Errorf("listing gateways: %w", err)
+	}
+	var gateways struct {
+		List []struct {
+			DisplayName string `json:"displayName"`
+			IsActive    bool   `json:"isActive"`
+		} `json:"list"`
+	}
+	if err := resp.JSON(&gateways); err != nil {
+		return "", fmt.Errorf("reading the gateway list: %w", err)
+	}
+	for _, g := range gateways.List {
+		if g.IsActive && g.DisplayName != "" {
+			return g.DisplayName, nil
+		}
+	}
+	return "", fmt.Errorf("no connected gateway is registered")
 }
 
 func (u *Steps) returnsToProviderOverview(ctx context.Context) error {

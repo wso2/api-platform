@@ -18,13 +18,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { getBillingOrganization } from '../billing/organization';
 import { BILLING_PROXY_ENABLED } from '../config.env';
 import { useAppAuth } from '../contexts/AppAuthContext';
-import { BILLING_API_BASE_URL } from '../paths';
-
-// Product code this workspace activates on first login. Must match the billing
-// product whose subscription drives APIP gateway provisioning.
-const PRODUCT = 'api-platform';
 
 /** How many times to re-try a failed activation, and how long to wait between tries. */
 const MAX_ATTEMPTS = 3;
@@ -33,9 +29,9 @@ const RETRY_DELAY_MS = 5000;
 /**
  * Performs billing first-login activation once the user is authenticated.
  *
- * GET <billing>/organization?product=api-platform both reads the organization's
- * subscription and, as a server-side side effect, activates it if it is currently
- * inactive. That activation is what emits subscription.activated, which is in turn
+ * Reading the organization's billing record both reads its subscription and, as a
+ * server-side side effect, activates it if it is currently inactive. That
+ * activation is what emits subscription.activated, which is in turn
  * what provisions this organization's gateway — so without this call an organization
  * whose users only ever open the AI Workspace has no gateway to deploy to, and the
  * absence surfaces much later as a payment-required error on the first environment or
@@ -45,8 +41,11 @@ const RETRY_DELAY_MS = 5000;
  * reaches first is the one that has to activate. Activation is idempotent — it acts
  * only on the inactive transition — so both firing is harmless.
  *
- * Routed through the BFF's same-origin proxy — this component never sees a token or
- * the real billing service URL.
+ * The read itself lives in `billing/organization`, which is the single owner of that
+ * call: a cloud extension that also wants the billing record (the trial badge)
+ * reaches the same memo through the Port, so the activation side effect fires once
+ * rather than racing itself. It is routed through the BFF's same-origin proxy, so
+ * nothing here sees a token or the real billing service URL.
  *
  * Renders nothing. No-op when the BFF has no billing upstream configured (every
  * standalone deployment today).
@@ -74,16 +73,12 @@ export function ProductActivation() {
       }, RETRY_DELAY_MS);
     };
 
-    void fetch(`${BILLING_API_BASE_URL}/organization?product=${PRODUCT}`, {
-      credentials: 'include',
-    }).then(
-      (response) => {
+    // A rejection is the only failure signal needed: the read treats a non-OK
+    // response as one, and clears its memo so this retry genuinely re-reads.
+    void getBillingOrganization().then(
+      () => {
         if (cancelled) return;
-        if (response.ok) {
-          done.current = true;
-          return;
-        }
-        retryOrGiveUp();
+        done.current = true;
       },
       () => {
         retryOrGiveUp();

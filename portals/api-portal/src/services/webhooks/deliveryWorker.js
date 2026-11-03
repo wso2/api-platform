@@ -29,7 +29,30 @@ const orgContext = require('../../utils/orgContext');
 const { buildOutboundAgents } = require('../../config/httpClientOptions');
 
 let running = false;
+let insecureDeliveryAgent = null;
+
+// Webhook delivery's HTTPS agent. tlsSkipVerify gets its own agent so the shared
+// one that other outbound calls use keeps verifying certificates.
+function deliveryHttpsAgent(cfg) {
+    const { httpsAgent, tlsOptions, pooling } = buildOutboundAgents(cfg);
+    if (cfg.webhooks?.delivery?.tlsSkipVerify !== true) {
+        return httpsAgent;
+    }
+    if (!insecureDeliveryAgent) {
+        insecureDeliveryAgent = new https.Agent({ ...pooling, ...tlsOptions, rejectUnauthorized: false });
+    }
+    return insecureDeliveryAgent;
+}
+
+/** The organization to claim work for, or null for every organization (multi-organization mode). */
+async function claimScope() {
+    return orgContext.isMultiOrganizationEnabled() ? null : orgContext.getOrgUuid();
+}
 let intervalHandle = null;
+// True while a batch is in progress, so a batch that outlasts the poll interval
+// (each delivery can wait up to its subscriber's timeout) isn't overlapped by the
+// next tick competing for the same rows.
+let batchInProgress = false;
 
 /**
  * POST a single delivery to the subscriber's target URL.
@@ -86,7 +109,6 @@ async function post(delivery, event) {
         const parsedUrl = new URL(delivery.target_url);
         const isHttps = parsedUrl.protocol === 'https:';
         const transport = isHttps ? https : http;
-        const agents = buildOutboundAgents(config);
         const options = {
             hostname: parsedUrl.hostname,
             port: parsedUrl.port || (isHttps ? 443 : 80),
@@ -94,10 +116,9 @@ async function post(delivery, event) {
             method: 'POST',
             headers,
             timeout: timeoutMs,
-            // Shared, pooled agent: reuses TCP+TLS handshakes across deliveries to the
-            // same subscriber instead of paying a fresh one per delivery, and carries
-            // the configured cipher/curve/version tuning on the HTTPS side.
-            agent: isHttps ? agents.httpsAgent : agents.httpAgent,
+            // Pooled agents: reuse TCP+TLS handshakes across deliveries to the same
+            // subscriber and carry the configured cipher/curve/version tuning.
+            agent: isHttps ? deliveryHttpsAgent(config) : buildOutboundAgents(config).httpAgent,
         };
 
         const req = transport.request(options, (res) => {
@@ -118,12 +139,16 @@ async function runBatch() {
     // Scoped to the organization this instance serves: the deliveries table is shared
     // with every other instance on this database, and each one must only make the
     // outbound calls for its own organization's subscribers.
-    const deliveries = await eventDao.claimDueDeliveries(batchSize, await orgContext.getOrgUuid());
+    // Multi-organization mode delivers for every organization under this portal_id —
+    // this deployment owns it (see orgContext.isMultiOrganizationEnabled) — so the
+    // claim drops the organization filter there.
+    const deliveries = await eventDao.claimDueDeliveries(batchSize, await claimScope());
     if (deliveries.length === 0) return;
 
     const eventIds = [...new Set(deliveries.map(d => d.event_uuid))];
     const eventPlaceholders = eventIds.map(() => '?').join(', ');
-    const events = await db.query(`SELECT * FROM events WHERE uuid IN (${eventPlaceholders})`, eventIds);
+    const events = await db.query(`SELECT * FROM events WHERE uuid IN (${eventPlaceholders}) AND portal_id = ?`,
+        [...eventIds, orgContext.getPortalId()]);
     // payload is JSONB on postgres (auto-parsed by `pg`) but TEXT on sqlite/mssql —
     // parse it back into an object here, matching eventDao.js's own parseEventRow.
     // Without this, `{ ...event.payload }` below silently spreads a JSON STRING
@@ -138,8 +163,8 @@ async function runBatch() {
     if (orgIds.length > 0) {
         const orgPlaceholders = orgIds.map(() => '?').join(', ');
         const orgs = await db.query(
-            `SELECT uuid, cp_ref_id FROM organizations WHERE uuid IN (${orgPlaceholders})`,
-            orgIds
+            `SELECT uuid, cp_ref_id FROM organizations WHERE uuid IN (${orgPlaceholders}) AND portal_id = ?`,
+            [...orgIds, orgContext.getPortalId()]
         );
         orgCpRefIdMap = Object.fromEntries(orgs.map(o => [o.uuid, o.cp_ref_id]));
     }
@@ -187,6 +212,8 @@ function start() {
     const pollMs = (wdelivery && wdelivery.pollIntervalMs) || 2000;
 
     async function tick() {
+        if (batchInProgress) return;
+        batchInProgress = true;
         try {
             // See db.runDetached()'s doc comment (src/db/driver.js) and
             // webhooks/dispatcher.js's identical use: this poll loop only fires
@@ -196,6 +223,8 @@ function start() {
             await db.runDetached(runBatch);
         } catch (err) {
             logger.error('Batch error', { error: err.message || String(err) });
+        } finally {
+            batchInProgress = false;
         }
     }
 
@@ -211,4 +240,4 @@ function stop() {
     }
 }
 
-module.exports = { start, stop };
+module.exports = { start, stop, deliveryHttpsAgent, post };

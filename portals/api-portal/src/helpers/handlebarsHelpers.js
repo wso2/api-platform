@@ -19,6 +19,7 @@
 const Handlebars = require('handlebars');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
+const { typeLabel } = require('../keymanagers/core/registry');
 
 const helpers = {
     // The portal's hardcoded URL prefix (constants.ROUTE.BASE_PATH). Every absolute
@@ -67,6 +68,12 @@ const helpers = {
         .replace(/</g, '\\u003c')
         .replace(/\u2028/g, '\\u2028')
         .replace(/\u2029/g, '\\u2029'),
+    // As `json`, for a value the caller has already serialised; serialising it
+    // again would double-encode it.
+    scriptJson: (context) => (typeof context === 'string' ? context : JSON.stringify(context ?? null))
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029'),
     // For embedding JSON inside HTML double-quoted attributes
     jsonAttr: (context) => new Handlebars.SafeString(Handlebars.escapeExpression(JSON.stringify(context ?? null))),
 
@@ -99,6 +106,17 @@ const helpers = {
 
     // String helpers
     lowercase: (str) => typeof str === 'string' ? str.toLowerCase() : str,
+    // Display only. Used for identifiers that are lowercase by contract — driver
+    // type ids, for one — so it must never be applied to a value being sent back.
+    // The product name for a key manager driver `type`. Looked up rather than
+    // capitalized: a type is a config token typed into TOML, so `capitalize`
+    // turns "wso2is" into "Wso2is". The registry holds the label next to the
+    // type, so there is no second table to keep in step. Resolved per call, not
+    // at module load, because drivers register after the helpers are built.
+    keyManagerTypeLabel: (type) => typeLabel(type),
+    capitalize: (str) => typeof str === 'string' && str.length
+        ? str.charAt(0).toUpperCase() + str.slice(1)
+        : str,
     firstTwoLetters: (text) => text ? text.substring(0, 2).toUpperCase() : '',
     beforeSeparator: (value, separator) => typeof value === 'string' && typeof separator === 'string' ? value.split(separator)[0] : value,
     stripMdExtension: (value) => typeof value === 'string' && value.endsWith('.md') ? value.slice(0, -3) : value,

@@ -58,6 +58,7 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
         name,
         description: input.description?.trim() || undefined,
         loginEnvironment: input.loginEnvironment?.trim() || 'production',
+        selfSignup: input.selfSignup ?? true,
         // Real backend inserts the row as pending and its poller flips it to
         // active later; the mock does the same so tests exercising the
         // provisioning-state UI branches see the pending path.
@@ -84,6 +85,9 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
         if (!trimmed) throw new Error('loginEnvironment cannot be empty');
         portal.loginEnvironment = trimmed;
       }
+      if (input.selfSignup !== undefined) {
+        portal.selfSignup = input.selfSignup;
+      }
       portal.updatedAt = new Date().toISOString();
       return delay(clone(portal));
     },
@@ -92,6 +96,7 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
       if (idx === -1) throw new Error('Portal not found');
       portals.splice(idx, 1);
       await delay(undefined);
+      return { pending: false };
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
       // Fixed non-empty list so form interactions render sensibly offline.

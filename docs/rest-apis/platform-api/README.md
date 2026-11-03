@@ -72,6 +72,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 - [Get all REST APIs for an organization](rest-apis.md#get-all-rest-apis-for-an-organization)
 - [Create a new REST API](rest-apis.md#create-a-new-rest-api)
+- [List the versions of a REST API](rest-apis.md#list-the-versions-of-a-rest-api)
 - [Get REST API by ID](rest-apis.md#get-rest-api-by-id)
 - [Update REST API](rest-apis.md#update-rest-api)
 - [Delete REST API](rest-apis.md#delete-rest-api)

@@ -40,6 +40,22 @@ import { alpha, toggleButtonGroupClasses, type Theme } from '@wso2/oxygen-ui';
  */
 export const hairline = (theme: Theme) => `${theme.border.width} ${theme.border.style}`;
 
+/**
+ * Opaque surface for a popup whose `Paper` the theme leaves translucent.
+ *
+ * The Acrylic theme fills a plain `Paper` with `background.acrylic`, so text
+ * behind it reads through. `Popover` and `Autocomplete` already override that
+ * with a solid fill; a popup built on a bare `Paper` (the date picker's
+ * calendar) does not, and needs the same treatment to stay legible.
+ */
+export const popupPaperSx = (theme: Theme) =>
+  ({
+    backdropFilter: theme.blur.medium,
+    backgroundColor: 'background.paper',
+    backgroundImage: 'none',
+    WebkitBackdropFilter: theme.blur.medium,
+  }) as const;
+
 /** Blur radius behind a glass surface. One value, so every pane matches. */
 const GLASS_BLUR = '14px';
 
@@ -87,6 +103,80 @@ export const ambientGlowSx = {
   pointerEvents: 'none',
   position: 'absolute',
 } as const;
+
+/** Wraps styles that need `color-mix()`; a nested `@supports` keeps the plain base as the fallback. */
+const COLOR_MIX_SUPPORT = '@supports (background: color-mix(in srgb, red, blue))';
+
+/**
+ * A square icon tile with a warm, primary-tinted gradient and a faint primary
+ * edge — the badge beside a card or section title. `size` is the side in pixels;
+ * colour comes from theme tokens and the corner radius scales with `size`.
+ */
+export const iconTileSx = (theme: Theme, size = 40) => {
+  const palette = theme.vars?.palette ?? theme.palette;
+  return {
+    alignItems: 'center',
+    // The base style needs no `color-mix()`, so a browser without it still gets a tile;
+    // the tinted gradient is layered on only where it is supported.
+    background: palette.background.paper,
+    border: hairline(theme),
+    borderColor: palette.primary.main,
+    // Proportional to the tile, so a larger or smaller badge keeps the same soft corner.
+    borderRadius: `${Math.round(size * 0.26)}px`,
+    color: palette.primary.main,
+    display: 'flex',
+    flexShrink: 0,
+    height: size,
+    justifyContent: 'center',
+    width: size,
+    [COLOR_MIX_SUPPORT]: {
+      background: `radial-gradient(ellipse at 30% 25%, color-mix(in srgb, ${palette.primary.main} 22%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 10%, ${palette.background.paper}) 70%, color-mix(in srgb, ${palette.primary.main} 7%, ${palette.background.paper}) 100%)`,
+      borderColor: `color-mix(in srgb, ${palette.primary.main} 35%, transparent)`,
+      color: `color-mix(in srgb, ${palette.primary.main} 80%, ${palette.text.secondary})`,
+    },
+  } as const;
+};
+
+/**
+ * A compact chip with a soft primary (orange) glow radiating from the top-left corner into
+ * the surface and a hairline edge — a removable, editable item in a row of tags. Pass
+ * `highlighted` while it is a drop target.
+ */
+export const tintedPillSx = (theme: Theme, highlighted = false) => {
+  const palette = theme.vars?.palette ?? theme.palette;
+  return {
+    alignItems: 'center',
+    background: palette.background.paper,
+    border: hairline(theme),
+    borderColor: highlighted ? palette.primary.main : palette.divider,
+    borderRadius: 0.75,
+    display: 'flex',
+    // Without `color-mix()` the chip keeps the plain surface and divider above, which
+    // still reads as a solid chip next to the dashed inherited ones.
+    [COLOR_MIX_SUPPORT]: {
+      background: `radial-gradient(ellipse 120% 220% at 0% 0%, color-mix(in srgb, ${palette.primary.main} 11%, ${palette.background.paper}) 0%, color-mix(in srgb, ${palette.primary.main} 4%, ${palette.background.paper}) 45%, ${palette.background.paper} 85%)`,
+      ...(highlighted
+        ? null
+        : { borderColor: `color-mix(in srgb, ${palette.primary.main} 12%, ${palette.divider})` }),
+    },
+  } as const;
+};
+
+/**
+ * The chip for something inherited rather than owned: a dashed hairline on the bare
+ * surface, so it reads as present but not editable here.
+ */
+export const inheritedPillSx = (theme: Theme) => {
+  const palette = theme.vars?.palette ?? theme.palette;
+  return {
+    alignItems: 'center',
+    border: hairline(theme),
+    borderColor: palette.divider,
+    borderRadius: 0.75,
+    borderStyle: 'dashed',
+    display: 'flex',
+  } as const;
+};
 
 /**
  * Hover treatment for a card that behaves as a button (the whole surface
@@ -188,9 +278,11 @@ const SEGMENT_SHADOW = '0 1px 2px rgba(0, 0, 0, 0.12)';
  * Styles a pill-shaped segmented switch for mutually exclusive views.
  * Uses `theme.vars` tokens so track, active-segment, and text colours follow
  * the active colour scheme. Grouped-button borders are removed to preserve
- * the pill shape.
+ * the pill shape. `accent` is the palette colour of the active segment's label,
+ * for a control whose current choice is meant to say something (success for
+ * "live"); it is the primary colour otherwise.
  */
-export const segmentedSwitchSx = (theme: Theme) => {
+export const segmentedSwitchSx = (theme: Theme, accent: 'primary' | 'success' = 'primary') => {
   const palette = theme.vars?.palette ?? theme.palette;
 
   return {
@@ -215,7 +307,7 @@ export const segmentedSwitchSx = (theme: Theme) => {
         backgroundColor: palette.background.paper,
         borderRadius: PILL_RADIUS,
         boxShadow: SEGMENT_SHADOW,
-        color: palette.primary.main,
+        color: palette[accent].main,
         fontWeight: theme.typography.fontWeightBold,
         ...theme.applyStyles('dark', { boxShadow: 'none' }),
         // Without this the active pill loses its fill on hover and the control
@@ -227,3 +319,36 @@ export const segmentedSwitchSx = (theme: Theme) => {
     },
   } as const;
 };
+
+/**
+ * Rounded "pill" tab group for switching between a handful of mutually
+ * exclusive input sources — the REST/WebSocket and GraphQL creation wizards'
+ * URL/Upload (and, for REST, GitHub/SwaggerHub) source picker. One definition
+ * so every source toggle across those wizards reads as the same control
+ * instead of drifting into its own button styling.
+ */
+export const pillToggleGroupSx = (theme: Theme) =>
+  ({
+    alignSelf: 'flex-start',
+    bgcolor: 'action.hover',
+    border: hairline(theme),
+    borderColor: 'divider',
+    borderRadius: 2,
+    gap: 0.5,
+    p: 0.5,
+    '& .MuiToggleButtonGroup-grouped': {
+      border: 0,
+      borderRadius: 1.5,
+      color: 'text.secondary',
+      fontWeight: 600,
+      m: 0,
+      px: 2,
+      py: 0.75,
+      textTransform: 'none',
+      '&.Mui-selected': {
+        bgcolor: 'primary.main',
+        color: 'primary.contrastText',
+        '&:hover': { bgcolor: 'primary.dark' },
+      },
+    },
+  }) as const;

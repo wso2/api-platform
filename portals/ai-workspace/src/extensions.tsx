@@ -113,6 +113,7 @@ export type AIWorkspacePageOverride = SlotEntry & {
 export const AI_WORKSPACE_MCP_DEPLOY_SLOT = 'page.mcpDeploy';
 export const AI_WORKSPACE_LLM_PROXY_DEPLOY_SLOT = 'page.llmProxyDeploy';
 export const AI_WORKSPACE_LLM_PROVIDER_DEPLOY_SLOT = 'page.llmProviderDeploy';
+export const AI_WORKSPACE_AGENT_PROXY_DEPLOY_SLOT = 'page.agentProxyDeploy';
 
 /**
  * Slot for overriding the built-in onboarding wizard at the full-screen

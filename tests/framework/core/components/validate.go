@@ -322,8 +322,11 @@ func (d *Definition) validateFiles() error {
 	var errs errorList
 	seen := map[string]bool{}
 	for _, f := range d.Files {
-		if f.HostPath == "" {
-			errs.addf("%s: file mount has no hostPath", d)
+		switch {
+		case f.HostPath == "" && len(f.Content) == 0:
+			errs.addf("%s: file mount has neither a hostPath nor content", d)
+		case f.HostPath != "" && len(f.Content) > 0:
+			errs.addf("%s: file mount sets both a hostPath and content", d)
 		}
 		if f.ContainerPath == "" {
 			errs.addf("%s: file mount has no containerPath", d)

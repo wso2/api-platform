@@ -286,12 +286,24 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			t.policyDefinitions, t.latestVersions, a2a.OperationConfigs.Policies, policyv1alpha.LevelAPI)
 	}
 
+	// Fault policies, resolved at the same two levels the normal ones are, plus the card's
+	// own. Same rule as every other kind: both levels run and the operation's entries run
+	// first — see mergeFaultPolicies. The card keeps a separate list because discovery is
+	// reachable before any operation is invoked, so the operations' handlers must not fire
+	// for a discovery failure.
+	apiFaultPolicies := collectFaultPolicies(t.policyDefinitions, t.latestVersions,
+		a2a.OperationConfigs.FaultPolicies, policyv1alpha.LevelAPI)
+	cardFaultPolicies := collectFaultPolicies(t.policyDefinitions, t.latestVersions,
+		publicCard.FaultPolicies, policyv1alpha.LevelAPI)
+	faultSystemPolicies := sdkChainToModel(utils.FaultSystemPolicies(t.systemConfig, nil)).Policies
+
 	protectedCardConfig := config.ProtectedCard(a2a.AgentCard)
 	protectedCardManaged := config.EffectiveProtectedCardMode(protectedCardConfig) ==
 		api.A2AProtectedAgentCardModeManaged
 
 	perOperationPolicies := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
 	perOperationCORS := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
+	perOperationFault := make(map[agentproto.Operation][]models.Policy)
 	perOperationResilience := make(map[agentproto.Operation]*api.Resilience)
 	if a2a.OperationConfigs.Operations != nil {
 		for i := range *a2a.OperationConfigs.Operations {
@@ -300,6 +312,7 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			resolved := resolvePolicyInstances(
 				t.policyDefinitions, t.latestVersions, opCfg.Policies, policyv1alpha.LevelRoute)
 			perOperationPolicies[operation] = resolved
+			perOperationFault[operation] = collectFaultPolicies(t.policyDefinitions, t.latestVersions, opCfg.FaultPolicies, policyv1alpha.LevelRoute)
 			perOperationResilience[operation] = opCfg.Resilience
 			// A preflight borrows an operation's cors policy and nothing else of
 			// its chain. The rest — authentication above all — must not run
@@ -415,7 +428,17 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 				// anything placed after it would never run.
 				chain = append(chain, *protectedCard)
 			}
-			rdc.PolicyChains[chainKey] = sdkChainToModel(utils.InjectSystemPolicies(chain, t.systemConfig, nil))
+			operationChain := sdkChainToModel(utils.InjectSystemPolicies(chain, t.systemConfig, nil))
+			// Operation entries, then the agent's, then the fault-path system policies
+			// LAST — the order they execute in, and the same construction restapi.go
+			// uses. Not InjectSystemPolicies: that prepends, which would run the
+			// collector before the operator's handlers and publish the failure as it
+			// looked before they shaped it.
+			operationChain.FaultPolicies = appendFaultSystemPolicies(
+				mergeFaultPolicies(perOperationFault[operation], apiFaultPolicies),
+				faultSystemPolicies,
+			)
+			rdc.PolicyChains[chainKey] = operationChain
 		}
 
 		routeUpstream := models.RouteUpstream{
@@ -612,8 +635,14 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 		if err != nil {
 			return nil, err
 		}
-		rdc.PolicyChains[cardRouteKey] = sdkChainToModel(
+		cardModelChain := sdkChainToModel(
 			utils.InjectSystemPolicies(cardChain, t.systemConfig, nil))
+		// The card's own fault entries, and only those. The operations' are deliberately
+		// not merged in: discovery is reachable before any operation is invoked, so an
+		// agent that guards its operations while leaving its card open would otherwise
+		// have the operations' handlers fire for a discovery failure.
+		cardModelChain.FaultPolicies = appendFaultSystemPolicies(cardFaultPolicies, faultSystemPolicies)
+		rdc.PolicyChains[cardRouteKey] = cardModelChain
 		// The card is not an operation, so only its own scope can answer its
 		// preflight.
 		addPreflight(cardPath, cardRelativePath, cardPolicies, nil)
@@ -628,8 +657,13 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			if err != nil {
 				return nil, err
 			}
-			rdc.PolicyChains[preflightKey] = sdkChainToModel(
+			preflightChain := sdkChainToModel(
 				utils.InjectSystemPolicies(preflight.policies, t.systemConfig, nil))
+			// System entries only. A preflight carries no credentials and invokes no
+			// operation, so an operator's handler has nothing to handle — but a failure
+			// still has to be recorded, which is what the collector is for.
+			preflightChain.FaultPolicies = appendFaultSystemPolicies(nil, faultSystemPolicies)
+			rdc.PolicyChains[preflightKey] = preflightChain
 		}
 	}
 

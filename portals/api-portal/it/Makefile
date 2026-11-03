@@ -126,6 +126,38 @@ test-postgres: ensure-test-tag ensure-certs
 #
 # `test-rest-api` runs both, sequentially. Use the -scope / -role targets to run one.
 # Requires the API Portal image to be built first: make build (from portals/api-portal/).
+# Coverage is opt-in: IT_COVERAGE=1 adds the overlay that points Node's V8
+# coverage at ./reports/coverage-raw. Without it the compose invocation is
+# exactly what it always was, so an ordinary run is unaffected. The image must
+# also have been built instrumented:
+#
+#   make -C .. build ENABLE_COVERAGE=true
+#   IT_COVERAGE=1 make test-rest-api-role
+#   make rest-api-lcov
+#
+COMPOSE_SQLITE   = -f docker-compose.test.yaml
+COMPOSE_POSTGRES = -f docker-compose.test.postgres.yaml
+ifeq ($(IT_COVERAGE),1)
+COMPOSE_SQLITE   += -f docker-compose.coverage.yaml
+COMPOSE_POSTGRES += -f docker-compose.coverage.yaml
+endif
+
+# The portal container runs as uid 10001, and a bind mount takes the HOST
+# directory's ownership. Two consequences on Linux, neither visible on macOS,
+# which remaps bind-mount ownership:
+#
+#   writing  Docker creates a missing directory as root, so the container could
+#            not write its profiles at all. Hence the world-writable mkdir in
+#            the test targets.
+#   reading  Node writes V8 profiles 0600, owned by the container's uid, so the
+#            files land unreadable by whoever runs make afterwards. Hence the
+#            ownership step in rest-api-lcov, done in a root container rather
+#            than with sudo so it works the same for a developer locally.
+COVERAGE_RAW    = reports/coverage-raw
+COVERAGE_NORM   = reports/coverage-normalized
+COVERAGE_LCOV   = reports/lcov.info
+COVERAGE_TOOLS  = ../../../tests/framework/tools
+
 test-rest-api:
 	@$(MAKE) test-rest-api-scope
 	@$(MAKE) test-rest-api-role
@@ -134,9 +166,10 @@ test-rest-api-scope: AUTH_MODE = scope
 test-rest-api-role:  AUTH_MODE = role
 test-rest-api-scope test-rest-api-role: ensure-test-tag ensure-certs
 	@echo "==> REST API suite (SQLite, authorization mode = $(AUTH_MODE))"
-	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	@if [ "$(IT_COVERAGE)" = "1" ]; then mkdir -p $(COVERAGE_RAW) && chmod 777 $(COVERAGE_RAW); fi
+	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) $(COMPOSE_SQLITE) up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
-	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans; \
+	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT) $(COMPOSE_SQLITE) down -v --remove-orphans; \
 	exit $$EXIT
 
 # Same, against PostgreSQL.
@@ -148,9 +181,10 @@ test-rest-api-postgres-scope: AUTH_MODE = scope
 test-rest-api-postgres-role:  AUTH_MODE = role
 test-rest-api-postgres-scope test-rest-api-postgres-role: ensure-test-tag ensure-certs
 	@echo "==> REST API suite (PostgreSQL, authorization mode = $(AUTH_MODE))"
-	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	@if [ "$(IT_COVERAGE)" = "1" ]; then mkdir -p $(COVERAGE_RAW) && chmod 777 $(COVERAGE_RAW); fi
+	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) $(COMPOSE_POSTGRES) up postgres api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
-	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
+	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT_POSTGRES) $(COMPOSE_POSTGRES) down -v --remove-orphans; \
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running portal (not in Docker).
@@ -167,3 +201,40 @@ clean:
 	docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans 2>/dev/null || true
 	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans 2>/dev/null || true
 	rm -rf reports/videos reports/screenshots reports/*.json reports/*.html ui/node_modules/.cache rest-api/node_modules
+
+# Turn the raw V8 output the portal container wrote into lcov Codecov can read.
+#
+# Two steps, and both are needed. The raw profiles carry CONTAINER paths
+# (file:///app/src/...), so normalize-v8.js rewrites them to this checkout —
+# without that every path misses and the report covers nothing. c8 then turns the
+# normalised profiles into lcov.
+#
+# Safe to run when there is nothing to convert: it says so and exits 0, so a CI
+# step that always runs cannot fail a build over a suite that produced no
+# coverage.
+.PHONY: rest-api-lcov
+rest-api-lcov:
+	@# ONE shell for the whole recipe. Make runs each recipe line in its own
+	@# shell, so the early `exit 0` below ended only that line -- make carried on
+	@# to the next one and tried to normalise a glob that had matched nothing.
+	@# Joining them with `;` is what makes the guard actually guard.
+	@set -e; \
+	if ! ls $(COVERAGE_RAW)/*.json >/dev/null 2>&1; then \
+		echo "==> no raw coverage in $(COVERAGE_RAW) — run with IT_COVERAGE=1 first"; \
+		exit 0; \
+	fi; \
+	if [ ! -r "$$(ls $(COVERAGE_RAW)/*.json | head -1)" ]; then \
+		echo "==> taking ownership of the raw profiles (written 0600 by the container user)"; \
+		docker run --rm --user root --entrypoint chmod \
+			-v "$$(cd $(COVERAGE_RAW) && pwd):/raw" \
+			$(DOCKER_REGISTRY)/api-portal:test -R a+rX /raw; \
+	fi; \
+	rm -rf $(COVERAGE_NORM); mkdir -p $(COVERAGE_NORM); \
+	for f in $(COVERAGE_RAW)/*.json; do \
+		node $(COVERAGE_TOOLS)/coverage/normalize-v8.js "$$f" "$(COVERAGE_NORM)/$$(basename $$f)" ".."; \
+	done; \
+	(cd $(COVERAGE_TOOLS)/coverage && (npm ci --silent --no-audit --no-fund >/dev/null 2>&1 || npm install --silent >/dev/null 2>&1)); \
+	cd .. && node ../../tests/framework/tools/coverage/node_modules/.bin/c8 report \
+		--temp-directory it/$(COVERAGE_NORM) \
+		--reporter=lcovonly --reports-dir it/reports; \
+	echo "==> wrote it/$(COVERAGE_LCOV) ($$(grep -c '^SF:' it/$(COVERAGE_LCOV)) files)"

@@ -220,6 +220,24 @@ SCOPES=(
   "ap:mcp_proxy:deployment:restore"
   "ap:mcp_proxy:deployment:undeploy"
 
+  # agent_proxy
+  "ap:agent_proxy:create"
+  "ap:agent_proxy:read"
+  "ap:agent_proxy:update"
+  "ap:agent_proxy:delete"
+  "ap:agent_proxy:manage"
+  "ap:agent_proxy:deployment:create"
+  "ap:agent_proxy:deployment:read"
+  "ap:agent_proxy:deployment:manage"
+  "ap:agent_proxy:deployment:delete"
+  "ap:agent_proxy:deployment:restore"
+  "ap:agent_proxy:deployment:undeploy"
+  "ap:agent_proxy:api_key:create"
+  "ap:agent_proxy:api_key:read"
+  "ap:agent_proxy:api_key:update"
+  "ap:agent_proxy:api_key:delete"
+  "ap:agent_proxy:api_key:manage"
+
   # websub_api
   "ap:websub_api:create"
   "ap:websub_api:read"

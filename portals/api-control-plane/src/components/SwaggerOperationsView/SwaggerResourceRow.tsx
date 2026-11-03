@@ -21,6 +21,7 @@ import { ChevronDown, ChevronUp } from '@wso2/oxygen-ui-icons-react';
 import { useId, useState, type ReactNode } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 
+import { SecondaryText } from '@/components/common/SecondaryText';
 import { hairline } from '@/theme/receipes';
 import { MethodBadge } from './MethodBadge';
 import { methodPalette } from './methodPalette';
@@ -52,12 +53,20 @@ export type SwaggerResourceRowProps = {
   /** The body panel's content. Supplying it is what makes the row expandable. */
   children?: ReactNode;
   defaultExpanded?: boolean;
+  /** Called with the new state whenever the row is opened or closed. */
+  onExpandedChange?: (expanded: boolean) => void;
   /** The operation's summary line. Omitted, the row stays a single line. */
   description?: string;
   /** Dims the row and blocks its controls — a staged deletion, or a pending save. */
   disabled?: boolean;
   method: string;
   path: string;
+  /**
+   * `code` (default) sets the path in bold monospace, as a URL path reads;
+   * `text` sets it in the body font at regular weight — a GraphQL field name,
+   * matching how the Bijira console lists operations.
+   */
+  pathVariant?: 'code' | 'text';
 };
 
 export function SwaggerResourceRow({
@@ -68,13 +77,19 @@ export function SwaggerResourceRow({
   description,
   disabled = false,
   method,
+  onExpandedChange,
   path,
+  pathVariant = 'code',
 }: SwaggerResourceRowProps) {
   const intl = useIntl();
   const bodyId = useId();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const expandable = Boolean(children);
-  const toggle = () => setExpanded((open) => !open);
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    onExpandedChange?.(next);
+  };
   const toggleLabel = intl.formatMessage(expanded ? messages.collapse : messages.expand, {
     method,
     path,
@@ -108,13 +123,19 @@ export function SwaggerResourceRow({
         <MethodBadge method={method} />
 
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography noWrap sx={{ fontFamily: 'monospace', fontWeight: 700 }} variant="body2">
-            {path}
-          </Typography>
-          {description && (
-            <Typography color="text.secondary" noWrap variant="body2">
-              {description}
+          {pathVariant === 'code' ? (
+            <Typography noWrap sx={{ fontFamily: 'monospace', fontWeight: 700 }} variant="body2">
+              {path}
             </Typography>
+          ) : (
+            <Typography noWrap variant="body1">
+              {path}
+            </Typography>
+          )}
+          {description && (
+            <SecondaryText noWrap variant="body2">
+              {description}
+            </SecondaryText>
           )}
         </Box>
 

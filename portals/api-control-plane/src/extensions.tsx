@@ -38,9 +38,11 @@ import { SlotEntriesProvider, useSlotEntries, type SlotEntry } from './slots';
  * `render` receives the small, portable `CloudHostPort` (org/project handle,
  * navigate, notify) instead of a pre-built element, so the same feature
  * component can be reused by another host app without depending on this
- * portal's own hooks — see `hostPort.tsx`.
+ * portal's own hooks — see `hostPort.tsx`. A page override for an artifact the
+ * Port does not carry (a GraphQL API) also receives that artifact's handle,
+ * read off its route, as the second argument.
  */
-type ExtensionRender = (port: CloudHostPort) => ReactNode;
+type ExtensionRender = (port: CloudHostPort, artifactHandle?: string) => ReactNode;
 
 type ApiControlPlaneExtensionBase = SlotEntry & {
   routePath: string;
@@ -153,12 +155,58 @@ export const PAGE_GATEWAYS_SLOT = 'page.gateways';
 export const PAGE_API_DEPLOY_SLOT = 'page.apiDeploy';
 
 /**
+ * Slot for overriding the built-in GraphQL API Deploy page — the GraphQL
+ * counterpart of `PAGE_API_DEPLOY_SLOT`, so a host that replaces the REST
+ * Deploy page can replace this one with the same feature. Consumed by the
+ * `graphqlApiDeploy` route wrapper in `AppRoutes`. The Port's `apiHandle` is
+ * REST-only, so the GraphQL API's handle is passed to `render` instead.
+ */
+export const PAGE_GRAPHQL_API_DEPLOY_SLOT = 'page.graphqlApiDeploy';
+
+/**
  * Slot for overriding the built-in per-API Logs page under Observability. Same
  * arrangement as `PAGE_API_DEPLOY_SLOT`: consumed by the
  * `apiObservabilityLogs` route wrapper in `AppRoutes`, with `routePath`/`level`
  * inert.
  */
 export const PAGE_API_OBSERVABILITY_LOGS_SLOT = 'page.apiObservabilityLogs';
+
+/**
+ * Slot for an entry in the app header's action area, rendered before the
+ * built-in controls. Consumed directly by `AppHeader` (via `useSlot`) — not by
+ * the sidebar or Settings-tab filters, which only match `sidebar.*` /
+ * `settings.*.tabs`, nor by `isPageOverride`, which matches `page.*`. A header
+ * entry therefore rides the same `ApiControlPlaneExtension` shape with no new
+ * nav plumbing; only its `render` is used and its `routePath`/`level` are
+ * inert, the same arrangement the `page.*` slots use.
+ */
+export const HEADER_ACTIONS_SLOT = 'header.actions';
+
+/**
+ * Slot for a headless, host-mounted policy hook, rendered on every in-shell
+ * route.
+ *
+ * Entries render nothing. They exist so a deployment can run cross-cutting
+ * policy the portal itself has no opinion about — the first case being cloud's
+ * entitlement supplier, which reads an organization's limits and hands them to
+ * `resourceLimits.set` on the Port (`hostPort.tsx`). That decision is a
+ * property of one deployment's commercial model, not portal behaviour, which is
+ * why it is a slot rather than something built in.
+ *
+ * A deployment that registers nothing here leaves the portal exactly as it was:
+ * no limits are ever supplied, so every create action stays enabled.
+ */
+export const APP_GATE_SLOT = 'app.gate';
+
+/**
+ * A headless `app.gate` entry — see `APP_GATE_SLOT`. Like a header action, it
+ * carries only `render`, because it has no page and no nav presence; declaring
+ * `routePath`/`level` would claim otherwise. `render` is called with the live
+ * Port on every in-shell route and normally returns `null`.
+ */
+export type ApiControlPlaneAppGate = SlotEntry & {
+  render: ExtensionRender;
+};
 
 /** Whether this entry is a top-level sidebar item rather than a nested one. */
 export const isSidebarExtension = (
@@ -199,11 +247,37 @@ export const settingsTabExtensions = (
     )
     .sort((left, right) => left.order - right.order);
 
+/**
+ * A header action: an entry with nothing but a render.
+ *
+ * It has no route and no nav presence, so it carries none of the fields
+ * `ApiControlPlaneExtension` needs — declaring them inert would say this entry
+ * has a page when it does not. Mirrors `AIWorkspaceHeaderAction`, so the same
+ * feature registers the same way in either portal.
+ */
+export type ApiControlPlaneHeaderAction = SlotEntry & {
+  render: ExtensionRender;
+};
+
+/**
+ * Every registered cloud entry — nav items, page overrides and header actions
+ * share one slot registry (see `slots/index.tsx`), filtered by `slot` at each
+ * consumption site.
+ */
+export type ApiControlPlaneCloudEntry =
+  | ApiControlPlaneExtension
+  | ApiControlPlaneHeaderAction
+  // Structurally identical to a header action — both are `SlotEntry & {
+  // render }` — so this arm admits nothing new on its own. Named anyway: a gate
+  // being accepted by accident, because it happens to match another arm, is not
+  // the same as the registry declaring that gates are entries.
+  | ApiControlPlaneAppGate;
+
 export function ExtensionsProvider({
   extensions,
   children,
 }: {
-  extensions: readonly ApiControlPlaneExtension[];
+  extensions: readonly ApiControlPlaneCloudEntry[];
   children: ReactNode;
 }) {
   return (

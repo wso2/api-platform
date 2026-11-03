@@ -1,0 +1,7 @@
+# Refuse to deploy an mtls-auth API that has no hostname of its own.
+[router.downstream_tls]
+mtls_requires_dedicated_hostname = true
+
+# The controller propagates a change to the runtime when it next polls the event hub.
+[controller.event_hub]
+poll_interval = "200ms"

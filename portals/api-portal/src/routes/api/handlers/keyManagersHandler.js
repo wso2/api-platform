@@ -21,11 +21,21 @@
  * Tag: Key Managers
  */
 const keyManagerService = require('../../../services/keyManagerService');
+// getKeyManagerMetadata is tagged "Key Managers" (so it resolves here) but belongs
+// to the OAuth2 key-generation feature: the property descriptors it returns are what
+// POST /oauth2-keys validates against, so it lives with that service rather than
+// with the key manager CRUD.
+const oauth2KeyService = require('../../../services/oauth2KeyService');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
-    createKeyManager: keyManagerService.createKeyManager,
+    createKeyManager: compose(requireCsrfForMutatingApi, keyManagerService.createKeyManager),
     getKeyManagers: keyManagerService.getKeyManagers,
     getKeyManager: keyManagerService.getKeyManager,
-    updateKeyManager: keyManagerService.updateKeyManager,
-    deleteKeyManager: keyManagerService.deleteKeyManager,
+    updateKeyManager: compose(requireCsrfForMutatingApi, keyManagerService.updateKeyManager),
+    deleteKeyManager: compose(requireCsrfForMutatingApi, keyManagerService.deleteKeyManager),
+    discoverKeyManagerEndpoints:
+        compose(requireCsrfForMutatingApi, keyManagerService.discoverKeyManagerEndpoints),
+    getKeyManagerMetadata: oauth2KeyService.getKeyManagerMetadata,
 };

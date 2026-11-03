@@ -29,6 +29,7 @@ import (
 	"syscall"
 
 	"github.com/wso2/api-platform/tests/framework/testbench"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/agentcard"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
@@ -36,11 +37,20 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/jev"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/jwks"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/mcp"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/mcpscripted"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/moesif"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oauth2"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
 
@@ -75,12 +85,31 @@ func run() error {
 	return testbench.Serve(ctx, reg, log)
 }
 
+// services returns the mock services to run: the TLS backends alone when their environment
+// is set, as in the container that serves them, otherwise the general-purpose set.
 func services() ([]testbench.Service, error) {
+	if value, set := os.LookupEnv(tlsbackend.EnvBackends); set {
+		return tlsbackend.FromEnv(value)
+	}
 	jwksSvc, err := jwks.New()
 	if err != nil {
 		return nil, fmt.Errorf("building jwks service: %w", err)
 	}
-	return []testbench.Service{
+	oidcSvc, err := oidc.FromEnvironment()
+	if err != nil {
+		return nil, fmt.Errorf("building oidc service: %w", err)
+	}
+	oauth2Svc, err := oauth2.New()
+	if err != nil {
+		return nil, fmt.Errorf("building oauth2 service: %w", err)
+	}
+	jevSvc := jev.New()
+	stripeSvc := stripe.New()
+	moesifSvc, err := moesif.New(stripeSvc)
+	if err != nil {
+		return nil, fmt.Errorf("building moesif service: %w", err)
+	}
+	services := []testbench.Service{
 		jwksSvc,
 		echo.New(),
 		backend.New(),
@@ -88,13 +117,31 @@ func services() ([]testbench.Service, error) {
 		openai.New(),
 		interceptor.New(),
 		mcp.New(),
+		mcp.NewLegacy(),
 		embeddings.New(),
 		contentsafety.New(),
 		analytics.New(),
 		capture.New(),
-		oauth2.New(),
+		oauth2Svc,
 		webhook.New(),
-	}, nil
+		agentcard.New(),
+		oidcSvc,
+		guardian.New(),
+		graphqlbackend.New(),
+		opa.New(),
+		jevSvc,
+		mcpscripted.New(),
+		stripeSvc,
+		moesifSvc,
+	}
+	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
+		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))
+		if err != nil {
+			return nil, fmt.Errorf("building jev TLS service: %w", err)
+		}
+		services = append(services, jevTLS)
+	}
+	return services, nil
 }
 
 func newLogger() (*slog.Logger, error) {

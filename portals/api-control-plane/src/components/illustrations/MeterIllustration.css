@@ -1,0 +1,352 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/* ---------- Card ---------- */
+.api-meter-animation {
+  --t: 7s;
+  text-align: left;
+}
+.api-meter-animation .mono {
+  font-family: ui-monospace, monospace;
+}
+
+/* ---------- Header + counter ---------- */
+.api-meter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--meter-border);
+}
+.api-meter-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--meter-accent-base) 16%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.api-meter-name {
+  flex: 1;
+  font-size: 10.5px;
+}
+.api-meter-odo {
+  height: 26px;
+  overflow: hidden;
+  text-align: right;
+}
+.api-meter-odo-inner {
+  display: flex;
+  flex-direction: column;
+  animation: api-meter-odo var(--t) cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+.api-meter-odo-inner span {
+  height: 26px;
+  line-height: 26px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Request rows ---------- */
+.api-meter-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 112px;
+}
+.api-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--meter-row);
+  font-size: 9.5px;
+  animation: var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.api-meter-row-first {
+  animation-name: api-meter-row1;
+}
+.api-meter-row-second {
+  animation-name: api-meter-row2;
+}
+.api-meter-row-third {
+  animation-name: api-meter-row3;
+}
+.api-meter-row-fourth {
+  animation-name: api-meter-row4;
+}
+.api-meter-code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.api-meter-ok {
+  color: var(--meter-success);
+  background: color-mix(in srgb, var(--meter-success-base) 14%, transparent);
+}
+.api-meter-err {
+  color: var(--meter-error);
+  background: color-mix(in srgb, var(--meter-error-base) 16%, transparent);
+}
+.api-meter-path {
+  flex: 1;
+  color: inherit;
+}
+.api-meter-tag {
+  animation: var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.api-meter-plus {
+  color: var(--meter-accent);
+}
+.api-meter-skip {
+  color: var(--meter-muted);
+}
+.api-meter-row-first .api-meter-tag {
+  animation-name: api-meter-tag1;
+}
+.api-meter-row-second .api-meter-tag {
+  animation-name: api-meter-tag2;
+}
+.api-meter-row-third .api-meter-tag {
+  animation-name: api-meter-tag3;
+}
+.api-meter-row-fourth .api-meter-tag {
+  animation-name: api-meter-tag4;
+}
+
+/* ---------- Footer ---------- */
+.api-meter-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--meter-border);
+  font-size: 10px;
+  color: var(--meter-muted);
+  animation: api-meter-foot var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.api-meter-price {
+  margin-left: auto;
+  color: inherit;
+  animation: api-meter-price var(--t) ease infinite;
+}
+
+/* ---------- Timeline (% of --t) ----------
+     rows at 8 / 20 / 32 / 44 · counter ticks on successful rows (12, 24, 48) · footer 60–67 · price 68–72 · hold → 86 · reset 94 */
+@keyframes api-meter-odo {
+  0%,
+  12% {
+    transform: translateY(0);
+  }
+  15%,
+  24% {
+    transform: translateY(-26px);
+  }
+  27%,
+  48% {
+    transform: translateY(-52px);
+  }
+  51%,
+  86% {
+    transform: translateY(-78px);
+  }
+  94%,
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes api-meter-row1 {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  13%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes api-meter-row2 {
+  0%,
+  20% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  25%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes api-meter-row3 {
+  0%,
+  32% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  37%,
+  86% {
+    opacity: 0.55;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes api-meter-row4 {
+  0%,
+  44% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  49%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes api-meter-tag1 {
+  0%,
+  11% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  15%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes api-meter-tag2 {
+  0%,
+  23% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  27%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes api-meter-tag3 {
+  0%,
+  35% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  39%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes api-meter-tag4 {
+  0%,
+  47% {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  51%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes api-meter-foot {
+  0%,
+  60% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  67%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes api-meter-price {
+  0%,
+  68% {
+    color: inherit;
+  }
+  72%,
+  86% {
+    color: var(--meter-success);
+  }
+  94%,
+  100% {
+    color: inherit;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-meter-animation * {
+    animation: none !important;
+  }
+  .api-meter-odo-inner {
+    transform: translateY(-78px);
+  }
+  .api-meter-row-third {
+    opacity: 0.55;
+  }
+}

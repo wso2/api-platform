@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +38,7 @@ import (
 	tccompose "github.com/testcontainers/testcontainers-go/modules/compose"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 )
@@ -148,6 +150,9 @@ func LaunchCompose(
 		env[k] = v
 	}
 	for k, v := range opts.Env {
+		env[k] = v
+	}
+	for k, v := range spec.ProjectEnv {
 		env[k] = v
 	}
 	// Join the block network so the stack can reach other components.
@@ -365,8 +370,9 @@ func absoluteRealPath(path string) (string, error) {
 	return filepath.EvalSymlinks(abs)
 }
 
-// containedSource resolves src and asserts it stays inside repoRoot. Both sides are resolved
-// so a symlinked checkout compares in the same namespace as the sources it holds.
+// containedSource resolves src and asserts it stays inside repoRoot or the directory the
+// framework's embedded assets were extracted to. Both sides are resolved so a symlinked
+// checkout compares in the same namespace as the sources it holds.
 func containedSource(repoRoot, src string) (string, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return src, nil
@@ -381,7 +387,8 @@ func containedSource(repoRoot, src string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolving %q: %w", src, err)
 	}
-	if resolved != root && !strings.HasPrefix(resolved, filepath.Clean(root)+string(filepath.Separator)) {
+	if resolved != root && !strings.HasPrefix(resolved, filepath.Clean(root)+string(filepath.Separator)) &&
+		!assets.Within(resolved) {
 		return "", fmt.Errorf("source %q resolves outside the repository", src)
 	}
 	return resolved, nil
@@ -418,11 +425,7 @@ func stageComposeFiles(
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return fmt.Errorf("runtime: creating %q: %w", filepath.Dir(target), err)
 		}
-		src := source
-		if !filepath.IsAbs(src) && repoRoot != "" {
-			src = filepath.Join(repoRoot, source)
-		}
-		src, err := containedSource(repoRoot, src)
+		src, err := containedSource(repoRoot, assets.Resolve(repoRoot, source))
 		if err != nil {
 			return fmt.Errorf("runtime: staging %s for %s: %w", source, def, err)
 		}
@@ -696,7 +699,7 @@ func (c *ComposeStack) Logs(ctx context.Context) string {
 			fmt.Fprintf(&b, "(could not read logs: %v)\n", err)
 			continue
 		}
-		text, readErr := readAllString(rc)
+		text, readErr := readLimitedString(rc, maxLogBytes)
 		_ = rc.Close()
 		if readErr != nil {
 			fmt.Fprintf(&b, "(log read failed: %v)\n", readErr)
@@ -765,11 +768,7 @@ func (c *ComposeStack) RefreshPorts(ctx context.Context) error {
 
 	mapped := make(map[int]int, len(c.def.Endpoints))
 	for _, e := range c.def.Endpoints {
-		service := c.def.Compose.PrimaryService
-		if e.Service != "" {
-			service = e.Service
-		}
-		service += c.suffix
+		service := c.endpointService(e)
 		container, err := c.stack.ServiceContainer(ctx, service)
 		if err != nil {
 			return fmt.Errorf("runtime: locating service %q while refreshing ports: %w", service, err)
@@ -784,6 +783,32 @@ func (c *ComposeStack) RefreshPorts(ctx context.Context) error {
 
 	c.Instance.RefreshPorts(mapped)
 	return nil
+}
+
+// endpointService is the service, with this stack's instance suffix, that serves an endpoint: the
+// endpoint's own service, or the primary one. It is also the service's name on the block network.
+func (c *ComposeStack) endpointService(e components.Endpoint) string {
+	service := c.def.Compose.PrimaryService
+	if e.Service != "" {
+		service = e.Service
+	}
+	return service + c.suffix
+}
+
+// runsService reports whether this stack runs a service named name on the block network.
+func (c *ComposeStack) runsService(name string) bool {
+	if c == nil || c.def == nil || c.def.Compose == nil {
+		return false
+	}
+	if c.PrimaryService() == name || slices.Contains(c.Services(), name) {
+		return true
+	}
+	for _, e := range c.def.Endpoints {
+		if c.endpointService(e) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ComposeStack) serviceContainer(ctx context.Context, service string) (testcontainers.Container, error) {
