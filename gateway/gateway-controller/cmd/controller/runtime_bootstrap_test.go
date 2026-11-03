@@ -89,6 +89,26 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsFromDatabase(t *te
 	assert.False(t, ok)
 }
 
+// A model endpoint is compiled at startup like any API, so a restarted controller
+// serves it without waiting for an event; a Model has no runtime config of its own.
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsModelEndpoints(t *testing.T) {
+	runtimeStore := storage.NewRuntimeConfigStore()
+	transformer := &fakeRuntimeTransformer{}
+
+	configs := []*models.StoredConfig{
+		{UUID: "endpoint-1", Kind: models.KindModelEndpoint, Handle: "wso2", DisplayName: "WSO2", Version: "v1.0"},
+		{UUID: "model-1", Kind: models.KindModel, Handle: "gpt", DisplayName: "GPT", Version: "v1.0"},
+	}
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(configs, runtimeStore, nil, transformer,
+		newDiscardLogger(), false)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, loadedCount)
+	assert.Equal(t, []string{storage.Key(models.KindModelEndpoint, "wso2")}, transformer.calls)
+	_, ok := runtimeStore.Get(storage.Key(models.KindModelEndpoint, "wso2"))
+	assert.True(t, ok)
+}
+
 func TestLoadRuntimeConfigsFromExistingAPIConfigurations_SkipsWebSubAPI(t *testing.T) {
 	runtimeStore := storage.NewRuntimeConfigStore()
 	transformer := &fakeRuntimeTransformer{}

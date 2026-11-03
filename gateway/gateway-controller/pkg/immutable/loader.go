@@ -97,9 +97,11 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 
 	// Dependency order:
 	//   pass1: LlmProviderTemplate — no dependencies
-	//   pass2: LlmProvider         — depends on LlmProviderTemplate
-	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp, Agent — LlmProxy depends on LlmProvider;
-	//          an Agent references no other artifact, so it needs no earlier pass
+	//   pass2: LlmProvider, ModelEndpoint — depend on LlmProviderTemplate (an endpoint
+	//          on its inbound template)
+	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp, Agent, Model — LlmProxy and Model depend
+	//          on LlmProvider, and a Model is loaded after the endpoints it names; an
+	//          Agent references no other artifact, so it needs no earlier pass
 	var pass1, pass2, pass3 []artifact
 
 	filePaths, err := collectArtifacts(g.cfg.ArtifactsDir)
@@ -133,9 +135,10 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		switch envelope.Kind {
 		case string(api.LLMProviderTemplateKindLlmProviderTemplate):
 			pass1 = append(pass1, a)
-		case models.KindLlmProvider:
+		case models.KindLlmProvider, models.KindModelEndpoint:
 			pass2 = append(pass2, a)
-		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp, models.KindAgent:
+		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp, models.KindAgent,
+			models.KindModel:
 			pass3 = append(pass3, a)
 		default:
 			return fmt.Errorf("artifact %s has unsupported kind %q", path, envelope.Kind)
@@ -202,6 +205,24 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 		}
 	case models.KindMcp:
 		if _, err := g.mcpService.CreateMCPProxy(utils.MCPDeploymentParams{
+			Data:        data,
+			ContentType: contentType,
+			Origin:      models.OriginGatewayAPI,
+			Logger:      log,
+		}); err != nil {
+			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
+		}
+	case models.KindModelEndpoint:
+		if _, err := g.llmService.CreateModelEndpoint(utils.LLMDeploymentParams{
+			Data:        data,
+			ContentType: contentType,
+			Origin:      models.OriginGatewayAPI,
+			Logger:      log,
+		}); err != nil {
+			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
+		}
+	case models.KindModel:
+		if _, err := g.llmService.CreateModel(utils.LLMDeploymentParams{
 			Data:        data,
 			ContentType: contentType,
 			Origin:      models.OriginGatewayAPI,

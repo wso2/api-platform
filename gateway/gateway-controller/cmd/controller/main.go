@@ -247,6 +247,8 @@ func main() {
 	// Initialize in-memory API key store for xDS
 	apiKeyStore := storage.NewAPIKeyStore(log)
 	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
+	// A Model's keys are sent under each endpoint serving it, scoped to the Model.
+	apiKeySnapshotManager.SetScopeResolver(utils.ModelKeyScopes(configStore))
 	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
 
 	// Initialize in-memory lazy resource store and components for xDS
@@ -365,6 +367,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The default model endpoint is provisioned only where it takes over nothing an
+	// operator already owns: another artifact at the context it is about to take is a
+	// startup failure rather than something it silently shadows.
+	if err := utils.CheckModelEndpointStartup(configStore, cfg.Controller.Models, log); err != nil {
+		log.Error("Refusing to start", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// A stored mtls-auth API that can never authenticate a caller is a
 	// startup failure.
 	if err := config.ValidateMTLSStartupInvariant(configStore.GetAll(), cfg.Router.HTTPSEnabled,
@@ -427,6 +437,11 @@ func main() {
 	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
 	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer)
+	// Each model endpoint is compiled from itself and the Models naming it; the
+	// secret resolver renders the credentials of the providers they target.
+	transformerRegistry.SetModelEndpointTransformer(transform.NewModelEndpointTransformer(
+		transform.NewModelGatewayCompiler(configStore, &cfg.Router, cfg, policyDefinitions,
+			llmTransformer.ProviderTransformer(), secretsService)))
 
 	// Wire the transformer into the Envoy xDS translator so Envoy routes are built from the
 	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
@@ -655,6 +670,7 @@ func main() {
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService, policyVersionResolver)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
+	llmSvc.SetModelsConfig(cfg.Controller.Models)
 
 	// Initialize and start control plane client with dependencies for API creation and API key management
 	cpClient := controlplane.NewClient(
@@ -754,6 +770,15 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("EventListener started for multi-replica sync")
+
+	// Provision the default model endpoint once the event listener is consuming
+	// events, so its write reaches this replica's store and snapshots the same way
+	// every other write does. An endpoint that cannot be provisioned — api-key-auth
+	// missing, most likely — is a startup failure rather than an endpoint served open.
+	if err := llmSvc.ProvisionModelEndpoint(log); err != nil {
+		log.Error("Refusing to start: the default model endpoint could not be provisioned", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer, err := handlers.NewAPIServer(
@@ -1095,6 +1120,23 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /llm-proxies/{id}":    {"admin", "developer"},
 		"DELETE /llm-proxies/{id}": {"admin", "developer"},
 
+		// Only admins write Models, as only admins write LLM providers: a Model on a
+		// provider with exposure none spends the provider's own credential.
+		"POST /models":        {"admin"},
+		"GET /models":         {"admin", "developer"},
+		"GET /models/{id}":    {"admin", "developer"},
+		"PUT /models/{id}":    {"admin"},
+		"DELETE /models/{id}": {"admin"},
+
+		// Model endpoints carry the policies every Model they serve runs behind, and
+		// the transformers that pick each provider's wire format, so only admins
+		// write them.
+		"POST /model-endpoints":        {"admin"},
+		"GET /model-endpoints":         {"admin", "developer"},
+		"GET /model-endpoints/{id}":    {"admin", "developer"},
+		"PUT /model-endpoints/{id}":    {"admin"},
+		"DELETE /model-endpoints/{id}": {"admin"},
+
 		"POST /rest-apis/{id}/api-keys":                         {"admin", "consumer"},
 		"GET /rest-apis/{id}/api-keys":                          {"admin", "consumer"},
 		"PUT /rest-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
@@ -1118,6 +1160,18 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
 		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
 		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
+
+		"POST /model-endpoints/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /model-endpoints/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /model-endpoints/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /model-endpoints/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /model-endpoints/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
+
+		"POST /models/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /models/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /models/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /models/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /models/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
 		"POST /agents/{id}/api-keys":                         {"admin", "consumer"},
 		"GET /agents/{id}/api-keys":                          {"admin", "consumer"},
