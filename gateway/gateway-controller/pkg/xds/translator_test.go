@@ -4330,3 +4330,62 @@ func TestTranslator_RoutesWithoutPolicyChain_StripClientCertificateHeaders(t *te
 		assert.Contains(t, r.RequestHeadersToRemove, "x-wso2-client-certificate", "%s must strip the relayed-certificate header", name)
 	}
 }
+
+// A model endpoint's routes forward the path the policy engine sets. Envoy applies
+// a route's rewrite after that path is in place, so such a route must carry none:
+// with one, an engine path that starts with the route's context (a provider whose
+// base path is the endpoint's context) would be rewritten a second time. Its
+// default cluster has no endpoints and must still be built, so a request no policy
+// placed fails closed instead of naming a cluster Envoy does not know.
+func TestTranslateRuntimeConfig_EnginePathedRouteAndFailClosedDefault(t *testing.T) {
+	logger := createTestLogger()
+	translator, err := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+	require.NoError(t, err)
+
+	const (
+		enginePathed = "POST|/anthropic/v1/messages|"
+		rewritten    = "POST|/anthropic/v1/other|"
+	)
+	rdc := &models.RuntimeDeployConfig{
+		Context: "/anthropic",
+		Routes: map[string]*models.Route{
+			enginePathed: {
+				Method: "POST", Path: "/anthropic/v1/messages", OperationPath: "/v1/messages",
+				PathMatchType: "Exact", NoPathRewrite: true,
+				Upstream: models.RouteUpstream{ClusterKey: "unrouted", UseClusterHeader: true, DefaultCluster: "unrouted"},
+			},
+			rewritten: {
+				Method: "POST", Path: "/anthropic/v1/other", OperationPath: "/v1/other",
+				Upstream: models.RouteUpstream{ClusterKey: "main"},
+			},
+		},
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"unrouted": {FailClosed: true},
+			"main":     {BasePath: "/base", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+			"empty":    {},
+		},
+	}
+
+	routes, clusters, err := translator.translateRuntimeConfig(rdc)
+	require.NoError(t, err)
+
+	byName := map[string]*route.Route{}
+	for _, r := range routes {
+		byName[r.GetName()] = r
+	}
+	require.NotNil(t, byName[enginePathed])
+	assert.Nil(t, byName[enginePathed].GetRoute().GetRegexRewrite(), "an engine-pathed route rewrites nothing")
+	assert.Empty(t, byName[enginePathed].GetRoute().GetPrefixRewrite())
+	assert.Equal(t, "/base/v1/other", applyEnvoyRewrite(t, byName[rewritten], "/anthropic/v1/other"),
+		"every other route keeps its rewrite")
+
+	byCluster := map[string]*cluster.Cluster{}
+	for _, c := range clusters {
+		byCluster[c.GetName()] = c
+	}
+	failClosed := byCluster["unrouted"]
+	require.NotNil(t, failClosed, "a fail-closed cluster is built although it has no endpoints")
+	assert.Equal(t, cluster.Cluster_STATIC, failClosed.GetType())
+	assert.Empty(t, failClosed.GetLoadAssignment().GetEndpoints())
+	assert.NotContains(t, byCluster, "empty", "a cluster with no endpoints and no intent is still skipped")
+}
