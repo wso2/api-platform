@@ -232,8 +232,9 @@ func (r jsonRPCEventStreamRenderer) Render(in RenderInput) []byte {
 // xmlRenderer emits a plain XML error document for a REST caller that asked for XML.
 //
 // Deliberately NOT a SOAP fault: a SOAP fault is only correct inside a SOAP envelope
-// with the right namespace for the version in play, and emitting a fault-shaped body to
-// a plain-XML caller would be as wrong as sending JSON to a SOAP one.
+// with the right namespace for the version in play (see soap11Renderer/soap12Renderer), and
+// emitting a fault-shaped body to a plain-XML caller would be as wrong as sending JSON to a
+// SOAP one.
 type xmlRenderer struct{}
 
 func (xmlRenderer) ContentType() string { return "application/xml" }
@@ -274,6 +275,118 @@ func (xmlRenderer) Render(in RenderInput) []byte {
 		return []byte(`<error><message>An unexpected error occurred.</message></error>`)
 	}
 	return append([]byte(xml.Header), body...)
+}
+
+// ─── SOAP ────────────────────────────────────────────────────────────────────
+
+// SOAP envelope namespaces, and the namespace of the gateway's own detail entry.
+//
+// SOAP requires detail entries to be namespace-qualified, so the gateway's error object sits
+// in a namespace of its own rather than in the envelope's or in none.
+const (
+	soap11EnvelopeNS = "http://schemas.xmlsoap.org/soap/envelope/"
+	soap12EnvelopeNS = "http://www.w3.org/2003/05/soap-envelope"
+	gatewayFaultNS   = "urn:wso2:api-platform:gateway:fault"
+)
+
+// soap11Renderer emits a SOAP 1.1 Fault, for a SoapApi caller that did not send SOAP 1.2.
+//
+// The HTTP status is the response's, not the 500 SOAP 1.1's HTTP binding prescribes for a
+// fault: this package never changes a status, and a 401 or 429 is what client retry logic
+// and analytics key off. The fault code carries the same split in SOAP terms — a 4xx is the
+// caller's to fix (Client), anything else the gateway's or the backend's (Server).
+type soap11Renderer struct{}
+
+func (soap11Renderer) ContentType() string { return "text/xml; charset=utf-8" }
+
+func (soap11Renderer) Render(in RenderInput) []byte {
+	code := "soapenv:Server"
+	if isClientFault(in.Status) {
+		code = "soapenv:Client"
+	}
+	var b bytes.Buffer
+	b.WriteString(xml.Header)
+	b.WriteString(`<soapenv:Envelope xmlns:soapenv="` + soap11EnvelopeNS + `"><soapenv:Body><soapenv:Fault>`)
+	b.WriteString(`<faultcode>` + code + `</faultcode>`)
+	b.WriteString(`<faultstring>`)
+	writeXMLText(&b, fallbackMessage(in.Err))
+	b.WriteString(`</faultstring>`)
+	if entry := gatewayFaultDetail(in); entry != nil {
+		b.WriteString(`<detail>`)
+		b.Write(entry)
+		b.WriteString(`</detail>`)
+	}
+	b.WriteString(`</soapenv:Fault></soapenv:Body></soapenv:Envelope>`)
+	return b.Bytes()
+}
+
+// soap12Renderer emits a SOAP 1.2 Fault, for a SoapApi caller that sent application/soap+xml.
+// See soap11Renderer for the status and fault-code rules, which are the same here under
+// SOAP 1.2's names (Sender, Receiver).
+type soap12Renderer struct{}
+
+func (soap12Renderer) ContentType() string { return "application/soap+xml; charset=utf-8" }
+
+func (soap12Renderer) Render(in RenderInput) []byte {
+	code := "env:Receiver"
+	if isClientFault(in.Status) {
+		code = "env:Sender"
+	}
+	var b bytes.Buffer
+	b.WriteString(xml.Header)
+	b.WriteString(`<env:Envelope xmlns:env="` + soap12EnvelopeNS + `"><env:Body><env:Fault>`)
+	b.WriteString(`<env:Code><env:Value>` + code + `</env:Value></env:Code>`)
+	b.WriteString(`<env:Reason><env:Text xml:lang="en">`)
+	writeXMLText(&b, fallbackMessage(in.Err))
+	b.WriteString(`</env:Text></env:Reason>`)
+	if entry := gatewayFaultDetail(in); entry != nil {
+		b.WriteString(`<env:Detail>`)
+		b.Write(entry)
+		b.WriteString(`</env:Detail>`)
+	}
+	b.WriteString(`</env:Fault></env:Body></env:Envelope>`)
+	return b.Bytes()
+}
+
+// soapFaultDetail is the gateway's detail entry: the same fields the XML shape carries, minus
+// the message, which the fault's own faultstring / Reason already holds.
+type soapFaultDetail struct {
+	XMLName   xml.Name           `xml:"urn:wso2:api-platform:gateway:fault error"`
+	Code      string             `xml:"code,omitempty"`
+	Type      string             `xml:"type,omitempty"`
+	ErrorID   string             `xml:"errorId,omitempty"`
+	Guardrail *xmlGuardrailBlock `xml:"guardrail,omitempty"`
+}
+
+// gatewayFaultDetail renders the detail entry, or nil when there is nothing for it to carry —
+// an empty detail says "there is detail" and then has none.
+func gatewayFaultDetail(in RenderInput) []byte {
+	d := soapFaultDetail{
+		Code:      in.Err.Code,
+		Type:      in.Err.Type,
+		ErrorID:   in.ErrorID,
+		Guardrail: xmlGuardrailFor(in.Err),
+	}
+	if d.Code == "" && d.Type == "" && d.ErrorID == "" && d.Guardrail == nil {
+		return nil
+	}
+	body, err := xml.Marshal(d)
+	if err != nil {
+		// Unreachable for string fields; the fault itself is still complete without it.
+		return nil
+	}
+	return body
+}
+
+// isClientFault reports whether a status is the caller's to fix.
+func isClientFault(status int) bool {
+	return status >= 400 && status < 500
+}
+
+// writeXMLText writes s as escaped XML character data, so a message containing markup cannot
+// break out of its element.
+func writeXMLText(b *bytes.Buffer, s string) {
+	_ = xml.EscapeText(b, []byte(s))
 }
 
 // ─── guardrail ───────────────────────────────────────────────────────────────
