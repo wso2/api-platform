@@ -22,6 +22,21 @@ import { runtimeConfig } from '../config/runtime';
 // product whose subscription drives APIP gateway provisioning.
 const PRODUCT = 'api-platform';
 
+/**
+ * The same-origin path billing is reached through: `<proxy base>/billing`, the
+ * way the BFF names its upstreams (`{proxy_prefix}/{name}`) and a gateway in
+ * front of the console routes them. The proxy base is `platformApiBaseUrl` when
+ * that is a same-origin path (`/proxy` behind the BFF, `/api-management/proxy`
+ * behind a gateway). Anything else, an absolute URL straight to a Platform API
+ * or no value at all, has no billing route of its own, so billing stays on the
+ * BFF's default `/proxy`.
+ */
+const billingBase = (): string => {
+  const base = runtimeConfig.platformApiBaseUrl.replace(/\/+$/, '');
+  const sameOrigin = base.startsWith('/') && !base.startsWith('//');
+  return `${sameOrigin ? base : '/proxy'}/billing`;
+};
+
 /** The organization's billing record, as far as anything in this console reads it. */
 export type BillingOrganization = {
   subscription?: {
@@ -58,15 +73,16 @@ let pending: Promise<BillingOrganization | null> | null = null;
 
 /**
  * Reads the organization's billing record, activating the subscription on first
- * login as a side effect. Resolves `null` when the BFF has no billing upstream
- * (every standalone deployment today), so a caller needs no config of its own.
+ * login as a side effect. Resolves `null` when the deployment has no billing
+ * route (`billingProxyEnabled` off, every standalone deployment today), so a
+ * caller needs no config of its own.
  *
  * A failed read clears the memo, so a later caller retries rather than being
  * stuck with the rejection for the rest of the session.
  */
 export function getBillingOrganization(): Promise<BillingOrganization | null> {
   if (!runtimeConfig.billingProxyEnabled) return Promise.resolve(null);
-  pending ??= fetch(`/proxy/billing/organization?product=${PRODUCT}`, {
+  pending ??= fetch(`${billingBase()}/organization?product=${PRODUCT}`, {
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
   })

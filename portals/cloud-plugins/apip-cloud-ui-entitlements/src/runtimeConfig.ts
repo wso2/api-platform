@@ -24,6 +24,8 @@
 type WindowConfig = Partial<{
   APIP_ACP_BILLING_CONSOLE_URL: string;
   billingConsoleUrl: string;
+  PLATFORM_API_BASE_URL: string;
+  platformApiBaseUrl: string;
 }>;
 
 const fromWindow = (): WindowConfig => {
@@ -57,4 +59,22 @@ export function upgradeUrl(organization: string | undefined): string | undefined
     .replace(/\/$/, '');
   if (!base || !organization) return undefined;
   return `${base}/cloud/bijira/upgrade?orgId=${encodeURIComponent(organization)}`;
+}
+
+/**
+ * The same-origin path this console's named upstreams sit under: `/proxy`
+ * behind the BFF (`{proxy_prefix}/{name}`), `/api-management/proxy` behind a
+ * gateway that serves the console under a path.
+ *
+ * Read from the same runtime config the host reads `platformApiBaseUrl` from.
+ * Only a same-origin path counts: an absolute URL points straight at a
+ * Platform API, which has no billing routes, so that and an unset value fall
+ * back to the BFF's default `/proxy`.
+ */
+export function proxyBase(): string {
+  const config = fromWindow();
+  const base = (config.PLATFORM_API_BASE_URL || config.platformApiBaseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
+  return base.startsWith('/') && !base.startsWith('//') ? base : '/proxy';
 }
