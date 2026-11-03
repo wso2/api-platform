@@ -26,6 +26,7 @@ import {
   FileCheck,
   FileText,
   Gauge,
+  Laptop,
   LayoutDashboard,
   Logs,
   Megaphone,
@@ -546,8 +547,8 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     // Organization-level admin pages, grouped like Observability. The pages
-    // pages are organization-level routes (`/subscription-plans`, `/meters`). No `requires`, so the
-    // children show at every scope (both tabs are organization-scoped).
+    // pages are organization-level routes (`/subscription-plans`, `/meters`, `/service-accounts`). No
+    // `requires`, so the children show at every scope (all tabs are organization-scoped).
     id: 'manage',
     label: 'Manage',
     group: CLUSTER.operate,
@@ -581,6 +582,14 @@ export const navigationRegistry: NavigationDefinition[] = [
         order: 1,
         to: orgLevelTo((orgHandle) => routes.meters(orgHandle)),
         match: matchRoutes(routes.meters()),
+      },
+      {
+        icon: <Laptop />,
+        id: 'manage-service-accounts',
+        label: 'Service Accounts',
+        order: 1,
+        to: orgLevelTo((orgHandle) => routes.serviceAccounts(orgHandle)),
+        match: matchRoutes(routes.serviceAccounts()),
       },
     ],
   },
