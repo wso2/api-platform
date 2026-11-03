@@ -178,15 +178,22 @@ type Input struct {
 	// route was configured. Empty for every other kind, and empty for an Agent request
 	// that failed before its operation resolved.
 	Transport string
+	// RouteFormat is the error shape the route opted into — see Request.RouteFormat. A
+	// known value enables formatting on that route whatever its kind, and renders the
+	// engine's own failures as well as the ones a policy described: an opted-in route is
+	// new, so there is no released error body on it to keep byte-for-byte.
+	RouteFormat string
 }
 
 // ShouldFormat decides whether to synthesize a body, and renders it if so.
 //
-// Nothing is synthesized for a kind outside supportedKinds, and that gate comes first.
+// Nothing is synthesized for a kind outside supportedKinds, and that gate comes first —
+// unless the route named its own format (Input.RouteFormat), which enables it there alone.
 //
 // For an enabled kind, authorship decides the rest:
 //
-//	Not described by a policy -> leave alone (see Input.PolicyDescribed)
+//	Not described by a policy -> leave alone (see Input.PolicyDescribed);
+//	                             rendered on a route that named its own format
 //	Fault described   -> render, whatever the body holds
 //	no Fault          -> the body stands, described or empty
 //
@@ -205,7 +212,9 @@ func ShouldFormat(r *Registry, in Input) Decision {
 		return Decision{Reason: "HEAD response carries no body"}
 	}
 
-	if !in.FormatterEnabled {
+	routeFormatted := IsRouteFormat(in.RouteFormat)
+
+	if !in.FormatterEnabled && !routeFormatted {
 		// This kind is not in supportedKinds. Checked before authorship so the log says which
 		// of the two stopped it — someone debugging "why is my error not a SOAP fault" needs
 		// to tell "this kind does not format" apart from "a policy wrote a body".
@@ -219,9 +228,14 @@ func ShouldFormat(r *Registry, in Input) Decision {
 		return Decision{Reason: "body already authored by a policy"}
 	}
 
-	if !in.PolicyDescribed {
+	if !in.PolicyDescribed && !routeFormatted {
 		// Checked after authorship only so the log keeps naming an authored body as the
 		// reason when both apply; the outcome is the same either way.
+		//
+		// Not applied on a route that named its own format. This gate preserves the error
+		// bodies released gateways sent for failures no policy described; a route that
+		// opted in has no such bodies, and its clients parse one shape only, so a router
+		// failure or an engine 500 left in house JSON would be unreadable to them.
 		return Decision{Reason: "no policy described the failure"}
 	}
 
@@ -230,6 +244,7 @@ func ShouldFormat(r *Registry, in Input) Decision {
 		Transport:   in.Transport,
 		ContentType: in.ContentType,
 		Accept:      in.Accept,
+		RouteFormat: in.RouteFormat,
 	})
 
 	body, contentType, ok := r.Render(shape, RenderInput{
@@ -273,12 +288,18 @@ func DescribedError(action policy.ResponseAction) bool {
 // decision. That mirrors the SDK's own documented meaning for these fields, where nil is
 // passthrough and []byte{} clears the body.
 func BodyAuthored(action policy.ResponseAction) bool {
+	return AuthoredBody(action) != nil
+}
+
+// AuthoredBody is the body the action decided the client receives, or nil when it decided
+// none. An explicitly empty body is non-nil.
+func AuthoredBody(action policy.ResponseAction) []byte {
 	switch a := action.(type) {
 	case policy.ImmediateResponse:
-		return a.Body != nil
+		return a.Body
 	case policy.DownstreamResponseModifications:
-		return a.Body != nil
+		return a.Body
 	default:
-		return false
+		return nil
 	}
 }

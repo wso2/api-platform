@@ -100,7 +100,7 @@ func TestShapeSignalsFromHeaders(t *testing.T) {
 		{Key: "accept", RawValue: []byte("application/xml")},
 	}}}
 
-	sig := shapeSignalsFromHeaders(policy.APIKindMCP, hdrs)
+	sig := shapeSignalsFromHeaders(policy.APIKindMCP, "", hdrs)
 
 	assert.Equal(t, policy.APIKindMCP, sig.APIKind)
 	assert.Equal(t, "POST", sig.Method, "the method is upper-cased at extraction (GO-AUTH-006)")
@@ -109,7 +109,7 @@ func TestShapeSignalsFromHeaders(t *testing.T) {
 
 	// A request with no headers at all must not panic — the no-route paths reach here with
 	// whatever Envoy sent, which in a malformed case may be nothing.
-	empty := shapeSignalsFromHeaders(policy.APIKindRestApi, nil)
+	empty := shapeSignalsFromHeaders(policy.APIKindRestApi, "", nil)
 	assert.Equal(t, policy.APIKindRestApi, empty.APIKind)
 	assert.Empty(t, empty.Method)
 }
