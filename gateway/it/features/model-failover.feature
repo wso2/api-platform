@@ -1388,3 +1388,106 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
     When I delete the API "mf-disconnect-sink-v1.0"
     Then the response status code should be 200
+
+  # ====================================================================
+  # SC-011 — a failed-over request is still ONE request
+  # ====================================================================
+
+  Scenario: Three attempts consume one rate-limit unit and produce one analytics record
+    # The chain is three deep on purpose: SC-011 asks for this across at least
+    # three attempts, and a per-attempt miscount is only visibly wrong when the
+    # chain is longer than two.
+    #
+    # The rate limit is the sharp instrument here. With a limit of 2, a request
+    # counted once per ATTEMPT would exhaust the whole budget on its own and the
+    # second request would already be 429. Asserting that the second request
+    # still succeeds and only the third is refused pins the count at exactly one
+    # per client request — which no single-request assertion could do.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-accounting-v1.0
+      spec:
+        displayName: MF Accounting
+        version: v1.0
+        context: /mf-accounting/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /accounting-dead-one
+            upstreams:
+              - url: http://sample-backend:9998
+          - name: mid
+            basePath: /accounting-dead-two
+            upstreams:
+              - url: http://sample-backend:9997
+          - name: alive
+            basePath: /accounting-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: mid
+                        - model: claude-opus-4-1-20250805
+                          provider: alive
+              - name: basic-ratelimit
+                version: v1
+                params:
+                  limits:
+                    - requests: 2
+                      duration: "1h"
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    # Reset LAST, immediately before the request. Analytics publish
+    # asynchronously, so resetting any earlier lets a previous scenario's event
+    # land afterwards and be counted as this one's.
+    When I reset the analytics collector
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-accounting/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # Two dead targets passed over, the third served — three attempts, one response.
+    And the response header "x-envoy-attempt-count" should be "3"
+    And the response body should contain "/accounting-alive"
+
+    # ONE analytics record for the whole chain, not one per attempt.
+    When I wait 8 seconds for analytics to be published
+    Then the analytics collector should have received 1 event
+
+    # ONE rate-limit unit. Counted per attempt, the budget of 2 would already be
+    # gone and this would be 429.
+    When I send a POST request to "http://localhost:8080/mf-accounting/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "3"
+
+    # ...and the limit is real: the third request is refused.
+    When I send a POST request to "http://localhost:8080/mf-accounting/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    When I delete the API "mf-accounting-v1.0"
+    Then the response status code should be 200
