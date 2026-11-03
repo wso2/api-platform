@@ -23,7 +23,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 func TestDecodeJSONBody(t *testing.T) {
@@ -57,6 +59,26 @@ func TestDecodeJSONBody(t *testing.T) {
 			}
 			if err == nil || !tc.want.Is(err) {
 				t.Fatalf("want %v, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestSourceStatus(t *testing.T) {
+	cases := []struct {
+		name string
+		sel  model.PublicationSelection
+		want api.PublicationSelectionSourceStatus
+	}{
+		{name: "unchanged", sel: model.PublicationSelection{}, want: api.UNCHANGED},
+		{name: "updated", sel: model.PublicationSelection{Edited: true}, want: api.UPDATED},
+		{name: "deleted", sel: model.PublicationSelection{Deleted: true}, want: api.DELETED},
+		{name: "deleted wins over updated", sel: model.PublicationSelection{Deleted: true, Edited: true}, want: api.DELETED},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sourceStatus(tc.sel); got != tc.want {
+				t.Fatalf("want %s, got %s", tc.want, got)
 			}
 		})
 	}

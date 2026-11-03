@@ -69,7 +69,9 @@
 
   /* ── set up ── */
   /* Two steps: the billing engine's keys (Next), then the payment provider's (Set up billing).
-     Both are sent, and checked by the server, together. */
+     Both are sent, and checked by the server, together. When the engine's step has nothing to
+     ask (the deployment supplies its keys and there is no choice), the form opens at the payment
+     provider's step, without the stepper. */
   var formView = document.getElementById('cfg-billing-modal');
   var saveBtn = document.getElementById('bil-form-save');
   var nextBtn = document.getElementById('bil-form-next');
@@ -118,8 +120,18 @@
   var syncNext = bindFormValidity(nextBtn, KEY_FIELDS, function () { return complete(1); });
   var syncSave = bindFormValidity(saveBtn, KEY_FIELDS, function () { return complete(1) && complete(2); });
 
+  /* The step the form opens at: 2 when the engine's step offers no choice and asks for no key. */
+  function firstStep() {
+    var section = stepSection(1);
+    var asks = formView.querySelector('input[type="radio"][name="bil-engine"]')
+      || (section && section.querySelector('input.cfg-form-input'));
+    return asks ? 1 : 2;
+  }
+
   /* Shows one step: its keys, where it is in the stepper, and its buttons. */
   function showStep(step) {
+    var opening = firstStep();
+    document.getElementById('bil-stepper').style.display = opening === 2 ? 'none' : '';
     formView.querySelectorAll('.bil-step').forEach(function (el) { el.hidden = Number(el.dataset.step) !== step; });
     formView.querySelectorAll('#bil-stepper .cfg-step').forEach(function (el) {
       var at = Number(el.dataset.step);
@@ -136,9 +148,9 @@
       }
     });
     formView.querySelector('#bil-stepper .cfg-step-connector').classList.toggle('cfg-step-connector--done', step > 1);
-    cancelBtn.style.display = step === 1 ? '' : 'none';
+    cancelBtn.style.display = step === opening ? '' : 'none';
     nextBtn.style.display = step === 1 ? '' : 'none';
-    backBtn.style.display = step === 1 ? 'none' : '';
+    backBtn.style.display = step > opening ? '' : 'none';
     saveBtn.style.display = step === 1 ? 'none' : '';
     var section = stepSection(step);
     var inputs = section ? Array.prototype.slice.call(section.querySelectorAll('input.cfg-form-input')) : [];
@@ -152,7 +164,7 @@
     clearErrors();
     revealButtons.forEach(function (button) { setRevealed(button, false); });
     formView.style.display = 'flex';
-    showStep(1);
+    showStep(firstStep());
   }
 
   function closeForm() { formView.style.display = 'none'; }

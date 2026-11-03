@@ -16,10 +16,10 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
+import { useObjectUrl } from '../../core/objectUrl';
 import { useApiScope } from '../../core/scope';
 import {
   deleteApiThumbnail,
@@ -40,49 +40,13 @@ import { apiThumbnailKeys, apiThumbnailParentId, apiThumbnailQueries } from './a
  * directly for an instant UI flip.
  */
 
-/**
- * Shared, ref-counted `blob:` URLs keyed by Blob.
- *
- * Every avatar showing the same cached thumbnail reuses one URL, and the URL
- * is revoked only once no mounted component holds it. The revoke is deferred
- * so an immediate remount (StrictMode's mount → cleanup → mount, or a quick
- * route change between pages that both show the avatar) re-acquires the same
- * URL instead of rendering a revoked one, which made the `<img>` fail and fall
- * back to initials until a full refresh.
- */
-const objectUrls = new Map<Blob, { url: string; refs: number }>();
-
-const objectUrlFor = (blob: Blob): string => {
-  let entry = objectUrls.get(blob);
-  if (!entry) {
-    entry = { url: URL.createObjectURL(blob), refs: 0 };
-    objectUrls.set(blob, entry);
-  }
-  return entry.url;
-};
-
-const retainObjectUrl = (blob: Blob): (() => void) => {
-  objectUrlFor(blob);
-  objectUrls.get(blob)!.refs += 1;
-  return () => {
-    const entry = objectUrls.get(blob);
-    if (!entry) return;
-    entry.refs -= 1;
-    setTimeout(() => {
-      const current = objectUrls.get(blob);
-      if (current && current.refs <= 0) {
-        URL.revokeObjectURL(current.url);
-        objectUrls.delete(blob);
-      }
-    }, 0);
-  };
-};
-
 type Overrides = { orgId?: string };
 
 type UseApiThumbnailResult = {
   /** `blob:` URL for an `<img>` tag. `undefined` while loading, when no thumbnail exists, or on a real error. */
   url: string | undefined;
+  /** The image itself, for a caller that sends it on. `undefined` in the same cases as `url`. */
+  blob: Blob | undefined;
   /** True on first fetch (branch here, not on `isLoading`, since the query is scope-gated). */
   isPending: boolean;
   /** A real error. "No thumbnail" is a successful `null` value, not an error. */
@@ -102,24 +66,9 @@ export const useApiThumbnail = (
   });
 
   const blob = query.data?.blob;
-  // Create the URL inside the effect, not during render. Calling
-  // `objectUrlFor(blob)` in render would store a shared-cache entry with
-  // `refs: 0`; if the render is discarded before commit (concurrent mode,
-  // Suspense / error interruption, blob swap), the effect never increments
-  // the ref count, no revoke timer is scheduled, and the `blob:` URL leaks
-  // its backing bytes. Keeping URL creation + retain / release inside the
-  // same commit-phase effect ties the URL's lifetime to a mounted consumer.
-  const [url, setUrl] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (!blob) {
-      setUrl(undefined);
-      return;
-    }
-    setUrl(objectUrlFor(blob));
-    return retainObjectUrl(blob);
-  }, [blob]);
+  const url = useObjectUrl(blob);
 
-  return { url, isPending: query.isPending, error: query.error as ApiError | null };
+  return { url, blob, isPending: query.isPending, error: query.error as ApiError | null };
 };
 
 /**

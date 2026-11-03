@@ -40,10 +40,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AppPage } from '@/components/AppPage';
 import { useCreateGateway, type CreateGatewayBody } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
+import { runtimeConfig, type GatewayVersionEntry } from '@/config/runtime';
 import { routes } from '@/routes/paths';
 import { GatewayTypeSelector } from './components/GatewayTypeSelector';
 import type { GatewayFunctionality } from './utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from './utils/gatewayEnvironments';
+import { distributionName } from './utils/gatewaySetup';
+import { versionsForType } from './utils/gatewayVersions';
 
 const messages = defineMessages({
   back: {
@@ -92,6 +95,11 @@ const messages = defineMessages({
     id: 'gateways.create.section.general',
     defaultMessage: 'General Details',
   },
+  latest: {
+    id: 'gateways.create.version.badge.latest',
+    defaultMessage: 'Latest',
+    description: 'Badge marking the newest gateway release offered for the chosen type.',
+  },
   lts: {
     id: 'gateways.create.version.badge.lts',
     defaultMessage: 'LTS',
@@ -113,6 +121,11 @@ const messages = defineMessages({
     id: 'gateways.create.action.submitting',
     defaultMessage: 'Provisioning…',
   },
+  sts: {
+    id: 'gateways.create.version.badge.sts',
+    defaultMessage: 'STS',
+    description: 'Badge marking a short-term-support gateway build.',
+  },
   subtitle: {
     id: 'gateways.create.subtitle',
     defaultMessage: 'Register a self-hosted gateway, then connect it to the platform.',
@@ -133,10 +146,18 @@ const messages = defineMessages({
     id: 'gateways.create.version.label',
     defaultMessage: 'Gateway Version',
   },
+  versionNoneConfigured: {
+    id: 'gateways.create.version.noneConfigured',
+    defaultMessage:
+      'No release of this gateway type is configured for this console. It is registered as version {version}.',
+    description:
+      'Shown under a disabled version list when the chosen gateway type has no configured releases. {version} is a number such as 1.0.',
+  },
   versionOption: {
     id: 'gateways.create.version.option',
-    defaultMessage: 'api-gateway v{version}',
-    description: 'One entry in the gateway version list; {version} is a number such as 1.0.',
+    defaultMessage: '{distribution} v{version}',
+    description:
+      'One entry in the gateway version list. {distribution} is a distribution name such as api-gateway (do not translate); {version} is a number such as 1.2.',
   },
 });
 
@@ -146,16 +167,14 @@ const SECTION_LABEL_SX = { typography: 'h6' } as const;
 /** Adds spacing under the type row label. */
 const TYPE_LABEL_SX = { mb: 0.75 } as const;
 
-type GatewayVersionOption = {
-  /** Long-term support build — the only kind offered today. */
-  lts?: boolean;
-  value: string;
+/** Support-channel badge for each release channel the catalog may name. */
+const CHANNEL_BADGE: Record<GatewayVersionEntry['channel'], MessageDescriptor> = {
+  LTS: messages.lts,
+  STS: messages.sts,
 };
 
-/** Supported gateway versions. Currently only 1.0 LTS. */
-const GATEWAY_VERSIONS: GatewayVersionOption[] = [{ lts: true, value: '1.0' }];
-
-const DEFAULT_VERSION = GATEWAY_VERSIONS[0].value;
+/** Default version sent when no release is configured. */
+const SPEC_DEFAULT_VERSION = '1.0';
 
 /** Schemes a gateway can serve on: HTTP APIs, and WebSocket for event traffic. */
 const ENDPOINT_PROTOCOLS = ['http:', 'https:', 'ws:', 'wss:'];
@@ -171,14 +190,15 @@ type GatewayFormState = {
   version: string;
 };
 
-const INITIAL_STATE: GatewayFormState = {
+/** Empty form using the regular type's latest catalog release. */
+const initialState = (catalog: readonly GatewayVersionEntry[]): GatewayFormState => ({
   description: '',
   displayName: '',
   endpoint: '',
   environment: MOCK_ENVIRONMENTS[0].id,
   functionalityType: 'regular',
-  version: DEFAULT_VERSION,
-};
+  version: versionsForType(catalog, 'regular')[0]?.version ?? '',
+});
 
 /** The fields that carry a validation rule. */
 type ValidatedField = 'displayName' | 'endpoint' | 'version';
@@ -212,7 +232,10 @@ const isEndpointUrl = (value: string): boolean => {
  * Every rule in one pure pass, so the same answer drives the field errors and
  * the submit gate.
  */
-const validate = (state: GatewayFormState): FieldErrors => {
+const validate = (
+  state: GatewayFormState,
+  typeVersions: readonly GatewayVersionEntry[],
+): FieldErrors => {
   const errors: FieldErrors = {};
 
   if (state.displayName.trim() === '') {
@@ -220,8 +243,10 @@ const validate = (state: GatewayFormState): FieldErrors => {
   }
 
   // A select cannot produce an unlisted value, but an empty one still has to
-  // stop the submit rather than post a gateway with no build behind it.
-  if (state.version.trim() === '') {
+  // stop the submit rather than post a gateway with no build behind it. A type
+  // with no configured release has nothing to choose, so the platform's own
+  // default applies instead.
+  if (typeVersions.length > 0 && state.version.trim() === '') {
     errors.version = messages.versionErrorRequired;
   }
 
@@ -258,7 +283,10 @@ function GatewayCreatePageContent() {
   const { notify } = useNotifications();
   const createGateway = useCreateGateway();
 
-  const [formState, setFormState] = useState<GatewayFormState>(INITIAL_STATE);
+  const catalog = runtimeConfig.gatewayVersions;
+
+  const [formState, setFormState] = useState<GatewayFormState>(() => initialState(catalog));
+  const typeVersions = versionsForType(catalog, formState.functionalityType);
 
   // Errors are recomputed every render; `touched` controls visibility.
   const [touched, setTouched] = useState<Partial<Record<ValidatedField, boolean>>>({});
@@ -266,7 +294,7 @@ function GatewayCreatePageContent() {
   // Server-side field errors; cleared on the next edit.
   const [serverErrors, setServerErrors] = useState<Partial<Record<ValidatedField, string>>>({});
 
-  const errors = validate(formState);
+  const errors = validate(formState, typeVersions);
 
   const markTouched = (field: ValidatedField) =>
     setTouched((current) => ({ ...current, [field]: true }));
@@ -281,6 +309,16 @@ function GatewayCreatePageContent() {
 
   const setField = <K extends keyof GatewayFormState>(key: K, value: GatewayFormState[K]) =>
     setFormState((current) => ({ ...current, [key]: value }));
+
+  /** Keep the version aligned with the selected type's latest release. */
+  const setType = (type: GatewayFunctionality) => {
+    clearServerError('version');
+    setFormState((current) => ({
+      ...current,
+      functionalityType: type,
+      version: versionsForType(catalog, type)[0]?.version ?? '',
+    }));
+  };
 
   const onFormSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -305,7 +343,9 @@ function GatewayCreatePageContent() {
       // environment rides along the same way until a real environment service
       // exists to associate it with.
       properties: { environment: formState.environment, gatewayMode: 'self-hosted' },
-      version: formState.version,
+      // A type with no configured release has nothing to choose, so it is
+      // registered at the spec's own default for the field.
+      version: formState.version || SPEC_DEFAULT_VERSION,
     };
 
     createGateway.mutate(body, {
@@ -377,15 +417,17 @@ function GatewayCreatePageContent() {
             <FormLabel id="gatewayTypeLabel" sx={TYPE_LABEL_SX}>
               <FormattedMessage {...messages.typeLabel} />
             </FormLabel>
-            <GatewayTypeSelector
-              onChange={(value) => setField('functionalityType', value)}
-              value={formState.functionalityType}
-            />
+            <GatewayTypeSelector onChange={setType} value={formState.functionalityType} />
           </FormControl>
 
           <Grid container spacing={2}>
             <Grid size={{ md: 6, xs: 12 }}>
-              <FormControl error={Boolean(errorFor('version'))} fullWidth required>
+              <FormControl
+                disabled={typeVersions.length === 0}
+                error={Boolean(errorFor('version'))}
+                fullWidth
+                required={typeVersions.length > 0}
+              >
                 <InputLabel id="gatewayVersionLabel">{versionLabel}</InputLabel>
                 <Select
                   id="gatewayVersion"
@@ -398,22 +440,39 @@ function GatewayCreatePageContent() {
                     setField('version', event.target.value);
                   }}
                   renderValue={(selected) =>
-                    intl.formatMessage(messages.versionOption, { version: selected })
+                    selected
+                      ? intl.formatMessage(messages.versionOption, {
+                          distribution: distributionName(formState.functionalityType),
+                          version: selected,
+                        })
+                      : ''
                   }
                   value={formState.version}
                 >
-                  {GATEWAY_VERSIONS.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
+                  {typeVersions.map((entry, index) => (
+                    <MenuItem key={entry.version} value={entry.version}>
                       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                         <span>
                           <FormattedMessage
                             {...messages.versionOption}
-                            values={{ version: option.value }}
+                            values={{
+                              distribution: distributionName(formState.functionalityType),
+                              version: entry.version,
+                            }}
                           />
                         </span>
-                        {option.lts ? (
+                        {/* The catalog lists newest first, so its first
+                            release for this type is the latest. */}
+                        {index === 0 ? (
                           <Chip
-                            label={<FormattedMessage {...messages.lts} />}
+                            color="success"
+                            label={<FormattedMessage {...messages.latest} />}
+                            size="small"
+                          />
+                        ) : null}
+                        {CHANNEL_BADGE[entry.channel] ? (
+                          <Chip
+                            label={<FormattedMessage {...CHANNEL_BADGE[entry.channel]} />}
                             size="small"
                             variant="outlined"
                           />
@@ -424,6 +483,13 @@ function GatewayCreatePageContent() {
                 </Select>
                 {errorFor('version') ? (
                   <FormHelperText>{errorFor('version')}</FormHelperText>
+                ) : typeVersions.length === 0 ? (
+                  <FormHelperText>
+                    <FormattedMessage
+                      {...messages.versionNoneConfigured}
+                      values={{ version: SPEC_DEFAULT_VERSION }}
+                    />
+                  </FormHelperText>
                 ) : null}
               </FormControl>
             </Grid>

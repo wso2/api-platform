@@ -63,6 +63,26 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 )
 
+func TestArtifactColumnQuery(t *testing.T) {
+	for engine, want := range map[components.DBType]string{
+		components.SQLite:    "SELECT cp_sync_status FROM artifacts WHERE kind = ? AND handle = ?",
+		components.Postgres:  "SELECT cp_sync_status FROM artifacts WHERE kind = $1 AND handle = $2",
+		components.SQLServer: "SELECT cp_sync_status FROM artifacts WHERE kind = @p1 AND handle = @p2",
+	} {
+		got, err := artifactColumnQuery(engine, cpSyncStatusColumn)
+		require.NoError(t, err)
+		require.Equal(t, want, got, engine)
+	}
+	got, err := artifactColumnQuery(components.SQLite, cpArtifactIDColumn)
+	require.NoError(t, err)
+	require.Equal(t, "SELECT cp_artifact_id FROM artifacts WHERE kind = ? AND handle = ?", got)
+
+	for _, column := range []string{"", "configuration", "cp_sync_status; DROP TABLE artifacts"} {
+		_, err := artifactColumnQuery(components.SQLite, column)
+		require.ErrorContains(t, err, "unsupported artifacts column", column)
+	}
+}
+
 func TestAwaitMappedTestbenchServiceProbesMappedEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/testbench/health", r.URL.Path)

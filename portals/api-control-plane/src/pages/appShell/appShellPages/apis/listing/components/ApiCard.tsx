@@ -16,20 +16,13 @@
  * under the License.
  */
 
-import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { useIntl } from 'react-intl';
+import { Box, ListingCard } from '@wso2/oxygen-ui';
+import { defineMessages, useIntl } from 'react-intl';
 
 import { thumbnailApiType, type ListableApi } from '../apiListItem';
-import { openableProps } from '@/components/openable';
-import { focusRingSx, interactiveCardSx } from '@/theme';
-import {
-  apiDescriptionSx,
-  ApiDeleteButton,
-  ApiKindChip,
-  UpdatedLabel,
-  VersionChip,
-} from './RestApiChips';
 import { ApiThumbnailAvatar } from '../../components/ApiThumbnailAvatar';
+import { ApiKindChip } from './RestApiChips';
+import { relativeTime } from '@/utils/relativeTime';
 import { useCan } from '@/permissions/useCan';
 
 type ApiCardProps = {
@@ -38,11 +31,21 @@ type ApiCardProps = {
   onDelete?: (api: ListableApi) => void;
 };
 
-const AVATAR_SIZE = 42;
+// Fills the 44px icon slot `ListingCard` reserves.
+const AVATAR_SIZE = 44;
+
+const messages = defineMessages({
+  deleteAriaLabel: {
+    id: 'apiCard.deleteAriaLabel',
+    defaultMessage: 'Delete {apiName}',
+    description: 'Accessible label for the API delete button.',
+  },
+});
 
 /**
- * API card for the grid view. Renders either a REST or a GraphQL API — see
- * `ListableApi` for why the two need no per-type branching here.
+ * API card for the grid view, on Oxygen's `ListingCard`. Renders either a REST
+ * or a GraphQL API — see `ListableApi` for why the two need no per-type
+ * branching here.
  */
 export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
   const intl = useIntl();
@@ -50,54 +53,32 @@ export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
   const updated = api.updatedAt || api.createdAt;
 
   return (
-    <Card
-      {...openableProps(intl, api.displayName, () => onOpen(api))}
-      sx={(theme) => ({
-        ...interactiveCardSx,
-        ...focusRingSx(theme),
-        '&:focus-within .api-delete-action, &:hover .api-delete-action': {
-          opacity: 1,
-        },
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-      })}
-    >
-      <CardContent sx={{ flex: 1 }}>
-        <Stack spacing={2}>
-          <Stack alignItems="flex-start" direction="row" spacing={1.5}>
-            <ApiThumbnailAvatar
-              apiId={api.id}
-              apiType={thumbnailApiType(api)}
-              displayName={api.displayName}
-              size={AVATAR_SIZE}
-            />
-            <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap sx={{ fontWeight: 700 }} variant="h6">
-                {api.displayName}
-              </Typography>
-              <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                <VersionChip version={api.version} />
-                <ApiKindChip kind={api.kind} />
-              </Stack>
-            </Box>
-          </Stack>
-          <Typography color="text.secondary" sx={apiDescriptionSx(2)} variant="body2">
-            {api.description || ''}
-          </Typography>
-        </Stack>
-      </CardContent>
-
-      <Divider />
-
-      <Box sx={{ alignItems: 'center', display: 'flex', gap: 1, px: 2, py: 1.25 }}>
-        <UpdatedLabel timestamp={updated} />
-        {onDelete && canDelete && (
-          <Box sx={{ ml: 'auto', mr: -1 }}>
-            <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
+    <ListingCard
+      deleteLabel={intl.formatMessage(messages.deleteAriaLabel, { apiName: api.displayName })}
+      description={api.description || undefined}
+      icon={
+        <ApiThumbnailAvatar
+          apiId={api.id}
+          apiType={thumbnailApiType(api)}
+          displayName={api.displayName}
+          size={AVATAR_SIZE}
+        />
+      }
+      onClick={() => onOpen(api)}
+      onDelete={onDelete && canDelete ? () => onDelete(api) : undefined}
+      // The name with its type chip beneath it.
+      title={
+        <Box component="span" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 0 }}>
+          <Box component="span" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {api.displayName}
           </Box>
-        )}
-      </Box>
-    </Card>
+          <Box component="span" sx={{ display: 'flex', gap: 1 }}>
+            <ApiKindChip kind={api.kind} />
+          </Box>
+        </Box>
+      }
+      updatedDateTime={updated || undefined}
+      updatedTime={updated ? relativeTime(updated) : undefined}
+    />
   );
 }

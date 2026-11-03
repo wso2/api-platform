@@ -715,7 +715,7 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 		return nil, false, portalPushError(err)
 	}
 	if content != nil {
-		if err := s.portalPublisher.PublishContent(ctx, portal, apiId, content); err != nil {
+		if err := s.portalPublisher.PublishContent(ctx, portal, apiType, apiId, content); err != nil {
 			return nil, false, portalPushError(err)
 		}
 	}
@@ -769,7 +769,7 @@ func (s *PublicationService) Unpublish(ctx context.Context, apiType, apiId, apiP
 		return apperror.APIPublicationStateConflict.New("This API is already unpublished from this API Portal. No changes were made.")
 	}
 
-	if err := s.portalPublisher.Unpublish(ctx, portal, apiId); err != nil {
+	if err := s.portalPublisher.Unpublish(ctx, portal, apiType, apiId); err != nil {
 		return portalPushError(err)
 	}
 

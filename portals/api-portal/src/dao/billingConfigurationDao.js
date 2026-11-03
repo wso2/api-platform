@@ -27,7 +27,8 @@
  * them for the connector, and `getWebhookSecret` decrypts only the signing secret.
  *
  * Rows read here carry each setting as the connector names it: { stripe: { publishableKey } } is
- * `stripePublishableKey`.
+ * `stripePublishableKey`. Settings the deployment supplies (billing/deploymentSettings.js) are not
+ * stored; `getWithSecrets` gives the supplied values instead.
  */
 
 const db = require('../db/driver');
@@ -35,6 +36,7 @@ const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 const { createCryptoUtil, bufferToUtf8 } = require('../utils/cryptoUtil');
 const { getPortalId } = require('../utils/orgContext');
+const { deploymentSettings } = require('../billing/deploymentSettings');
 
 const TABLE = 'billing_configurations';
 const PUBLIC_COLUMNS = 'org_uuid, billing_provider, payment_provider, provider_settings, created_by, created_at';
@@ -131,7 +133,7 @@ const get = async (orgId, t) => {
     ));
 };
 
-/** The organization's billing configuration with its keys decrypted, or null. */
+/** The organization's billing configuration with its keys decrypted and the deployment's settings, or null. */
 const getWithSecrets = async (orgId, t) => {
     const exec = t || db;
     const row = await exec.queryOne(
@@ -148,7 +150,7 @@ const getWithSecrets = async (orgId, t) => {
             secrets[provider][key] = decryptSecret(orgId, provider, key, payload);
         }
     }
-    return { ...toConfiguration(row), ...flatten(secrets) };
+    return { ...toConfiguration(row), ...flatten(secrets), ...deploymentSettings() };
 };
 
 /**
@@ -214,6 +216,26 @@ const setEventEndpoint = async (orgId, { baseUrl, endpointId, secret }, t) => {
     return get(orgId, t);
 };
 
+/**
+ * Records the Moesif application billing uses: `moesif` is { application, earlierApplications }.
+ * Resolves to the configuration, or null when there is none.
+ */
+const setMoesifApplication = async (orgId, { application, earlierApplications }, t) => {
+    const exec = t || db;
+    const row = await exec.queryOne(
+        `SELECT provider_settings FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]
+    );
+    if (!row) return null;
+    const settings = parseObject(row.provider_settings);
+    settings.moesif = { ...(settings.moesif || {}), application, earlierApplications };
+    await exec.execute(
+        `UPDATE ${TABLE} SET provider_settings = ? WHERE org_uuid = ? AND portal_id = ?`,
+        [jsonParam(settings), orgId, getPortalId()]
+    );
+    return get(orgId, t);
+};
+
 /** Deletes the configuration, and with it its customers, their checkouts, and its API plans. */
 const deleteConfiguration = async (orgId, t) => {
     const exec = t || db;
@@ -230,5 +252,6 @@ module.exports = {
     getWebhookSecret,
     create,
     setEventEndpoint,
+    setMoesifApplication,
     delete: deleteConfiguration,
 };

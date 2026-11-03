@@ -215,14 +215,16 @@ func buildRequest(
 		strategy = wait.ForAll(awaited...).WithStartupTimeout(timeout)
 	}
 
+	image := def.Image.Resolve(arch)
 	req := &testcontainers.ContainerRequest{
-		Image:          def.Image.Resolve(arch),
-		ExposedPorts:   exposed,
-		Env:            env,
-		Networks:       []string{opts.Network.Name()},
-		NetworkAliases: map[string][]string{opts.Network.Name(): {alias}},
-		Files:          files,
-		WaitingFor:     strategy,
+		Image:           image,
+		AlwaysPullImage: isFloatingImageTag(image),
+		ExposedPorts:    exposed,
+		Env:             env,
+		Networks:        []string{opts.Network.Name()},
+		NetworkAliases:  map[string][]string{opts.Network.Name(): {alias}},
+		Files:           files,
+		WaitingFor:      strategy,
 		Labels: map[string]string{
 			labelFramework: frameworkLabelValue,
 			labelBlock:     opts.Network.Block(),
@@ -449,6 +451,22 @@ func readLimitedString(r io.Reader, limit int64) (string, error) {
 // not second-guessed.
 func absPath(repoRoot, p string) string {
 	return assets.Resolve(repoRoot, p)
+}
+
+// floatingImageRepository is testbench.imgTestbenchRepository, the one image this framework
+// republishes under a moving :latest tag. Matched by full repository, not just the tag: an
+// operator's env-var image override (shared.Image) is indistinguishable from the framework's
+// own default once resolved, and could itself be a local build conventionally tagged :latest.
+const floatingImageRepository = "ghcr.io/wso2/api-platform/testbench"
+
+// isFloatingImageTag reports whether ref is the framework's own rolling testbench release.
+func isFloatingImageTag(ref string) bool {
+	tag := "latest" // Docker's implicit tag when a ref carries none
+	repo := ref
+	if idx := strings.LastIndex(ref, ":"); idx > strings.LastIndex(ref, "/") {
+		repo, tag = ref[:idx], ref[idx+1:]
+	}
+	return repo == floatingImageRepository && tag == "latest"
 }
 
 // applyLimits caps the container's host resources.

@@ -222,9 +222,16 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 // Control-plane host shown in gateway setup instructions (host:port).
 // Distinct from the BFF proxy base URLs in ./paths — this is a host:port an
 // externally deployed gateway dials, not a path this browser calls.
+/**
+ * What `CONTROLPLANE_HOST` is when the deployment does not set it: the address a gateway
+ * container on the same machine uses to reach a locally running control plane. A gateway
+ * anywhere else cannot use it.
+ */
+export const DEFAULT_CONTROLPLANE_HOST = 'host.docker.internal:9243';
+
 export const CONTROLPLANE_HOST = getEnvOrDefault(
   'APIP_AIW_GATEWAY_CONTROLPLANE_HOST',
-  'host.docker.internal:9243'
+  DEFAULT_CONTROLPLANE_HOST
 );
 
 

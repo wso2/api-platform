@@ -19,9 +19,21 @@
 import { useMemo } from 'react';
 import { useIntl } from 'react-intl';
 
+import { useResourceLimits } from '../hooks/useResourceLimits';
+
 import { permissionMessages } from './messages';
 import { usePermissions } from './PermissionContext';
-import type { ApScope, Decision, PermissionOperation } from './evaluate';
+import { isWriteOperation, type ApScope, type Decision, type PermissionOperation } from './evaluate';
+
+/**
+ * Whether read-only blocks this operation, whatever the scopes say. Applied
+ * here rather than per page, so the call sites that use these hooks directly
+ * instead of `<Can>` are covered too. Reads are never blocked.
+ */
+const useReadOnlyBlock = (operations: readonly PermissionOperation[]): boolean => {
+  const { readOnly } = useResourceLimits();
+  return readOnly && operations.some(isWriteOperation);
+};
 
 /**
  * Whether the user may be offered `operation`, named by its OpenAPI
@@ -34,7 +46,12 @@ import type { ApScope, Decision, PermissionOperation } from './evaluate';
  * the whole accepted list, including the broader `:manage` scope, so a caller
  * cannot accidentally lock out an org admin by naming only `ap:project:create`.
  */
-export const useCan = (operation: PermissionOperation): boolean => usePermissions().can(operation);
+export const useCan = (operation: PermissionOperation): boolean => {
+  // Both unconditional: `&&` would short-circuit the hook call.
+  const allowed = usePermissions().can(operation);
+  const blockedByReadOnly = useReadOnlyBlock([operation]);
+  return allowed && !blockedByReadOnly;
+};
 
 /**
  * Whether *any* of `operations` may be offered.
@@ -48,8 +65,16 @@ export const useCan = (operation: PermissionOperation): boolean => usePermission
  * handful of set lookups over two or three operations. The expensive part (the
  * granted-scope set) is already memoized once in the provider.
  */
-export const useCanAny = (operations: readonly PermissionOperation[]): boolean =>
-  usePermissions().canAny(operations);
+export const useCanAny = (operations: readonly PermissionOperation[]): boolean => {
+  const { readOnly } = useResourceLimits();
+  // Judged per operation: a menu with one read among writes stays reachable.
+  const reachable = readOnly ? operations.filter((op) => !isWriteOperation(op)) : operations;
+  const anyAllowed = usePermissions().canAny(reachable);
+  // `canAny([])` is `true` ("requires nothing"), wrong once filtering emptied
+  // a list that did hold operations: a writes-only menu is closed.
+  if (operations.length > 0 && reachable.length === 0) return false;
+  return anyAllowed;
+};
 
 /**
  * Whether the user holds one specific scope.
@@ -90,12 +115,22 @@ export const useActionPermission = (operation: PermissionOperation): ActionPermi
   const { decide } = usePermissions();
   const intl = useIntl();
   const decision = decide(operation);
+  // Permission outranks read-only: tell a user who lacks the scope that.
+  const { readOnlyMessage } = useResourceLimits();
+  // Unconditional — `decision.allowed &&` would short-circuit the hook call.
+  const readOnlyBlocks = useReadOnlyBlock([operation]);
+  const blockedByReadOnly = decision.allowed && readOnlyBlocks;
 
   return useMemo(
-    () => ({
-      ...decision,
-      tooltip: decision.allowed ? undefined : intl.formatMessage(permissionMessages.denied),
-    }),
-    [decision, intl],
+    () => {
+      if (blockedByReadOnly) {
+        return { ...decision, allowed: false, reason: 'read-only' as const, tooltip: readOnlyMessage };
+      }
+      return {
+        ...decision,
+        tooltip: decision.allowed ? undefined : intl.formatMessage(permissionMessages.denied),
+      };
+    },
+    [blockedByReadOnly, decision, intl, readOnlyMessage],
   );
 };

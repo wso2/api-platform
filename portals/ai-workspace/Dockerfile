@@ -23,7 +23,7 @@ RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
 ###########################
 # Stage 2 — BFF build      #
 ###########################
-FROM golang:1.26-alpine AS bff
+FROM golang:1.26.10-alpine AS bff
 ARG ENABLE_COVERAGE=false
 ARG COVERAGE_PACKAGES=""
 

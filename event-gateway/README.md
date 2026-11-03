@@ -42,7 +42,7 @@ Policies can be applied at two scopes:
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
 - [Postman](https://www.postman.com/downloads/) (optional, for manual testing)
-- [Go 1.24+](https://go.dev/dl/) (only if building from source)
+- [Go 1.26.10+](https://go.dev/dl/) (only if building from source)
 
 ## Quick Start
 

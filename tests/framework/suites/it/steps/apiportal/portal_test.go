@@ -317,13 +317,21 @@ func TestAPIOffersPlan(t *testing.T) {
 }
 
 func TestAPIHasField(t *testing.T) {
-	body := []byte(`{"id":"api-1","status":"DEPRECATED","name":"Renamed"}`)
+	body := []byte(`{"id":"api-1","status":"DEPRECATED","name":"Renamed","type":"GRAPHQL"}`)
 
 	require.NoError(t, apiHasField(body, "api-1", "status", "DEPRECATED"))
 	require.NoError(t, apiHasField(body, "api-1", "name", "Renamed"))
+	require.NoError(t, apiHasField(body, "api-1", "type", "GRAPHQL"))
 	require.ErrorContains(t, apiHasField(body, "api-1", "status", "PUBLISHED"), `with status "DEPRECATED"`)
 	require.ErrorContains(t, apiHasField(body, "api-1", "title", "x"), "want")
 	require.ErrorContains(t, apiHasField([]byte(`not json`), "api-1", "status", "x"), "decoding")
+}
+
+func TestFetchListedAPIRejectsAnUnknownListing(t *testing.T) {
+	_, _, err := (&Steps{}).fetchListedAPI(context.Background(), "LLM provider", "api-1")
+	require.ErrorContains(t, err, "unsupported API Portal listing")
+	require.Equal(t, "/apis/", listingCollections["API"])
+	require.Equal(t, "/mcp-servers/", listingCollections["MCP server"])
 }
 
 func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {

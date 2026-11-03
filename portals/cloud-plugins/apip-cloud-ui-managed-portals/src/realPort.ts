@@ -88,6 +88,17 @@ async function request<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
+  return (await send<T>(base, orgRef, method, path, body)).body;
+}
+
+/** Like `request`, with the response's status; a 2xx with no body has none. */
+async function send<T>(
+  base: string,
+  orgRef: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<{ status: number; body: T }> {
   const mutating = method !== 'GET';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -129,8 +140,8 @@ async function request<T>(
     throw new RequestError(message, response.status);
   }
 
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  const text = response.status === 204 ? '' : await response.text();
+  return { status: response.status, body: (text.trim() === '' ? undefined : JSON.parse(text)) as T };
 }
 
 // Wire shapes match the plugin's OAS.
@@ -141,6 +152,7 @@ type WirePortal = {
   description?: string | null;
   url?: string;
   loginEnvironment?: string;
+  selfSignup?: boolean;
   status?: string;
   updatedAt?: string;
 };
@@ -153,7 +165,7 @@ type WirePortalList = { count?: number; list?: WirePortal[] };
  * button (see fallback in ManagedPortalsList).
  */
 function normalizeStatus(raw?: string): ManagedPortalStatus | undefined {
-  if (raw === 'pending' || raw === 'active' || raw === 'failed') return raw;
+  if (raw === 'pending' || raw === 'active' || raw === 'failed' || raw === 'deleting') return raw;
   return undefined;
 }
 
@@ -173,6 +185,7 @@ function fromWire(w: WirePortal): ManagedPortal {
     description: w.description ?? undefined,
     url: w.url,
     loginEnvironment: w.loginEnvironment,
+    selfSignup: w.selfSignup,
     status: normalizeStatus(w.status),
     updatedAt: w.updatedAt,
   };
@@ -223,6 +236,7 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
           name: input.name,
           description: input.description,
           loginEnvironment: input.loginEnvironment,
+          selfSignup: input.selfSignup,
         });
         return fromWire(body);
       } catch (err) {
@@ -237,11 +251,15 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
         name: input.name,
         description: input.description,
         loginEnvironment: input.loginEnvironment,
+        selfSignup: input.selfSignup,
       });
       return fromWire(body);
     },
     async remove(id: string) {
-      await request<void>(base, orgHandle, 'DELETE', url(id));
+      // 204: deleted. 202: the cloud's orchestrator tears it down, and the portal
+      // reads as deleting until it is gone.
+      const res = await send<{ status?: string } | undefined>(base, orgHandle, 'DELETE', url(id));
+      return { pending: res.status === 202 || res.body?.status === 'deleting' };
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
       // Sibling endpoint reached via the same BFF proxy and org-id header as the portal calls.
