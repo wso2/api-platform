@@ -1,0 +1,55 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# The transformer entries the provisioned default model endpoint ("wso2", an OpenAI
+# endpoint) is created with. Written once, when the endpoint is first created; from
+# then on they are the operator's configuration and an upgrade never rewrites them.
+# OpenAI providers need no entry: they already speak the endpoint's format.
+#
+# No entry names a version: the provisioner writes the major version of the policy
+# this gateway build has loaded, and leaves out an entry whose policy is not loaded.
+transformers:
+  - template: azure-openai
+    type: openai-to-azure-openai-transformer
+    params:
+      apiVersion: "{apiVersion}"
+      pathSuffix: /chat/completions
+    upstreamPaths:
+      - "/openai/deployments/{upstreamModel}/chat/completions"
+  - template: anthropic
+    type: openai-to-anthropic-transformer
+    params:
+      anthropicVersion: "{apiVersion:2023-06-01}"
+    upstreamPaths:
+      - /v1/messages
+  - template: gemini
+    type: openai-to-gemini-transformer
+    params:
+      apiVersion: "{apiVersion:v1beta}"
+    upstreamPaths:
+      - "/{apiVersion:v1beta}/models/{upstreamModel}:generateContent"
+      - "/{apiVersion:v1beta}/models/{upstreamModel}:streamGenerateContent"
+  - template: awsbedrock
+    type: openai-to-bedrock-transformer
+    upstreamPaths:
+      - "/model/{upstreamModel}/converse"
+      - "/model/{upstreamModel}/converse-stream"
+  - template: mistralai
+    type: openai-to-mistral-transformer
+    upstreamPaths:
+      - /v1/chat/completions

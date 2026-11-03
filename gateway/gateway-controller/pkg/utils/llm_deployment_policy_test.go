@@ -62,7 +62,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_RejectsUnresolvable
 			Version:        "1.0.0",
 			Template:       "openai",
 			Upstream:       api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-			AccessControl:  api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl:  &api.LLMAccessControl{Mode: api.AllowAll},
 			GlobalPolicies: &[]api.Policy{{Name: "basic-ratelimit", Version: "v999"}},
 		},
 	}
@@ -105,7 +105,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_RejectsUnresolvablePol
 				Version:       "1.0.0",
 				Template:      "openai",
 				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
 	}))

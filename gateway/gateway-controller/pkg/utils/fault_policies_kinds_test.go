@@ -86,7 +86,7 @@ func TestLLMProviderTransformer_CarriesFaultPolicies(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl:       api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl:       &api.LLMAccessControl{Mode: api.AllowAll},
 			GlobalFaultPolicies: faultList(),
 		},
 	}
@@ -114,7 +114,7 @@ func TestLLMProviderTransformer_FaultPoliciesStayOutOfTheNormalChain(t *testing.
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl:       api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl:       &api.LLMAccessControl{Mode: api.AllowAll},
 			GlobalFaultPolicies: faultList(),
 		},
 	}
@@ -152,7 +152,7 @@ func llmProviderWithOperationFaults(faults []api.OperationPolicy) *api.LLMProvid
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl:          api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl:          &api.LLMAccessControl{Mode: api.AllowAll},
 			OperationFaultPolicies: &faults,
 		},
 	}

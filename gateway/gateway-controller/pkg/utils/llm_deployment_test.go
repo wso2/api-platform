@@ -152,7 +152,7 @@ func testLLMProviderYAML(t *testing.T, handle, displayName, template string) []b
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -1015,7 +1015,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: stringPtr("https://example.com"),
 				},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
 	}
@@ -1162,7 +1162,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: stringPtr("https://example.com"),
 				},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
 		DesiredState: models.StateDeployed,
@@ -1238,7 +1238,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: stringPtr("https://example.com"),
 				},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
 		DesiredState: models.StateDeployed,
