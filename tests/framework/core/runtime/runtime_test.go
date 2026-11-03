@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
@@ -97,6 +98,111 @@ func TestComponentVersion(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestCallbackURL(t *testing.T) {
+	container := &components.Definition{
+		Name: "platform-api", Image: components.ImageRef{Ref: "platform-api:test"}, Alias: "platform-api",
+		Endpoints: []components.Endpoint{{Name: "https", Port: 9243, Scheme: "https"}},
+	}
+	testbench := &components.Definition{
+		Name: "testbench", Image: components.ImageRef{Ref: "testbench:test"}, Alias: "testbench", Shared: true,
+		Endpoints: []components.Endpoint{{Name: "stripe", Port: 3022, Scheme: "http"}},
+	}
+	gateway := &components.Definition{
+		Name: "gateway", Alias: "gateway", Compose: &components.ComposeSpec{PrimaryService: "gateway-controller"},
+		Endpoints: []components.Endpoint{
+			{Name: "admin", Port: 9090, Scheme: "http"},
+			{Name: "http", Port: 8080, Scheme: "http", Service: "router"},
+		},
+	}
+	block := &topology.ResolvedBlock{Name: "billing"}
+	topo := &Topology{
+		Block: block, Instances: components.NewSet(), stacks: map[string]*ComposeStack{},
+		network: &Network{name: "6f1c2b9e-net", block: "billing"},
+	}
+	add := func(topo *Topology, def *components.Definition, ordinal, replicas int) {
+		inst, err := components.NewInstance(def, ordinal, replicas, "127.0.0.1", nil)
+		require.NoError(t, err)
+		require.NoError(t, topo.Instances.Add(inst))
+		if def.Compose != nil {
+			topo.stacks[inst.Label()] = &ComposeStack{Instance: inst, def: def, suffix: instanceSuffix(ordinal, replicas)}
+		}
+	}
+	add(topo, container, 0, 1)
+	add(topo, testbench, 0, 1)
+	add(topo, apiportal.APIPortal(), 0, 1)
+	add(topo, gateway, 1, 2)
+	newTopology := func() *Topology {
+		return &Topology{Block: block, Instances: components.NewSet(), stacks: map[string]*ComposeStack{}, network: topo.network}
+	}
+	otherOrg := newTopology()
+	add(otherOrg, apiportal.APIPortalOtherOrg(), 0, 1)
+	foreignOrg := newTopology()
+	add(foreignOrg, apiportal.APIPortal(), 0, 1)
+	add(foreignOrg, apiportal.APIPortalOtherOrg(), 0, 1)
+
+	tests := []struct {
+		name, component, endpoint, want string
+	}{
+		{name: "a block's container is named by its alias on its block's network",
+			component: "platform-api", endpoint: "https", want: "https://platform-api.6f1c2b9e-net:9243"},
+		{name: "a shared component keeps its own alias",
+			component: "testbench", endpoint: "stripe", want: "http://testbench:3022"},
+		{name: "the API Portal the billing steps call back is named by its service",
+			component: "api-portal", endpoint: "https", want: "https://api-portal.6f1c2b9e-net:9543"},
+		{name: "a replica's primary service carries its instance suffix",
+			component: "gateway", endpoint: "admin", want: "http://gateway-controller-2.6f1c2b9e-net:9090"},
+		{name: "an endpoint is named by the service that serves it",
+			component: "gateway", endpoint: "http", want: "http://router-2.6f1c2b9e-net:8080"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := topo.CallbackURL(tt.component, tt.endpoint)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("a compose component is named by its service, not its alias", func(t *testing.T) {
+		got, err := otherOrg.CallbackURL("api-portal-other-org", "https")
+		require.NoError(t, err)
+		require.Equal(t, "https://api-portal.6f1c2b9e-net:9543", got)
+	})
+
+	t.Run("two compose components running the same service have no address of their own", func(t *testing.T) {
+		for _, component := range []string{"api-portal", "api-portal-other-org"} {
+			_, err := foreignOrg.CallbackURL(component, "https")
+			require.ErrorContains(t, err, `both run the "api-portal" service`)
+		}
+	})
+
+	t.Run("an unknown component or endpoint is reported", func(t *testing.T) {
+		_, err := topo.CallbackURL("missing", "https")
+		require.Error(t, err)
+		_, err = topo.CallbackURL("api-portal", "nope")
+		require.ErrorContains(t, err, `no endpoint "nope"`)
+	})
+
+	t.Run("a compose component without its running stack is refused", func(t *testing.T) {
+		portals := components.NewSet()
+		inst, err := components.NewInstance(apiportal.APIPortal(), 0, 1, "127.0.0.1", nil)
+		require.NoError(t, err)
+		require.NoError(t, portals.Add(inst))
+		_, err = (&Topology{Block: block, Instances: portals, network: topo.network}).CallbackURL("api-portal", "https")
+		require.ErrorContains(t, err, "has no running compose stack")
+	})
+
+	t.Run("a block without a network is refused", func(t *testing.T) {
+		_, err := (&Topology{Block: block, Instances: topo.Instances}).CallbackURL("platform-api", "https")
+		require.ErrorContains(t, err, `block "billing" has no network`)
+	})
+
+	t.Run("a nil topology is refused", func(t *testing.T) {
+		var missing *Topology
+		_, err := missing.CallbackURL("api-portal", "https")
+		require.ErrorContains(t, err, "topology is required")
+	})
 }
 
 func TestComposeStackCoverageServicesPreservesOutputNames(t *testing.T) {
@@ -352,6 +458,43 @@ func TestServerDefinitionsUseConfiguredImages(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "mcr.microsoft.com/mssql/server:2022-latest", sqlserverDefault.Image.Ref)
 	require.Equal(t, "mcr.microsoft.com/azure-sql-edge:latest", sqlserverDefault.Image.ByArch["arm64"])
+}
+
+func TestIsFloatingImageTag(t *testing.T) {
+	require.True(t, isFloatingImageTag("ghcr.io/wso2/api-platform/testbench:latest"),
+		"only the framework's own published :latest is force-pulled")
+
+	require.False(t, isFloatingImageTag("ghcr.io/wso2/api-platform/testbench:test"),
+		"the local-build-only tag is never pushed to a registry, so it must never be force-pulled")
+	require.False(t, isFloatingImageTag("ghcr.io/wso2/api-platform/testbench:0.3.1"))
+	require.False(t, isFloatingImageTag(""), "an empty, build-only resolved image must never be force-pulled")
+	require.False(t, isFloatingImageTag("postgres"), "an upstream image's own :latest default is left alone")
+	require.False(t, isFloatingImageTag("postgres:16-alpine"))
+	require.False(t, isFloatingImageTag("localhost:5000/testbench:latest"),
+		"a different repository must never be force-pulled, even sharing the tag and image name —"+
+			" this also covers an operator override that happens to be tagged :latest for a local build")
+}
+
+func TestBuildRequestNeverForcePullsAnEmptyImage(t *testing.T) {
+	net := &Network{name: "test-net", block: "test-block"}
+
+	buildOnly := &components.Definition{
+		Name:  "build-only",
+		Image: components.ImageRef{Build: &components.ImageBuild{Context: "."}},
+	}
+	req, err := buildRequest(buildOnly, Options{Network: net}, "build-only", "amd64", 1)
+	require.NoError(t, err)
+	require.Empty(t, req.Image, "Resolve returns Ref, which is empty for a build-only definition")
+	require.False(t, req.AlwaysPullImage,
+		"an empty resolved image must never be marked for a forced pull")
+
+	pullBased := &components.Definition{
+		Name:  "pull-based",
+		Image: components.ImageRef{Ref: "ghcr.io/wso2/api-platform/testbench:latest"},
+	}
+	req, err = buildRequest(pullBased, Options{Network: net}, "pull-based", "amd64", 1)
+	require.NoError(t, err)
+	require.True(t, req.AlwaysPullImage)
 }
 
 func TestBuildPlanSchema(t *testing.T) {

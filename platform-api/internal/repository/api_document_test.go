@@ -867,63 +867,6 @@ func TestDocumentRepo_GetDocumentsByHandles_EmptyInputReturnsEmptyMap(t *testing
 }
 
 // ---------------------------------------------------------------------------
-// GetDocumentHandlesByUUIDs — the inverse direction
-// ---------------------------------------------------------------------------
-
-func TestDocumentRepo_GetDocumentHandlesByUUIDs_ScopedByOrganization(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	t.Cleanup(cleanup)
-
-	// Two orgs, each with a doc; the function must only resolve uuids that
-	// belong to the requested organization, not every row that happens to
-	// carry the uuid.
-	const orgA = "org-h2u-A"
-	const orgB = "org-h2u-B"
-	seedTestArtifact(t, db, orgA, "artifact-h2u-A")
-	seedTestArtifact(t, db, orgB, "artifact-h2u-B")
-
-	insertDocumentRow(t, db, &model.Document{
-		ID: "doc-A", ArtifactUUID: "artifact-h2u-A", OrganizationUUID: orgA,
-		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview-a",
-		DisplayName: "Overview A", Content: []byte("# a"),
-	})
-	insertDocumentRow(t, db, &model.Document{
-		ID: "doc-B", ArtifactUUID: "artifact-h2u-B", OrganizationUUID: orgB,
-		Type: constants.DocumentTypePrefix + constants.DocumentTypeHowTo, Handle: "overview-b",
-		DisplayName: "Overview B", Content: []byte("# b"),
-	})
-
-	repo := NewDocumentRepo(db)
-	m, err := repo.GetDocumentHandlesByUUIDs([]string{"doc-A", "doc-B", "missing"}, orgA)
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if m["doc-A"] != "overview-a" {
-		t.Errorf("doc-A = %q, want overview-a", m["doc-A"])
-	}
-	if _, ok := m["doc-B"]; ok {
-		t.Errorf("doc-B must not leak into another org's lookup; got %v", m)
-	}
-	if _, ok := m["missing"]; ok {
-		t.Errorf("missing uuid must not appear in result; got %v", m)
-	}
-}
-
-func TestDocumentRepo_GetDocumentHandlesByUUIDs_EmptyInputReturnsEmptyMap(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	t.Cleanup(cleanup)
-	repo := NewDocumentRepo(db)
-
-	m, err := repo.GetDocumentHandlesByUUIDs(nil, "any-org")
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if m == nil || len(m) != 0 {
-		t.Errorf("result = %+v, want an empty (non-nil) map", m)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // UpsertDocument — the UPDATE branch
 // ---------------------------------------------------------------------------
 

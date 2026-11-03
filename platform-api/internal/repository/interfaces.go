@@ -235,10 +235,10 @@ type SubscriptionPlanRepository interface {
 	// GetUsage returns what offers or uses the plan: the REST APIs listing its handle, the
 	// publication drafts and live publications offering it, and its subscriptions.
 	GetUsage(planUUID, handle, orgUUID string) (*model.SubscriptionPlanUsage, error)
-	// DeleteWithReferences deletes the plan and every reference to it, in one transaction: the
-	// publication rows, REST APIs and artifact_subscription_plans that offer it, and the plan on
-	// its subscriptions, which are kept. Its limits and pricing go with it. It returns false when
-	// the plan does not exist.
+	// DeleteWithReferences deletes the plan and its references, in one transaction: the REST APIs
+	// and artifact_subscription_plans that offer it, and the plan on its subscriptions, which are
+	// kept. The publication rows that offer it are kept too, with their own copy of the plan. Its
+	// limits and pricing go with it. It returns false when the plan does not exist.
 	DeleteWithReferences(planUUID, handle, orgUUID string) (bool, error)
 }
 
@@ -248,20 +248,21 @@ type SubscriptionPlanRepository interface {
 // access to live rows (IsDraft false).
 type PublicationRepository interface {
 	// GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
-	// plus the raw subscription-plan and document UUIDs its mapping tables
-	// store (not yet resolved to handles — the caller does that). Returns
-	// (nil, nil, nil, nil) when no draft has been saved.
-	GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	// plus the subscription-plan and document selections its mapping tables
+	// store, each with its copied handle and name and whether the source row
+	// still exists. Returns (nil, nil, nil, nil) when no draft has been saved.
+	GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, plans []model.PublicationSelection, docs []model.PublicationSelection, err error)
 	// GetPublication is GetDraft's counterpart for the live (IsDraft false)
 	// row. Returns (nil, nil, nil, nil) when this API is not published to
 	// this portal.
-	GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, plans []model.PublicationSelection, docs []model.PublicationSelection, err error)
 	// SaveDraftDetails creates the draft row on first save (any artifactUUID +
 	// apiPortalUUID pairing with no existing draft), or replaces an existing
-	// one in full, together with its plan/document mapping rows (planUUIDs /
-	// docUUIDs — already resolved from handles by the caller). Returns the
-	// saved row with its resolved UUID and audit timestamps.
-	SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error)
+	// one in full, together with its plan/document mapping rows (plans / docs —
+	// already resolved from handles by the caller, with the copy columns
+	// filled). Returns the saved row with its resolved UUID and audit
+	// timestamps.
+	SaveDraftDetails(pub *model.Publication, plans []model.PublicationSelection, docs []model.PublicationSelection, actor string) (*model.Publication, error)
 	// PromoteDraftToPublication makes the draft row for (artifactUUID,
 	// apiPortalUUID, orgUUID) live. The uuid of whichever row was first
 	// published for this pairing is the durable "anchor" identity and never
@@ -273,7 +274,11 @@ type PublicationRepository interface {
 	// (republish) versus this being the first publish. draftUpdatedAt is the
 	// draft's updated_at as the caller read it before pushing to the portal;
 	// a draft saved since then is not promoted (APIPublicationDraftChanged).
-	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time) (pub *model.Publication, replaced bool, err error)
+	// plans and docs are the selections pushed to the portal, read at
+	// snapshotAt: their copy columns are refreshed and their rows re-stamped
+	// with snapshotAt on the draft's mapping rows, and any other mapping row is
+	// removed, before the rows become the live listing's.
+	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time, snapshotAt time.Time, plans []model.PublicationSelection, docs []model.PublicationSelection) (pub *model.Publication, replaced bool, err error)
 	// UnpublishPublication is PromoteDraftToPublication's mirror, called
 	// after the portal removal succeeds: if no draft
 	// exists for (artifactUUID, apiPortalUUID, orgUUID), the live row (the
@@ -578,15 +583,10 @@ type DocumentRepository interface {
 	DeleteDocument(artifactUUID, handle, orgUUID, docType string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
 	DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error)
-	// GetDocumentsByHandles looks up each handle's document (uuid, handle, type, file name;
-	// no content) within one artifact. Reserved types (DEFINITION, THUMBNAIL) are never
+	// GetDocumentsByHandles looks up each handle's document (uuid, handle, type, display name,
+	// file name; no content) within one artifact. Reserved types (DEFINITION, THUMBNAIL) are never
 	// returned; a handle missing from the map is not selectable for this artifact.
 	GetDocumentsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]*model.Document, error)
-	// GetDocumentHandlesByUUIDs is the inverse, for reconstructing a docIds
-	// response from stored api_publication_doc_mappings rows. Scoped to the
-	// organization only (not a single artifact) since a mapping row's
-	// doc_uuid already came from that same artifact's own resolved set.
-	GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error)
 }
 
 // AuditRepository defines the interface for audit record writes.

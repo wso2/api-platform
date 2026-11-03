@@ -1264,13 +1264,13 @@ function validateScripts(strContent) {
 // false positives. NOTE: `lookup` is deliberately excluded — the default theme uses it benignly
 // as {{#with (lookup limits 0)}}; its dangerous form ({{lookup this "csrfToken"}}) is instead
 // caught by the whole-context-argument rule below.
-const DISALLOWED_TEMPLATE_HELPERS = new Set(['json', 'getvalue', 'jsonsafesubscriptions']);
+const DISALLOWED_TEMPLATE_HELPERS = new Set(['json', 'scriptjson', 'getvalue', 'jsonsafesubscriptions']);
 // Helpers that serialise or dynamically index whatever they're handed. Passing the WHOLE render
 // context to one of these dumps everything (incl. csrfToken) or bypasses the path denylist —
 // e.g. {{{jsonBeautify this}}}, {{lookup this "csrfToken"}}. The default theme only ever passes
 // a narrowed value (this.inputSchema, lookup limits 0), so scoping the whole-context check to
 // these helpers avoids flagging benign loop-item calls like {{stripMdExtension this}}.
-const CONTEXT_SENSITIVE_HELPERS = new Set(['json', 'jsonbeautify', 'jsonattr', 'jsonsafesubscriptions', 'getvalue', 'lookup']);
+const CONTEXT_SENSITIVE_HELPERS = new Set(['json', 'scriptjson', 'jsonbeautify', 'jsonattr', 'jsonsafesubscriptions', 'getvalue', 'lookup']);
 // Context keys a theme must never echo. csrfToken is only ever injected into forms server-side;
 // a template that references it is attempting to steal it. (profile / @root are intentionally
 // NOT here — the default theme legitimately renders {{profile.firstName}}, {{@root.baseUrl}}, etc.)

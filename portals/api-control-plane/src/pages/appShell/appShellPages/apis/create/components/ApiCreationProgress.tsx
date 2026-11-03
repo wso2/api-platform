@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { alpha, Box, Button, CircularProgress, Stack, Typography, useTheme } from '@wso2/oxygen-ui';
+import { alpha, Box, Button, LinearProgress, Stack, Typography, useTheme } from '@wso2/oxygen-ui';
+import { Check, Database, Monitor } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -27,6 +28,14 @@ const messages = defineMessages({
     id: 'api.create.ApiCreationProgress.action.back',
     defaultMessage: 'Back to configuration',
     description: 'Returns the user to the form they submitted, after creation failed.',
+  },
+  backend: {
+    id: 'api.create.ApiCreationProgress.node.backend',
+    defaultMessage: 'Backend',
+  },
+  client: {
+    id: 'api.create.ApiCreationProgress.node.client',
+    defaultMessage: 'Client',
   },
   failedBody: {
     id: 'api.create.ApiCreationProgress.failed.body',
@@ -44,28 +53,47 @@ const messages = defineMessages({
   progressLabel: {
     id: 'api.create.ApiCreationProgress.progress.label',
     defaultMessage: '{kind, select, graphql {GraphQL API} other {API proxy}} creation progress',
-    description: 'Accessible name for the circular progress indicator.',
+    description: 'Accessible name for the progress bar.',
   },
   retry: {
     id: 'api.create.ApiCreationProgress.action.retry',
     defaultMessage: 'Try again',
   },
-  stageCreating: {
-    id: 'api.create.ApiCreationProgress.stage.creating',
-    defaultMessage: 'Creating {kind, select, graphql {GraphQL API} other {API Proxy}}',
-    description: 'Status shown while the platform is creating the API proxy.',
-  },
   stageDone: {
     id: 'api.create.ApiCreationProgress.stage.done',
     defaultMessage: '{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…',
   },
-  stageFinalizing: {
-    id: 'api.create.ApiCreationProgress.stage.finalizing',
-    defaultMessage: 'Finalizing setup',
+  stepConfiguring: {
+    id: 'api.create.ApiCreationProgress.step.configuring',
+    defaultMessage:
+      '{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}',
   },
-  stageValidating: {
-    id: 'api.create.ApiCreationProgress.stage.validating',
-    defaultMessage: 'Validating configuration',
+  stepConnecting: {
+    id: 'api.create.ApiCreationProgress.step.connecting',
+    defaultMessage: 'Connecting to backend',
+  },
+  stepDeploying: {
+    id: 'api.create.ApiCreationProgress.step.deploying',
+    defaultMessage: '{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}',
+  },
+  stepStateActive: {
+    id: 'api.create.ApiCreationProgress.step.state.active',
+    defaultMessage: 'In progress',
+    description: 'Screen-reader text for the step currently running.',
+  },
+  stepStateDone: {
+    id: 'api.create.ApiCreationProgress.step.state.done',
+    defaultMessage: 'Completed',
+    description: 'Screen-reader text for a finished step.',
+  },
+  stepStatePending: {
+    id: 'api.create.ApiCreationProgress.step.state.pending',
+    defaultMessage: 'Pending',
+    description: 'Screen-reader text for a step not yet started.',
+  },
+  stepValidating: {
+    id: 'api.create.ApiCreationProgress.step.validating',
+    defaultMessage: 'Validating API definition',
   },
   title: {
     id: 'api.create.ApiCreationProgress.title',
@@ -102,210 +130,247 @@ export type ApiCreationProgressProps = {
 /**
  * How the percentage behaves.
  *
- * Creation is a single request, so there are no real milestones to report —
- * the bar eases toward a ceiling it never reaches on its own and only snaps to
- * 100 when the server actually answers. That keeps the number honest in the
- * one direction that matters: it never claims "done" before it is.
+ * Creation is a single request, so only the last step reflects real work. The
+ * first three steps are paced by the clock — short, so a quick create is not
+ * held back — and fill the bar to `TIMED_SHARE`. The last step then waits on
+ * the server: the bar eases toward a ceiling it never reaches on its own and
+ * snaps to 100 only when the server actually answers, so the number never
+ * claims "done" before it is.
  */
-const PROGRESS_TICK_MS = 350;
-const PROGRESS_EASING = 0.12;
-const PENDING_CEILING = 92;
+const TICK_MS = 100;
+const STEP_MS = 450;
+const STEP_COUNT = 4;
+const TIMED_STEPS = STEP_COUNT - 1;
+const TIMED_MS = STEP_MS * TIMED_STEPS;
+const TIMED_SHARE = (100 / STEP_COUNT) * TIMED_STEPS;
+const PENDING_CEILING = 96;
+const PENDING_EASING = 0.05;
 /** Long enough for "100%" to register before the page changes under the user. */
 const COMPLETION_HOLD_MS = 800;
 
-/** Stage copy by percentage reached, ordered. */
-const STAGES = [
-  { label: messages.stageValidating, until: 35 },
-  { label: messages.stageCreating, until: 70 },
-  { label: messages.stageFinalizing, until: 100 },
+const STEPS = [
+  messages.stepValidating,
+  messages.stepConfiguring,
+  messages.stepConnecting,
+  messages.stepDeploying,
 ] as const;
 
-const stageFor = (percent: number) =>
-  (STAGES.find((stage) => percent < stage.until) ?? STAGES[STAGES.length - 1]).label;
+/** The step in progress at a given percentage; the last one once the timed steps are through. */
+const activeStepFor = (percent: number) =>
+  Math.min(STEP_COUNT - 1, Math.floor(percent / (100 / STEP_COUNT)));
 
-/** Diameter of the progress ring, in px. Shared by the ring and its track. */
-const RING_SIZE = 48;
-const RING_THICKNESS = 3;
-
-/** Geometry of the illustration, in its own viewBox units. */
-const ART = {
-  height: 120,
-  hexRadius: 46,
-  width: 380,
+/** Read by assistive tech, invisible on screen. */
+const visuallyHidden = {
+  border: 0,
+  clip: 'rect(0 0 0 0)',
+  height: '1px',
+  margin: '-1px',
+  overflow: 'hidden',
+  padding: 0,
+  position: 'absolute',
+  whiteSpace: 'nowrap',
+  width: '1px',
 } as const;
 
-/**
- * Rendered width of the illustration, in px. The drawing scales to it from the
- * viewBox, so this is the only knob for how large it appears on screen.
- */
-const ART_DISPLAY_WIDTH = 560;
+const NODE_SIZE = 64;
+const CORE_SIZE = 150;
+const CORE_SIZE_NARROW = 110;
 
 /**
- * Tooth counts of the two gears, which double as their turn durations in
- * seconds. Meshing gears turn at a ratio set by their tooth counts, so one
- * second per tooth keeps the pair honest — and is slow enough not to nag.
- */
-const GEAR_TEETH_LARGE = 9;
-const GEAR_TEETH_SMALL = 8;
-
-/**
- * Points of a regular pointy-top hexagon, as an SVG `points` string.
- */
-const hexagonPoints = (cx: number, cy: number, radius: number): string =>
-  Array.from({ length: 6 }, (_, index) => {
-    // Start at -90° so a vertex sits at the top, then step a sixth of a turn.
-    const angle = -Math.PI / 2 + (Math.PI / 3) * index;
-    return `${(cx + radius * Math.cos(angle)).toFixed(2)},${(cy + radius * Math.sin(angle)).toFixed(
-      2,
-    )}`;
-  }).join(' ');
-
-/**
- * A gear outline as a single path, with the axle bore cut out of it.
+ * The waiting illustration: a client and a backend with the proxy between
+ * them, packets travelling both hops.
  *
- * Generated rather than hand-written: a gear is the same four points repeated
- * per tooth, and computing them keeps the tooth count a parameter instead of
- * sixty hand-tuned coordinates. The bore is a second subpath, so the caller
- * renders this with `fillRule="evenodd"` to punch it through.
+ * Built from theme tokens rather than a fixed palette, so it follows the theme
+ * into dark mode. Its motion is decorative and stops for anyone who has asked
+ * for less.
  */
-const gearPath = (
-  cx: number,
-  cy: number,
-  tip: number,
-  root: number,
-  bore: number,
-  teeth: number,
-): string => {
-  const step = (Math.PI * 2) / teeth;
-  const toothHalf = step * 0.19;
-  const flank = step * 0.07;
-  const at = (radius: number, angle: number) =>
-    `${(cx + radius * Math.cos(angle)).toFixed(2)},${(cy + radius * Math.sin(angle)).toFixed(2)}`;
-
-  const outline = Array.from({ length: teeth }, (_, index) => {
-    const angle = index * step;
-    return [
-      at(tip, angle - toothHalf),
-      at(tip, angle + toothHalf),
-      at(root, angle + toothHalf + flank),
-      at(root, angle + step - toothHalf - flank),
-    ].join(' L');
-  }).join(' L');
-
-  // The bore is drawn as two half-arcs — a circle has no single-command form.
-  const boreCircle =
-    `M${cx + bore},${cy} ` +
-    `A${bore},${bore} 0 1,0 ${cx - bore},${cy} ` +
-    `A${bore},${bore} 0 1,0 ${cx + bore},${cy} Z`;
-
-  return `M${outline} Z ${boreCircle}`;
-};
-
-/**
- * The waiting illustration: a backend on one side, a client on the other, and
- * the proxy being assembled between them.
- *
- * Inline SVG rather than an asset because every colour is a palette token — it
- * follows the theme into dark mode, which a flat exported image cannot.
- */
-const ApiProxyAssemblyArt = () => {
+const ApiProxyFlowArt = ({ complete }: { complete: boolean }) => {
   const theme = useTheme();
-  const centreX = ART.width / 2;
-  const centreY = ART.height / 2;
-  const outline = theme.palette.primary.main;
-  const cog = theme.palette.primary.contrastText;
-  // Pivots are stated in viewBox units rather than left to `fill-box`: a gear's
-  // bounding box isn't centred on its axle for odd tooth counts, so the default
-  // origin would make it wobble instead of spin.
-  const largeGear = { cx: centreX + 6, cy: centreY - 6 };
-  const smallGear = { cx: centreX - 14, cy: centreY + 14 };
+  const intl = useIntl();
+  const accent = theme.palette.primary.main;
+  const track = theme.palette.divider;
+
+  const node = (icon: typeof Monitor, label: string, done: boolean) => {
+    const Icon = icon;
+    return (
+      <Stack spacing={1.5} sx={{ alignItems: 'center', flexShrink: 0 }}>
+        <Box
+          sx={{
+            alignItems: 'center',
+            bgcolor: done ? alpha(accent, 0.16) : 'background.paper',
+            border: `1.5px solid ${accent}`,
+            borderRadius: '16px',
+            color: accent,
+            display: 'flex',
+            height: NODE_SIZE,
+            justifyContent: 'center',
+            width: NODE_SIZE,
+          }}
+        >
+          <Icon size={26} strokeWidth={1.6} />
+        </Box>
+        <Typography color="text.secondary" variant="body2">
+          {label}
+        </Typography>
+      </Stack>
+    );
+  };
+
+  const line = (delays: number[]) => (
+    <Box
+      sx={{
+        // Lifted by the node label's height so the line meets the boxes' midpoint.
+        background: complete
+          ? accent
+          : `repeating-linear-gradient(90deg, ${track} 0 6px, transparent 6px 12px)`,
+        flex: 1,
+        height: 2,
+        mb: '25px',
+        minWidth: 8,
+        mx: { sm: '14px', xs: '6px' },
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
+      {!complete &&
+        delays.map((delay) => (
+          <Box
+            key={delay}
+            sx={{
+              animation: `apicpPacket 1.6s linear ${delay}s infinite`,
+              bgcolor: accent,
+              borderRadius: '50%',
+              boxShadow: `0 0 10px ${accent}`,
+              height: 6,
+              left: 0,
+              position: 'absolute',
+              top: -2,
+              width: 6,
+            }}
+          />
+        ))}
+    </Box>
+  );
 
   return (
     <Box
       aria-hidden
-      component="svg"
       sx={{
-        // The spin lives here rather than in a `style` prop, so the
-        // reduced-motion rule below can actually override it.
-        '& .gear--large': { animation: `apicpGearSpin ${GEAR_TEETH_LARGE}s linear infinite` },
-        '& .gear--small': {
-          // Meshed with the larger gear, so it has to turn the other way.
-          animation: `apicpGearSpinReverse ${GEAR_TEETH_SMALL}s linear infinite`,
+        '@keyframes apicpPacket': {
+          '0%': { left: '0%', opacity: 0 },
+          '10%': { opacity: 1 },
+          '90%': { opacity: 1 },
+          '100%': { left: '100%', opacity: 0 },
         },
-        '@keyframes apicpGearSpin': {
-          from: { transform: 'rotate(0deg)' },
-          to: { transform: 'rotate(360deg)' },
+        '@keyframes apicpSpin': { to: { transform: 'rotate(360deg)' } },
+        '@keyframes apicpSpinReverse': { to: { transform: 'rotate(-360deg)' } },
+        '@keyframes apicpGlow': {
+          '0%, 100%': { opacity: 0.5, transform: 'scale(0.92)' },
+          '50%': { opacity: 1, transform: 'scale(1.05)' },
         },
-        '@keyframes apicpGearSpinReverse': {
-          from: { transform: 'rotate(0deg)' },
-          to: { transform: 'rotate(-360deg)' },
+        '@keyframes apicpBreathe': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.06)' },
         },
-        // Motion here is decorative; anyone who has asked for less gets the
-        // same illustration, held still.
         '@media (prefers-reduced-motion: reduce)': {
-          '& .gear--large, & .gear--small': { animation: 'none' },
+          '& *': { animation: 'none !important' },
         },
-        display: 'block',
-        maxWidth: '100%',
-        width: ART_DISPLAY_WIDTH,
+        alignItems: 'center',
+        display: 'flex',
+        justifyContent: 'center',
+        maxWidth: 620,
+        width: '100%',
       }}
-      viewBox={`0 0 ${ART.width} ${ART.height}`}
     >
-      {/* Client, left: a diamond. */}
-      <polygon
-        fill="none"
-        points={`36,${centreY - 20} 56,${centreY} 36,${centreY + 20} 16,${centreY}`}
-        stroke={outline}
-        strokeLinejoin="round"
-        strokeWidth={2}
-      />
-      {/* Backend, right: a circle. */}
-      <circle
-        cx={ART.width - 36}
-        cy={centreY}
-        fill="none"
-        r={20}
-        stroke={outline}
-        strokeWidth={2}
-      />
+      {node(Monitor, intl.formatMessage(messages.client), true)}
+      {line([0, 0.53, 1.06])}
 
-      {/* Traffic on both hops, as dotted runs through a junction node. */}
-      {[
-        { from: 64, node: 118, to: 112 },
-        { from: ART.width - 112, node: ART.width - 118, to: ART.width - 64 },
-      ].map((hop) => (
-        <g key={hop.node}>
-          <line
-            stroke={alpha(theme.palette.primary.main, 0.5)}
-            strokeDasharray="1 9"
+      <Box
+        sx={{
+          alignItems: 'center',
+          display: 'flex',
+          flexShrink: 0,
+          height: { sm: CORE_SIZE, xs: CORE_SIZE_NARROW },
+          justifyContent: 'center',
+          mb: '25px',
+          position: 'relative',
+          width: { sm: CORE_SIZE, xs: CORE_SIZE_NARROW },
+        }}
+      >
+        <Box
+          sx={{
+            animation: 'apicpGlow 2.4s ease-in-out infinite',
+            background: `radial-gradient(circle, ${alpha(accent, 0.25)} 0%, transparent 65%)`,
+            borderRadius: '50%',
+            inset: -20,
+            position: 'absolute',
+          }}
+        />
+        <Box
+          sx={{
+            animation: 'apicpSpin 18s linear infinite',
+            border: `1.5px dashed ${track}`,
+            borderRadius: '50%',
+            inset: 0,
+            position: 'absolute',
+          }}
+        />
+        <Box
+          sx={{
+            animation: 'apicpSpin 1.6s linear infinite',
+            border: '2px solid transparent',
+            borderRadius: '50%',
+            borderRightColor: alpha(accent, 0.35),
+            borderTopColor: accent,
+            inset: 14,
+            opacity: complete ? 0.4 : 1,
+            position: 'absolute',
+          }}
+        />
+        <Box
+          sx={{
+            animation: 'apicpSpinReverse 2.4s linear infinite',
+            border: '1.5px solid transparent',
+            borderBottomColor: alpha(accent, 0.6),
+            borderRadius: '50%',
+            inset: 28,
+            opacity: complete ? 0.4 : 1,
+            position: 'absolute',
+          }}
+        />
+        <Box
+          sx={{
+            alignItems: 'center',
+            animation: 'apicpBreathe 2.4s ease-in-out infinite',
+            bgcolor: accent,
+            borderRadius: '18px',
+            boxShadow: `0 10px 30px ${alpha(accent, 0.4)}`,
+            color: theme.palette.primary.contrastText,
+            display: 'flex',
+            height: NODE_SIZE,
+            justifyContent: 'center',
+            position: 'relative',
+            width: NODE_SIZE,
+          }}
+        >
+          <svg
+            fill="none"
+            height={30}
+            stroke="currentColor"
             strokeLinecap="round"
-            strokeWidth={3}
-            x1={hop.from}
-            x2={hop.to}
-            y1={centreY}
-            y2={centreY}
-          />
-          <circle cx={hop.node} cy={centreY} fill="none" r={4} stroke={outline} strokeWidth={2} />
-        </g>
-      ))}
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+            viewBox="0 0 24 24"
+            width={30}
+          >
+            <path d="M12 3 20 7.5v9L12 21 4 16.5v-9z" />
+            <path d="M9 10.5 7 12l2 1.5M15 10.5l2 1.5-2 1.5M13 9.5l-2 5" />
+          </svg>
+        </Box>
+      </Box>
 
-      {/* The proxy itself, with its two gears turning against each other. */}
-      <polygon fill={outline} points={hexagonPoints(centreX, centreY, ART.hexRadius)} />
-      <path
-        className="gear--large"
-        d={gearPath(largeGear.cx, largeGear.cy, 17, 13, 7, GEAR_TEETH_LARGE)}
-        fill={cog}
-        fillRule="evenodd"
-        style={{ transformOrigin: `${largeGear.cx}px ${largeGear.cy}px` }}
-      />
-      <circle cx={largeGear.cx} cy={largeGear.cy} fill={cog} r={3.5} />
-      <path
-        className="gear--small"
-        d={gearPath(smallGear.cx, smallGear.cy, 10, 7.5, 3.5, GEAR_TEETH_SMALL)}
-        fill={cog}
-        fillRule="evenodd"
-        style={{ transformOrigin: `${smallGear.cx}px ${smallGear.cy}px` }}
-      />
+      {line([0.8, 1.33, 1.86])}
+      {node(Database, intl.formatMessage(messages.backend), complete)}
     </Box>
   );
 };
@@ -326,24 +391,33 @@ export const ApiCreationProgress = ({
   status,
 }: ApiCreationProgressProps) => {
   const intl = useIntl();
+  const theme = useTheme();
   const [percent, setPercent] = useState(0);
 
   useEffect(() => {
     if (status !== 'creating') return undefined;
 
-    // A retry re-enters `creating` with the ring left near the ceiling from the
-    // failed attempt, which would open the second try at "Finalizing setup".
-    // Already 0 on the first pass, so this only ever undoes a stale climb.
+    // A retry re-enters `creating` with the bar left near the ceiling from the
+    // failed attempt, which would open the second try at the last step. Already
+    // 0 on the first pass, so this only ever undoes a stale climb.
     setPercent(0);
+    const startedAt = Date.now();
 
     const timer = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < TIMED_MS) {
+        setPercent((TIMED_SHARE * elapsed) / TIMED_MS);
+        return;
+      }
+      // Past the paced steps the bar only moves because the server is still working.
       setPercent((current) =>
         Math.min(
           PENDING_CEILING,
-          current + Math.max(1, (PENDING_CEILING - current) * PROGRESS_EASING),
+          Math.max(TIMED_SHARE, current) +
+            Math.max(0.2, (PENDING_CEILING - Math.max(TIMED_SHARE, current)) * PENDING_EASING),
         ),
       );
-    }, PROGRESS_TICK_MS);
+    }, TICK_MS);
 
     return () => window.clearInterval(timer);
   }, [status]);
@@ -358,9 +432,12 @@ export const ApiCreationProgress = ({
   }, [onComplete, status]);
 
   const rounded = Math.round(percent);
+  const complete = status === 'created';
+  const activeStep = activeStepFor(percent);
+  const accent = theme.palette.primary.main;
 
   return (
-    <Stack spacing={3} sx={{ alignItems: 'center', py: 6, textAlign: 'center', width: '100%' }}>
+    <Stack spacing={6} sx={{ alignItems: 'center', py: 6, textAlign: 'center', width: '100%' }}>
       <Stack sx={{ alignItems: 'center', maxWidth: 'md' }}>
         <Typography sx={{ fontWeight: 700 }} variant="h2">
           <FormattedMessage
@@ -370,7 +447,7 @@ export const ApiCreationProgress = ({
         </Typography>
       </Stack>
 
-      <ApiProxyAssemblyArt />
+      <ApiProxyFlowArt complete={complete} />
 
       {status === 'failed' ? (
         <Stack spacing={2} sx={{ maxWidth: 'sm', width: '100%' }}>
@@ -388,50 +465,88 @@ export const ApiCreationProgress = ({
           </Stack>
         </Stack>
       ) : (
-        <Stack spacing={2} sx={{ alignItems: 'center' }}>
-          <Box sx={{ display: 'inline-flex', position: 'relative' }}>
-            {/* Track behind the arc, so the remaining share stays readable. */}
-            <CircularProgress
-              size={RING_SIZE}
-              sx={{ color: 'divider' }}
-              thickness={RING_THICKNESS}
-              value={100}
-              variant="determinate"
-            />
-            <CircularProgress
-              aria-label={intl.formatMessage(messages.progressLabel, { kind: apiKind })}
-              size={RING_SIZE}
-              sx={{ color: 'primary.main', left: 0, position: 'absolute' }}
-              thickness={RING_THICKNESS}
-              value={rounded}
-              variant="determinate"
-            />
-            <Box
-              sx={{
-                alignItems: 'center',
-                display: 'flex',
-                inset: 0,
-                justifyContent: 'center',
-                position: 'absolute',
-              }}
+        <Stack spacing={2} sx={{ maxWidth: 360, width: '100%' }}>
+          <LinearProgress
+            aria-label={intl.formatMessage(messages.progressLabel, { kind: apiKind })}
+            sx={{
+              '& .MuiLinearProgress-bar': {
+                background: `linear-gradient(90deg, ${accent}, ${alpha(accent, 0.7)})`,
+                borderRadius: 3,
+                transition: 'transform 0.3s ease-out',
+              },
+              borderRadius: 3,
+              height: 6,
+            }}
+            value={rounded}
+            variant="determinate"
+          />
+          <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+            <Typography
+              aria-live="polite"
+              color="primary.main"
+              sx={{ fontWeight: 500 }}
+              variant="body2"
             >
-              <Typography color="text.secondary" variant="caption">
-                <FormattedMessage {...messages.percent} values={{ value: rounded }} />
-              </Typography>
-            </Box>
-          </Box>
+              {complete ? (
+                <FormattedMessage {...messages.stageDone} values={{ kind: apiKind }} />
+              ) : (
+                <FormattedMessage {...STEPS[activeStep]} values={{ kind: apiKind }} />
+              )}
+            </Typography>
+            <Typography color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }} variant="body2">
+              <FormattedMessage {...messages.percent} values={{ value: rounded }} />
+            </Typography>
+          </Stack>
 
-          <Typography
-            aria-live="polite"
-            color="primary.main"
-            sx={{ fontWeight: 600 }}
-            variant="body1"
-          >
-            <FormattedMessage
-              {...(status === 'created' ? messages.stageDone : stageFor(percent))}
-              values={{ kind: apiKind }}
-            />
-          </Typography>
+          <Stack component="ul" spacing={1.25} sx={{ listStyle: 'none', m: 0, p: 0, textAlign: 'left' }}>
+            {STEPS.map((step, index) => {
+              const done = complete || index < activeStep;
+              const active = !complete && index === activeStep;
+              return (
+                <Stack
+                  component="li"
+                  direction="row"
+                  aria-current={active ? 'step' : undefined}
+                  key={step.id}
+                  spacing={1.25}
+                  sx={{
+                    alignItems: 'center',
+                    color: done ? 'text.secondary' : active ? 'text.primary' : 'text.disabled',
+                    transition: 'color 0.2s',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      '@keyframes apicpStepSpin': { to: { transform: 'rotate(360deg)' } },
+                      '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+                      alignItems: 'center',
+                      animation: active ? 'apicpStepSpin 0.8s linear infinite' : 'none',
+                      bgcolor: done ? accent : 'transparent',
+                      border: `1.5px solid ${done || active ? accent : theme.palette.divider}`,
+                      borderRadius: '50%',
+                      borderTopColor: active ? 'transparent' : undefined,
+                      color: theme.palette.primary.contrastText,
+                      display: 'flex',
+                      flexShrink: 0,
+                      height: 16,
+                      justifyContent: 'center',
+                      width: 16,
+                    }}
+                  >
+                    {done && <Check size={10} strokeWidth={3} />}
+                  </Box>
+                  <Typography color="inherit" variant="body2">
+                    <FormattedMessage {...step} values={{ kind: apiKind }} />
+                  </Typography>
+                  <Box component="span" sx={visuallyHidden}>
+                    <FormattedMessage
+                      {...(done ? messages.stepStateDone : active ? messages.stepStateActive : messages.stepStatePending)}
+                    />
+                  </Box>
+                </Stack>
+              );
+            })}
+          </Stack>
         </Stack>
       )}
     </Stack>

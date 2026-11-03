@@ -30,6 +30,7 @@ const VALUES: DraftFormValues = {
   sandboxUrl: 'https://sandbox.example.com',
   agentVisibility: 'VISIBLE',
   subscriptionPlanIds: [],
+  docIds: [],
 };
 
 describe('ApiDetailsTab', () => {
@@ -135,6 +136,39 @@ describe('ApiDetailsTab', () => {
     renderWithProviders(<ApiDetailsTab values={VALUES} />);
 
     expect(screen.getByText('LO')).toBeInTheDocument();
+  });
+
+  it('shows the thumbnail image in place of the monogram when there is one', () => {
+    renderWithProviders(<ApiDetailsTab thumbnailUrl="blob:test/1" values={VALUES} />);
+
+    expect(screen.getByRole('img', { name: 'Loans' })).toHaveAttribute('src', 'blob:test/1');
+    expect(screen.queryByText('LO')).not.toBeInTheDocument();
+  });
+
+  it('reports the image picked to replace the thumbnail, and lets the same one be picked again', async () => {
+    const onThumbnailPick = vi.fn();
+    const { container, user } = renderWithProviders(<ApiDetailsTab onThumbnailPick={onThumbnailPick} values={VALUES} />);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const image = new File(['png'], 'logo.png', { type: 'image/png' });
+
+    expect(screen.getByRole('button', { name: 'Change thumbnail' })).toBeInTheDocument();
+    expect(input).toHaveAttribute('accept', 'image/png,image/jpeg');
+
+    await user.upload(input, image);
+    expect(onThumbnailPick).toHaveBeenLastCalledWith(image);
+    expect(input.value).toBe('');
+  });
+
+  it('does not offer to change the thumbnail when it is read-only, disabled or has no handler', () => {
+    const onThumbnailPick = vi.fn();
+    const { rerender } = renderWithProviders(<ApiDetailsTab readOnly onThumbnailPick={onThumbnailPick} values={VALUES} />);
+    expect(screen.queryByRole('button', { name: 'Change thumbnail' })).not.toBeInTheDocument();
+
+    rerender(<ApiDetailsTab disabled onThumbnailPick={onThumbnailPick} values={VALUES} />);
+    expect(screen.queryByRole('button', { name: 'Change thumbnail' })).not.toBeInTheDocument();
+
+    rerender(<ApiDetailsTab values={VALUES} />);
+    expect(screen.queryByRole('button', { name: 'Change thumbnail' })).not.toBeInTheDocument();
   });
 
   it('clears a URL with the clear button, and stops offering gateway URLs in custom mode', async () => {

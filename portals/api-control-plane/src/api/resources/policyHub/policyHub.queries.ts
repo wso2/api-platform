@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { queryOptions } from '@tanstack/react-query';
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 
 import { staleTimes } from '../../core/queryClient';
 import { createGlobalResourceKeys } from '../../core/queryKeys';
@@ -40,12 +40,23 @@ export const policyHubKeys = createGlobalResourceKeys('policyHub');
  * the catalog is as close to fixed-per-session as anything in this app gets.
  */
 export const policyHubQueries = {
-  policies: (page: number, pageSize: number, categories: string[] = []) =>
-    queryOptions({
-      queryKey: policyHubKeys.list({ page, pageSize, categories }),
-      // `signal` comes from TanStack Query: navigating away aborts the
-      // in-flight request instead of letting it land in the cache.
-      queryFn: ({ signal }) => listPolicies(page, pageSize, categories, { signal }),
+  /**
+   * The catalog as an endless list: each page is the next `pageSize` policies matching
+   * `search` and `categories`, so a filter change starts a fresh list rather than
+   * filtering what was already loaded.
+   */
+  policiesInfinite: (pageSize: number, search: string, categories: string[] = []) =>
+    infiniteQueryOptions({
+      queryKey: [...policyHubKeys.list({ categories, pageSize, search }), 'infinite'] as const,
+      queryFn: ({ pageParam, signal }) =>
+        listPolicies(pageParam, pageSize, categories, { signal }, search),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage, pages) => {
+        const loaded = pages.reduce((count, page) => count + page.policies.length, 0);
+        return lastPage.policies.length > 0 && loaded < lastPage.total
+          ? pages.length + 1
+          : undefined;
+      },
       staleTime: staleTimes.static,
     }),
 

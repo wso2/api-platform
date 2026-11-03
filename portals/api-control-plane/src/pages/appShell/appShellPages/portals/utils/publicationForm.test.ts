@@ -18,12 +18,29 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { aGateway, aPublication, aPublicationDraftDetails, aRestApi } from '@/test/msw';
+import {
+  aGateway,
+  aPublication,
+  aPublicationDraftDetails,
+  aRestApi,
+  publicationSelections,
+  type PublicationSelectionFixture,
+} from '@/test/msw';
 import {
   buildProductionUrlOptions,
+  deletedDocumentsOf,
+  deletedPlansOf,
+  documentNamesOf,
   draftFormValuesToInput,
+  editedDocIdsOf,
+  editedPlanIdsOf,
   emptyDraftFormValues,
+  planNamesOf,
   resolveDraftFormValues,
+  sameDraftFormValues,
+  sameSelection,
+  toggleSelection,
+  validateThumbnailFile,
 } from './publicationForm';
 
 const api = aRestApi({
@@ -59,7 +76,17 @@ describe('resolveDraftFormValues', () => {
       version: '2.0.0',
       agentVisibility: 'VISIBLE',
       subscriptionPlanIds: [],
+      docIds: [],
     });
+  });
+
+  it('reads the selected documents from the draft, then the publication', () => {
+    const draft = aPublicationDraftDetails({ documents: publicationSelections('guide') });
+    const publication = aPublication({ documents: publicationSelections('faq') });
+
+    expect(resolveDraftFormValues(draft, publication, api).docIds).toEqual(['guide']);
+    expect(resolveDraftFormValues(undefined, publication, api).docIds).toEqual(['faq']);
+    expect(resolveDraftFormValues(aPublicationDraftDetails({ documents: undefined }), undefined, api).docIds).toEqual([]);
   });
 
   it('defaults the Production URL to the given gateway URL', () => {
@@ -83,11 +110,132 @@ describe('resolveDraftFormValues', () => {
   });
 });
 
+describe('deleted plans', () => {
+  const selections: PublicationSelectionFixture[] = [
+    { displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' },
+    { displayName: 'Platinum', id: 'platinum', sourceStatus: 'DELETED' },
+  ];
+
+  it('leaves a deleted plan out of the form, whichever tier it is read from', () => {
+    const draft = aPublicationDraftDetails({ subscriptionPlans: selections });
+    const publication = aPublication({ subscriptionPlans: selections });
+
+    expect(resolveDraftFormValues(draft, undefined, undefined).subscriptionPlanIds).toEqual(['gold']);
+    expect(resolveDraftFormValues(undefined, publication, undefined).subscriptionPlanIds).toEqual(['gold']);
+  });
+
+  it('lists the deleted plans with their stored names', () => {
+    const draft = aPublicationDraftDetails({ subscriptionPlans: selections });
+
+    expect(deletedPlansOf(draft)).toEqual([{ displayName: 'Platinum', id: 'platinum' }]);
+    expect(deletedPlansOf(undefined)).toEqual([]);
+  });
+});
+
+describe('edited plans', () => {
+  it('lists the plans edited since they were saved, leaving out deleted ones', () => {
+    const draft = aPublicationDraftDetails({
+      subscriptionPlans: [
+        { displayName: 'Gold', id: 'gold', sourceStatus: 'UPDATED' },
+        { displayName: 'Silver', id: 'silver', sourceStatus: 'UNCHANGED' },
+        { displayName: 'Platinum', id: 'platinum', sourceStatus: 'DELETED' },
+      ],
+    });
+
+    expect(editedPlanIdsOf(draft)).toEqual(['gold']);
+    expect(editedPlanIdsOf(undefined)).toEqual([]);
+  });
+});
+
+describe('deleted and edited documents', () => {
+  const selections: PublicationSelectionFixture[] = [
+    { displayName: 'Guide', id: 'guide', sourceStatus: 'UPDATED' },
+    { displayName: 'Old guide', id: 'gone', sourceStatus: 'DELETED' },
+    { displayName: 'FAQ', id: 'faq', sourceStatus: 'UNCHANGED' },
+  ];
+
+  it('leaves a deleted document out of the form, whichever tier it is read from', () => {
+    const draft = aPublicationDraftDetails({ documents: selections });
+    const publication = aPublication({ documents: selections });
+
+    expect(resolveDraftFormValues(draft, undefined, undefined).docIds).toEqual(['guide', 'faq']);
+    expect(resolveDraftFormValues(undefined, publication, undefined).docIds).toEqual(['guide', 'faq']);
+  });
+
+  it('lists deleted documents with their stored names and the edited ones, leaving out deleted', () => {
+    const draft = aPublicationDraftDetails({ documents: selections });
+
+    expect(deletedDocumentsOf(draft)).toEqual([{ displayName: 'Old guide', id: 'gone' }]);
+    expect(editedDocIdsOf(draft)).toEqual(['guide']);
+    expect(deletedDocumentsOf(undefined)).toEqual([]);
+    expect(editedDocIdsOf(undefined)).toEqual([]);
+  });
+
+  it('maps ids to the names stored with the selection', () => {
+    const publication = aPublication({ documents: selections, subscriptionPlans: [selections[0]] });
+
+    expect(documentNamesOf(publication)).toEqual({ faq: 'FAQ', gone: 'Old guide', guide: 'Guide' });
+    expect(planNamesOf(publication)).toEqual({ guide: 'Guide' });
+    expect(documentNamesOf(undefined)).toEqual({});
+  });
+});
+
 describe('draftFormValuesToInput', () => {
   it('sends the agent visibility with the other details', () => {
     expect(draftFormValuesToInput({ ...emptyDraftFormValues, agentVisibility: 'HIDDEN' })).toMatchObject({
       agentVisibility: 'HIDDEN',
     });
+  });
+});
+
+describe('draftFormValuesToInput documents', () => {
+  it('always sends the selected documents, an empty selection included', () => {
+    expect(draftFormValuesToInput({ ...emptyDraftFormValues, docIds: ['guide'] }).docIds).toEqual(['guide']);
+    expect(draftFormValuesToInput(emptyDraftFormValues).docIds).toEqual([]);
+  });
+});
+
+describe('validateThumbnailFile', () => {
+  const file = (type: string, size = 1024) => ({ size, type });
+
+  it('accepts PNG and JPEG up to 2 MB', () => {
+    expect(validateThumbnailFile(file('image/png'))).toBeUndefined();
+    expect(validateThumbnailFile(file('image/jpeg', 2 * 1024 * 1024))).toBeUndefined();
+  });
+
+  it('refuses other image types and anything larger', () => {
+    expect(validateThumbnailFile(file('image/gif'))?.id).toMatch(/\.thumbnailType$/);
+    expect(validateThumbnailFile(file('image/svg+xml'))).toBeDefined();
+    expect(validateThumbnailFile(file('image/png', 2 * 1024 * 1024 + 1))?.id).toMatch(/\.thumbnailSize$/);
+  });
+});
+
+describe('sameSelection', () => {
+  it('ignores order and compares membership', () => {
+    expect(sameSelection(['a', 'b'], ['b', 'a'])).toBe(true);
+    expect(sameSelection(['a'], ['a', 'b'])).toBe(false);
+    expect(sameSelection(['a', 'b'], ['a', 'c'])).toBe(false);
+    expect(sameSelection([], [])).toBe(true);
+  });
+});
+
+describe('sameDraftFormValues', () => {
+  const base = { ...emptyDraftFormValues, displayName: 'Loans', docIds: ['a', 'b'], subscriptionPlanIds: ['x'] };
+
+  it('compares every field, and each selection as a set', () => {
+    expect(sameDraftFormValues(base, { ...base, docIds: ['b', 'a'] })).toBe(true);
+    expect(sameDraftFormValues(base, { ...base, docIds: ['a'] })).toBe(false);
+    expect(sameDraftFormValues(base, { ...base, subscriptionPlanIds: [] })).toBe(false);
+    expect(sameDraftFormValues(base, { ...base, displayName: 'Other' })).toBe(false);
+  });
+});
+
+describe('toggleSelection', () => {
+  it('adds an id at the end, or removes it when already selected, without changing the input', () => {
+    const ids = ['a', 'b'];
+    expect(toggleSelection(ids, 'c')).toEqual(['a', 'b', 'c']);
+    expect(toggleSelection(ids, 'a')).toEqual(['b']);
+    expect(ids).toEqual(['a', 'b']);
   });
 });
 

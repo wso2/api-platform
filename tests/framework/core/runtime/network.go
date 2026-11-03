@@ -72,6 +72,13 @@ func (n *Network) Block() string {
 	return n.block
 }
 
+// qualifiedName returns name as only this network resolves it: Docker's DNS answers
+// <name>.<network> with the container that name refers to on that network. A shared component is
+// attached to every block's network, where a plain alias can refer to a container in each.
+func (n *Network) qualifiedName(name string) string {
+	return name + "." + n.name
+}
+
 // Remove tears down the network. It is safe to call repeatedly.
 func (n *Network) Remove(ctx context.Context) error {
 	if n == nil || n.inner == nil {

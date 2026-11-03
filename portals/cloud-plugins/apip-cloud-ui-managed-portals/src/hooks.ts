@@ -96,9 +96,13 @@ export function useManagedPortalList() {
   // refetch, and the poll's response resolves first). Only the response whose
   // seq is still the latest gets to commit into state.
   const requestSeq = useRef(0);
+  // Only refetch sets isLoading, so only the latest refetch clears it, even
+  // when a poll that started meanwhile superseded its result.
+  const loadingSeq = useRef(0);
 
   const refetch = useCallback(async () => {
     const seq = ++requestSeq.current;
+    const loading = ++loadingSeq.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -109,7 +113,7 @@ export function useManagedPortalList() {
       if (seq !== requestSeq.current) return;
       setError(err instanceof Error ? err : new Error('Failed to load portals'));
     } finally {
-      if (seq === requestSeq.current) setIsLoading(false);
+      if (loading === loadingSeq.current) setIsLoading(false);
     }
   }, [port]);
 
@@ -117,7 +121,12 @@ export function useManagedPortalList() {
   // toggling isLoading (which would flicker skeletons every tick). Errors are
   // swallowed too - a transient BFF hiccup during background polling should
   // not tear down the whole list view; the next tick recovers.
+  // A tick while the previous poll is still out is skipped: starting another
+  // would supersede it, and a list slower than the interval would then never land.
+  const pollInFlight = useRef(false);
   const silentRefetch = useCallback(async () => {
+    if (pollInFlight.current) return;
+    pollInFlight.current = true;
     const seq = ++requestSeq.current;
     try {
       const result = await port.list();
@@ -125,6 +134,8 @@ export function useManagedPortalList() {
       setPortals(result);
     } catch {
       // ignore
+    } finally {
+      pollInFlight.current = false;
     }
   }, [port]);
 
@@ -132,11 +143,12 @@ export function useManagedPortalList() {
     void refetch();
   }, [refetch]);
 
-  // Watch for any pending portal in the current list; re-poll at
-  // PENDING_POLL_INTERVAL_MS until every row is non-pending. The interval is
-  // torn down on the transition to steady state and on unmount, so an org
-  // whose portals are all active does zero background work.
-  const hasPending = portals.some((p) => p.status === 'pending');
+  // Watch for any pending or deleting portal in the current list; re-poll at
+  // PENDING_POLL_INTERVAL_MS until every row has settled (a deleting one by
+  // leaving the list). The interval is torn down on the transition to steady
+  // state and on unmount, so an org whose portals are all active does zero
+  // background work.
+  const hasPending = portals.some((p) => p.status === 'pending' || p.status === 'deleting');
   useEffect(() => {
     if (!hasPending) return undefined;
     const id = window.setInterval(() => {
@@ -150,6 +162,12 @@ export function useManagedPortalList() {
       try {
         const portal = await port.create(input);
         host.notify(`Portal "${portal.name}" created`, 'success');
+        // Before the refetch, not after: neither call depends on the new list,
+        // and awaiting a full list request first leaves the host's quota and
+        // cached counts stale for its whole duration.
+        host.resourceLimits?.refresh(); // a create consumes quota
+        // The host caches portal counts and cannot see this write.
+        host.resources?.invalidate('apiPortals');
         await refetch();
         return portal;
       } catch (err) {
@@ -178,8 +196,11 @@ export function useManagedPortalList() {
   const remove = useCallback(
     async (id: string) => {
       try {
-        await port.remove(id);
-        host.notify('Portal deleted', 'success');
+        const { pending } = await port.remove(id);
+        host.notify(pending ? 'Portal is being deleted' : 'Portal deleted', pending ? 'info' : 'success');
+        // Before the refetch, for the same reason as in `create`.
+        host.resourceLimits?.refresh(); // a delete frees quota
+        host.resources?.invalidate('apiPortals');
         await refetch();
       } catch (err) {
         host.notify(errorMessage(err, 'Failed to delete portal'), 'error');

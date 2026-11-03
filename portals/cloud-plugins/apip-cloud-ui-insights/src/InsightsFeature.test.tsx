@@ -22,11 +22,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { InsightsEmbedScope } from './types';
 
-const { mockResolveProjectScope, embedScopes, projectFilter } = vi.hoisted(
+const { mockResolveProjectScope, embedScopes, projectFilter, comingSoon } = vi.hoisted(
   () => ({
     mockResolveProjectScope: vi.fn(),
     embedScopes: [] as InsightsEmbedScope[],
     projectFilter: { enabled: false },
+    comingSoon: { enabled: false },
   })
 );
 
@@ -38,6 +39,16 @@ vi.mock('./config/acpProjectFilter', () => ({
   get ENABLE_ACP_PROJECT_FILTER() {
     return projectFilter.enabled;
   },
+}));
+
+vi.mock('./config/comingSoon', () => ({
+  get SHOW_INSIGHTS_COMING_SOON() {
+    return comingSoon.enabled;
+  },
+}));
+
+vi.mock('./components/ComingSoon', () => ({
+  default: () => <div data-testid="coming-soon" />,
 }));
 
 vi.mock('./components/StateViews', () => ({
@@ -83,6 +94,66 @@ describe('InsightsFeature', () => {
     embedScopes.length = 0;
     mockResolveProjectScope.mockReset();
     projectFilter.enabled = false;
+    comingSoon.enabled = false;
+  });
+
+  describe('when SHOW_INSIGHTS_COMING_SOON is true', () => {
+    beforeEach(() => {
+      comingSoon.enabled = true;
+    });
+
+    it('shows Coming Soon instead of the embed for ACP', async () => {
+      render(
+        <InsightsFeature
+          port={basePort}
+          forcedScopeLevel="organization"
+          embedProfile="api-control-plane"
+        />
+      );
+
+      expect(await screen.findByTestId('coming-soon')).toBeInTheDocument();
+      expect(screen.queryByTestId('insights-embed')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('page-content')).not.toBeInTheDocument();
+    });
+
+    it('keeps AI Workspace page chrome around Coming Soon', async () => {
+      render(<InsightsFeature port={basePort} embedProfile="ai-workspace" />);
+
+      expect(await screen.findByTestId('page-content')).toContainElement(
+        screen.getByTestId('coming-soon')
+      );
+    });
+
+    it('still resolves the project scope before showing Coming Soon', async () => {
+      projectFilter.enabled = true;
+      mockResolveProjectScope.mockResolvedValue({
+        projectId: 'p-1',
+        projectName: 'Project A',
+      });
+      render(
+        <InsightsFeature
+          port={{ ...basePort, projectHandle: 'project-a' }}
+          forcedScopeLevel="project"
+          embedProfile="api-control-plane"
+        />
+      );
+
+      expect(await screen.findByTestId('coming-soon')).toBeInTheDocument();
+      expect(mockResolveProjectScope).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('insights-embed')).not.toBeInTheDocument();
+    });
+
+    it('still reports a missing organization instead of Coming Soon', () => {
+      render(
+        <InsightsFeature
+          port={{ ...basePort, orgHandle: '' }}
+          embedProfile="api-control-plane"
+        />
+      );
+
+      expect(screen.getByTestId('error-state')).toBeInTheDocument();
+      expect(screen.queryByTestId('coming-soon')).not.toBeInTheDocument();
+    });
   });
 
   describe('when ENABLE_ACP_PROJECT_FILTER is false', () => {

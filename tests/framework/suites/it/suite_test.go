@@ -77,7 +77,7 @@ func TestGatewayDatabaseCompatibilityExcludesSQLServerForGatewayV110(t *testing.
 		}
 	}
 	for _, skipped := range selected.SkippedBlocks {
-		require.Contains(t, skipped.Block, "/sqlserver")
+		require.Contains(t, skipped.Reason, "sqlserver")
 		require.Contains(t, skipped.Reason, "Gateway version 1.1.0")
 	}
 
@@ -124,8 +124,16 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 		if _, single := singleEngineBlocks[source]; single {
 			continue
 		}
-		sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
-		require.Equal(t, coverageEngines, got, "block %q database coverage", source)
+		distinct := make(map[components.DBType]bool, len(got))
+		for _, engine := range got {
+			distinct[engine] = true
+		}
+		unique := make([]components.DBType, 0, len(distinct))
+		for engine := range distinct {
+			unique = append(unique, engine)
+		}
+		sort.Slice(unique, func(i, j int) bool { return unique[i] < unique[j] })
+		require.Equal(t, coverageEngines, unique, "block %q database coverage", source)
 	}
 }
 

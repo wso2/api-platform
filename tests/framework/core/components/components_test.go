@@ -572,6 +572,24 @@ func TestInstanceURLs(t *testing.T) {
 		require.Equal(t, "http://gateway-runtime:8080", got)
 	})
 
+	t.Run("InternalURLAs puts another name in place of the alias", func(t *testing.T) {
+		got, err := inst.InternalURLAs("gateway-runtime.block-network", "admin")
+		require.NoError(t, err)
+		require.Equal(t, "http://gateway-runtime.block-network:9002/api/admin", got)
+	})
+
+	t.Run("InternalURLAs needs a host", func(t *testing.T) {
+		for _, host := range []string{"", "  "} {
+			_, err := inst.InternalURLAs(host, "http")
+			require.ErrorContains(t, err, "needs a host")
+		}
+	})
+
+	t.Run("InternalURLAs reports an unknown endpoint", func(t *testing.T) {
+		_, err := inst.InternalURLAs("gateway-runtime.block-network", "nope")
+		require.ErrorContains(t, err, `no endpoint "nope"`)
+	})
+
 	t.Run("distinct listeners get distinct URLs", func(t *testing.T) {
 		dataPlane, err := inst.URL("http")
 		require.NoError(t, err)
@@ -614,6 +632,8 @@ func TestExternalInstanceURLs(t *testing.T) {
 	_, err = inst.MappedPort("api")
 	require.ErrorContains(t, err, "no mapped container port")
 	_, err = inst.InternalURL("api")
+	require.ErrorContains(t, err, "no internal network URL")
+	_, err = inst.InternalURLAs("external.block-network", "api")
 	require.ErrorContains(t, err, "no internal network URL")
 	_, err = inst.URL("missing")
 	require.ErrorContains(t, err, "available: api, auth")

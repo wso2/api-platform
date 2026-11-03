@@ -58,7 +58,7 @@
     const isWebSocketTryout = {{#if isWebSocketTryout}}{{isWebSocketTryout}}{{else}}false{{/if}};
     if (isWebSocketTryout) {
       document.addEventListener('DOMContentLoaded', function () {
-        const swaggerData = {{{ asyncapi }}};
+        const swaggerData = {{{ scriptJson asyncapi }}};
         let serverUrl = swaggerData.servers && swaggerData.servers.production ? swaggerData.servers.production.url : '';
         let sandboxURL = swaggerData.servers && swaggerData.servers.sandbox ? swaggerData.servers.sandbox.url : '';
         const rootElement = document.getElementById('root');
@@ -75,7 +75,7 @@
     } else {
       const config = { "show": { "sidebar": false }, "sidebar": { "showOperations": "byDefault" } };
       AsyncApiStandalone.hydrate({
-        schema: {{{ asyncapi }}},
+        schema: {{{ scriptJson asyncapi }}},
         config
       }, document.getElementById('root'));
     }
@@ -98,7 +98,7 @@
     const isWebSocketTryout = {{#if isWebSocketTryout}}{{isWebSocketTryout}}{{else}}false{{/if}};
     if (isWebSocketTryout) {
       document.addEventListener('DOMContentLoaded', function () {
-        const swaggerData = {{{ asyncapi }}};
+        const swaggerData = {{{ scriptJson asyncapi }}};
         let serverUrl = swaggerData.servers && swaggerData.servers.production ? swaggerData.servers.production.url : '';
         const rootElement = document.getElementById('root');
         rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading AsyncAPI Viewer...</div>';
@@ -113,7 +113,7 @@
     } else {
       const config = { "show": { "sidebar": false }, "sidebar": { "showOperations": "byDefault" } };
       AsyncApiStandalone.hydrate({
-        schema: {{{ asyncapi }}},
+        schema: {{{ scriptJson asyncapi }}},
         config
       }, document.getElementById('root'));
     }
@@ -176,7 +176,7 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/graphiql@3/graphiql.min.js"></script>
   <script src="https://unpkg.com/@graphiql/plugin-explorer@3/dist/index.umd.js"></script>
-  <script id="graphql-schema-introspection-json" type="application/json">{{{graphqlSchemaAsIntrospectionJSON}}}</script>
+  <script id="graphql-schema-introspection-json" type="application/json">{{{scriptJson graphqlSchemaAsIntrospectionJSON}}}</script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       const apiEndpoint = '{{ apiMetadata.endPoints.productionURL }}';
@@ -409,8 +409,8 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/graphql-schema-viewer/dist/graphql-schema-viewer.umd.js"></script>
-  <script id="graphql-schema-data" type="application/json">{{{graphql}}}</script>
-  <script id="graphql-api-metadata" type="application/json">{{{apiMetadataJSON}}}</script>
+  <script id="graphql-schema-data" type="application/json">{{{scriptJson graphql}}}</script>
+  <script id="graphql-api-metadata" type="application/json">{{{scriptJson apiMetadataJSON}}}</script>
   <script>
       document.addEventListener('DOMContentLoaded', function () {
         let schemaData = '';
@@ -470,7 +470,7 @@
         // Wait for the DOM to be ready
         document.addEventListener('DOMContentLoaded', function () {
             // Extract URL from swagger JSON
-            const swaggerData = {{{swagger}}};
+            const swaggerData = {{{scriptJson swagger}}};
             let serverUrl = swaggerData.servers && swaggerData.servers.length > 0 ? swaggerData.servers[0].url : '';
 
             if (serverUrl) {

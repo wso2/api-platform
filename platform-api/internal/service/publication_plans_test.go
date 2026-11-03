@@ -71,8 +71,8 @@ func newPublicationPlanService(repo *publicationPlanRepo, pub *planSyncPublisher
 
 func publicationTestPlans() *publicationPlanRepo {
 	return &publicationPlanRepo{plans: map[string]*model.SubscriptionPlan{
-		"gold":   {UUID: "uuid-gold", Handle: "gold", Status: model.SubscriptionPlanStatusActive},
-		"silver": {UUID: "uuid-silver", Handle: "silver", Status: model.SubscriptionPlanStatusActive},
+		"gold":   {UUID: "uuid-gold", Handle: "gold", Name: "Gold", Status: model.SubscriptionPlanStatusActive},
+		"silver": {UUID: "uuid-silver", Handle: "silver", Name: "Silver", Status: model.SubscriptionPlanStatusActive},
 		"bronze": {UUID: "uuid-bronze", Handle: "bronze", Status: model.SubscriptionPlanStatusInactive},
 	}}
 }
@@ -118,17 +118,20 @@ func TestLoadActivePlans(t *testing.T) {
 	})
 }
 
-func TestResolvePlanUUIDs(t *testing.T) {
+func TestResolvePlanSelections(t *testing.T) {
 	svc := newPublicationPlanService(publicationTestPlans(), nil)
 
-	if uuids, err := svc.resolvePlanUUIDs(nil, "org"); err != nil || uuids != nil {
-		t.Fatalf("no handles: got %v, %v", uuids, err)
+	if got, err := svc.resolvePlanSelections(nil, "org"); err != nil || got != nil {
+		t.Fatalf("no handles: got %v, %v", got, err)
 	}
-	uuids, err := svc.resolvePlanUUIDs([]string{"silver", "gold"}, "org")
-	if err != nil || len(uuids) != 2 || uuids[0] != "uuid-silver" || uuids[1] != "uuid-gold" {
-		t.Fatalf("want UUIDs in handle order, got %v, %v", uuids, err)
+	got, err := svc.resolvePlanSelections([]string{"silver", "gold"}, "org")
+	if err != nil || len(got) != 2 || got[0].UUID != "uuid-silver" || got[0].Handle != "silver" || got[1].UUID != "uuid-gold" || got[1].Handle != "gold" {
+		t.Fatalf("want selections in handle order, got %v, %v", got, err)
 	}
-	if _, err := svc.resolvePlanUUIDs([]string{"bronze"}, "org"); !apperror.APIPublicationValidationFailed.Is(err) {
+	if got[0].DisplayName != "Silver" || got[1].DisplayName != "Gold" {
+		t.Fatalf("want each selection to carry the plan's name, got %v", got)
+	}
+	if _, err := svc.resolvePlanSelections([]string{"bronze"}, "org"); !apperror.APIPublicationValidationFailed.Is(err) {
 		t.Fatalf("want a validation error for an inactive plan, got %v", err)
 	}
 }
@@ -220,8 +223,8 @@ type publishFlowPublicationRepo struct {
 	repository.PublicationRepository
 }
 
-func (publishFlowPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, []string, []string, error) {
-	return &model.Publication{UUID: "draft-uuid"}, []string{"uuid-gold"}, nil, nil
+func (publishFlowPublicationRepo) GetDraft(_, _, _ string) (*model.Publication, []model.PublicationSelection, []model.PublicationSelection, error) {
+	return &model.Publication{UUID: "draft-uuid"}, []model.PublicationSelection{{UUID: "uuid-gold", Handle: "gold", DisplayName: "Gold"}}, nil, nil
 }
 
 func (publishFlowPublicationRepo) GetContent(_ string, contentType model.PublicationContentType, _ string) (*model.PublicationContent, error) {
@@ -229,18 +232,6 @@ func (publishFlowPublicationRepo) GetContent(_ string, contentType model.Publica
 		return nil, nil
 	}
 	return &model.PublicationContent{ContentType: "application/json", Content: []byte(validRESTDefinitionSpec)}, nil
-}
-
-type publishFlowPlanRepo struct{ *publicationPlanRepo }
-
-func (publishFlowPlanRepo) GetHandlesByIDs(_ []string, _ string) (map[string]string, error) {
-	return map[string]string{"uuid-gold": "gold"}, nil
-}
-
-type publishFlowDocumentRepo struct{ repository.DocumentRepository }
-
-func (publishFlowDocumentRepo) GetDocumentHandlesByUUIDs(_ []string, _ string) (map[string]string, error) {
-	return map[string]string{}, nil
 }
 
 // A failed plan step ends Publish before the listing is pushed or the draft promoted: the
@@ -259,8 +250,8 @@ func TestPublish_StopsWhenThePlanStepFails(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			pub := &planSyncPublisher{err: tc.err}
 			svc := NewPublicationService(
-				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, publishFlowDocumentRepo{},
-				publishFlowPlanRepo{publicationTestPlans()}, publishFlowPublicationRepo{}, pub, time.Minute, 0, nil)
+				publishFlowArtifactRepo{}, publishFlowPortalRepo{}, nil,
+				publicationTestPlans(), publishFlowPublicationRepo{}, pub, time.Minute, 0, nil)
 
 			published, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor")
 			if !tc.is(err) || published != nil {

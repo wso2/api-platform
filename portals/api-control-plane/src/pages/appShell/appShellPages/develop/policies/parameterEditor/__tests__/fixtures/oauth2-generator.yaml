@@ -1,0 +1,279 @@
+name: oauth2-generator
+version: v0.9.0
+displayName: OAuth2 Generator
+description: |
+  Injects an upstream OAuth2 credential into a request header before
+  forwarding to the backend. Configure either a token endpoint with
+  client credentials (auto-fetched, cached, and refreshed) or a static
+  bearerToken (used as-is, no caching).
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    tokenEndpoint:
+      type: string
+      x-wso2-policy-advanced-param: false
+      minLength: 1
+      description: |
+        URL of the OAuth2 token endpoint. Required unless bearerToken
+        is set.
+    clientId:
+      type: string
+      x-wso2-policy-advanced-param: false
+      minLength: 1
+      description: |
+        OAuth2 client ID for the token endpoint. Required unless
+        bearerToken is set.
+    clientSecret:
+      type: string
+      x-wso2-policy-advanced-param: false
+      minLength: 1
+      description: |
+        OAuth2 client secret paired with clientId. Required unless
+        bearerToken is set.
+    grantType:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Token endpoint grant type. Ignored when bearerToken is set.
+      enum:
+        - client_credentials
+        - password
+      default: client_credentials
+    clientAuthMethod:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        How client credentials are sent to the token endpoint. Ignored
+        when bearerToken is set.
+      enum:
+        - client_secret_basic
+        - client_secret_post
+      default: client_secret_basic
+    tokenRequestParams:
+      type: object
+      x-wso2-policy-advanced-param: false
+      additionalProperties:
+        type: string
+      description: |
+        Extra form fields merged into the token request (e.g. scope).
+        Use {{ secret "handle" }} for sensitive values.
+    bearerToken:
+      type: string
+      x-wso2-policy-advanced-param: false
+      minLength: 1
+      description: |
+        A directly supplied, already-valid credential, injected as-is.
+        Mutually exclusive with tokenEndpoint/clientId/clientSecret.
+    username:
+      type: string
+      x-wso2-policy-advanced-param: true
+      minLength: 1
+      description: |
+        Resource owner username. Required when grantType is password.
+    password:
+      type: string
+      x-wso2-policy-advanced-param: true
+      minLength: 1
+      description: |
+        Resource owner password. Required when grantType is password.
+    tokenRequestHeaders:
+      type: object
+      x-wso2-policy-advanced-param: true
+      additionalProperties:
+        type: string
+      description: |
+        Extra headers sent with the token request. Authorization and
+        Content-Type are ignored if set here.
+    headerName:
+      type: string
+      x-wso2-policy-advanced-param: true
+      minLength: 1
+      description: |
+        Header the credential is injected into. Defaults to
+        Authorization.
+      default: "Authorization"
+    valuePrefix:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Prefix prepended to the credential value. Use an empty string
+        for no prefix.
+      default: "Bearer"
+    tokenRequestTimeout:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Timeout for a token-endpoint call (Go duration, e.g. "10s").
+      default: "10s"
+    tokenRequestMaxRetries:
+      type: integer
+      x-wso2-policy-advanced-param: true
+      minimum: 0
+      description: |
+        Max retries after a transient token-endpoint failure (network
+        error or 429/5xx). Set 0 to disable.
+      default: 2
+    defaultTokenTTL:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Fallback token lifetime used when expires_in is omitted (Go
+        duration, e.g. "1h").
+      default: "1h"
+    expiryBuffer:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        How long before expiry a token is refreshed early (Go
+        duration, e.g. "5m").
+      default: "5m"
+    tokenPurgeStatusCodes:
+      type: array
+      x-wso2-policy-advanced-param: true
+      items:
+        type: integer
+        minimum: 100
+        maximum: 599
+      description: |
+        Upstream status codes that purge the cached token. Defaults to
+        [401].
+      default: [401]
+    cacheStrategy:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        "memory" (default, per-replica) or "redis" (shared across
+        replicas via systemParameters.redis).
+      enum: ["memory", "redis"]
+      default: "memory"
+    proxyURL:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Proxy URL for the token-endpoint call. Defaults to the
+        standard HTTP_PROXY/HTTPS_PROXY env vars.
+      default: ""
+    tlsCaCert:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        PEM CA certificate to trust for the token endpoint's TLS
+        connection. Reference a stored secret, not a raw value.
+      default: ""
+    tlsInsecureSkipVerify:
+      type: boolean
+      x-wso2-policy-advanced-param: true
+      description: |
+        Disables TLS certificate verification for the token endpoint.
+        Non-production only.
+      default: false
+  oneOf:
+    - required: ["tokenEndpoint", "clientId", "clientSecret"]
+      not:
+        required: ["bearerToken"]
+    - required: ["bearerToken"]
+      not:
+        anyOf:
+          - required: ["tokenEndpoint"]
+          - required: ["clientId"]
+          - required: ["clientSecret"]
+  allOf:
+    - if:
+        required: ["grantType"]
+        properties:
+          grantType:
+            const: password
+        not:
+          required: ["bearerToken"]
+      then:
+        required: ["username", "password"]
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  description: >
+    Operator-level Redis settings, not set per API. Resolved from
+    config.policy_configurations.redis.* unless overridden here. Only
+    used when cacheStrategy is redis.
+  properties:
+    redis:
+      type: object
+      description: >
+        Only read when cacheStrategy is "redis".
+      additionalProperties: false
+      properties:
+        host:
+          type: string
+          description: Redis host name or IP address.
+          default: "localhost"
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.host}"
+
+        port:
+          type: integer
+          description: Redis server port.
+          minimum: 1
+          maximum: 65535
+          default: 6379
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.port}"
+
+        password:
+          type: string
+          description: Optional Redis authentication password.
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.password}"
+
+        username:
+          type: string
+          description: Optional Redis ACL username.
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.username}"
+
+        db:
+          type: integer
+          description: Redis database index.
+          minimum: 0
+          maximum: 15
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.db}"
+
+        keyPrefix:
+          type: string
+          description: Prefix used for all Redis keys this policy writes.
+          default: "oauth2-generator:token:v1:"
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.key_prefix}"
+
+        failureMode:
+          type: string
+          description: |
+            Behavior when Redis is unavailable. "open" (default) falls
+            back to the token endpoint; "closed" fails the request.
+          enum: ["open", "closed"]
+          default: "open"
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.failure_mode}"
+
+        connectionTimeout:
+          type: string
+          description: Redis connection timeout (Go duration, e.g. "5s").
+          default: "5s"
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.connection_timeout}"
+
+        readTimeout:
+          type: string
+          description: Redis read timeout (Go duration, e.g. "3s").
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.read_timeout}"
+
+        writeTimeout:
+          type: string
+          description: Redis write timeout (Go duration, e.g. "3s").
+          default: "3s"
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.write_timeout}"
+
+        poolSize:
+          type: integer
+          description: |
+            Redis connection pool size. 0 = go-redis default (10 x
+            GOMAXPROCS).
+          minimum: 0
+          default: 0
+          "wso2/defaultValue": "${config.policy_configurations.oauth2_generator_v1.redis.pool_size}"

@@ -19,6 +19,7 @@ package service
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
-func TestValidateAndResolveDocUUIDs(t *testing.T) {
+func TestResolveDocSelections(t *testing.T) {
 	docs := map[string]*model.Document{
 		"guide": {ID: "uuid-guide", Handle: "guide", Type: "DOC_HowTo", FileName: "guide.md"},
 		"faq":   {ID: "uuid-faq", Handle: "faq", Type: "DOC_FAQ", FileName: "faq.md"},
@@ -36,22 +37,30 @@ func TestValidateAndResolveDocUUIDs(t *testing.T) {
 		return NewPublicationService(nil, nil, repo, nil, nil, nil, time.Minute, 0, nil)
 	}
 
-	t.Run("returns the UUIDs in handle order", func(t *testing.T) {
-		uuids, err := newService(contentDocumentRepo{docs: docs}).validateAndResolveDocUUIDs("artifact", []string{"faq", "guide"}, "org")
-		if err != nil || strings.Join(uuids, ",") != "uuid-faq,uuid-guide" {
-			t.Fatalf("got %v, %v", uuids, err)
+	t.Run("returns the selections in handle order with their stored copies", func(t *testing.T) {
+		docs := map[string]*model.Document{
+			"guide": {ID: "uuid-guide", Handle: "guide", Type: "DOC_HowTo", DisplayName: "The guide", FileName: "guide.md"},
+			"faq":   {ID: "uuid-faq", Handle: "faq", Type: "DOC_FAQ", DisplayName: "The FAQ", FileName: "faq.md"},
+		}
+		got, err := newService(contentDocumentRepo{docs: docs}).resolveDocSelections("artifact", []string{"faq", "guide"}, "org")
+		want := []model.PublicationSelection{
+			{UUID: "uuid-faq", Handle: "faq", DisplayName: "The FAQ"},
+			{UUID: "uuid-guide", Handle: "guide", DisplayName: "The guide"},
+		}
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %+v, %v", got, err)
 		}
 	})
 
 	t.Run("no selection resolves to nothing", func(t *testing.T) {
-		uuids, err := newService(contentDocumentRepo{resolveErr: errors.New("must not be queried")}).validateAndResolveDocUUIDs("artifact", nil, "org")
-		if err != nil || uuids != nil {
-			t.Fatalf("got %v, %v", uuids, err)
+		got, err := newService(contentDocumentRepo{resolveErr: errors.New("must not be queried")}).resolveDocSelections("artifact", nil, "org")
+		if err != nil || got != nil {
+			t.Fatalf("got %v, %v", got, err)
 		}
 	})
 
 	t.Run("rejects an unknown handle", func(t *testing.T) {
-		_, err := newService(contentDocumentRepo{docs: docs}).validateAndResolveDocUUIDs("artifact", []string{"guide", "nope"}, "org")
+		_, err := newService(contentDocumentRepo{docs: docs}).resolveDocSelections("artifact", []string{"guide", "nope"}, "org")
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "nope") {
 			t.Fatalf("want a validation error naming the handle, got %v", err)
 		}
@@ -59,7 +68,7 @@ func TestValidateAndResolveDocUUIDs(t *testing.T) {
 
 	t.Run("reports a repository failure", func(t *testing.T) {
 		lookupErr := errors.New("db down")
-		_, err := newService(contentDocumentRepo{resolveErr: lookupErr}).validateAndResolveDocUUIDs("artifact", []string{"guide"}, "org")
+		_, err := newService(contentDocumentRepo{resolveErr: lookupErr}).resolveDocSelections("artifact", []string{"guide"}, "org")
 		if !errors.Is(err, lookupErr) || apperror.APIPublicationValidationFailed.Is(err) {
 			t.Fatalf("want the repository failure, not a validation error, got %v", err)
 		}

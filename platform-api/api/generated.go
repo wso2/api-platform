@@ -985,6 +985,27 @@ func (e PublicationDraftDetailsInputAgentVisibility) Valid() bool {
 	}
 }
 
+// Defines values for PublicationSelectionSourceStatus.
+const (
+	DELETED   PublicationSelectionSourceStatus = "DELETED"
+	UNCHANGED PublicationSelectionSourceStatus = "UNCHANGED"
+	UPDATED   PublicationSelectionSourceStatus = "UPDATED"
+)
+
+// Valid indicates whether the value is a known member of the PublicationSelectionSourceStatus enum.
+func (e PublicationSelectionSourceStatus) Valid() bool {
+	switch e {
+	case DELETED:
+		return true
+	case UNCHANGED:
+		return true
+	case UPDATED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PublicationSummaryItemStatus.
 const (
 	PublicationSummaryItemStatusDEPRECATED   PublicationSummaryItemStatus = "DEPRECATED"
@@ -5051,7 +5072,9 @@ type Publication struct {
 	CreatedBy     *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description   *string    `json:"description,omitempty" yaml:"description,omitempty"`
 	DisplayName   *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	DocIds        *DocIdList `json:"docIds,omitempty" yaml:"docIds,omitempty"`
+
+	// Documents The selected documents, including deleted ones.
+	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
 
 	// Endpoints Author-entered; not derived from the API.
 	Endpoints *struct {
@@ -5075,9 +5098,11 @@ type Publication struct {
 		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
 		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
-	Status              *PublicationStatus      `json:"status,omitempty" yaml:"status,omitempty"`
-	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
-	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Status *PublicationStatus `json:"status,omitempty" yaml:"status,omitempty"`
+
+	// SubscriptionPlans The selected subscription plans, including deleted ones.
+	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
 	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -5141,7 +5166,9 @@ type PublicationDraftDetails struct {
 	CreatedBy       *string                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description     *string                                 `json:"description,omitempty" yaml:"description,omitempty"`
 	DisplayName     string                                  `json:"displayName" yaml:"displayName"`
-	DocIds          *DocIdList                              `json:"docIds,omitempty" yaml:"docIds,omitempty"`
+
+	// Documents The selected documents, including deleted ones. Their ids are what a draft save sends as docIds.
+	Documents *[]PublicationSelection `json:"documents,omitempty" yaml:"documents,omitempty"`
 
 	// Endpoints Author-entered; not derived from the API.
 	Endpoints *struct {
@@ -5165,8 +5192,10 @@ type PublicationDraftDetails struct {
 		TechnicalOwner      *string              `json:"technicalOwner,omitempty" yaml:"technicalOwner,omitempty"`
 		TechnicalOwnerEmail *openapi_types.Email `json:"technicalOwnerEmail,omitempty" yaml:"technicalOwnerEmail,omitempty"`
 	} `json:"owners,omitempty" yaml:"owners,omitempty"`
-	SubscriptionPlanIds *SubscriptionPlanIdList `json:"subscriptionPlanIds,omitempty" yaml:"subscriptionPlanIds,omitempty"`
-	Tags                *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
+
+	// SubscriptionPlans The selected subscription plans, including deleted ones. Their ids are what a draft save sends as subscriptionPlanIds.
+	SubscriptionPlans *[]PublicationSelection `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Tags              *[]string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 
 	// UpdatedAt When this record last changed in any way — the latest across its details, definition, landing page and thumbnail, which are saved through separate calls. The same value the portal rollup reports for this tier — draftUpdatedAt on a draft, publicationUpdatedAt on a publication.
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -5209,6 +5238,27 @@ type PublicationDraftDetailsInput struct {
 
 // PublicationDraftDetailsInputAgentVisibility defines model for PublicationDraftDetailsInput.AgentVisibility.
 type PublicationDraftDetailsInputAgentVisibility string
+
+// PublicationSelection A subscription plan or document selected by a publication, as it was when last saved or published.
+type PublicationSelection struct {
+	// DisplayName The name stored with the selection, so it can still be shown after the source is deleted.
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Id The plan or document handle.
+	Id string `json:"id" yaml:"id"`
+
+	// SourceStatus How the selected plan or document compares with this selection, as last saved (a draft) or published (a live listing):
+	// - UNCHANGED: It has not changed since.
+	// - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
+	// - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+	SourceStatus PublicationSelectionSourceStatus `json:"sourceStatus" yaml:"sourceStatus"`
+}
+
+// PublicationSelectionSourceStatus How the selected plan or document compares with this selection, as last saved (a draft) or published (a live listing):
+// - UNCHANGED: It has not changed since.
+// - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
+// - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+type PublicationSelectionSourceStatus string
 
 // PublicationSummaryItem defines model for PublicationSummaryItem.
 type PublicationSummaryItem struct {
@@ -6378,7 +6428,7 @@ type SaveApiPublicationDraftThumbnailMultipartBody struct {
 
 // ListApiPublicationsParams defines parameters for ListApiPublications.
 type ListApiPublicationsParams struct {
-	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
+	// ApiType The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404.
 	ApiType ApiTypeQ `form:"apiType" json:"apiType" yaml:"apiType"`
 
 	// ApiId The API's handle, unique per organization within its own type.

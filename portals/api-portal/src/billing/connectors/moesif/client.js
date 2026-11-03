@@ -26,6 +26,8 @@
 
 const { billingConfig, createHttpClient, BillingProviderError, networkError, redactSecrets } = require('../../http');
 
+const { collectorApplication, keyApplication } = require('./application');
+
 const PROVIDER = 'Moesif';
 
 /** Moesif's reason for refusing a request, from whichever field its reply carries it in. */
@@ -181,32 +183,6 @@ function createMoesifClient({ managementKey, http }) {
             return { ...found, id: foundId };
         },
     };
-}
-
-/** A base64url JSON object (a segment of a Moesif id or key), or null when it is not one. */
-function decodeSegment(segment) {
-    try {
-        const value = JSON.parse(Buffer.from(segment, 'base64url').toString('utf8'));
-        return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
-    } catch (_err) {
-        return null;
-    }
-}
-
-/**
- * The Moesif application ("524:75") a Collector Application ID belongs to, or null when the value
- * is not a Collector Application ID. The ID's first segment is JSON naming the application.
- */
-function collectorApplication(applicationId) {
-    const claims = decodeSegment(String(applicationId || '').trim().split('.')[0]);
-    return claims && typeof claims.app === 'string' && claims.app ? claims.app : null;
-}
-
-/** The Moesif application a management key is for (its `app` claim), or null when it does not say. */
-function keyApplication(managementKey) {
-    const parts = String(managementKey || '').trim().split('.');
-    const claims = parts.length === 3 ? decodeSegment(parts[1]) : null;
-    return claims && typeof claims.app === 'string' && claims.app ? claims.app : null;
 }
 
 /** The URL of Moesif's endpoint for Stripe events, for one Moesif application. */

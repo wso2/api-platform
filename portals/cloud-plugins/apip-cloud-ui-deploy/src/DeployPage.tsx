@@ -21,6 +21,7 @@ import { Alert, Box, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui'
 import BuildAreaCard from './components/BuildAreaCard';
 import EnvironmentCard from './components/EnvironmentCard';
 import PipelineConnector from './components/PipelineConnector';
+import NoGatewayState from './components/NoGatewayState';
 import DeployDialog from './components/DeployDialog';
 import { undeletableBuildReasons } from './utils/status';
 import type { ApiOwnership, Build, Environment } from './types';
@@ -30,6 +31,16 @@ export type DeployPageProps = {
   environments: Environment[];
   /** The API's builds, newest first. */
   builds: Build[];
+  /** Display name of the API, shown when there is no gateway to deploy to. */
+  apiName: string;
+  /** Creates the self-hosted gateway in the named environment. */
+  onAddGateway: (environment: string) => void;
+  /** Creates the managed gateway in the named environment. */
+  onAddCloudGateway: (environment: string) => void;
+  /** Set while that gateway is being built and until it is active. */
+  provisioning?: { startedAt: number; environment: string };
+  /** Set while the self-hosted gateway registration request is in flight. */
+  selfHostedPending?: { startedAt: number };
   /** The backend URL the API is defined against; the deploy form starts from it. */
   apiEndpointUrl?: string;
   /**
@@ -84,6 +95,11 @@ type DialogState = {
 const DeployPage: FC<DeployPageProps> = ({
   environments,
   builds,
+  apiName,
+  onAddGateway,
+  onAddCloudGateway,
+  provisioning,
+  selfHostedPending,
   apiEndpointUrl,
   takesEndpoint,
   ownership,
@@ -113,6 +129,10 @@ const DeployPage: FC<DeployPageProps> = ({
     setDialog(null);
   };
 
+  // Environments exist but none has a gateway, so there is nowhere to deploy yet.
+  const hasNoGateways =
+    environments.length > 0 && environments.every((environment) => environment.gateways.length === 0);
+
   return (
     <PageContent fullWidth>
       <PageTitle sx={{ mb: 2, flexShrink: 0 }}>
@@ -131,7 +151,33 @@ const DeployPage: FC<DeployPageProps> = ({
         </Alert>
       )}
 
-      {environments.length === 0 ? (
+      {hasNoGateways && !lockedReason ? (
+        <>
+          <NoGatewayState
+            apiName={apiName}
+            environments={environments.map((environment) => environment.name)}
+            onAddSelfHosted={onAddGateway}
+            onAddCloud={onAddCloudGateway}
+            provisioning={provisioning}
+            selfHostedPending={selfHostedPending}
+          />
+          {/* Builds belong to no gateway yet, so they can still be deleted to free a slot;
+              deploying stays off until a gateway is active. */}
+          {builds.length > 0 && (
+            <Box sx={{ maxWidth: 640, mx: 'auto', mt: 4 }}>
+              <BuildAreaCard
+                builds={builds}
+                targetEnvironment={environments[0]}
+                undeletableBuilds={undeletableBuildReasons(environments)}
+                busy={busy}
+                lockedReason="Add a gateway to deploy."
+                onDeployClick={() => undefined}
+                onDeleteBuild={onDeleteBuild}
+              />
+            </Box>
+          )}
+        </>
+      ) : environments.length === 0 ? (
         <Box
           sx={{
             border: '1px dashed',
