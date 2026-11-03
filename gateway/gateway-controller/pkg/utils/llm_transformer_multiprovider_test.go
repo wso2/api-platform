@@ -60,7 +60,7 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 				Context:       stringPtr(context),
 				Template:      "openai",
 				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		}
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
@@ -198,7 +198,7 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsCo
 				Context:       stringPtr(context),
 				Template:      "openai",
 				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		}
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
@@ -292,7 +292,7 @@ func TestLLMProviderTransformer_TransformProxy_RejectsInvalidAdditionalProviderS
 			Context:       stringPtr("/openai-provider"),
 			Template:      "openai",
 			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	require.NoError(t, db.SaveConfig(&models.StoredConfig{
@@ -376,7 +376,7 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderOAuth2AuthIsIso
 				Context:       stringPtr(context),
 				Template:      "openai",
 				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		}
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
@@ -767,7 +767,7 @@ func newInboundTemplateEnvironment(t *testing.T) *LLMProviderTransformer {
 					DisplayName: name, Version: "v1.0", Context: stringPtr("/" + name),
 					Template:      template,
 					Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+					AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 				},
 			},
 			DesiredState: models.StateDeployed,

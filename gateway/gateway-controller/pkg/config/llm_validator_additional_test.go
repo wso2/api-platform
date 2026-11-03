@@ -202,7 +202,7 @@ func TestLLMValidator_ProviderMetadataValidation(t *testing.T) {
 				DisplayName: "Test",
 				Template:    "openai",
 				Upstream:    api.LLMProviderConfigData_Upstream{Url: &url},
-				AccessControl: api.LLMAccessControl{
+				AccessControl: &api.LLMAccessControl{
 					Mode: "allow_all",
 				},
 			},
@@ -251,7 +251,7 @@ func TestLLMValidator_ProviderVersionValidation(t *testing.T) {
 			Version:     "invalid-version",
 			Template:    "openai",
 			Upstream:    api.LLMProviderConfigData_Upstream{Url: &url},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: "allow_all",
 			},
 		}

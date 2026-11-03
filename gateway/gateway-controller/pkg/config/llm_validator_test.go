@@ -442,7 +442,7 @@ func TestValidateLLMProviderTemplate_InvalidMetadataName(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -599,7 +599,7 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 							Value:  stringPtr("Bearer sk-test"),
 						},
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -618,7 +618,7 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -637,7 +637,7 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.DenyAll,
 						Exceptions: &[]api.RouteException{
 							{
@@ -700,7 +700,7 @@ func TestValidateLLMProvider_InvalidKind(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -762,7 +762,7 @@ func TestValidateLLMProvider_Name(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -991,7 +991,7 @@ func TestValidateLLMProvider_InvalidMetadataName(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -1055,7 +1055,7 @@ func TestValidateLLMProvider_ProviderVersion(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -1114,7 +1114,7 @@ func TestValidateLLMProvider_Template(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -1226,7 +1226,7 @@ func TestValidateLLMProvider_Upstream(t *testing.T) {
 					Version:     "v1.0",
 					Template:    "openai",
 					Upstream:    tt.upstream,
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -1566,7 +1566,7 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 						Url:  stringPtr("https://api.example.com"),
 						Auth: tt.auth,
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -1648,7 +1648,7 @@ func TestValidateLLMProvider_AccessControl(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: tt.accessControl,
+					AccessControl: &tt.accessControl,
 				},
 			}
 
@@ -1760,7 +1760,7 @@ func TestValidateLLMProvider_AccessControlExceptions(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode:       api.AllowAll,
 						Exceptions: &tt.exceptions,
 					},
@@ -1826,7 +1826,7 @@ func TestValidateLLMProvider_ExtremelyLongInputs(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -1919,7 +1919,7 @@ func TestValidateLLMProvider_URLValidation(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr(tt.url),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -1996,7 +1996,7 @@ func validProviderWithResilience(r *api.Resilience) api.LLMProviderConfiguration
 			Version:       "v1.0",
 			Template:      "openai",
 			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			Resilience:    r,
 		},
 	}
@@ -2033,7 +2033,7 @@ func TestValidateLLMProvider_ReservedHealthPath(t *testing.T) {
 				Template:      "openai",
 				Context:       context,
 				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		}
 	}
@@ -2135,7 +2135,7 @@ func TestValidateLLMProvider_ReservedJWKSPath(t *testing.T) {
 				Template:      "openai",
 				Context:       context,
 				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		}
 	}
@@ -2356,7 +2356,7 @@ func providerWithUpstream(defs *[]api.UpstreamDefinition, up api.LLMProviderConf
 			Template:            "openai",
 			UpstreamDefinitions: defs,
 			Upstream:            up,
-			AccessControl:       api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl:       &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 }
