@@ -401,7 +401,7 @@ func backfillLLMProviderConfig(uuid, handle string) *models.StoredConfig {
 			Context:       &context,
 			Template:      "openai",
 			Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstream},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	now := time.Now()

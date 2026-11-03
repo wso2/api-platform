@@ -298,6 +298,69 @@ func TestPushGatewayArtifacts(t *testing.T) {
 	}
 }
 
+// A gateway-created Model or model endpoint is not pushed: the control plane cannot
+// import those kinds yet, and pushing them would store them as something else.
+func TestPushGatewayArtifacts_SkipsModelKinds(t *testing.T) {
+	client := createTestClient(t)
+
+	var (
+		mu       sync.Mutex
+		pushedID []string
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dpids := decodePushedArtifactDPIDs(t, r)
+		mu.Lock()
+		pushedID = append(pushedID, dpids...)
+		mu.Unlock()
+		writeImportArtifactsResponse(w, dpids)
+	}))
+	defer server.Close()
+	client.apiUtilsService.SetBaseURL(server.URL)
+
+	restAPI := map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+		"kind":       models.KindRestApi,
+		"metadata": map[string]any{
+			"name":        "weather-api",
+			"annotations": map[string]any{commonconstants.AnnotationProjectID: "default"},
+		},
+		"spec": map[string]any{"context": "/weather"},
+	}
+	seed := func(cfg *models.StoredConfig) {
+		t.Helper()
+		if err := client.db.SaveConfig(cfg); err != nil {
+			t.Fatalf("seed %s: %v", cfg.UUID, err)
+		}
+	}
+	seed(&models.StoredConfig{UUID: "gw-rest", Kind: models.KindRestApi, Handle: "weather-api", DisplayName: "Weather",
+		Version: "v1.0", Origin: models.OriginGatewayAPI, CPSyncStatus: models.CPSyncStatusPending,
+		DesiredState: models.StateDeployed, Configuration: restAPI, SourceConfiguration: restAPI})
+	endpoint := api.ModelEndpointConfiguration{
+		ApiVersion: api.ModelEndpointConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.ModelEndpointConfigurationKindModelEndpoint,
+		Metadata:   api.Metadata{Name: "wso2"},
+		Spec:       api.ModelEndpointConfigData{DisplayName: "WSO2 Model Endpoint", Version: "v1.0"},
+	}
+	seed(&models.StoredConfig{UUID: models.ModelEndpointUUID("wso2"), Kind: models.KindModelEndpoint, Handle: "wso2",
+		DisplayName: "WSO2 Model Endpoint", Version: "v1.0", Origin: models.OriginGatewayAPI,
+		DesiredState: models.StateDeployed, Configuration: endpoint, SourceConfiguration: endpoint})
+	model := api.ModelConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1", Kind: "Model", Metadata: api.Metadata{Name: "gpt"},
+		Spec: api.ModelConfigData{DisplayName: "GPT", Version: "v1.0", ModelName: "gpt-4o", Endpoints: []string{"wso2"}},
+	}
+	seed(&models.StoredConfig{UUID: "gw-model", Kind: models.KindModel, Handle: "gpt", DisplayName: "GPT",
+		Version: "v1.0", Origin: models.OriginGatewayAPI, DesiredState: models.StateDeployed,
+		Configuration: model, SourceConfiguration: model})
+
+	client.pushGatewayArtifacts()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(pushedID) != 1 || pushedID[0] != "gw-rest" {
+		t.Fatalf("pushed %v, want only the REST API", pushedID)
+	}
+}
+
 // TestPushGatewayArtifacts_IncludesTemplate verifies that a pending gateway-originated LLM
 // provider template is picked up by the connect/reconnect push and pushed to the control
 // plane. Templates are organization-level, so this also confirms they are not rejected by the
