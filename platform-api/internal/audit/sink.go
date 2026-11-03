@@ -19,13 +19,9 @@ package audit
 
 import (
 	"context"
-	"io"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
-
-	"github.com/wso2/api-platform/platform-api/config"
 )
 
 // sink is a destination for audit lines. Implementations must be safe for
@@ -76,33 +72,3 @@ func (t *errThrottle) logError(logger *slog.Logger, msg, sinkName string, err er
 	}
 	logger.Error(msg, attrs...)
 }
-
-// writerSink writes each line to an io.Writer it does not own, serialized by a
-// mutex so concurrent records cannot interleave. It backs the stdout output.
-type writerSink struct {
-	mu       sync.Mutex
-	w        io.Writer
-	name     string
-	logger   *slog.Logger
-	throttle errThrottle
-	// buf is reused across writes to append the newline, so each line is one Write.
-	buf []byte
-}
-
-func newStdoutSink(logger *slog.Logger) *writerSink {
-	return &writerSink{w: os.Stdout, name: config.AuditOutputStdout, logger: logger}
-}
-
-func (s *writerSink) Name() string { return s.name }
-
-func (s *writerSink) Write(line []byte) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.buf = append(append(s.buf[:0], line...), '\n')
-	if _, err := s.w.Write(s.buf); err != nil {
-		s.throttle.logError(s.logger, "Failed to write audit record; dropping it", s.name, err)
-	}
-}
-
-// Close does nothing: the writer is not owned by this sink and is unbuffered.
-func (s *writerSink) Close(context.Context) error { return nil }

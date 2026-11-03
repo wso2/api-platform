@@ -74,6 +74,53 @@ func NewWriter(cfg config.Audit, logger *slog.Logger) (*Writer, error) {
 	return &Writer{sinks: sinks, logger: logger}, nil
 }
 
+// cleanupTimeout bounds closing the sinks already built when a later one fails
+// to build, so a stuck sink cannot hide the error that caused it.
+const cleanupTimeout = 5 * time.Second
+
+// newSinks builds one sink per name in cfg.Outputs.
+//
+// It fails closed: a sink that cannot be built returns an error and the caller
+// refuses to start, rather than running without an output the operator asked
+// for. Sinks already built are closed first, so a failure part way through the
+// list leaks no file descriptor or goroutine.
+func newSinks(cfg config.Audit, logger *slog.Logger) ([]sink, error) {
+	outputs, err := config.NormalizeAuditOutputs(cfg.Outputs)
+	if err != nil {
+		return nil, err
+	}
+
+	sinks := make([]sink, 0, len(outputs))
+	closeAll := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancel()
+		for _, s := range sinks {
+			_ = s.Close(ctx)
+		}
+	}
+
+	for _, name := range outputs {
+		var s sink
+		var err error
+		switch name {
+		case config.AuditOutputStdout:
+			s = newStdoutSink(logger)
+		case config.AuditOutputFile:
+			s, err = newFileSink(cfg.File, logger)
+		case config.AuditOutputHTTP:
+			s, err = newHTTPSink(cfg.HTTP, logger)
+		default:
+			err = fmt.Errorf("unsupported output %q", name) // unreachable: NormalizeAuditOutputs rejects it
+		}
+		if err != nil {
+			closeAll()
+			return nil, fmt.Errorf("audit.%s: %w", name, err)
+		}
+		sinks = append(sinks, s)
+	}
+	return sinks, nil
+}
+
 // Write serializes the record once and hands the line to every sink. Each sink
 // handles its own failures, so one failing sink never stops the others and
 // never reaches the caller.
