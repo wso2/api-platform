@@ -286,6 +286,9 @@ func NewClient(
 		policyVersionResolver,
 		policyValidator,
 	)
+	if systemConfig != nil {
+		client.llmDeploymentService.SetModelsConfig(systemConfig.Controller.Models)
+	}
 	client.mcpDeploymentService = utils.NewMCPDeploymentService(
 		store,
 		db,
@@ -4774,7 +4777,10 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 		Version           string                    `json:"version,omitempty"`
 		FunctionalityType string                    `json:"functionalityType,omitempty"`
 		Policies          []models.PolicyDefinition `json:"policies"`
-	}{Version: version.Version, FunctionalityType: version.FunctionalityType, Policies: policies}
+		Capabilities      []string                  `json:"capabilities,omitempty"`
+		ModelEndpoint     *manifestModelEndpoint    `json:"modelEndpoint,omitempty"`
+	}{Version: version.Version, FunctionalityType: version.FunctionalityType, Policies: policies,
+		Capabilities: gatewayCapabilities(c.systemConfig), ModelEndpoint: gatewayModelEndpointManifest(c.systemConfig)}
 
 	jsonData, err := json.Marshal(body)
 	if err != nil {
@@ -4806,6 +4812,48 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 		return fmt.Errorf("gateway manifest push failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 	return nil
+}
+
+// Gateway capabilities advertised in the manifest.
+//
+// They name artifact shapes this gateway understands that an older one would
+// silently misread: the management API's parser ignores fields it does not know,
+// so a gateway predating a field drops it and deploys something else — an
+// LlmProvider with `exposure: none` would get a route at "/". A control plane
+// sends such an artifact only to a gateway that advertises the capability. Older
+// control planes ignore the field.
+const (
+	// CapabilityLLMProviderExposure: LlmProvider spec.exposure and spec.upstream.apiVersion.
+	CapabilityLLMProviderExposure = "llmProviderExposure"
+	// CapabilityModels: the Model kind. Advertised only while controller.models.enabled
+	// is set, since a Model is refused otherwise.
+	CapabilityModels = "models"
+	// CapabilityModelEndpoint: the ModelEndpoint kind, which serves Models. Advertised
+	// with CapabilityModels.
+	CapabilityModelEndpoint = "modelEndpoint"
+)
+
+// gatewayCapabilities lists the capabilities this gateway advertises.
+func gatewayCapabilities(cfg *config.Config) []string {
+	caps := []string{CapabilityLLMProviderExposure}
+	if cfg != nil && cfg.Controller.Models.Enabled {
+		caps = append(caps, CapabilityModels, CapabilityModelEndpoint)
+	}
+	return caps
+}
+
+// manifestModelEndpoint is the manifest's statement about the default model
+// endpoint: whether this gateway provisions `wso2` itself, so a control plane can
+// show which gateways have it. Absent while the feature is off.
+type manifestModelEndpoint struct {
+	Provisioned bool `json:"provisioned"`
+}
+
+func gatewayModelEndpointManifest(cfg *config.Config) *manifestModelEndpoint {
+	if cfg == nil || !cfg.Controller.Models.Enabled {
+		return nil
+	}
+	return &manifestModelEndpoint{Provisioned: cfg.Controller.Models.ProvisionsDefaultEndpoint()}
 }
 
 // pushGatewayManifestOnConnect collects all loaded policy definitions and POSTs

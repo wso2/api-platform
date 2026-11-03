@@ -412,3 +412,66 @@ func TestPushGatewayManifestOnConnect_ContextCancelled(t *testing.T) {
 		t.Error("pushGatewayManifestOnConnect did not return in a timely manner after the defined context cancellation")
 	}
 }
+
+// The manifest advertises the artifact shapes this gateway understands, so a control
+// plane sends an LlmProvider with exposure, a models-mode proxy or a Model only to a
+// gateway that will not misread it. Models are advertised only while the feature is on.
+func TestPushGatewayManifest_AdvertisesCapabilities(t *testing.T) {
+	var capturedBody []byte
+	client := newManifestTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	type payloadShape struct {
+		Capabilities  []string `json:"capabilities"`
+		ModelEndpoint *struct {
+			Provisioned bool `json:"provisioned"`
+		} `json:"modelEndpoint"`
+	}
+
+	client.systemConfig.Controller.Models.Enabled = false
+	if err := client.pushGatewayManifest(testGatewayID, nil); err != nil {
+		t.Fatalf("pushGatewayManifest() unexpected error: %v", err)
+	}
+	var payload payloadShape
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("failed to unmarshal request body: %v", err)
+	}
+	want := []string{CapabilityLLMProviderExposure}
+	if strings.Join(payload.Capabilities, ",") != strings.Join(want, ",") {
+		t.Errorf("capabilities = %v, want %v", payload.Capabilities, want)
+	}
+	if payload.ModelEndpoint != nil {
+		t.Errorf("modelEndpoint = %+v, want absent while the feature is off", payload.ModelEndpoint)
+	}
+
+	client.systemConfig.Controller.Models.Enabled = true
+	client.systemConfig.Controller.Models.Endpoint.Provision = true
+	if err := client.pushGatewayManifest(testGatewayID, nil); err != nil {
+		t.Fatalf("pushGatewayManifest() unexpected error: %v", err)
+	}
+	payload = payloadShape{}
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("failed to unmarshal request body: %v", err)
+	}
+	want = append(want, CapabilityModels, CapabilityModelEndpoint)
+	if strings.Join(payload.Capabilities, ",") != strings.Join(want, ",") {
+		t.Errorf("capabilities = %v, want %v", payload.Capabilities, want)
+	}
+	if payload.ModelEndpoint == nil || !payload.ModelEndpoint.Provisioned {
+		t.Errorf("modelEndpoint = %+v, want provisioned", payload.ModelEndpoint)
+	}
+
+	client.systemConfig.Controller.Models.Endpoint.Provision = false
+	if err := client.pushGatewayManifest(testGatewayID, nil); err != nil {
+		t.Fatalf("pushGatewayManifest() unexpected error: %v", err)
+	}
+	payload = payloadShape{}
+	if err := json.Unmarshal(capturedBody, &payload); err != nil {
+		t.Fatalf("failed to unmarshal request body: %v", err)
+	}
+	if payload.ModelEndpoint == nil || payload.ModelEndpoint.Provisioned {
+		t.Errorf("modelEndpoint = %+v, want not provisioned", payload.ModelEndpoint)
+	}
+}

@@ -90,7 +90,9 @@ func TestHandleLLMProviderDeletedEvent_FullDeletion(t *testing.T) {
 
 	// Verify DB deletion
 	assert.Equal(t, 1, db.deleteCallCount, "DeleteConfig should be called once")
-	assert.Equal(t, 1, db.removeKeyCallCount, "RemoveAPIKeysAPI should be called once")
+	// DeleteConfig removes the artifact's API keys in its own transaction, so the
+	// service no longer removes them separately beforehand.
+	assert.Equal(t, 0, db.removeKeyCallCount, "API keys are removed by DeleteConfig, not beforehand")
 
 	// Verify config removed from DB
 	_, err := db.GetConfig(providerID)
@@ -153,7 +155,7 @@ func TestHandleLLMProviderDeletedEvent_DBOnlyConfig(t *testing.T) {
 	client.handleLLMProviderDeletedEvent(event)
 
 	assert.Equal(t, 1, db.deleteCallCount)
-	assert.Equal(t, 1, db.removeKeyCallCount)
+	assert.Equal(t, 0, db.removeKeyCallCount)
 	require.Len(t, hub.publishedEvents, 1)
 	assert.Equal(t, providerID, hub.publishedEvents[0].event.EntityID)
 }
@@ -212,8 +214,8 @@ func TestHandleLLMProviderDeletedEvent_StorageErrors(t *testing.T) {
 	db.SaveConfig(cfg)
 	store.Add(cfg)
 
-	// Simulate DB errors — DeleteLLMProvider will fail on RemoveAPIKeysAPI
-	db.removeKeyErr = errors.New("failed to remove keys")
+	// Simulate a DB error on the delete itself.
+	db.deleteErr = errors.New("failed to delete")
 
 	event := map[string]interface{}{
 		"type": "llmprovider.deleted",
@@ -224,11 +226,13 @@ func TestHandleLLMProviderDeletedEvent_StorageErrors(t *testing.T) {
 		"correlationId": "corr-provider-error",
 	}
 
-	// DeleteLLMProvider returns an error when RemoveAPIKeysAPI fails
+	// DeleteLLMProvider returns an error when DeleteConfig fails
 	client.handleLLMProviderDeletedEvent(event)
 
-	// The handler should log the error; RemoveAPIKeysAPI was attempted
-	assert.Equal(t, 1, db.removeKeyCallCount, "RemoveAPIKeysAPI should be attempted")
+	// The delete was attempted, and no API keys were removed ahead of it: a refused
+	// delete leaves the provider's keys in place.
+	assert.Equal(t, 1, db.deleteCallCount, "DeleteConfig should be attempted")
+	assert.Equal(t, 0, db.removeKeyCallCount, "API keys must not be removed before the delete succeeds")
 	// No events published because the service returned an error before reaching publish
 	assert.Empty(t, hub.publishedEvents)
 }
@@ -297,7 +301,9 @@ func TestHandleLLMProxyDeletedEvent_FullDeletion(t *testing.T) {
 	client.handleLLMProxyDeletedEvent(event)
 
 	assert.Equal(t, 1, db.deleteCallCount, "DeleteConfig should be called once")
-	assert.Equal(t, 1, db.removeKeyCallCount, "RemoveAPIKeysAPI should be called once")
+	// DeleteConfig removes the artifact's API keys in its own transaction, so the
+	// service no longer removes them separately beforehand.
+	assert.Equal(t, 0, db.removeKeyCallCount, "API keys are removed by DeleteConfig, not beforehand")
 
 	_, err := db.GetConfig(proxyID)
 	assert.True(t, storage.IsNotFoundError(err), "config should be removed from DB")
@@ -358,7 +364,7 @@ func TestHandleLLMProxyDeletedEvent_DBOnlyConfig(t *testing.T) {
 	client.handleLLMProxyDeletedEvent(event)
 
 	assert.Equal(t, 1, db.deleteCallCount)
-	assert.Equal(t, 1, db.removeKeyCallCount)
+	assert.Equal(t, 0, db.removeKeyCallCount)
 	require.Len(t, hub.publishedEvents, 1)
 	assert.Equal(t, proxyID, hub.publishedEvents[0].event.EntityID)
 }
@@ -417,7 +423,7 @@ func TestHandleLLMProxyDeletedEvent_StorageErrors(t *testing.T) {
 	db.SaveConfig(cfg)
 	store.Add(cfg)
 
-	db.removeKeyErr = errors.New("failed to remove keys")
+	db.deleteErr = errors.New("failed to delete")
 
 	event := map[string]interface{}{
 		"type": "llmproxy.deleted",
@@ -430,7 +436,8 @@ func TestHandleLLMProxyDeletedEvent_StorageErrors(t *testing.T) {
 
 	client.handleLLMProxyDeletedEvent(event)
 
-	assert.Equal(t, 1, db.removeKeyCallCount, "RemoveAPIKeysAPI should be attempted")
+	assert.Equal(t, 1, db.deleteCallCount, "DeleteConfig should be attempted")
+	assert.Equal(t, 0, db.removeKeyCallCount, "API keys must not be removed before the delete succeeds")
 	assert.Empty(t, hub.publishedEvents)
 }
 
