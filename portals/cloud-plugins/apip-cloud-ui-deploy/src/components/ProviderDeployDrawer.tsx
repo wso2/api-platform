@@ -40,6 +40,7 @@ import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
 import type { ProviderUpstream } from '../providerDeployApi';
+import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import type { Build, Environment, Gateway } from '../types';
 
 export type ProviderDeployDrawerProps = {
@@ -49,6 +50,12 @@ export type ProviderDeployDrawerProps = {
   builds: Build[];
   /** What the provider itself uses, which each gateway's fields start from. */
   upstream: ProviderUpstream;
+  /**
+   * Whether a new key may be entered for a gateway. Storing one is a write to
+   * the organization's secrets under its own scope; without it the field is
+   * disabled and the deploy goes ahead on each gateway's existing credential.
+   */
+  canStoreCredential: boolean;
   submitting: boolean;
   onClose: () => void;
   /**
@@ -100,6 +107,7 @@ const ProviderDeployDrawer: FC<ProviderDeployDrawerProps> = ({
   environment,
   builds,
   upstream,
+  canStoreCredential,
   submitting,
   onClose,
   onConfirm,
@@ -336,16 +344,27 @@ const ProviderDeployDrawer: FC<ProviderDeployDrawerProps> = ({
                       {takesCredential ? (
                         <FormControl fullWidth>
                           <FormLabel>Credentials</FormLabel>
-                          <TextField
-                            size="small"
-                            type="password"
-                            autoComplete="off"
-                            placeholder="Leave empty to keep the current key"
-                            value={keyDrafts[gateway.id] ?? ''}
-                            onChange={(event) =>
-                              setKeyDrafts({ ...keyDrafts, [gateway.id]: event.target.value })
-                            }
-                          />
+                          <Tooltip title={canStoreCredential ? '' : NO_PERMISSION_TOOLTIP}>
+                            {/* Wrapped: a disabled field fires no events, so the tooltip would never open. */}
+                            <span>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                type="password"
+                                autoComplete="off"
+                                placeholder={
+                                  canStoreCredential
+                                    ? 'Leave empty to keep the current key'
+                                    : 'Deploys with the current key'
+                                }
+                                disabled={!canStoreCredential}
+                                value={canStoreCredential ? (keyDrafts[gateway.id] ?? '') : ''}
+                                onChange={(event) =>
+                                  setKeyDrafts({ ...keyDrafts, [gateway.id]: event.target.value })
+                                }
+                              />
+                            </span>
+                          </Tooltip>
                         </FormControl>
                       ) : null}
                     </Stack>
@@ -378,7 +397,7 @@ const ProviderDeployDrawer: FC<ProviderDeployDrawerProps> = ({
             onConfirm(
               selected.map((gateway) => ({
                 gatewayId: gateway.id,
-                apiKey: keyDrafts[gateway.id]?.trim() || undefined,
+                apiKey: canStoreCredential ? keyDrafts[gateway.id]?.trim() || undefined : undefined,
                 authHeader: headerDrafts[gateway.id]?.trim() || undefined,
                 endpointUrl: endpointFor(gateway.id).trim() || undefined,
               })),

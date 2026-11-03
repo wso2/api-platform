@@ -27,7 +27,8 @@ export type { ComingSoonPanelProps } from './ComingSoonPanel';
 export { default as ScopedLogsNotice } from './ScopedLogsNotice';
 export type { ScopedLogsNoticeProps } from './ScopedLogsNotice';
 export type { LogsToolbarProps } from './LogsToolbar';
-export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity } from './hostPort';
+export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity, PermissionsPort } from './hostPort';
+export { LOG_OPERATIONS } from './permissions';
 export type { BufferedLine } from './consoleLines';
 export type {
   EnvironmentSummary,

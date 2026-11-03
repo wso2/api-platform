@@ -118,14 +118,17 @@ client_auth_method       = '{{ env "APIP_ACP_AUTH_OIDC_CLIENT_AUTH_METHOD" "clie
 # Must equal the IdP-registered redirect URI, pointing at /api/auth/callback.
 redirect_url             = '{{ env "APIP_ACP_AUTH_OIDC_REDIRECT_URL" "" }}'
 post_logout_redirect_url = '{{ env "APIP_ACP_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL" "" }}'
-# No `scope` key here on purpose: Load overlays this file's parsed keys onto
-# defaultConfig() unconditionally (mapstructure decode, not an omitempty-aware
-# merge), so a present-but-empty key would silently blank out the built-in
-# default (every ap:* scope Platform API authorizes against — see
-# defaultOIDCScopes in bff/internal/config/config.go) for every deployment that
-# doesn't set APIP_ACP_AUTH_OIDC_SCOPE. An IdP that genuinely needs a narrower
-# set (and can't grant the full ap:* list) should add this key in its own
-# mounted config.toml overlay, keeping offline_access in the override.
+# Scopes requested on /oauth2/authorize, space-separated. Empty keeps the
+# built-in default (every ap:* scope the Platform API spec declares — see
+# defaultOIDCScopes in bff/internal/config/config.go). Override for an IdP that
+# cannot grant the full list, or to add the scopes a Platform API plugin declares
+# (the cloud extension's ap:environment:*, ap:pipeline:*, ap:deployment:*).
+# Keep offline_access in any override.
+scope                    = '{{ env "APIP_ACP_AUTH_OIDC_SCOPE" "" }}'
+# Resource indicator (RFC 8707) sent on /oauth2/authorize. An IdP that scopes
+# tokens per resource server (WSO2 Thunder) only puts that server's scopes into
+# the token and sets aud to it; empty sends no parameter at all.
+resource                 = '{{ env "APIP_ACP_AUTH_OIDC_RESOURCE" "" }}'
 
 # Which claim names carry each user/org field — for BOTH auth modes (OIDC tokens
 # from the configured IdP, and the JWTs Platform API's file-based login signs).

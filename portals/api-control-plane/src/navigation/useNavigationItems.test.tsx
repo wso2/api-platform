@@ -22,6 +22,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { RestApi } from '@/api/resources/restApis';
 import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
+import {
+  decideAnyOperation,
+  decideOperation,
+  decideScope,
+  type PermissionInput,
+} from '../permissions/evaluate';
+import { PermissionContext, type PermissionState } from '../permissions/PermissionContext';
 import { routes } from '@/routes/paths';
 import { ConsoleScopeContext, type ConsoleScope } from '../scope/ConsoleScopeContext';
 import { makeConsoleScope } from '@/test/mockScope';
@@ -478,5 +485,139 @@ describe('host-injected sidebar extensions', () => {
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('claims "no-such-item"'));
     warn.mockRestore();
+  });
+});
+
+/*
+ * An entry that names the scopes its page needs is shown only to a user holding
+ * one of them. Permission state is injected straight through the context, the
+ * way `PermissionContext`'s own comment invites, so the test stands up no auth.
+ */
+const permissionStateFor = (granted: readonly string[]): PermissionState => {
+  const input: PermissionInput = { status: 'ready', granted: new Set(granted), mode: 'enforce' };
+  return {
+    mode: 'enforce',
+    isLoading: false,
+    grantedScopes: input.granted,
+    input,
+    can: (operation) => decideOperation(operation, input).allowed,
+    canAny: (operations) => decideAnyOperation(operations, input).allowed,
+    hasScope: (scope) => decideScope(scope, input).allowed,
+    decide: (operation) => decideOperation(operation, input),
+    decideAny: (operations) => decideAnyOperation(operations, input),
+    decideScope: (scope) => decideScope(scope, input),
+  };
+};
+
+const gatedExtension: ApiControlPlaneExtension = {
+  ...sidebarExtension,
+  id: 'environments-gated',
+  requiredScopes: ['ap:environment:read', 'ap:environment:manage'],
+};
+
+const itemIdsHolding = (granted: readonly string[]) => {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <MemoryRouter initialEntries={[`${PROJECT_BASE}/environments`]}>
+      <PermissionContext.Provider value={permissionStateFor(granted)}>
+        <ConsoleScopeContext.Provider value={atProject()}>
+          <ExtensionsProvider extensions={[gatedExtension]}>{children}</ExtensionsProvider>
+        </ConsoleScopeContext.Provider>
+      </PermissionContext.Provider>
+    </MemoryRouter>
+  );
+  const { result } = renderHook(() => useNavigationItems(), { wrapper });
+  return result.current.map((entry) => entry.id);
+};
+
+describe('permission-gated sidebar extensions', () => {
+  it('is hidden from a user holding none of its required scopes', () => {
+    expect(itemIdsHolding(['ap:project:read'])).not.toContain(gatedExtension.id);
+  });
+
+  it('is shown to a user holding any one of its required scopes', () => {
+    expect(itemIdsHolding(['ap:environment:manage'])).toContain(gatedExtension.id);
+  });
+
+  it('is shown when no permission state is mounted, so nothing is gated', () => {
+    const ids = itemsWithExtensions(atProject(), `${PROJECT_BASE}/environments`, [
+      gatedExtension,
+    ]).map((entry) => entry.id);
+
+    expect(ids).toContain(gatedExtension.id);
+  });
+});
+
+const itemIdsHoldingWith = (
+  granted: readonly string[],
+  extensions: ApiControlPlaneExtension[],
+) => {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <MemoryRouter initialEntries={[routes.organizationHome(ORG)]}>
+      <PermissionContext.Provider value={permissionStateFor(granted)}>
+        <ConsoleScopeContext.Provider value={atOrg()}>
+          <ExtensionsProvider extensions={extensions}>{children}</ExtensionsProvider>
+        </ConsoleScopeContext.Provider>
+      </PermissionContext.Provider>
+    </MemoryRouter>
+  );
+  const { result } = renderHook(() => useNavigationItems(), { wrapper });
+  return result.current.map((entry) => entry.id);
+};
+
+/*
+ * A page override carries the nav placement — and the scope gate — of the
+ * built-in item it replaces. While it is registered its page is what the route
+ * renders for everyone, so the built-in item follows the override's
+ * `requiredScopes`; it has none of its own.
+ */
+describe('permission-gated page overrides', () => {
+  const gatewaysOverride: ApiControlPlaneExtension = {
+    id: 'gateways',
+    label: 'Gateways',
+    level: 'organization',
+    order: 110,
+    render: () => <div>Cloud Gateways</div>,
+    routePath: 'gateways',
+    slot: 'page.gateways',
+    requiredScopes: ['ap:gateway:read', 'ap:gateway:manage'],
+  };
+
+  it('hides the built-in item the override repositions from a user holding none of its scopes', () => {
+    expect(itemIdsHoldingWith(['ap:project:read'], [gatewaysOverride])).not.toContain('gateways');
+  });
+
+  it('keeps it for a user holding one of them', () => {
+    expect(itemIdsHoldingWith(['ap:gateway:read'], [gatewaysOverride])).toContain('gateways');
+  });
+
+  it('leaves the built-in item ungated while no override is registered', () => {
+    expect(itemIdsHoldingWith(['ap:project:read'], [])).toContain('gateways');
+  });
+});
+
+/*
+ * A claim is released by permission as it is by visibility: a claimant the
+ * user may not see hands the built-in back rather than removing both. Without
+ * the permission half of the gate the claimed built-in would be dropped and the
+ * claimant filtered, leaving no Observability entry at all.
+ */
+describe('permission-gated claims', () => {
+  it('keeps the built-in item when the claimant is hidden from the user by scope', () => {
+    const gatedClaimant: ApiControlPlaneExtension = {
+      id: 'observability',
+      claims: 'observability',
+      label: 'Observability',
+      level: 'organization',
+      order: 70,
+      group: 'api',
+      render: () => <div>Extension Observability</div>,
+      routePath: 'observability',
+      slot: 'sidebar.organization',
+      requiredScopes: gatedExtension.requiredScopes,
+    };
+
+    const ids = itemIdsHoldingWith(['ap:project:read'], [gatedClaimant]);
+
+    expect(ids.filter((id) => id === 'observability')).toHaveLength(1);
   });
 });

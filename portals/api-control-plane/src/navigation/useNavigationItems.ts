@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMemo, type ReactNode } from 'react';
+import { useContext, useMemo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { runtimeConfig } from '../config/runtime';
@@ -27,11 +27,13 @@ import {
 import {
   buildScopedExtensionPath,
   childRoutePath,
+  isExtensionPermitted,
   isPageOverride,
   isSidebarExtension,
   useExtensions,
   type ApiControlPlaneExtension,
 } from '../extensions';
+import { PermissionContext } from '../permissions/PermissionContext';
 import { navigationRegistry } from './navigationRegistry';
 import {
   type NavigationDefinition,
@@ -73,14 +75,16 @@ const isScopeSatisfied = (
  * Built-in ids that a *visible* sidebar extension has claimed (see
  * `ApiControlPlaneExtension.claims`).
  *
- * Gated on the claimant's own visibility, so an entry that stands down in some
- * scope hands the built-in back rather than removing both. Applied where the two
- * registries are merged: by resolution time a claim and its target can share an
- * id, and the rule could no longer tell them apart.
+ * Gated on the claimant's own visibility and permission, so an entry that
+ * stands down in some scope, or for a user who holds none of its
+ * `requiredScopes`, hands the built-in back rather than removing both. Applied
+ * where the two registries are merged: by resolution time a claim and its
+ * target can share an id, and the rule could no longer tell them apart.
  */
 const claimedBuiltinIds = (
   extensions: readonly ApiControlPlaneExtension[],
-  scope: ConsoleScope
+  scope: ConsoleScope,
+  hasScope: (scope: string) => boolean
 ) =>
   new Set(
     extensions
@@ -88,7 +92,8 @@ const claimedBuiltinIds = (
         (extension) =>
           isSidebarExtension(extension) &&
           extension.claims &&
-          (extension.isVisible?.(scope) ?? true)
+          (extension.isVisible?.(scope) ?? true) &&
+          isExtensionPermitted(extension, hasScope)
       )
       .map((extension) => extension.claims as string)
   );
@@ -122,10 +127,19 @@ const warnOnRegistryConflicts = (extensions: readonly ApiControlPlaneExtension[]
   }
 };
 
+/** The permission check with no permission state mounted: nothing is gated. */
+const ALLOW_ALL = () => true;
+
 export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
   const location = useLocation();
   const extensions = useExtensions();
+  // Read directly rather than through `usePermissions`, which throws outside a
+  // `PermissionProvider`: this hook also runs in bare hook tests that mount no
+  // auth at all, and with no permission state nothing is gated — the same
+  // fail-open posture `permissions/evaluate.ts` takes for a session that
+  // carries no scope claim.
+  const hasScope = useContext(PermissionContext)?.hasScope ?? ALLOW_ALL;
 
   return useMemo(() => {
     // Host-injected extensions are converted to the same NavigationDefinition
@@ -140,6 +154,7 @@ export const useNavigationItems = (): NavigationItem[] => {
         id: string;
         isVisible?: ApiControlPlaneExtension['isVisible'];
         label: string;
+        requiredScopes?: readonly string[];
         routePath: string;
       },
       level: NavigationLevel,
@@ -164,7 +179,10 @@ export const useNavigationItems = (): NavigationItem[] => {
         group,
         icon: entry.icon,
         id: entry.id,
-        isVisible: entry.isVisible,
+        // An entry naming the scopes its page needs is shown only to a user
+        // holding one of them, on top of whatever its own `isVisible` says.
+        isVisible: (current) =>
+          (entry.isVisible?.(current) ?? true) && isExtensionPermitted(entry, hasScope),
         label: entry.label,
         level,
         match: (pathname) =>
@@ -205,9 +223,9 @@ export const useNavigationItems = (): NavigationItem[] => {
       }));
     // A `page.*` override renders in place of a built-in page (see the
     // `gateways/*` route wrapper); it may also carry the nav placement
-    // (`group`/`order`) for the built-in item it replaces, keyed by shared `id`.
-    // With no override registered (the open-source build), the built-in item
-    // keeps its own placement untouched.
+    // (`group`/`order`) and the scope gate (`requiredScopes`) for the built-in
+    // item it replaces, keyed by shared `id`. With no override registered (the
+    // open-source build), the built-in item keeps its own placement untouched.
     const overridePlacements = new Map(
       extensions
         .filter(isPageOverride)
@@ -215,15 +233,24 @@ export const useNavigationItems = (): NavigationItem[] => {
     );
     const registryWithOverrides = navigationRegistry.map((definition) => {
       const override = overridePlacements.get(definition.id);
+      if (!override) return definition;
       // `group` is optional on an override — one that only repositions within
       // its existing cluster sets `order` alone — so fall back to the built-in
       // group rather than clearing it and moving the item out of its cluster.
-      return override
-        ? { ...definition, group: override.group ?? definition.group, order: override.order }
-        : definition;
+      //
+      // The override's `requiredScopes` gate the item as well: while it is
+      // registered its page is what the route renders for everyone, so a user
+      // it would turn away is not offered the item that leads there.
+      return {
+        ...definition,
+        group: override.group ?? definition.group,
+        order: override.order,
+        isVisible: (current: ConsoleScope) =>
+          (definition.isVisible?.(current) ?? true) && isExtensionPermitted(override, hasScope),
+      };
     });
     warnOnRegistryConflicts(extensions);
-    const claimed = claimedBuiltinIds(extensions, scope);
+    const claimed = claimedBuiltinIds(extensions, scope, hasScope);
     const combinedRegistry = [
       ...registryWithOverrides.filter((definition) => !claimed.has(definition.id)),
       ...extensionDefinitions,
@@ -284,7 +311,7 @@ export const useNavigationItems = (): NavigationItem[] => {
           combinedRegistry.find((item) => item.id === right?.id)?.order ?? 0;
         return leftOrder - rightOrder;
       }) as NavigationItem[];
-  }, [location.pathname, scope, extensions]);
+  }, [location.pathname, scope, extensions, hasScope]);
 };
 
 /**
