@@ -497,6 +497,15 @@ func TestJSONArrayItemSteps(t *testing.T) {
 		require.ErrorContains(t, base.jsonArrayItemOrder(dup, "list", "id", "x", "id", "y"), "several items")
 		require.Error(t, base.jsonArrayItemOrder(publish(t, `{"list":3}`), "list", "id", "a", "id", "b"))
 	})
+	t.Run("item order expands context values", func(t *testing.T) {
+		ctx := publish(t, listBody)
+		local, ok := tcontext.LocalOf(ctx)
+		require.True(t, ok)
+		local.Set("firstKey", "a")
+		local.Set("secondKey", "b")
+		require.NoError(t, base.jsonArrayItemOrder(ctx, "list", "id", "${CTX:firstKey}", "id", "${CTX:secondKey}"))
+		require.ErrorContains(t, base.jsonArrayItemOrder(ctx, "list", "id", "${CTX:secondKey}", "id", "${CTX:firstKey}"), "not before")
+	})
 	t.Run("ambiguous selection", func(t *testing.T) {
 		ctx := publish(t, `{"list":[{"id":"dup","v":1},{"id":"dup","v":2}]}`)
 		require.ErrorContains(t, base.jsonArrayItemFieldIs(ctx, "list", "id", "dup", "v", "1"), "want exactly one")

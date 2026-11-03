@@ -72,6 +72,8 @@ Feature: Guardrails and rate limits on an LLM provider through the control plane
     And the JSON response field "rateLimiting.providerLevel.global.token.count" should be 5000
     And the JSON response field "rateLimiting.providerLevel.global.token.reset.duration" should be 2
     And the JSON response field "rateLimiting.providerLevel.global.token.reset.unit" should be "day"
+    And the JSON response field "rateLimiting.providerLevel.global.request.enabled" should be true
+    And the JSON response field "rateLimiting.providerLevel.global.token.enabled" should be true
 
   @AIW-PRV-019 @type:negative
   Scenario Outline: A provider request limit of <case> is rejected

@@ -18,6 +18,7 @@ scenarios:
       refs:
         - feature: suites/ui/features/management_portal/tenant_isolation.feature
           scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
+      note: The Management Portal shows only REST APIs and gateways; applications, secrets, LLM providers and MCP proxies have no console screen and are covered in IT.
     it:
       status: automated
       refs:
@@ -31,6 +32,7 @@ scenarios:
       refs:
         - feature: suites/ui/features/management_portal/tenant_isolation.feature
           scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
+      note: The Management Portal shows only REST APIs and gateways; applications, secrets, LLM providers and MCP proxies have no console screen and are covered in IT.
     it:
       status: automated
       refs:
@@ -51,10 +53,8 @@ scenarios:
     title: As org A, deploy an API to org B's connected gateway; refused with 404 (gateway not found) and nothing reaches org B's gateway.
     priority: P0
     ui:
-      status: automated
-      refs:
-        - feature: suites/ui/features/management_portal/tenant_isolation.feature
-          scenario: "Journey: an organization's deploy screen offers only its own gateways"
+      status: exempt
+      reason: The console never offers another organization's gateway as a deploy target, so it cannot submit the deploy; the refusal is tested at the API level in IT (decided 2026-11-03).
     it:
       status: automated
       refs:

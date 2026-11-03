@@ -227,6 +227,11 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
+	// Cleanup deletes as the default organization's administrator, which cannot reach another
+	// organization's resources, so a create as org B would leak silently.
+	if resp.StatusCode == http.StatusCreated && strings.TrimSpace(call.who) == secondOrganizationAdmin {
+		return resp, fmt.Errorf("%s %s created a resource as %q, which cleanup cannot delete", method, path, secondOrganizationAdmin)
+	}
 	if err := s.trackControlPlaneResource(ctx, method, call.body, resp); err != nil {
 		return resp, err
 	}

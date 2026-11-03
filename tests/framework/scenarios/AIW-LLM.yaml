@@ -361,7 +361,7 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/ai-workspace/llm-providers/deploy.feature
-          scenario: "A streaming chat completion arrives as ordered chunks and ends normally"
+          scenario: "A streaming chat completion returns ordered content and ends normally"
   - id: AIW-PRV-027
     title: Create providers from different templates.
     priority: P2

@@ -116,9 +116,42 @@ func (u *Steps) createSecretDirectly(ctx context.Context, handle, value string) 
 		body, _ := resp.Text()
 		return fmt.Errorf("creating secret %q returned %d: %s", handle, status, body)
 	}
-	return cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindSecret, ID: handle, Actor: u.topo.Admin.Username,
-	})
+	return u.registerSecret(ctx, handle)
+}
+
+// registerSecret registers a secret the scenario created for cleanup. When registration fails,
+// it deletes the secret on the spot so an unregistered secret never outlives the scenario.
+func (u *Steps) registerSecret(ctx context.Context, handle string) error {
+	err := cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindSecret, ID: handle, Actor: u.topo.Admin.Username})
+	if err == nil {
+		return nil
+	}
+	if delErr := u.deleteSecretDirectly(ctx, handle); delErr != nil {
+		return fmt.Errorf("registering secret %q for cleanup: %w; deleting it failed: %v", handle, err, delErr)
+	}
+	return fmt.Errorf("registering secret %q for cleanup: %w", handle, err)
+}
+
+// deleteSecretDirectly removes a secret through platform-api's own API; one that is already
+// gone is not an error.
+func (u *Steps) deleteSecretDirectly(ctx context.Context, handle string) error {
+	page, base, token, err := u.platformAPI(ctx)
+	if err != nil {
+		return err
+	}
+	resp, err := page.Context().Request().Delete(base+"/api/v0.9/secrets/"+handle,
+		playwright.APIRequestContextDeleteOptions{
+			Headers:           map[string]string{"Authorization": "Bearer " + token},
+			IgnoreHttpsErrors: playwright.Bool(true),
+		})
+	if err != nil {
+		return fmt.Errorf("deleting secret %q: %w", handle, err)
+	}
+	if status := resp.Status(); status != 200 && status != 204 && status != 404 {
+		body, _ := resp.Text()
+		return fmt.Errorf("deleting secret %q returned %d: %s", handle, status, body)
+	}
+	return nil
 }
 
 // deletesProviderDirectly removes a provider through platform-api's own API, bypassing the

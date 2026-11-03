@@ -635,6 +635,7 @@ func TestPlatformGatewayWiringPlacesReplicasInTheSecondOrganization(t *testing.T
 
 	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{0}}).Validate(), "replica 0")
 	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{-1}}).Validate(), "replica -1")
+	require.ErrorContains(t, (&PlatformGatewayWiring{SecondOrganizationReplicas: []int{2, 2}}).Validate(), "listed twice")
 
 	require.NoError(t, wiring.ValidateReplicas(2))
 	require.ErrorContains(t, wiring.ValidateReplicas(1), "replica 2 exceeds the block's 1 replica(s)")

@@ -59,7 +59,6 @@ Feature: The Management Portal keeps each organization's APIs and gateways to it
     When the user opens the Management Portal page "/organizations/default/gateways/${CTX:gatewayA}"
     Then the Management Portal shows "${CTX:gatewayA}"
 
-  @TENANT-004
   Scenario: Journey: an organization's deploy screen offers only its own gateways
     Given I generate a unique handle from "tenant-ui-deploy-project" and store it as "deployProject"
     And I generate a unique handle from "tenant-ui-deploy-api" and store it as "deployApi"

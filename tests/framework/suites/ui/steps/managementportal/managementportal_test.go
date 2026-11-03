@@ -18,11 +18,14 @@ package managementportal
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
@@ -50,7 +53,12 @@ func TestSecondOrganizationKindsAreDistinctAndOrderedLikeTheirResources(t *testi
 func TestControlPlaneTLSTrustsThePlatformAPICertificate(t *testing.T) {
 	config := controlPlaneTLS()
 	require.Equal(t, "platform-api", config.ServerName)
-	require.NotNil(t, config.RootCAs)
+	block, _ := pem.Decode(shared.ControlPlaneCrypto()["certs/cert.pem"])
+	require.NotNil(t, block)
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	_, err = certificate.Verify(x509.VerifyOptions{DNSName: "platform-api", Roots: config.RootCAs})
+	require.NoError(t, err)
 }
 
 func TestGeneratedHandlesAreControlPlaneHandlesAndExpandAsContextValues(t *testing.T) {

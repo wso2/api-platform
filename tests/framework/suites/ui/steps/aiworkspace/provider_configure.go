@@ -162,5 +162,10 @@ func (u *Steps) credentialValidationErrorShown(ctx context.Context) error {
 	if err := u.expect.Locator(field).ToHaveAttribute("aria-invalid", "true"); err != nil {
 		return fmt.Errorf("the credential field is not marked invalid: %w", err)
 	}
+	message := page.Locator("label").Filter(playwright.LocatorFilterOptions{HasText: "Credentials"}).
+		Locator("xpath=..").Locator(".Mui-error").Last()
+	if err := u.expect.Locator(message).ToBeVisible(); err != nil {
+		return fmt.Errorf("the credential field shows no error message: %w", err)
+	}
 	return nil
 }

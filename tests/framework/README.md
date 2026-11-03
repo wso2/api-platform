@@ -111,7 +111,8 @@ the feature file and scenario that automate it. The lists are kept by hand.
 
 A scenario is tagged with every ID it covers (`@TENANT-004`) and its feature with the list's
 code (`@TENANT`), so `-feature-tags=@TENANT-004` runs one ID and `-feature-tags=@TENANT` a
-whole list.
+whole list. A runner whose tags exclude `~@known-issue` still skips an ID's `@known-issue`
+scenario, because the command-line tags are combined with the runner's.
 
 ## Using the framework from another repository
 

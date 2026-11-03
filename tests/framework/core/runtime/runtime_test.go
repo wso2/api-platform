@@ -40,6 +40,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -1427,4 +1428,27 @@ func TestCloseSharedLogsReleasesEveryWriter(t *testing.T) {
 	remaining := len(sharedLogs)
 	sharedMu.Unlock()
 	require.Zero(t, remaining)
+}
+
+func pipeNonblock(t *testing.T, f *os.File) bool {
+	t.Helper()
+	raw, err := f.SyscallConn()
+	require.NoError(t, err)
+	var flags uintptr
+	var errno syscall.Errno
+	require.NoError(t, raw.Control(func(fd uintptr) {
+		flags, _, errno = syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFL, 0)
+	}))
+	require.Zero(t, errno)
+	return flags&syscall.O_NONBLOCK != 0
+}
+
+func TestFlushRunnerOutputRestoresABlockingPipe(t *testing.T) {
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	defer r.Close()
+	defer w.Close()
+	require.True(t, pipeNonblock(t, w), "precondition: the os.Pipe write end is non-blocking")
+	require.NoError(t, flushRunnerOutput(w, "block/runner", bytes.NewBufferString("report")))
+	require.False(t, pipeNonblock(t, w), "flushRunnerOutput must restore blocking mode")
 }

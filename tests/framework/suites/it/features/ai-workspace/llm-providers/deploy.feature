@@ -86,7 +86,7 @@ Feature: LLM providers are deployed to the gateway and serve traffic through it
     Then the JSON response field "choices[0].message.content" should be "Hello! How can I assist you today?"
 
   @AIW-PRV-026
-  Scenario: A streaming chat completion arrives as ordered chunks and ends normally
+  Scenario: A streaming chat completion returns ordered content and ends normally
     Given I create an LLM provider via the control plane from "resources/templates/llm-provider-cp.yaml" with values:
       | displayName        | ${CTX:displayName}                                                                     |
       | template           | azure-openai                                                                           |

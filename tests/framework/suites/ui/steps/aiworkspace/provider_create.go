@@ -73,7 +73,7 @@ func (u *Steps) registerFormSecret(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf("the form's /secrets response carried no secret id")
 	}
-	return cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindSecret, ID: handle, Actor: u.topo.Admin.Username})
+	return u.registerSecret(ctx, handle)
 }
 
 // latestProviderID is the id of the provider this scenario's form most recently created.
