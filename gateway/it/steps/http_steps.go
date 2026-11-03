@@ -22,6 +22,7 @@ package steps
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,9 +80,12 @@ type HTTPSteps struct {
 	// bodyCutOff records that the response body ended before the protocol said it
 	// would — the client-visible signature of a stream reset after the headers
 	// were already sent. Only ever set by SendGETRequestAllowingCutOffBody.
-	bodyCutOff  bool
-	headers     map[string]string
-	requestHost string
+	bodyCutOff bool
+	// requestAbandoned records that the client gave up before any response arrived — a
+	// caller walking away mid-request. Only ever set by SendGETRequestGivingUpAfter.
+	requestAbandoned bool
+	headers          map[string]string
+	requestHost      string
 }
 
 // NewHTTPSteps creates a new HTTPSteps instance
@@ -107,6 +111,8 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I send a GET request to \"([^\"]*)\" allowing a cut-off body$`, h.SendGETRequestAllowingCutOffBody)
 	ctx.Step(`^the response body should have been cut off$`, h.theResponseBodyShouldHaveBeenCutOff)
 	ctx.Step(`^the response body should not have been cut off$`, h.theResponseBodyShouldNotHaveBeenCutOff)
+	ctx.Step(`^I send a GET request to \"([^\"]*)\" and give up after (\d+)ms$`, h.SendGETRequestGivingUpAfter)
+	ctx.Step(`^the request should have been abandoned$`, h.theRequestShouldHaveBeenAbandoned)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\"$`, h.ISendPOSTRequest)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\" with body:$`, h.ISendPOSTRequestWithBody)
 	ctx.Step(`^I send a PUT request to \"([^\"]*)\" with body:$`, h.ISendPUTRequestWithBody)
@@ -136,6 +142,7 @@ func (h *HTTPSteps) Reset() {
 	h.lastResponse = nil
 	h.lastBody = nil
 	h.bodyCutOff = false
+	h.requestAbandoned = false
 	h.headers = make(map[string]string)
 	h.requestHost = ""
 }
@@ -740,6 +747,55 @@ func (h *HTTPSteps) theResponseBodyShouldNotHaveBeenCutOff() error {
 	if h.bodyCutOff {
 		return fmt.Errorf("expected a complete response body, but it was cut off after %d bytes",
 			len(h.lastBody))
+	}
+	return nil
+}
+
+// SendGETRequestGivingUpAfter issues a GET and walks away after the given number of
+// milliseconds, the way a real caller does when it stops waiting.
+//
+// Cancelling the request context closes the downstream connection, which is the signal the
+// gateway sees. The step succeeds when the client gave up, because that IS the condition
+// under test; a response arriving first is a failed setup, not a pass, and says so.
+func (h *HTTPSteps) SendGETRequestGivingUpAfter(url string, afterMs int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(afterMs)*time.Millisecond)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build request for %s: %w", url, err)
+	}
+	for name, value := range h.headers {
+		req.Header.Set(name, value)
+	}
+	if h.requestHost != "" {
+		req.Host = h.requestHost
+	}
+
+	log.Printf("DEBUG: Sending GET to %s, giving up after %dms", url, afterMs)
+	start := time.Now()
+	resp, err := h.client.Do(req)
+	if err == nil {
+		defer resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return fmt.Errorf("expected to give up before a response, but one arrived after %s with "+
+			"status %d — the upstream answered too quickly for this scenario to test anything",
+			time.Since(start).Round(time.Millisecond), resp.StatusCode)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("request to %s failed for a reason other than giving up: %w", url, err)
+	}
+
+	h.requestAbandoned = true
+	h.lastResponse = nil
+	h.lastBody = nil
+	log.Printf("DEBUG: gave up after %s, no response received", time.Since(start).Round(time.Millisecond))
+	return nil
+}
+
+func (h *HTTPSteps) theRequestShouldHaveBeenAbandoned() error {
+	if !h.requestAbandoned {
+		return fmt.Errorf("expected the client to have given up before a response arrived")
 	}
 	return nil
 }

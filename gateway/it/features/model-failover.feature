@@ -1271,3 +1271,120 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the API "mf-stream-safety-v1.0"
     Then the response status code should be 200
+
+  # ====================================================================
+  # Traversal stops when the caller goes away
+  # ====================================================================
+
+  Scenario: A caller that gives up mid-chain stops the traversal
+    # With the caller gone there is no response to assert on, so the fallback is
+    # pointed at a SECOND API on this gateway. If it is attempted, that API
+    # records its own analytics event under its own URI; if traversal stopped,
+    # no such event exists. Both halves are read from ONE payload, so the
+    # positive control sits beside the negative claim rather than in a previous
+    # run that a late flush could blur.
+    #
+    # The primary must FAIL, and slowly. /delay/7 and /delay/8 answer 200 after
+    # sleeping, so perTryTimeout of 3s is what turns them into failures worth
+    # failing over — without it a connected caller would simply get its 200 and
+    # the fallback would be untouched for an entirely different reason.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-disconnect-sink-v1.0
+      spec:
+        displayName: MF Disconnect Sink
+        version: v1.0
+        context: /mf-disconnect-sink/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/disconnect-sink-upstream
+        operations:
+          - method: GET
+            path: /delay/7
+          - method: GET
+            path: /delay/8
+      """
+    Then the response should be successful
+
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-disconnect-main-v1.0
+      spec:
+        displayName: MF Disconnect Main
+        version: v1.0
+        context: /mf-disconnect-main/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend:80
+          - name: sink
+            basePath: /mf-disconnect-sink/v1.0
+            upstreams:
+              - url: http://gateway-runtime:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: GET
+            path: /delay/7
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  perTryTimeout: 3
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: sink
+          - method: GET
+            path: /delay/8
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  perTryTimeout: 3
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: sink
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    # CONTROL — identical configuration and timing, caller stays. The primary
+    # sleeps past its 3s per-attempt budget, so the chain advances to the sink.
+    When I send a GET request to "http://localhost:8080/mf-disconnect-main/v1.0/delay/7"
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/disconnect-sink-upstream"
+
+    # SUBJECT — same shape, caller gives up at 1.5s, well inside the first
+    # attempt's 3s budget, so it leaves while the chain is still being walked.
+    When I send a GET request to "http://localhost:8080/mf-disconnect-main/v1.0/delay/8" and give up after 1500ms
+    Then the request should have been abandoned
+
+    # Long enough that a fallback attempt, had one been made, would have run its
+    # course and been published — otherwise the absence below only means "early".
+    When I wait 12 seconds for analytics to be published
+    And I send a GET request to the analytics collector events endpoint
+    Then the response should be successful
+    # The control reached the sink, so the sink IS recorded this way...
+    And the response body should contain "/mf-disconnect-sink/v1.0/delay/7"
+    # ...and the abandoned request never did.
+    And the response body should not contain "/mf-disconnect-sink/v1.0/delay/8"
+
+    # Cleanup
+    When I delete the API "mf-disconnect-main-v1.0"
+    Then the response status code should be 200
+    When I delete the API "mf-disconnect-sink-v1.0"
+    Then the response status code should be 200
