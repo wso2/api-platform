@@ -624,6 +624,34 @@ blocks:
         features:
           - features/gateway/core/template_functions_typed.feature
 
+  # Models and model endpoints are served only with controller.models on, which also provisions
+  # the shared default endpoint "wso2". Scenarios that send traffic serve their Models on an
+  # endpoint of their own, so their routes, keys and analytics events are theirs alone.
+  - name: gateway-models
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/models.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: model-gateway
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_gateway.feature
+      - name: model-endpoint-formats
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_endpoint_formats.feature
+      - name: model-endpoint-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_endpoint_keys.feature
+      - name: model-endpoint-multiple
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_endpoint_multiple.feature
+
   - name: config-dump
     parallel: 1
     components:
