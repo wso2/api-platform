@@ -235,10 +235,20 @@ const db = new Database(${JSON.stringify('DB_FILE')});
         out.moesifEndpointsPutBack = JSON.stringify(moesifUrls()) === JSON.stringify(moesifUrlsBefore) && moesifUrlsBefore.length === 2;
         out.billingKeptAfterRefusedRemoval = (await call(svc.getBillingConfiguration, as())).status;
 
+        const beforeRemoval = await configurationDao.getWithSecrets(${JSON.stringify(ORG)});
         out.deletedAfterMove = await call(svc.deleteBillingConfiguration, as());
         out.moesifCallsOnDeleteAfterMove = moesifCalls.splice(0);
         out.endpointsAfterDeleteAfterMove = state.endpoints.map((e) => e.url);
         out.partnersAfterDeleteAfterMove = Object.keys(state.partners);
+
+        // A move that started before billing was removed: recording finds no billing, so the
+        // move's connection and endpoint are undone instead of being left where removal can't find them.
+        out.moveAfterRemoval = await catalogService.build(${JSON.stringify(ORG)},
+            { ...beforeRemoval, moesifApplication: '6447:999', moesifEarlierApplications: [] }, pairs)
+            .then(() => 'built', (err) => err.name);
+        out.moesifCallsOnMoveAfterRemoval = moesifCalls.splice(0);
+        out.endpointsAfterMoveAfterRemoval = state.endpoints.map((e) => e.url);
+        out.partnersAfterMoveAfterRemoval = Object.keys(state.partners);
     } else {
         const conn = await configurationDao.getWithSecrets(${JSON.stringify(ORG)});
         out.connectionKeys = { collector: conn.moesifCollectorApplicationId, key: conn.moesifManagementKey };
@@ -291,6 +301,8 @@ function run(phase, supplied) {
         env: {
             PATH: process.env.PATH, HOME: process.env.HOME, PHASE: phase,
             STATE_FILE: path.join(tmpDir, 'stripe-state.json'),
+            // Keeps the child's coverage in the parent run's report.
+            ...(process.env.NODE_V8_COVERAGE && { NODE_V8_COVERAGE: process.env.NODE_V8_COVERAGE }),
         },
     });
     assert.equal(result.status, 0, `probe failed: ${result.stderr}`);
@@ -419,4 +431,13 @@ test('when Stripe refuses removing one of Moesif\'s endpoints, the ones removed 
     assert.notEqual(r.refusedRemoval.status, 204);
     assert.ok(r.moesifEndpointsPutBack, "both applications' Moesif endpoints are in Stripe again");
     assert.equal(r.billingKeptAfterRefusedRemoval, 200);
+});
+
+test('a move that finds billing removed undoes its connection and endpoint', () => {
+    const r = promoted();
+    const key = THIRD_KEYS.moesifManagementKey;
+    assert.equal(r.moveAfterRemoval, 'BillingCatalogError');
+    assert.deepEqual(r.moesifCallsOnMoveAfterRemoval, [['connect', key], ['disconnect', key]]);
+    assert.deepEqual(r.endpointsAfterMoveAfterRemoval, [], "Moesif's endpoint is removed again");
+    assert.ok(!r.partnersAfterMoveAfterRemoval.includes(key), 'the new connection is removed again');
 });

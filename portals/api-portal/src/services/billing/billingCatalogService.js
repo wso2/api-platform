@@ -273,11 +273,13 @@ async function moveBilling(orgId, conn, connector) {
         if (endpoint.undo) done.push(endpoint.undo);
         // One transaction: when any part of recording fails, nothing is recorded before the
         // steps above are undone, so the next paid plan tries the move again.
-        await db.withTransaction((t) => billingConfigurationDao.setMoesifApplication(orgId, {
+        const recorded = await db.withTransaction((t) => billingConfigurationDao.setMoesifApplication(orgId, {
             application: connector.application,
             earlierApplications: [...new Set([conn.moesifApplication, ...(conn.moesifEarlierApplications || [])])]
                 .filter((app) => app && app !== connector.application),
         }, t));
+        // Billing was removed meanwhile: what the move made is undone, since removal can't find it.
+        if (!recorded) throw new Error('Billing was removed while it was being moved to another Moesif application.');
         logger.info('Billing moved to the Moesif application of the portal\'s keys',
             { orgId, from: conn.moesifApplication, to: connector.application });
     } catch (err) {
@@ -295,8 +297,9 @@ async function moveBilling(orgId, conn, connector) {
  * when the request creates it; `conn` is the organization's billing configuration and `connector`
  * its billing provider. Pairs whose plan is free, or that have an API plan already, need
  * nothing. When the keys are for another Moesif application than billing uses, billing is moved to
- * it first. When the move or any part fails, everything created is removed and BillingCatalogError
- * is thrown, naming the plan; the provider's reason is logged. Resolves to { apiPlans, undo }: the
+ * it first; a move that succeeds stays, like billing set up again, even when a plan then fails. When
+ * the move or any part fails, what it created is removed and BillingCatalogError is thrown, naming
+ * the plan; the provider's reason is logged. Resolves to { apiPlans, undo }: the
  * API plans for the request to save (saveApiPlans), and undo, which removes what was created when
  * that save fails.
  */
