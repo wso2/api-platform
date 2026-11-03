@@ -772,17 +772,18 @@ Some clients cannot read a REST-shaped JSON error body at all. A JSON-RPC client
 object it is required to understand, and a SOAP client needs a fault envelope matching the
 version it used.
 
-The gateway supplies one itself **only for `Agent` APIs**, whose A2A callers speak JSON-RPC, and
-only **when a policy described the failure**: a policy that rejects a request describes it in its
-`Fault` — code, type, message — and the gateway renders that as a JSON-RPC error. Every other kind
-is left as the policy, the backend or the router wrote it: MCP policies already write their own
-JSON-RPC envelope, and a SOAP API gets a conformant fault only from a fault policy such as
-`error-response-formatter`.
+The gateway supplies one itself **only for `Agent` and `SoapApi` APIs**, and only **when a policy
+described the failure**: a policy that rejects a request describes it in its `Fault` — code,
+type, message — and the gateway renders that as a JSON-RPC error for an A2A caller, or as a SOAP
+Fault for a SOAP caller. The SOAP version is the one the request used: `application/soap+xml`
+gets a SOAP 1.2 Fault, anything else (`text/xml`, or a bodyless `GET ?wsdl`) a SOAP 1.1 Fault.
+Every other kind is left as the policy, the backend or the router wrote it: MCP policies already
+write their own JSON-RPC envelope.
 
 ### Shaping an error body yourself
 
-For every kind other than `Agent`, a fault policy is how an error body gets shaped — and it is
-the supported way to do it on an `Agent` API too. **Any** fault policy that sets a response body has decided
+For every kind other than `Agent` and `SoapApi`, a fault policy is how an error body gets shaped —
+and it is the supported way to do it on those two as well. **Any** fault policy that sets a response body has decided
 what the client receives.
 
 The examples use `error-response-formatter`, a general-purpose formatter policy. It is **not part
@@ -810,9 +811,10 @@ faultPolicies:
       preset: openai      # openai | canonical | jsonrpc | soap11 | soap12
 ```
 
-Each preset carries its own `Content-Type`. `soap11` and `soap12` matter most: those two shapes
-are **not** among the gateway's own renderers, so a policy is the only way to return a conformant
-SOAP fault today.
+Each preset carries its own `Content-Type`. On a `SoapApi` the gateway already renders SOAP 1.1
+and 1.2 Faults for described failures; the `soap11`/`soap12` presets are how to shape the ones it
+does not — a router failure, or a policy that has not adopted `Fault` yet — or to fix the version
+regardless of the request.
 
 > **Placeholders are `${Field}`, not `{{.Field}}`.** The gateway renders an API's whole spec
 > through `text/template` at deploy time to resolve `{{ env }}` and `{{ secret }}`, so a
@@ -887,8 +889,9 @@ reply Envoy already wrote is what the client gets.
 
 A router failure carries a body Envoy wrote (`no healthy upstream`, as plain text). No policy
 described it, so it is **not** replaced — the client gets what released gateways sent. On an
-`Agent` API with `handle_upstream_faults` on, a fault policy that re-describes it (returns `Fault`)
-does get it rendered, which is the way to give such a caller a body in its own protocol.
+`Agent` or `SoapApi` API with `handle_upstream_faults` on, a fault policy that re-describes it
+(returns `Fault`) does get it rendered, which is the way to give such a caller a body in its own
+protocol.
 
 ### The gateway's formatting never changes the status
 
@@ -953,12 +956,12 @@ declare `faultPolicies` on its public Agent Card, which run only when serving th
 LLM kinds have no nested operations, so `operationFaultPolicies` is a flat list whose entries
 select the operations they apply to by `paths`, exactly as `operationPolicies` entries do. An MCP
 spec describes tools, resources and prompts rather than HTTP operations, so `Mcp` takes the
-API-level list only.
+API-level list only, and so does `SoapApi`, which has no operations at all.
 
 Everything downstream of the declaration is **kind-agnostic**. Each non-REST kind is
 normalised into a `RestApi` before route chains are built, so a kind only has to carry the list
 across that conversion; chain building and the engine already work for every kind. Which kinds
-the gateway renders an error body for is a separate setting — today only `Agent`.
+the gateway renders an error body for is a separate setting — today `Agent` and `SoapApi`.
 
 ### Where the codes come from
 

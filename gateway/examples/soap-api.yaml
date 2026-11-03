@@ -1,0 +1,56 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# Sample SOAP API (Phase 1: passthrough).
+#
+# A SOAP API is a single wildcard resource at the API context path. The gateway
+# proxies all traffic for the service to the backend, unchanged and without
+# operation awareness:
+#   - POST <context>[/...]  → SOAP invocations (text/xml or application/soap+xml)
+#   - GET  <context>?wsdl   → WSDL/XSD retrieval
+# Any path below the context is carried over to the backend path.
+#
+# This example targets the local `sample-backend` (an echo service) purely
+# to demonstrate routing/passthrough end-to-end without a real SOAP server;
+# point `upstream.main.url` at an actual SOAP service for real use.
+#
+# Deploy:
+#   curl -X POST http://localhost:9090/api/management/v1/soap-apis \
+#     -u admin:admin -H 'Content-Type: application/yaml' \
+#     --data-binary @examples/soap-api.yaml
+#
+# Invoke (SOAP 1.1):
+#   curl -X POST http://localhost:8080/stockquote/v1.0 \
+#     -H 'Content-Type: text/xml; charset=utf-8' \
+#     -H 'SOAPAction: urn:getQuote' \
+#     --data-binary @request.xml
+#
+# Retrieve WSDL:
+#   curl 'http://localhost:8080/stockquote/v1.0?wsdl'
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: SoapApi
+metadata:
+  name: stockquote-v1.0
+spec:
+  displayName: StockQuote API
+  version: v1.0
+  context: /stockquote/v1.0
+  upstream:
+    main:
+      url: http://sample-backend:5000
+  # API-level policies apply to all SOAP traffic, including ?wsdl. (HTTP-transport auth such as
+  # api-key-auth / basic-auth / jwt-auth works as-is for SOAP-over-HTTP.)
+  # policies:
+  #   - name: api-key-auth
+  #     version: v1
+  #     params:
+  #       key: X-API-Key
+  #       in: header
