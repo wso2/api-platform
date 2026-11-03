@@ -34,8 +34,6 @@ type auditTable interface {
 	Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
-// auditRecordJSON is the line written for a record. logType is always "audit",
-// so a collector can tell audit lines apart from platform-api's own logs.
 type auditRecordJSON struct {
 	Time           time.Time `json:"time"`
 	LogType        string    `json:"logType"`
@@ -57,8 +55,7 @@ type AuditService struct {
 	logger  *slog.Logger
 }
 
-// NewAuditService builds the sinks named by cfg.Outputs when auditing is enabled. A
-// sink that cannot be built is an error, and the caller refuses to start.
+// NewAuditService builds the configured sinks; an error means startup must fail.
 func NewAuditService(repo auditTable, cfg config.Audit, logger *slog.Logger) (*AuditService, error) {
 	s := &AuditService{enabled: cfg.Enabled, repo: repo, logger: logger}
 	if !cfg.Enabled {
@@ -72,16 +69,10 @@ func NewAuditService(repo auditTable, cfg config.Audit, logger *slog.Logger) (*A
 	return s, nil
 }
 
-// auditSinkCleanupTimeout bounds closing the sinks already built when a later one fails
-// to build, so a stuck sink cannot hide the error that caused it.
 const auditSinkCleanupTimeout = 5 * time.Second
 
-// newAuditSinks builds one sink per name in cfg.Outputs.
-//
-// It fails closed: a sink that cannot be built returns an error and the caller
-// refuses to start, rather than running without an output the operator asked
-// for. Sinks already built are closed first, so a failure part way through the
-// list leaks no file descriptor or goroutine.
+// newAuditSinks closes the sinks already built when a later one fails, so a
+// failed startup leaks no file descriptor or goroutine.
 func newAuditSinks(cfg config.Audit, logger *slog.Logger) ([]auditSink, error) {
 	outputs, err := config.NormalizeAuditOutputs(cfg.Outputs)
 	if err != nil {
@@ -117,9 +108,7 @@ func newAuditSinks(cfg config.Audit, logger *slog.Logger) ([]auditSink, error) {
 	return sinks, nil
 }
 
-// Record writes the table row, then the same record as one JSON line to every
-// sink. Only the table error is returned: each sink handles its own failures,
-// so one failing sink never stops the others and never fails the request.
+// Record returns only the table error: a sink failure never fails the request.
 func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
 	if !s.enabled {
 		return nil
@@ -153,8 +142,6 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 	return err
 }
 
-// Close closes every sink, flushing any that buffer. Errors are joined so one
-// stuck sink does not stop the others from closing.
 func (s *AuditService) Close(ctx context.Context) error {
 	var errs []error
 	for _, sk := range s.sinks {

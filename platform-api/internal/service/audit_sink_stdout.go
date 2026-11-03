@@ -26,14 +26,11 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// auditStdoutSink writes each line to the process's stdout, serialized by a mutex so
-// concurrent records cannot interleave.
 type auditStdoutSink struct {
 	mu       sync.Mutex
 	logger   *slog.Logger
 	throttle auditErrThrottle
-	// buf is reused across writes to append the newline, so each line is one Write.
-	buf []byte
+	buf      []byte
 }
 
 func newAuditStdoutSink(logger *slog.Logger) *auditStdoutSink {
@@ -51,5 +48,4 @@ func (s *auditStdoutSink) Write(line []byte) {
 	}
 }
 
-// Close does nothing: stdout is not owned by this sink and is unbuffered.
 func (s *auditStdoutSink) Close(context.Context) error { return nil }

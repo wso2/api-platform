@@ -37,23 +37,14 @@ import (
 )
 
 const (
-	// auditMaxResponseBodyBytes caps how much of a receiver's response is read, so a
-	// huge error body cannot grow the heap.
+	// A huge error body must not grow the heap.
 	auditMaxResponseBodyBytes int64 = 4 << 10
-	// auditRetryAfterCap bounds how long a receiver's Retry-After can stall the
-	// sender while the queue fills.
+	// A receiver's Retry-After must not stall the sender for long.
 	auditRetryAfterCap = 30 * time.Second
 )
 
-// auditHTTPSink batches audit lines and POSTs them as newline-delimited JSON to an
-// operator-chosen endpoint, for deployments without a log collector.
-//
-//   - Write never blocks: it runs on the request path. A line that does not fit
-//     in the queue is dropped and logged.
-//   - The queue is bounded, so a receiver outage cannot grow memory without limit.
-//   - A batch that cannot be delivered is dropped. The queue is memory-only, so an
-//     outage longer than the queue and retries can absorb loses records from this
-//     output; the audit table still has them.
+// auditHTTPSink never blocks Write: lines go to a bounded in-memory queue, and a
+// batch that cannot be delivered is dropped (the audit table still has it).
 type auditHTTPSink struct {
 	cfg      config.AuditHTTP
 	client   *http.Client
@@ -61,26 +52,20 @@ type auditHTTPSink struct {
 	logger   *slog.Logger
 	throttle auditErrThrottle
 
-	// authName/authValue are resolved once; an empty name means none. The value
-	// is a secret and is never logged.
+	// authValue is a secret and is never logged.
 	authName  string
 	authValue string
 
-	queue chan []byte
-	// done is closed by Close to stop the sender; stopped is closed by the
-	// sender once its final flush is done.
+	queue     chan []byte
 	done      chan struct{}
 	stopped   chan struct{}
 	closeOnce sync.Once
-	// tlsLogged logs the negotiated TLS version and key exchange once, so an
-	// operator can see whether the connection uses the post-quantum hybrid.
+	// The negotiated key exchange is logged once to show whether PQC is in use.
 	tlsLogged sync.Once
 }
 
-// newAuditHTTPSink builds the sink and starts its sender.
 func newAuditHTTPSink(cfg config.AuditHTTP, logger *slog.Logger) (*auditHTTPSink, error) {
-	// Config validation rejects these; checked again because a non-positive value
-	// would panic in time.NewTicker or make.
+	// Non-positive values would panic in time.NewTicker or make.
 	if cfg.FlushInterval <= 0 || cfg.RequestTimeout <= 0 || cfg.QueueCapacity <= 0 ||
 		cfg.BatchMaxEvents <= 0 || cfg.BatchMaxBytes <= 0 || cfg.MaxRetries < 0 {
 		return nil, fmt.Errorf("batch, queue and timeout settings must be positive")
@@ -115,11 +100,7 @@ func newAuditHTTPSink(cfg config.AuditHTTP, logger *slog.Logger) (*auditHTTPSink
 	return s, nil
 }
 
-// newAuditHTTPClient builds the client with httpkit, reading the TLS files for an
-// https:// endpoint (the tls block is ignored for http://). X25519MLKEM768 is
-// preferred, with classical curves after it for receivers that lack it.
-// Redirects are never followed: the target is chosen by the receiver, not the
-// operator.
+// Redirects are never followed: the receiver, not the operator, would choose the target.
 func newAuditHTTPClient(cfg config.AuditHTTP, endpoint *url.URL) (*http.Client, error) {
 	c := httpclient.DefaultConfig()
 	c.Timeouts.Overall = cfg.RequestTimeout
@@ -148,8 +129,6 @@ func newAuditHTTPClient(cfg config.AuditHTTP, endpoint *url.URL) (*http.Client, 
 
 func (s *auditHTTPSink) Name() string { return config.AuditOutputHTTP }
 
-// Write queues the line for delivery and never blocks. The line is copied
-// because the caller reuses its buffer.
 func (s *auditHTTPSink) Write(line []byte) {
 	select {
 	case <-s.done:
@@ -170,12 +149,9 @@ func (s *auditHTTPSink) Write(line []byte) {
 	}
 }
 
-// run is the sender: it collects lines into a batch, delivers it when a bound is
-// reached, and flushes what is left on shutdown.
 func (s *auditHTTPSink) run() {
 	defer func() {
-		// A Write can win the race against Close and queue a line after the final
-		// drain. Report it rather than losing it silently.
+		// A Write can race Close and queue a line after the final drain; report it.
 		left := len(s.queue)
 		for range left {
 			<-s.queue
@@ -215,7 +191,6 @@ func (s *auditHTTPSink) run() {
 	for {
 		select {
 		case <-s.done:
-			// Drain what is queued so a graceful shutdown keeps accepted records.
 			for {
 				select {
 				case line := <-s.queue:
@@ -235,9 +210,7 @@ func (s *auditHTTPSink) run() {
 	}
 }
 
-// deliver POSTs one batch, retrying transport errors, 429 and 5xx with jittered
-// exponential backoff. Any other 4xx means the receiver rejected the batch, so
-// retrying would not help.
+// deliver retries transport errors, 429 and 5xx; any other status will not change on retry.
 func (s *auditHTTPSink) deliver(batch [][]byte) {
 	body := encodeAuditNDJSON(batch)
 	var lastErr error
@@ -267,8 +240,6 @@ func (s *auditHTTPSink) deliver(batch [][]byte) {
 		fmt.Errorf("%d record(s) dropped: %w", len(batch), lastErr))
 }
 
-// post makes one delivery attempt. It reports whether a failure is worth
-// retrying, and the receiver's Retry-After delay when it gives one.
 func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.RequestTimeout)
 	defer cancel()
@@ -287,7 +258,6 @@ func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 		return 0, true, fmt.Errorf("posting batch: %w", err)
 	}
 	defer resp.Body.Close()
-	// Drain a bounded prefix so the connection can be reused.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, auditMaxResponseBodyBytes))
 
 	switch {
@@ -308,8 +278,7 @@ func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 	}
 }
 
-// backoff returns the delay before retry attempt n (1-based): exponential, with
-// jitter so replicas retrying after a shared outage do not do so in lockstep.
+// Jitter keeps replicas from retrying in lockstep after a shared outage.
 func (s *auditHTTPSink) backoff(attempt int) time.Duration {
 	// Cap the exponent so a large max_retries cannot overflow the shift.
 	delay := s.cfg.RetryBackoff << min(attempt-1, 10)
@@ -319,8 +288,6 @@ func (s *auditHTTPSink) backoff(attempt int) time.Duration {
 	return delay
 }
 
-// sleep waits for d, returning false if Close was called first so shutdown is
-// not held for a full backoff.
 func (s *auditHTTPSink) sleep(d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -332,8 +299,6 @@ func (s *auditHTTPSink) sleep(d time.Duration) bool {
 	}
 }
 
-// Close stops the sender after a final flush, bounded by ctx. Safe to call more
-// than once.
 func (s *auditHTTPSink) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() { close(s.done) })
 	select {
@@ -344,8 +309,6 @@ func (s *auditHTTPSink) Close(ctx context.Context) error {
 	}
 }
 
-// encodeAuditNDJSON joins the batch into a newline-delimited body, which Splunk HEC's
-// raw endpoint, Elasticsearch/OpenSearch, Fluent Bit and Vector accept as-is.
 func encodeAuditNDJSON(batch [][]byte) []byte {
 	var buf bytes.Buffer
 	for _, line := range batch {
@@ -355,9 +318,7 @@ func encodeAuditNDJSON(batch [][]byte) []byte {
 	return buf.Bytes()
 }
 
-// parseAuditRetryAfter reads a Retry-After header in delta-seconds or HTTP-date form,
-// capped at auditRetryAfterCap. Anything unparseable gives 0, which leaves the caller
-// on its own backoff.
+// parseAuditRetryAfter returns 0 for anything unparseable, leaving the caller on its own backoff.
 func parseAuditRetryAfter(v string) time.Duration {
 	v = strings.TrimSpace(v)
 	if secs, err := strconv.Atoi(v); err == nil {

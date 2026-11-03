@@ -28,27 +28,19 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// auditFileSink appends each audit line to a file, rotating at a size ceiling.
-//
-// Rotation keeps one backup: the live file is renamed to <path>.1, replacing any
-// earlier backup, and a new file is opened, so at most 2 x max_size_mb is on disk.
-// This is logrotate's "create" mode, which tailers that track inodes (Fluent Bit,
-// Filebeat) follow. The sink must be the file's only writer.
+// auditFileSink rotates by renaming the live file to <path>.1, replacing any
+// earlier backup, so at most 2 x max_size_mb is on disk. It must be the only writer.
 type auditFileSink struct {
 	mu sync.Mutex
 	// f is nil after Close, or after a rotation could not open a new file.
-	f      *os.File
-	closed bool
-	path   string
-	// size is the live file's length, seeded at open so an append to an
-	// existing file counts, then advanced by each write.
-	size int64
-	// maxBytes is the rotation threshold. 0 disables rotation.
+	f        *os.File
+	closed   bool
+	path     string
+	size     int64
 	maxBytes int64
 	logger   *slog.Logger
 	throttle auditErrThrottle
-	// buf is reused across writes to append the newline, so each line is one Write.
-	buf []byte
+	buf      []byte
 }
 
 func newAuditFileSink(cfg config.AuditFile, logger *slog.Logger) (*auditFileSink, error) {
@@ -71,8 +63,7 @@ func newAuditFileSink(cfg config.AuditFile, logger *slog.Logger) (*auditFileSink
 }
 
 // checkPermissions refuses an existing file that group or others can read: open
-// sets the 0600 and 0700 modes only when it creates them. A permissive directory
-// only warns, since a 0600 file is unreadable whatever its directory's mode.
+// sets 0600 only when it creates the file.
 func (s *auditFileSink) checkPermissions() error {
 	info, err := s.f.Stat()
 	if err != nil {
@@ -92,8 +83,6 @@ func (s *auditFileSink) checkPermissions() error {
 
 func (s *auditFileSink) Name() string { return config.AuditOutputFile }
 
-// Write appends the line, rotating first if it would push the file past the size
-// ceiling. A failure drops the line and logs.
 func (s *auditFileSink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,8 +91,7 @@ func (s *auditFileSink) Write(line []byte) {
 		return
 	}
 	if s.f == nil {
-		// A failed rotation left no file open. Retry on every write, so writing
-		// resumes once the directory is usable again.
+		// A failed rotation left no file open; retry so writing resumes.
 		if err := s.open(); err != nil {
 			s.throttle.logError(s.logger, "Audit log file is not open; dropping the record", s.Name(), err)
 			return
@@ -118,8 +106,7 @@ func (s *auditFileSink) Write(line []byte) {
 				s.throttle.logError(s.logger, "Failed to rotate the audit log file; dropping the record", s.Name(), err)
 				return
 			}
-			// Typically a read-only directory blocking the rename: keep writing
-			// unrotated rather than dropping records.
+			// Usually a read-only directory blocking the rename: keep writing unrotated.
 			s.throttle.logError(s.logger, "Failed to rotate the audit log file; writing to it unrotated, "+
 				"so it may exceed max_size_mb", s.Name(), err)
 		}
@@ -134,8 +121,7 @@ func (s *auditFileSink) Write(line []byte) {
 	}
 }
 
-// rotate renames the live file to <path>.1 and opens a new one. Callers hold s.mu.
-// If the rename fails, the original file is reopened so writing continues.
+// rotate reopens the original file if the rename fails, so writing continues.
 func (s *auditFileSink) rotate() error {
 	closeErr := s.f.Close()
 	s.f = nil
@@ -154,8 +140,6 @@ func (s *auditFileSink) rotate() error {
 	return nil
 }
 
-// open opens the live file for append, creating it 0600 and its directory 0700
-// if missing, and seeds the size from it. Callers hold s.mu, or own s.
 func (s *auditFileSink) open() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
@@ -174,7 +158,6 @@ func (s *auditFileSink) open() error {
 	return nil
 }
 
-// Close closes the live file. Writes are unbuffered, so there is nothing to flush.
 func (s *auditFileSink) Close(context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

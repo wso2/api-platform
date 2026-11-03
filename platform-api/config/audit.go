@@ -30,14 +30,12 @@ import (
 	"golang.org/x/net/http/httpguts"
 )
 
-// Audit outputs: where each audit record is written besides the audit table.
 const (
 	AuditOutputStdout = "stdout"
 	AuditOutputFile   = "file"
 	AuditOutputHTTP   = "http"
 )
 
-// Authentication schemes for the "http" audit output.
 const (
 	AuditAuthNone   = "none"
 	AuditAuthBearer = "bearer"
@@ -45,51 +43,33 @@ const (
 	AuditAuthHeader = "header"
 )
 
-// Audit configures audit recording ([platform_api.audit]).
 type Audit struct {
-	// Enabled false records nothing: no audit table rows and no output lines.
-	Enabled bool `koanf:"enabled"`
-	// Outputs lists where each record is also written; empty keeps records in
-	// the audit table only.
+	Enabled bool      `koanf:"enabled"`
 	Outputs []string  `koanf:"outputs"`
 	File    AuditFile `koanf:"file"`
 	HTTP    AuditHTTP `koanf:"http"`
 }
 
-// AuditFile configures the "file" audit output.
 type AuditFile struct {
-	// Path is the absolute path of the live log file.
-	Path string `koanf:"path"`
-	// MaxSizeMB is the size at which the live file is renamed to <path>.1 and a
-	// new one opened. 0 disables rotation.
-	MaxSizeMB int `koanf:"max_size_mb"`
+	Path      string `koanf:"path"`
+	MaxSizeMB int    `koanf:"max_size_mb"`
 }
 
-// AuditHTTP configures the "http" audit output: records are queued in memory,
-// batched and POSTed as newline-delimited JSON to an operator-chosen endpoint.
 type AuditHTTP struct {
 	// Endpoint must be https:// unless AllowInsecureTransport is set.
-	Endpoint               string `koanf:"endpoint"`
-	AllowInsecureTransport bool   `koanf:"allow_insecure_transport"`
-	// A batch is sent when any of these is reached. BatchMaxBytes caps the
-	// body; only a single record larger than it is sent over it, alone.
-	BatchMaxEvents int           `koanf:"batch_max_events"`
-	BatchMaxBytes  int           `koanf:"batch_max_bytes"`
-	FlushInterval  time.Duration `koanf:"flush_interval"`
-	// QueueCapacity bounds the records waiting to be sent; when it is full, a
-	// new record is dropped.
-	QueueCapacity  int           `koanf:"queue_capacity"`
-	RequestTimeout time.Duration `koanf:"request_timeout"`
-	// MaxRetries applies to transport errors, 429 and 5xx only.
-	MaxRetries   int           `koanf:"max_retries"`
-	RetryBackoff time.Duration `koanf:"retry_backoff"`
-	Auth         AuditHTTPAuth `koanf:"auth"`
-	TLS          AuditHTTPTLS  `koanf:"tls"`
+	Endpoint               string        `koanf:"endpoint"`
+	AllowInsecureTransport bool          `koanf:"allow_insecure_transport"`
+	BatchMaxEvents         int           `koanf:"batch_max_events"`
+	BatchMaxBytes          int           `koanf:"batch_max_bytes"`
+	FlushInterval          time.Duration `koanf:"flush_interval"`
+	QueueCapacity          int           `koanf:"queue_capacity"`
+	RequestTimeout         time.Duration `koanf:"request_timeout"`
+	MaxRetries             int           `koanf:"max_retries"`
+	RetryBackoff           time.Duration `koanf:"retry_backoff"`
+	Auth                   AuditHTTPAuth `koanf:"auth"`
+	TLS                    AuditHTTPTLS  `koanf:"tls"`
 }
 
-// AuditHTTPAuth selects the one header sent with every batch. Only the
-// sub-table matching Type is read, so a credential left in another sub-table
-// is never sent.
 type AuditHTTPAuth struct {
 	Type   string `koanf:"type"`
 	Bearer struct {
@@ -105,8 +85,6 @@ type AuditHTTPAuth struct {
 	} `koanf:"header"`
 }
 
-// AuditHTTPTLS is the trust and client-certificate material for an https://
-// audit endpoint; it is ignored for http://.
 type AuditHTTPTLS struct {
 	CAFile             string `koanf:"ca_file"`
 	CertFile           string `koanf:"cert_file"`
@@ -115,7 +93,7 @@ type AuditHTTPTLS struct {
 }
 
 // AuthHeader returns the header to send with every batch; an empty name means
-// none. Errors never include the secret.
+// none.
 func (a AuditHTTPAuth) AuthHeader() (name, value string, err error) {
 	switch strings.ToLower(strings.TrimSpace(a.Type)) {
 	case "", AuditAuthNone:
@@ -150,9 +128,6 @@ func (a AuditHTTPAuth) AuthHeader() (name, value string, err error) {
 	return name, value, nil
 }
 
-// validateAuditConfig checks the shape of every selected output. Opening the
-// file and reading the TLS files happen when the outputs are built at startup,
-// so a bad output still fails startup, before any listener starts.
 func validateAuditConfig(cfg *Audit) error {
 	if !cfg.Enabled {
 		return nil
@@ -212,8 +187,7 @@ func validateAuditFileConfig(cfg AuditFile) error {
 	return nil
 }
 
-// ResolveAuditFilePath validates and cleans the audit log file path. The file
-// output resolves the path the same way.
+// ResolveAuditFilePath validates and cleans the audit log file path.
 func ResolveAuditFilePath(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
 		return "", fmt.Errorf("path is required when the %q output is selected", AuditOutputFile)
@@ -221,7 +195,6 @@ func ResolveAuditFilePath(path string) (string, error) {
 	if strings.ContainsRune(path, 0) {
 		return "", fmt.Errorf("path must not contain a null byte")
 	}
-	// A relative path would resolve against the working directory, an image detail.
 	if !filepath.IsAbs(path) {
 		return "", fmt.Errorf("path must be absolute, got %q", path)
 	}

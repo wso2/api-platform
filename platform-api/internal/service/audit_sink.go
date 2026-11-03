@@ -24,29 +24,21 @@ import (
 	"time"
 )
 
-// sink is a destination for audit lines. Implementations must be safe for
-// concurrent use. A sink that cannot deliver a line drops it and logs; it never
-// fails the request being audited.
+// auditSink must be safe for concurrent use. A sink that cannot deliver a line
+// drops it and logs; it never fails the request.
 type auditSink interface {
 	// Write emits one JSON line, without a trailing newline. It runs on the
 	// request path, so it must not block for more than a short, bounded time.
 	Write(line []byte)
 
-	// Close flushes anything buffered and releases resources. It must be
-	// idempotent and respect ctx's deadline.
 	Close(ctx context.Context) error
 
-	// Name is the output name from audit.outputs.
 	Name() string
 }
 
-// auditErrorLogInterval is the minimum gap between two error logs from one sink. A
-// sink failure is usually persistent (a full disk, a receiver that is down), so
-// logging every dropped record would turn one fault into a log storm.
+// Sink failures are usually persistent, so log at most one error per interval.
 const auditErrorLogInterval = 30 * time.Second
 
-// auditErrThrottle rate-limits a sink's error logs and counts what it suppressed.
-// The zero value is ready to use.
 type auditErrThrottle struct {
 	mu         sync.Mutex
 	lastLogged time.Time
