@@ -113,7 +113,8 @@ export function parseInline(source: string): MarkdownInline[] {
     }
 
     if (char === '[') {
-      const link = /^\[([^\]]*)\]\(\s*<?([^\s)>]*)>?(?:\s+"[^"]*")?\s*\)/.exec(rest);
+      // The destination may hold balanced parentheses, as in a Wikipedia URL.
+      const link = /^\[([^\]]*)\]\(\s*<?((?:[^\s()>]|\([^\s()>]*\))*)>?(?:\s+"[^"]*")?\s*\)/.exec(rest);
       if (link) {
         flush();
         const children = parseInline(link[1]);

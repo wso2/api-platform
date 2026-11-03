@@ -87,6 +87,12 @@ describe('parseInline', () => {
     ]);
   });
 
+  it('keeps balanced parentheses inside a link target', () => {
+    expect(parseInline('[read](https://example.com/a_(b))')).toEqual([
+      { kind: 'link', href: 'https://example.com/a_(b)', children: [{ kind: 'text', text: 'read' }] },
+    ]);
+  });
+
   it('drops an unsafe link target but keeps its text', () => {
     expect(parseInline('[click](javascript:alert%281%29)')).toEqual([{ kind: 'text', text: 'click' }]);
   });
