@@ -24,6 +24,13 @@ import { authStatePresets } from '../test/mockAuthState';
 import { server } from '../test/server';
 import { renderWithProviders, screen } from '../test/utils';
 
+const disabled = vi.hoisted(() => ({ names: [] as string[] }));
+
+vi.mock('../config/features', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../config/features')>()),
+  isFeatureDisabled: (name: string) => disabled.names.includes(name),
+}));
+
 /**
  * Allows time for lazy route imports and rendering under a loaded test suite.
  */
@@ -54,7 +61,25 @@ describe('Org-level Manage pages', () => {
       collection('/meters', []),
     );
   });
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    disabled.names = [];
+  });
+
+  // `disableFeatures` hides a page from the sidebar and answers its URL as not found.
+  it.each([
+    ['subscription-plans', 'Subscription Plans'],
+    ['meters', 'Meters'],
+  ])('answers not found for %s when the feature is disabled', async (feature, heading) => {
+    disabled.names = [feature];
+    renderWithProviders(<AppRoutes />, {
+      route: `/organizations/api-platform-demo/${feature}`,
+      authState: authStatePresets.authenticated(),
+    });
+
+    expect(await screen.findByText('Page not found', {}, LAZY_ROUTE_TIMEOUT)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument();
+  });
 
   it.each([
     ['subscription-plans', 'Subscription Plans'],

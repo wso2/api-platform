@@ -2,6 +2,14 @@
 
 domain = '{{ env "APIP_ACP_DOMAIN" "localhost:8082" }}'
 
+# Console features to hide, by name: each leaves the sidebar and its page
+# answers "not found". Unset or empty keeps every feature on. A TOML array
+# (disable_features = ["metrics", "meters"]) or, via the env var, a
+# comma-separated list (APIP_ACP_DISABLE_FEATURES=metrics,meters). Names:
+# metrics, logs, observability, insights, api-insights, compliance,
+# subscription-plans, meters, paidplan (keeps paid plans "coming soon").
+disable_features = '{{ env "APIP_ACP_DISABLE_FEATURES" "" }}'
+
 [api_control_plane.server.http]
 
 enabled = '{{ env "APIP_ACP_SERVER_HTTP_ENABLED" "true" }}'

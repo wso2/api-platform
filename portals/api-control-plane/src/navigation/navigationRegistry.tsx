@@ -30,6 +30,7 @@ import {
   Logs,
   Megaphone,
   Network,
+  NotepadText,
   Rocket,
   SlidersHorizontal,
   ShieldCheck,
@@ -37,6 +38,7 @@ import {
   Box,
 } from '@wso2/oxygen-ui-icons-react';
 
+import { isFeatureDisabled, type FeatureId } from '../config/features';
 import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
 import {
   apiScopeSelectPaths,
@@ -124,7 +126,11 @@ const apiLevelTo =
   ({ params }) => {
     if (!params.orgHandle) return undefined;
     if (graphqlBuild && params.graphqlApiHandler) {
-      return graphqlBuild(params.orgHandle, params.projectHandler ?? null, params.graphqlApiHandler);
+      return graphqlBuild(
+        params.orgHandle,
+        params.projectHandler ?? null,
+        params.graphqlApiHandler,
+      );
     }
     return build(params.orgHandle, params.projectHandler ?? null, params.apiHandler ?? null);
   };
@@ -145,6 +151,8 @@ type SubItem = {
   graphqlTo?: ApiPathBuilder;
   /** Hide this child entirely while a GraphQL API is in scope. */
   hideInGraphqlScope?: boolean;
+  /** The `disableFeatures` name that hides this child. */
+  disableKey?: FeatureId;
 };
 
 /**
@@ -154,7 +162,16 @@ type SubItem = {
  * GraphQL one). The parent owns the scope-less aliases (see `submenu` below),
  * so exactly one of the two is ever active.
  */
-const subItem = ({ icon, id, label, to, graphqlTo, hideInGraphqlScope }: SubItem): NavigationDefinition => ({
+const subItem = ({
+  icon,
+  id,
+  label,
+  to,
+  graphqlTo,
+  hideInGraphqlScope,
+  disableKey,
+}: SubItem): NavigationDefinition => ({
+  disableKey,
   icon,
   id,
   label,
@@ -195,36 +212,45 @@ const submenu = (
 ): Pick<
   NavigationDefinition,
   'children' | 'match' | 'requires' | 'revealsForGraphqlApi' | 'to'
-> => ({
-  children: items.map(subItem),
-  // Scope-less REST aliases only — never a fully-scoped path, GraphQL's
-  // included: once scope resolves (REST or GraphQL) the matching child claims
-  // the highlight instead (see `subItem`'s own `match`), same as the REST
-  // parent/child split this mirrors. GraphQL has no scope-less alias at all
-  // (see `graphqlApiPath`), so there is nothing further to add here for it.
-  match: matchRoutes(...items.flatMap((item) => apiScopeSelectPaths(item.to))),
-  requires: 'api',
-  revealsForGraphqlApi: items.some((item) => item.graphqlTo),
-  // In GraphQL scope with no page of its own (mirroring the REST branch
-  // below), the parent points at its first GraphQL-capable child — not
-  // necessarily items[0], which may be a REST-only entry with no
-  // `graphqlTo` (e.g. Develop's "Resources"). Out of any API scope this is
-  // moot: `apiLevelTo` degrades to items[0]'s scope-less alias regardless.
-  to: (scope) => {
-    const { params } = scope;
-    if (params.graphqlApiHandler && params.orgHandle) {
-      const firstGraphqlCapable = items.find((item) => item.graphqlTo);
-      if (firstGraphqlCapable?.graphqlTo) {
-        return firstGraphqlCapable.graphqlTo(
-          params.orgHandle,
-          params.projectHandler ?? null,
-          params.graphqlApiHandler,
-        );
+> => {
+  // The parent's own link and GraphQL reveal come from the pages that are still
+  // on: pointing at a page `disableFeatures` hides would open "not found".
+  const reachableItems = () => {
+    const live = items.filter((item) => !item.disableKey || !isFeatureDisabled(item.disableKey));
+    return live.length > 0 ? live : items;
+  };
+  return {
+    children: items.map(subItem),
+    // Scope-less REST aliases only — never a fully-scoped path, GraphQL's
+    // included: once scope resolves (REST or GraphQL) the matching child claims
+    // the highlight instead (see `subItem`'s own `match`), same as the REST
+    // parent/child split this mirrors. GraphQL has no scope-less alias at all
+    // (see `graphqlApiPath`), so there is nothing further to add here for it.
+    match: matchRoutes(...items.flatMap((item) => apiScopeSelectPaths(item.to))),
+    requires: 'api',
+    revealsForGraphqlApi: reachableItems().some((item) => item.graphqlTo),
+    // In GraphQL scope with no page of its own (mirroring the REST branch
+    // below), the parent points at its first GraphQL-capable child — not
+    // necessarily items[0], which may be a REST-only entry with no
+    // `graphqlTo` (e.g. Develop's "Resources"). Out of any API scope this is
+    // moot: `apiLevelTo` degrades to items[0]'s scope-less alias regardless.
+    to: (scope) => {
+      const { params } = scope;
+      const reachable = reachableItems();
+      if (params.graphqlApiHandler && params.orgHandle) {
+        const firstGraphqlCapable = reachable.find((item) => item.graphqlTo);
+        if (firstGraphqlCapable?.graphqlTo) {
+          return firstGraphqlCapable.graphqlTo(
+            params.orgHandle,
+            params.projectHandler ?? null,
+            params.graphqlApiHandler,
+          );
+        }
       }
-    }
-    return apiLevelTo(items[0].to)(scope);
-  },
-});
+      return apiLevelTo(reachable[0].to)(scope);
+    },
+  };
+};
 
 /** One page an adaptive item points at, plus the scope that page needs. */
 type ScopeTier = {
@@ -251,8 +277,7 @@ const LEVEL_DEPTH: Record<NavigationLevel, number> = {
 const isLevelInScope = (tier: ScopeTier, params: ConsoleRouteParams) => {
   if (tier.level === 'api') {
     return Boolean(
-      params.projectHandler &&
-        (params.apiHandler || (tier.graphqlTo && params.graphqlApiHandler)),
+      params.projectHandler && (params.apiHandler || (tier.graphqlTo && params.graphqlApiHandler)),
     );
   }
   if (tier.level === 'project') return Boolean(params.projectHandler);
@@ -317,7 +342,11 @@ const adaptive = (
       const tier = deepestFirst.find((candidate) => isLevelInScope(candidate, params));
       if (!tier) return undefined;
       if (tier.graphqlTo && params.graphqlApiHandler && !params.apiHandler) {
-        return tier.graphqlTo(params.orgHandle, params.projectHandler ?? null, params.graphqlApiHandler);
+        return tier.graphqlTo(
+          params.orgHandle,
+          params.projectHandler ?? null,
+          params.graphqlApiHandler,
+        );
       }
       return tier.to(params.orgHandle, params.projectHandler, params.apiHandler);
     },
@@ -446,6 +475,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     // No capability gate, unlike its neighbours: `hasUsageInsights` is false for
     // kinds this console shows by default, so gating on it would hide Insights on
     // exactly the APIs it is meant for. Same for Observability below.
+    disableKey: 'insights',
     id: 'insights',
     label: 'Insights',
     group: CLUSTER.operate,
@@ -454,6 +484,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     ...submenu([
       {
         icon: <ChartLine />,
+        disableKey: 'api-insights',
         id: 'insights-api',
         label: 'API Insights',
         to: routes.apiInsightsApi,
@@ -461,6 +492,7 @@ export const navigationRegistry: NavigationDefinition[] = [
       },
       {
         icon: <FileCheck />,
+        disableKey: 'compliance',
         id: 'insights-compliance',
         label: 'Compliance',
         to: routes.apiInsightsCompliance,
@@ -469,6 +501,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     ]),
   },
   {
+    disableKey: 'observability',
     id: 'observability',
     label: 'Observability',
     group: CLUSTER.operate,
@@ -477,6 +510,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     ...submenu([
       {
         icon: <Gauge />,
+        disableKey: 'metrics',
         id: 'observability-metrics',
         label: 'Metrics',
         to: routes.apiObservabilityMetrics,
@@ -484,6 +518,7 @@ export const navigationRegistry: NavigationDefinition[] = [
       },
       {
         icon: <Logs />,
+        disableKey: 'logs',
         id: 'observability-logs',
         label: 'Logs',
         to: routes.apiObservabilityLogs,
@@ -518,14 +553,20 @@ export const navigationRegistry: NavigationDefinition[] = [
     group: CLUSTER.operate,
     order: 100,
     icon: <SlidersHorizontal />,
-    to: orgLevelTo((orgHandle) => routes.subscriptionPlans(orgHandle)),
+    // Opens whichever of its pages `disableFeatures` leaves on.
+    to: orgLevelTo((orgHandle) =>
+      isFeatureDisabled('subscription-plans')
+        ? routes.meters(orgHandle)
+        : routes.subscriptionPlans(orgHandle),
+    ),
     // Never matches: the sidebar highlights the first active item it finds,
     // parents before children, so a parent matching its own pages would take the
     // highlight from the page's own entry below.
     match: () => false,
     children: [
       {
-        icon: <Gauge />,
+        icon: <NotepadText />,
+        disableKey: 'subscription-plans',
         id: 'manage-subscription-plans',
         label: 'Subscription Plans',
         order: 0,
@@ -534,11 +575,10 @@ export const navigationRegistry: NavigationDefinition[] = [
       },
       {
         icon: <Activity />,
+        disableKey: 'meters',
         id: 'manage-meters',
         label: 'Meters',
-        order: 0,
-        // Hidden from the sidebar for now; the page and its route stay in place.
-        isVisible: () => false,
+        order: 1,
         to: orgLevelTo((orgHandle) => routes.meters(orgHandle)),
         match: matchRoutes(routes.meters()),
       },

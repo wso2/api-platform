@@ -196,16 +196,29 @@ const presetMessages = defineMessages({
 });
 
 /** A property our gateway reports: the name it is offered by, and the event key it reads. */
-export type PropertyPreset = { name: MessageDescriptor; eventKey: string };
+export type PropertyPreset = {
+  name: MessageDescriptor;
+  eventKey: string;
+  /** The heading it is listed under when adding a filter. */
+  group: 'request' | 'mcp' | 'tokens';
+};
 
 /**
  * The token counts our gateway reports, offered for a Tokens meter's Token key: the prompt's (its
  * default), the completion's, and both. Any other key may be named.
  */
 export const TOKEN_KEYS: readonly PropertyPreset[] = [
-  { eventKey: DEFAULT_TOKEN_KEY, name: presetMessages.promptTokens },
-  { eventKey: 'metadata.aiTokenUsage.completionTokens', name: presetMessages.completionTokens },
-  { eventKey: 'metadata.aiTokenUsage.totalTokens', name: presetMessages.totalTokens },
+  { eventKey: DEFAULT_TOKEN_KEY, name: presetMessages.promptTokens, group: 'tokens' },
+  {
+    eventKey: 'metadata.aiTokenUsage.completionTokens',
+    name: presetMessages.completionTokens,
+    group: 'tokens',
+  },
+  {
+    eventKey: 'metadata.aiTokenUsage.totalTokens',
+    name: presetMessages.totalTokens,
+    group: 'tokens',
+  },
 ];
 
 /**
@@ -213,12 +226,12 @@ export const TOKEN_KEYS: readonly PropertyPreset[] = [
  * fills in its name and key, which both stay editable.
  */
 export const PROPERTY_PRESETS: readonly PropertyPreset[] = [
-  { eventKey: 'response.status', name: presetMessages.statusCode },
-  { eventKey: 'request.verb', name: presetMessages.method },
-  { eventKey: 'request.route', name: presetMessages.resource },
-  { eventKey: 'metadata.apiType', name: presetMessages.apiType },
-  { eventKey: 'metadata.mcpAnalytics.jsonRpcMethod', name: presetMessages.mcpMethod },
-  { eventKey: 'metadata.mcpAnalytics.capabilityName', name: presetMessages.tool },
+  { eventKey: 'response.status', name: presetMessages.statusCode, group: 'request' },
+  { eventKey: 'request.verb', name: presetMessages.method, group: 'request' },
+  { eventKey: 'request.route', name: presetMessages.resource, group: 'request' },
+  { eventKey: 'metadata.apiType', name: presetMessages.apiType, group: 'request' },
+  { eventKey: 'metadata.mcpAnalytics.jsonRpcMethod', name: presetMessages.mcpMethod, group: 'mcp' },
+  { eventKey: 'metadata.mcpAnalytics.capabilityName', name: presetMessages.tool, group: 'mcp' },
   ...TOKEN_KEYS,
 ];
 

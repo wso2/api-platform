@@ -39,6 +39,7 @@ import {
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
+import { isFeatureDisabled } from '../../../../api-control-plane/src/config/features';
 import { runtimeConfig } from '../../../../api-control-plane/src/config/runtime';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
@@ -308,6 +309,10 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             render: () => <MetricsPanel />,
             label: 'Metrics',
             icon: <Gauge size={20} />,
+            // This extension claims the built-in `observability` item wholesale
+            // (see the claim above), so the built-in's own `disableKey: 'metrics'`
+            // gating never runs for it — mirror that check here directly.
+            isVisible: () => !isFeatureDisabled('metrics'),
           },
         ],
       },
