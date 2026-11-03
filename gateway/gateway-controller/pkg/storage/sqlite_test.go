@@ -93,6 +93,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"llm_proxies",
 		"mcp_proxies",
 		"graphql_apis",
+		"soap_apis",
 		"certificates",
 		"llm_provider_templates",
 		"agents",
@@ -781,11 +782,53 @@ func TestSQLiteStorage_DefaultIdentityRoleSurvivesRotation(t *testing.T) {
 	assert.Assert(t, !got.IsDefaultIdentity())
 }
 
+// A version 6 database written by a release without SOAP support has no
+// soap_apis table, which every configuration query reads. Opening it creates
+// the table without changing the version, so its existing artifacts still load.
+func TestSQLite_OpeningV6WithoutSoapAPIsCreatesTable(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "upgrade-v6.db")
+	gatewayID := "platform-gateway-id"
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	fresh, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath, GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	restConfig := createTestStoredConfig()
+	assert.NilError(t, fresh.SaveConfig(restConfig))
+	assert.NilError(t, fresh.(*sqlStore).db.Close())
+
+	// Recreate a database from a release that predates soap_apis.
+	rawDB, err := sql.Open("sqlite3", dbPath)
+	assert.NilError(t, err)
+	_, err = rawDB.Exec(`DROP TABLE soap_apis`)
+	assert.NilError(t, err)
+	_, err = rawDB.Exec(`PRAGMA user_version = 6`)
+	assert.NilError(t, err)
+	assert.NilError(t, rawDB.Close())
+
+	upgraded, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath, GatewayID: gatewayID}, logger)
+	assert.NilError(t, err)
+	defer upgraded.(*sqlStore).db.Close()
+
+	var version int
+	assert.NilError(t, upgraded.(*sqlStore).db.QueryRow("PRAGMA user_version").Scan(&version))
+	assert.Equal(t, version, currentSchemaVersion)
+
+	configs, err := upgraded.GetAllConfigs()
+	assert.NilError(t, err)
+	assert.Equal(t, len(configs), 1)
+	assert.Equal(t, configs[0].UUID, restConfig.UUID)
+
+	var tableName string
+	assert.NilError(t, upgraded.(*sqlStore).db.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='table' AND name='soap_apis'`).Scan(&tableName))
+}
+
 // A database at the previous schema version is migrated in place: its row
 // reads back with the column defaults and a new row saves with explicit usage
 // and role.
 func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
-	const preMigrationSchemaVersion = previousSchemaVersion
+	const preMigrationSchemaVersion = 5
 
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "upgrade-test.db")

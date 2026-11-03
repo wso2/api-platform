@@ -207,6 +207,12 @@ func TestPolicyValidator_MtlsAuthRefusedAsFaultPolicy(t *testing.T) {
 	assert.Equal(t, "spec.faultPolicies[0]", errs[0].Field)
 	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
 
+	soap := &api.SoapAPI{Spec: api.SoapAPIData{FaultPolicies: &mtls}}
+	errs = validator.ValidateSoapAPIPolicies(soap)
+	require.Len(t, errs, 1)
+	assert.Equal(t, "spec.faultPolicies[0]", errs[0].Field)
+	assert.Equal(t, "mtls-auth is supported on RestApi only", errs[0].Message)
+
 	rest := &api.RestAPI{Kind: api.RestAPIKindRestApi, Spec: api.APIConfigData{
 		FaultPolicies: &mtls,
 		Operations: []api.Operation{{

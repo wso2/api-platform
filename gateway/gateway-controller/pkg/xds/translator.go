@@ -549,6 +549,18 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 			},
 			Substitution: "/\\1",
 		}
+	} else if isWildcardPath && rdc.Metadata.Kind == string(models.KindSoapApi) && strings.HasSuffix(upstreamPath, "/") {
+		// A SoapApi whose upstream path ends in "/": the slash after the context is
+		// consumed, as for a root upstream, so a sub-path does not reach the backend
+		// as "<base>//<sub>". The SOAP system policy maps WSDL addresses under the base
+		// path onto the context the same way, so those addresses route back to where
+		// they pointed. /context and /context/ still reach the configured "<base>/".
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + escapedContext + "/?(.*)$",
+			},
+			Substitution: upstreamPath + "\\1",
+		}
 	} else {
 		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
 			Pattern: &matcher.RegexMatcher{

@@ -287,6 +287,20 @@ const (
 	// policy module asserts the same literal on its side.
 	JWKS_SYSTEM_POLICY_NAME = "wso2_apip_sys_jwks"
 
+	// SOAP_SYSTEM_POLICY_NAME is the in-repo policy that rewrites the backend's
+	// URLs in a SoapApi's service description (gateway/system-policies/soap).
+	// Like the A2A policy it is attached per route by the SoapApi transformer —
+	// to the GET route that serves ?wsdl — and never by an API author.
+	SOAP_SYSTEM_POLICY_NAME = "wso2_apip_sys_soap"
+
+	// SOAP_POLICY_PARAM_* are the parameter names the policy above reads, spelled
+	// once on each side like the A2A ones (soap.ParamWSDLRewrite and friends).
+	SOAP_POLICY_PARAM_WSDL_REWRITE = "wsdlRewrite"
+	SOAP_POLICY_PARAM_GATEWAY_PATH = "gatewayPath"
+	SOAP_POLICY_PARAM_UPSTREAM_URL = "upstreamUrl"
+	SOAP_POLICY_PARAM_VHOST        = "vhost"
+	SOAP_POLICY_PARAM_MAX_BYTES    = "maxResponseBytes"
+
 	// A2A_POLICY_PARAM_* are the parameter names the policy above reads. Each
 	// gateway-answered A2A concern takes a nested block of its own rather than
 	// top-level fields, so the two cannot be confused for one another: a chain

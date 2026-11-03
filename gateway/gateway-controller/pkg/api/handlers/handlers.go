@@ -302,6 +302,19 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 			})
 			return
 		}
+	case kind == string(api.SoapAPIKindSoapApi):
+		// Same as GraphQL APIs above: read straight from the DB, the source
+		// ListSoapAPIs uses for its own unfiltered path.
+		var err error
+		configs, err = s.db.GetAllConfigsByKind(kind)
+		if err != nil {
+			s.logger.Error("Failed to get SOAP APIs", slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to retrieve SOAP API configurations",
+			})
+			return
+		}
 	}
 
 	// Filter configs and build the k8s-style response items once, independent of kind.
@@ -352,6 +365,8 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 		envelopeKey = "agents"
 	case string(api.GraphQLAPIKindGraphQLApi):
 		envelopeKey = "graphqlApis"
+	case string(api.SoapAPIKindSoapApi):
+		envelopeKey = "soapApis"
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

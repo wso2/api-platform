@@ -226,6 +226,7 @@ func newAgentReplica(t *testing.T, db storage.Storage) *agentReplica {
 		nil, nil,
 		transform.NewAgentTransformer(routerConfig, systemConfig, policyDefinitions),
 		nil,
+		nil,
 	)
 
 	policySnapshotManager := policyxds.NewSnapshotManager(logger)
