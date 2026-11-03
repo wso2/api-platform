@@ -431,6 +431,17 @@ are fine; the rules below apply to those that carry one.
   the issue in the entry.
 - IT coverage is one scenario per ID (or a Scenario Outline) through the publisher REST API,
   the contract the UI, the CLI and customers share.
+- UI coverage is a journey: one browser scenario that walks a user task and covers several
+  IDs, not one scenario per ID.
+- Tag a scenario with an ID, and mark its layer `automated`, only when the scenario performs
+  the ID's action and asserts its expected result. Seeing that something cannot be opened
+  does not prove a write against it is refused. When a layer cannot perform the action (the
+  UI offers no control for it), mark that layer `exempt` with the reason instead.
+- Pair every negative assertion (a 404, an absent list entry, a hidden control) with a
+  positive control for the same request or page that succeeds for the owner, so that the
+  negative cannot pass because the request or page is broken.
+- A scenario that covers an ID is done when it has passed three consecutive local runs and an
+  assertion check: temporarily break the condition it asserts and confirm that it fails.
 - Do not invent IDs. Maintainers assign them; an ID is added to its list before it is tagged.
 
 ## Scenario Annotations
