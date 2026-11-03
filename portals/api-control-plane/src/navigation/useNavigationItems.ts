@@ -231,9 +231,9 @@ export const useNavigationItems = (): NavigationItem[] => {
       }));
     // A `page.*` override renders in place of a built-in page (see the
     // `gateways/*` route wrapper); it may also carry the nav placement
-    // (`group`/`order`) for the built-in item it replaces, keyed by shared `id`.
-    // With no override registered (the open-source build), the built-in item
-    // keeps its own placement untouched.
+    // (`group`/`order`) and the scope gate (`requiredScopes`) for the built-in
+    // item it replaces, keyed by shared `id`. With no override registered (the
+    // open-source build), the built-in item keeps its own placement untouched.
     const overridePlacements = new Map(
       extensions
         .filter(isPageOverride)
@@ -241,12 +241,21 @@ export const useNavigationItems = (): NavigationItem[] => {
     );
     const registryWithOverrides = navigationRegistry.map((definition) => {
       const override = overridePlacements.get(definition.id);
+      if (!override) return definition;
       // `group` is optional on an override — one that only repositions within
       // its existing cluster sets `order` alone — so fall back to the built-in
       // group rather than clearing it and moving the item out of its cluster.
-      return override
-        ? { ...definition, group: override.group ?? definition.group, order: override.order }
-        : definition;
+      //
+      // The override's `requiredScopes` gate the item as well: while it is
+      // registered its page is what the route renders for everyone, so a user
+      // it would turn away is not offered the item that leads there.
+      return {
+        ...definition,
+        group: override.group ?? definition.group,
+        order: override.order,
+        isVisible: (current: ConsoleScope) =>
+          (definition.isVisible?.(current) ?? true) && isExtensionPermitted(override, hasScope),
+      };
     });
     warnOnRegistryConflicts(extensions);
     const claimed = claimedBuiltinIds(extensions, scope, hasScope);

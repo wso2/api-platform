@@ -239,9 +239,10 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         ),
         label: 'Gateways',
         level: 'organization',
-        // What the cloud spec accepts for listing managed gateways — which is
-        // `ap:gateway:create`/`:manage`, not `:read`. Gates the nav placement
-        // this override carries; the page gates itself the same way.
+        // The scopes the gateways list accepts (see `GATEWAY_OPERATIONS` for
+        // why `ap:gateway:read` is among them). Gates the nav placement this
+        // override carries — `useNavigationItems` applies it to the built-in
+        // Gateways item it repositions — and the page gates itself the same way.
         requiredScopes: GATEWAY_OPERATIONS.ListManagedGateways,
       },
     ],

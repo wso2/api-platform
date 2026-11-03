@@ -57,13 +57,7 @@ import {
 } from '../../extensions';
 import { useSlot } from '../../slots';
 import { getBillingOrganization } from '../../billing/organization';
-import {
-  extensionApiFetch,
-  PortProvider,
-  type AIWorkspaceHostPort,
-  type NotifySeverity,
-  type PermissionsPort,
-} from '../../hostPort';
+import { extensionApiFetch, PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
 import { useResourceLimits } from '../../hooks/useResourceLimits';
 import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
 
@@ -84,7 +78,7 @@ export default function AppLayout(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const extensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
-  const { logout, hasPermission } = useAppAuth();
+  const { logout } = useAppAuth();
   // [standalone] const { signOut } = useAuthContext();
 
   const {
@@ -158,14 +152,6 @@ export default function AppLayout(): JSX.Element {
       setResourceLimits,
     ]
   );
-  // Answered by this portal's own permission check — `useAppAuth`'s, with the
-  // read-only overlay applied — so a cloud control disables under exactly the
-  // conditions a built-in one does. An operation's accepted-scope list is an
-  // any-of list, as platform-api reads it, so one held scope is enough.
-  const permissions = useMemo<PermissionsPort>(
-    () => ({ canAny: (scopes) => scopes.some((scope) => hasPermission(scope)) }),
-    [hasPermission]
-  );
   const port: AIWorkspaceHostPort = useMemo(
     () => ({
       orgHandle: getOrgSlug(currentOrganization),
@@ -176,9 +162,8 @@ export default function AppLayout(): JSX.Element {
       apiFetch: extensionApiFetch,
       resourceLimits,
       billing: { organization: getBillingOrganization },
-      permissions,
     }),
-    [currentOrganization, currentProject, navigate, notify, permissions, resourceLimits]
+    [currentOrganization, currentProject, navigate, notify, resourceLimits]
   );
 
   // The first-run wizard owns the whole viewport: a user with nothing set up yet

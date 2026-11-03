@@ -16,7 +16,15 @@
  * under the License.
  */
 
-import { cloneElement, useMemo, useState, type FC, type ReactElement, type ReactNode } from 'react';
+import {
+  cloneElement,
+  useEffect,
+  useMemo,
+  useState,
+  type FC,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import {
   Avatar,
   Box,
@@ -389,6 +397,10 @@ const GatewaysList: FC<GatewaysListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDelete) setDeleteTarget(null);
+  }, [canDelete]);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
 
   // Environments are keyed by name, so a gateway that points at an environment
@@ -443,6 +455,12 @@ const GatewaysList: FC<GatewaysListProps> = ({
     // closing first left the row on screen with nothing to say a delete was even
     // running, and let a second gateway be deleted while the first was in flight.
     if (!deleteTarget || deleting) return;
+    // Rechecked here, not only on the row's button: the dialog can outlive the
+    // scope that opened it.
+    if (!canDelete) {
+      setDeleteTarget(null);
+      return;
+    }
     setDeleting(true);
     try {
       await onDelete(deleteTarget.id, deleteTarget.name);

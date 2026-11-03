@@ -48,17 +48,33 @@ const port: AIWorkspaceHostPort = {
 
 const isDisabled = (element: HTMLElement) => (element as HTMLButtonElement).disabled;
 
-const renderWith = (can: boolean) =>
+type Can = {
+  create: boolean;
+  update: boolean;
+  delete: boolean;
+  readConfiguration: boolean;
+  writeConfiguration: boolean;
+};
+
+const all = (held: boolean): Can => ({
+  create: held,
+  update: held,
+  delete: held,
+  readConfiguration: held,
+  writeConfiguration: held,
+});
+
+const renderWith = (can: Can) =>
   render(
     <GatewaysList
       gateways={[gateway]}
       environments={[{ id: 'dev', name: 'dev' }]}
       port={port}
-      canCreate={can}
-      canUpdate={can}
-      canDelete={can}
-      canReadConfiguration={can}
-      canWriteConfiguration={can}
+      canCreate={can.create}
+      canUpdate={can.update}
+      canDelete={can.delete}
+      canReadConfiguration={can.readConfiguration}
+      canWriteConfiguration={can.writeConfiguration}
       onAddClick={() => {}}
       onEditClick={() => {}}
       onViewClick={() => {}}
@@ -68,7 +84,7 @@ const renderWith = (can: boolean) =>
 
 describe('GatewaysList permissions', () => {
   it('disables every action for a user holding none of the scopes', () => {
-    renderWith(false);
+    renderWith(all(false));
 
     expect(isDisabled(screen.getByRole('button', { name: 'Add Gateway' }))).toBe(true);
     expect(isDisabled(screen.getByRole('button', { name: 'Edit Dev edge' }))).toBe(true);
@@ -77,11 +93,22 @@ describe('GatewaysList permissions', () => {
   });
 
   it('offers every action to a user holding them', () => {
-    renderWith(true);
+    renderWith(all(true));
 
     expect(isDisabled(screen.getByRole('button', { name: 'Add Gateway' }))).toBe(false);
     expect(isDisabled(screen.getByRole('button', { name: 'Edit Dev edge' }))).toBe(false);
     expect(isDisabled(screen.getByRole('button', { name: 'Configure Dev edge' }))).toBe(false);
     expect(isDisabled(screen.getByRole('button', { name: 'Delete Dev edge' }))).toBe(false);
+  });
+
+  // Each control answers to its own scope: were Edit gated on create, or
+  // Delete on update, the two cases above would still pass.
+  it('gates each action on its own scope', () => {
+    renderWith({ ...all(false), update: true, readConfiguration: true });
+
+    expect(isDisabled(screen.getByRole('button', { name: 'Add Gateway' }))).toBe(true);
+    expect(isDisabled(screen.getByRole('button', { name: 'Edit Dev edge' }))).toBe(false);
+    expect(isDisabled(screen.getByRole('button', { name: 'Configure Dev edge' }))).toBe(false);
+    expect(isDisabled(screen.getByRole('button', { name: 'Delete Dev edge' }))).toBe(true);
   });
 });

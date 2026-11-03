@@ -110,24 +110,6 @@ export type BillingPort = {
   organization: () => Promise<BillingOrganization | null>;
 };
 
-/**
- * The signed-in user's permissions as an extension reads them. One question:
- * may this user be offered an operation that accepts any of `scopes`? `scopes`
- * is the operation's accepted list exactly as the cloud plugin's OpenAPI spec
- * declares it — the action scope and the broader `:manage` scopes beside it —
- * which is how platform-api's `ScopeEnforcer` admits a call, so an extension
- * passes the whole list and never reasons about inheritance itself.
- *
- * Answered the way this portal answers its own pages (`useAppAuth`'s
- * `hasPermission`, read-only state included), so a cloud control and a built-in
- * one disable under the same conditions. Not a security boundary: the Platform
- * API decides whether a call happens; this decides whether a control looks
- * clickable, and a refused call must still be handled.
- */
-export type PermissionsPort = {
-  canAny: (scopes: readonly string[]) => boolean;
-};
-
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   orgUuid?: string;
@@ -137,7 +119,6 @@ export type AIWorkspaceHostPort = {
   apiFetch: ApiFetch;
   resourceLimits: ResourceLimitsPort;
   billing: BillingPort;
-  permissions: PermissionsPort;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

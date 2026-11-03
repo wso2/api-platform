@@ -31,7 +31,7 @@ import { activeFilterCount, completenessNotes, downloadFilename, sameQuery } fro
 import { createLogsClient } from './logsApi';
 import { useDebounced } from './useDebounced';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { LOG_OPERATIONS } from './permissions';
+import { LOG_OPERATIONS, permissionsOf } from './permissions';
 import type { LogPage, LogQuery, LogViewFilters } from './types';
 
 export type LogsFeatureProps = {
@@ -84,7 +84,8 @@ const ASSUMED_RETENTION_DAYS = 3;
  * at all and only re-renders what is loaded.
  */
 const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
-  const { apiFetch, notify, orgHandle, permissions } = port;
+  const { apiFetch, notify, orgHandle } = port;
+  const permissions = permissionsOf(port);
   const client = useMemo(() => createLogsClient(apiFetch), [apiFetch]);
   // What the signed-in user may read, from the scopes each operation accepts.
   // The server still decides; this keeps the page from making a call it knows

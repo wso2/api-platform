@@ -26,7 +26,7 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { GATEWAY_OPERATIONS } from './permissions';
+import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
 import { hostingBlocked } from './utils/limits';
 import type {
   Environment,
@@ -67,7 +67,8 @@ export type GatewaysFeatureProps = {
 const STATUS_POLL_INTERVAL_MS = 5000;
 
 const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
-  const { apiFetch, notify, resourceLimits, permissions } = port;
+  const { apiFetch, notify, resourceLimits } = port;
+  const permissions = permissionsOf(port);
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
   const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
 
@@ -76,7 +77,11 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   // it would refuse, and from making one it knows will be refused.
   const canList = permissions.canAny(GATEWAY_OPERATIONS.ListManagedGateways);
   const canReadEnvironments = permissions.canAny(GATEWAY_OPERATIONS.ListEnvironments);
-  const canCreate = permissions.canAny(GATEWAY_OPERATIONS.CreateManagedGateway);
+  // A gateway is created into an environment, so the form needs the list to
+  // offer one: without it Add Gateway could only open a form that cannot be
+  // submitted.
+  const canCreate =
+    permissions.canAny(GATEWAY_OPERATIONS.CreateManagedGateway) && canReadEnvironments;
   const canUpdate = permissions.canAny(GATEWAY_OPERATIONS.UpdateManagedGateway);
   const canDelete = permissions.canAny(GATEWAY_OPERATIONS.DeleteManagedGateway);
   const canReadConfiguration = permissions.canAny(GATEWAY_OPERATIONS.GetManagedGatewayConfiguration);

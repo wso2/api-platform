@@ -22,7 +22,13 @@ import ProviderDeployPage from './ProviderDeployPage';
 import { createProviderDeployClient, withValuePrefix, type ProviderUpstream } from './providerDeployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
-import { PROVIDER_BUILD_OPERATIONS, PROVIDER_DEPLOYMENT_OPERATIONS } from './permissions';
+import {
+  NO_PERMISSION_TOOLTIP,
+  permissionsOf,
+  PROVIDER_BUILD_OPERATIONS,
+  PROVIDER_DEPLOYMENT_OPERATIONS,
+  SECRET_OPERATIONS,
+} from './permissions';
 import type { Build, Environment } from './types';
 
 export type ProviderDeployFeatureProps = {
@@ -52,7 +58,8 @@ const errorMessage = (error: unknown, fallback: string) =>
  * deploys to by default.
  */
 const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactHandle }) => {
-  const { apiFetch, apiHandle, notify, permissions } = port;
+  const { apiFetch, apiHandle, notify } = port;
+  const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
 
   // What the signed-in user may be offered, from the scopes each operation
@@ -69,6 +76,9 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
   );
   const canListBuilds = permissions.canAny(PROVIDER_BUILD_OPERATIONS.GetLLMProviderBuilds);
   const canDeleteBuild = permissions.canAny(PROVIDER_BUILD_OPERATIONS.DeleteLLMProviderBuild);
+  // A key typed into the deploy dialog is stored as a secret first, which is a
+  // write of its own; deploying on a gateway's existing credential is not.
+  const canStoreCredential = permissions.canAny(SECRET_OPERATIONS.CreateSecret);
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
@@ -88,10 +98,18 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
   const settlingRef = useRef(false);
   settlingRef.current = isSettling(environments);
 
+  // Loads overlap: the settling poll, the refresh after an action, and a reload
+  // because the provider or the user's permissions changed. Only the newest may
+  // write state — `apiFetch` cannot be cancelled, so an earlier response that
+  // lands last would otherwise put back builds the user may no longer read, or
+  // the last provider's environments over this one's.
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(
     async (options: { quiet?: boolean } = {}) => {
+      const seq = ++loadSeqRef.current;
       if (!client || !canView) {
-        if (!options.quiet) setLoading(false);
+        setLoading(false);
         return;
       }
       if (!options.quiet) setLoading(true);
@@ -100,13 +118,16 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
           client.listEnvironments(),
           canListBuilds ? client.listBuilds() : Promise.resolve([]),
         ]);
+        if (seq !== loadSeqRef.current) return;
         setEnvironments(stages);
         setBuilds(prepared);
         setError(null);
       } catch (loadError) {
+        if (seq !== loadSeqRef.current) return;
         setError(errorMessage(loadError, 'Unable to load the environments.'));
       } finally {
-        if (!options.quiet) setLoading(false);
+        // The newest load, quiet or not, is what the page is waiting on.
+        if (seq === loadSeqRef.current) setLoading(false);
       }
     },
     [canListBuilds, canView, client]
@@ -174,6 +195,12 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
+    // The dialog offers no key field without the scope; this is the same rule
+    // applied where the secret would actually be written.
+    if (!canStoreCredential && gateways.some((gateway) => gateway.apiKey)) {
+      notify(NO_PERMISSION_TOOLTIP, 'error');
+      return;
+    }
     void runAction(
       async () => {
         const stored: string[] = [];
@@ -308,6 +335,7 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
       builds={builds}
       upstream={upstream}
       canDeploy={canDeploy}
+      canStoreCredential={canStoreCredential}
       canUndeploy={canUndeploy}
       canDeleteBuild={canDeleteBuild}
       busy={busy}

@@ -7,7 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -136,6 +136,10 @@ export default function ManagedPortalsList({
   const { portals, isLoading, error, refetch, remove } = useManagedPortalList();
   const [deleteTarget, setDeleteTarget] = useState<ManagedPortal | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDelete) setDeleteTarget(null);
+  }, [canDelete]);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -153,6 +157,12 @@ export default function ManagedPortalsList({
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || deleting) return;
+    // Rechecked here, not only on the card's button: the dialog can outlive the
+    // scope that opened it.
+    if (!canDelete) {
+      setDeleteTarget(null);
+      return;
+    }
     setDeleting(true);
     try {
       await remove(deleteTarget.id);

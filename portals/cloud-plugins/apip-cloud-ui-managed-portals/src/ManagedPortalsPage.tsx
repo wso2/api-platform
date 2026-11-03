@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 
 import type { CloudHostPort } from './hostPort';
-import { PORTAL_OPERATIONS } from './permissions';
+import { permissionsOf, PORTAL_OPERATIONS } from './permissions';
 import ManagedPortalCreate from './ManagedPortalCreate';
 import ManagedPortalEdit from './ManagedPortalEdit';
 import ManagedPortalsList from './ManagedPortalsList';
@@ -54,7 +54,7 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
   // What the signed-in user may be offered, from the scopes each operation
   // accepts. The server still decides; this keeps the page from offering a call
   // it would refuse, and from making one it knows will be refused.
-  const { canAny } = port.permissions;
+  const { canAny } = permissionsOf(port);
   const canList = canAny(PORTAL_OPERATIONS.ListManagedApiPortals);
   const canCreate = canAny(PORTAL_OPERATIONS.CreateManagedApiPortal);
   const canUpdate = canAny(PORTAL_OPERATIONS.UpdateManagedApiPortal);

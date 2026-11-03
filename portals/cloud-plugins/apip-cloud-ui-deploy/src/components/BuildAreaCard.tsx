@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type FC, type MouseEvent } from 'react';
+import { useEffect, useState, type FC, type MouseEvent } from 'react';
 import {
   Box,
   Button,
@@ -86,6 +86,10 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
   const [selectedDeployAction, setSelectedDeployAction] = useState<DeployAction>('deploy');
   // Deleting a build cannot be undone, so the trash icon asks for confirmation first.
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDeleteBuild) setPendingDelete(null);
+  }, [canDeleteBuild]);
   const latestBuild = builds[0] ?? null;
   const visibleBuilds = builds.slice(0, VISIBLE_BUILD_COUNT);
   const hasActiveGateway = activeGatewayCount(targetEnvironment.gateways) > 0;
@@ -293,9 +297,9 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
           <Button
             color="error"
             variant="contained"
-            disabled={busy}
+            disabled={busy || !canDeleteBuild}
             onClick={() => {
-              if (!pendingDelete) return;
+              if (!pendingDelete || !canDeleteBuild) return;
               const buildId = pendingDelete;
               setPendingDelete(null);
               onDeleteBuild(buildId);

@@ -16,11 +16,14 @@
  * under the License.
  */
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
+import DeployFeature from './DeployFeature';
 import DeployPage from './DeployPage';
+import ProviderDeployFeature from './ProviderDeployFeature';
 import ProviderDeployPage from './ProviderDeployPage';
+import type { CloudHostPort } from './hostPort';
 import type { Build, Environment } from './types';
 
 // b1 is what dev runs, so the platform refuses to delete it whatever the user
@@ -119,6 +122,7 @@ describe('ProviderDeployPage permissions', () => {
         builds={builds}
         upstream={{}}
         canDeploy={can.deploy}
+        canStoreCredential
         canUndeploy={can.undeploy}
         canDeleteBuild={can.deleteBuild}
         busy={false}
@@ -142,5 +146,117 @@ describe('ProviderDeployPage permissions', () => {
     expect(isDisabled(screen.getByRole('button', { name: 'Deploy' }))).toBe(false);
     expect(isDisabled(screen.getByRole('button', { name: 'Stop' }))).toBe(false);
     expect(isDisabled(screen.getByRole('button', { name: 'Delete build b0' }))).toBe(false);
+  });
+});
+
+/*
+ * The credential field is a write of its own — a typed key is stored as a
+ * secret before the deploy — so it is gated apart from Deploy: without the
+ * secret scope the deploy still goes ahead on each gateway's existing key.
+ */
+describe('ProviderDeployPage credentials', () => {
+  const openDrawerWith = (canStoreCredential: boolean) => {
+    render(
+      <ProviderDeployPage
+        environments={[environments[0]]}
+        builds={builds}
+        upstream={{ authType: 'api-key' }}
+        canDeploy
+        canStoreCredential={canStoreCredential}
+        canUndeploy
+        canDeleteBuild
+        busy={false}
+        onDeploy={() => {}}
+        onStopGateway={() => {}}
+        onDeleteBuild={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Deploy' }));
+  };
+
+  it('disables the key field for a user who may not store a secret, leaving Deploy available', () => {
+    openDrawerWith(false);
+
+    expect(isDisabled(screen.getByPlaceholderText('Deploys with the current key'))).toBe(true);
+    expect(screen.getAllByRole('button', { name: 'Deploy' }).map(isDisabled)).toContain(false);
+  });
+
+  it('offers the key field to a user who may', () => {
+    openDrawerWith(true);
+
+    expect(isDisabled(screen.getByPlaceholderText('Leave empty to keep the current key'))).toBe(false);
+  });
+});
+
+/*
+ * The features decide which calls are made from the scopes held, so these run
+ * them against a Port whose user holds exactly a given set and assert on the
+ * calls, not on what the page then shows.
+ */
+const portHolding = (held: string[]) => {
+  const apiFetch = vi.fn(async () => ({ list: [] }));
+  const port: CloudHostPort = {
+    orgHandle: 'acme',
+    projectHandle: 'shop',
+    apiHandle: 'orders',
+    navigate: () => {},
+    notify: () => {},
+    apiFetch: apiFetch as unknown as CloudHostPort['apiFetch'],
+    permissions: { canAny: (scopes) => scopes.some((scope) => held.includes(scope)) },
+  };
+  const paths = () => apiFetch.mock.calls.map((call) => (call as unknown as [string, string])[1]);
+  return { port, apiFetch, paths };
+};
+
+describe('DeployFeature permissions', () => {
+  it('says so and loads nothing when the user may not list deployments', () => {
+    const { port, apiFetch } = portHolding(['ap:deployment:deploy']);
+    render(<DeployFeature port={port} />);
+
+    expect(screen.getByText(/don't have permission to view deployments/i)).toBeTruthy();
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it('reads the pipeline but not the API for a user holding only deployment scopes', async () => {
+    const { port, paths } = portHolding(['ap:deployment:manage']);
+    render(<DeployFeature port={port} />);
+
+    await waitFor(() =>
+      expect(paths().some((path) => path.includes('/projects/shop/apis/orders/deployments'))).toBe(true)
+    );
+    expect(paths().some((path) => path.startsWith('/rest-apis/'))).toBe(false);
+  });
+
+  it('reads the API too once a scope its read accepts is held', async () => {
+    const { port, paths } = portHolding(['ap:deployment:manage', 'ap:rest_api:read']);
+    render(<DeployFeature port={port} />);
+
+    await waitFor(() => expect(paths()).toContain('/rest-apis/orders'));
+  });
+});
+
+describe('ProviderDeployFeature permissions', () => {
+  it('says so and loads nothing when the user may not list the deployments', () => {
+    const { port, apiFetch } = portHolding(['ap:llm_provider:read']);
+    render(<ProviderDeployFeature port={port} artifactHandle="openai" />);
+
+    expect(screen.getByText(/don't have permission to view deployments/i)).toBeTruthy();
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it('still shows the environments when only the build list is refused', async () => {
+    const { port, paths } = portHolding(['ap:deployment:read']);
+    render(<ProviderDeployFeature port={port} artifactHandle="openai" />);
+
+    expect(await screen.findByText('No environments yet')).toBeTruthy();
+    expect(paths()).toContain('/llm-providers/openai/environment-deployments');
+    expect(paths()).not.toContain('/llm-providers/openai/builds');
+  });
+
+  it('reads the builds once their scope is held', async () => {
+    const { port, paths } = portHolding(['ap:deployment:read', 'ap:llm_provider:build:read']);
+    render(<ProviderDeployFeature port={port} artifactHandle="openai" />);
+
+    await waitFor(() => expect(paths()).toContain('/llm-providers/openai/builds'));
   });
 });

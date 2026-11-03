@@ -30,7 +30,7 @@ import SelfHostedSetupDrawer from './components/SelfHostedSetupDrawer';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { isSettling } from './utils/status';
 import type { CloudHostPort, GatewayVersionEntry } from './hostPort';
-import { API_DEPLOYMENT_OPERATIONS } from './permissions';
+import { API_DEPLOYMENT_OPERATIONS, ARTIFACT_READ_OPERATIONS, permissionsOf } from './permissions';
 import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployFeatureProps = {
@@ -68,8 +68,8 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost, permissions } =
-    port;
+  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost } = port;
+  const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
 
   // What the signed-in user may be offered, from the scopes each operation
@@ -184,11 +184,26 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     void load();
   }, [load]);
 
+  // The artifact's own record is read under its resource's scopes, not the
+  // deployment ones, so a user holding only those cannot read it.
+  const canReadArtifact = permissions.canAny(ARTIFACT_READ_OPERATIONS[kind]);
+
   // Read once per API rather than on every settling poll: neither the API's
   // backend URL nor its ownership is pipeline state. A failed read leaves the
   // pipeline viewable, but ownership unverified, so the actions stay disabled.
+  // So does a read the user may not make: it is not attempted, and ownership
+  // is left unverified rather than assumed — deploying an API a gateway owns
+  // is what the check exists to prevent, and only the API's own record says
+  // so. Only a REST API can be gateway-owned (see `readApi`), so for any other
+  // kind the unreadable record changes nothing but the display name.
   useEffect(() => {
     if (!client || !canView) return undefined;
+    if (!canReadArtifact) {
+      setApiName(undefined);
+      setApiEndpointUrl(undefined);
+      setOwnership(kind === 'RestApi' ? 'unverified' : 'control-plane');
+      return undefined;
+    }
     let cancelled = false;
     setOwnership('checking');
     void client.readApi().then(
@@ -208,7 +223,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     return () => {
       cancelled = true;
     };
-  }, [canView, client]);
+  }, [canReadArtifact, canView, client, kind]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
   // while anything is in flight and stop as soon as everything has settled.

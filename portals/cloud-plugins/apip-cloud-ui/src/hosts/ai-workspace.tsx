@@ -9,18 +9,14 @@
 
 import { Boxes, Network, Workflow } from "@wso2/oxygen-ui-icons-react";
 
-import {
-  ENVIRONMENT_OPERATIONS,
-  EnvironmentsFeature,
-} from "@wso2-enterprise/apip-cloud-ui-environments-new";
-import { GATEWAY_OPERATIONS, GatewaysFeature } from "@wso2-enterprise/apip-cloud-ui-gateways";
+import { EnvironmentsFeature } from "@wso2-enterprise/apip-cloud-ui-environments-new";
+import { GatewaysFeature } from "@wso2-enterprise/apip-cloud-ui-gateways";
 import type { GatewayType } from "@wso2-enterprise/apip-cloud-ui-gateways";
 import {
   InsightsFeature,
   isInsightsMoesifConfigured,
 } from "@wso2-enterprise/apip-cloud-ui-insights";
 import {
-  PIPELINE_OPERATIONS,
   PipelinesFeature,
   ProjectPipelinesFeature,
 } from "@wso2-enterprise/apip-cloud-ui-pipelines";
@@ -135,9 +131,6 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           path: "environments",
           label: "Environments",
           icon: <Boxes size={20} />,
-          // Shown only to a user who may list environments; the page gates its
-          // own writes. Each feature exports the scopes its operations accept.
-          requiredScopes: ENVIRONMENT_OPERATIONS.ListEnvironments,
           render: (port: AIWorkspaceHostPort) => (
             <EnvironmentsFeature port={port} />
           ),
@@ -155,8 +148,6 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           path: "pipelines",
           label: "Pipelines",
           icon: <Workflow size={20} />,
-          // Both views list the organization's pipelines, so that is the gate.
-          requiredScopes: PIPELINE_OPERATIONS.ListPipelines,
           // One scope-adaptive "Pipelines" item: the project binding view when a
           // project is selected, the organization list/create/edit view otherwise.
           render: (port: AIWorkspaceHostPort) =>
@@ -185,10 +176,6 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceCloudEntry>[] =
           label: "AI Gateways",
           icon: <Network size={20} />,
           hides: [AI_WORKSPACE_GATEWAYS_NAV_REGION],
-          // What the cloud spec accepts for listing managed gateways — which is
-          // `ap:gateway:create`/`:manage`, not `:read` — on top of the host's
-          // own `ap:gateway:read` gate on this nav placement.
-          requiredScopes: GATEWAY_OPERATIONS.ListManagedGateways,
           render: (port: AIWorkspaceHostPort) => (
             <GatewaysFeature
               gatewayTypes={AI_GATEWAY_TYPES}

@@ -75,5 +75,11 @@ export type CloudHostPort = {
   gatewayVersions?: GatewayVersionEntry[];
   /** `host:port` a self-hosted gateway's controller dials; falls back to this page's own host. */
   gatewayControlPlaneHost?: string;
-  permissions: PermissionsPort;
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };
