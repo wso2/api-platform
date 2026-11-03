@@ -38,6 +38,37 @@ func sameSite(v string) http.SameSite {
 	}
 }
 
+// cookiePath scopes the session and refresh cookies to the base path, so a console
+// sharing an origin with other apps neither sends them to those apps nor collides
+// with theirs. "/" when no base path is configured.
+func (s *Server) cookiePath() string {
+	if s.cfg.Server.BasePath == "" {
+		return "/"
+	}
+	return s.cfg.Server.BasePath
+}
+
+// expireRootCookies removes session and refresh cookies left at Path=/ by a console
+// that used to serve this host from the root. A browser keys a cookie by name, domain
+// and path, so expiring the prefixed cookie leaves that one in place, still sent under
+// the prefix and to every other app on the origin. No-op with no base path configured.
+func (s *Server) expireRootCookies(w http.ResponseWriter) {
+	if s.cfg.Server.BasePath == "" {
+		return
+	}
+	for _, name := range []string{s.cfg.Session.Cookie.Name, s.refreshCookieName()} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   s.cfg.Session.Cookie.Secure,
+			SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
+			MaxAge:   -1,
+		})
+	}
+}
+
 // refreshCookieName is the HttpOnly cookie that carries the OIDC refresh
 // token. The access token stays in the unchanged session cookie (bare JWT);
 // splitting them avoids the 4KB single-cookie limit when both tokens are large.
@@ -60,10 +91,11 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, access, refresh string,
 			maxAge = int(d.Seconds())
 		}
 	}
+	s.expireRootCookies(w)
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.Session.Cookie.Name,
 		Value:    access,
-		Path:     "/",
+		Path:     s.cookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -73,7 +105,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, access, refresh string,
 		http.SetCookie(w, &http.Cookie{
 			Name:     s.refreshCookieName(),
 			Value:    refresh,
-			Path:     "/",
+			Path:     s.cookiePath(),
 			HttpOnly: true,
 			Secure:   s.cfg.Session.Cookie.Secure,
 			SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -88,7 +120,7 @@ func (s *Server) clearRefreshCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.refreshCookieName(),
 		Value:    "",
-		Path:     "/",
+		Path:     s.cookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -97,10 +129,11 @@ func (s *Server) clearRefreshCookie(w http.ResponseWriter) {
 }
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
+	s.expireRootCookies(w)
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.Session.Cookie.Name,
 		Value:    "",
-		Path:     "/",
+		Path:     s.cookiePath(),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
@@ -114,7 +147,7 @@ func (s *Server) setTxCookie(w http.ResponseWriter, txID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    txID,
-		Path:     "/api/auth",
+		Path:     s.path("/api/auth"),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,
@@ -126,7 +159,7 @@ func (s *Server) clearTxCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    "",
-		Path:     "/api/auth",
+		Path:     s.path("/api/auth"),
 		HttpOnly: true,
 		Secure:   s.cfg.Session.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,

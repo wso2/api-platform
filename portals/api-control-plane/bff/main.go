@@ -84,6 +84,7 @@ func main() {
 		slog.Info("api-control-plane-bff listening",
 			slog.String("protocol", ls.protocol),
 			slog.String("addr", ls.httpServer.Addr),
+			slog.String("base_path", cfg.Server.BasePath),
 			slog.String("auth_mode", cfg.Auth.Mode),
 			slog.Bool("oidc_enabled", cfg.Auth.OIDC.Enabled))
 	}

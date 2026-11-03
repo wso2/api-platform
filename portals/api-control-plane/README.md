@@ -166,6 +166,18 @@ Restart the BFF after changing configuration. It exposes the URL as
 `/api-platform.env.config.js`; no frontend rebuild is needed for URL changes.
 If neither override supplies a non-empty URL, the hardcoded default is used.
 
+## Serving under a sub-path
+
+To serve the console under a path prefix on a shared origin, with an edge that keeps
+the prefix on the request, build the SPA with `VITE_APP_BASE_PATH=/console/` and set
+`APIP_ACP_SERVER_BASE_PATH=/console` on the BFF. Every route then answers under the
+prefix as well as at the root, and cookies are scoped to it. In `oidc` mode, point
+`APIP_ACP_AUTH_OIDC_REDIRECT_URL` at `/console/api/auth/callback`.
+
+Cookie `Path` is not a security boundary: script on any app sharing the origin can
+reach the console's routes with its session. Share an origin only with apps of equal
+trust.
+
 ## Validation
 
 ```bash
