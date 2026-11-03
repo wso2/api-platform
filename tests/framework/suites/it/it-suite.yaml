@@ -274,6 +274,56 @@ blocks:
         features:
           - features/mtls_hostnames_all_connections_required.feature
 
+  # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
+  # asks for a certificate, which is state of the whole gateway, so runners take turns. Also
+  # hosts the outbound block (its mtls.toml settings already coexisted on the two-controller
+  # gateway-mtls-ha overlay): outbound identities and trust certificates never a client
+  # authority, and the overlay's present_default_identity=false also covers the
+  # default-identity-off scenario. Kept out of gateway-core: each mTLS runner changes
+  # gateway-wide client-authority-pool/listener state, which raced when these ran inside
+  # gateway-core's parallel: 12 pool (confirmed by a real CI run - "the gateway still holds
+  # client authorities [...] from an earlier scenario"), and gateway-core's unrelated runners
+  # started timing out too once this block's always-on access logging and tls-backend
+  # dependency applied to the whole shared gateway instance.
+  - name: gateway-mtls
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_header_relay.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_outbound.feature
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_default_identity_off.feature
+
   # The relayed client certificate header is believed from any connection here, a gateway-wide
   # setting the other mutual TLS blocks must not see.
   - name: gateway-mtls-trust-any
@@ -354,6 +404,37 @@ blocks:
         features:
           - features/mtls_outbound.feature
 
+  # Config dump asserts the gateway's total API count starts at zero, which no other runner
+  # may be free to disturb - it needs a gateway to itself rather than gateway-core's shared one.
+  - name: config-dump
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: config-dump
+        features:
+          - features/gateway/core/config_dump.feature
+
+  # The default (no downstream_tls override) mtls-hostnames case deploys APIs on the gateway's
+  # shared default vhost and relies on its own testbench backend's timing, which gateway-core's
+  # ~50 concurrent runners contend for - it needs a gateway and testbench to itself.
+  - name: gateway-mtls-hostnames
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-event-hub.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mtls-hostnames
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/mtls_hostnames.feature
+
   - name: gateway-core
     parallel: 12
     components:
@@ -362,7 +443,6 @@ blocks:
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench
-      - name: tls-backend
     wiring:
       platform-gateway:
         signingKeys: true
@@ -535,9 +615,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-      - name: config-dump
-        features:
-          - features/gateway/core/config_dump.feature
       - name: metrics
         features:
           - features/gateway/observability/metrics.feature
@@ -545,13 +622,6 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/request_body_size.feature
-      - name: mtls-hostnames
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_hostnames.feature
-      - name: vhost-routing-single
-        features:
-          - features/gateway/routes/vhost_routing_single.feature
       - name: upstream-connect-timeout
         tags: "gateway-version>=1.2.0"
         features:
@@ -564,34 +634,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
-      - name: mtls-auth
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_auth.feature
-      - name: mtls-client-ca-pool
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_client_ca_pool.feature
-      - name: mtls-pool-references
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_pool_references.feature
-      - name: mtls-listener
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_listener.feature
-      - name: mtls-header-relay
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_header_relay.feature
-      - name: mtls-outbound
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_outbound.feature
-      - name: mtls-default-identity-off
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/mtls_default_identity_off.feature
 
   # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
@@ -638,6 +680,24 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/security/jwks_disabled.feature
+
+  # Kept out of gateway-core: this is the only scenario that needs router.vhosts.main/sandbox
+  # restricted to *.wso2.com/*-sandbox.wso2.com, and every gateway-core runner that deploys an
+  # API without setting a request Host relies on the unrestricted default - CI confirmed this
+  # broke most of gateway-core (health, cel-conditions, api-deploy, template-functions,
+  # request-id-response, and more) once this vhost restriction applied gateway-wide.
+  - name: vhost-routing-single
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/vhost-routing-single.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: vhost-routing-single
+        features:
+          - features/gateway/routes/vhost_routing_single.feature
 
   - name: vhost-routing-multi
     parallel: 1
