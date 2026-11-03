@@ -1095,3 +1095,88 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the API "mf-restapi-failover-v1.0"
     Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030b / FR-030e — a kind with no model concept
+  # ====================================================================
+
+  Scenario: Attached to a kind with no model concept, the policy deploys and does nothing
+    # An Mcp has no model concept at all, but it is transformed by the same
+    # RestAPITransformer as every other kind, so buildFailoverConfig genuinely
+    # runs here rather than being skipped by kind. Every member names a provider,
+    # and an Mcp has no upstreamDefinitions for one to resolve against, so every
+    # member is dropped and the whole config collapses to nil — no priority group,
+    # no retry policy, nothing on the virtual host.
+    #
+    # Naming a provider on the PRIMARY target is load-bearing. A bare `model:`
+    # with no provider resolves to the main upstream, which would leave a
+    # one-member chain — accepted and harmless, but not the inert case FR-030b
+    # describes. See TestBuildFailoverConfig_InertOnlyWhenNoMemberResolves.
+    When I deploy this MCP configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Mcp
+      metadata:
+        name: mf-inert-mcp-v1.0
+      spec:
+        displayName: MF Inert MCP
+        version: v1.0
+        context: /mf-inert-mcp
+        specVersion: "2025-06-18"
+        upstream:
+          url: http://mcp-server-backend:3001/mcp
+        policies:
+          - name: model-failover
+            version: v0
+            params:
+              targets:
+                - model: gpt-4o
+                  provider: openai-primary
+                  fallbacks:
+                    - model: claude-sonnet-4-5-20250929
+                      provider: anthropic-secondary
+        tools: []
+        resources: []
+        prompts: []
+      """
+    # Accepted, not rejected: an unresolvable target must never block a deployment.
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And I reset the analytics collector
+    And I wait for 2 seconds
+
+    # Behaves exactly as the same proxy does with NO policy attached. This is the
+    # identical call and identical expected answer as the policy-free MCP scenario
+    # in mcp_deploy.feature — that equivalence IS the requirement.
+    When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mf-inert-mcp/mcp"
+    Then the response should be successful
+    When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mf-inert-mcp/mcp"
+    Then the response should be successful
+    And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
+
+    # No failover configuration was generated. The header is added to a virtual
+    # host only when one of its routes actually fails over, so its absence is the
+    # direct observable for "no priority group exists" — and it is paired with the
+    # positive assertion above so the absence cannot pass vacuously on a request
+    # that never reached the gateway.
+    And the response header "x-envoy-attempt-count" should not exist
+
+    # The request is recorded in analytics exactly as an unpolicied one is: an
+    # ordinary event, nothing added and nothing missing.
+    #
+    # Deliberately NOT asserted here: "the event carries no failover: keys". A
+    # probe established that failover telemetry does not reach the collector even
+    # when failover demonstrably happens (attempt-count 2, and the policy's own
+    # log line present), so that assertion cannot currently fail and would be
+    # pure false confidence. It belongs here once the analytics gap is closed —
+    # tracked as T091, which owns both the gap and this assertion.
+    When I wait 5 seconds for analytics to be published
+    Then the analytics collector should have received at least 1 event
+    When I send a GET request to the analytics collector events endpoint
+    Then the response should be successful
+    And the response body should contain "mf-inert-mcp"
+
+    # Cleanup
+    When I delete the MCP proxy "mf-inert-mcp-v1.0"
+    Then the response should be successful

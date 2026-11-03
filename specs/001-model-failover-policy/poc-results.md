@@ -1538,3 +1538,64 @@ This is the failure mode that is worst to ship: no error, no log, a `200` body f
 Only an assertion on *which* resource answered catches it. The two earlier lessons about absence
 assertions (T084, T085) have the same root — a passing status code proves far less than it appears
 to.
+
+## Failover telemetry reaches the logs but not the analytics collector (2026-11-03)
+
+Found while writing T086. That scenario needed to assert that an inert policy surfaces no
+telemetry, and the obvious assertion — the analytics event carries no `failover:` keys — turned out
+to be unfalsifiable.
+
+### What raised it
+
+The T086 run passed, but the analytics payload it asserted against contained an event from
+`MF RestApi Failover` — an API that had just failed over — and `should not contain "failover:"`
+passed anyway. An absence assertion that holds over a positive case is proving nothing.
+
+### The probe
+
+A throwaway feature deployed a RestApi that fails over, drove one request, and asserted the
+collector payload **does** contain `failover:`, with a positive control on the same body:
+
+| Assertion | Result |
+|---|---|
+| `x-envoy-attempt-count` is `2` | pass — failover genuinely happened |
+| body contains `mf-telemetry-probe` | pass — this request's own event is in the payload |
+| body contains `failover:` | **fail** |
+
+Searching the payload for the values rather than the keys found no `rescued`, no `exhausted`, and no
+attempt/outcome/serving fields under any spelling. So it is not a key-sanitisation issue.
+
+### Where it is, and where it is not
+
+The policy runs and emits. The runtime log carries both lines:
+
+```
+ModelFailover: published failover chain
+ModelFailover: request rescued by a later target
+```
+
+`OnResponseHeaders` returns `DownstreamResponseHeaderModifications{AnalyticsMetadata: record.analytics()}`,
+and `analytics()` builds a non-empty map unconditionally. Both response-phase handlers in
+`internal/kernel/translator.go` (header-only at ~1038, header+body at ~1143) merge
+`mods.AnalyticsMetadata` into `analyticsData`, and `buildAnalyticsStruct` applies no allowlist. Every
+link inspected so far looks correct, which is why this is recorded as a finding rather than a
+diagnosis — the loss is somewhere between `buildAnalyticsStruct` and the published event, and has
+not yet been isolated.
+
+**So: the log half of US5 works, the analytics half does not.** US5 was closed on the strength of
+the emission code existing; it was never verified at the collector.
+
+### Consequence for T086
+
+The "no telemetry about being inert" half of FR-030b/e is **not** asserted. The scenario asserts what
+is genuinely observable — deployment accepted, behaviour byte-identical to the policy being absent,
+no `x-envoy-attempt-count` on the virtual host, and an ordinary analytics event present — and
+deliberately omits the `failover:` absence check rather than shipping one that cannot fail. Tracked
+as T091.
+
+### Worth noting
+
+This is the fourth time this session that an absence assertion needed a positive control beside it
+(T084, T085, T086a, now T086). The pattern is consistent enough to be worth stating as a rule: an
+assertion that something is missing is only worth the positive case that proves it would have been
+found.

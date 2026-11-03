@@ -109,6 +109,70 @@ func TestBuildFailoverConfig_NothingResolvableIsASilentNoOp(t *testing.T) {
 	}
 }
 
+// Inertness turns on whether any MEMBER resolves, not on the kind.
+//
+// This is what makes attaching the policy to a kind with no model concept safe, and it is
+// sharper than it looks. Both transformers resolve an EMPTY provider to the API's main
+// upstream, so a bare `model:` with no provider resolves anywhere — including on an Mcp,
+// which has no model concept at all. Such a config is accepted and harmless (a one-member
+// chain cannot fail over), but it is NOT the inert case: it still generates a priority group
+// and marks the virtual host. Only a config where every member names a provider that this
+// API cannot resolve collapses to nil and leaves the route byte-identical to no policy.
+//
+// The Mcp scenario in model-failover.feature names a provider on the PRIMARY target for
+// exactly this reason; dropping it would silently turn that test into the other case.
+func TestBuildFailoverConfig_InertOnlyWhenNoMemberResolves(t *testing.T) {
+	// Mirrors resolveFailoverCluster on an API with no upstreamDefinitions: the empty
+	// provider finds the main upstream, every named one finds nothing.
+	mainUpstreamOnly := func(provider string) string {
+		if provider == "" {
+			return "cluster_main"
+		}
+		return ""
+	}
+
+	bareModel := buildFailoverConfig(failoverPolicy(map[string]interface{}{
+		"targets": []interface{}{
+			map[string]interface{}{
+				"model": "gpt-4o",
+				"fallbacks": []interface{}{
+					map[string]interface{}{"model": "claude-sonnet-4", "provider": "anthropic"},
+				},
+			},
+		},
+	}), mainUpstreamOnly)
+
+	if bareModel == nil {
+		t.Fatal("a target with no provider resolves to the main upstream, so the config must " +
+			"not be nil — if this ever becomes nil, the Mcp feature scenario stops " +
+			"distinguishing the two cases it was written to separate")
+	}
+	if got := bareModel.ChainLength(); got != 1 {
+		t.Fatalf("chain length = %d, want 1 (primary via main upstream, fallback dropped)", got)
+	}
+	if bareModel.Inert() {
+		t.Fatal("a one-member chain is not inert; it cannot fail over, but it still generates config")
+	}
+
+	// Name a provider on every member and nothing resolves — the genuinely inert case.
+	everyMemberNamed := buildFailoverConfig(failoverPolicy(map[string]interface{}{
+		"targets": []interface{}{
+			map[string]interface{}{
+				"model":    "gpt-4o",
+				"provider": "openai-primary",
+				"fallbacks": []interface{}{
+					map[string]interface{}{"model": "claude-sonnet-4", "provider": "anthropic-secondary"},
+				},
+			},
+		},
+	}), mainUpstreamOnly)
+
+	if everyMemberNamed != nil {
+		t.Fatalf("every member names an unresolvable provider, so the config must be nil, got %+v",
+			everyMemberNamed)
+	}
+}
+
 func TestBuildFailoverConfig_DefaultsApplyWhenUnspecified(t *testing.T) {
 	cfg := buildFailoverConfig(failoverPolicy(map[string]interface{}{
 		"targets": []interface{}{
