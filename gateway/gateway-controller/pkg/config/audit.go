@@ -46,6 +46,7 @@ const (
 
 type AuditConfig struct {
 	Enabled bool            `koanf:"enabled"`
+	MaskPII bool            `koanf:"mask_pii"`
 	Outputs []string        `koanf:"outputs"`
 	File    AuditFileConfig `koanf:"file"`
 	HTTP    AuditHTTPConfig `koanf:"http"`

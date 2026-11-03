@@ -52,6 +52,7 @@ type recordJSON struct {
 // audit table and, optionally, the same record as a JSON line on every sink.
 type AuditService struct {
 	enabled   bool
+	maskPII   bool
 	store     auditTable
 	gatewayID string
 	sinks     []sink
@@ -60,7 +61,7 @@ type AuditService struct {
 
 // NewAuditService builds the configured sinks; an error means startup must fail.
 func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig, logger *slog.Logger) (*AuditService, error) {
-	s := &AuditService{enabled: cfg.Enabled, store: store, gatewayID: gatewayID, logger: logger}
+	s := &AuditService{enabled: cfg.Enabled, maskPII: cfg.MaskPII, store: store, gatewayID: gatewayID, logger: logger}
 	if !cfg.Enabled {
 		return s, nil
 	}
@@ -73,6 +74,8 @@ func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig,
 }
 
 const sinkCleanupTimeout = 5 * time.Second
+
+const maskedValue = "****"
 
 // newSinks closes the sinks already built when a later one fails, so a failed
 // startup leaks no file descriptor or goroutine.
@@ -136,6 +139,11 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 	if len(s.sinks) == 0 {
 		return
 	}
+	// The table keeps the user; mask_pii hides it in the line only.
+	shownBy := performedBy
+	if s.maskPII {
+		shownBy = maskedValue
+	}
 	line, err := json.Marshal(recordJSON{
 		Time:          performedAt,
 		LogType:       "audit",
@@ -145,7 +153,7 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 		Action:        action,
 		ResourceType:  resourceType,
 		ResourceID:    resourceUUID,
-		PerformedBy:   performedBy,
+		PerformedBy:   shownBy,
 	})
 	if err != nil {
 		s.logger.Error("Failed to marshal audit record", slog.Any("error", err))
