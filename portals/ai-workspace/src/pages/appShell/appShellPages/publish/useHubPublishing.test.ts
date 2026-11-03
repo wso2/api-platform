@@ -114,6 +114,18 @@ describe('useHubPublishing', () => {
       expect(result.current.hasPublication).toBe(false);
     });
 
+    it('forgets the previous proxy while the next one is read', async () => {
+      hubsAre('PUBLISHED');
+      const { rerender, result } = renderHook(({ id }) => useHubPublishing(id), { initialProps: { id: 'travel' } });
+      await waitFor(() => expect(result.current.isListed).toBe(true));
+
+      list.mockReturnValue(new Promise(() => undefined));
+      rerender({ id: 'weather' });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(true));
+      expect(result.current.isListed).toBeNull();
+    });
+
     it('reads nothing before there is a proxy or an organization', () => {
       inOrganization('');
       const { rerender } = renderHook(({ id }) => useHubPublishing(id), { initialProps: { id: 'travel' as string | undefined } });

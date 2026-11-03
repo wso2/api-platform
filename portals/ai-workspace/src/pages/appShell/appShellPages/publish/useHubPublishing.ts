@@ -43,6 +43,7 @@ export function useHubPublishing(mcpProxyId?: string) {
   useEffect(() => {
     if (!MULTI_HUB_PUBLISHING || !mcpProxyId || !organizationId) return;
     let cancelled = false;
+    setIsListed(null);
     setIsLoading(true);
     mcpProxiesApis
       .listMcpProxyApiPortalPublications(mcpProxyId, PLATFORM_API_BASE_URL)
