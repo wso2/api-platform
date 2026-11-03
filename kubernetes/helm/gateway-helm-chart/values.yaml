@@ -267,6 +267,23 @@ gateway:
         # Directory containing default LLM provider prompt templates
         template_definitions_path: ./default-llm-provider-templates
 
+      # Models (kind Model) and the model endpoints that serve them (kind ModelEndpoint).
+      # A model endpoint is the client-facing API: an OpenAI, Anthropic or Gemini shaped
+      # endpoint that dispatches each request to the Model it names. Off by default.
+      models:
+        enabled: false
+        endpoint:
+          # Provision the default endpoint "wso2" (OpenAI format, api-key-auth, and the
+          # transformers for the supported provider templates) at startup. While on, "wso2"
+          # cannot be created or deleted through the management API.
+          provision: true
+          # Context of the default endpoint, "wso2". The controller refuses to start rather
+          # than provision the endpoint at a context another artifact already serves.
+          context: /wso2/v1
+          # Largest request body any model endpoint accepts for dispatch. 0 means
+          # router.http_listener.per_connection_buffer_limit_bytes; a larger value is rejected.
+          max_request_body_bytes: 0
+
       # Control plane connection configuration.
       # Host/token are configured under gateway.controller.controlPlane (see README).
       controlplane:

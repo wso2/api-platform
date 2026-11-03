@@ -174,6 +174,26 @@ data:
     {{- end }}
     {{- end }}
 
+    {{- with $gc.models }}
+    [controller.models]
+    {{- if hasKey . "enabled" }}
+    enabled = {{ .enabled }}
+    {{- end }}
+    {{- with .endpoint }}
+
+    [controller.models.endpoint]
+    {{- if hasKey . "provision" }}
+    provision = {{ .provision }}
+    {{- end }}
+    {{- if .context }}
+    context = {{ .context | quote }}
+    {{- end }}
+    {{- if hasKey . "max_request_body_bytes" }}
+    max_request_body_bytes = {{ .max_request_body_bytes | int64 }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
     [controller.controlplane]
     host = {{ .Values.gateway.controller.controlPlane.host | default "" | quote }}
     token = {{ `'{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'` }}
