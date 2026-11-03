@@ -1599,3 +1599,76 @@ This is the fourth time this session that an absence assertion needed a positive
 (T084, T085, T086a, now T086). The pattern is consistent enough to be worth stating as a rule: an
 assertion that something is missing is only worth the positive case that proves it would have been
 found.
+
+## T091 root cause: the analytics event schema is closed (2026-11-03)
+
+The missing telemetry is not lost in transit. Every key arrives at the final handler and is
+discarded there because nothing maps it.
+
+### Localised by elimination, not by reading
+
+Three hypotheses were killed before the right one:
+
+| Hypothesis | Killed by |
+|---|---|
+| The correlation store swallows the keys | `isCorrelatedField` matches only four header/payload keys |
+| A value type `structpb` cannot encode errors the whole struct | `Outcome` is a plain `string`; the rest are strings and ints |
+| Response-phase analytics is broken for every policy | the control below |
+
+The third needed care. A first probe used `response_content_type` as the control and it "failed" —
+but that key is *consumed and renamed* to `responseContentType` by the handler, so searching the
+event for it could never succeed. **The control was wrong, not the subject.** Re-run against the
+real field:
+
+| Event | `responseContentType` | `failover:*` |
+|---|---|---|
+| plain API, 1 attempt | `application/json` | none |
+| failover API, **2 attempts** | `application/json` | none |
+
+Response-phase analytics works, and works on a retried request. So the loss is specific to this
+policy's keys — not to the response phase, not to retries, and not to the upstream filter added by
+T030q.
+
+### The keys reach the handler
+
+`slog.Debug("Analytics metadata", ...)` in `internal/analytics/analytics.go` logs what the
+access-log handler received. All nine are there:
+
+```
+failover:attempts:2
+failover:chain_length:2
+failover:outcome:rescued
+failover:serving_model:claude-sonnet-4-5-20250929
+failover:serving_provider:alive
+failover:ranking_source:configured
+failover:failed_targets:default:gpt-4o
+failover:requested_model:gpt-4o
+response_content_type:application/json
+```
+
+So policy → ext_proc → Envoy → access log → handler is entirely correct.
+
+### Where it dies
+
+The handler builds the event by copying **named** keys into typed fields —
+`extendedAPI.APIName = keyValuePairsFromMetadata[APINameKey]`,
+`subscription.BillingCustomerID = keyValuePairsFromMetadata[BillingCustomerIDKey]`,
+`responseContentType` from `keyValuePairsFromMetadata["response_content_type"]` — about thirty such
+assignments. There is **no general pass-through**: no loop copies unclaimed keys into the event. The
+only sweep that exists, `otelSweepUnclaimed`, is called at exactly three sites, all MCP
+(`mcp.`, `mcp.client.`, `mcp.server.`), on a nested object the handler had already placed in the
+event.
+
+**A policy cannot contribute a new analytics field.** It can emit one, and it will be carried
+faithfully to the last hop and dropped.
+
+### Relation to T079
+
+This is the analytics twin of the metrics finding. T079: *"No policy on this platform can emit a
+metric."* T091: a policy can emit an analytics field, but no policy-defined field can reach a
+consumer. Both are the same shape of gap — the policy SDK's two documented output paths, and only
+`slog` actually delivers something a policy defines.
+
+The difference is where the fix sits. Metrics need a new SDK surface. This needs roughly the MCP
+sweep applied to policy metadata generally — small, and it changes the shape of every analytics
+event, which is why it is not a unilateral call.
