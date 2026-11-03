@@ -19,13 +19,12 @@ package config
 
 import (
 	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -43,6 +42,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -199,35 +199,37 @@ func (a AuditHTTPAuth) AuthHeader() (name, value string, err error) {
 	}
 }
 
-// ClientConfig reads and parses the TLS material. X25519MLKEM768 is preferred,
-// with classical curves after it for receivers that do not support it.
-func (t AuditHTTPTLS) ClientConfig() (*tls.Config, error) {
-	out := &tls.Config{
-		MinVersion:         tls.VersionTLS12,
-		CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256, tls.CurveP384},
-		InsecureSkipVerify: t.InsecureSkipVerify, // #nosec G402 -- off by default; warned at startup
+// NewClient builds the client for the "http" audit output, reading the TLS
+// files for an https:// endpoint (the tls block is ignored for http://).
+// X25519MLKEM768 is preferred, with classical curves after it for receivers that
+// do not support it. Redirects are never followed: the target is chosen by the
+// receiver, not the operator.
+func (h AuditHTTP) NewClient() (*http.Client, error) {
+	u, err := url.Parse(h.Endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("endpoint is not a valid URL: %w", err)
 	}
-	if t.CAFile != "" {
-		pem, err := os.ReadFile(t.CAFile)
-		if err != nil {
-			return nil, fmt.Errorf("cannot read ca_file %q: %w", t.CAFile, err)
-		}
-		out.RootCAs = x509.NewCertPool()
-		if !out.RootCAs.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("ca_file %q contains no usable PEM certificate", t.CAFile)
-		}
+	cfg := httpclient.DefaultConfig()
+	cfg.Timeouts.Overall = h.RequestTimeout
+	cfg.Pooling.MaxIdleConnsPerHost = 2
+	if u.Scheme == "https" {
+		cfg.TLS.MinVersion = "TLS1_2"
+		cfg.TLS.MaxVersion = "TLS1_3"
+		cfg.TLS.CurvePreferences = "X25519MLKEM768,X25519,P-256,P-384"
+		cfg.TLS.RootCAFile = h.TLS.CAFile
+		cfg.TLS.ClientCertFile = h.TLS.CertFile
+		cfg.TLS.ClientKeyFile = h.TLS.KeyFile
+		cfg.TLS.InsecureSkipVerify = h.TLS.InsecureSkipVerify // #nosec G402 -- off by default; warned at startup
+		cfg.TLS.InsecureSkipVerifyAcknowledged = h.TLS.InsecureSkipVerify
 	}
-	if (t.CertFile == "") != (t.KeyFile == "") {
-		return nil, fmt.Errorf("cert_file and key_file must be set together")
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		return nil, err
 	}
-	if t.CertFile != "" {
-		pair, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("cannot load the client certificate and key: %w", err)
-		}
-		out.Certificates = []tls.Certificate{pair}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
-	return out, nil
+	return client, nil
 }
 
 // AuditFile configures the "file" audit output.
@@ -1696,11 +1698,11 @@ func validateAuditHTTPConfig(cfg AuditHTTP) error {
 	if _, _, err := cfg.Auth.AuthHeader(); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
+	if _, err := cfg.NewClient(); err != nil {
+		return fmt.Errorf("tls: %w", err)
+	}
 	// The tls block is ignored for a plaintext endpoint: there is no handshake.
 	if u.Scheme == "https" {
-		if _, err := cfg.TLS.ClientConfig(); err != nil {
-			return fmt.Errorf("tls: %w", err)
-		}
 		if cfg.TLS.InsecureSkipVerify {
 			slog.Warn("audit.http.tls.insecure_skip_verify is true: the receiver's certificate is not "+
 				"verified, so audit records are exposed to anyone able to intercept the connection",

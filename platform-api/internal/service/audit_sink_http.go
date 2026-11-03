@@ -92,28 +92,14 @@ func newAuditHTTPSink(cfg config.AuditHTTP, logger *slog.Logger) (*auditHTTPSink
 	if err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
 	}
-	var tlsCfg *tls.Config
-	if u.Scheme == "https" {
-		if tlsCfg, err = cfg.TLS.ClientConfig(); err != nil {
-			return nil, fmt.Errorf("tls: %w", err)
-		}
+	client, err := cfg.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("tls: %w", err)
 	}
 
 	s := &auditHTTPSink{
-		cfg: cfg,
-		client: &http.Client{
-			Timeout: cfg.RequestTimeout,
-			Transport: &http.Transport{
-				TLSClientConfig:     tlsCfg,
-				MaxIdleConnsPerHost: 2,
-				IdleConnTimeout:     90 * time.Second,
-			},
-			// A redirect target is chosen by the receiver, not the operator, so
-			// following it would send records somewhere nobody configured.
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
+		cfg:             cfg,
+		client:          client,
 		host:            u.Host,
 		logger:          logger,
 		authHeaderName:  name,
@@ -174,20 +160,18 @@ func (s *auditHTTPSink) run() {
 
 	batch := make([][]byte, 0, s.cfg.BatchMaxEvents)
 	batchBytes := 0
-	add := func(line []byte) {
-		batch = append(batch, line)
-		batchBytes += len(line) + 1
-		if len(batch) >= s.cfg.BatchMaxEvents || batchBytes >= s.cfg.BatchMaxBytes {
-			s.deliver(batch)
-			batch = make([][]byte, 0, s.cfg.BatchMaxEvents)
-			batchBytes = 0
-		}
-	}
 	flush := func() {
 		if len(batch) > 0 {
 			s.deliver(batch)
 			batch = make([][]byte, 0, s.cfg.BatchMaxEvents)
 			batchBytes = 0
+		}
+	}
+	add := func(line []byte) {
+		batch = append(batch, line)
+		batchBytes += len(line) + 1
+		if len(batch) >= s.cfg.BatchMaxEvents || batchBytes >= s.cfg.BatchMaxBytes {
+			flush()
 		}
 	}
 
