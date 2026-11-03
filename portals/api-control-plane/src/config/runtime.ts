@@ -158,6 +158,13 @@ export type RuntimeConfig = {
    * read as-is like every other field.
    */
   gatewayVersions: GatewayVersionEntry[];
+  /**
+   * Features this deployment hides, lower-cased (e.g. "metrics"). A deny-list:
+   * empty by default, so every feature is on until a name is listed. See
+   * `config/features.ts` for the names the console knows. Sourced from the BFF's
+   * `disable_features` config.
+   */
+  disableFeatures: string[];
   sanitizeHtmlDocsEnabled: boolean;
   sanitizeHtmlDocsAdditionalAllowedTags: string[];
   sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
@@ -221,6 +228,7 @@ type LegacyWindowConfig = Partial<{
   toSServiceName: string;
   usersManagementApiUrl: string;
   gatewayVersions: string;
+  disableFeatures: string | string[];
   sanitizeHtmlDocsEnabled: boolean | string;
   sanitizeHtmlDocsAdditionalAllowedTags: string;
   sanitizeHtmlDocsAdditionalAllowedAttributes: string;
@@ -288,6 +296,16 @@ const parseJsonRecordOfStringArrays = (value: string | undefined): Record<string
     return {};
   }
 };
+
+/** A JSON array, a comma-separated string, or a native array: lower-cased, blanks dropped. */
+const readFeatureList = (value: unknown): string[] =>
+  (Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : typeof value === 'string'
+      ? parseJsonStringArray(value)
+      : [])
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
 
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
 
@@ -475,6 +493,9 @@ export const runtimeConfig: RuntimeConfig = {
     import.meta.env.VITE_USERS_MANAGEMENT_API_URL ||
     '',
   gatewayVersions: readGatewayVersions(fromWindow().gatewayVersions),
+  disableFeatures: readFeatureList(
+    fromWindow().disableFeatures ?? import.meta.env.VITE_DISABLE_FEATURES,
+  ),
   sanitizeHtmlDocsEnabled: readSanitizeHtmlDocsEnabled(
     fromWindow().sanitizeHtmlDocsEnabled ?? import.meta.env.VITE_SANITIZE_HTML_DOCS_ENABLED,
   ),

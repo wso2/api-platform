@@ -84,6 +84,12 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		}
 	}
 
+	// disableFeatures is a deny-list: absent (nothing disabled) is the default,
+	// so every page stays on until a deployment names it.
+	if v, ok := runtimeValue(cfg.DisableFeatures); ok {
+		out["disableFeatures"] = v
+	}
+
 	// Only the [sanitize_html_docs] keys that are set; the SPA defaults the rest.
 	if v, ok := runtimeValue(cfg.SanitizeHTMLDocs.Enabled); ok {
 		out["sanitizeHtmlDocsEnabled"] = v

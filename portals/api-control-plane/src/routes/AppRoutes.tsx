@@ -18,6 +18,8 @@
 
 import { lazy, type ReactNode } from 'react';
 import { AppPage } from '../components/AppPage';
+import { EXTENSION_FEATURES } from '../config/features';
+import { FeatureGate } from './FeatureGate';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 
 import { AuthCallbackPage } from '@/pages/auth/AuthCallbackPage';
@@ -414,7 +416,17 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   const extensionRoutes = extensions.filter(isSidebarExtension).flatMap((extension) => {
     const route = (id: string, routePath: string, element: ReactNode) =>
       extensionScopedPaths(extension.level, routePath).map((path) => (
-        <Route key={`${id}:${path}`} path={path} element={element} />
+        <Route
+          key={`${id}:${path}`}
+          path={path}
+          element={
+            EXTENSION_FEATURES[id] ? (
+              <FeatureGate features={EXTENSION_FEATURES[id]}>{element}</FeatureGate>
+            ) : (
+              element
+            )
+          }
+        />
       ));
     const children = extension.children ?? [];
     return [
@@ -505,18 +517,37 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           />
           <Route path={routes.graphqlApiPublish()} element={<GraphqlPublishPage />} />
           <Route path={routes.graphqlApiPortalPublish()} element={<GraphqlPortalPublishPage />} />
-          <Route path={routes.graphqlApiInsightsApi()} element={<GraphqlInsightsPage />} />
+          <Route
+            path={routes.graphqlApiInsightsApi()}
+            element={
+              <FeatureGate features={['insights', 'api-insights']}>
+                <GraphqlInsightsPage />
+              </FeatureGate>
+            }
+          />
           <Route
             path={routes.graphqlApiInsightsCompliance()}
-            element={<GraphqlCompliancePage />}
+            element={
+              <FeatureGate features={['insights', 'compliance']}>
+                <GraphqlCompliancePage />
+              </FeatureGate>
+            }
           />
           <Route
             path={routes.graphqlApiObservabilityMetrics()}
-            element={<GraphqlObservabilityMetricsPage />}
+            element={
+              <FeatureGate features={['observability', 'metrics']}>
+                <GraphqlObservabilityMetricsPage />
+              </FeatureGate>
+            }
           />
           <Route
             path={routes.graphqlApiObservabilityLogs()}
-            element={<GraphqlObservabilityLogsPage />}
+            element={
+              <FeatureGate features={['observability', 'logs']}>
+                <GraphqlObservabilityLogsPage />
+              </FeatureGate>
+            }
           />
           {/*
             Test, Observability and Manage are sidebar parents with no page of
@@ -535,15 +566,37 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
               <DeployPage />
             </OverridablePage>,
           )}
-          {scopedRoutes(apiScopedPaths(routes.apiInsightsApi), <InsightsPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiInsightsCompliance), <CompliancePage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiObservabilityAlerts), <AlertsPage />)}
-          {scopedRoutes(apiScopedPaths(routes.apiObservabilityMetrics), <MetricsPage />)}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiInsightsApi),
+            <FeatureGate features={['insights', 'api-insights']}>
+              <InsightsPage />
+            </FeatureGate>,
+          )}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiInsightsCompliance),
+            <FeatureGate features={['insights', 'compliance']}>
+              <CompliancePage />
+            </FeatureGate>,
+          )}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiObservabilityAlerts),
+            <FeatureGate features={['observability']}>
+              <AlertsPage />
+            </FeatureGate>,
+          )}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiObservabilityMetrics),
+            <FeatureGate features={['observability', 'metrics']}>
+              <MetricsPage />
+            </FeatureGate>,
+          )}
           {scopedRoutes(
             apiScopedPaths(routes.apiObservabilityLogs),
-            <OverridablePage slot={PAGE_API_OBSERVABILITY_LOGS_SLOT}>
-              <RuntimeLogsPage />
-            </OverridablePage>,
+            <FeatureGate features={['observability', 'logs']}>
+              <OverridablePage slot={PAGE_API_OBSERVABILITY_LOGS_SLOT}>
+                <RuntimeLogsPage />
+              </OverridablePage>
+            </FeatureGate>,
           )}
           {scopedRoutes(apiScopedPaths(routes.apiPortals), <PortalsPage />)}
           {/*
@@ -559,17 +612,21 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route
             path={routes.subscriptionPlans()}
             element={
-              <AppPage>
-                <SubscriptionPlansPage />
-              </AppPage>
+              <FeatureGate features={['subscription-plans']}>
+                <AppPage>
+                  <SubscriptionPlansPage />
+                </AppPage>
+              </FeatureGate>
             }
           />
           <Route
             path={routes.meters()}
             element={
-              <AppPage>
-                <MetersPage />
-              </AppPage>
+              <FeatureGate features={['meters']}>
+                <AppPage>
+                  <MetersPage />
+                </AppPage>
+              </FeatureGate>
             }
           />
           {extensionRoutes}

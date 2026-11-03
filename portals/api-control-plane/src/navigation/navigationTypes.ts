@@ -18,12 +18,18 @@
 
 import type { ReactNode } from 'react';
 
+import type { FeatureId } from '../config/features';
 import type { ConsoleScope } from '../scope/ConsoleScopeProvider';
 import type { RequiredScope } from '../scope/ScopeGate';
 
 export type NavigationLevel = 'organization' | 'project' | 'api';
 
 export type NavigationDefinition = {
+  /**
+   * The `disableFeatures` name that hides this item (see `config/features.ts`).
+   * A parent whose children are all hidden this way is hidden too.
+   */
+  disableKey?: FeatureId;
   featureKey?: string;
   /**
     * Divider-separated cluster for sidebar grouping.

@@ -39,6 +39,7 @@ import {
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
+import { isFeatureDisabled } from '../../../../api-control-plane/src/config/features';
 import { runtimeConfig } from '../../../../api-control-plane/src/config/runtime';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
@@ -271,7 +272,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // hands the claim back — to the project notice below, and inside an API
         // to the built-in submenu, whose Metrics and Alerts pages are the right
         // ones there.
-        isVisible: (scope) => !scope.isProjectScope && !scope.isApiScope,
+        isVisible: (scope) =>
+          !scope.isProjectScope && !scope.isApiScope && !isFeatureDisabled('observability'),
         // No `render`: a direct hit on /observability redirects to the first
         // child (Logs), so the URL names the page shown and the sidebar
         // highlights it.
@@ -298,6 +300,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             render: (port) => <LogsFeature port={port} />,
             label: 'Logs',
             icon: <Logs size={20} />,
+            isVisible: () => !isFeatureDisabled('logs'),
           },
           {
             id: 'observability-metrics',
@@ -308,6 +311,10 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             render: () => <MetricsPanel />,
             label: 'Metrics',
             icon: <Gauge size={20} />,
+            // This extension claims the built-in `observability` item wholesale
+            // (see the claim above), so the built-in's own `disableKey: 'metrics'`
+            // gating never runs for it — mirror that check here directly.
+            isVisible: () => !isFeatureDisabled('metrics'),
           },
         ],
       },
@@ -396,7 +403,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
           return (
             Boolean(typed.isOrganizationScope) &&
             !typed.isProjectScope &&
-            !typed.isApiScope
+            !typed.isApiScope &&
+            !isFeatureDisabled('insights')
           );
         },
         // `InsightsFeature` brings its own `PageContent` on AI Workspace (whose
@@ -428,7 +436,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             isProjectScope?: boolean;
             isApiScope?: boolean;
           };
-          return Boolean(typed.isProjectScope) && !typed.isApiScope;
+          return (
+            Boolean(typed.isProjectScope) && !typed.isApiScope && !isFeatureDisabled('insights')
+          );
         },
         render: (port) => (
           <PageContent fullWidth>

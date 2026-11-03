@@ -382,9 +382,9 @@ describe('findTargetAtScope', () => {
 });
 
 describe('Manage menu', () => {
-  it('keeps Meters out of the sidebar while its page stays routable', () => {
+  it('shows Meters in the sidebar', () => {
     const meters = definitionFor('manage').children?.find((child) => child.id === 'manage-meters');
-    expect(meters?.isVisible?.(atOrg())).toBe(false);
+    expect(meters?.isVisible?.(atOrg()) ?? true).toBe(true);
     expect(meters?.to(atOrg())).toBe(`${ORG}/meters`);
   });
 

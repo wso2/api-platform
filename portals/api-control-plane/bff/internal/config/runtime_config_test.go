@@ -271,3 +271,63 @@ func TestBuildRuntimeConfig_SanitizeHTMLDocsBlankEnvIsAbsent(t *testing.T) {
 		t.Errorf("sanitizeHtmlDocsEnabled = %q, want absent", v)
 	}
 }
+
+func loadWithDisableFeatures(t *testing.T, line string) *Config {
+	t.Helper()
+	overlay := filepath.Join(t.TempDir(), "overlay.toml")
+	if err := os.WriteFile(overlay, []byte("[api_control_plane]\n"+line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load("../../../configs/config.toml", overlay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesAbsentByDefault(t *testing.T) {
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, present := cfg.RuntimeConfig["disableFeatures"]; present {
+		t.Errorf("disableFeatures = %q, want absent so every feature stays on", v)
+	}
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesPassThrough(t *testing.T) {
+	for name, tc := range map[string]struct{ line, want string }{
+		"TOML array":  {`disable_features = ["metrics", "meters"]`, `["metrics","meters"]`},
+		"JSON string": {`disable_features = '["metrics"]'`, `["metrics"]`},
+		"comma list":  {`disable_features = 'metrics,meters'`, `metrics,meters`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := loadWithDisableFeatures(t, tc.line)
+			if got := cfg.RuntimeConfig["disableFeatures"]; got != tc.want {
+				t.Errorf("disableFeatures = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesBlankEnvIsAbsent(t *testing.T) {
+	t.Setenv("APIP_ACP_DISABLE_FEATURES", "")
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, present := cfg.RuntimeConfig["disableFeatures"]; present {
+		t.Errorf("disableFeatures = %q, want absent", v)
+	}
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesFromEnv(t *testing.T) {
+	t.Setenv("APIP_ACP_DISABLE_FEATURES", "metrics,logs")
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.RuntimeConfig["disableFeatures"]; got != "metrics,logs" {
+		t.Errorf("disableFeatures = %q, want metrics,logs", got)
+	}
+}

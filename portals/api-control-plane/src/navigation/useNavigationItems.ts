@@ -19,6 +19,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { isFeatureDisabled } from '../config/features';
 import { runtimeConfig } from '../config/runtime';
 import {
   useConsoleScope,
@@ -42,6 +43,17 @@ import {
 const isFeatureEnabled = (definition: NavigationDefinition) =>
   !definition.featureKey ||
   runtimeConfig.featureFlags.includes(definition.featureKey);
+
+/**
+ * Whether the deployment's `disableFeatures` hides this item: it names the item,
+ * or the item is a parent whose children it all names — an empty menu would
+ * otherwise still link to its first, hidden, page.
+ */
+const isDisabled = (definition: NavigationDefinition): boolean =>
+  (definition.disableKey !== undefined && isFeatureDisabled(definition.disableKey)) ||
+  (definition.children !== undefined &&
+    definition.children.length > 0 &&
+    definition.children.every(isDisabled));
 
 /**
  * Whether an item's `requires` scope holds — the gate on offering its children.
@@ -237,6 +249,7 @@ export const useNavigationItems = (): NavigationItem[] => {
       definition: NavigationDefinition
     ): NavigationItem | undefined => {
       if (!isFeatureEnabled(definition)) return undefined;
+      if (isDisabled(definition)) return undefined;
       if (!(definition.isVisible?.(scope) ?? true)) return undefined;
 
       const to = definition.to(scope);

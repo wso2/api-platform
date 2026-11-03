@@ -74,6 +74,14 @@ type Config struct {
 
 	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
 
+	// DisableFeatures names the console features this deployment hides, e.g.
+	// ["metrics", "meters"]. Each hidden feature leaves the sidebar and its page
+	// answers "not found". Empty or unset leaves every feature on. Passed to the
+	// SPA as-is, like [sanitize_html_docs]: a TOML array, a JSON array string or
+	// a comma-separated string (so an env var can carry it); the SPA ignores
+	// names it does not know.
+	DisableFeatures any `koanf:"disable_features"`
+
 	RuntimeConfig map[string]string `koanf:"-"`
 }
 

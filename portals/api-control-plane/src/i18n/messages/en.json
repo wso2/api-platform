@@ -3581,9 +3581,13 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.created": {
     "defaultMessage": "Added meter \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.custom": {
-    "defaultMessage": "Custom",
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.customFilter": {
+    "defaultMessage": "Custom filter",
     "description": "The last choice when adding a filter property: a property with an empty name and key to fill in."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.customFilterHint": {
+    "defaultMessage": "Filter on any attribute path",
+    "description": "Under the Custom filter choice: it reads any event key the administrator types."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.descriptionLabel": {
     "defaultMessage": "Description"
@@ -3619,6 +3623,18 @@
     "defaultMessage": "Filters",
     "description": "Heading of the list of properties a meter's prices may filter on."
   },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.groupMcp": {
+    "defaultMessage": "MCP",
+    "description": "Heading over the properties of requests to MCP servers. Keep \"MCP\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.groupRequest": {
+    "defaultMessage": "Request",
+    "description": "Heading over the properties every request has, such as its status code."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.groupTokens": {
+    "defaultMessage": "AI token usage",
+    "description": "Heading over the token counts of AI API requests."
+  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.lockedSave": {
     "defaultMessage": "There are plans using this meter.",
     "description": "Shown next to the turned-off Save of a meter that plans price, which cannot be updated."
@@ -3631,6 +3647,18 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.nameRequired": {
     "defaultMessage": "Enter a name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.noFiltersRequests": {
+    "defaultMessage": "No filters. The meter counts every request.",
+    "description": "Shown in place of the filters of a Requests meter that has none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.noFiltersTokens": {
+    "defaultMessage": "No filters. The meter adds up the tokens of every request.",
+    "description": "Shown in place of the filters of a Tokens meter that has none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.noTemplates": {
+    "defaultMessage": "No templates match your search.",
+    "description": "Shown in the list of filter properties when the search finds none."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.propertyKeyRequired": {
     "defaultMessage": "Enter the event key of each property.",
@@ -3657,6 +3685,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.saving": {
     "defaultMessage": "Saving…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.searchTemplates": {
+    "defaultMessage": "Search templates",
+    "description": "Placeholder and accessible name of the search box over the filter properties."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.submitCreate": {
     "defaultMessage": "Add Meter"
@@ -3757,7 +3789,7 @@
     "description": "Shown under Filters of a usage price whose meter lists no properties to filter on."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noMeters": {
-    "defaultMessage": "Create a meter in Settings › Meters to charge for usage."
+    "defaultMessage": "Create a meter in Manage › Meters to charge for usage."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidHelper": {
     "defaultMessage": "Subscribers pay through each API Portal the plan is published to. An API Portal gets this pricing when the plan is first published there."

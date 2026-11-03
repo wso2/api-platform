@@ -255,6 +255,34 @@ describe('runtimeConfig', () => {
     expect(runtimeConfig.gatewayVersions).toEqual([]);
   });
 
+  describe('disableFeatures', () => {
+    it('is empty by default, so every feature stays on', async () => {
+      expect((await loadRuntimeConfig()).disableFeatures).toEqual([]);
+    });
+
+    it.each([
+      ['a JSON array', '["metrics","meters"]'],
+      ['a comma-separated list', 'metrics, meters'],
+      ['a native array', ['metrics', 'meters']],
+      ['any letter case, padded', [' Metrics ', 'METERS']],
+    ])('reads %s', async (_name, value) => {
+      window.__RUNTIME_CONFIG__ = { disableFeatures: value };
+      expect((await loadRuntimeConfig()).disableFeatures).toEqual(['metrics', 'meters']);
+    });
+
+    it('ignores blank and malformed values', async () => {
+      window.__RUNTIME_CONFIG__ = { disableFeatures: '["metrics"' };
+      expect((await loadRuntimeConfig()).disableFeatures).toEqual([]);
+      window.__RUNTIME_CONFIG__ = { disableFeatures: '  ' };
+      expect((await loadRuntimeConfig()).disableFeatures).toEqual([]);
+    });
+
+    it('falls back to the build-time list', async () => {
+      vi.stubEnv('VITE_DISABLE_FEATURES', 'logs');
+      expect((await loadRuntimeConfig()).disableFeatures).toEqual(['logs']);
+    });
+  });
+
   describe('sanitizeHtmlDocsEnabled', () => {
     it('defaults to on when unset', async () => {
       expect((await loadRuntimeConfig()).sanitizeHtmlDocsEnabled).toBe(true);
