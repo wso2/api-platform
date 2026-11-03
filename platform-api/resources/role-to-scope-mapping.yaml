@@ -87,6 +87,7 @@ roles:
       - ap:api_portal:manage
       - ap:api_portal:publication:read
       - ap:api_portal:graphql_api:manage
+      - ap:api_portal:mcp_proxy:manage
       - ap:api_portal:rest_api:manage
       - ap:api_publication:read
       # - ap:websub_api:manage   # event-gateway build only
@@ -211,6 +212,7 @@ roles:
       - ap:api_portal:publication:read
       - ap:api_portal:read
       - ap:api_portal:graphql_api:manage
+      - ap:api_portal:mcp_proxy:manage
       - ap:api_portal:rest_api:manage
       - ap:api_publication:read
       # - ap:websub_api:manage   # event-gateway build only

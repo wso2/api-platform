@@ -36,9 +36,10 @@ import (
 
 // registerPublication binds the steps that read a published API back from the portal.
 func registerPublication(sc *godog.ScenarioContext, s *Steps) {
-	sc.Step(`^the API Portal should list the API "([^"]*)" offering plan "([^"]*)"$`, s.listsAPIOfferingPlan)
-	sc.Step(`^the API Portal should list the API "([^"]*)" with (status|display name|type) "([^"]*)"$`, s.listsAPIWithField)
-	sc.Step(`^the API Portal should not list the API "([^"]*)"$`, s.doesNotListAPI)
+	sc.Step(`^the API Portal should list the (API|MCP server) "([^"]*)" offering plan "([^"]*)"$`, s.listsAPIOfferingPlan)
+	sc.Step(`^the API Portal should list the (API|MCP server) "([^"]*)" with (status|display name|type) "([^"]*)"$`,
+		s.listsAPIWithField)
+	sc.Step(`^the API Portal should not list the (API|MCP server) "([^"]*)"$`, s.doesNotListAPI)
 	sc.Step(`^an application subscribes to the published API "([^"]*)" with plan "([^"]*)" in the API Portal and the subscription is stored as "([^"]*)"$`,
 		s.subscribeToPublishedAPI)
 	sc.Step(`^an API key is generated in the API Portal for the published API "([^"]*)" and the key handle is stored as "([^"]*)"$`,
@@ -135,9 +136,17 @@ func (s *Steps) generateKeyForPublishedAPI(ctx context.Context, apiHandle, store
 	return tcontext.Set(ctx, storeAs, handle)
 }
 
-// fetchListedAPI reads one API's metadata from the portal as the administrator and returns the
-// response, whatever its status.
-func (s *Steps) fetchListedAPI(ctx context.Context, apiHandle string) (api string, resp *httpx.Response, err error) {
+// listingCollections maps a step's listing noun to the portal collection that serves it. The
+// portal serves MCP servers only under their own collection, never under /apis.
+var listingCollections = map[string]string{"API": "/apis/", "MCP server": "/mcp-servers/"}
+
+// fetchListedAPI reads one listing's metadata from the portal as the administrator and returns
+// the response, whatever its status.
+func (s *Steps) fetchListedAPI(ctx context.Context, noun, apiHandle string) (api string, resp *httpx.Response, err error) {
+	collection, ok := listingCollections[noun]
+	if !ok {
+		return "", nil, fmt.Errorf("unsupported API Portal listing %q", noun)
+	}
 	if api, err = stepscommon.Expand(ctx, apiHandle); err != nil {
 		return "", nil, err
 	}
@@ -145,13 +154,13 @@ func (s *Steps) fetchListedAPI(ctx context.Context, apiHandle string) (api strin
 	if err != nil {
 		return "", nil, err
 	}
-	resp, err = s.getJSON(ctx, base, token, "/apis/"+url.PathEscape(api))
+	resp, err = s.getJSON(ctx, base, token, collection+url.PathEscape(api))
 	return api, resp, err
 }
 
-// listedAPI reads one API's metadata from the portal and fails unless the portal lists it.
-func (s *Steps) listedAPI(ctx context.Context, apiHandle string) (string, []byte, error) {
-	api, resp, err := s.fetchListedAPI(ctx, apiHandle)
+// listedAPI reads one listing's metadata from the portal and fails unless the portal lists it.
+func (s *Steps) listedAPI(ctx context.Context, noun, apiHandle string) (string, []byte, error) {
+	api, resp, err := s.fetchListedAPI(ctx, noun, apiHandle)
 	if err != nil {
 		return "", nil, err
 	}
@@ -163,12 +172,12 @@ func (s *Steps) listedAPI(ctx context.Context, apiHandle string) (string, []byte
 
 // listsAPIOfferingPlan asserts the portal itself lists the API and offers the plan, whatever the
 // API's status.
-func (s *Steps) listsAPIOfferingPlan(ctx context.Context, apiHandle, planHandle string) error {
+func (s *Steps) listsAPIOfferingPlan(ctx context.Context, noun, apiHandle, planHandle string) error {
 	plan, err := stepscommon.Expand(ctx, planHandle)
 	if err != nil {
 		return err
 	}
-	api, body, err := s.listedAPI(ctx, apiHandle)
+	api, body, err := s.listedAPI(ctx, noun, apiHandle)
 	if err != nil {
 		return err
 	}
@@ -179,7 +188,7 @@ func (s *Steps) listsAPIOfferingPlan(ctx context.Context, apiHandle, planHandle 
 var listedAPIFields = map[string]string{"status": "status", "display name": "name", "type": "type"}
 
 // listsAPIWithField asserts the portal lists the API with the given status, display name or type.
-func (s *Steps) listsAPIWithField(ctx context.Context, apiHandle, field, value string) error {
+func (s *Steps) listsAPIWithField(ctx context.Context, noun, apiHandle, field, value string) error {
 	key, ok := listedAPIFields[field]
 	if !ok {
 		return fmt.Errorf("unsupported API Portal field %q", field)
@@ -188,7 +197,7 @@ func (s *Steps) listsAPIWithField(ctx context.Context, apiHandle, field, value s
 	if err != nil {
 		return err
 	}
-	api, body, err := s.listedAPI(ctx, apiHandle)
+	api, body, err := s.listedAPI(ctx, noun, apiHandle)
 	if err != nil {
 		return err
 	}
@@ -196,8 +205,8 @@ func (s *Steps) listsAPIWithField(ctx context.Context, apiHandle, field, value s
 }
 
 // doesNotListAPI asserts the portal has no listing for the API.
-func (s *Steps) doesNotListAPI(ctx context.Context, apiHandle string) error {
-	api, resp, err := s.fetchListedAPI(ctx, apiHandle)
+func (s *Steps) doesNotListAPI(ctx context.Context, noun, apiHandle string) error {
+	api, resp, err := s.fetchListedAPI(ctx, noun, apiHandle)
 	if err != nil {
 		return err
 	}

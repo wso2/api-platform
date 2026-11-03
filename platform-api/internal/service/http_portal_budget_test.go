@@ -109,7 +109,7 @@ func TestHTTPPortalPublisher_WorstCasePublishFitsTheStatedBudget(t *testing.T) {
 	if err := p.Publish(ctx, portal, constants.PublicationAPITypeRestAPI, "my-api", pub, nil); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
-	if err := p.PublishContent(ctx, portal, "my-api", &PortalContent{Archive: []byte("zip")}); err != nil {
+	if err := p.PublishContent(ctx, portal, constants.PublicationAPITypeRestAPI, "my-api", &PortalContent{Archive: []byte("zip")}); err != nil {
 		t.Fatalf("PublishContent: %v", err)
 	}
 	took := time.Since(started)

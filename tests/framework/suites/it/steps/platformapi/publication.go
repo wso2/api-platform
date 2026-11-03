@@ -36,7 +36,7 @@ import (
 
 // publicationTypes maps a gateway artifact kind to the apiType segment of the publication
 // endpoints.
-var publicationTypes = map[string]string{"RestApi": "rest-api", "GraphQLApi": "graphql-api"}
+var publicationTypes = map[string]string{"RestApi": "rest-api", "GraphQLApi": "graphql-api", "Mcp": "mcp-proxy"}
 
 var (
 	platformPublicationKind = cleanup.Kind{Name: "platform-api-publication", Order: 45}
@@ -319,8 +319,12 @@ func (s *Steps) savePublishableDraft(
 // minimalDefinition returns the smallest definition the control plane accepts for an API of the
 // kind, and its content type.
 func minimalDefinition(kind, title string) (body []byte, contentType string, err error) {
-	if kind == "GraphQLApi" {
+	switch kind {
+	case "GraphQLApi":
 		return []byte("type Query { hello: String }"), "application/graphql", nil
+	case "Mcp":
+		body, err = json.Marshal(map[string]any{"tools": []any{map[string]any{"name": "ping"}}})
+		return body, "application/json", err
 	}
 	body, err = json.Marshal(map[string]any{
 		"openapi": "3.0.3",
