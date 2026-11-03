@@ -631,7 +631,10 @@ export const findTargetAtScope = (
   targetParams: ConsoleRouteParams,
 ): string | undefined => {
   const definition = findActiveDefinition(navigationRegistry, pathname);
-  if (!definition) return undefined;
+  // A page `disableFeatures` hides has no counterpart to switch to: callers fall back to Home.
+  if (!definition || (definition.disableKey && isFeatureDisabled(definition.disableKey))) {
+    return undefined;
+  }
 
   const targetScope: ConsoleScope = {
     ...scope,

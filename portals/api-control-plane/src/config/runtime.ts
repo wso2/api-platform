@@ -298,8 +298,12 @@ const parseJsonRecordOfStringArrays = (value: string | undefined): Record<string
 };
 
 /** A JSON array, a comma-separated string, or a native array: lower-cased, blanks dropped. */
-const readFeatureList = (value: string | string[] | undefined): string[] =>
-  (Array.isArray(value) ? value.filter((item) => typeof item === 'string') : parseJsonStringArray(value))
+const readFeatureList = (value: unknown): string[] =>
+  (Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : typeof value === 'string'
+      ? parseJsonStringArray(value)
+      : [])
     .map((name) => name.trim().toLowerCase())
     .filter(Boolean);
 

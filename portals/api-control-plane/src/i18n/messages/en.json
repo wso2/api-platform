@@ -3781,7 +3781,7 @@
     "description": "Shown under Filters of a usage price whose meter lists no properties to filter on."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noMeters": {
-    "defaultMessage": "Create a meter in Settings › Meters to charge for usage."
+    "defaultMessage": "Create a meter in Manage › Meters to charge for usage."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidHelper": {
     "defaultMessage": "Subscribers pay through each API Portal the plan is published to. An API Portal gets this pricing when the plan is first published there."

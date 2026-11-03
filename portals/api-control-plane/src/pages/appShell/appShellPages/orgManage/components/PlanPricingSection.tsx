@@ -190,7 +190,7 @@ const messages = defineMessages({
   },
   noMeters: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noMeters',
-    defaultMessage: 'Create a meter in Settings › Meters to charge for usage.',
+    defaultMessage: 'Create a meter in Manage › Meters to charge for usage.',
   },
   paidHelper: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidHelper',

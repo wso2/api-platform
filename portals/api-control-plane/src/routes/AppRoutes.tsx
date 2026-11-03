@@ -18,6 +18,7 @@
 
 import { lazy, type ReactNode } from 'react';
 import { AppPage } from '../components/AppPage';
+import { EXTENSION_FEATURES } from '../config/features';
 import { FeatureGate } from './FeatureGate';
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 
@@ -415,7 +416,17 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   const extensionRoutes = extensions.filter(isSidebarExtension).flatMap((extension) => {
     const route = (id: string, routePath: string, element: ReactNode) =>
       extensionScopedPaths(extension.level, routePath).map((path) => (
-        <Route key={`${id}:${path}`} path={path} element={element} />
+        <Route
+          key={`${id}:${path}`}
+          path={path}
+          element={
+            EXTENSION_FEATURES[id] ? (
+              <FeatureGate features={EXTENSION_FEATURES[id]}>{element}</FeatureGate>
+            ) : (
+              element
+            )
+          }
+        />
       ));
     const children = extension.children ?? [];
     return [

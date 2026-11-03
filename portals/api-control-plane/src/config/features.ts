@@ -38,6 +38,19 @@ export const FEATURES = [
 
 export type FeatureId = (typeof FEATURES)[number];
 
+/**
+ * Sidebar-extension pages (the cloud build's) by extension id, and the features
+ * that hide each: the router answers "not found" for them, since an extension
+ * that stands down in the sidebar still has its URL registered.
+ */
+export const EXTENSION_FEATURES: Record<string, FeatureId[]> = {
+  observability: ['observability'],
+  'observability-logs': ['observability', 'logs'],
+  'observability-metrics': ['observability', 'metrics'],
+  'organization-insights': ['insights'],
+  'project-insights': ['insights'],
+};
+
 /** Whether the deployment has switched this feature off. Everything is on by default. */
 export const isFeatureDisabled = (feature: FeatureId): boolean =>
   runtimeConfig.disableFeatures.includes(feature);

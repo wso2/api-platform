@@ -931,7 +931,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(screen.queryByRole('button', { name: 'Add price' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove price 1' })).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Create a meter in Settings › Meters to charge for usage.'),
+      screen.queryByText('Create a meter in Manage › Meters to charge for usage.'),
     ).not.toBeInTheDocument();
     // The rest of the plan stays editable.
     expect(screen.getByLabelText(/Plan name/)).toBeEnabled();

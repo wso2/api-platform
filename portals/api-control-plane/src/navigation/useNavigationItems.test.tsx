@@ -510,6 +510,16 @@ describe('disableFeatures', () => {
     );
   });
 
+  it('shows Meters under Manage by default', () => {
+    const items = withDisabled([], atOrg(), routes.organizationHome(ORG));
+    const manage = items.find((item) => item.id === 'manage');
+
+    expect(manage?.children?.map((child) => child.id)).toEqual([
+      'manage-subscription-plans',
+      'manage-meters',
+    ]);
+  });
+
   it('hides just the named page', () => {
     const ids = idsOf(withDisabled(['metrics'], atApi(), atApiRoute));
 
