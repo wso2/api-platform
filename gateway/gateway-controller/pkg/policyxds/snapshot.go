@@ -303,13 +303,17 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 			// Build upstream definition paths, keyed by definition name so the
 			// policy engine can resolve them from a policy's targetUpstream value.
 			upstreamDefPaths := make(map[string]string)
+			upstreamDefURLs := make(map[string]string)
 			for _, uc := range rdc.UpstreamClusters {
 				if uc.Name != "" {
 					upstreamDefPaths[uc.Name] = uc.BasePath
+					if uc.URL != "" {
+						upstreamDefURLs[uc.Name] = uc.URL
+					}
 				}
 			}
 
-			resource, err := t.createRouteConfigResource(routeKey, rdc, upstreamBasePath, upstreamDefPaths)
+			resource, err := t.createRouteConfigResource(routeKey, rdc, upstreamBasePath, upstreamDefPaths, upstreamDefURLs)
 			if err != nil {
 				t.logger.Error("Failed to create route config resource",
 					slog.String("route_key", routeKey),
@@ -382,6 +386,7 @@ func (t *Translator) createRouteConfigResource(
 	rdc *models.RuntimeDeployConfig,
 	upstreamBasePath string,
 	upstreamDefPaths map[string]string,
+	upstreamDefURLs map[string]string,
 ) (types.Resource, error) {
 	route := rdc.Routes[routeKey]
 
@@ -412,6 +417,15 @@ func (t *Translator) createRouteConfigResource(
 		"upstream_base_path":        upstreamBasePath,
 		"upstream_definition_paths": upstreamDefPaths,
 	}
+	// Only the model endpoint's routes carry definition URLs, so every other route's
+	// config is byte-identical to before.
+	if len(upstreamDefURLs) > 0 {
+		urls := make(map[string]interface{}, len(upstreamDefURLs))
+		for name, u := range upstreamDefURLs {
+			urls[name] = u
+		}
+		data["upstream_definition_urls"] = urls
+	}
 
 	// Emitted explicitly on every *directly-resolved* route, including one where it
 	// equals the route key. The policy engine reads this field and never reconstructs
@@ -425,6 +439,12 @@ func (t *Translator) createRouteConfigResource(
 	// fallback here would put on the wire exactly what the model refuses to accept.
 	if models.IsDirectlyResolved(rdc.EffectiveResolverName(route)) {
 		data["canonical_chain_key"] = rdc.EffectiveCanonicalChainKey(routeKey, route)
+	}
+
+	// The per-route error format (the model endpoint's routes only), omitted when
+	// empty for the same reason as the fields below.
+	if route.ErrorFormat != "" {
+		data["error_format"] = route.ErrorFormat
 	}
 
 	// Omitted when empty, deliberately. A field serialising as {} or 0 changes the
