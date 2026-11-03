@@ -62,6 +62,13 @@ func newAuditSinks(cfg config.Audit, logger *slog.Logger) ([]auditSink, error) {
 				return nil, fmt.Errorf("audit.file: %w", err)
 			}
 			sinks = append(sinks, s)
+		case config.AuditOutputHTTP:
+			s, err := newAuditHTTPSink(cfg.HTTP, logger)
+			if err != nil {
+				closeAll()
+				return nil, fmt.Errorf("audit.http: %w", err)
+			}
+			sinks = append(sinks, s)
 		default:
 			// Unreachable: NormalizeAuditOutputs rejects unknown names.
 			closeAll()

@@ -91,14 +91,15 @@ format = "text"   # text | json
 [platform_api.audit]
 enabled = true
 # Also write each record as a JSON line tagged "logType":"audit" to any of
-# "stdout" and "file". Outputs are additive, order is irrelevant, and an unknown
-# or repeated name fails startup. Empty keeps records in the table only.
+# "stdout", "file" and "http". Outputs are additive, order is irrelevant, and an
+# unknown or repeated name fails startup. Empty keeps records in the table only.
 #
-# An output that cannot be built (a file that cannot be opened) fails startup.
-# At runtime a failed write drops the line and logs an error (at most once every
-# 30s per output); it never fails the request, and the table row is still written.
+# An output that cannot be built (a file that cannot be opened, an unreadable CA
+# file) fails startup. At runtime a failed write drops the line and logs an error
+# (at most once every 30s per output); it never fails the request, and the table
+# row is still written.
 outputs = []
-# outputs = ["stdout", "file"]
+# outputs = ["file", "http"]
 
 # "file" output — read only when outputs contains "file".
 [platform_api.audit.file]
@@ -112,6 +113,75 @@ path = ""
 # backup) and a new one opened, so at most 2 x this is on disk. 0 disables
 # rotation and logs a warning.
 max_size_mb = 100
+
+# "http" output — read only when outputs contains "http".
+#
+# Batches records and POSTs them as newline-delimited JSON
+# (application/x-ndjson), which Splunk HEC's /services/collector/raw,
+# Elasticsearch/OpenSearch, Fluent Bit and Vector accept as-is. The queue is held
+# in memory only: an outage longer than the queue and retries can absorb loses
+# records from this output (the audit table still has them). On shutdown the
+# queue is flushed for up to 5s.
+[platform_api.audit.http]
+# Absolute URL each batch is POSTed to; required when "http" is selected.
+# Redirects are never followed.
+endpoint = ""
+# endpoint = "https://splunk.example.com:8088/services/collector/raw?sourcetype=wso2:platform-api:audit"
+# Permits a plaintext http:// endpoint; without it, http:// fails startup. Use
+# only for a trusted collector on the same network.
+allow_insecure_transport = false
+# A batch is sent when any of these is reached first.
+batch_max_events = 100
+batch_max_bytes = 1048576
+flush_interval = "5s"
+# Records waiting to be sent. When full, a new record is dropped (the older ones
+# are kept).
+queue_capacity = 10000
+# Bounds one POST attempt.
+request_timeout = "10s"
+# Retries after the first attempt, for transport errors, 429 and 5xx only, with
+# exponential backoff from retry_backoff plus jitter. A 429's Retry-After replaces
+# the backoff (capped at 30s). Other 4xx responses are not retried.
+max_retries = 3
+retry_backoff = "1s"
+
+# One header sent with every batch. type selects the scheme; only its sub-table
+# is read. A missing required field fails startup.
+#   type      sub-table   required           header sent
+#   "none"    —           —                  (none; the default)
+#   "bearer"  .bearer     token              Authorization: Bearer <token>
+#   "basic"   .basic      username, password Authorization: Basic <base64(user:pass)>
+#   "header"  .header     name, value        <name>: <value>
+# Never inline a credential: use {{ env "VAR" }} or {{ file "/path" }}.
+[platform_api.audit.http.auth]
+type = "none"
+
+[platform_api.audit.http.auth.bearer]
+token = ""
+# token = '{{ env "APIP_CP_AUDIT_HTTP_TOKEN" }}'
+
+[platform_api.audit.http.auth.basic]
+username = ""
+password = ""
+
+# For a scheme other than Bearer, e.g. Splunk HEC:
+#   name  = "Authorization"
+#   value = 'Splunk {{ env "APIP_CP_AUDIT_HEC_TOKEN" }}'
+[platform_api.audit.http.auth.header]
+name = ""
+value = ""
+
+# TLS for an https:// endpoint; ignored for http://. Independent of auth: a
+# client certificate does not suppress the auth header. All files are read at
+# startup.
+[platform_api.audit.http.tls]
+# PEM bundle to verify the receiver; empty uses the system trust store.
+ca_file = ""
+# Client certificate and key for mTLS, both or neither.
+cert_file = ""
+key_file = ""
+# Skips verifying the receiver's certificate; logs a warning at startup.
+insecure_skip_verify = false
 
 # ---------------------------------------------------------------------------
 # Security

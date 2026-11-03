@@ -162,6 +162,16 @@ func defaultConfig() *Server {
 			Enabled: true,
 			// 100 MiB live + 100 MiB backup at most.
 			File: AuditFile{MaxSizeMB: 100},
+			HTTP: AuditHTTP{
+				BatchMaxEvents: 100,
+				BatchMaxBytes:  1 << 20, // 1 MiB
+				FlushInterval:  5 * time.Second,
+				QueueCapacity:  10000,
+				RequestTimeout: 10 * time.Second,
+				MaxRetries:     3,
+				RetryBackoff:   1 * time.Second,
+				Auth:           AuditHTTPAuth{Type: AuditAuthNone},
+			},
 		},
 		EventHub: EventHub{
 			PollInterval:    3 * time.Second,

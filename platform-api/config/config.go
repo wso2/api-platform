@@ -19,11 +19,14 @@ package config
 
 import (
 	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -97,6 +100,15 @@ type Logging struct {
 const (
 	AuditOutputStdout = "stdout"
 	AuditOutputFile   = "file"
+	AuditOutputHTTP   = "http"
+)
+
+// Authentication schemes for the "http" audit output.
+const (
+	AuditAuthNone   = "none"
+	AuditAuthBearer = "bearer"
+	AuditAuthBasic  = "basic"
+	AuditAuthHeader = "header"
 )
 
 // Audit holds audit-log configuration.
@@ -104,6 +116,118 @@ type Audit struct {
 	Enabled bool      `koanf:"enabled"`
 	Outputs []string  `koanf:"outputs"`
 	File    AuditFile `koanf:"file"`
+	HTTP    AuditHTTP `koanf:"http"`
+}
+
+// AuditHTTP configures the "http" audit output: records are queued in memory,
+// batched and POSTed as newline-delimited JSON to an operator-chosen endpoint.
+type AuditHTTP struct {
+	// Endpoint is the absolute URL each batch is POSTed to. Redirects are never
+	// followed. It must be https:// unless AllowInsecureTransport is set.
+	Endpoint               string `koanf:"endpoint"`
+	AllowInsecureTransport bool   `koanf:"allow_insecure_transport"`
+	// A batch is sent when any of these bounds is reached.
+	BatchMaxEvents int           `koanf:"batch_max_events"`
+	BatchMaxBytes  int           `koanf:"batch_max_bytes"`
+	FlushInterval  time.Duration `koanf:"flush_interval"`
+	// QueueCapacity bounds the records waiting to be sent; when it is full, a
+	// new record is dropped.
+	QueueCapacity int `koanf:"queue_capacity"`
+	// RequestTimeout bounds one POST attempt.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// MaxRetries is the number of retries after the first attempt, for transport
+	// errors, 429 and 5xx only, with jittered exponential backoff from RetryBackoff.
+	MaxRetries   int           `koanf:"max_retries"`
+	RetryBackoff time.Duration `koanf:"retry_backoff"`
+	Auth         AuditHTTPAuth `koanf:"auth"`
+	TLS          AuditHTTPTLS  `koanf:"tls"`
+}
+
+// AuditHTTPAuth selects the one header sent with every batch. Only the
+// sub-table matching Type is read, so a credential left in another sub-table
+// is never sent.
+type AuditHTTPAuth struct {
+	Type   string `koanf:"type"`
+	Bearer struct {
+		Token string `koanf:"token"`
+	} `koanf:"bearer"`
+	Basic struct {
+		Username string `koanf:"username"`
+		Password string `koanf:"password"`
+	} `koanf:"basic"`
+	Header struct {
+		Name  string `koanf:"name"`
+		Value string `koanf:"value"`
+	} `koanf:"header"`
+}
+
+// AuditHTTPTLS is the trust and client-certificate material for an https://
+// audit endpoint. It is independent of AuditHTTPAuth: mTLS does not suppress
+// the auth header.
+type AuditHTTPTLS struct {
+	CAFile             string `koanf:"ca_file"`
+	CertFile           string `koanf:"cert_file"`
+	KeyFile            string `koanf:"key_file"`
+	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
+}
+
+// AuthHeader returns the header to send with every batch; an empty name means
+// none. Errors never include the secret.
+func (a AuditHTTPAuth) AuthHeader() (name, value string, err error) {
+	switch strings.ToLower(strings.TrimSpace(a.Type)) {
+	case "", AuditAuthNone:
+		return "", "", nil
+	case AuditAuthBearer:
+		if a.Bearer.Token == "" {
+			return "", "", fmt.Errorf("bearer.token is required when type is %q", AuditAuthBearer)
+		}
+		return "Authorization", "Bearer " + a.Bearer.Token, nil
+	case AuditAuthBasic:
+		if a.Basic.Username == "" || a.Basic.Password == "" {
+			return "", "", fmt.Errorf("basic.username and basic.password are both required when type is %q", AuditAuthBasic)
+		}
+		credentials := base64.StdEncoding.EncodeToString([]byte(a.Basic.Username + ":" + a.Basic.Password))
+		return "Authorization", "Basic " + credentials, nil
+	case AuditAuthHeader:
+		if a.Header.Name == "" || a.Header.Value == "" {
+			return "", "", fmt.Errorf("header.name and header.value are both required when type is %q", AuditAuthHeader)
+		}
+		return a.Header.Name, a.Header.Value, nil
+	default:
+		return "", "", fmt.Errorf("unknown type %q (valid: %s, %s, %s, %s)",
+			a.Type, AuditAuthNone, AuditAuthBearer, AuditAuthBasic, AuditAuthHeader)
+	}
+}
+
+// ClientConfig reads and parses the TLS material. X25519MLKEM768 is preferred,
+// with classical curves after it for receivers that do not support it.
+func (t AuditHTTPTLS) ClientConfig() (*tls.Config, error) {
+	out := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		CurvePreferences:   []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256, tls.CurveP384},
+		InsecureSkipVerify: t.InsecureSkipVerify, // #nosec G402 -- off by default; warned at startup
+	}
+	if t.CAFile != "" {
+		pem, err := os.ReadFile(t.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read ca_file %q: %w", t.CAFile, err)
+		}
+		out.RootCAs = x509.NewCertPool()
+		if !out.RootCAs.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("ca_file %q contains no usable PEM certificate", t.CAFile)
+		}
+	}
+	if (t.CertFile == "") != (t.KeyFile == "") {
+		return nil, fmt.Errorf("cert_file and key_file must be set together")
+	}
+	if t.CertFile != "" {
+		pair, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("cannot load the client certificate and key: %w", err)
+		}
+		out.Certificates = []tls.Certificate{pair}
+	}
+	return out, nil
 }
 
 // AuditFile configures the "file" audit output.
@@ -1445,6 +1569,11 @@ func validateAuditConfig(cfg *Audit) error {
 			return fmt.Errorf("audit.file: %w", err)
 		}
 	}
+	if slices.Contains(outputs, AuditOutputHTTP) {
+		if err := validateAuditHTTPConfig(cfg.HTTP); err != nil {
+			return fmt.Errorf("audit.http: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -1459,10 +1588,10 @@ func NormalizeAuditOutputs(outputs []string) ([]string, error) {
 			continue
 		}
 		switch out {
-		case AuditOutputStdout, AuditOutputFile:
+		case AuditOutputStdout, AuditOutputFile, AuditOutputHTTP:
 		default:
-			return nil, fmt.Errorf("audit.outputs: unknown output %q (valid: %s, %s)",
-				raw, AuditOutputStdout, AuditOutputFile)
+			return nil, fmt.Errorf("audit.outputs: unknown output %q (valid: %s, %s, %s)",
+				raw, AuditOutputStdout, AuditOutputFile, AuditOutputHTTP)
 		}
 		if slices.Contains(normalized, out) {
 			return nil, fmt.Errorf("audit.outputs lists %q more than once", out)
@@ -1515,6 +1644,70 @@ func ResolveAuditFilePath(path string) (string, error) {
 		}
 	}
 	return filepath.Clean(path), nil
+}
+
+// validateAuditHTTPConfig checks the endpoint, bounds, auth and TLS material,
+// reading the TLS files, so a bad value fails startup rather than a delivery.
+func validateAuditHTTPConfig(cfg AuditHTTP) error {
+	if strings.TrimSpace(cfg.Endpoint) == "" {
+		return fmt.Errorf("endpoint is required when the %q output is selected", AuditOutputHTTP)
+	}
+	u, err := url.Parse(cfg.Endpoint)
+	if err != nil {
+		return fmt.Errorf("endpoint is not a valid URL: %w", err)
+	}
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !cfg.AllowInsecureTransport {
+			return fmt.Errorf("endpoint uses plaintext http:// but allow_insecure_transport is false; " +
+				"set it only for a trusted collector on the same network")
+		}
+		slog.Warn("audit.http endpoint is plaintext http://; audit records are sent unencrypted", "host", u.Host)
+	default:
+		return fmt.Errorf("endpoint scheme must be https (or http with allow_insecure_transport), got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("endpoint must include a host")
+	}
+
+	if cfg.BatchMaxEvents <= 0 {
+		return fmt.Errorf("batch_max_events must be positive, got %d", cfg.BatchMaxEvents)
+	}
+	if cfg.BatchMaxBytes <= 0 {
+		return fmt.Errorf("batch_max_bytes must be positive, got %d", cfg.BatchMaxBytes)
+	}
+	if cfg.FlushInterval <= 0 {
+		return fmt.Errorf("flush_interval must be positive, got %s", cfg.FlushInterval)
+	}
+	if cfg.QueueCapacity <= 0 {
+		return fmt.Errorf("queue_capacity must be positive, got %d", cfg.QueueCapacity)
+	}
+	if cfg.RequestTimeout <= 0 {
+		return fmt.Errorf("request_timeout must be positive, got %s", cfg.RequestTimeout)
+	}
+	if cfg.MaxRetries < 0 {
+		return fmt.Errorf("max_retries must be >= 0, got %d", cfg.MaxRetries)
+	}
+	if cfg.MaxRetries > 0 && cfg.RetryBackoff <= 0 {
+		return fmt.Errorf("retry_backoff must be positive when max_retries > 0, got %s", cfg.RetryBackoff)
+	}
+
+	if _, _, err := cfg.Auth.AuthHeader(); err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
+	// The tls block is ignored for a plaintext endpoint: there is no handshake.
+	if u.Scheme == "https" {
+		if _, err := cfg.TLS.ClientConfig(); err != nil {
+			return fmt.Errorf("tls: %w", err)
+		}
+		if cfg.TLS.InsecureSkipVerify {
+			slog.Warn("audit.http.tls.insecure_skip_verify is true: the receiver's certificate is not "+
+				"verified, so audit records are exposed to anyone able to intercept the connection",
+				"host", u.Host)
+		}
+	}
+	return nil
 }
 
 // OpenAuditFile opens path for append, creating the file 0600 inside a 0700
