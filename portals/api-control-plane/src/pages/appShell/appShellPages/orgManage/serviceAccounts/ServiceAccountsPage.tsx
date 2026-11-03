@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   Button,
   Chip,
@@ -257,7 +257,7 @@ const messages = defineMessages({
   },
   deleteInput: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.deleteInput',
-    defaultMessage: 'Type the ID to confirm',
+    defaultMessage: 'Type "{id}" to confirm',
   },
   deleted: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.deleted',
@@ -397,10 +397,12 @@ function ServiceAccountList() {
       }[confirm.kind]
     : null;
 
-  // Rendered in every branch: a list refetch that reloads or fails right after
-  // Create or Regenerate must not hide the one-time secret.
+  const confirmBusy = updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending;
+
+  // Rendered in every branch, under one key so React keeps it (and each open
+  // dialog's state) when a list refetch reloads or fails.
   const dialogs = (
-    <>
+    <Fragment key="dialogs">
       {formTarget !== null && (
         <ServiceAccountFormDialog
           account={formTarget === 'create' ? null : formTarget}
@@ -436,19 +438,26 @@ function ServiceAccountList() {
 
       {confirm && confirmMessages && (
         <ConfirmDialog
-          confirmInputLabel={confirm.kind === 'delete' ? intl.formatMessage(messages.deleteInput) : undefined}
+          confirmInputLabel={
+            confirm.kind === 'delete'
+              ? intl.formatMessage(messages.deleteInput, { id: confirm.account.id })
+              : undefined
+          }
           confirmLabel={intl.formatMessage(confirmMessages.label)}
           confirmPhrase={confirm.kind === 'delete' ? confirm.account.id : undefined}
           destructive
-          loading={updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending}
+          loading={confirmBusy}
           message={intl.formatMessage(confirmMessages.body)}
-          onCancel={() => setConfirm(null)}
+          // Not while the request runs: a regenerate's new secret would never be shown.
+          onCancel={() => {
+            if (!confirmBusy) setConfirm(null);
+          }}
           onConfirm={runConfirm}
           open
           title={intl.formatMessage(confirmMessages.title, { name: confirm.account.displayName })}
         />
       )}
-    </>
+    </Fragment>
   );
 
   if (accountsQuery.isPending) {

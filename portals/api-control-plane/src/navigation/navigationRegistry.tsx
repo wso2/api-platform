@@ -556,9 +556,11 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <SlidersHorizontal />,
     // Opens whichever of its pages `disableFeatures` leaves on.
     to: orgLevelTo((orgHandle) =>
-      isFeatureDisabled('subscription-plans')
-        ? routes.meters(orgHandle)
-        : routes.subscriptionPlans(orgHandle),
+      !isFeatureDisabled('subscription-plans')
+        ? routes.subscriptionPlans(orgHandle)
+        : !isFeatureDisabled('meters')
+          ? routes.meters(orgHandle)
+          : routes.serviceAccounts(orgHandle),
     ),
     // Never matches: the sidebar highlights the first active item it finds,
     // parents before children, so a parent matching its own pages would take the
@@ -587,7 +589,7 @@ export const navigationRegistry: NavigationDefinition[] = [
         icon: <Laptop />,
         id: 'manage-service-accounts',
         label: 'Service Accounts',
-        order: 1,
+        order: 2,
         // The page is for administrators; others would only see "forbidden".
         permission: 'createServiceAccount',
         to: orgLevelTo((orgHandle) => routes.serviceAccounts(orgHandle)),

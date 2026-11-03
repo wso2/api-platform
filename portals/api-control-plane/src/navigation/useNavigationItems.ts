@@ -46,15 +46,19 @@ const isFeatureEnabled = (definition: NavigationDefinition) =>
   runtimeConfig.featureFlags.includes(definition.featureKey);
 
 /**
- * Whether the deployment's `disableFeatures` hides this item: it names the item,
- * or the item is a parent whose children it all names — an empty menu would
- * otherwise still link to its first, hidden, page.
+ * Whether the deployment's `disableFeatures`, or the user's permissions, hide
+ * this item: it is named or not allowed, or it is a parent whose children all
+ * are — an empty menu would otherwise still link to its first, hidden, page.
  */
-const isDisabled = (definition: NavigationDefinition): boolean =>
+const isDisabled = (
+  definition: NavigationDefinition,
+  allowed: (permission: NonNullable<NavigationDefinition['permission']>) => boolean
+): boolean =>
   (definition.disableKey !== undefined && isFeatureDisabled(definition.disableKey)) ||
+  (definition.permission !== undefined && !allowed(definition.permission)) ||
   (definition.children !== undefined &&
     definition.children.length > 0 &&
-    definition.children.every(isDisabled));
+    definition.children.every((child) => isDisabled(child, allowed)));
 
 /**
  * Whether an item's `requires` scope holds — the gate on offering its children.
@@ -251,9 +255,8 @@ export const useNavigationItems = (): NavigationItem[] => {
       definition: NavigationDefinition
     ): NavigationItem | undefined => {
       if (!isFeatureEnabled(definition)) return undefined;
-      if (isDisabled(definition)) return undefined;
+      if (isDisabled(definition, (permission) => decide(permission).allowed)) return undefined;
       if (!(definition.isVisible?.(scope) ?? true)) return undefined;
-      if (definition.permission && !decide(definition.permission).allowed) return undefined;
 
       const to = definition.to(scope);
       if (!to) return undefined;

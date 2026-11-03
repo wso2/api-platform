@@ -2696,7 +2696,7 @@
     "defaultMessage": "This cannot be undone. The account is removed, its secret stops working, and every token it holds is rejected. If you might need it again, disable it instead."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.deleteInput": {
-    "defaultMessage": "Type the ID to confirm"
+    "defaultMessage": "Type \"{id}\" to confirm"
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.deleteTitle": {
     "defaultMessage": "Delete \"{name}\"?"

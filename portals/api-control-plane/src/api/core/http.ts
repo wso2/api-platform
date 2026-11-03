@@ -357,9 +357,25 @@ export type RequestOptions = {
   /**
    * Whether a 401 can mean the session is gone. `false` for a request carrying
    * its own credentials (the service-account token exchange): there a 401 means
-   * those were wrong, so the session is not re-checked and nothing is retried.
+   * those were wrong, so the session is not re-checked and nothing is retried,
+   * unless the BFF itself answers that the session is gone.
    */
   authFailureIsSession?: boolean;
+};
+
+/** Codes of the BFF's own 401s, which are about the session whatever the request carried. */
+const BFF_SESSION_CODES: ReadonlySet<unknown> = new Set(['NOT_AUTHENTICATED', 'SESSION_EXPIRED']);
+
+const isBffSessionFailure = (data: unknown): boolean => {
+  let body = data;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  return typeof body === 'object' && body !== null && BFF_SESSION_CODES.has((body as { code?: unknown }).code);
 };
 
 const isFormData = (value: unknown): value is FormData =>
@@ -482,7 +498,11 @@ async function send(
     deadline.release();
   }
 
-  if (response.status === 401 && !retried && options.authFailureIsSession !== false) {
+  if (
+    response.status === 401 &&
+    !retried &&
+    (options.authFailureIsSession !== false || isBffSessionFailure(response.data))
+  ) {
     const alive = await untilAborted(notifyUnauthorized(), options.signal);
     if (options.signal?.aborted) {
       throw platformErrorFromTransport(

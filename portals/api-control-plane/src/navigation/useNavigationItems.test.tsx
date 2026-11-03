@@ -595,4 +595,23 @@ describe('permission-gated items', () => {
   it('shows Service Accounts to a user who can', () => {
     expect(manageChildren(['ap:service_account:manage'])).toContain('manage-service-accounts');
   });
+
+  describe('with Subscription Plans and Meters disabled', () => {
+    const manageFor = (scopes: string[]) => {
+      disabled.names = ['subscription-plans', 'meters'];
+      return itemsAt(atOrg(), routes.organizationHome(ORG), scopes).find((item) => item.id === 'manage');
+    };
+
+    afterEach(() => {
+      disabled.names = [];
+    });
+
+    it('hides Manage from a user who cannot manage service accounts', () => {
+      expect(manageFor(['ap:service_account:read'])).toBeUndefined();
+    });
+
+    it('opens Manage at Service Accounts for a user who can', () => {
+      expect(manageFor(['ap:service_account:manage'])?.to).toBe(routes.serviceAccounts(ORG));
+    });
+  });
 });

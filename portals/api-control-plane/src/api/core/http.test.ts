@@ -587,6 +587,25 @@ describe('a 401', () => {
     expect(bodies).toHaveLength(1);
   });
 
+  it('still checks the session when the BFF says it is gone, even for a request with its own credentials', async () => {
+    server.use(
+      mswHttp.post(`${BASE}/service-accounts/token`, () =>
+        HttpResponse.json(
+          { status: 'error', code: 'SESSION_EXPIRED', message: 'session expired' },
+          { status: 401 }
+        )
+      )
+    );
+    const check = registerCheck(false);
+
+    const error = await rejection(
+      http.post('/service-accounts/token', undefined, { authFailureIsSession: false })
+    );
+
+    expect(error.status).toBe(401);
+    expect(check).toHaveBeenCalledTimes(1);
+  });
+
   it('sends a POST again with the same body', async () => {
     const bodies = answerInTurn('post', '/rest-apis', [401, 201]);
     registerCheck(true);

@@ -438,7 +438,10 @@ describe('ServiceAccountsPage', () => {
 
   it('regenerates from the edit view without losing unsaved edits', async () => {
     useAccounts();
-    server.use(resource('/service-accounts/ci-deployer', aServiceAccount()));
+    server.use(
+      resource('/service-accounts/ci-deployer', aServiceAccount()),
+      accepts('post', '/service-accounts/ci-deployer/regenerate-secret', credentialsFor(), { status: 200 }),
+    );
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
@@ -451,12 +454,11 @@ describe('ServiceAccountsPage', () => {
     const confirm = (await screen.findByText(/stops working immediately, with no overlap/)).closest<HTMLElement>(
       '[role="dialog"]',
     )!;
-    await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
-    await waitFor(() =>
-      expect(within(form).getByRole('button', { name: 'Save changes' })).toBeInTheDocument(),
-    );
-    expect(within(form).getByLabelText(/Description/)).toHaveValue('new description');
-  });
+    await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
+    await user.click(await screen.findByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(screen.queryByText('Copy the secret now')).not.toBeInTheDocument());
+    expect(screen.getByLabelText(/Description/)).toHaveValue('new description');
+  }, FORM_TIMEOUT);
 
   it('offers a reload when someone else changed the account first', async () => {
     useAccounts();
@@ -695,6 +697,80 @@ describe('ServiceAccountsPage when something fails', () => {
       await screen.findByText('Could not load the service account. Close this and try again.'),
     ).toBeInTheDocument();
     expect(within(form).getByText(/Someone else changed this account/)).toBeInTheDocument();
+  });
+
+  it('keeps an issued token on screen when the list fails to reload behind it', async () => {
+    useAccounts();
+    server.use(
+      resource(
+        '/service-accounts/token',
+        { access_token: 'eyJ.test.token', expires_in: 900, scope: 'ap:rest_api:read', token_type: 'Bearer' },
+        { method: 'post' },
+      ),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Get token' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/Client secret/), SECRET);
+    // A token exchange refreshes the list; from here on that read fails.
+    server.use(failure('get', '/service-accounts', 500, 'INTERNAL_ERROR'));
+    await user.click(within(dialog).getByRole('button', { name: 'Get token' }));
+
+    expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
+    expect(screen.getByLabelText('Access token')).toHaveValue('eyJ.test.token');
+  }, FORM_TIMEOUT);
+
+  it('keeps unsaved edits when the list fails to reload after a regenerate', async () => {
+    useAccounts();
+    server.use(
+      resource('/service-accounts/ci-deployer', aServiceAccount()),
+      accepts('post', '/service-accounts/ci-deployer/regenerate-secret', credentialsFor(), { status: 200 }),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'CI deployer' }));
+    const form = await screen.findByRole('dialog');
+    await user.clear(within(form).getByLabelText(/Description/));
+    await user.type(within(form).getByLabelText(/Description/), 'new description');
+    server.use(failure('get', '/service-accounts', 500, 'INTERNAL_ERROR'));
+    await user.click(within(form).getByRole('button', { name: 'Regenerate' }));
+    const confirm = (await screen.findByText(/stops working immediately/)).closest<HTMLElement>('[role="dialog"]')!;
+    await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
+    expect(await screen.findByText('Unable to load service accounts')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(screen.queryByText('Copy the secret now')).not.toBeInTheDocument());
+    expect(screen.getByLabelText(/Description/)).toHaveValue('new description');
+  }, FORM_TIMEOUT);
+
+  it('asks for the ID it shows, and cannot be dismissed while a regenerate runs', async () => {
+    useAccounts();
+    let answer: () => void = () => undefined;
+    server.use(
+      http.post(apiUrl('/service-accounts/ci-deployer/regenerate-secret'), async () => {
+        await new Promise<void>((resolve) => {
+          answer = resolve;
+        });
+        return HttpResponse.json(credentialsFor());
+      }),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(await screen.findByLabelText('Type "ci-deployer" to confirm')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Regenerate secret' }));
+    const confirm = (await screen.findByText(/stops working immediately/)).closest<HTMLElement>('[role="dialog"]')!;
+    await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
+    await user.keyboard('{Escape}');
+    answer();
+
+    expect(await screen.findByText('Copy the secret now')).toBeInTheDocument();
   });
 
   it('goes back to "Copy" when a later copy fails', async () => {
