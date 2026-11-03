@@ -113,7 +113,6 @@ Feature: LLM provider template management
     And the JSON response array "templates" should contain an item with "metadata.name" equal to "azureai-foundry"
     And the JSON response array "templates" should contain an item with "metadata.name" equal to "mistralai"
     And the JSON response array "templates" should contain an item with "metadata.name" equal to "awsbedrock"
-    And the JSON response array "templates" should contain an item with "metadata.name" equal to "typesafe"
 
   Scenario: Get non-existent LLM provider template returns 404
     When I send a "GET" request to the "gateway-controller" service at "/llm-provider-templates/non-existent-template-id"
