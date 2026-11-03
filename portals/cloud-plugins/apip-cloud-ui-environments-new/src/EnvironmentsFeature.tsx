@@ -22,7 +22,7 @@ import EnvironmentForm from './EnvironmentForm';
 import EnvironmentsList from './EnvironmentsList';
 import type { AIWorkspaceHostPort } from './hostPort';
 import { createApiEnvironmentPort } from './apiPort';
-import { ENVIRONMENT_OPERATIONS } from './permissions';
+import { ENVIRONMENT_OPERATIONS, permissionsOf } from './permissions';
 
 export type EnvironmentsFeatureProps = { port: AIWorkspaceHostPort };
 
@@ -35,7 +35,7 @@ const EnvironmentsFeature: FC<EnvironmentsFeatureProps> = ({ port }) => {
   // What the signed-in user may be offered, from the scopes each operation
   // accepts. The server still decides; this keeps the page from offering a call
   // it would refuse, and from making one it knows will be refused.
-  const { canAny } = port.permissions;
+  const { canAny } = permissionsOf(port);
   const canList = canAny(ENVIRONMENT_OPERATIONS.ListEnvironments);
   const canCreate = canAny(ENVIRONMENT_OPERATIONS.CreateEnvironment);
   const canDelete = canAny(ENVIRONMENT_OPERATIONS.DeleteEnvironment);

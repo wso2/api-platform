@@ -13,12 +13,13 @@ import PipelineCreatePage from './PipelineCreatePage';
 import PipelinesListPage from './PipelinesListPage';
 import UnexpectedErrorState from './components/UnexpectedErrorState';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { PIPELINE_OPERATIONS } from './permissions';
+import { permissionsOf, PIPELINE_OPERATIONS } from './permissions';
 import type { CreatePipelineInput, Environment, Pipeline } from './types';
 import {
   assembleEnvironments,
   buildStages,
   DEFAULT_PIPELINE_NAME,
+  environmentsNamedBy,
   type EnvironmentDTO,
 } from './utils';
 
@@ -40,7 +41,8 @@ type PipelineListDTO = { count?: number; list?: PipelineDTO[] };
  * `apiFetch` is the only transport — the component never sees a token or a URL.
  */
 const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
-  const { apiFetch, permissions } = port;
+  const { apiFetch } = port;
+  const permissions = permissionsOf(port);
   // What the signed-in user may be offered, from the scopes each operation
   // accepts. The server still decides; this keeps the page from offering a call
   // it would refuse, and from making one it knows will be refused.
@@ -59,8 +61,13 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
   // Guards against a save being issued twice (the create page also disables its
   // button, but this keeps a duplicate POST/PUT from ever leaving here).
   const submittingRef = useRef(false);
+  // Loads overlap when the user's permissions change mid-flight, and `apiFetch`
+  // cannot be cancelled: only the newest may write state, or an earlier
+  // response landing last would put back what it saw.
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     if (!canList) {
       setLoading(false);
       return;
@@ -70,19 +77,26 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
     try {
       // Independent of each other, so they go together rather than one after the
       // other: the page waits for the slower of the two instead of their sum.
-      // Environments are only asked for when the user may read them: the stage
-      // cards fall back to the names a pipeline already carries, so a role that
-      // reads pipelines but not environments still gets its list, not a 403.
+      // Environments are only asked for when the user may read them, so a role
+      // that reads pipelines but not environments still gets its list, not a 403.
       const [environmentList, pipelineList] = await Promise.all([
         canReadEnvironments
           ? apiFetch<EnvironmentListDTO>('GET', '/environments')
           : Promise.resolve(undefined),
         apiFetch<PipelineListDTO>('GET', '/pipelines'),
       ]);
-      const assembledEnvironments = assembleEnvironments(environmentList?.list ?? []);
+      if (seq !== loadSeqRef.current) return;
+      const pipelineDTOs = pipelineList?.list ?? [];
+      // Without the environment list, the names the pipelines already carry
+      // stand in for it: they are what a pipeline is made of, so the builder can
+      // still show, edit and compose from them — it just cannot offer an
+      // environment no pipeline names yet.
+      const assembledEnvironments = canReadEnvironments
+        ? assembleEnvironments(environmentList?.list ?? [])
+        : environmentsNamedBy(pipelineDTOs);
       setEnvironments(assembledEnvironments);
       setPipelines(
-        (pipelineList?.list ?? []).map((dto) => {
+        pipelineDTOs.map((dto) => {
           const base = {
             id: dto.id,
             name: dto.name,
@@ -96,9 +110,10 @@ const PipelinesFeature: FC<PipelinesFeatureProps> = ({ port }) => {
         })
       );
     } catch (loadError) {
+      if (seq !== loadSeqRef.current) return;
       setError(loadError instanceof Error ? loadError.message : 'Unable to load deployment pipelines.');
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [apiFetch, canList, canReadEnvironments]);
 

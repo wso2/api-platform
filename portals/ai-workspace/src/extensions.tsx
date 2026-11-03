@@ -47,15 +47,6 @@ export type AIWorkspaceExtension = SlotEntry & {
   path: string;
   label: string;
   icon?: ReactNode;
-  /**
-   * Scopes of which the signed-in user must hold one for this item to appear
-   * in the sidebar: the accepted-scope list of the operation its page reads, as
-   * the cloud plugin's OpenAPI spec declares it (`:manage` scopes included), so
-   * one held scope is enough. Omitted, the item shows to everyone, as a
-   * built-in item without a scope gate does. Visibility only — the page still
-   * gates itself, since a URL can be typed.
-   */
-  requiredScopes?: readonly string[];
   render: (port: AIWorkspaceHostPort) => ReactNode;
 };
 
@@ -106,8 +97,6 @@ export type AIWorkspacePageOverride = SlotEntry & {
   path?: string;
   /** Built-in `Hideable` regions this entry suppresses (see `slots/index.tsx`). */
   hides?: readonly string[];
-  /** As on `AIWorkspaceExtension`: gates the nav placement this override carries. */
-  requiredScopes?: readonly string[];
 };
 
 /**
@@ -172,19 +161,6 @@ export const hiddenRegionsOf = (
   entries: readonly AIWorkspaceCloudEntry[]
 ): readonly string[] =>
   entries.flatMap((entry) => ('hides' in entry ? (entry.hides ?? []) : []));
-
-/**
- * Whether the signed-in user may be shown `entry` — true when it declares no
- * `requiredScopes`, otherwise when `hasPermission` holds for at least one of
- * them (an any-of list, as the spec's own accepted-scope lists are).
- */
-export const isExtensionPermitted = (
-  entry: { requiredScopes?: readonly string[] },
-  hasPermission: (scope: string) => boolean
-): boolean => {
-  const required = entry.requiredScopes ?? [];
-  return required.length === 0 || required.some(hasPermission);
-};
 
 /** Every registered cloud entry — sidebar items and page overrides share one slot registry (see `slots/index.tsx`), filtered by `slot` at each consumption site. */
 export type AIWorkspaceCloudEntry =

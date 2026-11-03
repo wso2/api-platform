@@ -58,5 +58,11 @@ export type CloudHostPort = {
     /** Why the organization is read-only; the host supplies the wording. */
     readOnlyMessage?: string;
   };
-  permissions: PermissionsPort;
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };

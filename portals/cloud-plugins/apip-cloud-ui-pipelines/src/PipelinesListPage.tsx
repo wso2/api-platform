@@ -7,7 +7,7 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import {
   Box,
   Button,
@@ -69,6 +69,10 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
   const [expandedIds, setExpandedIds] = useState<string[]>(() => pipelines.map((p) => p.id));
   const [pendingDelete, setPendingDelete] = useState<Pipeline | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDelete) setPendingDelete(null);
+  }, [canDelete]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const toggleExpanded = (id: string) => {
@@ -82,6 +86,12 @@ const PipelinesListPage: FC<PipelinesListPageProps> = ({
     // closing first left the pipeline on screen with nothing to say a delete was
     // running, and a second click could issue a second delete.
     if (!pendingDelete || pendingDelete.isDefault || deleting) return;
+    // Rechecked here, not only on the row's button: the dialog can outlive the
+    // scope that opened it.
+    if (!canDelete) {
+      setPendingDelete(null);
+      return;
+    }
     setDeleting(true);
     try {
       await onDelete(pendingDelete.id);

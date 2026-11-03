@@ -16,6 +16,9 @@
  * under the License.
  */
 
+import type { ArtifactKind } from './deployApi';
+import type { PermissionsPort } from './hostPort';
+
 /**
  * The accepted-scope list of each operation this feature calls, as the
  * operation's `security` block declares it. Copied rather than generated: the
@@ -72,8 +75,48 @@ export const PROVIDER_BUILD_OPERATIONS = {
 } as const satisfies Record<string, readonly string[]>;
 
 /**
+ * Platform API: the artifact itself, read once for its display name and — for
+ * a REST API — its backend URL and whether a gateway created it (`readOnly`),
+ * which is what decides whether it may be deployed from here. The deployment
+ * scopes above do not reach these reads, so a user holding only those sees the
+ * pipeline but, for a REST API, cannot have its ownership confirmed and keeps
+ * the deploy actions locked (see `DeployFeature`).
+ */
+export const ARTIFACT_READ_OPERATIONS = {
+  RestApi: ['ap:rest_api:read', 'ap:rest_api:manage'],
+  GraphQLApi: ['ap:graphql_api:read', 'ap:graphql_api:manage'],
+  Mcp: ['ap:mcp_proxy:read', 'ap:mcp_proxy:manage'],
+  LlmProxy: ['ap:llm_proxy:read', 'ap:llm_proxy:manage'],
+  LlmProvider: ['ap:llm_provider:read', 'ap:llm_provider:manage'],
+  AgentProxy: ['ap:agent_proxy:read', 'ap:agent_proxy:manage'],
+} as const satisfies Record<ArtifactKind, readonly string[]>;
+
+/**
+ * Platform API (`/secrets`): a key typed into the provider deploy dialog is
+ * stored as a secret before the deploy is sent, so entering a new one needs
+ * this on top of the deploy scope. Deploying on a gateway's existing credential
+ * does not, which is why the two are gated apart.
+ */
+export const SECRET_OPERATIONS = {
+  CreateSecret: ['ap:secret:create', 'ap:secret:manage'],
+} as const satisfies Record<string, readonly string[]>;
+
+/**
  * Tooltip for a control disabled because the signed-in user lacks the scope.
  * Deliberately does not name the missing scope: that would tell a probing
  * caller what to look for, and means nothing to the person reading it.
  */
 export const NO_PERMISSION_TOOLTIP = "You don't have permission to perform this action.";
+
+
+/** The permission check with no host Port supplied: nothing is gated. */
+const ALLOW_ALL: PermissionsPort = { canAny: () => true };
+
+/**
+ * The host's permission check, or one that gates nothing when the Port carries
+ * none. A host without a permission layer leaves every control enabled exactly
+ * as before — the posture `resourceLimits` takes when absent — and platform-api
+ * still refuses what the user may not do.
+ */
+export const permissionsOf = (port: { permissions?: PermissionsPort }): PermissionsPort =>
+  port.permissions ?? ALLOW_ALL;

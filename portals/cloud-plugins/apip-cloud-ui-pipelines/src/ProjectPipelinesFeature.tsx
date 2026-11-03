@@ -7,16 +7,17 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { useCallback, useEffect, useMemo, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import ProjectPipelinesPage from './ProjectPipelinesPage';
 import type { AIWorkspaceHostPort } from './hostPort';
-import { PIPELINE_OPERATIONS } from './permissions';
+import { permissionsOf, PIPELINE_OPERATIONS } from './permissions';
 import type { Environment, Pipeline } from './types';
 import {
   assembleEnvironments,
   buildStages,
   DEFAULT_PIPELINE_NAME,
+  environmentsNamedBy,
   type EnvironmentDTO,
 } from './utils';
 
@@ -37,7 +38,8 @@ type ProjectPipelineDTO = { pipeline?: string };
  * Data flows through the host-injected `apiFetch`.
  */
 const ProjectPipelinesFeature: FC<ProjectPipelinesFeatureProps> = ({ port }) => {
-  const { apiFetch, projectHandle, permissions } = port;
+  const { apiFetch, projectHandle } = port;
+  const permissions = permissionsOf(port);
   // The page reads the binding and the pipelines to choose from, so both must be
   // allowed for it to render at all. Environments only decorate the stages and
   // are asked for only when the user may read them. The server still decides;
@@ -54,8 +56,12 @@ const ProjectPipelinesFeature: FC<ProjectPipelinesFeatureProps> = ({ port }) => 
   const [loading, setLoading] = useState(true);
   const [associating, setAssociating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Loads overlap when the project or the user's permissions change mid-flight,
+  // and `apiFetch` cannot be cancelled: only the newest may write state.
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     if (!projectHandle) {
       setError('Open a project to configure its deployment pipeline.');
       setLoading(false);
@@ -83,11 +89,17 @@ const ProjectPipelinesFeature: FC<ProjectPipelinesFeatureProps> = ({ port }) => 
       );
       // The binding stores the pipeline's OpenChoreo resource name — `Pipeline.id`
       // here — not its display name.
+      if (seq !== loadSeqRef.current) return;
       const bound = binding?.pipeline ?? '';
-      const assembledEnvironments = assembleEnvironments(environmentList?.list ?? []);
+      const pipelineDTOs = pipelineList?.list ?? [];
+      // Without the environment list, the names the pipelines carry stand in
+      // for it (see `environmentsNamedBy`).
+      const assembledEnvironments = canReadEnvironments
+        ? assembleEnvironments(environmentList?.list ?? [])
+        : environmentsNamedBy(pipelineDTOs);
       setEnvironments(assembledEnvironments);
       setPipelines(
-        (pipelineList?.list ?? []).map((dto) => {
+        pipelineDTOs.map((dto) => {
           const base = {
             id: dto.id,
             name: dto.name,
@@ -102,11 +114,12 @@ const ProjectPipelinesFeature: FC<ProjectPipelinesFeatureProps> = ({ port }) => 
       );
       setBoundPipeline(bound);
     } catch (loadError) {
+      if (seq !== loadSeqRef.current) return;
       setError(
         loadError instanceof Error ? loadError.message : 'Unable to load the deployment pipeline.'
       );
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [apiFetch, canReadEnvironments, canView, projectHandle]);
 

@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import type { PermissionsPort } from './hostPort';
+
 /**
  * The accepted-scope list of each Cloud Extension API operation this feature
  * calls, as the operation's `security` block declares it in the cloud plugin's
@@ -35,3 +37,16 @@ export const LOG_OPERATIONS = {
   QueryGatewayLogs: ['ap:gateway:read', 'ap:gateway:manage'],
   ListEnvironments: ['ap:environment:read', 'ap:environment:manage'],
 } as const satisfies Record<string, readonly string[]>;
+
+
+/** The permission check with no host Port supplied: nothing is gated. */
+const ALLOW_ALL: PermissionsPort = { canAny: () => true };
+
+/**
+ * The host's permission check, or one that gates nothing when the Port carries
+ * none. A host without a permission layer leaves every control enabled exactly
+ * as before — the posture `resourceLimits` takes when absent — and platform-api
+ * still refuses what the user may not do.
+ */
+export const permissionsOf = (port: { permissions?: PermissionsPort }): PermissionsPort =>
+  port.permissions ?? ALLOW_ALL;

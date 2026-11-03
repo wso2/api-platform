@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
+import { useEffect, useState, type FC } from 'react';
 import {
   Box,
   Button,
@@ -66,6 +66,10 @@ const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
   onDeleteBuild,
 }) => {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDeleteBuild) setPendingDelete(null);
+  }, [canDeleteBuild]);
 
   return (
     <Card
@@ -154,9 +158,9 @@ const ProviderBuildsCard: FC<ProviderBuildsCardProps> = ({
           <Button
             color="error"
             variant="contained"
-            disabled={busy}
+            disabled={busy || !canDeleteBuild}
             onClick={() => {
-              if (!pendingDelete) return;
+              if (!pendingDelete || !canDeleteBuild) return;
               const buildId = pendingDelete;
               setPendingDelete(null);
               onDeleteBuild(buildId);

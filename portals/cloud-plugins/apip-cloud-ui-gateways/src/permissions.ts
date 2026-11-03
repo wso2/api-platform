@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import type { PermissionsPort } from './hostPort';
+
 /**
  * The accepted-scope list of each Cloud Extension API operation this feature
  * calls, as the operation's `security` block declares it in the cloud plugin's
@@ -29,13 +31,19 @@
  * accepted entry — so the broader `:manage` scope is listed beside the action
  * and the feature never reasons about inheritance itself.
  *
- * Note what the spec says, which this copies as declared: listing managed
- * gateways accepts `ap:gateway:create`, not `ap:gateway:read`, so a read-only
- * gateway scope reaches a gateway's configuration but not the list it sits in.
+ * One departure from the cloud spec as it stands: it declares the gateway
+ * lists (managed and self-hosted alike) with `ap:gateway:create`/`:manage`
+ * only, while every other gateway read on the platform — the main spec's
+ * `GET /gateways`, a managed gateway's configuration below — accepts
+ * `ap:gateway:read`. That is the scope the list is meant to accept too, and the
+ * cloud spec is to be corrected to match, so it is listed here already: a
+ * read-only user is shown the page, and until the spec catches up a refused
+ * list is reported on it rather than the page being hidden from a user it is
+ * meant for.
  */
 export const GATEWAY_OPERATIONS = {
   ListEnvironments: ['ap:environment:read', 'ap:environment:manage'],
-  ListManagedGateways: ['ap:gateway:create', 'ap:gateway:manage'],
+  ListManagedGateways: ['ap:gateway:read', 'ap:gateway:create', 'ap:gateway:manage'],
   CreateManagedGateway: ['ap:gateway:create', 'ap:gateway:manage'],
   UpdateManagedGateway: ['ap:gateway:manage'],
   DeleteManagedGateway: ['ap:gateway:delete', 'ap:gateway:manage'],
@@ -49,3 +57,16 @@ export const GATEWAY_OPERATIONS = {
  * caller what to look for, and means nothing to the person reading it.
  */
 export const NO_PERMISSION_TOOLTIP = "You don't have permission to perform this action.";
+
+
+/** The permission check with no host Port supplied: nothing is gated. */
+const ALLOW_ALL: PermissionsPort = { canAny: () => true };
+
+/**
+ * The host's permission check, or one that gates nothing when the Port carries
+ * none. A host without a permission layer leaves every control enabled exactly
+ * as before — the posture `resourceLimits` takes when absent — and platform-api
+ * still refuses what the user may not do.
+ */
+export const permissionsOf = (port: { permissions?: PermissionsPort }): PermissionsPort =>
+  port.permissions ?? ALLOW_ALL;
