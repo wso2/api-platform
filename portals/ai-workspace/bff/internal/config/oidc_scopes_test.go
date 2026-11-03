@@ -17,6 +17,8 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -274,6 +276,37 @@ encryption_key = "test-session-key-at-least-32-characters"
 		}
 		if cfg.Auth.OIDC.Scopes != own {
 			t.Errorf("Scopes = %q, want the operator's own list %q unchanged", cfg.Auth.OIDC.Scopes, own)
+		}
+	})
+
+	t.Run("own scope list without the hub scopes warns in scope mode only", func(t *testing.T) {
+		own := "openid offline_access ap:mcp_proxy:read ap:docs:read"
+		body := strings.Replace(oidc, "client_id ", "scope = \""+own+"\"\nclient_id ", 1) +
+			"[ai_workspace.feature_flags]\napi_portal_integration_enabled = true\n"
+		for _, tc := range []struct {
+			mode string
+			warn bool
+		}{
+			{mode: "scope", warn: true},
+			{mode: "role", warn: false},
+		} {
+			authz := "[ai_workspace.auth.authorization]\nmode = \"" + tc.mode + "\"\n" +
+				"role_to_scope_mapping = \"/etc/role-to-scope-mapping.yaml\"\n"
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+			_, err := Load(writeConfig(t, body+authz))
+			slog.SetDefault(previous)
+			if err != nil {
+				t.Fatalf("%s mode: Load() error = %v", tc.mode, err)
+			}
+			out := logs.String()
+			if got := strings.Contains(out, "missing=ap:subscription_plan:read"); got != tc.warn {
+				t.Errorf("%s mode: warned about ap:subscription_plan:read = %v, want %v; logs:\n%s", tc.mode, got, tc.warn, out)
+			}
+			if strings.Contains(out, "ap:docs:read") {
+				t.Errorf("%s mode: warned about ap:docs:read, which the list requests; logs:\n%s", tc.mode, out)
+			}
 		}
 	})
 }

@@ -688,9 +688,33 @@ func Load(paths ...string) (*Config, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
+	if k.Bool(hubPublishingFlagKey) {
+		cfg.warnMissingHubPublishingScopes()
+	}
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg, k)
 	return cfg, nil
+}
+
+// warnMissingHubPublishingScopes flags an operator's own scope list that leaves out the
+// MCP Hub publish pages' scopes, which would make those pages fail to list plans or
+// documents. Role mode is skipped: there the scopes come from the user's roles.
+func (c *Config) warnMissingHubPublishingScopes() {
+	if !c.Auth.OIDCEnabled() || c.Auth.Authorization.Mode != AuthzModeScope {
+		return
+	}
+	requested := strings.Fields(c.Auth.OIDC.Scopes)
+	var missing []string
+	for _, scope := range strings.Fields(hubPublishingOIDCScopes) {
+		if !slices.Contains(requested, scope) {
+			missing = append(missing, scope)
+		}
+	}
+	if len(missing) > 0 {
+		slog.Warn("[auth.oidc] scope is missing scopes the MCP Hub publish pages need — "+
+			"they cannot list subscription plans or documents",
+			"missing", strings.Join(missing, " "))
+	}
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config key:
