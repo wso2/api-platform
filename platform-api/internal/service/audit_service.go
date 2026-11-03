@@ -36,12 +36,16 @@ type auditTable interface {
 }
 
 type AuditService struct {
-	repo auditTable
-	out  slog.Handler
+	enabled bool
+	repo    auditTable
+	out     slog.Handler
 }
 
 func NewAuditService(repo auditTable, cfg config.Audit, slogger *slog.Logger) *AuditService {
-	s := &AuditService{repo: repo}
+	s := &AuditService{enabled: cfg.Enabled, repo: repo}
+	if !cfg.Enabled {
+		return s
+	}
 	switch cfg.Output {
 	case "stdout":
 		s.out = slog.NewJSONHandler(os.Stdout, nil)
@@ -65,6 +69,9 @@ func openAuditLogFile() (*os.File, error) {
 }
 
 func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
+	if !s.enabled {
+		return nil
+	}
 	id := uuid.New().String()
 	// Microseconds: the finest precision every supported database stores, so
 	// the row and the output line hold the same time.

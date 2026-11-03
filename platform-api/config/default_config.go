@@ -158,6 +158,9 @@ func defaultConfig() *Server {
 				HashingAlgorithms: []string{"sha256"},
 			},
 		},
+		Audit: Audit{
+			Enabled: true,
+		},
 		EventHub: EventHub{
 			PollInterval:    3 * time.Second,
 			CleanupInterval: 10 * time.Minute,
