@@ -72,7 +72,7 @@ func providerWithPolicies(global *[]api.Policy, operation *[]api.OperationPolicy
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl:     api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl:     &api.LLMAccessControl{Mode: api.AllowAll},
 			GlobalPolicies:    global,
 			OperationPolicies: operation,
 			Policies:          legacy,

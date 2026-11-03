@@ -103,7 +103,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -143,7 +143,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	providerRuntimeConfig := api.RestAPI{
@@ -1052,7 +1052,7 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 			DisplayName: "Test Provider",
 			Version:     "1.0.0",
 			Template:    "non-existent-template",
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -1094,7 +1094,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -1137,7 +1137,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.DenyAll,
 				Exceptions: &[]api.RouteException{
 					{Path: "/v1/chat/completions", Methods: []api.RouteExceptionMethods{"POST"}},
@@ -1192,7 +1192,7 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			Policies: &[]api.LLMPolicy{
 				{
 					Name:    "request-transformer",
@@ -1308,7 +1308,7 @@ func TestTransformProvider_PolicyOrderDoesNotAffectWildcardCoverage(t *testing.T
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: &upstreamURL,
 				},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 				Policies:      &policies,
 			},
 		}
@@ -1396,7 +1396,7 @@ func TestTransformProvider_MostSpecificPathWinsForSamePolicy(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			Policies: &[]api.LLMPolicy{
 				{
 					Name:    "advanced-ratelimit",
@@ -1495,7 +1495,7 @@ func TestTransformProvider_MostSpecificPathWinsAcrossNestedWildcards(t *testing.
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			Policies: &[]api.LLMPolicy{
 				{
 					Name:    "advanced-ratelimit",
@@ -1599,7 +1599,7 @@ func TestTransformProvider_MostSpecificPathWinsAcrossMethodsAndOrder(t *testing.
 					Version:       "1.0.0",
 					Template:      "openai",
 					Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
-					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+					AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 					Policies: &[]api.LLMPolicy{
 						{Name: "advanced-ratelimit", Version: "v1", Paths: tc.paths},
 					},
@@ -1699,7 +1699,7 @@ func TestTransformProvider_MostSpecificMethodWinsOnSamePath(t *testing.T) {
 					Version:       "1.0.0",
 					Template:      "openai",
 					Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
-					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+					AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 					Policies:      &[]api.LLMPolicy{{Name: "advanced-ratelimit", Version: "v1", Paths: tc.paths}},
 				},
 			}
@@ -1798,7 +1798,7 @@ func transformProviderWithPolicies(t *testing.T, uuid string, tmplSpec api.LLMPr
 			Version:       "1.0.0",
 			Template:      "openai",
 			Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
-			AccessControl: ac,
+			AccessControl: &ac,
 			Policies:      &policies,
 		},
 	}
@@ -2031,7 +2031,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 					Value:  &authValue,
 				},
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -2105,7 +2105,7 @@ func TestTransformProvider_ApiKeyWithPolicyParams(t *testing.T) {
 					},
 				},
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -2188,7 +2188,7 @@ func TestTransformProvider_WithOAuth2UpstreamAuth(t *testing.T) {
 					},
 				},
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -2248,7 +2248,7 @@ func TestTransformProvider_PolicyVersionOverride(t *testing.T) {
 						PolicyVersion: policyVersion,
 					},
 				},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		}
 	}
@@ -2325,7 +2325,7 @@ func TestTransformProvider_OAuth2PolicyNameOverride(t *testing.T) {
 					PolicyParams: &map[string]interface{}{"tokenEndpoint": "https://idp.example.com/oauth2/token"},
 				},
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -2397,7 +2397,7 @@ func TestTransformProvider_WithOAuth2PasswordGrant(t *testing.T) {
 					},
 				},
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -2466,7 +2466,7 @@ func TestTransformProvider_WithOAuth2UpstreamAuth_MissingPolicyParams(t *testing
 					// PolicyParams deliberately omitted
 				},
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -2506,7 +2506,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -2614,7 +2614,7 @@ func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
 					Version:       "v1.0",
 					Template:      "openai",
 					Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
-					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+					AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 				},
 			}
 			providerAPI, err := transformer.Transform(provider, &api.RestAPI{})
@@ -2700,7 +2700,7 @@ func TestTransformProxy_WithOAuth2UpstreamAuth(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -2797,7 +2797,7 @@ func TestTransformProxy_ApiKeyWithPolicyParams(t *testing.T) {
 			Version:       "v1.0",
 			Template:      "openai",
 			Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 	providerAPI, err := transformer.Transform(provider, &api.RestAPI{})
@@ -2895,7 +2895,7 @@ func TestTransformProxy_WithOAuth2PasswordGrantScope(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -3000,7 +3000,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: "unsupported-mode",
 			},
 		},

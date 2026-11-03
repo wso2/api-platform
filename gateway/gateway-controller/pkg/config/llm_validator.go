@@ -492,6 +492,18 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 		})
 	}
 
+	if spec.Exposure != nil {
+		switch string(*spec.Exposure) {
+		case models.LLMProviderExposureRoute, models.LLMProviderExposureNone:
+		default:
+			errors = append(errors, ValidationError{
+				Field:   "spec.exposure",
+				Message: "spec.exposure must be 'route' or 'none'",
+			})
+		}
+	}
+	exposed := models.IsLLMProviderExposed(*spec)
+
 	if spec.Context != nil {
 		errors = append(errors, validateNotReservedGatewayPath("spec.context", strings.TrimSpace(*spec.Context))...)
 	}
@@ -500,9 +512,16 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 	// may reference one of them via `ref`).
 	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
 	errors = append(errors, v.validateUpstreamWithAuth("spec.upstream", &spec.Upstream, spec.UpstreamDefinitions)...)
+	errors = append(errors, validateLLMUpstreamAPIVersion("spec.upstream.apiVersion", spec.Upstream.ApiVersion)...)
 
-	// Validate access control
-	errors = append(errors, v.validateAccessControl("spec.accessControl", &spec.AccessControl)...)
+	if exposed {
+		// A route needs an access policy: without one there is no statement of
+		// which provider paths the route forwards, and the route would be built
+		// from nothing.
+		errors = append(errors, v.validateAccessControl("spec.accessControl", spec.AccessControl)...)
+	} else {
+		errors = append(errors, validateUnexposedProviderFields(spec)...)
+	}
 
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
@@ -512,6 +531,92 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 
 	return errors
+}
+
+// validateUnexposedProviderFields rejects every field that only means something on
+// a provider's own route, for a provider that publishes none (`exposure: none`).
+//
+// Rejected rather than ignored. Such a provider is reached only through the Models
+// that target it, which call its upstream directly; a context, an access policy or
+// a policy list on it would be accepted, stored, and silently never enforced —
+// which reads to an operator exactly like enforcement that does not work.
+func validateUnexposedProviderFields(spec *api.LLMProviderConfigData) []ValidationError {
+	var errors []ValidationError
+	reject := func(field, what string) {
+		errors = append(errors, ValidationError{
+			Field: field,
+			Message: fmt.Sprintf("%s is not allowed when spec.exposure is 'none': the provider has no route "+
+				"of its own, so its traffic is governed by the Models that target it", what),
+		})
+	}
+	if spec.Context != nil && strings.TrimSpace(*spec.Context) != "" {
+		reject("spec.context", "spec.context")
+	}
+	if spec.Vhost != nil && strings.TrimSpace(*spec.Vhost) != "" {
+		reject("spec.vhost", "spec.vhost")
+	}
+	if spec.AccessControl != nil {
+		reject("spec.accessControl", "spec.accessControl")
+	}
+	if spec.GlobalPolicies != nil && len(*spec.GlobalPolicies) > 0 {
+		reject("spec.globalPolicies", "spec.globalPolicies")
+	}
+	if spec.OperationPolicies != nil && len(*spec.OperationPolicies) > 0 {
+		reject("spec.operationPolicies", "spec.operationPolicies")
+	}
+	if spec.Policies != nil && len(*spec.Policies) > 0 {
+		reject("spec.policies", "spec.policies")
+	}
+	if spec.GlobalFaultPolicies != nil && len(*spec.GlobalFaultPolicies) > 0 {
+		reject("spec.globalFaultPolicies", "spec.globalFaultPolicies")
+	}
+	if spec.OperationFaultPolicies != nil && len(*spec.OperationFaultPolicies) > 0 {
+		reject("spec.operationFaultPolicies", "spec.operationFaultPolicies")
+	}
+	// A Model calls the upstream directly and lets the router rewrite the Host
+	// header to the upstream's own host. Manual host rewriting is a statement
+	// about a route this provider does not have.
+	if spec.Upstream.HostRewrite != nil && *spec.Upstream.HostRewrite == api.LLMProviderConfigDataUpstreamHostRewriteManual {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream.hostRewrite",
+			Message: "spec.upstream.hostRewrite 'manual' is not allowed when spec.exposure is 'none'",
+		})
+	}
+	return errors
+}
+
+// maxLLMUpstreamAPIVersionLength bounds spec.upstream.apiVersion. Real values are
+// a date or a short label ("2024-10-21", "v1beta").
+const maxLLMUpstreamAPIVersionLength = 64
+
+// llmUpstreamAPIVersionPattern admits the characters provider API versions are
+// spelled with. The value is rendered into a translator's parameters and, for
+// Azure, into a query string, so nothing outside this set is accepted.
+var llmUpstreamAPIVersionPattern = regexp.MustCompile(`^[A-Za-z0-9._\-]+$`)
+
+// validateLLMUpstreamAPIVersion validates the optional provider API version.
+//
+// It is optional here even for an Azure OpenAI provider, which cannot be served
+// through a Model without one: a provider's own route never needed it, so
+// requiring it on the provider would reject every Azure provider deployed before
+// the field existed. A Model targeting a provider that lacks it is rejected when
+// the Model is saved instead.
+func validateLLMUpstreamAPIVersion(field string, value *string) []ValidationError {
+	if value == nil {
+		return nil
+	}
+	v := strings.TrimSpace(*value)
+	switch {
+	case v == "":
+		return []ValidationError{{Field: field, Message: field + " must not be empty when set"}}
+	case len(v) > maxLLMUpstreamAPIVersionLength:
+		return []ValidationError{{Field: field,
+			Message: fmt.Sprintf("%s must not exceed %d characters", field, maxLLMUpstreamAPIVersionLength)}}
+	case !llmUpstreamAPIVersionPattern.MatchString(v):
+		return []ValidationError{{Field: field,
+			Message: field + " may contain only letters, digits, '.', '_' and '-'"}}
+	}
+	return nil
 }
 
 // validatePolicyListExclusivity enforces that the deprecated `policies` list is not used
@@ -885,25 +990,7 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 }
 
 func (v *LLMValidator) validateLLMProxyTransformer(fieldPrefix string, transformer *api.LLMProxyTransformer) []ValidationError {
-	var errors []ValidationError
-	if transformer.Type == "" {
-		errors = append(errors, ValidationError{
-			Field:   fieldPrefix + ".type",
-			Message: "Transformer type is required",
-		})
-	}
-	if transformer.Version == "" {
-		errors = append(errors, ValidationError{
-			Field:   fieldPrefix + ".version",
-			Message: "Transformer version is required",
-		})
-	} else if !majorVersionPattern.MatchString(transformer.Version) {
-		errors = append(errors, ValidationError{
-			Field:   fieldPrefix + ".version",
-			Message: "Transformer version must be major-only (e.g. v1)",
-		})
-	}
-	return errors
+	return validateTransformerTypeVersion(fieldPrefix, transformer.Type, transformer.Version)
 }
 
 // validateLLMUpstreamAuth validates an LlmProxy provider/additionalProviders auth block (must be non-nil).
