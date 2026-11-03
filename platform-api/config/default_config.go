@@ -160,6 +160,8 @@ func defaultConfig() *Server {
 		},
 		Audit: Audit{
 			Enabled: true,
+			// 100 MiB live + 100 MiB backup at most.
+			File: AuditFile{MaxSizeMB: 100},
 		},
 		EventHub: EventHub{
 			PollInterval:    3 * time.Second,

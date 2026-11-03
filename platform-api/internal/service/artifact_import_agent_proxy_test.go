@@ -464,8 +464,12 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 
 	cfg := &config.Server{}
 	cfg.Deployments.MaxPerAPIGateway = 10
+	auditSvc, err := NewAuditService(repository.NewAuditRepo(d.db), config.Audit{Enabled: true}, slog.Default())
+	if err != nil {
+		t.Fatalf("NewAuditService() error = %v", err)
+	}
 	proxySvc := NewAgentProxyService(d.agentRepo, d.projectRepo, d.deployment, d.gatewayRepo, nil,
-		slog.New(slog.NewTextHandler(io.Discard, nil)), NewAuditService(repository.NewAuditRepo(d.db), config.Audit{Enabled: true}, slog.Default()), cfg,
+		slog.New(slog.NewTextHandler(io.Discard, nil)), auditSvc, cfg,
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
 
 	got, err := proxySvc.Get(importTestOrgID, "weather-agent")

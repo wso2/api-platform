@@ -69,6 +69,7 @@ type Server struct {
 	timeoutService *service.DeploymentTimeoutService
 	dispatcher     *service.EventDispatcher
 	eventHub       eventhub.EventHub
+	auditService   *service.AuditService
 	logger         *slog.Logger
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 }
@@ -77,11 +78,6 @@ type Server struct {
 // are not covered by config-load validation. All checks are unconditional:
 // there is no relaxed/demo mode.
 func validateServerConfig(cfg *config.Server) error {
-	switch cfg.Audit.Output {
-	case "", "stdout", "file":
-	default:
-		return fmt.Errorf("audit.output must be \"stdout\" or \"file\"; got %q", cfg.Audit.Output)
-	}
 	if slices.Contains(cfg.Listeners.CORS.AllowedOrigins, "*") {
 		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
@@ -260,7 +256,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiUtil := &utils.APIUtil{}
 
 	// Initialize services
-	auditService := service.NewAuditService(auditRepo, cfg.Audit, slogger)
+	auditService, err := service.NewAuditService(auditRepo, cfg.Audit, slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize audit outputs: %w", err)
+	}
 	identityService := service.NewIdentityService(userIdentityMappingRepo)
 	orgService := service.NewOrganizationService(
 		orgRepo,
@@ -876,6 +875,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		timeoutService: timeoutService,
 		dispatcher:     dispatcher,
 		eventHub:       eventHub,
+		auditService:   auditService,
 		logger:         slogger,
 		plugins:        plugins,
 	}, nil
@@ -1186,6 +1186,13 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 		s.dispatcher.Shutdown()
 		if err := s.eventHub.Close(); err != nil {
 			s.logger.Error("EventHub close error", "error", err)
+		}
+		// Last, so records from requests and plugins that just finished are
+		// flushed. Its own bound: the servers may have used the whole budget above.
+		auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer auditCancel()
+		if err := s.auditService.Close(auditCtx); err != nil {
+			s.logger.Error("Audit output close error", "error", err)
 		}
 	}
 

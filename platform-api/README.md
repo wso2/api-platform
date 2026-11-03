@@ -312,7 +312,8 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 |---|---|
 | `[platform_api]` | resource paths |
 | `[platform_api.logging]` | `level`, `format` |
-| `[platform_api.audit]` | `enabled` (default `true`): record audit events in the `audit` table; `false` records nothing. `output`: also write each audit record as a JSON line tagged `"logType":"audit"` to `"stdout"` or `"file"` (`./data/logs/audit.log`); unset (default) writes none |
+| `[platform_api.audit]` | `enabled` (default `true`): record audit events in the `audit` table; `false` records nothing. `outputs` (default `[]`): also write each record as a JSON line tagged `"logType":"audit"` to any of `"stdout"` and `"file"`; an output that cannot be built fails startup, and a failed write never fails the request |
+| `[platform_api.audit.file]` | `path` (absolute, required for `"file"`; created `0600` in a `0700` directory), `max_size_mb` (default `100`; the live file is renamed to `<path>.1` at this size, `0` disables rotation). One writer per file: give each replica its own volume |
 | `[platform_api.security]` | `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
 | `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |

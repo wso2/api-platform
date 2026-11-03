@@ -25,7 +25,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -91,10 +93,26 @@ type Logging struct {
 	Format string `koanf:"format"`
 }
 
+// Audit outputs: where each audit record is written besides the audit table.
+const (
+	AuditOutputStdout = "stdout"
+	AuditOutputFile   = "file"
+)
+
 // Audit holds audit-log configuration.
 type Audit struct {
-	Enabled bool   `koanf:"enabled"`
-	Output  string `koanf:"output"`
+	Enabled bool      `koanf:"enabled"`
+	Outputs []string  `koanf:"outputs"`
+	File    AuditFile `koanf:"file"`
+}
+
+// AuditFile configures the "file" audit output.
+type AuditFile struct {
+	// Path is the absolute path of the live log file.
+	Path string `koanf:"path"`
+	// MaxSizeMB is the size at which the live file is renamed to <path>.1 and a
+	// new one opened. 0 disables rotation.
+	MaxSizeMB int `koanf:"max_size_mb"`
 }
 
 // Server holds the configuration parameters for the application.
@@ -901,6 +919,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
 		return nil, err
 	}
+	if err := validateAuditConfig(&cfg.Audit); err != nil {
+		return nil, err
+	}
 	if err := validateMCPServerConfig(&cfg.MCPServer, &cfg.Auth); err != nil {
 		return nil, err
 	}
@@ -1407,6 +1428,123 @@ func validateWebhookConfig(w *Webhook) error {
 		w.SignatureHeader = "X-Api-Portal-Signature"
 	}
 	return nil
+}
+
+// validateAuditConfig checks every selected audit output can be built, so a bad
+// output fails startup instead of losing records at runtime.
+func validateAuditConfig(cfg *Audit) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	outputs, err := NormalizeAuditOutputs(cfg.Outputs)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(outputs, AuditOutputFile) {
+		if err := validateAuditFileConfig(cfg.File); err != nil {
+			return fmt.Errorf("audit.file: %w", err)
+		}
+	}
+	return nil
+}
+
+// NormalizeAuditOutputs lower-cases and trims the configured output names,
+// rejecting an unknown or repeated name. The audit service builds its outputs
+// from the same normalized list that was validated here.
+func NormalizeAuditOutputs(outputs []string) ([]string, error) {
+	normalized := make([]string, 0, len(outputs))
+	for _, raw := range outputs {
+		out := strings.ToLower(strings.TrimSpace(raw))
+		if out == "" {
+			continue
+		}
+		switch out {
+		case AuditOutputStdout, AuditOutputFile:
+		default:
+			return nil, fmt.Errorf("audit.outputs: unknown output %q (valid: %s, %s)",
+				raw, AuditOutputStdout, AuditOutputFile)
+		}
+		if slices.Contains(normalized, out) {
+			return nil, fmt.Errorf("audit.outputs lists %q more than once", out)
+		}
+		normalized = append(normalized, out)
+	}
+	return normalized, nil
+}
+
+// validateAuditFileConfig proves the file output can be used by creating its
+// directory and opening the file, so a permissions or mount problem fails
+// startup rather than dropping records later.
+func validateAuditFileConfig(cfg AuditFile) error {
+	path, err := ResolveAuditFilePath(cfg.Path)
+	if err != nil {
+		return err
+	}
+	if cfg.MaxSizeMB < 0 {
+		return fmt.Errorf("max_size_mb must be >= 0, got %d", cfg.MaxSizeMB)
+	}
+	if cfg.MaxSizeMB == 0 {
+		slog.Warn("audit.file.max_size_mb is 0: rotation is disabled and the audit log grows "+
+			"until the volume is full", "path", path)
+	}
+	f, err := OpenAuditFile(path)
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+// ResolveAuditFilePath validates and cleans the audit log file path. The file
+// output resolves the path the same way.
+func ResolveAuditFilePath(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("path is required when the %q output is selected", AuditOutputFile)
+	}
+	if strings.ContainsRune(path, 0) {
+		return "", fmt.Errorf("path must not contain a null byte")
+	}
+	// A relative path would resolve against the working directory, an image detail.
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("path must be absolute, got %q", path)
+	}
+	// filepath.Clean resolves ".." rather than rejecting it, which would move the
+	// file out of the directory the operator chose.
+	for _, segment := range strings.Split(path, string(filepath.Separator)) {
+		if segment == ".." {
+			return "", fmt.Errorf("path must not contain %q segments, got %q", "..", path)
+		}
+	}
+	return filepath.Clean(path), nil
+}
+
+// OpenAuditFile opens path for append, creating the file 0600 inside a 0700
+// directory. Both modes apply only when created, so an existing file that group
+// or others can read is refused rather than written to; a permissive directory
+// only warns, since a 0600 file is unreadable whatever its directory's mode.
+func OpenAuditFile(path string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("cannot create directory for %q: %w", path, err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open %q for append: %w", path, err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("cannot stat %q: %w", path, err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		_ = f.Close()
+		return nil, fmt.Errorf("%q has permissions %#o, which allow group/other access; "+
+			"fix it with `chmod 600 %s` (or remove the file) and restart", path, perm, path)
+	}
+	dir := filepath.Dir(path)
+	if di, err := os.Stat(dir); err == nil && di.Mode().Perm()&0o077 != 0 {
+		slog.Warn("audit log directory is group/other accessible; the log file itself is 0600",
+			"dir", dir, "mode", fmt.Sprintf("%#o", di.Mode().Perm()))
+	}
+	return f, nil
 }
 
 func validateEventHubConfig(e *EventHub) error {
