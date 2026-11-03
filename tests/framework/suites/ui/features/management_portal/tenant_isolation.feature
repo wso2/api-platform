@@ -35,14 +35,12 @@ Feature: The Management Portal keeps each organization's APIs and gateways to it
     And a REST API "${CTX:apiB}" exists in project "default" on the control plane for "org B admin"
     And a gateway "${CTX:gatewayB}" is registered on the control plane for "org B admin"
     When the user signs in to the Management Portal as "org B admin"
-    * sheet check "TENANT-002"
     And the user opens the Management Portal page "/organizations/it-second-org/projects/default/apis"
     Then the Management Portal shows "${CTX:apiB}"
     And the Management Portal does not show "${CTX:apiA}"
     When the user opens the Management Portal page "/organizations/it-second-org/gateways"
     Then the Management Portal shows "${CTX:gatewayB}"
     And the Management Portal does not show "${CTX:gatewayA}"
-    * sheet check "TENANT-001"
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:apiA}"
     Then the Management Portal is not on a page under "/organizations/default"
     And the Management Portal does not show "${CTX:apiA}"
@@ -53,7 +51,6 @@ Feature: The Management Portal keeps each organization's APIs and gateways to it
     When the user opens the Management Portal page "/organizations/it-second-org/gateways/${CTX:gatewayA}"
     Then the Management Portal shows "Unable to load this gateway."
     And the Management Portal does not show "${CTX:gatewayA}"
-    * sheet check "TENANT-003"
     When the user opens the Management Portal page "/organizations/it-second-org/projects/default/apis/${CTX:apiA}/deploy"
     Then the Management Portal shows "API not found"
     When the user signs in to the Management Portal as the administrator
@@ -73,7 +70,6 @@ Feature: The Management Portal keeps each organization's APIs and gateways to it
     And a gateway "${CTX:deployGatewayA}" is registered on the control plane
     And a gateway "${CTX:deployGatewayB}" is registered on the control plane for "org B admin"
     When the user signs in to the Management Portal as the administrator
-    * sheet check "TENANT-004"
     And the user opens the Management Portal page "/organizations/default/projects/${CTX:deployProject}/apis/${CTX:deployApi}/deploy"
     Then the Management Portal shows "${CTX:deployGatewayA}"
     And the Management Portal does not show "${CTX:deployGatewayB}"

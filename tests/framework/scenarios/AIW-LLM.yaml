@@ -1,14 +1,13 @@
-# Scenario sheet: AI Workspace — LLM Providers and Proxies (AIW-LLM).
+# Scenario list: AI Workspace — LLM Providers and Proxies (AIW-LLM).
 #
-# One entry per sheet row. Each layer (ui, it) records how it covers the ID:
-#   automated    the refs run in CI and assert the sheet's expected result
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
 #   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
 #   exempt       the layer deliberately does not test the ID, for `reason`
 #   planned      not automated in this layer yet
 # Refs are feature paths relative to tests/framework plus the exact scenario name.
-# `make standards-check` keeps this file, the scenario tags and the `sheet check`
-# steps in agreement; `go run ./cmd/sheetreport` turns a run into sheet columns.
-sheet: AIW-LLM
+code: AIW-LLM
 title: LLM Providers and Proxies
 scenarios:
   - id: AIW-PRV-001
@@ -56,7 +55,7 @@ scenarios:
   - id: AIW-PRV-004
     title: Create another provider with the same name or ID as an existing one.
     priority: P2
-    sheetUpdate: "Creating a provider whose ID already exists is a conflict and no duplicate is created. The AI Workspace derives the ID from the name, so the same name conflicts in the UI; through the API only the ID must be unique, and a repeated display name with no ID gets a new, suffixed ID. (Decided 2026-10-28.)"
+    decision: "Creating a provider whose ID already exists is a conflict and no duplicate is created. The AI Workspace derives the ID from the name, so the same name conflicts in the UI; through the API only the ID must be unique, and a repeated display name with no ID gets a new, suffixed ID. (Decided 2026-10-28.)"
     ui:
       status: automated
       refs:
@@ -92,7 +91,7 @@ scenarios:
   - id: AIW-PRV-007
     title: Search and filter the provider list.
     priority: P2
-    sheetUpdate: "Test scenario: search the provider list. Expected: only matching providers are shown. (Decided 2026-10-28: search is the intended mechanism; there is no separate filter control.)"
+    decision: "Test scenario: search the provider list. Expected: only matching providers are shown. (Decided 2026-10-28: search is the intended mechanism; there is no separate filter control.)"
     ui:
       status: known-issue
       issue: https://github.com/wso2/api-platform/issues/3965
@@ -109,7 +108,7 @@ scenarios:
   - id: AIW-PRV-008
     title: Open the provider overview tab.
     priority: P2
-    sheetUpdate: "Expected: the overview shows the provider's name, template, version, description and context. (Decided 2026-10-30: the AI Workspace overview no longer shows the creator; the API still returns createdBy, checked at the IT layer.)"
+    decision: "Expected: the overview shows the provider's name, template, version, description and context. (Decided 2026-10-30: the AI Workspace overview no longer shows the creator; the API still returns createdBy, checked at the IT layer.)"
     ui:
       status: automated
       refs:
@@ -149,7 +148,7 @@ scenarios:
   - id: AIW-PRV-011
     title: Save the connection with an empty or invalid key.
     priority: P2
-    sheetUpdate: "Test scenario: save the connection with an empty key. Expected: a clear validation error is shown and nothing is saved. (Decided 2026-10-28: there is no key format rule; a wrong key is caught at invoke time, AIW-PRV-025.)"
+    decision: "Test scenario: save the connection with an empty key. Expected: a clear validation error is shown and nothing is saved. (Decided 2026-10-28: there is no key format rule; a wrong key is caught at invoke time, AIW-PRV-025.)"
     ui:
       status: known-issue
       issue: https://github.com/wso2/api-platform/issues/3967
@@ -165,7 +164,7 @@ scenarios:
   - id: AIW-PRV-012
     title: Add, edit and remove a model.
     priority: P1
-    sheetUpdate: "Expected: models added and removed persist after a page reload. In the UI a model is edited by removing and re-adding it; the API edits a model directly. (Decided 2026-10-28.)"
+    decision: "Expected: models added and removed persist after a page reload. In the UI a model is edited by removing and re-adding it; the API edits a model directly. (Decided 2026-10-28.)"
     ui:
       status: automated
       refs:
@@ -400,7 +399,7 @@ scenarios:
   - id: AIW-PRV-031
     title: Open project B's provider list when a provider exists in project A.
     priority: P1
-    sheetUpdate: "An organization-level provider is available to every project (e.g. offered when creating an App LLM Proxy in project A and in project B). (Decided 2026-10-28: providers belong to the organization, not to a project.)"
+    decision: "An organization-level provider is available to every project (e.g. offered when creating an App LLM Proxy in project A and in project B). (Decided 2026-10-28: providers belong to the organization, not to a project.)"
     ui:
       status: automated
       refs:

@@ -968,7 +968,7 @@ blocks:
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_import.feature
         tags: "gateway-version>1.2.0"
-      # Sheet AIW-LLM, AI Workspace provider creation through the control plane. Runs on
+      # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), AI Workspace provider creation through the control plane. Runs on
       # every platform-api database: the generated provider ID is stored in a bounded column.
       - name: aiw-llm-provider-create
         features:

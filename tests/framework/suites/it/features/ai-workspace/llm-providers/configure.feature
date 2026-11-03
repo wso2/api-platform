@@ -22,7 +22,7 @@ Feature: An LLM provider's credential and models are updated through the control
   I want to rotate a provider's credential and curate its model list
   So that the provider keeps working with current keys and advertises the right models
 
-  # Sheet AIW-LLM, sub-features "Connection" (AIW-PRV-010, AIW-PRV-011) and "Models"
+  # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Connection" (AIW-PRV-010, AIW-PRV-011) and "Models"
   # (AIW-PRV-012, AIW-PRV-013), at the API level. An update replaces the provider, so every
   # update below restates the provider's fields. AIW-PRV-011 is a known product defect (an
   # empty credential is accepted and the stored one kept), tagged @known-issue. The browser journey is

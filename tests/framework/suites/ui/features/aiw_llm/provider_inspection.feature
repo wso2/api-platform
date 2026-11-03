@@ -18,7 +18,7 @@
 
 @AIW-LLM
 Feature: Finding and inspecting LLM providers in the AI Workspace
-  Sheet AIW-LLM, sub-features "List", "Overview" and "Isolation" (AIW-PRV-007, AIW-PRV-008,
+  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "List", "Overview" and "Isolation" (AIW-PRV-007, AIW-PRV-008,
   AIW-PRV-031), through the browser. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/inspect.feature.
 
@@ -31,7 +31,6 @@ Feature: Finding and inspecting LLM providers in the AI Workspace
   Scenario: Journey: an administrator finds and inspects an LLM provider
     Given the user is signed in
 
-    * sheet check "AIW-PRV-008"
     When the user starts adding a provider from the "Azure OpenAI" template
     And the user creates the provider "${UNIQUE:PRV008-Provider}" pointed at the mock LLM with the API key "sk-aiw-prv-008-ui"
     Then the user is on the provider's overview page
@@ -46,7 +45,6 @@ Feature: Finding and inspecting LLM providers in the AI Workspace
     Then the provider's Connection tab shows the mock LLM endpoint and a masked credential
     And the page never shows the credential "sk-aiw-prv-008-ui"
 
-    * sheet check "AIW-PRV-007"
     Given a provider named "${UNIQUE:PRV007-Alpha}" exists
     And a provider named "${UNIQUE:PRV007-Beta}" exists
     When the user searches the provider list for "${UNIQUE:PRV007-Alpha}"
@@ -59,7 +57,6 @@ Feature: Finding and inspecting LLM providers in the AI Workspace
       | ${UNIQUE:PRV007-Beta}     |
       | ${UNIQUE:PRV008-Provider} |
 
-    * sheet check "AIW-PRV-031"
     Given the user creates a project named "${UNIQUE:PRV031-Project-A}"
     And the user creates a project named "${UNIQUE:PRV031-Project-B}"
     Then the provider "${UNIQUE:PRV008-Provider}" is offered when creating an app LLM proxy in project "${UNIQUE:PRV031-Project-A}"

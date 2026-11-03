@@ -412,32 +412,26 @@ boot instead of reporting a test failure.
   concurrency requires comparison of resource state, partitions, browser
   diagnostics, and product logs before declaring a framework limitation.
 
-## Scenario Sheets
+## Scenario Lists
 
-A product feature that maintainers track on a scenario sheet is mirrored by
-`coverage/<SHEET>.yaml` (for example `coverage/AIW-LLM.yaml`). Scenarios without sheet IDs
-are fine; the rules below apply to those that carry one. The manifest is the source of truth for which sheet IDs
-exist and how each layer covers them; `make standards-check` validates it against the
-feature files. The sheets are maintained internally, so the manifest is their public record:
-keep each entry readable without the sheet, and never link to the sheet itself.
+A product feature with a scenario list has `scenarios/<CODE>.yaml` (for example
+`scenarios/AIW-LLM.yaml`): one entry per scenario ID, kept by hand. Scenarios without an ID
+are fine; the rules below apply to those that carry one.
 
-- Every sheet ID must be accounted for in both layers: `ui` (browser journeys under
-  `suites/ui`) and `it` (API-level scenarios under `suites/it`). A layer's status is
-  `automated`, `known-issue` (with `issue`), `exempt` (with `reason`, approved by the
-  feature owner) or `planned`.
-- Tag each scenario with every sheet ID it covers (`@AIW-PRV-001`) and list the scenario in
-  that ID's manifest `refs` for its layer. Tag sheet IDs on scenarios only, never on a
-  feature or rule. A feature carries its sheet code as a feature tag (`@AIW-LLM`).
-- UI coverage is written as journeys: one scenario per user flow covering several IDs, with
-  `* sheet check "<ID>"` before each ID's steps. Every tagged ID needs exactly one check and
-  every check needs its tag. Order a journey by dependency, then priority.
-- A sheet ID whose expected result the product does not meet is never folded into a
-  passing journey and never asserted to the product's current behaviour without the feature
-  owner's decision. If it is a product defect, keep the sheet's expected result, move the ID
-  to a scenario of its own tagged `@known-issue`, and record the issue in the manifest.
+- Each entry records both layers: `ui` (browser journeys under `suites/ui`) and `it`
+  (API-level scenarios under `suites/it`). A layer's status is `automated`, `known-issue`
+  (with `issue`), `exempt` (with `reason`, approved by the feature owner) or `planned`, and
+  `refs` names the feature file and scenario that automate it.
+- Tag each scenario with every ID it covers (`@AIW-PRV-001`), on the scenario only, and the
+  feature with the list's code (`@AIW-LLM`). Update the entry's `refs` and status with the
+  scenario.
+- An ID whose expected result the product does not meet is never asserted to the product's
+  current behaviour without the feature owner's decision. If it is a product defect, keep
+  the expected result, put the ID in a scenario of its own tagged `@known-issue`, and record
+  the issue in the entry.
 - IT coverage is one scenario per ID (or a Scenario Outline) through the publisher REST API,
   the contract the UI, the CLI and customers share.
-- Do not invent IDs. Maintainers assign them; an ID must exist in a manifest before it is tagged.
+- Do not invent IDs. Maintainers assign them; an ID is added to its list before it is tagged.
 
 ## Scenario Annotations
 
@@ -445,7 +439,7 @@ Classify a scenario with the tags that apply:
 
 | Annotation | Cardinality | Meaning |
 |---|---:|---|
-| `@<SHEET-AREA-NNN>` | 0..N | A scenario-sheet ID the scenario covers; see Scenario Sheets. |
+| `@<CODE-AREA-NNN>` | 0..N | A scenario ID the scenario covers; see Scenario Lists. |
 | `@type:smoke`, `@type:negative`, `@type:regression` | 0..N | The nature or selection category of the scenario. |
 | `@known-issue` | 0..1 | Asserts expected behaviour the product does not meet yet; excluded by runner tags. |
 
@@ -467,7 +461,7 @@ duplicating it.
 
 ### Feature level
 
-- Search the scenario sheet's manifest under `coverage/` and the existing `.feature` files
+- Search the feature's scenario list under `scenarios/` and the existing `.feature` files
   for the behaviour under test.
 - Add scenarios to the existing feature file when it already owns the behavior.
 - Extend a `Scenario Outline` with another example when only the inputs differ.

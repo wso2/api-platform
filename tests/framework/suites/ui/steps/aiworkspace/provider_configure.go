@@ -125,7 +125,7 @@ func (u *Steps) providerModelsAre(ctx context.Context, table *godog.Table) error
 // does — focusing the masked field clears it, then typing and deleting leaves it empty —
 // and presses Save, recording the provider calls the attempt makes. Save is pressed even
 // when the form keeps it disabled; a disabled button ignores the press, which is what the
-// sheet's expectation is then checked against.
+// expected result is then checked against.
 func (u *Steps) clearsProviderCredentialAndSaves(ctx context.Context) error {
 	if err := u.watchSecretAndProviderCalls(ctx); err != nil {
 		return err

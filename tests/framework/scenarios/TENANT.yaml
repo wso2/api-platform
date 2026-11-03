@@ -1,14 +1,13 @@
-# Scenario sheet: Control Plane Tenant Isolation (TENANT).
+# Scenario list: Control Plane Tenant Isolation (TENANT).
 #
-# One entry per sheet row. Each layer (ui, it) records how it covers the ID:
-#   automated    the refs run in CI and assert the sheet's expected result
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
 #   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
 #   exempt       the layer deliberately does not test the ID, for `reason`
 #   planned      not automated in this layer yet
 # Refs are feature paths relative to tests/framework plus the exact scenario name.
-# `make standards-check` keeps this file, the scenario tags and the `sheet check`
-# steps in agreement; `go run ./cmd/sheetreport` turns a run into sheet columns.
-sheet: TENANT
+code: TENANT
 title: Control Plane Tenant Isolation
 scenarios:
   - id: TENANT-001

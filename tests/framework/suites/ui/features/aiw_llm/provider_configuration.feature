@@ -18,7 +18,7 @@
 
 @AIW-LLM
 Feature: Configuring an LLM provider's credential and models in the AI Workspace
-  Sheet AIW-LLM, sub-features "Connection" (AIW-PRV-010, AIW-PRV-011) and "Models"
+  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Connection" (AIW-PRV-010, AIW-PRV-011) and "Models"
   (AIW-PRV-012, AIW-PRV-013), through the browser. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/configure.feature.
 
@@ -36,7 +36,6 @@ Feature: Configuring an LLM provider's credential and models in the AI Workspace
     And the user creates the provider "${UNIQUE:PRV010-Provider}" pointed at the mock LLM with the API key "sk-aiw-prv-010-initial"
     And the user is on the provider's overview page
 
-    * sheet check "AIW-PRV-012"
     When the user opens the provider's Models tab
     Then the provider's models are:
       | gpt-4o-mini  |
@@ -52,7 +51,6 @@ Feature: Configuring an LLM provider's credential and models in the AI Workspace
       | gpt-4.1-mini      |
       | aiw-prv-012-model |
 
-    * sheet check "AIW-PRV-013"
     When the user adds the model "aiw-prv-012-model"
     Then the user sees "This model already exists for the selected provider." on the page
     And the provider's models are:
@@ -60,7 +58,6 @@ Feature: Configuring an LLM provider's credential and models in the AI Workspace
       | gpt-4.1-mini      |
       | aiw-prv-012-model |
 
-    * sheet check "AIW-PRV-010"
     When the user opens the provider's Connection tab
     And the user changes the provider's credential to "sk-aiw-prv-010-rotated"
     Then the provider was updated

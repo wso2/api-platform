@@ -18,18 +18,16 @@
 
 @AIW-LLM
 Feature: Creating an LLM provider in the AI Workspace
-  Sheet AIW-LLM, sub-feature "Create" (AIW-PRV-001..005), through the browser against the
+  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-feature "Create" (AIW-PRV-001..005), through the browser against the
   real control plane. The API-level scenarios for the same IDs are in
   suites/it/features/ai-workspace/llm-providers/create.feature.
 
   Every provider uses the Azure OpenAI template: it has no built-in endpoint, so the user
-  types one (the block's mock LLM) along with an API key, as the sheet describes.
+  types one (the block's mock LLM) along with an API key, as the scenario describes.
 
   The journey covers the IDs that build on each other: a provider is created and listed
   (AIW-PRV-001), the same name is refused as a conflict (AIW-PRV-004), and a name full of
-  spaces and punctuation still yields a valid ID (AIW-PRV-005). Each `sheet check` step
-  marks where an ID's checks begin, so a failure names the ID it broke and the IDs after it
-  are reported as not reached.
+  spaces and punctuation still yields a valid ID (AIW-PRV-005).
 
   Form validation (AIW-PRV-002, AIW-PRV-003) needs no created provider and runs in
   scenarios of its own. Both are known product defects, tagged @known-issue: the form gives
@@ -40,13 +38,11 @@ Feature: Creating an LLM provider in the AI Workspace
   Scenario: Journey: an administrator creates LLM providers from a template
     Given the user is signed in
 
-    * sheet check "AIW-PRV-001"
     When the user starts adding a provider from the "Azure OpenAI" template
     And the user creates the provider "${UNIQUE:PRV001-Provider}" pointed at the mock LLM with the API key "sk-aiw-prv-001-ui"
     Then the user is on the provider's overview page
     And the provider "${UNIQUE:PRV001-Provider}" is listed in the provider list
 
-    * sheet check "AIW-PRV-004"
     When the user starts adding a provider from the "Azure OpenAI" template
     And the user tries to create the provider "${UNIQUE:PRV001-Provider}" pointed at the mock LLM with the API key "sk-aiw-prv-004-ui"
     Then the provider creation is rejected with HTTP 409
@@ -55,7 +51,6 @@ Feature: Creating an LLM provider in the AI Workspace
     And exactly one provider named "${UNIQUE:PRV001-Provider}" exists
     And the API key secret of the rejected attempt was removed
 
-    * sheet check "AIW-PRV-005"
     When the user starts adding a provider from the "Azure OpenAI" template
     And the user creates the provider "My Provider (Beta) & Co! ${UNIQUE:PRV005}" pointed at the mock LLM
     Then the provider was created with an ID starting with "my-provider-beta-co-prv005-"

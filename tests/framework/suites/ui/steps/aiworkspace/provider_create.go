@@ -322,7 +322,7 @@ func (u *Steps) providerCreatedWithIDStarting(ctx context.Context, prefix string
 // triesToSubmitEmptyProviderForm does what a user does with an incomplete form: visits each
 // required field, leaves it empty, and presses Add Provider. The press is forced because
 // the form disables the button while required fields are empty; a disabled button
-// ignores it, which is the behaviour the sheet's expectation is checked against.
+// ignores it, which is the behaviour the expected result is checked against.
 func (u *Steps) triesToSubmitEmptyProviderForm(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {

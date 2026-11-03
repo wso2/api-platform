@@ -1,0 +1,14 @@
+{
+  "block": "rest-api-definition/sqlite",
+  "runner": "api-definitions",
+  "results": [
+    {
+      "id": "APIDEF-013",
+      "status": "failed",
+      "scenario": "Importing from the cloud metadata address or a file URL is refused with a generic error and creates nothing",
+      "feature": "/Users/randil/wso2/api-platform/tests/framework/suites/it/features/management-portal/api-definitions/limits.feature",
+      "step": "the response status code should be 201",
+      "error": "expected status 201, got POST https://127.0.0.1:33792/api/v0.9/rest-apis/import-openapi -\u003e 400, body=\"{\\\"status\\\":\\\"error\\\",\\\"code\\\":\\\"VALIDATION_FAILED\\\",\\\"message\\\":\\\"failed to fetch OpenAPI spec from the provided URL\\\"}\\n\""
+    }
+  ]
+}

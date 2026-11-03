@@ -22,7 +22,7 @@ Feature: LLM providers take their API definition from their template
   I want a provider created from a vendor's template to carry that vendor's API definition
   So that its resources and deployment match the vendor it fronts
 
-  # Sheet AIW-LLM, sub-feature "Templates" (AIW-PRV-027), at the API level. The platform
+  # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-feature "Templates" (AIW-PRV-027), at the API level. The platform
   # derives a provider's OpenAPI definition from its template when the provider is created;
   # endpoint and credential header defaults are applied by the AI Workspace form and are
   # checked in suites/ui/features/aiw_llm/provider_templates.feature.

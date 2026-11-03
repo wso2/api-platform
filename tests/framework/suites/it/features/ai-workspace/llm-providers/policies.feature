@@ -22,7 +22,7 @@ Feature: Guardrails and rate limits on an LLM provider through the control plane
   I want a provider's guardrails and rate limits stored exactly as configured, and bad limits refused
   So that the policies I set are the policies the gateway receives
 
-  # Sheet AIW-LLM, sub-features "Guardrails" (AIW-PRV-014) and "Rate limiting" (AIW-PRV-017,
+  # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Guardrails" (AIW-PRV-014) and "Rate limiting" (AIW-PRV-017,
   # AIW-PRV-019), at the API level. A guardrail is sent the way the AI Workspace sends it:
   # name, major version and parameters. Enforcement on traffic is covered with deployment.
   # The browser journey is suites/ui/features/aiw_llm/provider_policies.feature.

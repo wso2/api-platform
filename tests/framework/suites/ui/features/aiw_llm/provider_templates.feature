@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 @AIW-LLM
 Feature: Creating LLM providers from different templates in the AI Workspace
-  Sheet AIW-LLM, sub-feature "Templates" (AIW-PRV-027), through the browser. The API-level
+  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-feature "Templates" (AIW-PRV-027), through the browser. The API-level
   scenario is in suites/it/features/ai-workspace/llm-providers/templates.feature.
 
   Two vendors' templates set up a provider differently: OpenAI has a built-in endpoint and
@@ -28,7 +28,6 @@ Feature: Creating LLM providers from different templates in the AI Workspace
   Scenario: Journey: an administrator creates providers from two vendors' templates
     Given the user is signed in
 
-    * sheet check "AIW-PRV-027"
     When the user starts adding a provider from the "OpenAI" template
     Then the add-provider form does not ask for an endpoint
     When the user creates the provider "${UNIQUE:PRV027-OpenAI}" using the template's built-in endpoint

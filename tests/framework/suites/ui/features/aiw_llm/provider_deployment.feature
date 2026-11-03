@@ -18,7 +18,7 @@
 
 @AIW-LLM
 Feature: Deploying and running an LLM provider from the AI Workspace
-  Sheet AIW-LLM, sub-features "Deploy", "Undeploy", "Redeploy", "Invoke", "Guardrails",
+  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Deploy", "Undeploy", "Redeploy", "Invoke", "Guardrails",
   "Rate limiting" and "Connection" (AIW-PRV-009, 015, 016, 018, 020, 022, 023, 024, 025,
   026), through the browser against the block's real gateway. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/deploy.feature.
@@ -43,26 +43,21 @@ Feature: Deploying and running an LLM provider from the AI Workspace
       | request.max | 5 |
     And the user saves the provider changes
 
-    * sheet check "AIW-PRV-020"
     When the user deploys it to the gateway
     Then the user sees the deployment is Active
 
-    * sheet check "AIW-PRV-024"
     When the user returns to the provider overview
     And the user generates an API key named "${UNIQUE:prv020-consumer-key}"
     Then the user's call to the provider with "Hello there" returns HTTP 200
     And the call is answered with:
       | answer | Hello! How can I assist you today? |
 
-    * sheet check "AIW-PRV-026"
     Then the user's streaming call to the provider with "Hello" returns HTTP 200
     And the call streamed "This is a streamed reply from the mock model." in order and ended normally
 
-    * sheet check "AIW-PRV-015"
     Then the user's call to the provider with "one two three four five six seven eight" returns HTTP 422
     And the call's response contains "word"
 
-    * sheet check "AIW-PRV-016"
     When the user opens the provider's Guardrails & Policies tab
     And the user edits the "Word Count Guardrail (v1)" guardrail with:
       | request.max | 10 |
@@ -80,7 +75,6 @@ Feature: Deploying and running an LLM provider from the AI Workspace
     And the user returns to the provider overview
     Then the user's call to the provider with "one two three four five six seven eight nine ten eleven twelve" returns HTTP 200
 
-    * sheet check "AIW-PRV-025"
     When the user opens the provider's Connection tab
     And the user changes the provider's credential to "sk-aiw-prv-025-wrong-key"
     And the user deploys it to the gateway
@@ -107,7 +101,6 @@ Feature: Deploying and running an LLM provider from the AI Workspace
     And the call is answered with:
       | model | gpt-4.1-2025-04-14 |
 
-    * sheet check "AIW-PRV-009"
     When the user opens the provider's Connection tab
     And the user changes the provider's endpoint to the Mistral mock LLM
     And the user saves the provider changes
@@ -120,7 +113,6 @@ Feature: Deploying and running an LLM provider from the AI Workspace
     Then the user's call to the provider with "Hello" is answered by "mistral-small-latest"
     And the call returned HTTP 200
 
-    * sheet check "AIW-PRV-022"
     When the user opens the provider's deploy screen
     And the user sees the deployment is Active
     And the user stops the deployment
@@ -128,7 +120,6 @@ Feature: Deploying and running an LLM provider from the AI Workspace
     When the user returns to the provider overview
     Then the user's call to the provider with "Hello" returns HTTP 404
 
-    * sheet check "AIW-PRV-018"
     When the user opens the provider's Rate Limiting tab
     And the user sets the Backend Request Count limit to "2" per "1" hour
     And the user saves the provider changes

@@ -22,7 +22,7 @@ Feature: LLM providers are deployed to the gateway and serve traffic through it
   I want a provider deployed through the control plane to serve chat completions on the gateway
   So that its configuration — upstream, credential, guardrails, limits — is what callers get
 
-  # Sheet AIW-LLM, sub-features "Connection" (AIW-PRV-009), "Guardrails" (AIW-PRV-015,
+  # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Connection" (AIW-PRV-009), "Guardrails" (AIW-PRV-015,
   # AIW-PRV-016), "Rate limiting" (AIW-PRV-018), "Deploy", "Undeploy", "Redeploy"
   # (AIW-PRV-020, 022, 023) and "Invoke" (AIW-PRV-024, 025, 026), at the API level.
   # Each provider is set up the way the AI Workspace creates one — Azure OpenAI template,

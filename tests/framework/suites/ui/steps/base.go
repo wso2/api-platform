@@ -22,14 +22,12 @@ package steps
 
 import (
 	"context"
-	"strings"
 
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
-	"github.com/wso2/api-platform/tests/framework/core/sheet"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/aiworkspace"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/apiportal"
@@ -83,8 +81,7 @@ func (u *UI) Register(sc *godog.ScenarioContext) {
 	})
 	sc.After(func(ctx context.Context, scn *godog.Scenario, scenarioErr error) (context.Context, error) {
 		if scenarioErr != nil {
-			// Lead with the sheet ID whose checks failed, so a journey's evidence names it.
-			name := artifactBaseName(strings.TrimSpace(sheet.FailedID(ctx) + " " + scn.Name))
+			name := artifactBaseName(scn.Name)
 			u.saveFailureArtifacts(ctx, name)
 			u.stopTracing(ctx, name, true)
 		} else {

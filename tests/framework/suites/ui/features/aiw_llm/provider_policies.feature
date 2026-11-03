@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 @AIW-LLM
 Feature: Guardrails and rate limits on an LLM provider in the AI Workspace
-  Sheet AIW-LLM, sub-features "Guardrails" (AIW-PRV-014) and "Rate limiting" (AIW-PRV-017,
+  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Guardrails" (AIW-PRV-014) and "Rate limiting" (AIW-PRV-017,
   AIW-PRV-019), through the browser. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/policies.feature.
 
@@ -35,7 +35,6 @@ Feature: Guardrails and rate limits on an LLM provider in the AI Workspace
     And the user creates the provider "${UNIQUE:PRV014-Provider}" pointed at the mock LLM
     And the user is on the provider's overview page
 
-    * sheet check "AIW-PRV-014"
     When the user opens the provider's Guardrails & Policies tab
     And the user attaches the "Word Count Guardrail" guardrail with:
       | request.min | 1 |
@@ -46,7 +45,6 @@ Feature: Guardrails and rate limits on an LLM provider in the AI Workspace
     Then the provider's guardrails are:
       | Word Count Guardrail (v1) |
 
-    * sheet check "AIW-PRV-017"
     When the user opens the provider's Rate Limiting tab
     And the user sets the Backend Request Count limit to "100" per "1" hour
     And the user sets the Backend Token Count limit to "5000" per "2" day

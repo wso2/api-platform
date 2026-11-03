@@ -1,0 +1,33 @@
+{
+  "block": "management-portal-deploy",
+  "runner": "api-definition",
+  "results": [
+    {
+      "id": "APIDEF-010",
+      "status": "passed",
+      "scenario": "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones",
+      "feature": "/Users/randil/wso2/api-platform/tests/framework/suites/ui/features/management_portal/api_definition.feature"
+    },
+    {
+      "id": "APIDEF-009",
+      "status": "passed",
+      "scenario": "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones",
+      "feature": "/Users/randil/wso2/api-platform/tests/framework/suites/ui/features/management_portal/api_definition.feature"
+    },
+    {
+      "id": "APIDEF-012",
+      "status": "failed",
+      "scenario": "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones",
+      "feature": "/Users/randil/wso2/api-platform/tests/framework/suites/ui/features/management_portal/api_definition.feature",
+      "step": "the Management Portal shows \"The OpenAPI specification was accepted.\"",
+      "error": "the Management Portal never showed \"The OpenAPI specification was accepted.\": Locator expected to be visible\nActual value: - banner:\n  - button \"Collapse sidebar\" [expanded]\n  - button \"Go to organization overview\":\n    - img \"API Platform\"\n  - text: Organizations\n  - combobox \"Organizations\":\n    - paragraph: Organizations\n    - text: Default\n  - text: Projects\n  - combobox \"Projects\":\n    - paragraph: Projects\n    - text: apidef-ui-project-ndttikqg-1\n  - button \"Go to organization level\"\n  - button \"Select API\"\n  - button \"Switch to light mode\"\n  - button \"Account\": a\n- complementary:\n  - navigation:\n    - list:\n      - listitem:\n        - link \"Overview\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/home\n          - button \"Overview\"\n      - listitem:\n        - link \"Gateways\":\n          - /url: /organizations/default/gateways\n          - button \"Gateways\"\n    - separator\n    - list:\n      - listitem:\n        - link \"Develop\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/select-scope/develop/policies\n          - button \"Develop\"\n      - listitem:\n        - link \"Test\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/select-scope/test\n          - button \"Test\"\n      - listitem:\n        - link \"Deploy\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/select-scope/deploy\n          - button \"Deploy\"\n      - listitem:\n        - link \"Publish\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/select-scope/portals\n          - button \"Publish\"\n      - listitem:\n        - link \"Insights\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/select-scope/insights/api\n          - button \"Insights\"\n      - listitem:\n        - link \"Observability\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/select-scope/observability/metrics\n          - button \"Observability\"\n    - separator\n    - list:\n      - listitem:\n        - link \"Settings\":\n          - /url: /organizations/default/projects/apidef-ui-project-ndttikqg-1/settings\n          - button \"Settings\"\n- main:\n  - progressbar \"Step 2 of 3\"\n  - heading \"How do you want to define your REST API?\" [level=1]\n  - paragraph: Bring an existing contract, or start from a blank slate and fill in the details yourself.\n  - button \"Start from scratch Begin with a blank API and fill in the details.\":\n    - paragraph: Start from scratch\n    - paragraph: Begin with a blank API and fill in the details.\n  - button \"Start with a contract Import an API contract from a URL or a file.\" [pressed]:\n    - paragraph: Start with a contract\n    - paragraph: Import an API contract from a URL or a file.\n  - group \"Import the contract from\":\n    - button \"URL\"\n    - button \"Upload\" [pressed]\n  - heading \"Uploaded file\" [level=6]\n  - paragraph: generated.yaml\n  - text: YAML 64 kB\n  - button \"Remove generated.yaml\"\n  - alert: The OpenAPI specification exceeds the maximum allowed size.\n  - separator\n  - paragraph: Resources will show here\n  - paragraph: Import a contract to explore its endpoints\n  - text: Step 2 of 3\n  - button \"Back\"\n  - button \"Continue\" [disabled]\n  - text: © 2026 WSO2 LLC. local\n  - link \"Terms of Use\":\n    - /url: https://wso2.com/api-platform/terms-of-use\n  - link \"Privacy Policy\":\n    - /url: https://wso2.com/api-platform/privacy-policy \nCall log:\n  - Expect \"to.be.visible\" with timeout 15000ms\n  - waiting for getByText('The OpenAPI specification was accepted.').first()"
+    },
+    {
+      "id": "APIDEF-001",
+      "status": "not-reached",
+      "scenario": "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones",
+      "feature": "/Users/randil/wso2/api-platform/tests/framework/suites/ui/features/management_portal/api_definition.feature",
+      "error": "the scenario stopped at APIDEF-012 before this check began"
+    }
+  ]
+}
