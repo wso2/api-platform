@@ -256,11 +256,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	apiUtil := &utils.APIUtil{}
 
 	// Initialize services
-	auditService, err := service.NewAuditService(auditRepo, cfg.Audit, slogger)
+	identityService := service.NewIdentityService(userIdentityMappingRepo)
+	auditService, err := service.NewAuditService(auditRepo, identityService, cfg.Audit, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize audit outputs: %w", err)
 	}
-	identityService := service.NewIdentityService(userIdentityMappingRepo)
 	orgService := service.NewOrganizationService(
 		orgRepo,
 		projectRepo,

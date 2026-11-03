@@ -47,6 +47,12 @@ func (t *recordingAuditTable) Record(id string, performedAt time.Time, action, r
 	return t.err
 }
 
+type staticIdentity map[string]string
+
+func (m staticIdentity) DisplayIdentity(internalUserID string) (string, error) {
+	return m[internalUserID], nil
+}
+
 func TestAuditServiceRecordsToTableAndOutput(t *testing.T) {
 	insertErr := errors.New("insert failed")
 	for _, tc := range []struct {
@@ -59,7 +65,7 @@ func TestAuditServiceRecordsToTableAndOutput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &recordingAuditTable{err: tc.err}
 			logPath := filepath.Join(t.TempDir(), "audit.log")
-			s, err := NewAuditService(db, config.Audit{
+			s, err := NewAuditService(db, staticIdentity{"user-1": "alice"}, config.Audit{
 				Enabled: true,
 				Outputs: []string{config.AuditOutputFile},
 				File:    config.AuditFile{Path: logPath, MaxSizeMB: 100},
@@ -103,7 +109,7 @@ func TestAuditServiceRecordsToTableAndOutput(t *testing.T) {
 				"resourceType":   "rest_api",
 				"resourceId":     "res-1",
 				"organizationId": "org-1",
-				"performedBy":    "user-1",
+				"performedBy":    "alice",
 			} {
 				if line[key] != value {
 					t.Errorf("%s = %v, want %q", key, line[key], value)
@@ -115,7 +121,7 @@ func TestAuditServiceRecordsToTableAndOutput(t *testing.T) {
 
 func TestAuditServiceNoOutput(t *testing.T) {
 	db := &recordingAuditTable{}
-	s, err := NewAuditService(db, config.Audit{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s, err := NewAuditService(db, nil, config.Audit{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAuditService error = %v", err)
 	}

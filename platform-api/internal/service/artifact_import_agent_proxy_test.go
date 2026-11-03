@@ -464,7 +464,7 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 
 	cfg := &config.Server{}
 	cfg.Deployments.MaxPerAPIGateway = 10
-	auditSvc, err := NewAuditService(repository.NewAuditRepo(d.db), config.Audit{Enabled: true}, slog.Default())
+	auditSvc, err := NewAuditService(repository.NewAuditRepo(d.db), nil, config.Audit{Enabled: true}, slog.Default())
 	if err != nil {
 		t.Fatalf("NewAuditService() error = %v", err)
 	}

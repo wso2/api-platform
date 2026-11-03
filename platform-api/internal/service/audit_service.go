@@ -34,6 +34,12 @@ type auditTable interface {
 	Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
+type auditIdentity interface {
+	DisplayIdentity(internalUserID string) (string, error)
+}
+
+const auditMaskedValue = "****"
+
 type auditRecordJSON struct {
 	Time           time.Time `json:"time"`
 	LogType        string    `json:"logType"`
@@ -49,15 +55,17 @@ type auditRecordJSON struct {
 // for backward compatibility: the services that already record through that
 // interface are given an AuditService, so their calls are unchanged.
 type AuditService struct {
-	enabled bool
-	repo    auditTable
-	sinks   []auditSink
-	logger  *slog.Logger
+	enabled  bool
+	maskPII  bool
+	repo     auditTable
+	identity auditIdentity
+	sinks    []auditSink
+	logger   *slog.Logger
 }
 
 // NewAuditService builds the configured sinks; an error means startup must fail.
-func NewAuditService(repo auditTable, cfg config.Audit, logger *slog.Logger) (*AuditService, error) {
-	s := &AuditService{enabled: cfg.Enabled, repo: repo, logger: logger}
+func NewAuditService(repo auditTable, identity auditIdentity, cfg config.Audit, logger *slog.Logger) (*AuditService, error) {
+	s := &AuditService{enabled: cfg.Enabled, maskPII: cfg.MaskPII, repo: repo, identity: identity, logger: logger}
 	if !cfg.Enabled {
 		return s, nil
 	}
@@ -122,6 +130,16 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 	if len(s.sinks) == 0 {
 		return err
 	}
+	// The table keeps the internal user id; the line shows the user's identity,
+	// or a mask when mask_pii is set.
+	shownBy := auditMaskedValue
+	if !s.maskPII {
+		if display, idErr := s.identity.DisplayIdentity(performedBy); idErr == nil {
+			shownBy = display
+		} else {
+			s.logger.Warn("Failed to resolve the audit actor; masking it in the output", "error", idErr)
+		}
+	}
 	line, jsonErr := json.Marshal(auditRecordJSON{
 		Time:           performedAt,
 		LogType:        "audit",
@@ -130,7 +148,7 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 		ResourceType:   resourceType,
 		ResourceID:     resourceUUID,
 		OrganizationID: orgUUID,
-		PerformedBy:    performedBy,
+		PerformedBy:    shownBy,
 	})
 	if jsonErr != nil {
 		s.logger.Error("Failed to marshal audit record", "error", jsonErr)

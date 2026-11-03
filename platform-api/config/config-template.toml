@@ -90,6 +90,10 @@ format = "text"   # text | json
 # table; while it is false, nothing is recorded: no table rows and no output lines.
 [platform_api.audit]
 enabled = false
+# The output lines show who made the change as their identity (the token's sub,
+# or the username for file-based users); true writes "****" instead. The audit
+# table always keeps the internal user id.
+mask_pii = false
 # Also write each record as a JSON line tagged "logType":"audit" to any of
 # "stdout", "file" and "http". Outputs are additive and order is irrelevant.
 # While enabled, an unknown or repeated name fails startup. Empty keeps records in

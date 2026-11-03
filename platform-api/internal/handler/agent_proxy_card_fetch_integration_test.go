@@ -165,7 +165,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 	)
 
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)
-	auditSvc, err := service.NewAuditService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
+	auditSvc, err := service.NewAuditService(repository.NewAuditRepo(db), nil, config.Audit{Enabled: true}, slog.Default())
 	if err != nil {
 		t.Fatalf("NewAuditService: %v", err)
 	}

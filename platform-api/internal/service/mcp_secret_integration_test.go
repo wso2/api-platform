@@ -83,7 +83,7 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 	createTestSecret(t, secretSvc, mcpSecretITOrgUUID, "mcp-it-secret-b", "sk-mcp-real-token-B")
 
 	mcpRepo := repository.NewMCPProxyRepo(db)
-	auditSvc, err := NewAuditService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
+	auditSvc, err := NewAuditService(repository.NewAuditRepo(db), nil, config.Audit{Enabled: true}, slog.Default())
 	if err != nil {
 		t.Fatalf("create audit service: %v", err)
 	}
