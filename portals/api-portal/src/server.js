@@ -26,6 +26,7 @@ const { buildOutboundAgents } = require('./config/httpClientOptions');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
+const { addMissingSqliteColumns } = require('./db/sqliteColumns');
 const { seedDefaultOrg } = require('./services/seederService');
 const orgContext = require('./utils/orgContext');
 const orgDao = require('./dao/organizationDao');
@@ -146,6 +147,7 @@ async function ensureSchema() {
     for (const statement of splitSchemaStatements(schemaSql)) {
         await db.execute(statement);
     }
+    await addMissingSqliteColumns(db);
     logger.info('Database: SQLite schema ensured ✓');
 }
 

@@ -30,19 +30,20 @@ import (
 // supported via config rather than code. Defaults match the Platform API
 // file-based JWT and the SPA's OIDC defaults.
 //
-// Username names the single claim that carries the display name; an IDP that
-// carries it under a non-standard claim can be supported via config rather than
-// code. When that claim is absent the display name falls back to email, then
-// the subject id.
+// DisplayName names the claim that carries the user's human-readable name and
+// Username the claim used when it is absent; an IDP that carries either under a
+// non-standard claim can be supported via config rather than code. When both are
+// absent the display name falls back to email, then the subject id.
 type ClaimMapping struct {
-	Username  string
-	Email     string
-	Roles     string
-	Scope     string
-	OrgID     string
-	OrgName   string
-	OrgHandle string
-	Picture   string
+	DisplayName string
+	Username    string
+	Email       string
+	Roles       string
+	Scope       string
+	OrgID       string
+	OrgName     string
+	OrgHandle   string
+	Picture     string
 
 	// AuthzMode mirrors auth.authorization.mode: "scope" (default) reads
 	// effective scopes from the scope claim; "role" derives them from the roles
@@ -63,14 +64,15 @@ const AuthzModeRole = "role"
 // tokens. Callers may override individual keys to match a specific IDP.
 func DefaultClaimMapping() ClaimMapping {
 	return ClaimMapping{
-		Username:  "username",
-		Email:     "email",
-		Roles:     "roles",
-		Scope:     "scope",
-		OrgID:     "organization",
-		OrgName:   "org_name",
-		OrgHandle: "org_handle",
-		Picture:   "picture",
+		DisplayName: "name",
+		Username:    "username",
+		Email:       "email",
+		Roles:       "roles",
+		Scope:       "scope",
+		OrgID:       "organization",
+		OrgName:     "org_name",
+		OrgHandle:   "org_handle",
+		Picture:     "picture",
 	}
 }
 
@@ -157,9 +159,10 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 		return ""
 	}
 
-	// Resolve a human-friendly display name from the configured username claim,
-	// then email, and only as a last resort the opaque subject id (so the UI
-	// never shows a raw UUID when a readable claim is available).
+	// Resolve a human-friendly display name from the configured display-name
+	// claim, then the username claim, then email, and only as a last resort the
+	// opaque subject id (so the UI never shows a raw UUID when a readable claim
+	// is available).
 	// The roles claim is a string on some IDPs and an array on others (Entra ID and
 	// Thunder emit ["ap_admin"]), so read both shapes; a plain string read would leave
 	// this empty for an array-valued claim. roleList also feeds the role-mode expansion
@@ -167,7 +170,7 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	roleList := strSliceClaim(claims, m.Roles)
 
 	u := User{
-		Name:    first(get(m.Username), get(m.Email), get("sub")),
+		Name:    first(get(m.DisplayName), get(m.Username), get(m.Email), get("sub")),
 		Email:   get(m.Email),
 		Role:    strings.Join(roleList, " "),
 		Scopes:  effectiveScopes(claims, roleList, m),

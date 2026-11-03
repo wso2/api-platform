@@ -820,9 +820,18 @@ CREATE TABLE dbo.user_idp_references (
     uuid VARCHAR(40) NOT NULL,
     idp_id VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    display_name NVARCHAR(255) NULL,
     PRIMARY KEY (portal_id, uuid),
     CONSTRAINT uq_user_idp_references_portal_idp UNIQUE (portal_id, idp_id)
 );
+
+-- display_name is the user's human-readable name from the configured token claim
+-- (auth.claim_mappings.display_name); responses show it as createdBy/updatedBy,
+-- else idp_id. NULL until a token carries it; never used for matching or authorization.
+-- Upgrade path for databases created before display_name existed (also in database/upgrade/).
+-- NVARCHAR so names outside the database's code page survive.
+IF COL_LENGTH(N'dbo.user_idp_references', N'display_name') IS NULL
+ALTER TABLE dbo.user_idp_references ADD display_name NVARCHAR(255) NULL;
 
 -- User-Organization mappings (live membership record; both sides cascade on delete,
 -- unlike the "hanging creator" created_by/updated_by pattern used elsewhere).

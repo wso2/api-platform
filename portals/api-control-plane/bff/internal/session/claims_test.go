@@ -277,3 +277,23 @@ func TestUserFromClaims_RoleModeDottedRolesPath(t *testing.T) {
 		t.Errorf("Role = %q, want ap_viewer", u.Role)
 	}
 }
+
+// The display-name claim wins when present; a token without it shows exactly
+// what it showed before (username, then email, then sub).
+func TestUserFromClaims_DisplayNamePrecedence(t *testing.T) {
+	cases := []struct {
+		name   string
+		claims map[string]any
+		want   string
+	}{
+		{"display name", map[string]any{"name": "Ada Lovelace", "username": "ada", "email": "ada@example.com", "sub": "u-1"}, "Ada Lovelace"},
+		{"no display name", map[string]any{"username": "ada", "email": "ada@example.com", "sub": "u-1"}, "ada"},
+		{"empty display name", map[string]any{"name": "", "email": "ada@example.com", "sub": "u-1"}, "ada@example.com"},
+		{"non-string display name", map[string]any{"name": 42, "sub": "u-1"}, "u-1"},
+	}
+	for _, tc := range cases {
+		if got := UserFromClaims(tc.claims, nil, DefaultClaimMapping()).Name; got != tc.want {
+			t.Errorf("%s: Name = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

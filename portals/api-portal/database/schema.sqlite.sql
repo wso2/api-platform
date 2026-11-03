@@ -724,9 +724,15 @@ CREATE TABLE IF NOT EXISTS user_idp_references (
     uuid VARCHAR(40) NOT NULL,
     idp_id VARCHAR(255) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    display_name VARCHAR(255),
     PRIMARY KEY (portal_id, uuid),
     UNIQUE (portal_id, idp_id)
 );
+
+-- display_name is the user's human-readable name from the configured token claim
+-- (auth.claim_mappings.display_name); responses show it as createdBy/updatedBy,
+-- else idp_id. NULL until a token carries it; never used for matching or authorization.
+-- SQLite has no ADD COLUMN IF NOT EXISTS; ensureSchema (src/server.js) adds it to existing databases.
 
 -- User-Organization mappings (live membership record; both sides cascade on delete,
 -- unlike the "hanging creator" created_by/updated_by pattern used elsewhere).

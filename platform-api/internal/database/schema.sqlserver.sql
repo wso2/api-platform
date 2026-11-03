@@ -986,13 +986,23 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_asr_org_gateway' AND
 CREATE INDEX idx_asr_org_gateway ON dbo.artifact_secret_refs(organization_uuid, gateway_id);
 
 -- Maps our internal user UUID to the IdP actor identity. Audit columns store the
--- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
+-- UUID; events resolve it back to idp_id, responses to display_name (else idp_id).
+-- No FK; no empty-idp_id rows.
+-- display_name is the user's human-readable name, taken from the configured token
+-- claim (auth.claim_mappings.display_name) for display only; NULL until a token
+-- carries it, and never used for matching or authorization.
 IF OBJECT_ID(N'dbo.user_idp_references', N'U') IS NULL
 CREATE TABLE dbo.user_idp_references (
-    uuid       VARCHAR(40)  PRIMARY KEY,
-    idp_id     VARCHAR(255) NOT NULL UNIQUE,
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
+    uuid         VARCHAR(40)   PRIMARY KEY,
+    idp_id       VARCHAR(255)  NOT NULL UNIQUE,
+    created_at   DATETIME2(7)  DEFAULT SYSUTCDATETIME(),
+    display_name NVARCHAR(255) NULL
 );
+
+-- Upgrade path for databases created before display_name existed (also in upgrade/).
+-- NVARCHAR so names outside the database's code page survive.
+IF COL_LENGTH(N'dbo.user_idp_references', N'display_name') IS NULL
+ALTER TABLE dbo.user_idp_references ADD display_name NVARCHAR(255) NULL;
 
 -- User-to-organization membership, populated on org onboarding.
 IF OBJECT_ID(N'dbo.user_organization_mappings', N'U') IS NULL

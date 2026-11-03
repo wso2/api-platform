@@ -52,6 +52,9 @@ type noIdentityRepo struct {
 }
 
 func (noIdentityRepo) GetSubsByUUIDs([]string) (map[string]string, error) { return nil, nil }
+func (noIdentityRepo) GetIdentitiesByUUIDs([]string) (map[string]repository.UserIdentity, error) {
+	return nil, nil
+}
 
 func TestListProjects_PassesThePageAndReturnsTheTotal(t *testing.T) {
 	projects := &listProjectsRepo{}

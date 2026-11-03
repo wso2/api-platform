@@ -58,9 +58,9 @@ const sharedKeyAuth = require('./sharedKeyAuth');
 // past USER_UUID_CACHE_MAX_ENTRIES rather than tracking per-entry recency.
 const USER_UUID_CACHE_TTL_MS = 5 * 60 * 1000;
 const USER_UUID_CACHE_MAX_ENTRIES = 5000;
-const userUuidCache = new Map(); // sub -> { uuid, expiresAt }
+const userUuidCache = new Map(); // sub -> { uuid, displayName, expiresAt }
 const orgMappingCache = new Map(); // `${userUuid}:${orgId}` -> expiresAt
-const pendingUserUuidLookups = new Map(); // sub -> in-flight resolveUuid() promise
+const pendingUserUuidLookups = new Map(); // `${sub}\0${displayName}` -> in-flight resolveUuid() promise
 
 function getCached(cache, key) {
     const entry = cache.get(key);
@@ -78,6 +78,15 @@ function setCached(cache, key, entry, maxEntries) {
 }
 
 /**
+ * The configured display-name claim from a decoded token, or undefined.
+ * Never required: the claim is for display only.
+ */
+function displayNameClaim(decoded) {
+    const claim = config.auth.claimMappings?.displayName;
+    return claim && decoded ? getNestedClaim(decoded, claim) : undefined;
+}
+
+/**
  * Resolves the durable user_idp_references uuid for this sub claim, and
  * records that the user has been seen in the current org (if known). This
  * uuid — not the raw sub — is what flows into created_by/updated_by columns.
@@ -87,18 +96,26 @@ function setCached(cache, key, entry, maxEntries) {
  * authentication for an otherwise valid token/session. A resource write made
  * with the resulting undefined userId will fail at that write with a clear
  * validation error instead of taking down login.
+ *
+ * displayName is the configured display-name claim, if the token carried one. It
+ * is stored on the reference row for display only; when absent nothing about the
+ * lookup changes. A name the cache has not seen for this sub costs one more
+ * lookup, which stores it.
  */
-async function resolveUserUuid(req, sub) {
+async function resolveUserUuid(req, sub, displayName) {
     if (!sub) return undefined;
 
-    let userUuid = getCached(userUuidCache, sub)?.uuid;
-    if (userUuid === undefined) {
-        let pending = pendingUserUuidLookups.get(sub);
+    const name = userIdpReferenceDao.normalizeDisplayName(displayName);
+    const cached = getCached(userUuidCache, sub);
+    let userUuid = cached?.uuid;
+    if (userUuid === undefined || (name && cached.displayName !== name)) {
+        const pendingKey = `${sub}\0${name}`;
+        let pending = pendingUserUuidLookups.get(pendingKey);
         if (!pending) {
-            pending = userIdpReferenceDao.resolveUuid(sub).finally(() => {
-                pendingUserUuidLookups.delete(sub);
+            pending = userIdpReferenceDao.resolveUuid(sub, name).finally(() => {
+                pendingUserUuidLookups.delete(pendingKey);
             });
-            pendingUserUuidLookups.set(sub, pending);
+            pendingUserUuidLookups.set(pendingKey, pending);
         }
         try {
             userUuid = await pending;
@@ -108,7 +125,8 @@ async function resolveUserUuid(req, sub) {
             });
             return undefined;
         }
-        setCached(userUuidCache, sub, { uuid: userUuid }, USER_UUID_CACHE_MAX_ENTRIES);
+        setCached(userUuidCache, sub,
+            { uuid: userUuid, displayName: name || cached?.displayName }, USER_UUID_CACHE_MAX_ENTRIES);
     }
 
     if (req.orgId) {
@@ -414,7 +432,7 @@ async function authResolver(req, res, next) {
             }
             const orgErr = await resolveScopedOrg(req, orgHandle, 'platform-jwt session');
             if (orgErr) return next(orgErr);
-            const userUuid = await resolveUserUuid(req, req.user[constants.USER_ID]);
+            const userUuid = await resolveUserUuid(req, req.user[constants.USER_ID], req.user.displayName);
             req.auth = {
                 mode: 'platform-jwt',
                 preauthorized: false,
@@ -456,7 +474,7 @@ async function authResolver(req, res, next) {
                 : await resolveMissingOrgClaim(req);
             if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
-            const userUuid = await resolveUserUuid(req, rawSub);
+            const userUuid = await resolveUserUuid(req, rawSub, req.user.displayName);
             req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',
@@ -512,7 +530,7 @@ async function authResolver(req, res, next) {
                 if (orgErr) return next(orgErr);
             }
             const rawSub = decoded[constants.USER_ID];
-            const userUuid = await resolveUserUuid(req, rawSub);
+            const userUuid = await resolveUserUuid(req, rawSub, displayNameClaim(decoded));
             req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',
@@ -619,5 +637,6 @@ module.exports = {
     OAuth2Security,
     apiKeyAuth,
     resolveUserUuid,
+    displayNameClaim,
     verifyBearerToken,
 };

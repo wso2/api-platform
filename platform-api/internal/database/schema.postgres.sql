@@ -830,13 +830,21 @@ CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
     ON artifact_secret_refs(organization_uuid, gateway_id);
 
 -- Maps our internal user UUID to the IdP actor identity. Audit columns store the
--- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
+-- UUID; events resolve it back to idp_id, responses to display_name (else idp_id).
+-- No FK; no empty-idp_id rows.
+-- display_name is the user's human-readable name, taken from the configured token
+-- claim (auth.claim_mappings.display_name) for display only; NULL until a token
+-- carries it, and never used for matching or authorization.
 CREATE TABLE IF NOT EXISTS user_idp_references (
-    uuid       VARCHAR(40)  PRIMARY KEY,
-    idp_id     VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    uuid         VARCHAR(40)  PRIMARY KEY,
+    idp_id       VARCHAR(255) NOT NULL,
+    created_at   TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    display_name VARCHAR(255),
     UNIQUE(idp_id)
 );
+
+-- Upgrade path for databases created before display_name existed (also in upgrade/).
+ALTER TABLE user_idp_references ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);
 
 -- User-to-organization membership, populated on org onboarding.
 CREATE TABLE IF NOT EXISTS user_organization_mappings (

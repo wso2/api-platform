@@ -505,7 +505,7 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(mux router.Router) {
 // NOTE: SINGLE-LIMIT ASSUMPTION. The "limits" array holds at most one entry today
 // even though subscription_plan_limits supports many; see model.SubscriptionPlan.
 func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.SubscriptionPlan, detail bool) (map[string]any, error) {
-	createdBy, err := h.identity.SubForUUID(plan.CreatedBy)
+	createdBy, err := h.identity.DisplayNameForUUID(plan.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -519,7 +519,7 @@ func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.Subscri
 		"updatedAt":      plan.UpdatedAt,
 	}
 	if detail {
-		updatedBy, err := h.identity.SubForUUID(plan.UpdatedBy)
+		updatedBy, err := h.identity.DisplayNameForUUID(plan.UpdatedBy)
 		if err != nil {
 			return nil, err
 		}

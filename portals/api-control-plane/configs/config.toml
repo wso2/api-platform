@@ -144,6 +144,8 @@ post_logout_redirect_url = '{{ env "APIP_ACP_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL"
 # names differently (e.g. WSO2 Thunder emits ouId/ouName/ouHandle for org).
 [api_control_plane.auth.claim_mappings]
 
+# display_name is shown ahead of username when the token carries it (OIDC "name").
+display_name = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_DISPLAY_NAME" "name" }}'
 username   = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_USERNAME" "username" }}'
 email      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_EMAIL" "email" }}'
 roles      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ROLES" "roles" }}'

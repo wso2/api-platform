@@ -203,6 +203,10 @@ func (docHFailingIdentityRepo) GetOrCreateUUID(string) (string, error) {
 	return "", errors.New("identity store unavailable")
 }
 
+func (docHFailingIdentityRepo) GetOrCreateUUIDWithDisplayName(string, string) (string, error) {
+	return "", errors.New("identity store unavailable")
+}
+
 type docHEnv struct {
 	mux       *http.ServeMux
 	docs      *docHRepo

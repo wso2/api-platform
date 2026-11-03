@@ -725,9 +725,16 @@ CREATE TABLE IF NOT EXISTS user_idp_references (
     uuid VARCHAR(40) NOT NULL,
     idp_id VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    display_name VARCHAR(255),
     PRIMARY KEY (portal_id, uuid),
     UNIQUE (portal_id, idp_id)
 );
+
+-- display_name is the user's human-readable name from the configured token claim
+-- (auth.claim_mappings.display_name); responses show it as createdBy/updatedBy,
+-- else idp_id. NULL until a token carries it; never used for matching or authorization.
+-- Upgrade path for databases created before display_name existed (also in database/upgrade/).
+ALTER TABLE user_idp_references ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);
 
 -- User-Organization mappings (live membership record; both sides cascade on delete,
 -- unlike the "hanging creator" created_by/updated_by pattern used elsewhere).

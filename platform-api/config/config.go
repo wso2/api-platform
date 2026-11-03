@@ -454,6 +454,9 @@ type ClaimMappings struct {
 	Username     string `koanf:"username"`
 	Email        string `koanf:"email"`
 	Scope        string `koanf:"scope"`
+	// DisplayName is the claim holding the user's human-readable name, returned
+	// as createdBy/updatedBy in responses. Read only; never required.
+	DisplayName string `koanf:"display_name"`
 	Roles        string `koanf:"roles"`
 }
 

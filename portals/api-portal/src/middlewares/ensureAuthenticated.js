@@ -28,7 +28,7 @@ const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
 const logger = require('../config/logger');
 const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent } = require('../utils/tokenUtil');
-const { resolveUserUuid, verifyBearerToken } = require('./authMiddleware');
+const { resolveUserUuid, verifyBearerToken, displayNameClaim } = require('./authMiddleware');
 const {
     effectiveScopes,
     isAuthorizationEnabled,
@@ -104,7 +104,8 @@ function enforceSecurity(scope) {
                     }
                 }
                 const decodedAccessToken = safeDecodeJwt(token);
-                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID],
+                    req.user?.displayName || displayNameClaim(decodedAccessToken));
                 return validateAuthentication(scope)(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
@@ -227,12 +228,13 @@ const ensureAuthenticated = async (req, res, next) => {
     // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
     if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
         if (req.user.isLocalAuth && config.auth.mode !== 'idp') {
-            req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
+            req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID], req.user.displayName);
         } else {
             const earlyToken = accessTokenPresent(req);
             if (earlyToken) {
                 const earlyDecoded = safeDecodeJwt(earlyToken);
-                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID]);
+                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID],
+                    req.user.displayName || displayNameClaim(earlyDecoded));
             }
         }
     }
@@ -275,7 +277,7 @@ const ensureAuthenticated = async (req, res, next) => {
             // Config-auth: skip all token/exchange checks; roles already in session
             if (req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 req.orgId = req.orgId || orgDetails?.uuid;
-                req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
+                req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID], req.user.displayName);
                 if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
                     // Reject cross-org access: the URL's :orgName must resolve (via orgDetails.idp_ref_id)
                     // to the org the authenticated (local-auth) user's token claims it belongs to — the
@@ -315,7 +317,8 @@ const ensureAuthenticated = async (req, res, next) => {
             if (token) {
                 const decodedAccessToken = safeDecodeJwt(token);
                 req.orgId = req.orgId || orgDetails?.uuid;
-                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID],
+                    req.user?.displayName || displayNameClaim(decodedAccessToken));
             }
             if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];

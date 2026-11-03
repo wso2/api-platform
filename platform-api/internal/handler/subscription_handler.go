@@ -184,12 +184,12 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to bulk fetch plan names for list in org %s", orgId))
 	}
-	// Bulk-resolve createdBy UUIDs to their raw identity to avoid N+1 lookups.
+	// Bulk-resolve createdBy UUIDs to display names to avoid N+1 lookups.
 	createdByUUIDs := make([]string, 0, len(list))
 	for _, sub := range list {
 		createdByUUIDs = append(createdByUUIDs, sub.CreatedBy)
 	}
-	createdByMap, err := h.identity.SubsForUUIDs(createdByUUIDs)
+	createdByMap, err := h.identity.DisplayNamesForUUIDs(createdByUUIDs)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to resolve subscription creator identities in org %s", orgId))
 	}
@@ -345,11 +345,11 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	if artifactIdForResponse == "" {
 		artifactIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
-	createdBy, err := h.identity.SubForUUID(sub.CreatedBy)
+	createdBy, err := h.identity.DisplayNameForUUID(sub.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
-	updatedBy, err := h.identity.SubForUUID(sub.UpdatedBy)
+	updatedBy, err := h.identity.DisplayNameForUUID(sub.UpdatedBy)
 	if err != nil {
 		return nil, err
 	}

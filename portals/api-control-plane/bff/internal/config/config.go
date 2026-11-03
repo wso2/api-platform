@@ -405,6 +405,10 @@ type ClaimMappingConfig struct {
 	// Picture is the claim holding the user's avatar URL. Left unset it reads the
 	// standard OIDC "picture" claim.
 	Picture string `koanf:"picture"`
+	// DisplayName is the claim holding the user's human-readable name, shown in
+	// the UI ahead of Username. Left unset it reads the standard OIDC "name"
+	// claim; a token without it falls back to Username, email, then sub.
+	DisplayName string `koanf:"display_name"`
 }
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request,
