@@ -122,6 +122,8 @@ class PublicAPITests(unittest.TestCase):
             "MEDIATION_FAILED": "960000",
             "INVALID_REQUEST_BODY": "960001",
             "PROVIDER_STREAM_FAILED": "960002",
+            "NO_MODEL_AVAILABLE": "960003",
+            "INVALID_REQUEST_HEADER": "960004",
         }
         for name, wire in expected.items():
             self.assertEqual(getattr(v1alpha2.FaultCode, name), wire, name)

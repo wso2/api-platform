@@ -201,6 +201,13 @@ class FaultCode:
     #: A provider ending a streamed response with a failure after it began — an error event,
     #: an exception frame. The provider's failure, reported in its own stream.
     PROVIDER_STREAM_FAILED: Final[str] = "960002"
+    #: A model-routing policy with no model left to send the request to. The router was
+    #: never asked, so this is not UPSTREAM_UNAVAILABLE.
+    NO_MODEL_AVAILABLE: Final[str] = "960003"
+    #: A request header a policy needed and could not use — missing, malformed, or
+    #: contradicting the body. The caller's failure; the header counterpart of
+    #: INVALID_REQUEST_BODY.
+    INVALID_REQUEST_HEADER: Final[str] = "960004"
 
     # ── Codes the gateway sets — do not emit these ───────────────────────────
     UPSTREAM_UNREACHABLE: Final[str] = "101503"

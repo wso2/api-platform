@@ -352,10 +352,10 @@ const (
 // the analytics event. Encoding it a second time in the number says nothing the reader did
 // not already have, and costs a registry entry per policy to keep straight.
 //
-// A policy still allocates its own code for a condition genuinely its own — no model
-// available to route to — where the code names something the policy identity does not. A
-// provider's stream breaking mid-response was one such condition, until every stream
-// translator could hit it; it is FaultCodeProviderStreamFailed below.
+// A policy still allocates its own code for a condition genuinely its own, where the code
+// names something the policy identity does not. A condition several shipped policies can hit
+// — a provider's stream breaking mid-response, no model left to route to — is shared below
+// instead.
 const (
 	// FaultCodeMediationFailed is a policy failing to do its own job: a transformation it
 	// could not complete, a credential it could not mint, a rewrite it could not apply.
@@ -374,6 +374,22 @@ const (
 	// see it, and Policy already names which one did. Pair it with FaultTypeMediation and
 	// DirectionResponse.
 	FaultCodeProviderStreamFailed = "960002"
+	// FaultCodeNoModelAvailable is a model-routing policy with no model left to send the
+	// request to — every configured model suspended or otherwise excluded. The policy could
+	// not route, so the request never reached a provider.
+	//
+	// Not FaultCodeUpstreamUnavailable: that code is the router finding no healthy host for
+	// a route, a different thing to fix. Here the router was never asked. Pair it with
+	// FaultTypeMediation and DirectionRequest.
+	FaultCodeNoModelAvailable = "960003"
+	// FaultCodeInvalidRequestHeader is a request header a policy needed and could not use —
+	// missing, malformed, or contradicting the body it describes, such as an MCP mirrored
+	// header that does not match the JSON-RPC message. The failure is the caller's.
+	//
+	// The header counterpart of FaultCodeInvalidRequestBody, kept apart because the fix is
+	// in a different place: a client sending a well-formed body with a wrong header. Pair it
+	// with FaultTypeValidation and DirectionRequest.
+	FaultCodeInvalidRequestHeader = "960004"
 )
 
 // Blocks a policy may allocate in.
