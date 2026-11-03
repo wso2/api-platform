@@ -15,7 +15,7 @@
  *
  */
 
-package service
+package audit
 
 import (
 	"context"
@@ -47,7 +47,7 @@ func (t *recordingAuditTable) Record(id string, performedAt time.Time, action, r
 	return t.err
 }
 
-func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
+func TestServiceRecordsToTableAndOutput(t *testing.T) {
 	insertErr := errors.New("insert failed")
 	for _, tc := range []struct {
 		name string
@@ -59,13 +59,13 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &recordingAuditTable{err: tc.err}
 			logPath := filepath.Join(t.TempDir(), "audit.log")
-			s, err := NewAuditService(db, config.Audit{
+			s, err := NewService(db, config.Audit{
 				Enabled: true,
 				Outputs: []string{config.AuditOutputFile},
 				File:    config.AuditFile{Path: logPath, MaxSizeMB: 100},
 			}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 			if err != nil {
-				t.Fatalf("NewAuditService error = %v", err)
+				t.Fatalf("NewService error = %v", err)
 			}
 
 			err = s.Record("CREATE", "res-1", "rest_api", "org-1", "user-1")
@@ -113,11 +113,11 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 	}
 }
 
-func TestAuditServiceNoOutput(t *testing.T) {
+func TestServiceNoOutput(t *testing.T) {
 	db := &recordingAuditTable{}
-	s, err := NewAuditService(db, config.Audit{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s, err := NewService(db, config.Audit{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
-		t.Fatalf("NewAuditService error = %v", err)
+		t.Fatalf("NewService error = %v", err)
 	}
 
 	if err := s.Record("DELETE", "res-1", "project", "org-1", "user-1"); err != nil {

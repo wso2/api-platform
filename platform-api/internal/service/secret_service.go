@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -47,10 +48,10 @@ type SecretService struct {
 	repo         repository.SecretRepository
 	vault        vault.SecretVault
 	identity     *IdentityService
-	auditService *AuditService
+	auditService *audit.Service
 }
 
-func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService, auditService *AuditService) *SecretService {
+func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService, auditService *audit.Service) *SecretService {
 	return &SecretService{repo: repo, vault: v, identity: identity, auditService: auditService}
 }
 

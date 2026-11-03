@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
@@ -464,9 +465,9 @@ func TestAgentImport_PublicResponseIsReadOnlyAndOnlyMetadataIsEditable(t *testin
 
 	cfg := &config.Server{}
 	cfg.Deployments.MaxPerAPIGateway = 10
-	auditSvc, err := NewAuditService(repository.NewAuditRepo(d.db), config.Audit{Enabled: true}, slog.Default())
+	auditSvc, err := audit.NewService(repository.NewAuditRepo(d.db), config.Audit{Enabled: true}, slog.Default())
 	if err != nil {
-		t.Fatalf("NewAuditService() error = %v", err)
+		t.Fatalf("audit.NewService() error = %v", err)
 	}
 	proxySvc := NewAgentProxyService(d.agentRepo, d.projectRepo, d.deployment, d.gatewayRepo, nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)), auditSvc, cfg,

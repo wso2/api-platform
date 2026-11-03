@@ -45,6 +45,7 @@ import (
 	"github.com/wso2/api-platform/httpkit/netguard"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -165,9 +166,9 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 	)
 
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)
-	auditSvc, err := service.NewAuditService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
+	auditSvc, err := audit.NewService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
 	if err != nil {
-		t.Fatalf("NewAuditService: %v", err)
+		t.Fatalf("audit.NewService: %v", err)
 	}
 	apiKeySvc := service.NewAPIKeyService(
 		repository.NewAPIRepo(db),
@@ -175,7 +176,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		apiKeyRepo,
 		gatewayEvents,
 		auditSvc, // real rows, so key-deletion auditing is observable
-		nil, // defaults to [sha256]
+		nil,      // defaults to [sha256]
 		slog.Default(),
 	)
 	keyListSvc := service.NewAgentProxyAPIKeyService(agentRepo, apiKeyRepo, identity)

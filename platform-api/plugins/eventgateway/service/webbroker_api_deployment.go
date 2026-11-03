@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -51,7 +52,7 @@ type WebBrokerAPIDeploymentService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
-	auditService         *coreservice.AuditService
+	auditService         *audit.Service
 }
 
 // NewWebBrokerAPIDeploymentService creates a new WebBrokerAPIDeploymentService
@@ -66,7 +67,7 @@ func NewWebBrokerAPIDeploymentService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
-	auditService *coreservice.AuditService,
+	auditService *audit.Service,
 ) *WebBrokerAPIDeploymentService {
 	return &WebBrokerAPIDeploymentService{
 		auditService:         auditService,

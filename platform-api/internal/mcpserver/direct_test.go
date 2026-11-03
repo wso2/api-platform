@@ -30,6 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -166,7 +167,7 @@ func newRealDirect(t *testing.T) realDirect {
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
 	agentProxyRepo := repository.NewAgentProxyRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)
-	auditRepo, err := service.NewAuditService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
+	auditRepo, err := audit.NewService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
 	require.NoError(t, err)
 	graphqlAPIRepo := repository.NewGraphQLAPIRepo(db, registry)
 

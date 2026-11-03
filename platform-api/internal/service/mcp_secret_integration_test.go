@@ -32,6 +32,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/audit"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -83,7 +84,7 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 	createTestSecret(t, secretSvc, mcpSecretITOrgUUID, "mcp-it-secret-b", "sk-mcp-real-token-B")
 
 	mcpRepo := repository.NewMCPProxyRepo(db)
-	auditSvc, err := NewAuditService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
+	auditSvc, err := audit.NewService(repository.NewAuditRepo(db), config.Audit{Enabled: true}, slog.Default())
 	if err != nil {
 		t.Fatalf("create audit service: %v", err)
 	}

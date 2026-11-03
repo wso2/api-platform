@@ -15,10 +15,9 @@
  *
  */
 
-// Package audit writes audit records to the outputs named by
-// [platform_api.audit] outputs: stdout, a rotating file, or an HTTP receiver.
-// The audit table row is written by the caller; this package only handles the
-// copies that leave the process.
+// Package audit records audited changes: a row in the audit table and,
+// optionally, the same record as a JSON line on stdout, in a rotating file or
+// at an HTTP receiver, as configured in [platform_api.audit].
 package audit
 
 import (
@@ -29,22 +28,18 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// Record is one audit record, with the same values as its audit table row.
-type Record struct {
-	ID             string
-	Time           time.Time
-	Action         string
-	ResourceType   string
-	ResourceID     string
-	OrganizationID string
-	PerformedBy    string
+type table interface {
+	Record(id string, performedAt time.Time, action, resourceUUID, resourceType, orgUUID, performedBy string) error
 }
 
-// recordJSON is the line written for a Record. level, msg and logType are fixed,
-// so a collector can tell audit lines apart from platform-api's own JSON logs.
+// recordJSON is the line written for a record. level, msg and logType are
+// fixed, so a collector can tell audit lines apart from platform-api's own JSON
+// logs.
 type recordJSON struct {
 	Time           time.Time `json:"time"`
 	Level          string    `json:"level"`
@@ -58,20 +53,27 @@ type recordJSON struct {
 	PerformedBy    string    `json:"performedBy"`
 }
 
-// Writer writes each record to every configured sink.
-type Writer struct {
-	sinks  []sink
-	logger *slog.Logger
+// Service records audited changes. It implements repository.AuditRepository.
+type Service struct {
+	enabled bool
+	repo    table
+	sinks   []sink
+	logger  *slog.Logger
 }
 
-// NewWriter builds the sinks named by cfg.Outputs. A sink that cannot be built
-// is an error, and the caller refuses to start.
-func NewWriter(cfg config.Audit, logger *slog.Logger) (*Writer, error) {
+// NewService builds the sinks named by cfg.Outputs when auditing is enabled. A
+// sink that cannot be built is an error, and the caller refuses to start.
+func NewService(repo table, cfg config.Audit, logger *slog.Logger) (*Service, error) {
+	s := &Service{enabled: cfg.Enabled, repo: repo, logger: logger}
+	if !cfg.Enabled {
+		return s, nil
+	}
 	sinks, err := newSinks(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
-	return &Writer{sinks: sinks, logger: logger}, nil
+	s.sinks = sinks
+	return s, nil
 }
 
 // cleanupTimeout bounds closing the sinks already built when a later one fails
@@ -121,41 +123,51 @@ func newSinks(cfg config.Audit, logger *slog.Logger) ([]sink, error) {
 	return sinks, nil
 }
 
-// Write serializes the record once and hands the line to every sink. Each sink
-// handles its own failures, so one failing sink never stops the others and
-// never reaches the caller.
-func (w *Writer) Write(r Record) {
-	if len(w.sinks) == 0 {
-		return
+// Record writes the table row, then the same record as one JSON line to every
+// sink. Only the table error is returned: each sink handles its own failures,
+// so one failing sink never stops the others and never fails the request.
+func (s *Service) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
+	if !s.enabled {
+		return nil
 	}
-	line, err := json.Marshal(recordJSON{
-		Time:           r.Time,
+	id := uuid.New().String()
+	// Microseconds: the finest precision every supported database stores, so
+	// the row and the line hold the same time.
+	performedAt := time.Now().UTC().Truncate(time.Microsecond)
+
+	err := s.repo.Record(id, performedAt, action, resourceUUID, resourceType, orgUUID, performedBy)
+	if len(s.sinks) == 0 {
+		return err
+	}
+	line, jsonErr := json.Marshal(recordJSON{
+		Time:           performedAt,
 		Level:          "INFO",
 		Msg:            "audit",
 		LogType:        "audit",
-		ID:             r.ID,
-		Action:         r.Action,
-		ResourceType:   r.ResourceType,
-		ResourceID:     r.ResourceID,
-		OrganizationID: r.OrganizationID,
-		PerformedBy:    r.PerformedBy,
+		ID:             id,
+		Action:         action,
+		ResourceType:   resourceType,
+		ResourceID:     resourceUUID,
+		OrganizationID: orgUUID,
+		PerformedBy:    performedBy,
 	})
-	if err != nil {
-		w.logger.Error("Failed to marshal audit record", "error", err)
-		return
+	if jsonErr != nil {
+		s.logger.Error("Failed to marshal audit record", "error", jsonErr)
+		return err
 	}
-	for _, s := range w.sinks {
-		s.Write(line)
+	for _, sk := range s.sinks {
+		sk.Write(line)
 	}
+	return err
 }
 
 // Close closes every sink, flushing any that buffer. Errors are joined so one
 // stuck sink does not stop the others from closing.
-func (w *Writer) Close(ctx context.Context) error {
+func (s *Service) Close(ctx context.Context) error {
 	var errs []error
-	for _, s := range w.sinks {
-		if err := s.Close(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("closing the %s audit output: %w", s.Name(), err))
+	for _, sk := range s.sinks {
+		if err := sk.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing the %s audit output: %w", sk.Name(), err))
 		}
 	}
 	return errors.Join(errs...)
