@@ -411,3 +411,47 @@ func TestPolicyValidator_ValidateLLMProviderPolicies_TemplateExtractionParamsNot
 	def := paramDefs()["token-based-ratelimit|v1.0.0"]
 	assert.NotEmpty(t, validator.validatePolicyParams(merged, *def.Parameters, "p", nil))
 }
+
+// A Model's routing policy takes the policy's own parameters, validated against its
+// schema as written, alongside the Model's other policies.
+func TestPolicyValidator_ValidateModelPolicies_RoutingParams(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"models": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type":       "object",
+					"properties": map[string]interface{}{"model": map[string]interface{}{"type": "string"}},
+					"required":   []interface{}{"model"},
+				},
+			},
+		},
+		"required":             []interface{}{"models"},
+		"additionalProperties": false,
+	}
+	validator := NewPolicyValidator(map[string]models.PolicyDefinition{
+		"model-round-robin|v1.1.1": {Name: "model-round-robin", Version: "v1.1.1", Parameters: &schema},
+	}, nil)
+	model := func(params map[string]interface{}) *api.ModelConfiguration {
+		return &api.ModelConfiguration{Spec: api.ModelConfigData{Routing: &api.ModelRouting{
+			Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"},
+			Params: &params,
+		}}}
+	}
+
+	valid := map[string]interface{}{"models": []interface{}{map[string]interface{}{"model": "primary"}}}
+	assert.Empty(t, validator.ValidateModelPolicies(model(valid)))
+
+	errs := validator.ValidateModelPolicies(model(map[string]interface{}{"targets": []interface{}{"primary"}}))
+	require.NotEmpty(t, errs, "params the router does not declare are refused")
+	for _, e := range errs {
+		assert.Contains(t, e.Field, "spec.routing.params")
+	}
+
+	errs = validator.ValidateModelPolicies(&api.ModelConfiguration{Spec: api.ModelConfigData{Routing: &api.ModelRouting{
+		Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v9"},
+	}}})
+	require.NotEmpty(t, errs)
+	assert.Equal(t, "spec.routing.policy.version", errs[0].Field)
+}
