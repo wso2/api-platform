@@ -4261,6 +4261,7 @@ and
   "context": "/openai",
   "vhost": "api.openai.com",
   "template": "openai",
+  "exposure": "route",
   "upstreamDefinitions": [
     {
       "name": "my-upstream-1",
@@ -4295,7 +4296,8 @@ and
       "policyParams": {},
       "header": "string",
       "value": "string"
-    }
+    },
+    "apiVersion": "2024-10-21"
   },
   "accessControl": {
     "mode": "deny_all",
@@ -4389,6 +4391,7 @@ and
 |context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |template|string|true|none|Template name to use for this LLM Provider|
+|exposure|string|false|none|Whether the provider is published as a route of its own. `route` (the default) serves the provider at its context, as it always has. `none` publishes no route: the provider is reachable only through the Models that target it, which call its upstream directly with its upstream credential. A provider with `exposure: none` takes no context, vhost, accessControl, policies or fault policies, and issues no API keys.|
 |upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
 |upstream|any|true|none|none|
 
@@ -4404,11 +4407,17 @@ and
 |---|---|---|---|---|
 |» *anonymous*|[UpstreamAuth](#schemaupstreamauth)|false|none|none|
 
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|[LLMUpstreamVersion](#schemallmupstreamversion)|false|none|none|
+
 continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|accessControl|[LLMAccessControl](#schemallmaccesscontrol)|true|none|none|
+|accessControl|[LLMAccessControl](#schemallmaccesscontrol)|false|none|Required when `exposure` is `route`; rejected when it is `none`.|
 |globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
@@ -4421,6 +4430,8 @@ continued
 
 |Property|Value|
 |---|---|
+|exposure|route|
+|exposure|none|
 |deploymentState|deployed|
 |deploymentState|undeployed|
 
@@ -4465,6 +4476,26 @@ continued
 |type|oauth2|
 |type|other|
 |type|none|
+
+## LLMUpstreamVersion
+
+<a id="schemallmupstreamversion"></a>
+<a id="schema_LLMUpstreamVersion"></a>
+<a id="tocSllmupstreamversion"></a>
+<a id="tocsllmupstreamversion"></a>
+
+```json
+{
+  "apiVersion": "2024-10-21"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|false|none|The provider API version the gateway speaks when it translates a Model request for this provider — the Azure OpenAI `api-version` (required for an Azure OpenAI provider that Models target), the Gemini API version (default `v1beta`), or the Anthropic version header (default `2023-06-01`). Not used by the provider's own route.|
 
 ## LLMUpstreamAuth
 
@@ -5086,6 +5117,512 @@ and
 |---|---|
 |deploymentState|deployed|
 |deploymentState|undeployed|
+
+## ModelEndpointConfigurationRequest
+
+<a id="schemamodelendpointconfigurationrequest"></a>
+<a id="schema_ModelEndpointConfigurationRequest"></a>
+<a id="tocSmodelendpointconfigurationrequest"></a>
+<a id="tocsmodelendpointconfigurationrequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "ModelEndpoint",
+  "metadata": {
+    "name": "partners"
+  },
+  "spec": {
+    "displayName": "Partner Model Endpoint",
+    "version": "v1.0",
+    "context": "/partners/v1",
+    "policies": [
+      {
+        "name": "api-key-auth",
+        "version": "v1",
+        "params": {
+          "key": "Authorization",
+          "in": "header",
+          "valuePrefix": "Bearer"
+        }
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|Model endpoint specification version|
+|kind|string|true|none|Model endpoint kind|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[ModelEndpointConfigData](#schemamodelendpointconfigdata)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|ModelEndpoint|
+
+## ModelEndpointConfiguration
+
+<a id="schemamodelendpointconfiguration"></a>
+<a id="schema_ModelEndpointConfiguration"></a>
+<a id="tocSmodelendpointconfiguration"></a>
+<a id="tocsmodelendpointconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "ModelEndpoint",
+  "metadata": {
+    "name": "partners"
+  },
+  "spec": {
+    "displayName": "Partner Model Endpoint",
+    "version": "v1.0",
+    "context": "/partners/v1",
+    "policies": [
+      {
+        "name": "api-key-auth",
+        "version": "v1",
+        "params": {
+          "key": "Authorization",
+          "in": "header",
+          "valuePrefix": "Bearer"
+        }
+      }
+    ]
+  },
+  "status": {
+    "id": "partners",
+    "state": "deployed",
+    "createdAt": "2026-10-28T09:12:44Z",
+    "updatedAt": "2026-10-28T09:40:02Z",
+    "deployedAt": "2026-10-28T09:40:02Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[ModelEndpointConfigurationRequest](#schemamodelendpointconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+## ModelEndpointConfigData
+
+<a id="schemamodelendpointconfigdata"></a>
+<a id="schema_ModelEndpointConfigData"></a>
+<a id="tocSmodelendpointconfigdata"></a>
+<a id="tocsmodelendpointconfigdata"></a>
+
+```json
+{
+  "displayName": "Partner Model Endpoint",
+  "version": "v1.0",
+  "context": "/partners/v1",
+  "vhost": "partners-ai.example.com",
+  "inboundTemplate": "openai",
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "transformers": [
+    {
+      "provider": "acme-llm-prod",
+      "template": "anthropic",
+      "type": "openai-to-anthropic-transformer",
+      "version": "v1",
+      "params": {},
+      "upstreamPaths": [
+        "/v1/messages"
+      ]
+    }
+  ],
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  },
+  "deploymentState": "deployed"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable endpoint name, unique among the gateway's model endpoints (API-level rate-limit counters key on it). Only letters, numbers, spaces, hyphens, underscores and dots.|
+|version|string|true|none|Semantic version of the endpoint|
+|context|string|false|none|Base path the endpoint is served at (must start with /, no trailing slash). Required for every endpoint but the provisioned `wso2`, whose context is set by `controller.models.endpoint.context`. The context and vhost must not clash with any other artifact on the gateway.|
+|vhost|string|false|none|Virtual host the endpoint is served on; the gateway's default vhost when absent. Wildcards are only allowed in the left-most label.|
+|inboundTemplate|string|false|none|Handle of the provider template describing the wire format clients send, as on an LLM proxy. The model is read where the template's `requestModel` says. `openai` (the default), `anthropic` and `gemini` are accepted: the formats the gateway has an inbound profile for, which fixes the endpoint's operations, catalog and error bodies.|
+|policies|[[Policy](#schemapolicy)]|false|none|Endpoint-wide policies, run first in every Model chain and in the catalog chain. Attached at API level, so an endpoint rate limit is shared by every Model. When omitted, defaults to api-key-auth on `Authorization: Bearer <key>`. An explicit list is used as given, so an empty list serves the endpoint without authentication.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Policies executed when any request on the endpoint fails, over the error response; run after a Model's own fault policies.|
+|transformers|[[ModelEndpointTransformer](#schemamodelendpointtransformer)]|false|none|The transformers that convert this endpoint's inbound format to a provider's. There are no built-in defaults: a provider whose template is the endpoint's inbound template needs none, and any other provider needs an entry here, matched by provider handle first and template second. A Model with a provider no entry matches is left out of this endpoint.|
+|resilience|[Resilience](#schemaresilience)|false|none|Route timeouts for the endpoint's dispatch and catalog operations.|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. An undeployed endpoint serves nothing; its Models and keys are kept, and Models keep serving on their other endpoints.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
+## ModelEndpointTransformer
+
+<a id="schemamodelendpointtransformer"></a>
+<a id="schema_ModelEndpointTransformer"></a>
+<a id="tocSmodelendpointtransformer"></a>
+<a id="tocsmodelendpointtransformer"></a>
+
+```json
+{
+  "provider": "acme-llm-prod",
+  "template": "anthropic",
+  "type": "openai-to-anthropic-transformer",
+  "version": "v1",
+  "params": {},
+  "upstreamPaths": [
+    "/v1/messages"
+  ]
+}
+
+```
+
+One transformer entry: the LLM proxy `transformer` fields (`type`, `version`, `params`), plus which providers it applies to and the paths it writes. Exactly one of `provider` or `template` is set.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|provider|string|false|none|LLM provider handle this entry applies to. Wins over a `template` entry.|
+|template|string|false|none|Provider template handle or template group this entry applies to.|
+|type|string|true|none|An installed transformer policy name, or `none` for no transformer (a provider that already speaks the endpoint's format).|
+|version|string|false|none|Major-only policy version, required unless `type` is `none`.|
+|params|object|false|none|Parameters passed to the transformer. `providerId` is injected by the gateway and cannot be set. String values may use `{apiVersion}` or `{apiVersion:<default>}`, filled from the provider's `spec.upstream.apiVersion`.|
+|upstreamPaths|[string]|false|none|The paths the transformer writes upstream, with `{upstreamModel}` and `{apiVersion}` placeholders. Used only to check that a provider reached through its own route allows them (accessControl).|
+
+## ModelConfigurationRequest
+
+<a id="schemamodelconfigurationrequest"></a>
+<a id="schema_ModelConfigurationRequest"></a>
+<a id="tocSmodelconfigurationrequest"></a>
+<a id="tocsmodelconfigurationrequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Model",
+  "metadata": {
+    "name": "gpt-4o"
+  },
+  "spec": {
+    "displayName": "GPT-4o",
+    "version": "v1.0",
+    "modelName": "gpt-4o",
+    "endpoints": [
+      "wso2"
+    ],
+    "targets": [
+      {
+        "name": "openai",
+        "provider": {
+          "id": "wso2-openai-provider"
+        },
+        "upstreamModel": "gpt-4o"
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|Model specification version|
+|kind|string|true|none|Model kind|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[ModelConfigData](#schemamodelconfigdata)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|Model|
+
+## ModelConfiguration
+
+<a id="schemamodelconfiguration"></a>
+<a id="schema_ModelConfiguration"></a>
+<a id="tocSmodelconfiguration"></a>
+<a id="tocsmodelconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Model",
+  "metadata": {
+    "name": "gpt-4o"
+  },
+  "spec": {
+    "displayName": "GPT-4o",
+    "version": "v1.0",
+    "modelName": "gpt-4o",
+    "endpoints": [
+      "wso2"
+    ],
+    "targets": [
+      {
+        "name": "openai",
+        "provider": {
+          "id": "wso2-openai-provider"
+        },
+        "upstreamModel": "gpt-4o"
+      }
+    ]
+  },
+  "status": {
+    "id": "gpt-4o",
+    "state": "deployed",
+    "createdAt": "2026-10-21T07:21:13Z",
+    "updatedAt": "2026-10-21T07:21:13Z",
+    "deployedAt": "2026-10-21T07:21:13Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[ModelConfigurationRequest](#schemamodelconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+## ModelConfigData
+
+<a id="schemamodelconfigdata"></a>
+<a id="schema_ModelConfigData"></a>
+<a id="tocSmodelconfigdata"></a>
+<a id="tocsmodelconfigdata"></a>
+
+```json
+{
+  "displayName": "GPT-4o",
+  "version": "v1.0",
+  "modelName": "gpt-4o",
+  "endpoints": [
+    "wso2"
+  ],
+  "targets": [
+    {
+      "name": "openai",
+      "provider": {
+        "id": "wso2-openai-provider"
+      },
+      "upstreamModel": "gpt-4o",
+      "auth": {
+        "type": "api-key",
+        "policyName": "string",
+        "policyVersion": "string",
+        "policyParams": {},
+        "header": "string",
+        "value": "string"
+      }
+    }
+  ],
+  "routing": {
+    "policy": {
+      "name": "model-round-robin",
+      "version": "v1"
+    },
+    "params": {}
+  },
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "faultPolicies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "deploymentState": "deployed"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable Model name|
+|version|string|true|none|Semantic version of the Model|
+|modelName|string|true|none|The name clients send for this Model, wherever the endpoint's inbound format carries the model (the `model` field for OpenAI and Anthropic, the path for Gemini). Unique across Models on this gateway. Matched exactly and case-sensitively.|
+|endpoints|[string]|true|none|Handles of the model endpoints that serve this Model. Required, with no implicit default. Each must name a model endpoint on this gateway, deployed or not; a save naming one that does not exist is refused with 400. A Model saved as deployed is also refused with 400 when a named endpoint cannot serve it, for example when it has no transformer for one of the Model's providers.|
+|targets|[[ModelTarget](#schemamodeltarget)]|true|none|The upstream models this Model can be served by. Each target is a pair of a deployed LLM provider and the model name that provider knows it by, and the pair is unique within the Model. With more than one target, `routing` is required to choose between them. The first target is the default: it serves a request the routing policy did not place.|
+|routing|[ModelRouting](#schemamodelrouting)|false|none|The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's name or its upstream model; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.|
+|policies|[[Policy](#schemapolicy)]|false|none|Policies applied to every request for this Model, after the endpoint's own policies (authentication) and before routing. Policies here see the request and response in each endpoint's inbound format.|
+|faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request for this Model fails, over the error response. Run before the endpoint's own fault policies.|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. An undeployed Model stops resolving on every endpoint but its configuration is kept.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
+## ModelTarget
+
+<a id="schemamodeltarget"></a>
+<a id="schema_ModelTarget"></a>
+<a id="tocSmodeltarget"></a>
+<a id="tocsmodeltarget"></a>
+
+```json
+{
+  "name": "openai",
+  "provider": {
+    "id": "wso2-openai-provider"
+  },
+  "upstreamModel": "gpt-4o",
+  "auth": {
+    "type": "api-key",
+    "policyName": "string",
+    "policyVersion": "string",
+    "policyParams": {},
+    "header": "string",
+    "value": "string"
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Name of this target, unique within the Model. A routing policy's model fields (`model`, `defaultModel`, `modelName`) may name the target by this name, as well as by its upstream model.|
+|provider|[ModelTargetProvider](#schemamodeltargetprovider)|true|none|none|
+|upstreamModel|string|true|none|The model name sent to the provider. For an Azure OpenAI provider this is the deployment name.|
+|auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|Credential the gateway presents to a provider reached through its own route (`exposure: route`) — the same field, with the same rules, as `auth` on an LLM proxy's provider. Required when that provider's route authenticates with api-key-auth; rejected for a provider with `exposure: none`, which is called directly with the provider's own upstream credential. Write-only values are never returned and are inherited on an update that omits them.|
+
+## ModelTargetProvider
+
+<a id="schemamodeltargetprovider"></a>
+<a id="schema_ModelTargetProvider"></a>
+<a id="tocSmodeltargetprovider"></a>
+<a id="tocsmodeltargetprovider"></a>
+
+```json
+{
+  "id": "wso2-openai-provider"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Handle of a deployed LLM provider|
+
+## ModelRouting
+
+<a id="schemamodelrouting"></a>
+<a id="schema_ModelRouting"></a>
+<a id="tocSmodelrouting"></a>
+<a id="tocsmodelrouting"></a>
+
+```json
+{
+  "policy": {
+    "name": "model-round-robin",
+    "version": "v1"
+  },
+  "params": {}
+}
+
+```
+
+The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's name or its upstream model; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|policy|[ModelRoutingPolicy](#schemamodelroutingpolicy)|true|none|none|
+|params|object|false|none|Parameters for the routing policy, exactly as the policy defines them, and checked against its parameter schema on save.|
+
+## ModelRoutingPolicy
+
+<a id="schemamodelroutingpolicy"></a>
+<a id="schema_ModelRoutingPolicy"></a>
+<a id="tocSmodelroutingpolicy"></a>
+<a id="tocsmodelroutingpolicy"></a>
+
+```json
+{
+  "name": "model-round-robin",
+  "version": "v1"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Routing policy name|
+|version|string|true|none|Major-only routing policy version|
 
 ## SecretConfigurationRequest
 

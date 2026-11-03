@@ -295,6 +295,7 @@ Status Code **200**
 |»»»» context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |»»»» vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |»»»» template|string|true|none|Template name to use for this LLM Provider|
+|»»»» exposure|string|false|none|Whether the provider is published as a route of its own. `route` (the default) serves the provider at its context, as it always has. `none` publishes no route: the provider is reachable only through the Models that target it, which call its upstream directly with its upstream credential. A provider with `exposure: none` takes no context, vhost, accessControl, policies or fault policies, and issues no API keys.|
 |»»»» upstreamDefinitions|[[UpstreamDefinition](schemas.md#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
 |»»»»» name|string|true|none|Unique identifier for this upstream definition|
 |»»»»» basePath|string|false|none|Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended. Must start with '/' and must not end with '/'; omit for root.|
@@ -341,11 +342,18 @@ Status Code **200**
 |»»»»»»» header|string|false|none|Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.|
 |»»»»»»» value|string|false|write-only|Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»»»»» *anonymous*|[LLMUpstreamVersion](schemas.md#schemallmupstreamversion)|false|none|none|
+|»»»»»» apiVersion|string|false|none|The provider API version the gateway speaks when it translates a Model request for this provider — the Azure OpenAI `api-version` (required for an Azure OpenAI provider that Models target), the Gemini API version (default `v1beta`), or the Anthropic version header (default `2023-06-01`). Not used by the provider's own route.|
+
 *continued*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»»»» accessControl|[LLMAccessControl](schemas.md#schemallmaccesscontrol)|true|none|none|
+|»»»» accessControl|[LLMAccessControl](schemas.md#schemallmaccesscontrol)|false|none|Required when `exposure` is `route`; rejected when it is `none`.|
 |»»»»» mode|string|true|none|Access control mode|
 |»»»»» exceptions|[[RouteException](schemas.md#schemarouteexception)]|false|none|Path exceptions to the access control mode|
 |»»»»»» path|string|true|none|Path pattern|
@@ -399,6 +407,8 @@ Status Code **200**
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProvider|
+|exposure|route|
+|exposure|none|
 |hostRewrite|auto|
 |hostRewrite|manual|
 |type|api-key|
