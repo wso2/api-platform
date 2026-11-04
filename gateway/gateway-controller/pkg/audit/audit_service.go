@@ -50,7 +50,6 @@ type recordJSON struct {
 	PerformedBy   string    `json:"performedBy"`
 }
 
-// Outcomes of an audited call.
 const (
 	OutcomeSucceeded = "succeeded"
 	OutcomeFailed    = "failed"

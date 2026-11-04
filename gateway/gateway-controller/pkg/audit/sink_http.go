@@ -209,7 +209,6 @@ func (s *httpSink) run() {
 func (s *httpSink) deliver(batch [][]byte) {
 	body := encodeNDJSON(batch)
 	var lastErr error
-	// A receiver's Retry-After replaces the computed backoff rather than adding to it.
 	var nextDelay time.Duration
 	for attempt := 0; attempt <= s.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {

@@ -30,8 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
-// fileSink rotates by renaming the live file to <path>.1, replacing any
-// earlier backup, so at most 2 x max_size_mb is on disk. It must be the only writer.
+// fileSink must be the only writer of its file: rotation renames it.
 type fileSink struct {
 	mu sync.Mutex
 	// f is nil after Close, or after a rotation could not open a new file.
@@ -124,10 +123,9 @@ func (s *fileSink) rotate() error {
 	return nil
 }
 
-// open is used at startup, after rotation and on recovery. It accepts only a
-// regular file: a symlink would redirect the records and a FIFO would block the
-// open. O_CREATE sets 0600 only when it creates the file, so an existing file
-// that group or others can read is refused.
+// open accepts only a regular file, so a symlink cannot redirect the records.
+// O_CREATE sets 0600 only when it creates the file, so an existing file that
+// group or others can read is refused.
 func (s *fileSink) open() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err

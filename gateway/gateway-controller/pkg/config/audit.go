@@ -58,7 +58,6 @@ type AuditFileConfig struct {
 }
 
 type AuditHTTPConfig struct {
-	// Endpoint must be https:// unless AllowInsecureTransport is set.
 	Endpoint               string              `koanf:"endpoint"`
 	AllowInsecureTransport bool                `koanf:"allow_insecure_transport"`
 	BatchMaxEvents         int                 `koanf:"batch_max_events"`
@@ -156,7 +155,7 @@ func validateAuditConfig(cfg *AuditConfig) error {
 }
 
 // NormalizeAuditOutputs lower-cases and trims the output names, rejecting an
-// unknown or repeated name. The outputs are built from the same list.
+// unknown or repeated name.
 func NormalizeAuditOutputs(outputs []string) ([]string, error) {
 	normalized := make([]string, 0, len(outputs))
 	for _, raw := range outputs {
