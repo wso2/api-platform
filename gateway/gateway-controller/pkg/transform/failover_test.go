@@ -465,3 +465,59 @@ func TestBuildFailoverConfig_IdleTimeoutDefaultDoesNotCutLegitimateRequests(t *t
 			cfg.PerAttemptIdleTimeoutMs, routeTimeoutMs)
 	}
 }
+
+// An operation with failover must get a fault-chain entry without the publisher asking: with
+// handle_upstream_faults on, the engine skips every response policy for a failing response, so
+// without this entry health stops being graded exactly when it matters.
+func TestPrependFailoverFaultEntry_AttachesAutomaticallyAndFirst(t *testing.T) {
+	resolved := models.Policy{
+		Name:    FailoverPolicyName,
+		Version: "v0.1.0",
+		Params:  map[string]interface{}{ProviderClustersParam: map[string]string{"": "cluster_default"}},
+	}
+	chain := []models.Policy{{Name: "api-key-auth"}, resolved}
+	authored := []models.Policy{{Name: "operator-notifier"}}
+
+	got := prependFailoverFaultEntry(&models.FailoverConfig{}, chain, authored)
+
+	if len(got) != 2 {
+		t.Fatalf("fault chain has %d entries, want 2", len(got))
+	}
+	if got[0].Name != FailoverPolicyName {
+		t.Fatalf("first entry is %q, want %q — the exhaustion error must be a default the "+
+			"operator's own entries can still reshape", got[0].Name, FailoverPolicyName)
+	}
+	if got[1].Name != "operator-notifier" {
+		t.Fatalf("the operator's entry was lost: %+v", got)
+	}
+	// Cloned from the resolved entry, so the fault instance resolves the same chain. Without
+	// the injected cluster map it cannot resolve one at all.
+	if got[0].Version != "v0.1.0" {
+		t.Fatalf("version = %q, want the resolved one", got[0].Version)
+	}
+	if _, ok := got[0].Params[ProviderClustersParam]; !ok {
+		t.Fatal("the injected provider-to-cluster map did not travel, so the fault instance cannot resolve a chain")
+	}
+}
+
+// Inert failover means the policy publishes nothing and grades nothing. Adding a fault entry
+// would put it on the error path of an API it does not apply to.
+func TestPrependFailoverFaultEntry_LeavesInertOperationsAlone(t *testing.T) {
+	chain := []models.Policy{{Name: FailoverPolicyName, Version: "v0.1.0"}}
+	authored := []models.Policy{{Name: "operator-notifier"}}
+
+	got := prependFailoverFaultEntry(nil, chain, authored)
+	if len(got) != 1 || got[0].Name != "operator-notifier" {
+		t.Fatalf("an operation with no resolved failover gained a fault entry: %+v", got)
+	}
+}
+
+// An operation that resolved failover but somehow carries no such entry in its response chain
+// must not fabricate one — a rebuilt entry would drift from the real configuration.
+func TestPrependFailoverFaultEntry_NeverFabricatesAnEntry(t *testing.T) {
+	authored := []models.Policy{{Name: "operator-notifier"}}
+	got := prependFailoverFaultEntry(&models.FailoverConfig{}, []models.Policy{{Name: "api-key-auth"}}, authored)
+	if len(got) != 1 || got[0].Name != "operator-notifier" {
+		t.Fatalf("an entry was fabricated: %+v", got)
+	}
+}

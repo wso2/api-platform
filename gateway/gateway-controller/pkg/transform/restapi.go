@@ -320,7 +320,14 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			// body its client can parse, and now also gets its failure recorded.
 			routeChain.FaultPolicies = appendFaultSystemPolicies(
 				mergeFaultPolicies(
-					t.collectFaultPolicies(op.FaultPolicies, policyv1alpha.LevelRoute),
+					// model-failover first, so the exhaustion error is a default the
+					// operator's own entries can still reshape — see
+					// prependFailoverFaultEntry for why it is attached automatically.
+					prependFailoverFaultEntry(
+						rdcRoute.Failover,
+						routeChain.Policies,
+						t.collectFaultPolicies(op.FaultPolicies, policyv1alpha.LevelRoute),
+					),
 					apiFaultPolicies,
 				),
 				faultSystemPolicies,

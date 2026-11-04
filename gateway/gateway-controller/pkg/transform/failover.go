@@ -322,3 +322,39 @@ func perAttemptPolicies(operations *[]management.Operation) []models.Policy {
 	}
 	return nil
 }
+
+// prependFailoverFaultEntry puts model-failover at the FRONT of an operation's fault chain
+// whenever that operation actually resolved a failover configuration.
+//
+// WHY IT IS AUTOMATIC. With policy_engine.fault_policies.handle_upstream_faults enabled, the
+// engine skips every response policy for a response of 400 or above and runs the fault chain
+// instead. For this policy that is exactly the set of responses it exists to grade, so without
+// an entry here health stops being recorded the moment that flag is turned on and no target
+// can ever be suspended. Requiring a publisher to list one policy twice, in two different
+// blocks, to get one behaviour is a contract nobody would guess; the control plane knows the
+// operation has failover and can say so itself.
+//
+// WHY IT IS FIRST. It writes the exhaustion error as a DEFAULT. An operator's own fault
+// entries run after it and may reshape status, body or description — the operator keeps the
+// final say — and the fault-path system policies still run last, so analytics records what is
+// actually delivered rather than what this entry proposed.
+//
+// The entry is CLONED from the resolved response-chain entry rather than rebuilt, so the two
+// cannot drift: same version resolution, same parameters, and the same injected
+// provider-to-cluster map, which is added before this runs and which the policy needs in order
+// to resolve a chain at all.
+func prependFailoverFaultEntry(failover *models.FailoverConfig, chain, authored []models.Policy) []models.Policy {
+	// No resolved failover means the policy is inert for this operation — it publishes
+	// nothing and grades nothing — so adding a fault entry would put a policy on the error
+	// path of an API that failover does not apply to.
+	if failover == nil {
+		return authored
+	}
+	for _, p := range chain {
+		if p.Name != FailoverPolicyName {
+			continue
+		}
+		return append([]models.Policy{p}, authored...)
+	}
+	return authored
+}

@@ -1703,12 +1703,41 @@ exactly the responses it cares about:
 Not a defect in either component — the fault flow is doing what it was built to do, and this
 policy was written before it existed. The interaction is simply unowned.
 
-**Why nothing was changed for it.** The flag is `false` by default in both
+**RESOLVED 2026-11-04 — the policy now implements the fault path too.** The original note below
+said the fix was "not the policy's to make". That was wrong, and the evidence was already in the
+tree: the analytics system policy had hit the identical problem and solved it by implementing
+`FaultPolicy` and DELEGATING `OnFault` to its own `OnResponseHeaders`. Its comment names our bug
+exactly — "for an upstream or router failure this policy is excluded from the response chain so
+it can run here instead (see kernel.responsePolicies)".
+
+model-failover now does the same, and the control plane attaches it to the fault chain
+automatically for any operation that resolved a failover configuration, so a publisher still
+configures failover once. Three things that were not obvious going in:
+
+- **A second instance would have made the whole fix inert.** `PolicyRegistry.GetInstance` calls
+  the factory once per CHAIN entry — "may return a new instance or a cached one, this is up to the
+  policy implementation" — so the response chain and the fault chain get different `*Policy`
+  values. With a private health store each, the fault chain would have graded into a store nothing
+  reads. `shared_health.go` keys one store per attachment and hands it to both.
+- **A returned `Fault` REPLACES the engine's description** (`applyFaultResponse` does
+  `faultCtx.Fault = &redescribed`, keeping only `Policy`). Returning a fresh one carrying just
+  this policy's code would have deleted the engine's `FaultTypeUpstream` classification — a class
+  a policy is explicitly not allowed to set for itself. The code and message are overlaid onto the
+  existing description instead.
+- **Both hooks can run for one request**, when a 200 is graded normally and a later response
+  policy then rejects it. A `model_failover.graded` marker stops the same outcome being charged
+  twice, which would otherwise put two samples in the window for one request.
+
+Verified at runtime with `handle_upstream_faults = true`: the runtime log carries
+`skipping the response policies for the fault policies` — so the response chain really was
+skipped — and in the same window both targets are suspended, the chain reports exhausted, and the
+next request is refused with `every target is suspended; nothing was attempted`. Both requests
+received the sterile 503. The same 34 scenarios pass with the flag off and on.
+
+Original note, kept for the reasoning: the flag is `false` by default in both
 `gateway/configs/config-template.toml` and the Helm chart's `values.yaml`, so no default
-deployment is affected, and the fix is not the policy's to make: a response policy cannot opt
-itself back into a phase the engine decided to skip. Recorded here so that whoever turns the flag
-on knows what it costs, and so the eventual fix — a chain that needs the response phase declaring
-it, rather than the engine inferring from status alone — starts from a stated problem.
+deployment was affected. What made this worth fixing rather than flagging is that the flag is the
+recommended posture going forward, and with it on the policy was not degraded but off.
 
 ## `echo-backend-multi-arch` is the controllable failure backend T029c asked for (2026-11-04)
 
