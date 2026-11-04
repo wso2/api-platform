@@ -20,6 +20,7 @@ package openai
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -296,4 +297,113 @@ func TestChatEchoStreamsAnEmptyReply(t *testing.T) {
 	rec := send(t, ChatEchoPath, `{"stream":true,"messages":[]}`)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, 3, strings.Count(rec.Body.String(), "data: "), "role chunk, stop chunk, [DONE]")
+}
+
+func TestScriptedBodyIsReturnedAsCompactJSON(t *testing.T) {
+	rec := send(t, "/scripted/openai/deployments/d1/chat/completions?api-version=2024-10-21",
+		`{"model":"d1","x_testbench_reply":{"body":{"model":"gpt-4o-mini", "usage":{"prompt_tokens":10}}}}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	require.Equal(t, "true", rec.Header().Get(ScriptedHeader))
+	require.Equal(t, `{"model":"gpt-4o-mini","usage":{"prompt_tokens":10}}`, rec.Body.String())
+}
+
+func TestScriptedRawIsWrittenVerbatim(t *testing.T) {
+	for name, raw := range map[string]string{"malformed": "{not json", "empty": "", "text": "plain words"} {
+		t.Run(name, func(t *testing.T) {
+			payload, err := json.Marshal(map[string]any{ScriptedReplyField: map[string]any{"raw": raw}})
+			require.NoError(t, err)
+			rec := send(t, "/scripted/chat/completions", string(payload))
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+			require.Equal(t, raw, rec.Body.String())
+		})
+	}
+}
+
+func TestScriptedContentTypeOverridesTheDefault(t *testing.T) {
+	rec := send(t, "/scripted/chat/completions", `{"x_testbench_reply":{"raw":"hi","contentType":"text/plain"}}`)
+	require.Equal(t, "text/plain", rec.Header().Get("Content-Type"))
+	rec = send(t, "/scripted/chat/completions", `{"x_testbench_reply":{"events":[{"a":1}],"contentType":"application/x-ndjson"}}`)
+	require.Equal(t, "application/x-ndjson", rec.Header().Get("Content-Type"))
+}
+
+func TestScriptedEventsAreSentInOrder(t *testing.T) {
+	rec := send(t, "/scripted/openai/v1/chat/completions", `{"stream":true,"x_testbench_reply":{"events":[
+		{"model":"","choices":[]},
+		"event: message_start\ndata: {\"type\":\"message_start\"}",
+		"data: not json",
+		{"model":"gpt-4o", "usage":null},
+		"data: [DONE]"]}}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Equal(t, "true", rec.Header().Get(ScriptedHeader))
+	require.Equal(t, `data: {"model":"","choices":[]}`+"\n\n"+
+		"event: message_start\ndata: {\"type\":\"message_start\"}\n\n"+
+		"data: not json\n\n"+
+		`data: {"model":"gpt-4o","usage":null}`+"\n\n"+
+		"data: [DONE]\n\n", rec.Body.String())
+}
+
+func TestScriptedEmptyEventListIsAnEmptyStream(t *testing.T) {
+	rec := send(t, "/scripted/chat/completions", `{"x_testbench_reply":{"events":[]}}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Empty(t, rec.Body.String())
+}
+
+func TestScriptedRequestsThatScriptNothingAreRejected(t *testing.T) {
+	cases := map[string]string{
+		"not json":       `not json`,
+		"not an object":  `["x_testbench_reply"]`,
+		"missing field":  `{"model":"d1"}`,
+		"field not obj":  `{"x_testbench_reply":"body"}`,
+		"no form":        `{"x_testbench_reply":{}}`,
+		"null body":      `{"x_testbench_reply":{"body":null}}`,
+		"two forms":      `{"x_testbench_reply":{"body":{},"raw":""}}`,
+		"events not arr": `{"x_testbench_reply":{"events":{"a":1}}}`,
+		"empty body":     ``,
+	}
+	for name, payload := range cases {
+		t.Run(name, func(t *testing.T) {
+			rec := send(t, "/scripted/chat/completions", payload)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Empty(t, rec.Header().Get(ScriptedHeader))
+		})
+	}
+}
+
+func TestScriptedReplyIsIgnoredOutsideThePrefix(t *testing.T) {
+	payload := `{"model":"gpt-4o","x_testbench_reply":{"body":{"model":"scripted"}}}`
+	for _, path := range []string{"/openai/v1/chat/completions", "/scripted", "/scriptedx/chat", "/v1/scripted/chat"} {
+		t.Run(path, func(t *testing.T) {
+			rec := send(t, path, payload)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Empty(t, rec.Header().Get(ScriptedHeader))
+			require.NotContains(t, rec.Body.String(), `"scripted"`)
+		})
+	}
+}
+
+func TestScriptedRepliesAreIndependentUnderConcurrentUse(t *testing.T) {
+	handler := New().Handler()
+	const requests = 32
+	errs := make(chan error, requests)
+	for i := 0; i < requests; i++ {
+		go func(i int) {
+			want := fmt.Sprintf(`{"model":"m-%d"}`, i)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/scripted/chat/completions",
+				strings.NewReader(`{"x_testbench_reply":{"body":`+want+`}}`))
+			handler.ServeHTTP(rec, req)
+			if rec.Body.String() != want {
+				errs <- fmt.Errorf("request %d got %q, want %q", i, rec.Body.String(), want)
+				return
+			}
+			errs <- nil
+		}(i)
+	}
+	for i := 0; i < requests; i++ {
+		require.NoError(t, <-errs)
+	}
 }
