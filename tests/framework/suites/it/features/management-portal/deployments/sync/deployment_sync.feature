@@ -201,5 +201,9 @@ Feature: A gateway catches up on deployments made while its controller was offli
     When I send a "GET" request to the control plane at "/rest-apis/${CTX:api3}/deployments"
     Then the JSON response array field "list" should have 1 item
     And the JSON response array "list" item with "deploymentId" equal to "${CTX:deployment3}" should have "status" equal to "DEPLOYED"
-    When I send a "GET" request to the "gateway-controller" service at "/rest-apis"
-    Then the response should be successful
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis?context=${CTX:apiContext}"
+    Then the JSON response field "count" should be 1
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis?context=${CTX:apiContext2}"
+    Then the JSON response field "count" should be 1
+    When I send a "GET" request to the "gateway-controller" service at "/rest-apis?context=${CTX:apiContext3}"
+    Then the JSON response field "count" should be 1
