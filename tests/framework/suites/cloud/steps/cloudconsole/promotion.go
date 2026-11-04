@@ -240,3 +240,74 @@ func (s *Steps) createProjectBoundToPipeline(ctx context.Context) error {
 	}
 	return nil
 }
+
+func syntheticEnvironmentNames(ctx context.Context) []string {
+	recorded := optionalValue(ctx, keySyntheticEnvironments)
+	if recorded == "" {
+		return nil
+	}
+	return strings.Split(recorded, ",")
+}
+
+// syntheticEnvironmentAt resolves the nth (from one) environment the scenario created.
+func syntheticEnvironmentAt(ctx context.Context, n int) (string, error) {
+	names := syntheticEnvironmentNames(ctx)
+	if n < 1 || n > len(names) {
+		return "", fmt.Errorf("synthetic APIP environment %d does not exist: the scenario created %d", n, len(names))
+	}
+	return names[n-1], nil
+}
+
+// createAPIInSyntheticProject creates the synthetic REST API in the project the scenario created,
+// and refuses to run against the default project.
+func (s *Steps) createAPIInSyntheticProject(ctx context.Context, table *godog.Table) error {
+	if project := optionalValue(ctx, keyProjectID); project == "" || project == "default" {
+		return fmt.Errorf("the scenario has created no synthetic project, so the API would be created in %q", project)
+	}
+	overrides, err := tableValues(table)
+	if err != nil {
+		return err
+	}
+	return s.createAPI(ctx, primaryAPI, overrides)
+}
+
+// assertStageHoldsNothing checks no gateway of the nth synthetic environment shows a deployment
+// of the API. The stage must exist, so an environment missing from the pipeline cannot pass.
+func (s *Steps) assertStageHoldsNothing(ctx context.Context, n int) error {
+	environment, err := syntheticEnvironmentAt(ctx, n)
+	if err != nil {
+		return err
+	}
+	stages, err := s.stages(ctx)
+	if err != nil {
+		return err
+	}
+	gateways, err := stageOf(stages, environment)
+	if err != nil {
+		return err
+	}
+	for _, gateway := range gateways {
+		if status, _ := gateway["status"].(string); status != "NOT_DEPLOYED" {
+			return fmt.Errorf("gateway %v of environment %q shows the API as %q, want it untouched", gateway["gatewayId"], environment, status)
+		}
+	}
+	return nil
+}
+
+// stageOf finds the gateways a deployment listing gives one environment.
+func stageOf(stages []map[string]any, environment string) ([]map[string]any, error) {
+	for _, stage := range stages {
+		if stage["environment"] != environment {
+			continue
+		}
+		gateways, _ := stage["gateways"].([]any)
+		out := make([]map[string]any, 0, len(gateways))
+		for _, raw := range gateways {
+			if gateway, ok := raw.(map[string]any); ok {
+				out = append(out, gateway)
+			}
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("the deployment listing has no stage for environment %q", environment)
+}

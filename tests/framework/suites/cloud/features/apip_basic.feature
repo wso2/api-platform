@@ -140,3 +140,43 @@ Feature: APIP cloud REST API lifecycle
     Then a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" should keep returning 200 until the redeployment is DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" until status 200
     And the synthetic REST API data-plane response should contain post 2
+
+  @TC_APIP_RES_008 @ID_APIP_BASIC_010
+  Scenario: A request above the gateway body limit is refused before it reaches the upstream
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    When I create a synthetic REST API in the default project with:
+      | operations | [{"name":"createPost","request":{"method":"POST","path":"/posts"}}] |
+    And I deploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "POST" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts" with a body of 1 KiB until status 201
+    And a "POST" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts" with a body of 2 MiB should be refused as too large
+
+  @TC_APIP_RES_009 @ID_APIP_BASIC_011
+  Scenario: A chunked request above the gateway body limit is terminated
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    When I create a synthetic REST API in the default project with:
+      | operations | [{"name":"createPost","request":{"method":"POST","path":"/posts"}}] |
+    And I deploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "POST" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts" with a body of 1 KiB until status 201
+    And a chunked "POST" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts" with a body of 4 MiB should be refused as too large
+
+  @TC_APIP_RES_012 @ID_APIP_BASIC_012
+  Scenario: A request to an upstream that cannot be reached gets the router's failure and no server detail
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And an unreachable backend is available for deployment overrides
+    When I create a synthetic REST API in the default project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                              |
+      | gatewayId   | ${CTX:cloudGatewayID}                                       |
+      | parameters  | {"productionEndpoint":"${CTX:cloudUnreachableBackendURL}"} |
+    Then the cloud API response status code should be 201
+    And the synthetic REST API deployment should become DEPLOYED
+    When I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until the gateway routes it
+    Then the gateway response should be the router's documented failure for an unreachable backend

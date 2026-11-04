@@ -68,6 +68,9 @@ const (
 
 	keyManagedGatewayEnv   = "cloudManagedGatewayEnvironment"
 	keyGatewayDeleteStatus = "cloudGatewayDeleteStatus"
+	keyManagedGatewayName  = "cloudManagedGatewayName"
+	keyConfigGatewayID     = "cloudConfigGatewayID"
+	keyConfigAttempts      = "cloudConfigAttempts"
 
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
 
@@ -123,7 +126,11 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 
 	s.registerIdentitySteps(sc)
 	s.registerDeploymentSteps(sc)
+	s.registerGatewaySteps(sc)
+	s.registerGatewayConfigSteps(sc)
 	s.registerPromotionSteps(sc)
+	s.registerResilienceSteps(sc)
+	s.registerSecretSteps(sc)
 	s.registerProjectSteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
@@ -138,10 +145,6 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^deleting the synthetic APIP environment should eventually return not found$`, s.verifyEnvironmentDeleted)
 
 	sc.Step(`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment)
-	sc.Step(`^I create a synthetic managed APIP gateway$`, s.createManagedGateway)
-	sc.Step(`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway)
-	sc.Step(`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway)
-	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
 }
 
 // registerIdentitySteps binds the steps that inspect the console token and send requests with
@@ -187,6 +190,57 @@ func (s *Steps) registerPromotionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I create (\d+) synthetic non-production APIP environments?$`, s.createSyntheticEnvironments)
 	sc.Step(`^I create a synthetic deployment pipeline with the promotion paths:$`, s.createPipeline)
 	sc.Step(`^I create a synthetic APIP project bound to the synthetic deployment pipeline$`, s.createProjectBoundToPipeline)
+	sc.Step(`^I create a synthetic REST API in the synthetic APIP project$`,
+		func(ctx context.Context) error { return s.createAPIInSyntheticProject(ctx, nil) })
+	sc.Step(`^the deployment stage of synthetic APIP environment (\d+) should show no gateway as deployed$`, s.assertStageHoldsNothing)
+}
+
+// registerGatewaySteps binds the steps that list the managed gateways and request a gateway the
+// platform refuses.
+func (s *Steps) registerGatewaySteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I choose a synthetic managed APIP gateway name$`, s.chooseGatewayName)
+	sc.Step(`^I request a synthetic managed APIP gateway with:$`, s.requestManagedGateway)
+	sc.Step(`^I list the managed APIP gateways$`, s.listManagedGateways)
+	sc.Step(`^the listed managed gateways should each report an identity, an environment and a status$`, s.assertListingIsValid)
+	sc.Step(`^the listed managed gateways should include the active gateway$`, s.assertListingIncludesActiveGateway)
+	sc.Step(`^the selected APIP environment should be listed by the platform$`, s.assertSelectedEnvironmentListed)
+}
+
+// registerGatewayConfigSteps binds the steps that read the active gateway's configuration and
+// write settings the platform refuses.
+func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I read the configuration of the active APIP gateway$`, s.readGatewayConfiguration)
+	sc.Step(`^the active APIP gateway's configuration should be readable$`, s.awaitConfigurationReadable)
+	sc.Step(`^the gateway configuration should be a valid document$`, s.assertConfigurationDocument)
+	sc.Step(`^I write the gateway configuration with:$`, s.writeGatewayConfiguration)
+	sc.Step(`^I write the gateway configuration path "([^"]*)" with a string of (\d+) characters$`, s.writeLongString)
+	sc.Step(`^I write each of these gateway configuration values separately:$`, s.writeEachValue)
+	sc.Step(`^every one of those writes should have been refused as invalid$`, s.assertEveryWriteRejected)
+}
+
+// registerResilienceSteps binds the steps that send oversized requests and reach a backend that
+// is not there.
+func (s *Steps) registerResilienceSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a body of (\d+) (KiB|MiB) until status (\d+)$`, s.sendSizedUntilStatus)
+	sc.Step(`^a (chunked )?"([^"]*)" request to "([^"]*)" with a body of (\d+) (KiB|MiB) should be refused as too large$`, s.assertOversizedRefused)
+	sc.Step(`^an unreachable backend is available for deployment overrides$`, s.useUnreachableBackend)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the gateway routes it$`, s.sendUntilRouted)
+	sc.Step(`^the gateway response should be the router's documented failure for an unreachable backend$`, s.assertRouterFailure)
+}
+
+// registerSecretSteps binds the steps that create, rotate, read and delete a secret and read back
+// what a gateway sends upstream with it.
+func (s *Steps) registerSecretSteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I create a synthetic secret$`, s.createSecret)
+	sc.Step(`^I choose a synthetic secret handle without creating the secret$`, s.chooseSecretHandle)
+	sc.Step(`^I rotate the synthetic secret$`, s.rotateSecret)
+	sc.Step(`^I read the synthetic secret$`, s.readSecret)
+	sc.Step(`^I list the secrets$`, s.listSecrets)
+	sc.Step(`^I delete the synthetic secret$`, s.deleteSecret)
+	sc.Step(`^the response should not reveal the synthetic secret's value$`, s.assertSecretValueHidden)
+	sc.Step(`^the synthetic secret should be described by a hash$`, s.assertSecretHash)
+	sc.Step(`^the echoed request header "([^"]*)" should carry the synthetic secret's value$`, s.assertEchoedSecret)
+	sc.Step(`^a "([^"]*)" request to "([^"]*)" should echo the header "([^"]*)" with the rotated secret value$`, s.sendUntilEchoesRotated)
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
@@ -211,6 +265,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindPipeline, cloudDeleter(topo, client, "/pipelines", true)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection, false)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))

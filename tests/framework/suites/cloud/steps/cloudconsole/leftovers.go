@@ -49,8 +49,8 @@ const finalizerDeleteTimeout = 90 * time.Second
 const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
-// order: a gateway goes before the environment it runs in, and a project before the pipeline it
-// is bound to.
+// order: a secret goes after the REST APIs that reference it, a gateway before the environment it
+// runs in, and a project before the pipeline it is bound to.
 // idFields name the list-item fields that identify a resource in its own route. REST APIs are
 // listed per project, so projectScopedSweep reads them and runs ahead of these: each goes before
 // the gateway it is deployed to and the project it belongs to.
@@ -59,6 +59,7 @@ var finalizerCollections = []struct {
 	idFields   []string
 	wait       bool
 }{
+	{collection: secretsCollection, idFields: []string{"id", "handle"}},
 	{collection: "/managed-gateways", idFields: []string{"id"}},
 	{collection: "/projects", idFields: []string{"id"}},
 	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
