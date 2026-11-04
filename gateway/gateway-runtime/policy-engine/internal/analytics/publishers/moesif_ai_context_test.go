@@ -62,7 +62,13 @@ func TestAIContextBlock_ModelType(t *testing.T) {
 		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse":        "chat",
 		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream": "chat",
 		"/bedrock/model/anthropic.claude-v2/invoke":                                   "",
-		"": "",
+		"/openai/v1/responses/":                                                       "chat",
+		"/openai/v1/chat/completions/chatcmpl-123":                                    "",
+		"/anthropic/v1/messages/count_tokens":                                         "",
+		"/anthropic/v1/messages/batches":                                              "",
+		"/messages-gw/v1/embeddings":                                                  "embeddings",
+		"/completions-llm/v1/models":                                                  "",
+		"":                                                                            "",
 	}
 	for route, want := range tests {
 		event := createBaseEvent()

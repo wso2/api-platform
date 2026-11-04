@@ -324,13 +324,13 @@ func TestBuildRecordSuccessOmitsErrorAttributes(t *testing.T) {
 
 // gen_ai.operation.name is the only AI attribute derived from the route rather
 // than from a property the AI pipeline wrote, and otelGenAIOperationName
-// substring-matches "/messages" and "/completions". Without a gate, ordinary REST
+// matches routes ending in "/messages" and "/completions". Without a gate, ordinary REST
 // routes containing those words emit a GenAI attribute and pollute GenAI
 // dashboards with traffic that never reached a model.
 func TestBuildRecordNonAIRouteOmitsGenAIOperation(t *testing.T) {
 	for _, route := range []string{
-		"/notify/messages",     // contains "/messages"
-		"/billing/completions", // contains "/completions"
+		"/notify/messages",     // ends in "/messages"
+		"/billing/completions", // ends in "/completions"
 		"/v1/chat/completions", // the real LLM shape, on a plain REST API
 		"/inbox/messages/{id}",
 	} {
