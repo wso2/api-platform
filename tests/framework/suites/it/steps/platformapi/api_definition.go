@@ -157,13 +157,5 @@ func storeSpecFixtureURL(ctx context.Context, scheme, name, key string) error {
 	if err != nil {
 		return err
 	}
-	return tcontext.Set(ctx, key, specFixtureURL(scheme, resolved))
-}
-
-func specFixtureURL(scheme, name string) string {
-	port := specs.Port
-	if scheme == "https" {
-		port = specs.TLSPort
-	}
-	return fmt.Sprintf("%s://testbench:%d/specs/%s", scheme, port, name)
+	return tcontext.Set(ctx, key, specs.URL(scheme, resolved))
 }

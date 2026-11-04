@@ -296,11 +296,6 @@ func formTable(t *testing.T, rows [][]string) *godog.Table {
 	return &table
 }
 
-func TestSpecFixtureURL(t *testing.T) {
-	require.Equal(t, "https://testbench:3025/specs/petstore-v1.yaml", specFixtureURL("https", "petstore-v1.yaml"))
-	require.Equal(t, "http://testbench:3024/specs/large?bytes=10", specFixtureURL("http", "large?bytes=10"))
-}
-
 // trackingContext returns a runner context with a fresh cleanup registry installed.
 func trackingContext(t *testing.T) (context.Context, *cleanup.Registry) {
 	t.Helper()

@@ -234,7 +234,7 @@ func storeSpecFixtureURL(ctx context.Context, name, key string) error {
 	if !ok || local == nil {
 		return fmt.Errorf("cannot store spec fixture URL %q without runner context", key)
 	}
-	local.Set(key, fmt.Sprintf("https://testbench:%d/specs/%s", specs.TLSPort, name))
+	local.Set(key, specs.URL("https", name))
 	return nil
 }
 

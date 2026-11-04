@@ -70,11 +70,20 @@ Feature: Importing, validating and replacing an OpenAPI definition need their ow
     When I send a multipart "POST" request to the control plane at "/rest-apis/validate-openapi" as "publisher" with fields:
       | file | @spec:petstore-v1.yaml |
     Then the response status code should be 200
+    When I send a multipart "POST" request to the control plane at "/rest-apis/import-openapi" as "publisher" with fields:
+      | id          | ${CTX:denied}                              |
+      | displayName | ${CTX:denied}                              |
+      | version     | v1.0                                       |
+      | context     | /${CTX:denied}                             |
+      | projectId   | ${CTX:project}                             |
+      | upstream    | {"main": {"url": "http://testbench:3000"}} |
+      | file        | @spec:petstore-v1.yaml                     |
+    Then the response status code should be 201
     When I send a multipart "PUT" request to the control plane at "/rest-apis/${CTX:api}/openapi" as "publisher" with fields:
       | file | @spec:petstore-v2.yaml |
     Then the response status code should be 200
 
     Examples:
-      | grant                 | actor                  |
-      | only ap:rest_api:read | developer              |
-      | no scope              | a caller with no scope |
+      | actor                  |
+      | developer              |
+      | a caller with no scope |

@@ -91,3 +91,14 @@ func TestGeneratedDocumentsHaveTheRequestedSize(t *testing.T) {
 		t.Fatalf("GET /specs/large?bytes=4096 = %d with %d bytes", resp.StatusCode, len(got))
 	}
 }
+
+func TestURLNamesThePortOfItsScheme(t *testing.T) {
+	for scheme, want := range map[string]string{
+		"https": "https://testbench:3025/specs/petstore-v1.yaml",
+		"http":  "http://testbench:3024/specs/petstore-v1.yaml",
+	} {
+		if got := URL(scheme, "petstore-v1.yaml"); got != want {
+			t.Errorf("URL(%q) = %q, want %q", scheme, got, want)
+		}
+	}
+}

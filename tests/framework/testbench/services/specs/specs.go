@@ -59,6 +59,15 @@ const maxGeneratedBytes = 16 << 20
 //go:embed fixtures
 var fixtures embed.FS
 
+// URL is where the stack reaches a document over scheme ("http" or "https").
+func URL(scheme, name string) string {
+	port := Port
+	if scheme == "https" {
+		port = TLSPort
+	}
+	return fmt.Sprintf("%s://testbench:%d/specs/%s", scheme, port, name)
+}
+
 // Fixture returns an embedded document by file name.
 func Fixture(name string) ([]byte, error) {
 	if name != path.Base(name) || strings.HasPrefix(name, ".") {

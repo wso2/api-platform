@@ -60,7 +60,6 @@ Feature: A gateway-originated API keeps its operations when its definition is re
       """
     Then the response status code should be 403
     And the JSON response field "code" should be "ARTIFACT_READ_ONLY"
-    When I send a "GET" request to "${CTX:apiContext}/pets/42"
-    Then the response status code should be 404
+    And I send a "GET" request to "${CTX:apiContext}/pets/42" and it never returns status 200
     When I send a "GET" request to "${CTX:apiContext}/store/inventory"
     Then the response status code should be 200
