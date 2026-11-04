@@ -126,7 +126,7 @@ func BenchmarkLog_Publish(b *testing.B) {
 }
 
 // benchmarkTemplate is a template of about 15 fields: fixed values, nested objects, an array,
-// scalar variables and one masked header.
+// scalar variables, one masked header and the claims map.
 const benchmarkTemplate = `{
   "service": "orders",
   "env": "prod",
@@ -137,17 +137,19 @@ const benchmarkTemplate = `{
   "user": "$ctx:auth.subject",
   "auth": "$ctx:request.header['authorization']",
   "traceId": "$ctx:request.header['x-request-id']",
+  "auth_prop": "$ctx:auth.property",
   "tags": ["gateway", "$ctx:api.name"]
 }`
 
 // BenchmarkLog_Publish_Template measures Log.Publish when a template writes the line, over the
-// same event as BenchmarkLog_Publish.
+// same event as BenchmarkLog_Publish, with one claim excluded from the claims map.
 func BenchmarkLog_Publish_Template(b *testing.B) {
 	l, err := NewLog(&config.TrafficLoggingConfig{
 		Enabled:       true,
 		Outputs:       []string{config.TrafficLogSinkStdout},
 		MaskedHeaders: []string{"authorization", "x-api-key", "x-jwt-assertion"},
 		Template:      benchmarkTemplate,
+		ExcludeFields: []string{"auth_prop.tenant"},
 	}, &config.CollectorConfig{RequestHeaders: true})
 	if err != nil {
 		b.Fatalf("NewLog: %v", err)

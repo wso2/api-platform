@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -82,10 +83,22 @@ type templateNode struct {
 	// expression is the text after "$ctx:" of an expression node; program is its compiled form.
 	expression string
 	program    cel.Program
+	// excludePaths are the exclude_fields paths that go on inside an expression's value, split
+	// on ".". They are removed from each request's value before it is written.
+	excludePaths [][]string
+	// headerVariable is request.header or response.header when the expression is exactly that
+	// variable and exclude_fields names headers inside it; excludedHeaders holds those header
+	// names, lower-cased.
+	headerVariable  string
+	excludedHeaders map[string]bool
+	// hasExclusions is set on an expression that exclude_fields filters per request and on every
+	// object above one, so all other nodes are written without an exclusion check.
+	hasExclusions bool
 }
 
 // templateMember is one key of a template object and its value.
 type templateMember struct {
+	key string
 	// encodedKey is the key as JSON followed by a colon, encoded once at startup.
 	encodedKey []byte
 	value      *templateNode
@@ -116,6 +129,10 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.Co
 	if err != nil {
 		return nil, err
 	}
+	// Excluded fields are removed before compiling, so they are never compiled or reported.
+	for _, entry := range logCfg.ExcludeFields {
+		excludeTemplatePath(root, strings.Split(entry, "."))
+	}
 	env, err := createGlobalPropertyEnv()
 	if err != nil {
 		return nil, fmt.Errorf("%s: cannot create the expression environment: %w", source, err)
@@ -128,7 +145,73 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.Co
 		maskedHeaders:  maskedHeaders,
 	}
 	t.compile(env, collectorCfg, root)
+	markExclusions(root)
 	return t, nil
+}
+
+// excludeTemplatePath applies one exclude_fields path to an object node. A path that ends at a
+// key removes it; one that goes on inside an expression's value is kept on that node for
+// each request; any other path has no effect. It reports whether the removal emptied node.
+func excludeTemplatePath(node *templateNode, path []string) bool {
+	i := -1
+	_, rest, ok := splitLongestKey(path, func(k string) bool {
+		i = slices.IndexFunc(node.members, func(m templateMember) bool { return m.key == k })
+		return i >= 0
+	})
+	if !ok {
+		return false
+	}
+	child := node.members[i].value
+	switch {
+	case len(rest) == 0: // the path ends at this key, removed below
+	case child.kind == objectNode:
+		if !excludeTemplatePath(child, rest) {
+			return false
+		}
+	case child.kind == expressionNode:
+		if variable := strings.TrimSpace(child.expression); variable == "request.header" || variable == "response.header" {
+			// Header values are text, so the rest of the path is one header name.
+			if child.excludedHeaders == nil {
+				child.excludedHeaders = make(map[string]bool)
+			}
+			child.headerVariable = variable
+			child.excludedHeaders[strings.ToLower(strings.Join(rest, "."))] = true
+		} else {
+			child.excludePaths = append(child.excludePaths, rest)
+		}
+		return false
+	default: // a literal or an array
+		return false
+	}
+	node.members = slices.Delete(node.members, i, i+1)
+	return len(node.members) == 0
+}
+
+// splitLongestKey returns the longest run of path's leading segments, joined with ".", that
+// has accepts, and the segments after it, so a key that contains dots can be named.
+func splitLongestKey(path []string, has func(string) bool) (key string, rest []string, ok bool) {
+	for n := len(path); n > 0; n-- {
+		if key := strings.Join(path[:n], "."); has(key) {
+			return key, path[n:], true
+		}
+	}
+	return "", nil, false
+}
+
+// markExclusions sets hasExclusions under node and reports whether node has it. Exclusion
+// paths never reach into arrays, so arrays are not visited.
+func markExclusions(node *templateNode) bool {
+	switch node.kind {
+	case objectNode:
+		for _, m := range node.members {
+			if markExclusions(m.value) {
+				node.hasExclusions = true
+			}
+		}
+	case expressionNode:
+		node.hasExclusions = len(node.excludePaths) > 0 || len(node.excludedHeaders) > 0
+	}
+	return node.hasExclusions
 }
 
 // compile compiles every expression under node. An expression that does not compile becomes
@@ -195,15 +278,21 @@ func compileExpression(env *cel.Env, expression string) (*cel.Ast, cel.Program, 
 func (t *logTemplate) render(event *dto.Event) []byte {
 	evalCtx := buildGlobalPropertyEvalCtx(event, t.referencedVars, t.maskedHeaders)
 	var buf bytes.Buffer
-	t.write(&buf, t.root, evalCtx)
+	if !t.write(&buf, t.root, evalCtx) {
+		buf.WriteString("{}") // exclude_fields emptied every field for this request
+	}
 	return buf.Bytes()
 }
 
 // write appends node's JSON to buf. An expression with no value for this request is written
-// as null, so every line has the same fields and array positions are kept.
-func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[string]interface{}) {
+// as null, so every line has the same fields and array positions are kept. It reports false,
+// with nothing to keep, when exclude_fields emptied the node for this request.
+func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[string]interface{}) bool {
 	switch node.kind {
 	case objectNode:
+		if node.hasExclusions {
+			return t.writeFilteredObject(buf, node, evalCtx)
+		}
 		buf.WriteByte('{')
 		for i, m := range node.members {
 			if i > 0 {
@@ -225,7 +314,10 @@ func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[s
 	case literalNode:
 		buf.Write(node.literal)
 	case expressionNode:
-		value, err := node.evaluate(evalCtx)
+		value, emptied, err := node.evaluate(evalCtx)
+		if emptied {
+			return false
+		}
 		if err != nil {
 			slog.Debug("Traffic log template field has no value for this request; writing null",
 				"source", t.source, "field", node.path, "error", err)
@@ -233,19 +325,93 @@ func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[s
 		}
 		buf.Write(value)
 	}
+	return true
 }
 
-// evaluate returns the JSON of an expression node's result for one request.
-func (n *templateNode) evaluate(evalCtx map[string]interface{}) ([]byte, error) {
+// writeFilteredObject writes an object some of whose members exclude_fields may empty for this
+// request, leaving those members out. It reports false when every member was left out.
+func (t *logTemplate) writeFilteredObject(buf *bytes.Buffer, node *templateNode, evalCtx map[string]interface{}) bool {
+	start := buf.Len()
+	buf.WriteByte('{')
+	written := 0
+	for _, m := range node.members {
+		mark := buf.Len()
+		if written > 0 {
+			buf.WriteByte(',')
+		}
+		buf.Write(m.encodedKey)
+		if !t.write(buf, m.value, evalCtx) {
+			buf.Truncate(mark)
+			continue
+		}
+		written++
+	}
+	buf.WriteByte('}')
+	if written == 0 {
+		buf.Truncate(start)
+		return false
+	}
+	return true
+}
+
+// evaluate returns the JSON of an expression node's result for one request, after removing the
+// keys exclude_fields names inside it. emptied is true when that removal left nothing to write.
+func (n *templateNode) evaluate(evalCtx map[string]interface{}) (value []byte, emptied bool, err error) {
+	if n.headerVariable != "" {
+		// The masked header map in evalCtx is shared, so it is filtered into a copy.
+		headers, _ := evalCtx[n.headerVariable].(map[string]string)
+		if len(headers) == 0 {
+			value, err = json.Marshal(headers)
+			return value, false, err
+		}
+		kept := filterAndMaskHeaders(headers, nil, n.excludedHeaders)
+		if kept == nil {
+			return nil, true, nil
+		}
+		value, err = json.Marshal(kept)
+		return value, false, err
+	}
 	out, _, err := n.program.Eval(evalCtx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	value, err := globalPropertyCELToGoValue(out)
+	result, err := globalPropertyCELToGoValue(out)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return json.Marshal(value)
+	// result is a fresh copy, so removing keys from it never changes the event.
+	for _, path := range n.excludePaths {
+		if removeValuePath(result, path) {
+			return nil, true, nil
+		}
+	}
+	value, err = json.Marshal(result)
+	return value, false, err
+}
+
+// removeValuePath removes the key at path inside value, matching keys exactly and using the
+// longest run of segments that names a key at each level. A map the removal empties is removed
+// too, as in the default line. It reports whether the removal emptied value itself; a value
+// that is not a map, or was already empty, is left as it is.
+func removeValuePath(value interface{}, path []string) bool {
+	m, ok := value.(map[string]interface{})
+	if !ok || len(m) == 0 {
+		return false
+	}
+	var child interface{}
+	key, rest, ok := splitLongestKey(path, func(k string) bool {
+		var found bool
+		child, found = m[k]
+		return found
+	})
+	if !ok {
+		return false
+	}
+	if len(rest) > 0 && !removeValuePath(child, rest) {
+		return false
+	}
+	delete(m, key)
+	return len(m) == 0
 }
 
 // templateParser reads a template's JSON tokens in order, so the parsed tree keeps the
@@ -308,7 +474,7 @@ func (p *templateParser) parseObject(path string, depth int) (*templateNode, err
 		if err != nil {
 			return nil, err
 		}
-		node.members = append(node.members, templateMember{encodedKey: append(encodedKey, ':'), value: value})
+		node.members = append(node.members, templateMember{key: key, encodedKey: append(encodedKey, ':'), value: value})
 	}
 	if _, err := p.token(); err != nil { // the closing brace
 		return nil, err

@@ -370,3 +370,184 @@ func TestLogTemplate_StartupMessagesCarryNoRequestValues(t *testing.T) {
 		assert.NotContains(t, logs.String(), value)
 	}
 }
+
+// exclusionTemplate writes fixed values, nested objects, a flat key with a dot, a claims map, the
+// request header map and an array.
+const exclusionTemplate = `{"service":"orders","http":{"method":"$ctx:request.method","status":"$ctx:response.status"},"http.route":"$ctx:request.pathTemplate","client":{"ip":"$ctx:request.header['x-forwarded-for']"},"auth_prop":"$ctx:auth.property","hdrs":"$ctx:request.header","tags":["gw","$ctx:api.name"]}`
+
+// exclusionEvent is ordersEvent with a route, two claims and more request headers.
+func exclusionEvent() *dto.Event {
+	event := ordersEvent()
+	event.Properties[dto.PropKeyOperationPath] = "/orders/{id}"
+	event.Properties[dto.PropKeyAuthProperties] = `{"tenant":"acme","region":"eu"}`
+	event.Properties[dto.PropKeyRequestHeaders] = `{"authorization":"Bearer secret","x-foo":"bar","x-user":"alice","x-forwarded-for":"10.0.0.1"}`
+	return event
+}
+
+// excludedLine publishes event through a Log built from template and exclude, with headers
+// captured, and returns the line and everything logged while building and publishing.
+func excludedLine(t *testing.T, template string, exclude []string, event *dto.Event) (line, logs string) {
+	t.Helper()
+	logBuf := captureLogs(t)
+	l, buf := newTemplateLogWithCollector(t, config.TrafficLoggingConfig{Template: template, ExcludeFields: exclude},
+		&config.CollectorConfig{RequestHeaders: true, ResponseHeaders: true})
+	l.Publish(event)
+	return strings.TrimSuffix(buf.String(), "\n"), logBuf.String()
+}
+
+func TestLogTemplate_ExcludeFields(t *testing.T) {
+	const (
+		service  = `"service":"orders"`
+		http     = `"http":{"method":"GET","status":200}`
+		route    = `"http.route":"/orders/{id}"`
+		client   = `"client":{"ip":"10.0.0.1"}`
+		authProp = `"auth_prop":{"region":"eu","tenant":"acme"}`
+		hdrs     = `"hdrs":{"authorization":"****","x-foo":"bar","x-forwarded-for":"10.0.0.1","x-user":"alice"}`
+		tags     = `"tags":["gw","Orders"]`
+	)
+	line := func(fields ...string) string { return "{" + strings.Join(fields, ",") + "}" }
+	full := line(service, http, route, client, authProp, hdrs, tags)
+
+	tests := []struct {
+		name    string
+		exclude []string
+		want    string
+	}{
+		{"nothing excluded", nil, full},
+		{"a whole field", []string{"client"}, line(service, http, route, authProp, hdrs, tags)},
+		{"the only key of an object removes the object", []string{"client.ip"}, line(service, http, route, authProp, hdrs, tags)},
+		{"a nested key", []string{"http.method"}, line(service, `"http":{"status":200}`, route, client, authProp, hdrs, tags)},
+		{"every key of an object", []string{"http.method", "http.status"}, line(service, route, client, authProp, hdrs, tags)},
+		{"a flat key with a dot", []string{"http.route"}, line(service, http, client, authProp, hdrs, tags)},
+		{"a key inside an expression's value", []string{"auth_prop.tenant"}, line(service, http, route, client, `"auth_prop":{"region":"eu"}`, hdrs, tags)},
+		{"claim names match exactly", []string{"auth_prop.Tenant"}, full},
+		{"header names match in any case", []string{"hdrs.X-User"}, line(service, http, route, client, authProp, `"hdrs":{"authorization":"****","x-foo":"bar","x-forwarded-for":"10.0.0.1"}`, tags)},
+		{"a masked header can be removed", []string{"hdrs.authorization"}, line(service, http, route, client, authProp, `"hdrs":{"x-foo":"bar","x-forwarded-for":"10.0.0.1","x-user":"alice"}`, tags)},
+		{"arrays are not reached", []string{"tags.0"}, full},
+		{"fixed values are not reached", []string{"service.name"}, full},
+		{"header values are not reached", []string{"hdrs.x-foo.bar"}, full},
+		{"no such field", []string{"nosuch"}, full},
+		{"every top-level field", []string{"service", "http", "http.route", "client", "auth_prop", "hdrs", "tags"}, `{}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, logs := excludedLine(t, exclusionTemplate, tt.exclude, exclusionEvent())
+			assert.Equal(t, tt.want, got)
+			assert.Empty(t, logs, "an exclusion is never logged")
+		})
+	}
+}
+
+func TestLogTemplate_ExclusionThatEmptiesAValueRemovesIt(t *testing.T) {
+	onlyTenant := func() *dto.Event {
+		event := exclusionEvent()
+		event.Properties[dto.PropKeyAuthProperties] = `{"tenant":"acme"}`
+		return event
+	}
+	noClaims := func() *dto.Event {
+		event := exclusionEvent()
+		delete(event.Properties, dto.PropKeyAuthProperties)
+		return event
+	}
+	metadata := func() *dto.Event {
+		event := exclusionEvent()
+		event.Properties[dto.PropKeyMetadata] = `{"x.y":1,"x":{"y":2},"deep":{"k":{"v":3}},"list":[{"k":1}]}`
+		return event
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		exclude  []string
+		event    *dto.Event
+		want     string
+	}{
+		{"first field", `{"a":"$ctx:auth.property","b":1}`, []string{"a.tenant"}, onlyTenant(), `{"b":1}`},
+		{"middle field", `{"x":1,"a":"$ctx:auth.property","b":2}`, []string{"a.tenant"}, onlyTenant(), `{"x":1,"b":2}`},
+		{"last field", `{"x":1,"a":"$ctx:auth.property"}`, []string{"a.tenant"}, onlyTenant(), `{"x":1}`},
+		{"emptied objects above it are removed too", `{"o":{"p":{"a":"$ctx:auth.property"}},"b":1}`, []string{"o.p.a.tenant"}, onlyTenant(), `{"b":1}`},
+		{"an object above it with other fields stays", `{"o":{"a":"$ctx:auth.property","n":"$ctx:api.name"}}`, []string{"o.a.tenant"}, onlyTenant(), `{"o":{"n":"Orders"}}`},
+		{"every field emptied gives an empty line object", `{"a":"$ctx:auth.property"}`, []string{"a.tenant"}, onlyTenant(), `{}`},
+		{"a value that is already empty stays", `{"a":"$ctx:auth.property"}`, []string{"a.tenant"}, noClaims(), `{"a":{}}`},
+		{"an object written empty stays", `{"e":{},"b":1}`, []string{"e.x"}, onlyTenant(), `{"e":{},"b":1}`},
+		{"a header map emptied by exclusion is removed", `{"h":"$ctx:request.header","b":1}`, []string{"h.authorization", "h.x-foo"}, ordersEvent(), `{"b":1}`},
+		{"a header map with no captured headers stays", `{"h":"$ctx:request.header"}`, []string{"h.x-foo"}, createBaseEvent(), `{"h":{}}`},
+		{"a flat key inside a value", `{"m":"$ctx:metadata"}`, []string{"m.x.y"}, metadata(), `{"m":{"deep":{"k":{"v":3}},"list":[{"k":1}],"x":{"y":2}}}`},
+		{"emptied maps inside a value are removed", `{"m":"$ctx:metadata"}`, []string{"m.deep.k.v"}, metadata(), `{"m":{"list":[{"k":1}],"x":{"y":2},"x.y":1}}`},
+		{"lists inside a value are not reached", `{"m":"$ctx:metadata"}`, []string{"m.list.0.k"}, metadata(), `{"m":{"deep":{"k":{"v":3}},"list":[{"k":1}],"x":{"y":2},"x.y":1}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, logs := excludedLine(t, tt.template, tt.exclude, tt.event)
+			assert.Equal(t, tt.want, got)
+			assert.Empty(t, logs)
+		})
+	}
+}
+
+func TestLogTemplate_ExclusionDoesNotCarryOverToTheNextRequest(t *testing.T) {
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{
+		Template:      `{"a":"$ctx:auth.property","b":1}`,
+		ExcludeFields: []string{"a.tenant"},
+	})
+	onlyTenant := exclusionEvent()
+	onlyTenant.Properties[dto.PropKeyAuthProperties] = `{"tenant":"acme"}`
+
+	l.Publish(onlyTenant)
+	l.Publish(exclusionEvent())
+	l.Publish(onlyTenant)
+
+	assert.Equal(t, `{"b":1}`+"\n"+`{"a":{"region":"eu"},"b":1}`+"\n"+`{"b":1}`+"\n", buf.String())
+}
+
+func TestLogTemplate_ExcludedAndMaskedHeaders(t *testing.T) {
+	event := func() *dto.Event {
+		event := ordersEvent()
+		event.Properties[dto.PropKeyResponseHeaders] = `{"Set-Cookie":"sid=1","content-type":"application/json"}`
+		return event
+	}
+	const singleHeader = `{"auth":"$ctx:request.header['authorization']","n":"$ctx:api.name"}`
+
+	tests := []struct {
+		name     string
+		template string
+		exclude  []string
+		want     string
+	}{
+		{"a single masked header is masked", singleHeader, nil, `{"auth":"****","n":"Orders"}`},
+		{"a single masked header is masked whatever else is excluded", singleHeader, []string{"n", "auth.x"}, `{"auth":"****"}`},
+		{"a single header field can be removed", singleHeader, []string{"auth"}, `{"n":"Orders"}`},
+		{"the header map stays masked when another header is removed", `{"hdrs":"$ctx:request.header"}`, []string{"hdrs.X-Foo"}, `{"hdrs":{"authorization":"****"}}`},
+		{"a masked header can be removed from the header map", `{"hdrs":"$ctx:request.header"}`, []string{"hdrs.Authorization"}, `{"hdrs":{"x-foo":"bar"}}`},
+		{"two fields read the same headers, one is filtered", `{"h1":"$ctx:request.header","h2":"$ctx:request.header"}`, []string{"h1.x-foo"}, `{"h1":{"authorization":"****"},"h2":{"authorization":"****","x-foo":"bar"}}`},
+		{"response header names match in any case", `{"rh":"$ctx:response.header"}`, []string{"rh.SET-COOKIE"}, `{"rh":{"content-type":"application/json"}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, logs := excludedLine(t, tt.template, tt.exclude, event())
+			assert.Equal(t, tt.want, got)
+			assert.NotContains(t, got, "secret")
+			assert.Empty(t, logs)
+		})
+	}
+}
+
+func TestLogTemplate_ExcludedFieldIsNeverCompiled(t *testing.T) {
+	logs := captureLogs(t)
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{
+		Template:      `{"bad":"$ctx:nosuch.var","hdrs":"$ctx:request.header","n":1}`,
+		ExcludeFields: []string{"bad", "hdrs"},
+	})
+	l.Publish(ordersEvent())
+
+	assert.Equal(t, `{"n":1}`+"\n", buf.String())
+	assert.Empty(t, logs.String(), "an excluded field that does not compile, or reads uncaptured headers, gets no WARNING")
+}
+
+func TestLogTemplate_PathInsideAFieldThatDoesNotCompile(t *testing.T) {
+	line, logs := excludedLine(t, `{"bad":"$ctx:nosuch.var","n":1}`, []string{"bad.x"}, ordersEvent())
+
+	assert.Equal(t, `{"bad":null,"n":1}`, line)
+	assert.Equal(t, 1, strings.Count(logs, "level=WARN"), logs)
+	assert.Contains(t, logs, `field \"bad\" is written as null`)
+}
