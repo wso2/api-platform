@@ -134,6 +134,11 @@ func (s *AuditService) Record(action, resourceUUID, resourceName, resourceType, 
 		correlationID = correlationID[:64]
 	}
 	correlationID = strings.ToValidUTF8(correlationID, "")
+	// Only some names are length-checked, and the column holds 255
+	// (NVARCHAR(255) on SQL Server); 255 bytes always fit.
+	if len(resourceName) > 255 {
+		resourceName = strings.ToValidUTF8(resourceName[:255], "")
+	}
 	id := uuid.New().String()
 	// Microseconds: the finest precision every supported database stores, so
 	// the row and the line hold the same time.
