@@ -125,6 +125,43 @@ func BenchmarkLog_Publish(b *testing.B) {
 	}
 }
 
+// benchmarkTemplate is a template of about 15 fields: fixed values, nested objects, an array,
+// scalar variables and one masked header.
+const benchmarkTemplate = `{
+  "service": "orders",
+  "env": "prod",
+  "version": 1,
+  "http": {"method": "$ctx:request.method", "path": "$ctx:request.path", "status": "$ctx:response.status"},
+  "api": {"name": "$ctx:api.name", "version": "$ctx:api.version", "context": "$ctx:api.context"},
+  "requestId": "$ctx:request.id",
+  "user": "$ctx:auth.subject",
+  "auth": "$ctx:request.header['authorization']",
+  "traceId": "$ctx:request.header['x-request-id']",
+  "tags": ["gateway", "$ctx:api.name"]
+}`
+
+// BenchmarkLog_Publish_Template measures Log.Publish when a template writes the line, over the
+// same event as BenchmarkLog_Publish.
+func BenchmarkLog_Publish_Template(b *testing.B) {
+	l, err := NewLog(&config.TrafficLoggingConfig{
+		Enabled:       true,
+		Outputs:       []string{config.TrafficLogSinkStdout},
+		MaskedHeaders: []string{"authorization", "x-api-key", "x-jwt-assertion"},
+		Template:      benchmarkTemplate,
+	}, nil)
+	if err != nil {
+		b.Fatalf("NewLog: %v", err)
+	}
+	useWriterSink(l, io.Discard)
+	event := benchmarkTrafficLogEvent()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		l.Publish(event)
+	}
+}
+
 // benchmarkTrafficLogEventTypedHeaders is identical to benchmarkTrafficLogEvent
 // except the header properties are already-typed map[string]string values (the
 // real shape a correlation-store hit hands prepareAnalyticEvent -- see

@@ -65,6 +65,9 @@ type Log struct {
 	// traffic_logging.outputs. Each sink owns its own synchronization, so no lock
 	// is held here across the fan-out.
 	sinks []Sink
+	// template writes each line in the layout of the operator's template. Nil when
+	// no template is set, in which case the default line is written.
+	template *logTemplate
 }
 
 // NewLog creates a new traffic-logging publisher and its configured sinks.
@@ -94,12 +97,31 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 		}
 	}
 
+	var template *logTemplate
+	if logCfg.Enabled && logCfg.Template != "" {
+		var err error
+		template, err = newLogTemplate(logCfg, masked)
+		if err != nil {
+			// A template mistake must not stop API traffic, and the default line may
+			// carry fields the template leaves out, so no lines are written at all.
+			slog.Error(err.Error() + "; no traffic log lines will be written until the template is fixed and the gateway restarted")
+			return &Log{maskedHeaders: masked, globalProperties: newGlobalPropertyEvaluator(nil, masked)}, nil
+		}
+	}
+
+	// Properties shape only the default line, so they are not compiled for a template.
+	properties := logCfg.Properties
+	if template != nil {
+		properties = nil
+	}
+
 	l := &Log{
 		maskedHeaders:    masked,
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
-		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
+		globalProperties: newGlobalPropertyEvaluator(properties, masked),
 		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
+		template:         template,
 	}
 
 	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
@@ -154,9 +176,14 @@ func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective 
 }
 
 // Publish writes the event to stdout as JSON, using the directive built from
-// [traffic_logging] config. If traffic logging is disabled, the event is skipped.
+// [traffic_logging] config, or in the template's layout when a template is set. If
+// traffic logging is disabled, the event is skipped.
 func (l *Log) Publish(event *dto.Event) {
 	if event == nil || l.globalDir == nil {
+		return
+	}
+	if l.template != nil {
+		l.write(l.template.render(event))
 		return
 	}
 
