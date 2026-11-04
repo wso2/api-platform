@@ -37,6 +37,8 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     Then the Management Portal shows "Validation failed:"
     When the user uploads spec fixture "swagger2.yaml" in the Management Portal
     Then the Management Portal shows "Swagger 2.x is not allowed"
+    When the user uploads spec fixture "empty-paths.yaml" in the Management Portal
+    Then the Management Portal shows "API contract must contain at least one operation."
     When the user uploads a generated spec of 65537 bytes in the Management Portal
     Then the Management Portal shows "The OpenAPI specification exceeds the maximum allowed size."
     When the user uploads spec fixture "petstore-v1.yaml" in the Management Portal
@@ -81,6 +83,10 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And I generate a unique handle from "apidef-ui-update" and store it as "api"
     And a project "${CTX:project}" exists on the control plane
     And a REST API "${CTX:api}" is imported from spec fixture "petstore-v1.yaml" in project "${CTX:project}" on the control plane
+    And operation "GET /pets" of REST API "${CTX:api}" has policy "set-headers" on the control plane with params:
+      """
+      {"request": {"headers": [{"name": "X-Apidef-Policy", "value": "kept"}]}}
+      """
     When the user signs in to the Management Portal as the administrator
     And the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/deploy"
     And the user clicks "Deploy" on gateway "it-gateway" in the Management Portal
@@ -95,6 +101,8 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user clicks "View Resources" in the Management Portal
     Then the Management Portal shows "/pets/{petId}/photos"
     And the Management Portal does not show "/store/inventory"
+    When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/policies"
+    Then the Management Portal shows policy "set-headers" on resource "GET /pets"
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/deploy"
     And the user clicks "Deploy" on gateway "it-gateway" in the Management Portal
     And the Management Portal confirms a deployment started and stores its name as "second"
@@ -108,6 +116,8 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user confirms with "Save" in the Management Portal
     And the user clicks "View Resources" in the Management Portal
     Then the Management Portal shows "/animals"
+    When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/policies"
+    Then the Management Portal shows no policy on resource "GET /animals"
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/deploy"
     And the user clicks "Deploy" on gateway "it-gateway" in the Management Portal
     And the Management Portal confirms a deployment started and stores its name as "third"

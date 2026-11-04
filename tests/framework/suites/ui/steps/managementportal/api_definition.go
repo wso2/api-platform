@@ -19,6 +19,7 @@ package managementportal
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -44,6 +45,130 @@ func (s *Steps) registerAPIDefinitionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the user confirms with "([^"]*)" in the Management Portal$`, s.confirmDialog)
 	sc.Step(`^the user uploads spec fixture "([^"]*)" in the Management Portal$`, s.uploadFixture)
 	sc.Step(`^the user uploads a generated spec of (\d+) bytes in the Management Portal$`, s.uploadGenerated)
+	sc.Step(`^operation "([A-Z]+) ([^"]*)" of REST API "([^"]*)" has policy "([^"]*)" on the control plane with params:$`,
+		s.operationHasPolicy)
+	sc.Step(`^the Management Portal shows policy "([^"]*)" on resource "([A-Z]+) ([^"]*)"$`, s.resourceShowsPolicy)
+	sc.Step(`^the Management Portal shows no policy on resource "([A-Z]+) ([^"]*)"$`, s.resourceShowsNoPolicy)
+}
+
+// operationHasPolicy attaches version v1 of a policy, with the given params, to one operation of
+// a REST API: it reads the API and writes it back with the policy on that operation, the way a
+// publisher's update does.
+func (s *Steps) operationHasPolicy(ctx context.Context, method, path, name, policy string, params *godog.DocString) error {
+	resolved, err := uivalue.Expand(ctx, name)
+	if err != nil {
+		return err
+	}
+	var values map[string]any
+	if err := json.Unmarshal([]byte(params.Content), &values); err != nil {
+		return fmt.Errorf("policy %q params are not a JSON object: %w", policy, err)
+	}
+	bearer, err := s.bearer(ctx, "admin")
+	if err != nil {
+		return err
+	}
+	base, err := s.topo.URL("platform-api", "https")
+	if err != nil {
+		return err
+	}
+	url := base + "/api/v0.9/rest-apis/" + resolved
+	headers := map[string]string{"Authorization": "Bearer " + bearer}
+	resp, err := s.client.Do(ctx, httpx.Request{Method: http.MethodGet, URL: url, Headers: headers}, 0, 0)
+	if err != nil {
+		return fmt.Errorf("reading REST API %q: %w", resolved, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("reading REST API %q: %s", resolved, resp.Describe())
+	}
+	var api map[string]any
+	if err := json.Unmarshal(resp.Body, &api); err != nil {
+		return fmt.Errorf("reading REST API %q: %w", resolved, err)
+	}
+	if err := attachOperationPolicy(api, method, path, map[string]any{"name": policy, "version": "v1", "params": values}); err != nil {
+		return fmt.Errorf("REST API %q: %w", resolved, err)
+	}
+	payload, err := json.Marshal(api)
+	if err != nil {
+		return err
+	}
+	resp, err = s.client.Do(ctx, httpx.Request{
+		Method: http.MethodPut, URL: url, Headers: headers, ContentType: "application/json", Body: payload,
+	}, 0, 0)
+	if err != nil {
+		return fmt.Errorf("updating REST API %q: %w", resolved, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("updating REST API %q: %s", resolved, resp.Describe())
+	}
+	return nil
+}
+
+// attachOperationPolicy appends policy to the operation of api with the given method and path.
+func attachOperationPolicy(api map[string]any, method, path string, policy map[string]any) error {
+	operations, _ := api["operations"].([]any)
+	for _, raw := range operations {
+		operation, _ := raw.(map[string]any)
+		request, _ := operation["request"].(map[string]any)
+		if request == nil || request["method"] != method || request["path"] != path {
+			continue
+		}
+		policies, _ := request["policies"].([]any)
+		request["policies"] = append(policies, policy)
+		return nil
+	}
+	return fmt.Errorf("has no operation %s %s", method, path)
+}
+
+// resourceShowsPolicy expands a resource on the Policies page and expects the policy in it.
+func (s *Steps) resourceShowsPolicy(ctx context.Context, policy, method, path string) error {
+	body, err := s.resourceBody(ctx, method, path)
+	if err != nil {
+		return err
+	}
+	if err := s.expect.Locator(body.GetByText(policy, playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)})).
+		ToBeVisible(); err != nil {
+		return fmt.Errorf("resource %s %s shows no policy %q: %w", method, path, policy, err)
+	}
+	return nil
+}
+
+// resourceShowsNoPolicy expands a resource on the Policies page and expects no attached policy.
+// The drop hint shows whether or not policies are attached, so it only marks the region as
+// loaded; each attached policy has its own "Remove policy" button.
+func (s *Steps) resourceShowsNoPolicy(ctx context.Context, method, path string) error {
+	body, err := s.resourceBody(ctx, method, path)
+	if err != nil {
+		return err
+	}
+	if err := s.expect.Locator(body.GetByText("Drag and drop policies here, or use Add Policy.")).ToBeVisible(); err != nil {
+		return fmt.Errorf("resource %s %s never showed its policies: %w", method, path, err)
+	}
+	removes := body.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Remove policy", Exact: playwright.Bool(true)})
+	if err := s.expect.Locator(removes).ToHaveCount(0); err != nil {
+		return fmt.Errorf("resource %s %s has attached policies: %w", method, path, err)
+	}
+	return nil
+}
+
+// resourceBody expands the resource's row on the Policies page and returns the region its
+// toggle controls.
+func (s *Steps) resourceBody(ctx context.Context, method, path string) (playwright.Locator, error) {
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return nil, err
+	}
+	toggle := page.GetByRole("button", playwright.PageGetByRoleOptions{
+		Name: "Show details for " + method + " " + path, Exact: playwright.Bool(true),
+	})
+	// The label turns to "Hide details" once expanded, so the region is read first.
+	region, err := toggle.GetAttribute("aria-controls")
+	if err != nil || region == "" {
+		return nil, fmt.Errorf("resource %s %s names no details region: %v", method, path, err)
+	}
+	if err := toggle.Click(); err != nil {
+		return nil, fmt.Errorf("expanding resource %s %s: %w", method, path, err)
+	}
+	return page.Locator("[id=\"" + region + "\"]"), nil
 }
 
 // importedAPIExists creates a REST API from a fixture through the control plane's import, at the

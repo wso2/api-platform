@@ -94,3 +94,18 @@ func TestEveryDeploymentConfirmationNamesTheDeployment(t *testing.T) {
 	}
 	require.Len(t, confirmations, 3)
 }
+
+func TestAttachOperationPolicyAppendsToTheMatchingOperationOnly(t *testing.T) {
+	api := map[string]any{"operations": []any{
+		map[string]any{"request": map[string]any{"method": "GET", "path": "/pets",
+			"policies": []any{map[string]any{"name": "existing"}}}},
+		map[string]any{"request": map[string]any{"method": "POST", "path": "/pets"}},
+	}}
+	require.NoError(t, attachOperationPolicy(api, "GET", "/pets", map[string]any{"name": "set-headers"}))
+	operations := api["operations"].([]any)
+	get := operations[0].(map[string]any)["request"].(map[string]any)
+	require.Equal(t, []any{map[string]any{"name": "existing"}, map[string]any{"name": "set-headers"}}, get["policies"])
+	require.NotContains(t, operations[1].(map[string]any)["request"], "policies")
+	require.ErrorContains(t, attachOperationPolicy(api, "GET", "/absent", map[string]any{}), "no operation GET /absent")
+	require.ErrorContains(t, attachOperationPolicy(map[string]any{}, "GET", "/pets", map[string]any{}), "no operation")
+}
