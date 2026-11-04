@@ -81,9 +81,11 @@ export type RuntimeConfig = {
   apiPlatformHomePage: string;
   organizationApiUrl: string;
   /**
-   * Set when the BFF has a "billing" named upstream configured (cloud only).
+   * Set when the deployment has a "billing" route (cloud only): a named
+   * upstream on the BFF, or a route on the gateway in front of the console.
    * When true, ProductActivation calls it via the same-origin proxy
-   * (/proxy/billing/...) — the browser never learns the real billing URL.
+   * (`<platformApiBaseUrl>/billing/...`) — the browser never learns the real
+   * billing URL.
    */
   billingProxyEnabled: boolean;
   /**
@@ -93,9 +95,11 @@ export type RuntimeConfig = {
    */
   defaultOrgRegion: string;
   /**
-   * Set when the BFF has a "cloud" named upstream configured (cloud only).
-   * When true, cloud Insights extensions may call it via the same-origin
-   * proxy (/proxy/cloud/...) — the browser never learns the real cloud URL.
+   * Set when the deployment has a "cloud" route (cloud only): a named upstream
+   * on the BFF, or a route on the gateway in front of the console. When true,
+   * cloud Insights extensions may call it via the same-origin proxy
+   * (`<platformApiBaseUrl>/cloud/...`) — the browser never learns the real
+   * cloud URL.
    */
   cloudProxyEnabled: boolean;
   /**
