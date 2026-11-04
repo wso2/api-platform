@@ -1,0 +1,2 @@
+[router.http_listener.timeouts]
+request_headers_timeout = "5s"

@@ -606,25 +606,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
-      - name: metrics
-        features:
-          - features/gateway/observability/metrics.feature
-      - name: request-body-size
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/core/request_body_size.feature
-      - name: upstream-connect-timeout
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes/upstream_connect_timeout.feature
-      - name: backend-route-timeout
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/gateway/routes/backend_timeout.feature
-      - name: llm-backend-timeout
-        tags: "gateway-version>=1.2.0"
-        features:
-          - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
 
   # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
@@ -654,6 +635,19 @@ blocks:
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
 
+  - name: gateway-metrics
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/metrics.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: metrics
+        features:
+          - features/gateway/observability/metrics.feature
+
   - name: gateway-request-id-disabled
     parallel: 1
     components:
@@ -671,6 +665,22 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/security/jwks_disabled.feature
+
+  # Buffered bodies above gRPC's 4 MiB default reach the policy engine only on Gateways whose
+  # ext_proc server sizes its message limits from the body ceilings; released 1.2.0 does not.
+  - name: gateway-request-body-size
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/request-body-size.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: request-body-size
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_body_size.feature
 
   # This block is the only scenario that restricts router.vhosts.main/sandbox to
   # *.wso2.com/*-sandbox.wso2.com. Keep it out of gateway-core, because gateway-core runners
@@ -772,6 +782,28 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/observability/mcp_analytics.feature
+
+  - name: backend-timeout
+    parallel: 2
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/backend-timeout.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: upstream-connect-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/upstream_connect_timeout.feature
+      - name: backend-route-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/backend_timeout.feature
+      - name: llm-backend-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
 
   - name: platform-api-core
     parallel: 2
