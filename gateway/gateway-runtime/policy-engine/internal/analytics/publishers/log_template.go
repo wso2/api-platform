@@ -32,11 +32,31 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 )
 
-// inlineTemplateSetting names the inline template in startup messages.
-const inlineTemplateSetting = "traffic_logging.template"
+// inlineTemplateSetting and fileTemplateSetting name the two template settings in startup
+// messages.
+const (
+	inlineTemplateSetting = "traffic_logging.template"
+	fileTemplateSetting   = "traffic_logging.template_file"
+)
 
 // maxTemplateDepth is the deepest nesting of objects and arrays a template may use.
 const maxTemplateDepth = 64
+
+// nullJSON is written for a literal null, an expression that does not compile, and an
+// expression with no value for a request.
+var nullJSON = []byte("null")
+
+// capturedVariables lists, in message order, the variables whose data exists only when the
+// collector captures it, with the setting that switches capture on and the data it carries.
+var capturedVariables = []struct {
+	variable string
+	setting  string
+	data     string
+	captured func(*config.CollectorConfig) bool
+}{
+	{"request.header", "collector.request_headers", "request headers", func(c *config.CollectorConfig) bool { return c.RequestHeaders }},
+	{"response.header", "collector.response_headers", "response headers", func(c *config.CollectorConfig) bool { return c.ResponseHeaders }},
+}
 
 // templateNodeKind says which kind of JSON value a template node holds.
 type templateNodeKind int
@@ -86,7 +106,11 @@ type logTemplate struct {
 
 // newLogTemplate parses and compiles the template in logCfg. It returns an error only for a
 // template that cannot be used at all; an expression that does not compile is written as null.
-func newLogTemplate(logCfg *config.TrafficLoggingConfig, maskedHeaders map[string]bool) (*logTemplate, error) {
+// collectorCfg says which headers and bodies the collector captures.
+func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorConfig, maskedHeaders map[string]bool) (*logTemplate, error) {
+	if logCfg.Template != "" && logCfg.TemplateFile != "" {
+		return nil, fmt.Errorf("%s, %s: both are set; set only one", inlineTemplateSetting, fileTemplateSetting)
+	}
 	source := inlineTemplateSetting
 	root, err := parseTemplate(source, logCfg.Template)
 	if err != nil {
@@ -103,33 +127,49 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, maskedHeaders map[strin
 		referencedVars: make(map[string]bool),
 		maskedHeaders:  maskedHeaders,
 	}
-	t.compile(env, root)
+	t.compile(env, collectorCfg, root)
 	return t, nil
 }
 
 // compile compiles every expression under node. An expression that does not compile becomes
 // a fixed null, reported once with the field and the reason.
-func (t *logTemplate) compile(env *cel.Env, node *templateNode) {
+func (t *logTemplate) compile(env *cel.Env, collectorCfg *config.CollectorConfig, node *templateNode) {
 	switch node.kind {
 	case objectNode:
 		for _, m := range node.members {
-			t.compile(env, m.value)
+			t.compile(env, collectorCfg, m.value)
 		}
 	case arrayNode:
 		for _, e := range node.elements {
-			t.compile(env, e)
+			t.compile(env, collectorCfg, e)
 		}
 	case expressionNode:
 		ast, program, err := compileExpression(env, node.expression)
 		if err != nil {
 			slog.Warn(fmt.Sprintf("%s: field %q is written as null: %v", t.source, node.path, err))
-			*node = templateNode{kind: literalNode, path: node.path, literal: []byte("null")}
+			*node = templateNode{kind: literalNode, path: node.path, literal: nullJSON}
 			return
 		}
 		node.program = program
-		for name := range referencedGlobalPropertyVariables(ast) {
+		reads := referencedGlobalPropertyVariables(ast)
+		for name := range reads {
 			t.referencedVars[name] = true
 		}
+		t.warnIfUncaptured(node.path, reads, collectorCfg)
+	}
+}
+
+// warnIfUncaptured logs one WARNING for a field that reads data the collector does not capture,
+// listing every reason. The field is kept.
+func (t *logTemplate) warnIfUncaptured(path string, reads map[string]bool, collectorCfg *config.CollectorConfig) {
+	var reasons []string
+	for _, v := range capturedVariables {
+		if reads[v.variable] && !v.captured(collectorCfg) {
+			reasons = append(reasons, fmt.Sprintf("reads %s but %s is false; no %s will be logged", v.variable, v.setting, v.data))
+		}
+	}
+	if len(reasons) > 0 {
+		slog.Warn(fmt.Sprintf("%s: field %q %s", t.source, path, strings.Join(reasons, "; ")))
 	}
 }
 
@@ -159,26 +199,27 @@ func (t *logTemplate) render(event *dto.Event) []byte {
 	return buf.Bytes()
 }
 
-// write appends node's JSON to buf and reports whether it wrote anything. Only an expression
-// with no value for this request writes nothing; objects and arrays are always written.
-func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[string]interface{}) bool {
+// write appends node's JSON to buf. An expression with no value for this request is written
+// as null, so every line has the same fields and array positions are kept.
+func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[string]interface{}) {
 	switch node.kind {
 	case objectNode:
 		buf.WriteByte('{')
-		first := true
-		for _, m := range node.members {
-			if t.writeMember(buf, first, m.encodedKey, m.value, evalCtx) {
-				first = false
+		for i, m := range node.members {
+			if i > 0 {
+				buf.WriteByte(',')
 			}
+			buf.Write(m.encodedKey)
+			t.write(buf, m.value, evalCtx)
 		}
 		buf.WriteByte('}')
 	case arrayNode:
 		buf.WriteByte('[')
-		first := true
-		for _, e := range node.elements {
-			if t.writeMember(buf, first, nil, e, evalCtx) {
-				first = false
+		for i, e := range node.elements {
+			if i > 0 {
+				buf.WriteByte(',')
 			}
+			t.write(buf, e, evalCtx)
 		}
 		buf.WriteByte(']')
 	case literalNode:
@@ -186,27 +227,12 @@ func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[s
 	case expressionNode:
 		value, err := node.evaluate(evalCtx)
 		if err != nil {
-			slog.Debug(t.source+": field left out of this line", "field", node.path, "error", err)
-			return false
+			slog.Debug("Traffic log template field has no value for this request; writing null",
+				"source", t.source, "field", node.path, "error", err)
+			value = nullJSON
 		}
 		buf.Write(value)
 	}
-	return true
-}
-
-// writeMember appends one object member (encodedKey set) or array element (encodedKey nil),
-// after a comma unless it is the first, and undoes the write when the value has no value.
-func (t *logTemplate) writeMember(buf *bytes.Buffer, first bool, encodedKey []byte, value *templateNode, evalCtx map[string]interface{}) bool {
-	mark := buf.Len()
-	if !first {
-		buf.WriteByte(',')
-	}
-	buf.Write(encodedKey)
-	if t.write(buf, value, evalCtx) {
-		return true
-	}
-	buf.Truncate(mark)
-	return false
 }
 
 // evaluate returns the JSON of an expression node's result for one request.
@@ -335,7 +361,7 @@ func (p *templateParser) parseValue(path string, depth int) (*templateNode, erro
 	case bool:
 		return &templateNode{kind: literalNode, path: path, literal: []byte(strconv.FormatBool(v))}, nil
 	default: // nil, the JSON null
-		return &templateNode{kind: literalNode, path: path, literal: []byte("null")}, nil
+		return &templateNode{kind: literalNode, path: path, literal: nullJSON}, nil
 	}
 }
 

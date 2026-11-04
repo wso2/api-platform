@@ -19,10 +19,14 @@
 package config
 
 import (
+	"bytes"
 	"crypto/tls"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -2413,5 +2417,63 @@ template_file = "/etc/gateway/traffic-log-template.json"
 		assert.Equal(t, "/etc/gateway/traffic-log-template.json", cfg.TrafficLogging.TemplateFile)
 		assert.True(t, cfg.Collector.RequestHeaders)
 		assert.True(t, cfg.Collector.ResponseHeaders)
+	})
+}
+
+// captureLogs redirects the package-level slog default into a buffer for the duration of the
+// test, restoring the previous logger afterwards.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+// A template set while traffic logging is disabled has no effect, which is reported once.
+func TestValidateTrafficLoggingConfig_TemplateWhileDisabled(t *testing.T) {
+	tests := []struct {
+		name         string
+		template     string
+		templateFile string
+		want         string
+	}{
+		{
+			name:     "template",
+			template: `{"a":1}`,
+			want:     "traffic_logging.template is set but traffic_logging.enabled is false; the template has no effect",
+		},
+		{
+			name:         "template_file",
+			templateFile: "/etc/gateway/template.json",
+			want:         "traffic_logging.template_file is set but traffic_logging.enabled is false; the template has no effect",
+		},
+		{
+			name:         "both",
+			template:     `{"a":1}`,
+			templateFile: "/etc/gateway/template.json",
+			want:         "traffic_logging.template and traffic_logging.template_file are set but traffic_logging.enabled is false; the template has no effect",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+			cfg := &Config{TrafficLogging: TrafficLoggingConfig{Template: tt.template, TemplateFile: tt.templateFile}}
+
+			require.NoError(t, cfg.validateTrafficLoggingConfig())
+
+			assert.Equal(t, 1, strings.Count(logs.String(), "level=WARN"), logs.String())
+			assert.Contains(t, logs.String(), "level=WARN msg="+strconv.Quote(tt.want))
+		})
+	}
+
+	t.Run("neither", func(t *testing.T) {
+		logs := captureLogs(t)
+		cfg := &Config{TrafficLogging: TrafficLoggingConfig{}}
+
+		require.NoError(t, cfg.validateTrafficLoggingConfig())
+
+		assert.Empty(t, logs.String())
 	})
 }

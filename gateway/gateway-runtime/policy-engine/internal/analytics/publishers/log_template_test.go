@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -55,14 +56,20 @@ func ordersEvent() *dto.Event {
 }
 
 // newTemplateLog builds an enabled Log from cfg, with the default masked headers when cfg sets
-// none, writing to the returned buffer.
+// none and nothing captured by the collector, writing to the returned buffer.
 func newTemplateLog(t *testing.T, cfg config.TrafficLoggingConfig) (*Log, *bytes.Buffer) {
+	t.Helper()
+	return newTemplateLogWithCollector(t, cfg, nil)
+}
+
+// newTemplateLogWithCollector is newTemplateLog with the given collector capture settings.
+func newTemplateLogWithCollector(t *testing.T, cfg config.TrafficLoggingConfig, collector *config.CollectorConfig) (*Log, *bytes.Buffer) {
 	t.Helper()
 	cfg.Enabled = true
 	if cfg.MaskedHeaders == nil {
 		cfg.MaskedHeaders = testMaskedHeaders
 	}
-	l, err := NewLog(&cfg, nil)
+	l, err := NewLog(&cfg, collector)
 	require.NoError(t, err)
 	var buf bytes.Buffer
 	useWriterSink(l, &buf)
@@ -156,19 +163,14 @@ func TestLogTemplate_OutputRules(t *testing.T) {
 			want:     `{"s":"Orders","i":200,"d":1.5,"b":true,"l":["b","a"],"m":{"a":"x","z":1}}`,
 		},
 		{
-			name:     "no value leaves the key out and shortens the array, empty values are written",
-			template: `{"a":"$ctx:metadata['absent']","arr":["x","$ctx:metadata['absent']","y"],"e":"$ctx:''","zero":"$ctx:0","no":"$ctx:false"}`,
-			want:     `{"arr":["x","y"],"e":"","zero":0,"no":false}`,
+			name:     "no value is written as null at any depth, keeping array positions",
+			template: `{"a":"$ctx:metadata['absent']","o":{"b":"$ctx:metadata['absent']"},"arr":["x","$ctx:metadata['absent']","y"]}`,
+			want:     `{"a":null,"o":{"b":null},"arr":["x",null,"y"]}`,
 		},
 		{
-			name:     "objects and arrays are kept when every expression in them has no value",
-			template: `{"o":{"a":"$ctx:metadata['x']"},"l":["$ctx:metadata['x']"],"k":"fixed"}`,
-			want:     `{"o":{},"l":[],"k":"fixed"}`,
-		},
-		{
-			name:     "a line whose only field has no value is an empty object",
-			template: `{"a":"$ctx:metadata['x']"}`,
-			want:     `{}`,
+			name:     "empty values are written",
+			template: `{"e":"$ctx:''","zero":"$ctx:0","no":"$ctx:false","l":"$ctx:[]","m":"$ctx:{}"}`,
+			want:     `{"e":"","zero":0,"no":false,"l":[],"m":{}}`,
 		},
 	}
 	for _, tt := range tests {
@@ -178,14 +180,14 @@ func TestLogTemplate_OutputRules(t *testing.T) {
 	}
 }
 
-// A field with no value for one request is left out of that line without a WARNING or ERROR.
+// A field with no value for one request is written as null without a WARNING or ERROR.
 func TestLogTemplate_NoValueIsNotReportedAboveDebug(t *testing.T) {
 	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: `{"a":"$ctx:metadata['absent']","k":1}`})
 	logs := captureLogs(t)
 
 	l.Publish(ordersEvent())
 
-	assert.Equal(t, `{"k":1}`+"\n", buf.String())
+	assert.Equal(t, `{"a":null,"k":1}`+"\n", buf.String())
 	assert.NotContains(t, logs.String(), "level=WARN")
 	assert.NotContains(t, logs.String(), "level=ERROR")
 }
@@ -201,4 +203,170 @@ func TestLogTemplate_HeadersIgnoreTheTrafficLoggingSwitches(t *testing.T) {
 	l.Publish(ordersEvent())
 
 	assert.Equal(t, `{"h":"bar"}`+"\n", buf.String())
+}
+
+// noLinesSuffix ends every template-error message.
+const noLinesSuffix = "; no traffic log lines will be written until the template is fixed and the gateway restarted"
+
+// logged reports whether logs holds a message at level with exactly the text msg.
+func logged(logs, level, msg string) bool {
+	return strings.Contains(logs, "level="+level+" msg="+strconv.Quote(msg))
+}
+
+// A template that cannot be used is reported once, at startup, as an ERROR; startup goes on and
+// no line is written, not even the default line.
+func TestLogTemplate_TemplateErrors(t *testing.T) {
+	tooDeep := strings.Repeat(`{"a":`, maxTemplateDepth+1) + "1" + strings.Repeat("}", maxTemplateDepth+1)
+	tests := []struct {
+		name string
+		cfg  config.TrafficLoggingConfig
+		want string
+	}{
+		{
+			name: "both sources",
+			cfg:  config.TrafficLoggingConfig{Template: `{"a":1}`, TemplateFile: "/etc/gateway/template.json"},
+			want: "traffic_logging.template, traffic_logging.template_file: both are set; set only one",
+		},
+		{
+			name: "invalid JSON",
+			cfg:  config.TrafficLoggingConfig{Template: "{\n  \"a\": x\n}"},
+			want: "traffic_logging.template: invalid JSON at line 2, column 8: invalid character 'x' looking for beginning of value",
+		},
+		{
+			name: "top level not an object",
+			cfg:  config.TrafficLoggingConfig{Template: `["a"]`},
+			want: "traffic_logging.template: the template must be a JSON object, found an array",
+		},
+		{
+			name: "content after the object",
+			cfg:  config.TrafficLoggingConfig{Template: `{"a":1} {"b":2}`},
+			want: "traffic_logging.template: unexpected content after the template object at line 1, column 9",
+		},
+		{
+			name: "repeated key",
+			cfg:  config.TrafficLoggingConfig{Template: `{"http":{"m":1,"m":2}}`},
+			want: `traffic_logging.template: key "m" appears more than once in "http"`,
+		},
+		{
+			name: "repeated top-level key",
+			cfg:  config.TrafficLoggingConfig{Template: `{"a":1,"a":2}`},
+			want: `traffic_logging.template: key "a" appears more than once at the top level`,
+		},
+		{
+			name: "too deep",
+			cfg:  config.TrafficLoggingConfig{Template: tooDeep},
+			want: `traffic_logging.template: nesting deeper than 64 levels at "` + strings.TrimSuffix(strings.Repeat("a.", maxTemplateDepth), ".") + `"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+			l, buf := newTemplateLog(t, tt.cfg)
+
+			for range 100 {
+				l.Publish(ordersEvent())
+			}
+
+			assert.Empty(t, buf.String(), "no line, not even the default line")
+			assert.Equal(t, 1, strings.Count(logs.String(), "level="), "exactly one message: %s", logs.String())
+			assert.True(t, logged(logs.String(), "ERROR", tt.want+noLinesSuffix), logs.String())
+		})
+	}
+}
+
+// traffic_logging.properties applies only to the default line: with a template it is reported
+// once and never compiled or written.
+func TestLogTemplate_PropertiesIgnoredWithATemplate(t *testing.T) {
+	logs := captureLogs(t)
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{
+		Template:   `{"api":"$ctx:api.name"}`,
+		Properties: map[string]string{"env": "prod", "broken": "$ctx:no.such.variable"},
+	})
+
+	for range 100 {
+		l.Publish(ordersEvent())
+	}
+
+	assert.Equal(t, strings.Repeat(`{"api":"Orders"}`+"\n", 100), buf.String())
+	assert.Equal(t, 1, strings.Count(logs.String(), "level="), "exactly one message: %s", logs.String())
+	assert.True(t, logged(logs.String(), "WARN",
+		"traffic_logging.properties is set but traffic_logging.template is also set; properties are ignored while a template is used"), logs.String())
+}
+
+// A value that does not compile is written as null on every line and reported once at startup,
+// with its full path and the reason; the rest of the template is used.
+func TestLogTemplate_ValueThatDoesNotCompileIsNull(t *testing.T) {
+	logs := captureLogs(t)
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{
+		Template: `{"method":"$ctx:request.methd","http":{"request":{"method":"$ctx:request.method +"}},"tags":["gw","$ctx:request.method + 1"],"api":"$ctx:api.name"}`,
+	})
+	startup := logs.String()
+
+	for range 100 {
+		l.Publish(ordersEvent())
+	}
+
+	want := `{"method":null,"http":{"request":{"method":null}},"tags":["gw",null],"api":"Orders"}` + "\n"
+	assert.Equal(t, strings.Repeat(want, 100), buf.String())
+	assert.Equal(t, startup, logs.String(), "nothing is logged per request")
+	assert.Equal(t, 3, strings.Count(startup, "level=WARN"), startup)
+	assert.NotContains(t, startup, "level=ERROR")
+	assert.Contains(t, startup, `field \"method\" is written as null: undeclared reference to 'request.methd'`)
+	assert.Contains(t, startup, `field \"http.request.method\" is written as null: Syntax error`)
+	assert.Contains(t, startup, `field \"tags[1]\" is written as null: found no matching overload for '_+_' applied to '(string, int)'`)
+}
+
+// A field that reads headers the collector does not capture is kept, with one startup WARNING
+// listing every reason. A field written as null gets only its own WARNING.
+func TestLogTemplate_FieldReadingUncapturedHeadersIsWarned(t *testing.T) {
+	const template = `{"req":"$ctx:request.header","res":{"type":"$ctx:response.header['content-type']"},` +
+		`"all":"$ctx:{'q': request.header, 's': response.header}","api":"$ctx:api.name","bad":"$ctx:request.header +"}`
+	const (
+		requestReason  = "reads request.header but collector.request_headers is false; no request headers will be logged"
+		responseReason = "reads response.header but collector.response_headers is false; no response headers will be logged"
+	)
+
+	t.Run("capture off", func(t *testing.T) {
+		logs := captureLogs(t)
+		l, buf := newTemplateLogWithCollector(t, config.TrafficLoggingConfig{Template: template}, &config.CollectorConfig{})
+
+		l.Publish(ordersEvent())
+
+		assert.True(t, logged(logs.String(), "WARN", `traffic_logging.template: field "req" `+requestReason), logs.String())
+		assert.True(t, logged(logs.String(), "WARN", `traffic_logging.template: field "res.type" `+responseReason), logs.String())
+		assert.True(t, logged(logs.String(), "WARN", `traffic_logging.template: field "all" `+requestReason+"; "+responseReason), logs.String())
+		assert.Equal(t, 1, strings.Count(logs.String(), `field \"bad\"`), "only the compile WARNING for bad")
+		assert.Equal(t, 4, strings.Count(logs.String(), "level=WARN"), logs.String())
+		assert.Contains(t, buf.String(), `"req":{"authorization":"****","x-foo":"bar"}`, "the field is kept")
+	})
+
+	t.Run("capture on", func(t *testing.T) {
+		logs := captureLogs(t)
+		newTemplateLogWithCollector(t, config.TrafficLoggingConfig{Template: template},
+			&config.CollectorConfig{RequestHeaders: true, ResponseHeaders: true})
+
+		assert.NotContains(t, logs.String(), "no request headers will be logged")
+		assert.NotContains(t, logs.String(), "no response headers will be logged")
+		assert.Equal(t, 1, strings.Count(logs.String(), "level=WARN"), "only the compile WARNING for bad")
+	})
+}
+
+// Startup messages never carry a header value, a claim value or a body from a request.
+func TestLogTemplate_StartupMessagesCarryNoRequestValues(t *testing.T) {
+	event := ordersEvent()
+	event.Properties[dto.PropKeyAuthProperties] = `{"email":"alice@example.com"}`
+	event.Properties[dto.PropKeyRequestPayload] = `{"card":"4111"}`
+	logs := captureLogs(t)
+	l, _ := newTemplateLog(t, config.TrafficLoggingConfig{
+		Template:   `{"h":"$ctx:request.header","c":"$ctx:auth.property","bad":"$ctx:request.header['authorization'] +"}`,
+		Properties: map[string]string{"env": "prod"},
+	})
+
+	for range 10 {
+		l.Publish(event)
+	}
+
+	for _, value := range []string{"Bearer secret", "alice@example.com", "4111"} {
+		assert.NotContains(t, logs.String(), value)
+	}
 }

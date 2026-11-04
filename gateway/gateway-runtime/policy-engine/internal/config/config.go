@@ -2119,6 +2119,14 @@ func (c *Config) validateTrafficLoggingConfig() error {
 		if len(tl.Properties) > 0 {
 			slog.Warn("traffic_logging.properties is set but traffic_logging.enabled is false; it has no effect")
 		}
+		switch {
+		case tl.Template != "" && tl.TemplateFile != "":
+			slog.Warn("traffic_logging.template and traffic_logging.template_file are set but traffic_logging.enabled is false; the template has no effect")
+		case tl.Template != "":
+			slog.Warn("traffic_logging.template is set but traffic_logging.enabled is false; the template has no effect")
+		case tl.TemplateFile != "":
+			slog.Warn("traffic_logging.template_file is set but traffic_logging.enabled is false; the template has no effect")
+		}
 		return nil
 	}
 

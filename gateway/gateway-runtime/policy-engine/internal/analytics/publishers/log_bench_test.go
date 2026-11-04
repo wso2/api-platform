@@ -148,7 +148,7 @@ func BenchmarkLog_Publish_Template(b *testing.B) {
 		Outputs:       []string{config.TrafficLogSinkStdout},
 		MaskedHeaders: []string{"authorization", "x-api-key", "x-jwt-assertion"},
 		Template:      benchmarkTemplate,
-	}, nil)
+	}, &config.CollectorConfig{RequestHeaders: true})
 	if err != nil {
 		b.Fatalf("NewLog: %v", err)
 	}

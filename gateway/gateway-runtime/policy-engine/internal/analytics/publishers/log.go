@@ -100,7 +100,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 	var template *logTemplate
 	if logCfg.Enabled && logCfg.Template != "" {
 		var err error
-		template, err = newLogTemplate(logCfg, masked)
+		template, err = newLogTemplate(logCfg, collectorCfg, masked)
 		if err != nil {
 			// A template mistake must not stop API traffic, and the default line may
 			// carry fields the template leaves out, so no lines are written at all.
@@ -111,7 +111,8 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 
 	// Properties shape only the default line, so they are not compiled for a template.
 	properties := logCfg.Properties
-	if template != nil {
+	if template != nil && len(properties) > 0 {
+		slog.Warn(fmt.Sprintf("traffic_logging.properties is set but %s is also set; properties are ignored while a template is used", template.source))
 		properties = nil
 	}
 
