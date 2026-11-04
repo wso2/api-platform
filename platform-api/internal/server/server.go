@@ -688,7 +688,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			saSigner = service.NewSATokenSigner(saKeys, cfg)
 			saPublicKeys = saKeys.Keys
 		}
-		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
+		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditService, identityService,
 			roleScopeMap, saSigner, saCfg.TokenTTL, cfg.Auth.Authorization.Mode, slogger)
 		serviceAccountService.SetRevocationCache(revocations)
 		handler.NewServiceAccountHandler(serviceAccountService, identityService, saPublicKeys,
