@@ -269,6 +269,16 @@ var globalPropertyVariables = []globalPropertyVariable{
 	{"latencies.backendLatency", cel.IntType, nil},
 }
 
+// globalPropertyZeroValues maps each variable name to its zero value, so building a request's
+// context visits only the variables its expressions read.
+var globalPropertyZeroValues = func() map[string]interface{} {
+	zeros := make(map[string]interface{}, len(globalPropertyVariables))
+	for _, v := range globalPropertyVariables {
+		zeros[v.name] = v.zero
+	}
+	return zeros
+}()
+
 // convertUnitFunction converts a number of microseconds to another unit.
 const convertUnitFunction = "convertUnit"
 
@@ -395,9 +405,9 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // expression, which is the whole point of this function taking referenced at all.
 func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders map[string]bool, maxPayloadSize int) map[string]interface{} {
 	ctx := make(map[string]interface{}, len(referenced))
-	for _, v := range globalPropertyVariables {
-		if referenced[v.name] && v.zero != nil {
-			ctx[v.name] = v.zero
+	for name := range referenced {
+		if zero := globalPropertyZeroValues[name]; zero != nil {
+			ctx[name] = zero
 		}
 	}
 

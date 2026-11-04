@@ -20,11 +20,14 @@ package publishers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -228,7 +231,6 @@ func logged(logs, level, msg string) bool {
 // no line is written, not even the default line.
 func TestLogTemplate_TemplateErrors(t *testing.T) {
 	tooDeep := strings.Repeat(`{"a":`, maxTemplateDepth+1) + "1" + strings.Repeat("}", maxTemplateDepth+1)
-	missingFile := filepath.Join(t.TempDir(), "missing.json")
 	tooLargeFile := writeTemplateFile(t, strings.Repeat(" ", int(configinterpolate.DefaultMaxFileBytes)+1))
 	invalidFile := writeTemplateFile(t, "{\n  \"a\": x\n}")
 	tests := []struct {
@@ -240,11 +242,6 @@ func TestLogTemplate_TemplateErrors(t *testing.T) {
 			name: "both sources",
 			cfg:  config.TrafficLoggingConfig{Template: `{"a":1}`, TemplateFile: "/etc/gateway/template.json"},
 			want: "traffic_logging.template, traffic_logging.template_file: both are set; set only one",
-		},
-		{
-			name: "file unreadable",
-			cfg:  config.TrafficLoggingConfig{TemplateFile: missingFile},
-			want: `traffic_logging.template_file: cannot read "` + missingFile + `": no such file or directory`,
 		},
 		{
 			name: "file too large",
@@ -289,18 +286,39 @@ func TestLogTemplate_TemplateErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLogs(t)
-			l, buf := newTemplateLog(t, tt.cfg)
-
-			for range 100 {
-				l.Publish(ordersEvent())
-			}
-
-			assert.Empty(t, buf.String(), "no line, not even the default line")
-			assert.Equal(t, 1, strings.Count(logs.String(), "level="), "exactly one message: %s", logs.String())
-			assert.True(t, logged(logs.String(), "ERROR", tt.want+noLinesSuffix), logs.String())
+			logs := publishWithTemplateError(t, tt.cfg)
+			assert.True(t, logged(logs, "ERROR", tt.want+noLinesSuffix), logs)
 		})
 	}
+}
+
+// publishWithTemplateError builds a Log from cfg and publishes 100 events. It checks that
+// nothing is written, not even the default line, and that exactly one message is logged, and
+// returns the logs.
+func publishWithTemplateError(t *testing.T, cfg config.TrafficLoggingConfig) string {
+	t.Helper()
+	logs := captureLogs(t)
+	l, buf := newTemplateLog(t, cfg)
+
+	for range 100 {
+		l.Publish(ordersEvent())
+	}
+
+	assert.Empty(t, buf.String(), "no line, not even the default line")
+	assert.Equal(t, 1, strings.Count(logs.String(), "level="), "exactly one message: %s", logs.String())
+	return logs.String()
+}
+
+// A template file that cannot be read is a template error. The reason after the path is the
+// operating system's wording, so only the rest of the message is checked.
+func TestLogTemplate_UnreadableTemplateFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.json")
+
+	logs := publishWithTemplateError(t, config.TrafficLoggingConfig{TemplateFile: path})
+
+	start := strings.TrimSuffix(strconv.Quote(`traffic_logging.template_file: cannot read "`+path+`": `), `"`)
+	end := strings.TrimPrefix(strconv.Quote(noLinesSuffix), `"`)
+	assert.Regexp(t, regexp.MustCompile("level=ERROR msg="+regexp.QuoteMeta(start)+".+"+regexp.QuoteMeta(end)), logs)
 }
 
 // traffic_logging.properties applies only to the default line: with a template it is reported
@@ -804,4 +822,49 @@ func TestLogTemplate_TemplateFileIsNotInterpolated(t *testing.T) {
 	l.Publish(ordersEvent())
 
 	assert.Equal(t, template+"\n", buf.String())
+}
+
+// A UTF-8 byte order mark at the start of a template file is skipped.
+func TestLogTemplate_TemplateFileStartingWithAByteOrderMark(t *testing.T) {
+	logs := captureLogs(t)
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, "\uFEFF"+`{"v":1}`)})
+
+	l.Publish(ordersEvent())
+
+	assert.Equal(t, `{"v":1}`+"\n", buf.String())
+	assert.Empty(t, logs.String())
+}
+
+// Requests logged at the same time each get one complete line, with exclusions inside an
+// expression's value applied to that request's own value. Run with -race to make this meaningful.
+func TestLogTemplate_ConcurrentPublish(t *testing.T) {
+	l, buf := newTemplateLogWithCollector(t, config.TrafficLoggingConfig{
+		Template:      `{"api":"$ctx:api.name","claims":"$ctx:auth.property","hdrs":"$ctx:request.header"}`,
+		ExcludeFields: []string{"claims.tenant", "hdrs.x-foo"},
+	}, &config.CollectorConfig{RequestHeaders: true})
+
+	const n = 50
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			event := exclusionEvent()
+			event.API.APIName = fmt.Sprintf("api-%d", i)
+			event.Properties[dto.PropKeyAuthProperties] = fmt.Sprintf(`{"tenant":"acme","user":"u-%d"}`, i)
+			l.Publish(event)
+		})
+	}
+	wg.Wait()
+
+	want := make(map[string]bool, n)
+	for i := range n {
+		want[fmt.Sprintf(`{"api":"api-%d","claims":{"user":"u-%d"},"hdrs":{"authorization":"****","x-user":"alice"}}`, i, i)] = true
+	}
+	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	require.Len(t, lines, n)
+	for _, line := range lines {
+		assert.True(t, json.Valid([]byte(line)), line)
+		assert.True(t, want[line], "unexpected line %s", line)
+		delete(want, line)
+	}
+	assert.Empty(t, want, "every request has its own line")
 }

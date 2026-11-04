@@ -189,7 +189,8 @@ func readTemplateFile(path string) (string, error) {
 	if int64(len(data)) > configinterpolate.DefaultMaxFileBytes {
 		return "", fmt.Errorf("%s: %q is larger than the %d MiB limit", fileTemplateSetting, path, configinterpolate.DefaultMaxFileBytes>>20)
 	}
-	return string(data), nil
+	// Some editors start a file with a UTF-8 byte order mark, which is not part of the JSON.
+	return strings.TrimPrefix(string(data), "\uFEFF"), nil
 }
 
 // templateFileError reports a template file that cannot be read. An *fs.PathError also names

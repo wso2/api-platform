@@ -1050,6 +1050,40 @@ request_body = false
 response_headers = false
 response_body = false
 
+# Writes each line in your own JSON layout instead of the default line: you
+# choose the fields, their names and their order. Empty by default, which keeps
+# the default line. A value starting with "$ctx:" is filled in from the request,
+# using the variables listed at [traffic_logging.properties] below; any other
+# value is written exactly as given. A field the request has no value for is
+# written as null, so every line has the same fields.
+#
+# masked_headers, max_payload_size and exclude_fields still apply to template
+# lines. properties and the request_*/response_* toggles above do not: a header
+# or body is logged when the template reads it and [collector] captures it.
+#
+# A template that cannot be used (e.g. invalid JSON, or both template and
+# template_file set) logs an ERROR at startup, and no traffic log lines are
+# written until it is fixed and the gateway restarted. API traffic is not
+# affected. A "$ctx:" value with a mistake logs a WARNING at startup naming the
+# field, and that field is written as null. A misspelled key is ignored like any
+# unknown key, so if lines still look like the default line, check the key name.
+template = ""
+# template = '''
+# {
+#   "service": "orders",
+#   "http": {"method": "$ctx:request.method", "status": "$ctx:response.status"},
+#   "durationMs": "$ctx:convertUnit(latencies.duration, 'ms')"
+# }
+# '''
+# writes lines such as:
+# {"service":"orders","http":{"method":"GET","status":200},"durationMs":12.3}
+
+# Path of a file holding the template, instead of setting template above. Set
+# one or the other, not both. The file is read once at startup and may be at
+# most 1 MiB, so restart the gateway after changing it.
+template_file = ""
+# template_file = "/etc/gateway-runtime/traffic-log-template.json"
+
 # Optional field projection over the emitted line: drop the named fields and
 # keep everything else. Names are top-level keys (e.g. "latencies",
 # "requestHeaders") or dotted paths of arbitrary depth into nested JSON objects
@@ -1067,6 +1101,11 @@ exclude_fields = []
 # map wholesale (e.g. `claims = "$ctx:auth.property"`, whose keys vary per token)
 # instead of one flattened property per claim — reach into it to drop just one:
 # exclude_fields = ["properties.claims.internal_debug"]
+# With a template, names are paths in the template's output instead (e.g.
+# "http.status" for the template example above), and a path can reach into a
+# map an expression returns. With `"claims": "$ctx:auth.property"` in the
+# template, this drops just the email claim:
+# exclude_fields = ["claims.email"]
 
 # -----------------------------------------------------------------------------
 # "file" sink — read only when outputs contains "file".
@@ -1287,6 +1326,26 @@ insecure_skip_verify = false
 # zero-value rules as auth.* — metadata itself is always bound to an empty map, but
 # indexing a specific key needs the same `in` guard shown above, e.g.
 # `'applicationId' in metadata ? metadata['applicationId'] : ''`.
+#
+# request.timestamp (when the gateway received the request, in UTC), client.ip
+# and client.userAgent are also available, as are request.body and
+# response.body, cut to max_payload_size. The bodies have a value only when
+# [collector] captures them.
+#
+# error.* is also available and says why a request failed; every error.*
+# variable is empty when the request succeeded: error.category, error.errorCode,
+# error.errorMessage, error.wso2ErrorCode, error.type, error.direction,
+# error.summary, error.policy, error.policyPhase, error.source,
+# error.originalStatus, error.jsonRpcCode, error.guardrail.name,
+# error.guardrail.action, error.guardrail.reason.
+#
+# latencies.duration, latencies.backendLatency, latencies.requestMediationLatency
+# and latencies.responseMediationLatency are also available, in microseconds.
+# For another unit, use convertUnit with 'ns', 'us', 'ms' or 's', e.g.
+# `convertUnit(latencies.duration, 'ms')`.
+#
+# When a request has no timestamp, timing or body, a template writes null and a
+# property is left out of that line.
 [traffic_logging.properties]
 # env = "prod"
 # apiName = "$ctx:api.name"
