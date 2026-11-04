@@ -89,11 +89,11 @@ var agentProxyLocationPattern = regexp.MustCompile(
 // an API key is registered for cleanup immediately, including one a negative scenario did not
 // expect to succeed, and a 204 delete deregisters what it removed.
 func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
-	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)"(?: as "([^"]*)")?(?: with header "([^"]*)" set to "([^"]*)")?$`,
-		func(ctx context.Context, method, path, who, header, value string) error {
-			return s.sendControlPlaneStep(ctx, method, path, who, header, value, nil)
+	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)"(?: as "([^"]*)")?(?: with token "([^"]*)")?(?: with header "([^"]*)" set to "([^"]*)")?$`,
+		func(ctx context.Context, method, path, who, tokenKey, header, value string) error {
+			return s.sendControlPlaneStep(ctx, method, path, who, tokenKey, header, value, nil)
 		})
-	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)"(?: as "([^"]*)")?(?: with header "([^"]*)" set to "([^"]*)")? with body:$`,
+	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)"(?: as "([^"]*)")?(?: with token "([^"]*)")?(?: with header "([^"]*)" set to "([^"]*)")? with body:$`,
 		s.sendControlPlaneStep)
 	sc.Step(`^I send a "GET" request to the control plane at "([^"]*)" until the JSON field "([^"]*)" is "([^"]*)"$`,
 		s.pollControlPlaneJSONField)
@@ -152,10 +152,22 @@ type controlPlaneCall struct {
 	body    []byte
 }
 
+// sendControlPlaneStep sends one request as an actor, or with the token stored under tokenKey
+// (for example one minted for an IdP user), which replaces the actor's login token.
 func (s *Steps) sendControlPlaneStep(
-	ctx context.Context, method, path, who, header, value string, body *godog.DocString,
+	ctx context.Context, method, path, who, tokenKey, header, value string, body *godog.DocString,
 ) error {
 	call := controlPlaneCall{method: method, path: path, who: who}
+	if tokenKey = strings.TrimSpace(tokenKey); tokenKey != "" {
+		if strings.TrimSpace(who) != "" {
+			return fmt.Errorf("a control-plane request names actor %q and token %q; give one", who, tokenKey)
+		}
+		token, err := tcontext.ResolveString(ctx, tokenKey)
+		if err != nil {
+			return fmt.Errorf("control-plane token %q is unavailable: %w", tokenKey, err)
+		}
+		call.bearer = &token
+	}
 	if strings.TrimSpace(header) != "" {
 		call.headers = map[string]string{header: value}
 	}

@@ -84,7 +84,7 @@ const (
 // through it, shared-key publishing, and the database state those modes leave behind.
 func (s *Steps) registerMultiOrganizationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I mint an API Portal IDP token stored as "([^"]*)" with claims:$`, s.mintIDPToken)
-	sc.Step(`^I replace the issuer of API Portal token "([^"]*)" with "([^"]*)"$`, s.replaceTokenIssuer)
+	sc.Step(`^I replace claim "([^"]*)" of API Portal token "([^"]*)" with "([^"]*)"$`, s.replaceTokenClaim)
 	sc.Step(`^I send an API Portal "([^"]*)" request to "([^"]*)" using portal "([^"]*)" with token "([^"]*)"$`,
 		s.sendWithToken)
 	sc.Step(`^I send an API Portal "([^"]*)" request to "([^"]*)" using portal "([^"]*)" with token "([^"]*)" and JSON body:$`,
@@ -95,6 +95,8 @@ func (s *Steps) registerMultiOrganizationSteps(sc *godog.ScenarioContext) {
 		s.createAPIWithToken)
 	sc.Step(`^a unique API Portal MCP server is created in portal "([^"]*)" with token "([^"]*)" and stored as "([^"]*)"$`,
 		s.createMCPServerWithToken)
+	sc.Step(`^a unique API Portal application is created in portal "([^"]*)" with token "([^"]*)" and stored as "([^"]*)"$`,
+		s.createApplicationWithToken)
 	sc.Step(`^an API Portal webhook subscriber for events "([^"]*)" delivering to sink "([^"]*)" is registered in portal "([^"]*)" with token "([^"]*)"$`,
 		s.createWebhookSubscriberWithToken)
 	sc.Step(`^I generate (\d+) API Portal API keys for API "([^"]*)" in portal "([^"]*)" with token "([^"]*)"$`,
@@ -151,48 +153,8 @@ func newIdentityProviderClient() (*httpx.Client, error) {
 	}}), nil
 }
 
-// claimsFromTable reads a two-column claim table. A value that is a JSON array, object or
-// quoted string is decoded, so a claim can be a list, a map, or a string Gherkin would
-// otherwise trim; any other value is a string.
-func claimsFromTable(ctx context.Context, table *godog.Table) (map[string]any, error) {
-	if table == nil {
-		return nil, errors.New("API Portal claims table is required")
-	}
-	claims := make(map[string]any, len(table.Rows))
-	for i, row := range table.Rows {
-		if len(row.Cells) != 2 {
-			return nil, fmt.Errorf("API Portal claims row %d must have exactly two cells", i+1)
-		}
-		name := strings.TrimSpace(row.Cells[0].Value)
-		if name == "" {
-			return nil, fmt.Errorf("API Portal claims row %d has an empty claim name", i+1)
-		}
-		if _, duplicate := claims[name]; duplicate {
-			return nil, fmt.Errorf("API Portal claim %q is given twice", name)
-		}
-		value, err := stepscommon.Expand(ctx, row.Cells[1].Value)
-		if err != nil {
-			return nil, err
-		}
-		trimmed := strings.TrimSpace(value)
-		if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, `"`) {
-			var decoded any
-			if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
-				return nil, fmt.Errorf("API Portal claim %q is not valid JSON: %w", name, err)
-			}
-			claims[name] = decoded
-			continue
-		}
-		claims[name] = value
-	}
-	if sub, _ := claims["sub"].(string); sub == "" {
-		return nil, errors.New("API Portal claims must include a sub")
-	}
-	return claims, nil
-}
-
 func (s *Steps) mintIDPToken(ctx context.Context, storeAs string, table *godog.Table) error {
-	claims, err := claimsFromTable(ctx, table)
+	claims, err := stepscommon.ClaimsFromTable(ctx, table)
 	if err != nil {
 		return err
 	}
@@ -225,10 +187,14 @@ func (s *Steps) mintIDPToken(ctx context.Context, storeAs string, table *godog.T
 	return tcontext.Set(ctx, storeAs, minted.Token)
 }
 
-// replaceTokenIssuer rewrites a stored token's iss claim without re-signing it, as a forger
-// would: the signature still belongs to the issuer the token was minted with.
-func (s *Steps) replaceTokenIssuer(ctx context.Context, tokenKey, issuer string) error {
-	issuer, err := stepscommon.Expand(ctx, issuer)
+// replaceTokenClaim rewrites one claim of a stored token without re-signing it, as a forger
+// would: the signature still belongs to the claims the token was minted with.
+func (s *Steps) replaceTokenClaim(ctx context.Context, claim, tokenKey, value string) error {
+	claim = strings.TrimSpace(claim)
+	if claim == "" {
+		return errors.New("API Portal token claim name is required")
+	}
+	value, err := stepscommon.Expand(ctx, value)
 	if err != nil {
 		return err
 	}
@@ -236,24 +202,34 @@ func (s *Steps) replaceTokenIssuer(ctx context.Context, tokenKey, issuer string)
 	if err != nil {
 		return fmt.Errorf("API Portal token %q is unavailable: %w", tokenKey, err)
 	}
+	forged, err := withReplacedClaim(token, claim, value)
+	if err != nil {
+		return fmt.Errorf("API Portal token %q: %w", tokenKey, err)
+	}
+	return tcontext.Set(ctx, tokenKey, forged)
+}
+
+// withReplacedClaim returns token with claim set to value in its payload, keeping the original
+// header and signature.
+func withReplacedClaim(token, claim, value string) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return fmt.Errorf("API Portal token %q is not a JWS", tokenKey)
+		return "", errors.New("not a JWS")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return fmt.Errorf("decoding API Portal token %q: %w", tokenKey, err)
+		return "", fmt.Errorf("decoding the payload: %w", err)
 	}
 	var claims map[string]any
 	if err := json.Unmarshal(payload, &claims); err != nil {
-		return fmt.Errorf("decoding API Portal token %q: %w", tokenKey, err)
+		return "", fmt.Errorf("decoding the payload: %w", err)
 	}
-	claims["iss"] = issuer
+	claims[claim] = value
 	if payload, err = json.Marshal(claims); err != nil {
-		return err
+		return "", err
 	}
 	parts[1] = base64.RawURLEncoding.EncodeToString(payload)
-	return tcontext.Set(ctx, tokenKey, strings.Join(parts, "."))
+	return strings.Join(parts, "."), nil
 }
 
 // tokenRequest issues one bearer-authenticated request and publishes its response.
@@ -510,6 +486,43 @@ func (s *Steps) createMCPServerWithToken(ctx context.Context, portal, tokenKey, 
 	return tcontext.Set(ctx, storeAs, id)
 }
 
+// createApplicationWithToken creates an application for the token's user and registers it for
+// removal with the same token, since an application is visible only to the user who created it.
+func (s *Steps) createApplicationWithToken(ctx context.Context, portal, tokenKey, storeAs string) error {
+	headers, err := s.bearerHeaders(ctx, tokenKey)
+	if err != nil {
+		return err
+	}
+	id, err := unique.Unique(ctx, "mt-app")
+	if err != nil {
+		return err
+	}
+	id = strings.ToLower(strings.ReplaceAll(id, "_", "-"))
+	body, _ := json.Marshal(map[string]string{"id": id, "displayName": id, "description": "Multi-organization " + id})
+	base, err := s.portalBaseNamed(portal)
+	if err != nil {
+		return err
+	}
+	response, err := s.client.Do(ctx, httpx.Request{
+		Method: http.MethodPost, URL: s.portalRequestURL(base, "/applications"),
+		Headers: headers, Body: body, ContentType: "application/json",
+	}, 0, 0)
+	if err != nil {
+		return fmt.Errorf("creating an API Portal application: %w", err)
+	}
+	if response.StatusCode != http.StatusCreated {
+		return fmt.Errorf("creating an API Portal application: %s", response.Describe())
+	}
+	registry, resource, deleteNow, err := s.idpCleanup(ctx, "api-portal-idp-application", idpAPIOrder, id, portal, deletion("/applications/"+url.PathEscape(id)), headers, "token:"+tokenKey)
+	if err != nil {
+		return err
+	}
+	if err := registry.RegisterScoped(cleanup.ScenarioScope, resource); err != nil {
+		return errors.Join(err, deleteNow(ctx))
+	}
+	return tcontext.Set(ctx, storeAs, id)
+}
+
 // sinkPartition is the webhook partition a named sink records into: the scenario's own
 // partition, suffixed so several sinks in one scenario stay apart.
 func (s *Steps) sinkPartition(ctx context.Context, sink string) (string, error) {
@@ -746,7 +759,7 @@ func (s *Steps) publishShared(ctx context.Context, portal string, headers map[st
 }
 
 func (s *Steps) setBrowserIDPSession(ctx context.Context, browser string, table *godog.Table) error {
-	claims, err := claimsFromTable(ctx, table)
+	claims, err := stepscommon.ClaimsFromTable(ctx, table)
 	if err != nil {
 		return err
 	}

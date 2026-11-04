@@ -286,6 +286,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.generateUniqueResourceName)
 	sc.Step(`^I generate a unique API context from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueContext)
+	sc.Step(`^I generate a UUID and store it as "([^"]*)"$`, b.generateUUID)
 	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
@@ -1879,6 +1880,10 @@ func (b *Base) generateUniqueResourceName(ctx context.Context, base, key string)
 
 func (b *Base) generateUniqueContext(ctx context.Context, base, key string) error {
 	return stepscommon.GenerateContextAndStore(ctx, base, key)
+}
+
+func (b *Base) generateUUID(ctx context.Context, key string) error {
+	return stepscommon.GenerateUUIDAndStore(ctx, key)
 }
 
 // traverseJSON walks a dotted path, honouring [n] array indices.
