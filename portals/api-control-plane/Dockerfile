@@ -42,7 +42,7 @@ RUN VITE_APP_BASE_PATH=/ npm run build
 # CGO is disabled, cross-compilation introduces no additional runtime
 # dependencies. This approach is consistent with the platform-api and gateway
 # images.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS bff
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS bff
 ARG TARGETOS
 ARG TARGETARCH
 

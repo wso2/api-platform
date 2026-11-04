@@ -3,7 +3,9 @@
      payment provider it bills through. While there is only one billing engine and payment provider
      (billingHasChoice is false), each step shows that provider's keys; once there are more, step 1
      asks for the engine and step 2 for the payment provider, and each choice shows the keys that
-     provider needs. Both keys are checked together when the second step is saved. -->
+     provider needs. Both keys are checked together when the second step is saved. When the
+     deployment supplies the engine's keys (billingKeysFromDeployment), they are not asked for and
+     the form has only the payment provider's step. -->
 <div class="cfg-modal-overlay" id="cfg-billing-modal" style="display:none;">
   <div class="cfg-form-modal cfg-form-modal--wide">
     <div class="cfg-modal-titlerow">
@@ -58,6 +60,7 @@
       {{#each billingEngines}}
       <div class="bil-engine-section" data-engine="{{id}}" hidden>
         {{#if (eq id "MOESIF")}}
+        {{#unless @root.billingKeysFromDeployment}}
         <div class="cfg-billing-key-card">
           <div class="cfg-billing-key-card-head">
             <span class="cfg-billing-key-card-icon" aria-hidden="true"><i class="bi bi-bar-chart-line"></i></span>
@@ -84,6 +87,7 @@
             <p class="cfg-field-error" data-error-for="moesifManagementKey" role="alert" hidden></p>
           </div>
         </div>
+        {{/unless}}
         {{/if}}
       </div>
       {{/each}}

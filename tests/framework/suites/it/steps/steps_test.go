@@ -84,6 +84,19 @@ func TestJSONStringField(t *testing.T) {
 	}
 }
 
+func TestSizedJSONBody(t *testing.T) {
+	for _, size := range []int{11, 12, 6 << 20} {
+		body, err := sizedJSONBody(size)
+		require.NoError(t, err)
+		require.Len(t, body, size)
+		var decoded map[string]string
+		require.NoError(t, json.Unmarshal(body, &decoded))
+		require.Len(t, decoded["data"], size-11)
+	}
+	_, err := sizedJSONBody(10)
+	require.ErrorContains(t, err, "at least 11 bytes")
+}
+
 func TestNewRejectsInvalidPlatformAPICA(t *testing.T) {
 	_, err := newSuite(nil, []byte("not a PEM certificate"), nil)
 	require.ErrorContains(t, err, "loading the generated Platform API CA certificate")
@@ -274,16 +287,31 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 	controlPlaneProtocols := map[string]string{
 		"agent-proxy.yaml": "a2a",
 	}
+	// Control-plane payloads without a protocol block name the fields every request carries.
+	controlPlaneFields := map[string][]string{
+		"service-account.yaml": {"displayName", "roles"},
+	}
 
 	paths, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	require.NoError(t, err)
-	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneProtocols))
+	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneProtocols)+len(controlPlaneFields))
 	for _, path := range paths {
 		name := filepath.Base(path)
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 		var document map[string]any
 		require.NoError(t, yaml.Unmarshal(content, &document))
+
+		if fields, isControlPlane := controlPlaneFields[name]; isControlPlane {
+			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
+			}
+			require.Len(t, document, len(fields), "template %q", name)
+			for _, field := range fields {
+				require.Contains(t, document, field, "template %q", name)
+			}
+			continue
+		}
 
 		if protocol, isControlPlane := controlPlaneProtocols[name]; isControlPlane {
 			require.Equal(t, protocol, document["protocol"], "template %q", name)
@@ -745,10 +773,23 @@ func TestNormalizeErrorResponsePinsRateLimitHeaders(t *testing.T) {
 // TestRESTAPIVersionsFeatureStepsAreDefined resolves the feature's steps without running them,
 // as TestMTLSFeatureStepsAreDefined does, so a typo is caught before a block is provisioned.
 func TestRESTAPIVersionsFeatureStepsAreDefined(t *testing.T) {
+	requireFeatureStepsDefined(t, "features", "apiportal", "core", "rest_api_versions.feature")
+}
+
+// TestServiceAccountsFeatureStepsAreDefined proves every service-account step matches exactly
+// one pattern, so the new steps neither match nothing nor overlap an existing one.
+func TestServiceAccountsFeatureStepsAreDefined(t *testing.T) {
+	requireFeatureStepsDefined(t, "features", "management-portal", "resources", "service_accounts.feature")
+}
+
+// requireFeatureStepsDefined resolves a feature file, named by path elements under the suite
+// root, without running it.
+func requireFeatureStepsDefined(t *testing.T, relative ...string) {
+	t.Helper()
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	featureRoot := filepath.Join(filepath.Dir(source), "..")
-	path := filepath.Join(featureRoot, "features", "apiportal", "core", "rest_api_versions.feature")
+	path := filepath.Join(append([]string{featureRoot}, relative...)...)
 	_, err := os.Stat(path)
 	require.NoError(t, err)
 

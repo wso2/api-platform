@@ -17,8 +17,10 @@
  *
  * The UI's job is to distinguish "still provisioning" from "ready to visit"
  * on Create; a rare post-provisioning outage is not something we surface.
+ * `deleting` is a portal the cloud's orchestrator is tearing down: it stays
+ * listed until it is gone.
  */
-export type ManagedPortalStatus = 'pending' | 'active' | 'failed';
+export type ManagedPortalStatus = 'pending' | 'active' | 'failed' | 'deleting';
 
 export interface ManagedPortal {
   /** Portal id; equal to `handle` in the current backend. */
@@ -33,6 +35,8 @@ export interface ManagedPortal {
   url?: string;
   /** Data-plane env whose auth server backs portal-user login. Empty on list responses; populated by GET. */
   loginEnvironment?: string;
+  /** Whether portal users can create an account from the sign-in page. Empty on list responses; populated by GET. */
+  selfSignup?: boolean;
   /**
    * Provisioning-lifecycle status. Missing when the backend has not been
    * upgraded to write it; treated as `active` by the UI so pre-upgrade portals
@@ -49,12 +53,15 @@ export interface CreateManagedPortalInput {
   description?: string;
   /** When omitted, the server picks the org's preferred env; pass only to override that choice. */
   loginEnvironment?: string;
+  /** Defaults to on when omitted. */
+  selfSignup?: boolean;
 }
 
 export interface UpdateManagedPortalInput {
   name?: string;
   description?: string;
   loginEnvironment?: string;
+  selfSignup?: boolean;
 }
 
 /** One data-plane environment; only the fields the UI's env selector needs. */
@@ -79,7 +86,8 @@ export interface PortalPort {
   get(id: string): Promise<ManagedPortal>;
   create(input: CreateManagedPortalInput): Promise<ManagedPortal>;
   update(id: string, input: UpdateManagedPortalInput): Promise<ManagedPortal>;
-  remove(id: string): Promise<void>;
+  /** `pending` is true when the portal is torn down in the background and reads as deleting until it is gone. */
+  remove(id: string): Promise<{ pending: boolean }>;
   /** Empty list means the org has no environments yet; callers should surface that rather than defaulting. */
   listEnvironments(): Promise<OrgEnvironment[]>;
 }

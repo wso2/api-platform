@@ -59,6 +59,9 @@ function getLocalLoginHttpsAgent(cfg) {
 // handle, and keeps an arbitrary query string from being passed through unbounded.
 const MAX_ORG_HINT_LENGTH = 255;
 
+// Bounds the IDP error fields written to the log, since they arrive on the query string.
+const MAX_IDP_ERROR_LENGTH = 500;
+
 /**
  * The organization hint (the authorize request's `org` parameter) for a login started
  * from `orgName`'s page, or undefined for none.
@@ -103,6 +106,32 @@ async function landingForOrg(orgUuid, returnTo) {
         if (path === orgBase || path.startsWith(`${orgBase}/`)) return returnTo;
     }
     return `${orgBase}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle(orgUuid)}`;
+}
+
+/**
+ * The OAuth authorization error the IDP sent back on the callback, as
+ * { error, errorDescription }, or null when the failure is not one. passport-oauth2
+ * raises an AuthorizationError for most codes but reports `access_denied` as a plain
+ * failure with no error object, so the query is checked too.
+ */
+function idpAuthorizationError(req, err) {
+    const queryError = typeof req.query?.error === 'string' ? req.query.error : null;
+    if (err?.name !== 'AuthorizationError' && !(err == null && queryError)) return null;
+    const description = typeof req.query?.error_description === 'string' ? req.query.error_description : '';
+    // passport copies the query value into err.code as is, and a repeated parameter
+    // arrives as an array, so both values are made strings before they are bounded.
+    return {
+        error: String(err?.code || queryError || 'unknown').slice(0, MAX_IDP_ERROR_LENGTH),
+        errorDescription: String(description || err?.message || '').slice(0, MAX_IDP_ERROR_LENGTH),
+    };
+}
+
+// The IDP's description is not shown to the user; the error page carries a generic message.
+function signInFailure(code) {
+    const failure = new Error('Sign-in did not complete');
+    failure.status = code === 'access_denied' ? 403 : 400;
+    failure.errorType = 'signin';
+    return failure;
 }
 
 const login = async (req, res, next) => {
@@ -162,9 +191,13 @@ const handleCallback = async (req, res, next) => {
             if (err || !user) {
                 if (err?.name === 'AuthorizationError' && err?.code === 'login_required') {
                     return res.redirect(req.session.returnTo);
-                } else {
-                    return next(err || new Error('Authentication failed'));
                 }
+                const idpError = idpAuthorizationError(req, err);
+                if (idpError) {
+                    logger.warn('Identity provider returned an authorization error on login callback', idpError);
+                    return next(signInFailure(idpError.error));
+                }
+                return next(err || new Error('Authentication failed'));
             }
             req.logIn(user, (err) => {
                 if (err) {

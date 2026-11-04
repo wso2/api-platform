@@ -211,11 +211,20 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
    * minutes, which is why the button explains itself rather than just greying out.
    */
   const applying = isApplying(config?.status);
+  /**
+   * The organization may not write at all. Read directly rather than through
+   * `canCreate('gateways')`: that answers whether there is room for one MORE
+   * gateway, and a full quota must still leave an existing one configurable.
+   * `false` when the host supplies no entitlements, which is every deployment
+   * without a supplier mounted.
+   */
+  const readOnly = port.resourceLimits?.readOnly ?? false;
   const canSave =
     dirtyCount > 0 &&
     Object.keys(clientErrors).length === 0 &&
     !saving &&
-    !applying;
+    !applying &&
+    !readOnly;
 
   const setDraft = (path: string, value: unknown) => {
     setDrafts((current) => ({ ...current, [path]: value }));
@@ -424,9 +433,11 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             </Button>
             <Tooltip
               title={
-                applying
-                  ? 'The previous change is still being applied. Saving is available once it has landed.'
-                  : ''
+                readOnly
+                  ? (port.resourceLimits?.readOnlyMessage ?? '')
+                  : applying
+                    ? 'The previous change is still being applied. Saving is available once it has landed.'
+                    : ''
               }
             >
               {/* Wrapped: a disabled button fires no events, so the tooltip

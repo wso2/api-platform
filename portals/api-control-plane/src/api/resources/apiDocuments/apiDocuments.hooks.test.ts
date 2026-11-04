@@ -33,6 +33,7 @@ import { server } from '../../../test/server';
 import { resetHttpClient } from '../../core/http';
 import type { ApiDocument, ApiDocumentListResponse } from './apiDocuments.endpoints';
 import {
+  useAllApiDocuments,
   useApiDocument,
   useApiDocumentContent,
   useApiDocumentPages,
@@ -100,6 +101,67 @@ describe('useApiDocuments — paged list', () => {
     expect(request?.params.get('offset')).toBe('10');
     expect(request?.params.get('type')).toBe('HowTo');
     expect(result.current.data?.list[0].id).toBe('getting-started');
+  });
+});
+
+describe('useAllApiDocuments — every page', () => {
+  it('does not fetch while the apiId is unknown', async () => {
+    server.use(resource(COLLECTION, listEnvelope([]), { record: requests }));
+
+    renderApiHook(() => useAllApiDocuments(API_TYPE, undefined));
+    await settle();
+
+    expect(requests.count()).toBe(0);
+  });
+
+  it('reads pages of 100 until the server-reported total is held, as one list', async () => {
+    const pages: Record<string, ApiDocumentListResponse> = {
+      '0': listEnvelope(
+        Array.from({ length: 100 }, (_, i) => aDocument({ id: `doc-${i}` })),
+        { offset: 0, limit: 100, total: 130 }
+      ),
+      '100': listEnvelope(
+        Array.from({ length: 30 }, (_, i) => aDocument({ id: `doc-${100 + i}` })),
+        { offset: 100, limit: 100, total: 130 }
+      ),
+    };
+    server.use(
+      mswHttp.get(apiUrl(COLLECTION), async ({ request }) => {
+        await requests.capture(request);
+        const params = new URL(request.url).searchParams;
+        expect(params.get('limit')).toBe('100');
+        return HttpResponse.json(pages[params.get('offset') ?? '0']);
+      })
+    );
+
+    const { result } = renderApiHook(() => useAllApiDocuments(API_TYPE, API_ID));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(requests.count()).toBe(2);
+    expect(result.current.data?.list).toHaveLength(130);
+    expect(result.current.data?.pagination.total).toBe(130);
+  });
+
+  it('stops at 50 pages and keeps the server total, so the list shows it is incomplete', async () => {
+    server.use(
+      mswHttp.get(apiUrl(COLLECTION), async ({ request }) => {
+        await requests.capture(request);
+        const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+        return HttpResponse.json(
+          listEnvelope(
+            Array.from({ length: 100 }, (_, i) => aDocument({ id: `doc-${offset + i}` })),
+            { offset, limit: 100, total: 6000 }
+          )
+        );
+      })
+    );
+
+    const { result } = renderApiHook(() => useAllApiDocuments(API_TYPE, API_ID));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(requests.count()).toBe(50);
+    expect(result.current.data?.list).toHaveLength(5000);
+    expect(result.current.data?.pagination.total).toBe(6000);
   });
 });
 

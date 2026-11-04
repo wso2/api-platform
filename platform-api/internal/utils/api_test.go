@@ -654,6 +654,39 @@ func TestBuildAPIDeploymentYAML(t *testing.T) {
 	}
 }
 
+// TestBuildAPIDeploymentYAML_NilRequestReturnsError verifies that an operation or channel
+// with no request definition yields an error instead of a nil-pointer panic.
+func TestBuildAPIDeploymentYAML_NilRequestReturnsError(t *testing.T) {
+	util := &APIUtil{}
+
+	t.Run("operation", func(t *testing.T) {
+		apiModel := &model.API{
+			Handle: "rest-api",
+			Kind:   constants.RestApi,
+			Configuration: model.RestAPIConfig{
+				Operations: []model.Operation{
+					{Request: &model.OperationRequest{Method: "GET", Path: "/pets"}},
+					{},
+				},
+			},
+		}
+		if _, err := util.BuildAPIDeploymentYAML(apiModel); err == nil {
+			t.Fatal("expected an error for an operation with no request, got nil")
+		}
+	})
+
+	t.Run("channel", func(t *testing.T) {
+		apiModel := &model.API{
+			Handle:   "websub-api",
+			Kind:     constants.WebSubApi,
+			Channels: []model.Channel{{}},
+		}
+		if _, err := util.BuildAPIDeploymentYAML(apiModel); err == nil {
+			t.Fatal("expected an error for a channel with no request, got nil")
+		}
+	})
+}
+
 // TestUpstreamConfigModelToAPI_RedactsAuthValue proves ModelToRESTAPI never
 // exposes the real upstream auth credential in a read response — matching the
 // LLM Provider/Proxy and MCP Proxy mappers' redaction behaviour.

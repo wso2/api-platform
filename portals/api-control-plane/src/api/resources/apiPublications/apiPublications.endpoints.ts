@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { http, TextBody, type RequestOptions, type TextResponse } from '../../core/http';
+import { http, TextBody, type BlobResponse, type RequestOptions, type TextResponse } from '../../core/http';
 import type { QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
@@ -166,6 +166,84 @@ export const getApiPublicationDefinition = async (
   http.getText(portalApiPath(apiPortalId, apiType, apiId, '/publication/definition'), {
     ...options,
     operationName: 'getApiPublicationDefinition',
+  });
+
+/** The draft's thumbnail; 404s when it has none (`hasThumbnail`). */
+export const getApiPublicationDraftThumbnail = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<BlobResponse | null> =>
+  http.getBlob(portalApiPath(apiPortalId, apiType, apiId, '/draft/thumbnail'), {
+    ...options,
+    operationName: 'getApiPublicationDraftThumbnail',
+  });
+
+/** Creates or replaces the draft's thumbnail, as a multipart `file`. */
+export const saveApiPublicationDraftThumbnail = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  file: Blob,
+  options?: RequestOptions,
+): Promise<void> => {
+  const form = new FormData();
+  form.append('file', file);
+  await http.put<void>(portalApiPath(apiPortalId, apiType, apiId, '/draft/thumbnail'), form, {
+    ...options,
+    operationName: 'saveApiPublicationDraftThumbnail',
+  });
+};
+
+/** The published thumbnail; 404s when it has none (`hasThumbnail`). */
+export const getApiPublicationThumbnail = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<BlobResponse | null> =>
+  http.getBlob(portalApiPath(apiPortalId, apiType, apiId, '/publication/thumbnail'), {
+    ...options,
+    operationName: 'getApiPublicationThumbnail',
+  });
+
+/** The draft's landing page as Markdown; 404s when it has none (`hasLandingPage`). */
+export const getApiPublicationDraftLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<TextResponse> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/draft/landing-page'), {
+    ...options,
+    operationName: 'getApiPublicationDraftLandingPage',
+  });
+
+/** Creates or replaces the draft's landing page as `text/markdown`. */
+export const saveApiPublicationDraftLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  markdown: string,
+  options?: RequestOptions,
+): Promise<void> =>
+  http.put<void>(
+    portalApiPath(apiPortalId, apiType, apiId, '/draft/landing-page'),
+    new TextBody(markdown, 'text/markdown'),
+    { ...options, operationName: 'saveApiPublicationDraftLandingPage' },
+  );
+
+/** The published landing page as Markdown; 404s when it has none (`hasLandingPage`). */
+export const getApiPublicationLandingPage = async (
+  apiPortalId: string,
+  apiType: string,
+  apiId: string,
+  options?: RequestOptions,
+): Promise<TextResponse> =>
+  http.getText(portalApiPath(apiPortalId, apiType, apiId, '/publication/landing-page'), {
+    ...options,
+    operationName: 'getApiPublicationLandingPage',
   });
 
 export const getApiPublication = async (

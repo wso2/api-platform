@@ -577,7 +577,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -604,7 +604,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -631,7 +631,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -658,7 +658,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -685,7 +685,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -716,7 +716,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -747,7 +747,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -778,7 +778,7 @@ export interface paths {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -972,12 +972,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish MCP proxy to API Portal
+         * @description Publishes the current draft. Takes no request body: details, plans, documents, definition,
+         *     landing page and thumbnail all come from the draft alone — publish never reads the API's
+         *     own content or the current publication to fill a gap. Requires a draft to exist.
+         *
+         *     The content is pushed to the API Portal before anything is written locally, so a failed
+         *     call leaves the draft intact and can simply be repeated.
+         *
+         *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
+         */
+        post: operations["publishMcpProxyToApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpublish MCP proxy from API Portal
+         * @description Removes the listing from the API Portal, along with its subscriptions and API keys, then
+         *     writes locally: if no draft exists, the publication is demoted into the draft in place; if
+         *     one exists, the publication is deleted and the existing draft is kept. A draft always
+         *     survives. Valid only when currently published or deprecated.
+         */
+        post: operations["unpublishMcpProxyFromApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api-portals/{apiPortalId}/apis/mcp-proxy/{apiId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deprecate MCP proxy on API Portal
+         * @description Marks the live listing deprecated on the API Portal, where it stays visible and is flagged as deprecated. Nothing is deleted and any draft is untouched. Valid only when currently published.
+         */
+        post: operations["deprecateMcpProxyOnApiPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/apis/{apiType}/{apiId}/docs": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -1006,7 +1091,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -1042,7 +1127,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -1074,7 +1159,7 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -3509,6 +3594,155 @@ export interface paths {
          *     still referenced by any LLM provider or API configuration.
          */
         delete: operations["deleteSecret"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List service accounts
+         * @description Returns the organization's service accounts. The client secret is never included, only its masked form.
+         */
+        get: operations["listServiceAccounts"];
+        put?: never;
+        /**
+         * Create a service account
+         * @description Creates a service account and returns its client ID and secret. The secret is
+         *     shown only in this response and cannot be recovered later.
+         */
+        post: operations["createServiceAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/{serviceAccountId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a service account */
+        get: operations["getServiceAccount"];
+        /**
+         * Update a service account
+         * @description Updates metadata, roles or status. Setting `status` to `disabled` stops every
+         *     exchange and invalidates tokens already issued. Removing a role also
+         *     invalidates tokens already issued; adding one does not. Returns 409 if the
+         *     account was changed by another request after this one read it; retry.
+         */
+        put: operations["updateServiceAccount"];
+        post?: never;
+        /**
+         * Delete a service account
+         * @description Deletes the account and invalidates tokens already issued.
+         */
+        delete: operations["deleteServiceAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange client credentials for an access token
+         * @description OAuth2 client credentials grant (RFC 6749 section 4.4). Public: the caller has no
+         *     token yet. Every authentication failure returns the same 401.
+         *
+         *     The client authenticates either with HTTP Basic (`Authorization: Basic`, client ID
+         *     and secret form-urlencoded first) or with `client_id` and `client_secret` in the
+         *     body, not both (RFC 6749 section 2.3.1).
+         *
+         *     The token carries one authorization claim, chosen by the server's
+         *     `auth.authorization.mode`. In `scope` mode, `scope` is required and the token
+         *     carries exactly the requested scopes; a missing scope, or one the account's
+         *     roles do not grant, is a 400. In `role` mode, `scope` is ignored and the
+         *     token carries the account's roles. The response's `scope` is what the token
+         *     authorizes in either mode.
+         */
+        post: operations["issueServiceAccountToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/jwks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service-account signing keys
+         * @description Public keys that verify service-account tokens, as a JSON Web Key Set (RFC 7517).
+         *     Every configured signing key is listed, in config order; only the active one signs.
+         *     Served at the server root, like the gateway's JWKS.
+         */
+        get: operations["getServiceAccountJWKS"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/service-accounts/{serviceAccountId}/regenerate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate a service account's secret
+         * @description Replaces the client secret. The old secret stops working at once, with no
+         *     overlap, and tokens already issued are invalidated. The new secret is shown
+         *     only in this response.
+         */
+        post: operations["regenerateServiceAccountSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List roles
+         * @description Every role in the role-to-scope mapping, each with the scopes it grants.
+         */
+        get: operations["listRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -7397,6 +7631,180 @@ export interface components {
             list: components["schemas"]["SecretSummary"][];
             pagination: components["schemas"]["Pagination"];
         };
+        /** @description A service account. Never carries the plaintext secret. */
+        ServiceAccount: {
+            /**
+             * @description Service account handle, generated from `displayName` and unique within the organization
+             * @example ci-deployer
+             */
+            id: string;
+            /** @example CI deployer */
+            displayName: string;
+            /**
+             * @description What the account is for; may be empty
+             * @example Deploys REST APIs from the release pipeline
+             */
+            description: string;
+            /** @example sa_acme_ci-deployer_3f9a1c */
+            readonly clientId: string;
+            /** @example ***9f2c1 */
+            readonly maskedSecret: string;
+            /**
+             * @description The account's roles, from the role-to-scope mapping file
+             * @example [
+             *       "ap_service_account"
+             *     ]
+             */
+            roles: string[];
+            /**
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "disabled";
+            /** Format: date-time */
+            readonly lastUsedAt?: string;
+            /** @example 203.0.113.7 */
+            readonly lastUsedIp?: string;
+            /** Format: date-time */
+            readonly secretRegeneratedAt?: string;
+            /** @example john.doe */
+            readonly createdBy?: string;
+            /** Format: date-time */
+            readonly createdAt?: string;
+            /** @example john.doe */
+            readonly updatedBy?: string;
+            /** Format: date-time */
+            readonly updatedAt?: string;
+        };
+        ServiceAccountListResponse: {
+            /**
+             * @description Number of service accounts in current response
+             * @example 1
+             */
+            count: number;
+            list: components["schemas"]["ServiceAccount"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        Role: {
+            /** @example ap_service_account */
+            name: string;
+            /**
+             * @example [
+             *       "ap:rest_api:read",
+             *       "ap:gateway:read"
+             *     ]
+             */
+            scopes: string[];
+        };
+        RoleListResponse: {
+            /** @example 1 */
+            count: number;
+            list: components["schemas"]["Role"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** @description The `id` is generated from `displayName`. */
+        ServiceAccountCreateRequest: {
+            /** @example CI deployer */
+            displayName: string;
+            /** @example Deploys REST APIs from the release pipeline */
+            description?: string;
+            /**
+             * @description Roles from the role-to-scope mapping file. Any role is accepted.
+             * @example [
+             *       "ap_service_account"
+             *     ]
+             */
+            roles: string[];
+        };
+        /** @description Every field is optional. */
+        ServiceAccountUpdateRequest: {
+            /** @example CI deployer */
+            displayName?: string;
+            /** @example Deploys REST APIs from the release pipeline */
+            description?: string;
+            /**
+             * @description Replaces the roles. Removing a role invalidates tokens
+             *     already issued; adding one does not.
+             * @example [
+             *       "ap_service_account"
+             *     ]
+             */
+            roles?: string[];
+            /**
+             * @example disabled
+             * @enum {string}
+             */
+            status?: "active" | "disabled";
+        };
+        /**
+         * @description The only response that carries a plaintext secret. Returned on create and on
+         *     regenerate. The secret is shown once and cannot be recovered.
+         */
+        ServiceAccountCredentials: {
+            serviceAccount: components["schemas"]["ServiceAccount"];
+            /** @example sa_acme_ci-deployer_3f9a1c */
+            clientId: string;
+            /** @description apsa_ followed by 64 hex characters */
+            clientSecret: string;
+        };
+        /** @description Send client_id and client_secret here, or with HTTP Basic instead. */
+        ServiceAccountTokenRequest: {
+            /** @enum {string} */
+            grant_type: "client_credentials";
+            client_id?: string;
+            client_secret?: string;
+            /**
+             * @description Space-separated scopes. Required when the server's
+             *     `auth.authorization.mode` is `scope`; ignored when it is `role`.
+             * @example ap:rest_api:read ap:gateway:read
+             */
+            scope?: string;
+        };
+        ServiceAccountTokenResponse: {
+            access_token: string;
+            /** @example Bearer */
+            token_type: string;
+            /**
+             * @description Lifetime in seconds
+             * @example 900
+             */
+            expires_in: number;
+            /** @example ap:rest_api:read ap:rest_api:deployment:manage */
+            scope?: string;
+        };
+        JWKSResponse: {
+            keys: components["schemas"]["JWK"][];
+        };
+        /** @description An RSA or EC public signing key (RFC 7517) */
+        JWK: {
+            /**
+             * @description Key type, RSA or EC
+             * @example RSA
+             */
+            kty: string;
+            /** @description Key ID. The RFC 7638 thumbprint of the key unless the operator set one. */
+            kid: string;
+            /** @example sig */
+            use?: string;
+            /**
+             * @description RS256 or PS256 for RSA, ES256 for P-256, ES384 for P-384
+             * @example RS256
+             */
+            alg?: string;
+            /** @description RSA modulus */
+            n?: string;
+            /**
+             * @description RSA public exponent
+             * @example AQAB
+             */
+            e?: string;
+            /** @description EC curve, P-256 or P-384 */
+            crv?: string;
+            /** @description EC x coordinate, zero-padded to the curve size */
+            x?: string;
+            /** @description EC y coordinate, zero-padded to the curve size */
+            y?: string;
+        };
         GatewayTokenListResponse: {
             /** @description Number of tokens in current response */
             count: number;
@@ -7457,23 +7865,27 @@ export interface components {
             id: string;
             /** @description The name stored with the selection, so it can still be shown after the source is deleted. */
             displayName: string;
-            /** @description True when the plan or document no longer exists. The publication keeps the selection until the next publish. */
-            deleted: boolean;
-            /** @description True when the plan or document was changed after this selection was last saved (a draft) or published (a live listing). Saving the draft or publishing again clears it. */
-            edited: boolean;
+            /**
+             * @description How the selected plan or document compares with this selection, as last saved (a draft) or published (a live listing):
+             *     - UNCHANGED: It has not changed since.
+             *     - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
+             *     - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+             * @enum {string}
+             */
+            sourceStatus: "UNCHANGED" | "UPDATED" | "DELETED";
         };
         PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
             subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
             docIds?: components["schemas"]["DocIdList"];
         };
-        PublicationDraftDetails: components["schemas"]["PublicationDraftDetailsInput"] & components["schemas"]["PublicationAuditFields"] & {
+        PublicationDraftDetails: components["schemas"]["PublicationDetailsCore"] & components["schemas"]["PublicationAuditFields"] & {
             /** @description Whether this draft stores a thumbnail of its own. */
             readonly hasThumbnail?: boolean;
             /** @description Whether this draft stores a landing page of its own. It is always Markdown, so it has no file name. */
             readonly hasLandingPage?: boolean;
-            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            /** @description The selected subscription plans, including deleted ones. Their ids are what a draft save sends as subscriptionPlanIds. */
             readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
-            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            /** @description The selected documents, including deleted ones. Their ids are what a draft save sends as docIds. */
             readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         Publication: components["schemas"]["PublicationDetailsCore"] & components["schemas"]["PublicationAuditFields"] & {
@@ -7482,15 +7894,13 @@ export interface components {
             apiPortalName?: string;
             /** @enum {string} */
             status?: "PUBLISHED" | "DEPRECATED";
-            subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
-            docIds?: components["schemas"]["DocIdList"];
             /** @description Whether this publication stores a thumbnail. */
             readonly hasThumbnail?: boolean;
             /** @description Whether this publication stores a landing page. */
             readonly hasLandingPage?: boolean;
-            /** @description The selected subscription plans, including deleted ones. Same plans as subscriptionPlanIds. */
+            /** @description The selected subscription plans, including deleted ones. */
             readonly subscriptionPlans?: components["schemas"]["PublicationSelection"][];
-            /** @description The selected documents, including deleted ones. Same documents as docIds. */
+            /** @description The selected documents, including deleted ones. */
             readonly documents?: components["schemas"]["PublicationSelection"][];
         };
         PublicationSummaryItem: {
@@ -8253,7 +8663,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, the draft's stored definition is not a valid OpenAPI 3.x document — publish is the one point definition validity is enforced; the draft itself may hold anything — or a selected subscription plan is no longer active. */
+        /** @description Either this API type has no projection onto the API Portal's own API types, so no listing can be created for it, the draft's stored definition is not valid for the API type (an OpenAPI 3.x document for a REST API, a GraphQL SDL document with a query root type, either a type named Query or the one a schema definition names, for a GraphQL API, a JSON or YAML document listing named tools, resources or prompts for an MCP proxy) — publish is the one point definition validity is enforced; the draft itself may hold anything — or a selected subscription plan is no longer active. */
         PublicationPublishBadRequest: {
             headers: {
                 [name: string]: unknown;
@@ -8374,6 +8784,8 @@ export interface components {
     parameters: {
         /** @description **Project ID** consisting of the **handle** (unique slug identifier) of the Project. */
         projectId: string;
+        /** @description **Service account ID** consisting of the **handle** of the service account. */
+        serviceAccountId: string;
         /** @description **API ID** consisting of the **handle** (unique identifier) of the API. */
         apiId: string;
         /** @description **Application ID** consisting of the **handle** of the application. */
@@ -8415,7 +8827,7 @@ export interface components {
         "sortOrder-Q": "asc" | "desc";
         /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
         "query-Q": string;
-        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
         apiType: string;
         /** @description The API's handle, unique per organization within its own type. */
         apiHandle: string;
@@ -8427,7 +8839,7 @@ export interface components {
          *     the reserved `DEFINITION` type is never returned via this endpoint.
          */
         "docType-Q": string;
-        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+        /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
         "apiType-Q": string;
         /** @description The API's handle, unique per organization within its own type. */
         "apiHandle-Q": string;
@@ -8481,6 +8893,10 @@ export interface components {
          *     upstream has been unreachable.
          */
         Age: number;
+        /** @description Changes whenever the published keys change. */
+        JWKSETag: string;
+        /** @description How long a verifier may cache the key set, from `auth.service_account.signing.jwks_cache_max_age`. */
+        JWKSCacheControl: string;
     };
     pathItems: never;
 }
@@ -9549,7 +9965,7 @@ export interface operations {
     listApiPublications: {
         parameters: {
             query: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType-Q"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle-Q"];
@@ -9593,7 +10009,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9624,7 +10040,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9647,7 +10063,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9670,7 +10086,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9693,7 +10109,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9724,7 +10140,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9761,7 +10177,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9784,7 +10200,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9823,7 +10239,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9846,7 +10262,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9882,7 +10298,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -9905,7 +10321,7 @@ export interface operations {
             path: {
                 /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
                 apiPortalId: components["parameters"]["apiPortalId"];
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10141,6 +10557,108 @@ export interface operations {
             503: components["responses"]["PortalUnavailable"];
         };
     };
+    publishMcpProxyToApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            /** @description Listing created */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            400: components["responses"]["PublicationPublishBadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    unpublishMcpProxyFromApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
+    deprecateMcpProxyOnApiPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal. */
+                apiPortalId: components["parameters"]["apiPortalId"];
+                /** @description The API's handle, unique per organization within its own type. */
+                apiId: components["parameters"]["apiHandle"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Listing deprecated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Publication"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PublicationConflict"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["PortalUnavailable"];
+        };
+    };
     ListAPIDocuments: {
         parameters: {
             query?: {
@@ -10157,7 +10675,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10186,7 +10704,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10224,7 +10742,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10255,7 +10773,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10292,7 +10810,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10321,7 +10839,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10359,7 +10877,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10396,7 +10914,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -10429,7 +10947,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
+                /** @description The API's type, required alongside apiId because a handle is unique only within its own type. Known values: rest-api, graphql-api, mcp-proxy, websub-api, webbroker-api. Values are resolved at runtime, so a type contributed by a plugin is accepted only on a build that includes it. An unrecognised value returns 404. */
                 apiType: components["parameters"]["apiType"];
                 /** @description The API's handle, unique per organization within its own type. */
                 apiId: components["parameters"]["apiHandle"];
@@ -15445,6 +15963,266 @@ export interface operations {
             };
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listServiceAccounts: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+                /** @description Case-insensitive substring filter matched against the resource display name and id (handle). */
+                query?: components["parameters"]["query-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of service accounts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountListResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Service account created. The response carries the only copy of the secret. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountCredentials"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Service account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccount"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    updateServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServiceAccountUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Service account updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccount"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteServiceAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Service account deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    issueServiceAccountToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["ServiceAccountTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Access token issued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountTokenResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getServiceAccountJWKS: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The `ETag` of an earlier response. When it still matches, the answer is 304. */
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON Web Key Set */
+            200: {
+                headers: {
+                    ETag: components["headers"]["JWKSETag"];
+                    "Cache-Control": components["headers"]["JWKSCacheControl"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/jwk-set+json": components["schemas"]["JWKSResponse"];
+                };
+            };
+            /** @description Not modified. The `ETag` in `If-None-Match` is current. */
+            304: {
+                headers: {
+                    ETag: components["headers"]["JWKSETag"];
+                    "Cache-Control": components["headers"]["JWKSCacheControl"];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    regenerateServiceAccountSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description **Service account ID** consisting of the **handle** of the service account. */
+                serviceAccountId: components["parameters"]["serviceAccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Secret regenerated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceAccountCredentials"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The roles in the mapping */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
         };
     };
 }

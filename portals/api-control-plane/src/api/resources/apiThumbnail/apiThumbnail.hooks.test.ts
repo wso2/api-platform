@@ -115,6 +115,7 @@ describe('useApiThumbnail — fetch and lifecycle', () => {
 
     await waitFor(() => expect(result.current.url).toBeDefined());
     expect(result.current.url).toMatch(/^blob:/);
+    expect(result.current.blob).toBeInstanceOf(Blob);
     expect(createdObjectURLs).toHaveLength(1);
   });
 

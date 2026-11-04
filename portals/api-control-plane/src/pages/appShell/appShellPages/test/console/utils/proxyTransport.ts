@@ -18,6 +18,7 @@
 
 import { defineMessages, type IntlShape } from 'react-intl';
 
+import { runtimeConfig } from '@/config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
 import type { TestCallMode } from '../../utils/callMode';
 import { splitAgainstBase } from './swaggerRequest';
@@ -80,11 +81,12 @@ import { splitAgainstBase } from './swaggerRequest';
  */
 
 /**
- * BFF-owned endpoint, mounted beside /api/login rather than under the proxy
- * prefix. Named for what it is on the BFF side — a relay to a gateway — rather
- * than for this page, since nothing about it is specific to the Test console.
+ * The relay endpoint: `runtimeConfig.gatewayRelayUrl`, by default the BFF's,
+ * mounted beside /api/login rather than under the proxy prefix. Named for what
+ * it is — a relay to a gateway — rather than for this page, since nothing about
+ * it is specific to the Test console.
  */
-const INVOKE_URL = '/api/gateway-relay/invoke';
+const INVOKE_URL = runtimeConfig.gatewayRelayUrl;
 
 const messages = defineMessages({
   busy: {

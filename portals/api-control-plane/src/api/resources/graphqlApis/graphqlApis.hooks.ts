@@ -24,6 +24,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 
+import { useResourceLimits } from '../../../hooks/useResourceLimits';
 import type { ApiError } from '../../core/errors';
 import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
@@ -101,6 +102,15 @@ export const useGraphQLApiCounts = (
 const LIST_MAX_PAGE_SIZE = 100;
 
 /**
+ * Options for the fetch-everything list hook.
+ *
+ * `max` fetches only the first `max` items (in as many requests as that takes)
+ * rather than the whole collection; `pagination.total` still reports every
+ * item. `enabled: false` skips the request, for a list a filter has ruled out.
+ */
+type AllApisOptions = { enabled?: boolean; max?: number };
+
+/**
  * Every GraphQL API in scope, fetched across as many pages as required.
  * Mirrors `useAllRestApis` exactly — see that hook for why this fans out
  * rather than trusting a single page.
@@ -108,15 +118,22 @@ const LIST_MAX_PAGE_SIZE = 100;
 export const useAllGraphQLApis = (
   filters: Omit<GraphQLApiListFilters, 'limit' | 'offset'> = {},
   overrides: { orgId?: string; projectId?: string } = {},
+  options: AllApisOptions = {},
 ) => {
   const { org, projectId } = useApiScope(overrides);
-  const enabled = Boolean(org && projectId);
+  const enabled = Boolean(org && projectId) && options.enabled !== false;
+  // `max: 0` is a real limit (nothing wanted), not "no limit": ask for one item
+  // so `pagination.total` still arrives, and return none of it.
+  const firstLimit =
+    options.max === undefined
+      ? LIST_MAX_PAGE_SIZE
+      : Math.min(LIST_MAX_PAGE_SIZE, Math.max(1, options.max));
 
   const firstPage = useQuery({
     ...graphQLApiQueries.list(org!, {
       projectId: projectId!,
       ...filters,
-      limit: LIST_MAX_PAGE_SIZE,
+      limit: firstLimit,
       offset: 0,
     }),
     enabled,
@@ -126,8 +143,10 @@ export const useAllGraphQLApis = (
   });
 
   const total = firstPage.data?.pagination.total ?? 0;
+  // With `max`, only the first `max` items are wanted, however many exist.
+  const wanted = options.max === undefined ? total : Math.min(total, options.max);
   const remainingOffsets = Array.from(
-    { length: Math.max(0, Math.ceil(total / LIST_MAX_PAGE_SIZE) - 1) },
+    { length: Math.max(0, Math.ceil(wanted / LIST_MAX_PAGE_SIZE) - 1) },
     (_, index) => (index + 1) * LIST_MAX_PAGE_SIZE,
   );
 
@@ -145,8 +164,12 @@ export const useAllGraphQLApis = (
 
   const isPending = firstPage.isPending || remainingPages.some((page) => page.isPending);
   const error = firstPage.error ?? remainingPages.find((page) => page.error)?.error;
+  // Whole server pages are fetched, so trim back to the `max` that was asked for.
   const list = firstPage.isSuccess
-    ? [...firstPage.data.list, ...remainingPages.flatMap((page) => page.data?.list ?? [])]
+    ? [...firstPage.data.list, ...remainingPages.flatMap((page) => page.data?.list ?? [])].slice(
+        0,
+        options.max,
+      )
     : undefined;
 
   return {
@@ -215,11 +238,16 @@ export const useCreateGraphQLApi = (
 ) => {
   const { orgId } = useApiScope(overrides);
   const invalidate = useInvalidateGraphQLApis(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<GraphQLApi, ApiError, CreateGraphQLApiBody>({
     meta: overrides.handlesErrors ? HANDLED_LOCALLY : undefined,
     mutationFn: (body) => createGraphQLApi(body, { orgId }),
     onSuccess: invalidate,
+    // Same reasoning as `useCreateRestApi`: both consume the one shared
+    // interfaces budget, so either one changing means the counts need a
+    // re-read — on settle, because a refusal is the stale-count case.
+    onSettled: () => refreshResourceLimits(),
   });
 };
 
@@ -249,6 +277,7 @@ export const useDeleteGraphQLApi = (overrides: { orgId?: string } = {}) => {
   const { org, orgId } = useApiScope(overrides);
   const queryClient = useQueryClient();
   const invalidate = useInvalidateGraphQLApis(orgId);
+  const { refresh: refreshResourceLimits } = useResourceLimits();
 
   return useMutation<void, ApiError, { graphqlApiId: string }>({
     mutationFn: ({ graphqlApiId }) => deleteGraphQLApi(graphqlApiId, { orgId }),
@@ -257,6 +286,8 @@ export const useDeleteGraphQLApi = (overrides: { orgId?: string } = {}) => {
         queryClient.removeQueries({ queryKey: graphQLApiKeys.detail(org, graphqlApiId) });
       }
       invalidate();
+      // Frees shared budget — see `useDeleteRestApi`.
+      refreshResourceLimits();
     },
   });
 };

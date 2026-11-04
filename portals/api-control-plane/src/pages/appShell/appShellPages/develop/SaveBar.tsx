@@ -16,17 +16,22 @@
  * under the License.
  */
 
-import { Box, Button, Card, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Card, CardContent, Typography } from '@wso2/oxygen-ui';
+import { Circle } from '@wso2/oxygen-ui-icons-react';
+import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+
+import { APP_FOOTER_ID } from '../../appLayoutConstants';
 
 const messages = defineMessages({
   cancel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.cancel',
-    defaultMessage: 'Cancel',
+    defaultMessage: 'Discard',
+    description: 'Throws away the unsaved edits and restores the last saved state. Verb.',
   },
   save: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.save',
-    defaultMessage: 'Save',
+    defaultMessage: 'Save changes',
     description: 'Default label on the save bar button. Verb phrase.',
   },
   saving: {
@@ -39,6 +44,11 @@ const messages = defineMessages({
     defaultMessage: 'You have unsaved changes',
     description: 'Shown on the save bar while the panel has edits that have not been saved yet.',
   },
+  unsavedCount: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.unsavedCount',
+    defaultMessage: '{count, plural, one {# unsaved change} other {# unsaved changes}}',
+    description: 'Shown on the save bar. {count} is how many edits have not been saved yet.',
+  },
 });
 
 type SaveBarProps = {
@@ -48,51 +58,108 @@ type SaveBarProps = {
   disabled?: boolean;
   /** Renders the in-flight label and is implied disabled. */
   saving?: boolean;
+  /** How many edits are unsaved; without it the bar only says there are some. */
+  changeCount?: number;
   onCancel: () => void;
   onSave: () => void;
   /** Overrides the default "Save changes"; already-translated text. */
   label?: string;
 };
 
+/** Gap between the bar and whatever sits beneath it (the app footer, or the viewport edge). */
+const BAR_GAP = 3;
+
+/** Room kept at the end of the page so the floating bar never covers its last row. */
+const SPACER_HEIGHT = 96;
+
 /**
- * Save action bar pinned to the bottom of a develop tab's scroll area
- * (`position: sticky`), offset above the app footer so it is never covered.
- * Rendered as a compact card so it remains distinct from content scrolling
- * underneath without changing appearance based on that content's background.
+ * Height of the app footer, so the bar can float above it instead of over it. The
+ * footer is measured because it changes with the viewport width.
  */
-export function SaveBar({ dirty, disabled, saving, onCancel, onSave, label }: SaveBarProps) {
+function useFooterHeight(active: boolean): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (!active) return undefined;
+    const footer = document.getElementById(APP_FOOTER_ID);
+    if (!footer) return undefined;
+    const measure = () => setHeight(footer.offsetHeight);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [active]);
+  return height;
+}
+
+/**
+ * Floating action bar for a develop tab: it appears, pinned to the bottom of the
+ * window and centred, only while there are unsaved edits, and says how many. It is
+ * fixed to the viewport, so it stays put as the page scrolls beneath it; a spacer
+ * at the end of the page keeps the last row reachable.
+ */
+export function SaveBar({
+  dirty,
+  disabled,
+  saving,
+  changeCount,
+  onCancel,
+  onSave,
+  label,
+}: SaveBarProps) {
   const intl = useIntl();
+  const visible = dirty || Boolean(saving);
+  const footerHeight = useFooterHeight(visible);
+  if (!visible) return null;
+
   // Defaulted here rather than in the signature: a default parameter is
   // evaluated before `useIntl` exists, so the fallback could not be translated.
   const saveLabel = label ?? intl.formatMessage(messages.save);
   return (
-    <Box sx={{ bottom: 0, position: 'sticky', zIndex: 10 }}>
-      <Card>
-        <Stack
-          alignItems={{ sm: 'center', xs: 'flex-start' }}
-          direction={{ sm: 'row', xs: 'column' }}
-          justifyContent="space-between"
-          spacing={1}
-          sx={{ p: 2 }}
+    <>
+      <Box aria-hidden sx={{ height: SPACER_HEIGHT }} />
+      <Card
+        role="region"
+        sx={(theme) => ({
+          bottom: `calc(${footerHeight}px + ${theme.spacing(BAR_GAP)})`,
+          left: '50%',
+          maxWidth: `calc(100vw - ${theme.spacing(4)})`,
+          position: 'fixed',
+          transform: 'translateX(-50%)',
+          zIndex: theme.zIndex.appBar - 1,
+        })}
+      >
+        <CardContent
+          sx={{
+            alignItems: 'center',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 2,
+            p: 1.5,
+            '&:last-child': { pb: 1.5 },
+          }}
         >
-          <Typography color={dirty ? 'warning.main' : 'text.secondary'} variant="body2">
-            {dirty ? <FormattedMessage {...messages.unsaved} /> : ''}
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button
-              color="secondary"
-              disabled={saving || !dirty}
-              onClick={onCancel}
-              variant="outlined"
-            >
+          <Box sx={{ alignItems: 'center', color: 'primary.main', display: 'flex', gap: 1 }}>
+            <Circle fill="currentColor" size={8} />
+            <Typography color="text.primary" variant="body2">
+              {!dirty ? (
+                // Saving, with the edits already reverted: there is nothing left to count.
+                <FormattedMessage {...messages.saving} />
+              ) : changeCount === undefined ? (
+                <FormattedMessage {...messages.unsaved} />
+              ) : (
+                <FormattedMessage {...messages.unsavedCount} values={{ count: changeCount }} />
+              )}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button color="secondary" disabled={saving} onClick={onCancel} variant="outlined">
               <FormattedMessage {...messages.cancel} />
             </Button>
-            <Button disabled={disabled || saving || !dirty} onClick={onSave} variant="contained">
+            <Button disabled={disabled || saving} onClick={onSave} variant="contained">
               {saving ? intl.formatMessage(messages.saving) : saveLabel}
             </Button>
-          </Stack>
-        </Stack>
+          </Box>
+        </CardContent>
       </Card>
-    </Box>
+    </>
   );
 }
