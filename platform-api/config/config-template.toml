@@ -606,7 +606,7 @@ max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
 # never a URL; the target is that gateway's endpoint plus the context of the API's
 # deployment there, sent with the deployment's main vhost as Host when it has one.
 [platform_api.gateway_relay]
-request_timeout    = "30s"     # one test request, from its arrival: reading it, finding the target, the wait for a slot and the gateway call; must stay below server.timeouts.write
+request_timeout    = "30s"     # from the test request's arrival to the end of the gateway call: reading the request and finding the target take from it; must stay below server.timeouts.write
 max_request_bytes  = 2097152   # 2 MiB decoded request body (the JSON request may be up to twice that: base64, escaping)
 max_response_bytes = 8388608   # 8 MiB; a longer gateway response is truncated and flagged, not failed
 max_concurrent     = 32        # relayed calls in flight at once, per replica

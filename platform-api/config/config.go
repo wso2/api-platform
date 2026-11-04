@@ -224,8 +224,9 @@ type AgentCardCache struct {
 // Its client is not the shared one: it never follows redirects, and Egress
 // decides which gateway addresses it may dial.
 type GatewayRelay struct {
-	// RequestTimeout bounds one test request from its arrival, so the target lookup
-	// counts too; it must stay below server.timeouts.write.
+	// RequestTimeout runs from a test request's arrival to the end of the gateway
+	// call, so reading the request and the target lookup take from it; it must stay
+	// below server.timeouts.write.
 	RequestTimeout time.Duration `koanf:"request_timeout"`
 	// MaxRequestBytes bounds the decoded request body.
 	MaxRequestBytes int64 `koanf:"max_request_bytes"`

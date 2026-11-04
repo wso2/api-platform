@@ -19,6 +19,7 @@ package handler
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -50,6 +51,7 @@ type fakeInvokeTargets struct {
 	vhost      string
 	endpoints  []string
 	err        error
+	delay      time.Duration // how long the lookup takes
 	gotAPI     string
 	gotGateway string
 	gotOrg     string
@@ -57,6 +59,7 @@ type fakeInvokeTargets struct {
 
 func (f *fakeInvokeTargets) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (*service.APIInvokeTarget, error) {
 	f.gotAPI, f.gotGateway, f.gotOrg = apiHandle, gatewayHandle, orgID
+	time.Sleep(f.delay)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -208,13 +211,14 @@ func TestInvokeSendsTheDeploymentVhostAsHost(t *testing.T) {
 	assert.Equal(t, "pizza.example.com", gotHost)
 }
 
-// request_timeout has to cover reading the request and finding the target, which
-// the server's write deadline already counts, so it starts before the relay does.
+// The server's write deadline counts reading the request and finding the target,
+// so request_timeout does too: it starts when the request arrives, and a slow
+// lookup is taken from the gateway call rather than added to it.
 func TestInvokeStartsTheRequestTimeoutBeforeTheRelay(t *testing.T) {
 	relay := &deadlineRelay{}
 	mux := http.NewServeMux()
-	NewAPIInvokeHandler(&fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}},
-		relay, 1<<10, 30*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}, delay: 2 * time.Second}
+	NewAPIInvokeHandler(targets, relay, 1<<10, 30*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
 	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(invokeBody(`"path": "/"`)))
 	req.Header.Set("Content-Type", "application/json")
 	req = middleware.WithOrganization(req, invokeOrg)
@@ -223,7 +227,20 @@ func TestInvokeStartsTheRequestTimeoutBeforeTheRelay(t *testing.T) {
 	mux.ServeHTTP(httptest.NewRecorder(), req)
 
 	require.True(t, relay.ok, "the relay must get a context with a deadline")
+	// Counted from after the 2s lookup it would be at least before+32s.
 	assert.WithinDuration(t, before.Add(30*time.Second), relay.deadline, time.Second)
+}
+
+// A base64 body can be within the read limit yet over max_request_bytes once
+// decoded; it is refused with the same 413, not as an invalid request.
+func TestInvokeRefusesABodyOverTheLimitOnceDecoded(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString(make([]byte, 2<<10)) // 2 KiB decoded, over the 1 KiB limit
+	targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}}
+	rec := serveInvoke(t, targets, newRelay(t, "*"), "application/json",
+		invokeBody(`"method": "POST", "path": "/", "bodyEncoding": "base64", "body": "`+encoded+`"`))
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code, rec.Body.String())
+	assert.Equal(t, apperror.CodeCommonPayloadTooLarge, errorCode(t, rec))
 }
 
 // JSON escaping doubles each quote in a text body, so a body within

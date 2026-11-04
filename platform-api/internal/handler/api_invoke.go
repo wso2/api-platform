@@ -82,9 +82,10 @@ func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) err
 	w.Header().Set("Cache-Control", "no-store")
 
 	// request_timeout runs from here, not from the gateway call: the server's write
-	// deadline starts when the request arrives, so reading the body and finding the
-	// target count against it too. Kept below server.timeouts.write (see config),
-	// this leaves time to write a timeout answer before the connection is cut.
+	// deadline starts when the request arrives, so the time spent reading the body
+	// and finding the target is taken from the gateway call. Neither step watches
+	// the deadline (server.timeouts.read bounds the read); the gateway call and the
+	// wait for a slot end at it, leaving time to write a timeout answer.
 	ctx, cancel := context.WithTimeout(r.Context(), h.requestTimeout)
 	defer cancel()
 
@@ -185,6 +186,9 @@ func relayError(err error, apiID, gatewayID string) error {
 			WithLogMessage("gateway relay egress policy refused the target while " + logCtx)
 	case errors.Is(err, gatewayrelay.ErrBusy):
 		return apperror.RESTAPIInvokeBusy.Wrap(err)
+	case errors.Is(err, gatewayrelay.ErrBodyTooLarge):
+		// Over max_request_bytes once decoded: the same 413 as a request over the read limit.
+		return apperror.PayloadTooLarge.New("The request body exceeds the maximum allowed size.")
 	case isInvalidRelayRequest(err):
 		return apperror.RESTAPIInvokeRequestInvalid.Wrap(err).
 			WithLogMessage("refused test request while " + logCtx)
@@ -211,7 +215,6 @@ func isInvalidRelayRequest(err error) bool {
 		gatewayrelay.ErrTooManyQueryParams,
 		gatewayrelay.ErrInvalidQueryName,
 		gatewayrelay.ErrInvalidBodyEncoding,
-		gatewayrelay.ErrBodyTooLarge,
 	} {
 		if errors.Is(err, sentinel) {
 			return true
