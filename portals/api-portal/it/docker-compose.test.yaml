@@ -120,7 +120,7 @@ services:
   # because its org_handle names another organization. See
   # rest-api/auth/foreign-org-login.spec.js.
   #
-  # Its own SQLite file, not the shared one: two better-sqlite3 processes writing a
+  # Its own SQLite file, not the shared one: two portal processes writing a
   # single file would contend on SQLITE_BUSY. Nothing here depends on sharing the
   # database — the mismatch under test is between this instance's configured
   # organization and the token's, not between rows.
@@ -221,9 +221,8 @@ services:
       - sqlite-data:/shared-db:ro
     networks:
       - it-api-portal-network
-    # better-sqlite3 compiles from source on node:24-alpine (no prebuilt binary
-    # for this platform) — needs python3/make/g++ for node-gyp.
-    command: ["sh", "-c", "apk add --no-cache python3 make g++ >/dev/null && npm install --no-audit --no-fund && npm test"]
+    # SQLite is read with node:sqlite, built into Node, so no native build is needed.
+    command: ["sh", "-c", "npm install --no-audit --no-fund && npm test"]
 
 networks:
   it-api-portal-network:

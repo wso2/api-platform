@@ -27,8 +27,10 @@ let sqliteDb;
 
 function getSqlite() {
     if (!sqliteDb) {
-        const Database = require('better-sqlite3');
-        sqliteDb = new Database(process.env.API_PORTAL_DB_STORAGE, { readonly: true, fileMustExist: true });
+        // node:sqlite is built into Node. readOnly also fails when the file does not
+        // exist (it never creates one), as better-sqlite3's fileMustExist did.
+        const { DatabaseSync } = require('node:sqlite');
+        sqliteDb = new DatabaseSync(process.env.API_PORTAL_DB_STORAGE, { readOnly: true, timeout: 5000 });
     }
     return sqliteDb;
 }
@@ -55,7 +57,22 @@ async function query(sql, params = []) {
         return rows;
     }
     const sqliteSql = sql.replace(/\$\d+/g, '?');
-    return getSqlite().prepare(sqliteSql).all(...params);
+    const stmt = getSqlite().prepare(sqliteSql);
+    stmt.setReadBigInts(true);
+    return stmt.all(...params).map(toPlainRow);
+}
+
+// node:sqlite returns null-prototype rows, BLOBs as Uint8Array and (with
+// setReadBigInts) integers as BigInt. Return plain objects with Buffer and
+// number values, as the portal's sqlite adapter does.
+function toPlainRow(row) {
+    const plain = {};
+    for (const [key, value] of Object.entries(row)) {
+        if (typeof value === 'bigint') plain[key] = Number(value);
+        else if (value instanceof Uint8Array && !Buffer.isBuffer(value)) plain[key] = Buffer.from(value);
+        else plain[key] = value;
+    }
+    return plain;
 }
 
 // organizations.id (the REST `id`/handle) is not the internal uuid stored as
