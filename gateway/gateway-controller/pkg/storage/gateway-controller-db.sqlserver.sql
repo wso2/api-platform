@@ -1,5 +1,5 @@
 -- SQL Server Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 --
 -- Portable counterpart of gateway-controller-db.postgres.sql. Type mapping:
 --   TEXT (keyed)      -> NVARCHAR(64)/NVARCHAR(255)  (NVARCHAR(MAX) cannot be indexed;
@@ -330,6 +330,7 @@ CREATE TABLE dbo.secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
+-- Audit table (added in schema version 7)
 IF OBJECT_ID(N'dbo.audit', N'U') IS NULL
 CREATE TABLE dbo.audit (
     uuid NVARCHAR(64) NOT NULL,

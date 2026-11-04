@@ -785,7 +785,7 @@ func TestSQLiteStorage_DefaultIdentityRoleSurvivesRotation(t *testing.T) {
 // reads back with the column defaults and a new row saves with explicit usage
 // and role.
 func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
-	const preMigrationSchemaVersion = previousSchemaVersion
+	const preMigrationSchemaVersion = v5SchemaVersion
 
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "upgrade-test.db")
@@ -970,7 +970,7 @@ func TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs(t *testing.T) {
 		`ALTER TABLE certificates ADD COLUMN match_json TEXT`,
 		`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`,
 		`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`,
-		fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion),
+		fmt.Sprintf("PRAGMA user_version = %d", previousSchemaVersion),
 	} {
 		_, err = rawDB.Exec(statement)
 		assert.NilError(t, err)
@@ -1005,7 +1005,7 @@ func createReleasedV5Database(t *testing.T, path string) {
 	assert.NilError(t, err)
 	var version int
 	assert.NilError(t, rawDB.QueryRow("PRAGMA user_version").Scan(&version))
-	assert.Equal(t, version, previousSchemaVersion)
+	assert.Equal(t, version, v5SchemaVersion)
 	assert.NilError(t, rawDB.Close())
 }
 
