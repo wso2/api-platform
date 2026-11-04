@@ -2037,3 +2037,106 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the API "mf-latency-v1.0"
     Then the response status code should be 200
+
+  Scenario: A status outside the failure conditions is returned unchanged and fails over to nothing
+    # US1 acceptance 5. Retrying a validation error on another provider fails the
+    # same way, or worse, bills a second inference call to mask a client bug —
+    # so the status has to come back as-is and the target must not be penalised
+    # for it.
+    #
+    # Two operations, ONE policy configuration, differing only in what the
+    # upstream answers. The 503 operation is a positive control and is the point:
+    # "no failover occurred" is satisfied just as well by a policy that never
+    # fails over at all, so without a sibling operation proving the same config
+    # DOES fail over, this scenario would pass against a completely broken
+    # policy.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-passthru-v1.0
+      spec:
+        displayName: MF Passthrough
+        version: v1.0
+        context: /mf-passthru/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-passthru-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /status/422
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 503
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+          - method: POST
+            path: /status/503
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 503
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # The control first, so a failure here is read as "failover is broken"
+    # rather than as a finding about pass-through.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-passthru/v1.0/status/503" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/mf-passthru-alive"
+
+    # The subject. Same policy, same chain, a status the publisher did not
+    # nominate: one attempt, and the upstream's own status reaches the client.
+    When I send a POST request to "http://localhost:8080/mf-passthru/v1.0/status/422" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 422
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should not contain "/mf-passthru-alive"
+
+    # ...and the target was not penalised for the client's mistake. A second
+    # request still reaches it, which it would not if the 422 had counted
+    # towards suspension.
+    When I send a POST request to "http://localhost:8080/mf-passthru/v1.0/status/422" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 422
+    And the response body should not contain "/mf-passthru-alive"
+
+    # Cleanup
+    When I delete the API "mf-passthru-v1.0"
+    Then the response status code should be 200
