@@ -19,7 +19,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -129,16 +131,23 @@ func (s *auditFileSink) open() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
-	if info, err := os.Lstat(s.path); err == nil && !info.Mode().IsRegular() {
-		return fmt.Errorf("%q is not a regular file", s.path)
-	}
 	// O_NONBLOCK: a FIFO swapped in after the Lstat fails the open instead of
 	// blocking it; it has no effect on a regular file.
-	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|syscall.O_NONBLOCK, 0o600)
+	flags := os.O_WRONLY | os.O_APPEND | syscall.O_NONBLOCK
+	info, err := os.Lstat(s.path)
+	switch {
+	case err == nil && !info.Mode().IsRegular():
+		return fmt.Errorf("%q is not a regular file", s.path)
+	case errors.Is(err, fs.ErrNotExist):
+		// O_EXCL: a symlink swapped in after the Lstat fails the open instead
+		// of having its target created.
+		flags |= os.O_CREATE | os.O_EXCL
+	}
+	f, err := os.OpenFile(s.path, flags, 0o600)
 	if err != nil {
 		return err
 	}
-	info, err := f.Stat()
+	info, err = f.Stat()
 	if err != nil {
 		_ = f.Close()
 		return err
