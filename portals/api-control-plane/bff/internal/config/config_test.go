@@ -294,8 +294,8 @@ func TestLoad_GatewayVersionsRuntimeConfig(t *testing.T) {
 		t.Fatalf("decoded %d entries, want %d", len(decoded), len(cfg.GatewayVersions))
 	}
 	first := decoded[0]
-	if first["type"] != "regular" || first["version"] != "2026.05.13" || first["channel"] != "STS" {
-		t.Errorf("first entry = %v, want regular/2026.05.13/STS", first)
+	if first["type"] != "regular" || first["version"] != "2026.09.24" || first["channel"] != "STS" {
+		t.Errorf("first entry = %v, want regular/2026.09.24/STS", first)
 	}
 	for _, k := range []string{"latestVersion", "distVersion"} {
 		if _, present := first[k]; present {

@@ -70,9 +70,18 @@ export type PolicyListResult = {
 export type PolicyDefinition = {
   name: string;
   version: string;
+  displayName?: string;
   description?: string;
   /** Recursive JSON-Schema for the policy's parameters. */
   schema: ParameterSchema;
+  /**
+   * The definition's `parameters` exactly as authored, including the cross-field
+   * rules (`anyOf`/`oneOf`/`allOf`/`if`/`then`/`else`/`not`) and `x-wso2-*`
+   * extensions that `schema` drops. The parameter editor reads this.
+   */
+  parameters?: Record<string, unknown>;
+  /** The definition's `systemParameters`, as authored. */
+  systemParameters?: Record<string, unknown>;
 };
 
 /** Everything a Policy Hub read accepts. No `orgId`: the hub is not org-scoped. */
@@ -158,12 +167,20 @@ const toSchema = (raw: unknown): ParameterSchema => {
  * Builds the catalog query string. Page is 1-based; the hub uses offset/limit.
  * Exported for testing.
  */
-export const buildPolicyQuery = (page: number, pageSize: number, categories?: string[]): string => {
+export const buildPolicyQuery = (
+  page: number,
+  pageSize: number,
+  categories?: string[],
+  search?: string,
+): string => {
   const params = new URLSearchParams();
   params.set('offset', String((page - 1) * pageSize));
   params.set('limit', String(pageSize));
   const selected = (categories || []).filter(Boolean);
   if (selected.length > 0) params.set('categories', selected.join(','));
+  // The hub matches the term against names, descriptions and tags across the whole catalog.
+  const term = search?.trim();
+  if (term) params.set('search', term);
   return params.toString();
 };
 
@@ -227,12 +244,13 @@ export const listPolicies = async (
   pageSize: number,
   categories?: string[],
   options?: PolicyHubRequestOptions,
+  search?: string,
 ): Promise<PolicyListResult> => {
   const data = await hubGetJson<{
     data?: unknown[];
     count?: number;
     pagination?: { total?: number };
-  }>(`/policies?${buildPolicyQuery(page, pageSize, categories)}`, options);
+  }>(`/policies?${buildPolicyQuery(page, pageSize, categories, search)}`, options);
 
   return {
     policies: asArray(data.data).map(toSummary),
@@ -292,7 +310,10 @@ export const getPolicyDefinition = async (
   return {
     name: str(doc.name) || name,
     version: str(doc.version) || version,
+    displayName: str(doc.displayName) || undefined,
     description: str(doc.description) || undefined,
     schema: doc.parameters ? toSchema(doc.parameters) : EMPTY_SCHEMA,
+    parameters: doc.parameters ? asRecord(doc.parameters) : undefined,
+    systemParameters: doc.systemParameters ? asRecord(doc.systemParameters) : undefined,
   };
 };

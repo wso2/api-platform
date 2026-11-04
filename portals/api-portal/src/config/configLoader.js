@@ -981,9 +981,12 @@ function validateArtifactConfig(artifacts) {
 validateArtifactConfig(config.artifacts);
 
 /**
- * Fail-closed startup check: the billing settings below must be whole numbers of at least 1.
+ * Fail-closed startup check: the billing settings below must be whole numbers of at least 1, and
+ * the Moesif keys set in config must come as a pair, for one Moesif application, and only outside
+ * multi-organization mode.
  */
-function validateBillingConfig(billing) {
+function validateBillingConfig(cfg) {
+    const billing = cfg.billing;
     const settings = {
         'billing.stripe.webhook_signature_tolerance_sec': billing?.stripe?.webhookSignatureToleranceSec,
         'billing.moesif.max_parallel_prices': billing?.moesif?.maxParallelPrices,
@@ -997,9 +1000,54 @@ function validateBillingConfig(billing) {
             process.exit(1);
         }
     }
+
+    const moesif = billing.moesif;
+    const keys = {
+        'billing.moesif.collector_application_id': 'collectorApplicationId',
+        'billing.moesif.management_key': 'managementKey',
+    };
+    for (const [name, field] of Object.entries(keys)) {
+        if (typeof moesif[field] !== 'string') {
+            process.stderr.write(`[FATAL] ${name} must be a string.\n`);
+            process.exit(1);
+        }
+        moesif[field] = moesif[field].trim();
+    }
+    const set = Object.keys(keys).filter((name) => moesif[keys[name]] !== '');
+    if (set.length === 1) {
+        process.stderr.write(
+            '[FATAL] billing.moesif.collector_application_id and billing.moesif.management_key ' +
+            'must be set together.\n'
+        );
+        process.exit(1);
+    }
+    if (set.length === 2 && cfg.multiOrganization.enabled && cfg.auth?.mode === 'idp') {
+        process.stderr.write(
+            '[FATAL] billing.moesif.collector_application_id and billing.moesif.management_key are not ' +
+            'allowed in multi-organization mode. Each organization enters its own in Settings › Billing.\n'
+        );
+        process.exit(1);
+    }
+    if (set.length === 2) {
+        const { collectorApplication, keyForOtherApplication } = require('../billing/connectors/moesif/application');
+        const application = collectorApplication(moesif.collectorApplicationId);
+        if (!application) {
+            process.stderr.write(
+                '[FATAL] billing.moesif.collector_application_id is not a Moesif Collector Application Id.\n'
+            );
+            process.exit(1);
+        }
+        if (keyForOtherApplication(moesif.managementKey, application)) {
+            process.stderr.write(
+                '[FATAL] billing.moesif.management_key is for a different Moesif application than ' +
+                'billing.moesif.collector_application_id.\n'
+            );
+            process.exit(1);
+        }
+    }
 }
 
-validateBillingConfig(config.billing);
+validateBillingConfig(config);
 
 // ---------------------------------------------------------------------------
 // Authorization config (auth.authorization)

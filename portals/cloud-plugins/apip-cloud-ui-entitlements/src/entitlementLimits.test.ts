@@ -12,12 +12,20 @@ import { describe, expect, it } from 'vitest';
 import { isReadOnly, toResourceLimits } from './entitlementLimits';
 import type { Entitlement, EntitlementSummary } from './entitlementTypes';
 
+/**
+ * One quota meter as billing sends it: the limits live in `quota`, and
+ * `enforcement.mode` is the only statement of unlimited. `null` here means
+ * that — a plan with no ceiling for this meter.
+ */
 const quota = (name: string, limit: number | null, used: number): Entitlement => ({
   name,
   type: 'quota',
-  limit,
   used,
-  remaining: limit === null ? null : Math.max(0, limit - used),
+  enforcement: { mode: limit === null ? 'unlimited' : 'hard', source: 'plan' },
+  quota:
+    limit === null
+      ? { used }
+      : { hard_limit: limit, used, remaining: Math.max(0, limit - used) },
 });
 
 const summary = (
@@ -71,13 +79,47 @@ describe('toResourceLimits', () => {
     expect(toResourceLimits(other)).toBeNull();
   });
 
-  it('maps gateways from hybrid_gateways', () => {
-    const limits = toResourceLimits(growth({ gateways: 1 }));
-    expect(limits?.gateways).toMatchObject({ max: 3, used: 1 });
+  describe('the two gateway caps', () => {
+    it('maps self-hosted gateways from hybrid_gateways', () => {
+      const limits = toResourceLimits(growth({ gateways: 1 }));
+      expect(limits?.selfHostedGateways).toMatchObject({ max: 3, used: 1 });
+    });
+
+    it('maps managed gateways from the gateways meter', () => {
+      const limits = toResourceLimits(summary([quota('gateways', 1, 1)]));
+      expect(limits?.managedGateways).toMatchObject({ max: 1, used: 1 });
+      expect(limits?.managedGateways?.message).toContain('Managed Gateways');
+    });
+
+    // "May ANY gateway be created" — a full managed quota does not stop a
+    // self-hosted one, so this reports whichever kind still has room.
+    it('reports the roomiest kind for the generic gateways verdict', () => {
+      const limits = toResourceLimits(
+        summary([quota('gateways', 1, 1), quota('hybrid_gateways', 2, 0)])
+      );
+      expect(limits?.gateways).toMatchObject({ max: 2, used: 0 });
+    });
+
+    // With neither kind having room the verdict is "full" whichever meter
+    // names it, so assert the verdict rather than which one won the tie.
+    it('reports a full cap for the generic verdict only when both kinds are full', () => {
+      const limits = toResourceLimits(
+        summary([quota('gateways', 1, 1), quota('hybrid_gateways', 2, 2)])
+      );
+      expect(limits!.gateways!.used).toBeGreaterThanOrEqual(limits!.gateways!.max);
+    });
+
+    it('treats an unlimited kind as room for the generic verdict', () => {
+      const limits = toResourceLimits(
+        summary([quota('gateways', 1, 1), quota('hybrid_gateways', null, 9)])
+      );
+      expect(limits?.gateways?.max).toBe(-1);
+    });
   });
 
   describe('the APIs budget', () => {
-    // The Create API gate binds on `apis` and nothing else.
+    // The Create API gate binds on `apis` and nothing else: MCP, LLM and
+    // agent proxies are not metered, so there is no shared budget above it.
     it('binds on apis when it is exhausted', () => {
       const limits = toResourceLimits(growth({ apis: 5 }));
       expect(limits?.restApis).toMatchObject({ max: 5, used: 5 });
@@ -87,35 +129,6 @@ describe('toResourceLimits', () => {
     it('leaves headroom when the cap is not reached', () => {
       const limits = toResourceLimits(growth({ apis: 2 }));
       expect(limits?.restApis).toMatchObject({ max: 5, used: 2 });
-    });
-
-    // Every interface type spends the shared budget, so an exhausted budget
-    // stops the next API even while the narrower `apis` meter looks roomy —
-    // the case a plan with equal limits hides until types are mixed.
-    it('binds on the shared budget when it is the tighter of the two', () => {
-      const limits = toResourceLimits(
-        summary([quota('apis', 5, 1), quota('managed_interfaces', 10, 10)])
-      );
-      expect(limits?.restApis).toMatchObject({ max: 10, used: 10 });
-      // And names the cap that actually binds, not this component's own.
-      expect(limits?.restApis?.message).toContain('Managed Interfaces');
-    });
-
-    it('binds on the apis meter when that one is tighter', () => {
-      const limits = toResourceLimits(
-        summary([quota('apis', 5, 5), quota('managed_interfaces', 10, 5)])
-      );
-      expect(limits?.restApis).toMatchObject({ max: 5, used: 5 });
-      expect(limits?.restApis?.message).toContain('APIs');
-    });
-
-    // Both exhausted: the broader budget names itself, since it is the one the
-    // user has to raise to get anywhere.
-    it('names the budget when both are equally exhausted', () => {
-      const limits = toResourceLimits(
-        summary([quota('apis', 5, 5), quota('managed_interfaces', 5, 5)])
-      );
-      expect(limits?.restApis?.message).toContain('Managed Interfaces');
     });
   });
 
@@ -142,8 +155,15 @@ describe('toResourceLimits', () => {
 
     it('clamps a negative remaining to zero rather than reading it as headroom', () => {
       // Grandfathered above a lowered limit: 12 used against a cap of 10.
+      // Billing clamps at 0 itself; an older deployment may not have.
       const over: EntitlementSummary = summary([
-        { name: 'apis', type: 'quota', limit: 10, used: 12, remaining: -2 },
+        {
+          name: 'apis',
+          type: 'quota',
+          used: 12,
+          enforcement: { mode: 'hard', source: 'plan' },
+          quota: { hard_limit: 10, used: 12, remaining: -2 },
+        },
       ]);
       const limits = toResourceLimits(over);
       expect(limits?.restApis).toMatchObject({ max: 10, used: 12 });
@@ -152,9 +172,98 @@ describe('toResourceLimits', () => {
 
     it('derives remaining when the field is absent', () => {
       const noRemaining: EntitlementSummary = summary([
-        { name: 'apis', type: 'quota', limit: 10, used: 10 },
+        {
+          name: 'apis',
+          type: 'quota',
+          used: 10,
+          enforcement: { mode: 'hard', source: 'plan' },
+          quota: { hard_limit: 10, used: 10 },
+        },
       ]);
       expect(toResourceLimits(noRemaining)?.restApis).toMatchObject({ max: 10, used: 10 });
+    });
+
+    // A plan may carry a meter it allows none of. Billing sends the 0 and
+    // omits `utilization_pct`, which is a cap of zero, not a missing one.
+    it('reads a zero quota as full rather than as unknown', () => {
+      const none: EntitlementSummary = summary([
+        {
+          name: 'api_developer_portals',
+          type: 'quota',
+          used: 0,
+          enforcement: { mode: 'hard', source: 'plan' },
+          quota: { hard_limit: 0, used: 0, remaining: 0 },
+        },
+      ]);
+      expect(toResourceLimits(none)?.portals).toMatchObject({ max: 0, used: 0 });
+      expect(toResourceLimits(none)?.portals?.message).toContain('Portals');
+    });
+
+    // The top-level `used` is all that survives for a past billing period.
+    it('falls back to the top-level used when the quota omits it', () => {
+      const topLevelOnly: EntitlementSummary = summary([
+        {
+          name: 'apis',
+          type: 'quota',
+          used: 3,
+          enforcement: { mode: 'hard', source: 'plan' },
+          quota: { hard_limit: 5, used: 3 },
+        },
+      ]);
+      expect(toResourceLimits(topLevelOnly)?.restApis).toMatchObject({ max: 5, used: 3 });
+    });
+
+    // A failed resolve arrives as a meter with no quota at all. Reading that
+    // as a cap of zero would lock a user out of their own product.
+    it('does not cap a meter billing resolved no limit for', () => {
+      const unresolved: EntitlementSummary = summary([
+        { name: 'apis', type: 'quota', used: 4 },
+      ]);
+      expect(toResourceLimits(unresolved)?.restApis).toMatchObject({ max: -1, used: 4 });
+      expect(toResourceLimits(unresolved)?.restApis?.message).toBeUndefined();
+    });
+
+    // Features carry `enabled`, not a quota. One must never become a cap.
+    it('ignores a feature entitlement that shares a metric code', () => {
+      const feature: EntitlementSummary = summary([
+        { name: 'apis', type: 'feature', enabled: true },
+      ]);
+      expect(toResourceLimits(feature)).toBeNull();
+    });
+  });
+
+  // Soft mode lets usage past the quota and bills the overage; what stops a
+  // create is the ceiling, which billing puts in `hard_limit` either way.
+  describe('soft enforcement', () => {
+    const soft = (softLimit: number, used: number, ceiling?: number): EntitlementSummary =>
+      summary([
+        {
+          name: 'apis',
+          type: 'quota',
+          used,
+          enforcement: { mode: 'soft', source: 'plan', overage_billable: true },
+          quota:
+            ceiling === undefined
+              ? { soft_limit: softLimit, used }
+              : { soft_limit: softLimit, hard_limit: ceiling, used, remaining: Math.max(0, ceiling - used) },
+        },
+      ]);
+
+    it('binds on the ceiling, not on where overage starts', () => {
+      const limits = toResourceLimits(soft(5, 6, 10));
+      // Past the soft quota and still allowed: the host compares used to max.
+      expect(limits?.restApis).toMatchObject({ max: 10, used: 6 });
+      expect(limits!.restApis!.used).toBeLessThan(limits!.restApis!.max);
+    });
+
+    it('blocks once the ceiling is reached', () => {
+      const limits = toResourceLimits(soft(5, 10, 10));
+      expect(limits?.restApis).toMatchObject({ max: 10, used: 10 });
+      expect(limits?.restApis?.message).toContain('APIs');
+    });
+
+    it('caps nothing when a soft meter has no ceiling', () => {
+      expect(toResourceLimits(soft(5, 12))?.restApis).toMatchObject({ max: -1, used: 12 });
     });
   });
 });

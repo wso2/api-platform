@@ -18,16 +18,26 @@
 
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { RestApi } from '@/api/resources/restApis';
 import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
 import { routes } from '@/routes/paths';
+import { AuthStateContext } from '../contexts/auth/AuthStateContext';
+import { PermissionProvider } from '../permissions/PermissionProvider';
 import { ConsoleScopeContext, type ConsoleScope } from '../scope/ConsoleScopeContext';
+import { makeAuthState } from '@/test/mockAuthState';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderHook } from '@/test/utils';
 import { useNavigationItems } from './useNavigationItems';
 import { anOrganization, aProject } from '@/test/msw/fixtures';
+
+const disabled = vi.hoisted(() => ({ names: [] as string[] }));
+
+vi.mock('../config/features', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../config/features')>()),
+  isFeatureDisabled: (name: string) => disabled.names.includes(name),
+}));
 
 const ORG = anOrganization().id;
 const PROJECT = aProject().id;
@@ -69,10 +79,23 @@ const atGraphqlApi = () =>
     params: { graphqlApiHandler: GRAPHQL_API, orgHandle: ORG, projectHandler: PROJECT },
   });
 
-const itemsAt = (scope: ConsoleScope, route: string) => {
+/** A signed-in session; with `scopes`, permissions are enforced against them. */
+const Permissions = ({ children, scopes }: { children: ReactNode; scopes?: string[] }) => (
+  <AuthStateContext.Provider
+    value={makeAuthState(
+      scopes ? { user: { email: 'user@example.com', name: 'User', scopes } } : {},
+    )}
+  >
+    <PermissionProvider mode={scopes ? 'enforce' : 'permissive'}>{children}</PermissionProvider>
+  </AuthStateContext.Provider>
+);
+
+const itemsAt = (scope: ConsoleScope, route: string, scopes?: string[]) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
-      <ConsoleScopeContext.Provider value={scope}>{children}</ConsoleScopeContext.Provider>
+      <Permissions scopes={scopes}>
+        <ConsoleScopeContext.Provider value={scope}>{children}</ConsoleScopeContext.Provider>
+      </Permissions>
     </MemoryRouter>
   );
   const { result } = renderHook(() => useNavigationItems(), { wrapper });
@@ -213,9 +236,11 @@ const itemsWithExtensions = (
 ) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
-      <ConsoleScopeContext.Provider value={scope}>
-        <ExtensionsProvider extensions={extensions}>{children}</ExtensionsProvider>
-      </ConsoleScopeContext.Provider>
+      <Permissions>
+        <ConsoleScopeContext.Provider value={scope}>
+          <ExtensionsProvider extensions={extensions}>{children}</ExtensionsProvider>
+        </ConsoleScopeContext.Provider>
+      </Permissions>
     </MemoryRouter>
   );
   const { result } = renderHook(() => useNavigationItems(), { wrapper });
@@ -478,5 +503,115 @@ describe('host-injected sidebar extensions', () => {
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('claims "no-such-item"'));
     warn.mockRestore();
+  });
+});
+
+describe('disableFeatures', () => {
+  type Row = { id: string; to: string; children?: { id: string }[] };
+  const idsOf = (items: Row[]) =>
+    items.flatMap((item) => [item.id, ...(item.children ?? []).map((child) => child.id)]);
+  const withDisabled = (features: string[], scope: ConsoleScope, route: string) => {
+    disabled.names = features;
+    return itemsAt(scope, route) as Row[];
+  };
+  const atApiRoute = routes.api(ORG, PROJECT, API);
+
+  afterEach(() => {
+    disabled.names = [];
+  });
+
+  it('shows every page when nothing is disabled', () => {
+    const ids = idsOf(withDisabled([], atApi(), atApiRoute));
+
+    expect(ids).toEqual(
+      expect.arrayContaining(['observability-metrics', 'observability-logs', 'insights-compliance']),
+    );
+  });
+
+  it('shows Meters under Manage by default', () => {
+    const items = withDisabled([], atOrg(), routes.organizationHome(ORG));
+    const manage = items.find((item) => item.id === 'manage');
+
+    expect(manage?.children?.map((child) => child.id)).toEqual([
+      'manage-subscription-plans',
+      'manage-meters',
+      'manage-service-accounts',
+    ]);
+  });
+
+  it('hides just the named page', () => {
+    const ids = idsOf(withDisabled(['metrics'], atApi(), atApiRoute));
+
+    expect(ids).not.toContain('observability-metrics');
+    expect(ids).toEqual(expect.arrayContaining(['observability', 'observability-logs']));
+  });
+
+  it('hides a menu along with its pages', () => {
+    const ids = idsOf(withDisabled(['insights'], atApi(), atApiRoute));
+
+    expect(ids).not.toContain('insights');
+    expect(ids).not.toContain('insights-api');
+    expect(ids).toContain('observability');
+  });
+
+  it('hides a menu once every page in it is disabled', () => {
+    const ids = idsOf(withDisabled(['metrics', 'logs'], atApi(), atApiRoute));
+
+    expect(ids).not.toContain('observability');
+  });
+
+  it('ignores names it does not know', () => {
+    const ids = idsOf(withDisabled(['no-such-feature'], atApi(), atApiRoute));
+
+    expect(ids).toContain('observability-metrics');
+  });
+
+  it('points a menu at a page that is still on, not the hidden first one', () => {
+    const items = withDisabled(['metrics'], atOrg(), routes.organizationHome(ORG));
+
+    const to = items.find((item) => item.id === 'observability')?.to;
+
+    expect(to).toMatch(/logs$/);
+    expect(to).not.toMatch(/metrics/);
+  });
+
+  it('opens Manage at Meters when Subscription Plans is disabled', () => {
+    const items = withDisabled(['subscription-plans'], atOrg(), routes.organizationHome(ORG));
+
+    expect(items.find((item) => item.id === 'manage')?.to).toBe(routes.meters(ORG));
+  });
+});
+
+describe('permission-gated items', () => {
+  const manageChildren = (scopes: string[]) =>
+    itemsAt(atOrg(), routes.subscriptionPlans(ORG), scopes)
+      .find((item) => item.id === 'manage')
+      ?.children?.map((child) => child.id);
+
+  it('hides Service Accounts from a user who cannot manage service accounts', () => {
+    expect(manageChildren(['ap:service_account:read'])).not.toContain('manage-service-accounts');
+  });
+
+  it('shows Service Accounts to a user who can', () => {
+    expect(manageChildren(['ap:service_account:manage'])).toContain('manage-service-accounts');
+  });
+
+  describe('with Subscription Plans and Meters disabled', () => {
+    const manageFor = (scopes: string[]) => {
+      disabled.names = ['subscription-plans', 'meters'];
+      return itemsAt(atOrg(), routes.organizationHome(ORG), scopes).find((item) => item.id === 'manage');
+    };
+
+    afterEach(() => {
+      disabled.names = [];
+    });
+
+    it('hides Manage from a user who cannot manage service accounts', () => {
+      expect(manageFor(['ap:service_account:read'])).toBeUndefined();
+    });
+
+    it('opens Manage at Service Accounts for a user who can', () => {
+      expect(manageFor(['ap:service_account:manage'])?.to).toBe(routes.serviceAccounts(ORG));
+    });
   });
 });

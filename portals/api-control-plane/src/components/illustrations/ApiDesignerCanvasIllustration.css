@@ -1,0 +1,77 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+.apid-anim{--apid-c:6s;position:relative;width:420px;height:236px;border-radius:10px;overflow:hidden;background:transparent;font-family:Inter,system-ui,sans-serif;box-sizing:border-box}
+.apid-anim *{box-sizing:border-box}
+.apid-top{height:24px;background:var(--apid-chrome);border-bottom:1px solid var(--apid-border);display:flex;align-items:center;gap:5px;padding:0 12px}
+.apid-top i{width:7px;height:7px;border-radius:50%;background:var(--apid-dim)}
+.apid-top i:nth-child(1){background:var(--apid-error-base)}.apid-top i:nth-child(2){background:var(--apid-amber)}.apid-top i:nth-child(3){background:var(--apid-success-base)}
+.apid-body{position:absolute;inset:24px 0 0 0;display:flex}
+.apid-side{width:30px;background:var(--apid-chrome);border-right:1px solid var(--apid-border);display:flex;flex-direction:column;align-items:center;gap:9px;padding-top:12px}
+.apid-side i{width:10px;height:10px;border-radius:2px;background:var(--apid-dim)}
+.apid-side i.on{background:var(--apid-accent)}
+
+.apid-code{position:relative;flex:1;padding:14px 16px;display:flex;flex-direction:column;gap:9px;background-image:radial-gradient(var(--apid-dot) 1px,transparent 1.2px);background-size:22px 22px;background-position:6px 6px}
+.apid-line{display:flex;align-items:center;gap:6px;height:8px;opacity:0;animation:apid-in var(--apid-c) ease-out infinite}
+.apid-line b{display:block;height:6px;border-radius:3px;background:var(--apid-text)}
+.apid-line b.k{background:var(--apid-accent)}
+.apid-line b.m{background:var(--apid-faint)}
+.apid-line:nth-child(1){animation-delay:0s}
+.apid-line:nth-child(2){animation-delay:.15s;padding-left:14px}
+.apid-line:nth-child(3){animation-delay:.3s;padding-left:28px}
+.apid-line:nth-child(4){animation-delay:.45s;padding-left:28px}
+.apid-line:nth-child(5){animation-delay:.6s;padding-left:14px}
+.apid-line:nth-child(6){animation-delay:.75s;padding-left:28px}
+.apid-line:nth-child(7){animation-delay:.9s;padding-left:28px}
+
+/* flagged line: orange underline, then fixed */
+.apid-line.flag{position:relative}
+.apid-line.flag::after{content:"";position:absolute;left:28px;right:40%;bottom:-4px;height:2px;background:repeating-linear-gradient(90deg,var(--apid-accent) 0 3px,transparent 3px 5px);opacity:0;animation:apid-flag var(--apid-c) linear infinite}
+
+/* scanning bar */
+.apid-scan{position:absolute;left:0;right:0;top:10px;height:16px;background:linear-gradient(180deg,transparent,var(--apid-accent-soft),transparent);border-top:1px solid var(--apid-accent-line);opacity:0;animation:apid-scan var(--apid-c) ease-in-out infinite}
+
+/* governance panel */
+.apid-panel{position:absolute;right:14px;top:14px;width:auto;min-width:132px;padding:10px;border-radius:8px;background:var(--apid-panel);border:1px solid var(--apid-dim);box-shadow:0 10px 30px var(--apid-shadow);display:flex;flex-direction:column;gap:8px;opacity:0;transform:translateY(6px);animation:apid-panel var(--apid-c) ease-out infinite}
+.apid-row{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--apid-text);white-space:nowrap}
+.apid-row i{width:12px;height:12px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--apid-faint);position:relative}
+.apid-row:nth-child(1) i{animation:apid-check var(--apid-c) infinite;animation-delay:0s}
+.apid-row:nth-child(2) i{animation:apid-check2 var(--apid-c) infinite}
+.apid-row i::after{content:"";position:absolute;left:3.5px;top:1.5px;width:3px;height:5px;border:solid var(--apid-on-accent);border-width:0 1.5px 1.5px 0;transform:rotate(45deg);opacity:0;animation:apid-tick var(--apid-c) infinite}
+.apid-row:nth-child(2) i::after{animation-name:apid-tick2}
+.apid-score{display:flex;align-items:center;gap:8px;padding-top:8px;border-top:1px solid var(--apid-border)}
+.apid-ring{width:26px;height:26px;border-radius:50%;background:conic-gradient(var(--apid-accent) calc(var(--apid-p,0)*1%),var(--apid-border) 0);display:flex;align-items:center;justify-content:center;animation:apid-score var(--apid-c) ease-out infinite}
+.apid-ring::before{content:"";width:18px;height:18px;border-radius:50%;background:var(--apid-panel)}
+.apid-score span{font-size:10px;color:var(--apid-muted);line-height:1.2}
+.apid-score strong{display:block;font-size:11px;color:var(--apid-accent-strong)}
+
+@property --apid-p{syntax:"<number>";inherits:false;initial-value:0}
+
+@keyframes apid-in{0%{opacity:0;transform:translateX(-6px)}6%,90%{opacity:1;transform:none}97%,100%{opacity:0}}
+@keyframes apid-scan{0%,18%{opacity:0;top:10px}22%{opacity:1}44%{opacity:1;top:calc(100% - 26px)}48%,100%{opacity:0;top:calc(100% - 26px)}}
+@keyframes apid-flag{0%,30%{opacity:0}33%,55%{opacity:1}60%,100%{opacity:0}}
+@keyframes apid-panel{0%,44%{opacity:0;transform:translateY(6px)}50%,90%{opacity:1;transform:none}97%,100%{opacity:0}}
+@keyframes apid-check{0%,52%{background:transparent;border-color:var(--apid-faint)}56%,100%{background:var(--apid-accent);border-color:var(--apid-accent)}}
+@keyframes apid-check2{0%,60%{background:transparent;border-color:var(--apid-faint)}64%,100%{background:var(--apid-accent);border-color:var(--apid-accent)}}
+@keyframes apid-tick{0%,52%{opacity:0}56%,100%{opacity:1}}
+@keyframes apid-tick2{0%,60%{opacity:0}64%,100%{opacity:1}}
+@keyframes apid-score{0%,64%{--apid-p:0}80%,100%{--apid-p:92}}
+
+@media (prefers-reduced-motion:reduce){.apid-anim *{animation:none!important;opacity:1!important;transform:none!important}.apid-scan,.apid-line.flag::after{display:none}.apid-ring{--apid-p:92}}
+
+.apid-anim::before{content:"";position:absolute;right:-40px;top:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,var(--apid-accent-glow) 0%,transparent 65%);pointer-events:none}

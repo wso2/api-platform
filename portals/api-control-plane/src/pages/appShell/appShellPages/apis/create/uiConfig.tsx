@@ -61,7 +61,7 @@ export const GrpcIcon = () => <ApiTypeIcon src={gRPCIconUrl} />;
 const messages = defineMessages({
   graphQlDescription: {
     id: 'api.create.apiType.graphQl.description',
-    defaultMessage: 'Serve a GraphQL schema through the gateway.',
+    defaultMessage: 'Serve a GraphQL schema.',
   },
   graphQlTitle: {
     id: 'api.create.apiType.graphQl.title',
@@ -69,7 +69,7 @@ const messages = defineMessages({
   },
   grpcDescription: {
     id: 'api.create.apiType.grpc.description',
-    defaultMessage: 'Expose high-performance gRPC services.',
+    defaultMessage: 'Expose gRPC services.',
   },
   grpcTitle: {
     id: 'api.create.apiType.grpc.title',
@@ -77,7 +77,7 @@ const messages = defineMessages({
   },
   restDescription: {
     id: 'api.create.apiType.rest.description',
-    defaultMessage: 'Expose REST and other HTTP backends.',
+    defaultMessage: 'Expose REST and HTTP backends.',
   },
   restTitle: {
     id: 'api.create.apiType.rest.title',
@@ -85,7 +85,7 @@ const messages = defineMessages({
   },
   webSocketDescription: {
     id: 'api.create.apiType.webSocket.description',
-    defaultMessage: 'Stream data over long-lived WebSocket connections.',
+    defaultMessage: 'Stream data over WebSocket.',
   },
   webSocketTitle: {
     id: 'api.create.apiType.webSocket.title',
@@ -93,7 +93,7 @@ const messages = defineMessages({
   },
   webSubDescription: {
     id: 'api.create.apiType.webSub.description',
-    defaultMessage: 'Deliver events to subscribers over WebSub.',
+    defaultMessage: 'Deliver events over WebSub.',
   },
   webSubTitle: {
     id: 'api.create.apiType.webSub.title',

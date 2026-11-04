@@ -327,6 +327,13 @@ func TestAPIHasField(t *testing.T) {
 	require.ErrorContains(t, apiHasField([]byte(`not json`), "api-1", "status", "x"), "decoding")
 }
 
+func TestFetchListedAPIRejectsAnUnknownListing(t *testing.T) {
+	_, _, err := (&Steps{}).fetchListedAPI(context.Background(), "LLM provider", "api-1")
+	require.ErrorContains(t, err, "unsupported API Portal listing")
+	require.Equal(t, "/apis/", listingCollections["API"])
+	require.Equal(t, "/mcp-servers/", listingCollections["MCP server"])
+}
+
 func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {
 	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
 	reg := cleanup.NewRegistry(slog.Default())

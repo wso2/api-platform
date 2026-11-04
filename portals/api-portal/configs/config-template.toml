@@ -555,6 +555,13 @@ stripe_webhook_url = "https://api.moesif.net/v1/partners/stripe"
 # How many plan prices this portal instance creates in Moesif at the same time,
 # when a paid plan is offered on an API.
 max_parallel_prices = 4
+# Moesif keys for the whole portal. When set, Settings › Billing asks only for
+# the Stripe keys and these are never stored. Set both or neither. Not allowed in
+# multi-organization mode, where each organization enters its own. After a change
+# to another Moesif application, the next paid plan moves billing to it with the
+# stored Stripe key; what was made in the earlier application stays there.
+collector_application_id = '{{ env "APIP_AP_BILLING_MOESIF_COLLECTOR_APPLICATION_ID" "" }}'
+management_key = '{{ env "APIP_AP_BILLING_MOESIF_MANAGEMENT_KEY" "" }}'
 
 [api_portal.billing.client]
 timeout_ms = 15000

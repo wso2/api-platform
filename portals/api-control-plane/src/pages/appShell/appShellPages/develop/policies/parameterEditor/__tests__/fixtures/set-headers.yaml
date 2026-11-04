@@ -1,0 +1,109 @@
+name: set-headers
+version: v1.2.0
+description: |
+  Sets or appends configured headers on requests and/or responses. In "set" mode
+  (the default), an existing header with the same name is overwritten; if the same
+  header is configured multiple times, the latest configured value overwrites
+  earlier values. In "append" mode, configured values are appended while
+  preserving any existing header values.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    mode:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Specifies how configured headers are applied. "set" overwrites any existing
+        header with the same name; "append" adds the configured value while
+        preserving existing values. Applies to both request and response phases.
+      enum:
+      - set
+      - append
+      default: set
+
+    request:
+      type: object
+      additionalProperties: false
+      description: Specifies request-phase header settings.
+      properties:
+        phase:
+          type: string
+          x-wso2-policy-advanced-param: true
+          description: |
+            Specifies when request headers are applied. "header" preserves the
+            default request-header phase behavior. "body" applies headers during
+            the request-body phase after body-derived metadata is available.
+          enum:
+          - header
+          - body
+          default: header
+        headers:
+          type: array
+          x-wso2-policy-advanced-param: false
+          description: Specifies headers to set during the request phase.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                x-wso2-policy-advanced-param: false
+                description: Specifies the header name. Matching is case-insensitive.
+                minLength: 1
+                maxLength: 256
+                pattern: "^[a-zA-Z0-9-_]+$"
+              value:
+                type: string
+                x-wso2-policy-advanced-param: false
+                description: Specifies the header value to set.
+                maxLength: 8192
+            required:
+            - name
+            - value
+            resolve:
+            - value
+      required:
+      - headers
+
+    response:
+      type: object
+      additionalProperties: false
+      description: Specifies response-phase header settings.
+      properties:
+        headers:
+          type: array
+          x-wso2-policy-advanced-param: false
+          description: Specifies headers to set during the response phase.
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                x-wso2-policy-advanced-param: false
+                description: Specifies the header name. Matching is case-insensitive.
+                minLength: 1
+                maxLength: 256
+                pattern: "^[a-zA-Z0-9-_]+$"
+              value:
+                type: string
+                x-wso2-policy-advanced-param: false
+                description: Specifies the header value to set.
+                maxLength: 8192
+            required:
+            - name
+            - value
+            resolve:
+            - value
+      required:
+      - headers
+
+  anyOf:
+    - required: [ request ]
+    - required: [ response ]
+
+systemParameters:
+  type: object
+  properties: {}

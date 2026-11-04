@@ -20,12 +20,12 @@ import type { ApiFetch, GatewayVersionEntry } from './hostPort';
 
 export type SelfHostedGatewayType = 'regular' | 'ai';
 
-export const DEFAULT_SELF_HOSTED_NAME = 'Default Self-Hosted Gateway';
+export const DEFAULT_SELF_HOSTED_NAME = 'Self-Hosted';
 
 /** The default gateway's display name; an AI gateway is named for its type so it does not shadow the regular one. */
 export const defaultSelfHostedName = (type: SelfHostedGatewayType): string =>
-  type === 'ai' ? 'Default AI Self-Hosted Gateway' : DEFAULT_SELF_HOSTED_NAME;
-const DEFAULT_SELF_HOSTED_DESCRIPTION = 'Default API Platform Self-Hosted Gateway';
+  type === 'ai' ? 'AI Self-Hosted' : DEFAULT_SELF_HOSTED_NAME;
+const DEFAULT_SELF_HOSTED_DESCRIPTION = 'Default self-hosted gateway';
 
 /**
  * platform-api's native create needs at least one endpoint, and a self-hosted

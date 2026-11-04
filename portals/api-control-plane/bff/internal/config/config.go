@@ -29,6 +29,8 @@ import (
 	"log/slog"
 	"net/url"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,9 +66,21 @@ type Config struct {
 	// `type` discriminator, since this BFF serves both "regular" and "event"
 	// gateway types rather than AI Workspace's single "ai" type.
 	GatewayVersions []GatewayVersionEntry `koanf:"gateway_versions"`
-	GatewayRelay    GatewayRelayConfig    `koanf:"gateway_relay"`
+	// Gateway is what a self-hosted gateway's setup instructions need from this
+	// deployment ([api_control_plane.gateway]). Mirrors AI Workspace's own
+	// [ai_workspace.gateway] table.
+	Gateway      GatewayConfig      `koanf:"gateway"`
+	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
 
 	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
+
+	// DisableFeatures names the console features this deployment hides, e.g.
+	// ["metrics", "meters"]. Each hidden feature leaves the sidebar and its page
+	// answers "not found". Empty or unset leaves every feature on. Passed to the
+	// SPA as-is, like [sanitize_html_docs]: a TOML array, a JSON array string or
+	// a comma-separated string (so an env var can carry it); the SPA ignores
+	// names it does not know.
+	DisableFeatures any `koanf:"disable_features"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
 }
@@ -88,6 +102,35 @@ type GatewayVersionEntry struct {
 	DistVersion string `koanf:"dist_version" json:"distVersion,omitempty"`
 	// Channel is "STS" or "LTS".
 	Channel string `koanf:"channel" json:"channel"`
+}
+
+// GatewayConfig is [api_control_plane.gateway].
+type GatewayConfig struct {
+	// ControlPlaneHost is the self-hosted gateway controller's control-plane
+	// address, `host[:port][/path]` without a scheme, shown in setup commands.
+	// It varies by environment; empty means unset and uses a fallback or
+	// placeholder.
+	ControlPlaneHost string `koanf:"controlplane_host"`
+}
+
+// controlPlaneHostPattern validates the `host[:port][/path]` format before the
+// value is used in shell and Helm commands. The port, when present, is
+// captured so validControlPlaneHost can range-check it.
+var controlPlaneHostPattern = regexp.MustCompile(
+	`^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::([0-9]{1,5}))?(?:/[A-Za-z0-9._~-]+)*$`)
+
+// validControlPlaneHost reports whether host matches controlPlaneHostPattern
+// and any port it carries is a usable TCP port (1-65535).
+func validControlPlaneHost(host string) bool {
+	m := controlPlaneHostPattern.FindStringSubmatch(host)
+	if m == nil {
+		return false
+	}
+	if m[1] == "" {
+		return true
+	}
+	port, err := strconv.Atoi(m[1])
+	return err == nil && port >= 1 && port <= 65535
 }
 
 // GatewayRelayConfig configures the bounded relay for the Test page's Swagger console.
@@ -396,6 +439,7 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
 	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
 	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
+	" ap:service_account:read ap:service_account:manage" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
 	" ap:docs:read ap:docs:manage ap:thumbnail:read ap:thumbnail:manage"
 
@@ -474,6 +518,7 @@ func (c *Config) normalize() {
 	if c.PolicyHub.BaseURL == "" {
 		c.PolicyHub.BaseURL = defaultPolicyHubBaseURL
 	}
+	c.Gateway.ControlPlaneHost = strings.TrimRight(strings.TrimSpace(c.Gateway.ControlPlaneHost), "/")
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
@@ -566,6 +611,9 @@ func (c *Config) validate() error {
 		if gv.Channel != "STS" && gv.Channel != "LTS" {
 			return fmt.Errorf("[[gateway_versions]] entry %d has invalid channel %q: must be \"STS\" or \"LTS\"", i, gv.Channel)
 		}
+	}
+	if h := c.Gateway.ControlPlaneHost; h != "" && !validControlPlaneHost(h) {
+		return fmt.Errorf("[gateway] controlplane_host %q is invalid: must be host[:port][/path] with no scheme, e.g. \"cp.example.com:443\"", h)
 	}
 	seen := map[string]bool{}
 	for _, u := range c.ControlPlane.Upstreams {

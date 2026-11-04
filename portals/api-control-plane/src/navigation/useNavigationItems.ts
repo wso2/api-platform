@@ -19,7 +19,9 @@
 import { useMemo, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { isFeatureDisabled } from '../config/features';
 import { runtimeConfig } from '../config/runtime';
+import { usePermissions } from '../permissions/PermissionContext';
 import {
   useConsoleScope,
   type ConsoleScope,
@@ -42,6 +44,21 @@ import {
 const isFeatureEnabled = (definition: NavigationDefinition) =>
   !definition.featureKey ||
   runtimeConfig.featureFlags.includes(definition.featureKey);
+
+/**
+ * Whether the deployment's `disableFeatures`, or the user's permissions, hide
+ * this item: it is named or not allowed, or it is a parent whose children all
+ * are — an empty menu would otherwise still link to its first, hidden, page.
+ */
+const isDisabled = (
+  definition: NavigationDefinition,
+  allowed: (permission: NonNullable<NavigationDefinition['permission']>) => boolean
+): boolean =>
+  (definition.disableKey !== undefined && isFeatureDisabled(definition.disableKey)) ||
+  (definition.permission !== undefined && !allowed(definition.permission)) ||
+  (definition.children !== undefined &&
+    definition.children.length > 0 &&
+    definition.children.every((child) => isDisabled(child, allowed)));
 
 /**
  * Whether an item's `requires` scope holds — the gate on offering its children.
@@ -126,6 +143,7 @@ export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
   const location = useLocation();
   const extensions = useExtensions();
+  const { decide } = usePermissions();
 
   return useMemo(() => {
     // Host-injected extensions are converted to the same NavigationDefinition
@@ -237,6 +255,7 @@ export const useNavigationItems = (): NavigationItem[] => {
       definition: NavigationDefinition
     ): NavigationItem | undefined => {
       if (!isFeatureEnabled(definition)) return undefined;
+      if (isDisabled(definition, (permission) => decide(permission).allowed)) return undefined;
       if (!(definition.isVisible?.(scope) ?? true)) return undefined;
 
       const to = definition.to(scope);
@@ -284,7 +303,7 @@ export const useNavigationItems = (): NavigationItem[] => {
           combinedRegistry.find((item) => item.id === right?.id)?.order ?? 0;
         return leftOrder - rightOrder;
       }) as NavigationItem[];
-  }, [location.pathname, scope, extensions]);
+  }, [location.pathname, scope, extensions, decide]);
 };
 
 /**

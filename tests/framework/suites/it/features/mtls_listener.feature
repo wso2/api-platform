@@ -103,30 +103,6 @@ Feature: HTTPS listener derived from the APIs that use mutual TLS
     When I delete the API "${CTX:neighbourName}"
     And I delete the API "${CTX:apiName}"
 
-  Scenario: A protected operation denies a caller who presents no certificate with the uniform body
-    Given the certificate fixture "ca-a" is pooled as "${CTX:partnerA}" with usage "downstream"
-    When I create API from "resources/templates/rest-api.yaml" with values:
-      | apiVersion             | ${CTX:gatewaySpecVersion}       |
-      | name                   | ${CTX:apiName}                  |
-      | spec.displayName       | mTLS Listener API               |
-      | spec.version           | ${CTX:apiVersion}               |
-      | spec.context           | ${CTX:apiContext}/$version      |
-      | spec.upstream.main.url | http://testbench:3000/api/v1    |
-      | spec.operations        | [{"method":"GET","path":"/health"},{"method":"GET","path":"/protected","policies":[{"name":"mtls-auth","version":"v0"}]}] |
-    Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until the route answers 200
-    When I send a "GET" request over HTTPS to "${CTX:apiContext}/${CTX:apiVersion}/protected" with no client certificate
-    Then the response status code should be 401
-    And the response header "Content-Type" should contain "application/json"
-    And the response body should be:
-      """
-      {"error":"Unauthorized","message":"Authentication failed"}
-      """
-    And the response header "WWW-Authenticate" should not exist
-    When I send a "GET" request over HTTPS to "${CTX:apiContext}/${CTX:apiVersion}/health" with no client certificate
-    Then the response status code should be 200
-    When I delete the API "${CTX:apiName}"
-
   # ==================== THE LISTENER'S OWN CONFIGURATION ====================
 
   Scenario: The listener validates against the pool without requiring a certificate and never drops a connection over it

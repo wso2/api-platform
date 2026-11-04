@@ -117,7 +117,7 @@ func defaultConfig() *Config {
 		GatewayVersions: []GatewayVersionEntry{
 			{
 				Type:    "regular",
-				Version: "2026.05.13",
+				Version: "2026.09.24",
 				Channel: "STS",
 			},
 			{

@@ -43,14 +43,16 @@
         {{/with}}
         {{else}}
         <!-- Not set up: what to get from Moesif and Stripe before Set up billing, in that order,
-             with the scopes and permissions each key needs. -->
+             with the scopes and permissions each key needs. Moesif is left out when the
+             deployment supplies its keys (billingKeysFromDeployment). -->
         <div class="cfg-billing-setup">
           <div class="cfg-billing-setup-title">Billing is not set up</div>
-          <p class="cfg-billing-setup-text">Connect Moesif and Stripe to sell paid subscription plans.</p>
+          <p class="cfg-billing-setup-text">{{#if billingKeysFromDeployment}}Connect Stripe to sell paid subscription plans.{{else}}Connect Moesif and Stripe to sell paid subscription plans.{{/if}}</p>
 
           <p class="cfg-form-section-title cfg-billing-prereq-title">Before you start</p>
-          <p class="cfg-billing-prereq-intro">Complete these steps in Moesif and Stripe, then set up billing with the keys you collect:</p>
+          <p class="cfg-billing-prereq-intro">{{#if billingKeysFromDeployment}}Complete these steps in Stripe{{else}}Complete these steps in Moesif and Stripe{{/if}}, then set up billing with the keys you collect:</p>
           <ol class="cfg-billing-prereq-steps">
+            {{#unless billingKeysFromDeployment}}
             <li><strong>Moesif application.</strong> Use the Moesif application that receives your gateways' API usage. Subscribers are charged for the usage recorded in it.</li>
             <li><strong>Moesif keys.</strong> From the same Moesif application, copy the Collector Application Id and create a Management API key.
               <details class="cfg-billing-scopes">
@@ -67,6 +69,7 @@
                 </div>
               </details>
             </li>
+            {{/unless}}
             <li><strong>Stripe keys.</strong> From your Stripe account, copy the publishable key and the secret key. Use test keys to try billing without real charges, or live keys to charge subscribers.
               <details class="cfg-billing-scopes">
                 <summary>Required permissions for a restricted key</summary>

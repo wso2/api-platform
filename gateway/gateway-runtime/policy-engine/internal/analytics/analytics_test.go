@@ -694,6 +694,7 @@ func TestPrepareAnalyticEvent_WithAIMetadata(t *testing.T) {
 		TotalTokenCountMetadataKey:      "150",
 	})
 
+	logEntry.Request.RequestMethod = corev3.RequestMethod_POST
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
@@ -703,9 +704,21 @@ func TestPrepareAnalyticEvent_WithAIMetadata(t *testing.T) {
 	require.NotNil(t, aiMetadata)
 
 	// Check token usage
-	aiTokenUsage, ok := event.Properties["aiTokenUsage"]
+	aiTokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
 	require.True(t, ok)
-	require.NotNil(t, aiTokenUsage)
+	assert.Equal(t, 100, aiTokenUsage.PromptToken)
+	assert.Equal(t, 50, aiTokenUsage.CompletionToken)
+	assert.Equal(t, 150, aiTokenUsage.TotalToken)
+	require.NotNil(t, aiTokenUsage.Hour)
+
+	aiUsage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+	require.True(t, ok)
+	require.NotNil(t, aiUsage.PromptTokens)
+	require.NotNil(t, aiUsage.CompletionTokens)
+	require.NotNil(t, aiUsage.TotalTokens)
+	assert.Equal(t, 100, *aiUsage.PromptTokens)
+	assert.Equal(t, 50, *aiUsage.CompletionTokens)
+	assert.Equal(t, 150, *aiUsage.TotalTokens)
 }
 
 func TestPrepareAnalyticEvent_WithAIMetadataInvalidTokens(t *testing.T) {
@@ -724,6 +737,49 @@ func TestPrepareAnalyticEvent_WithAIMetadataInvalidTokens(t *testing.T) {
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
+
+	// The published metadata keeps reporting an unreadable count as 0, while the
+	// usage that feeds ai_context reports it as not reported.
+	aiTokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
+	require.True(t, ok)
+	assert.Zero(t, aiTokenUsage.PromptToken)
+	assert.Zero(t, aiTokenUsage.CompletionToken)
+	assert.Zero(t, aiTokenUsage.TotalToken)
+
+	aiUsage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+	require.True(t, ok)
+	assert.Nil(t, aiUsage.PromptTokens)
+	assert.Nil(t, aiUsage.CompletionTokens)
+	assert.Nil(t, aiUsage.TotalTokens)
+}
+
+// An embeddings response reports no completion count. It must stay unreported rather
+// than become 0, while the other counts are still read.
+func TestPrepareAnalyticEvent_WithAIMetadataMissingCompletionTokens(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		AIProviderNameMetadataKey:   "openai",
+		ModelIDMetadataKey:          "text-embedding-3-small",
+		PromptTokenCountMetadataKey: "8",
+		TotalTokenCountMetadataKey:  "8",
+	})
+
+	logEntry.Request.RequestMethod = corev3.RequestMethod_POST
+	event := analytics.prepareAnalyticEvent(logEntry)
+	require.NotNil(t, event)
+
+	aiUsage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+	require.True(t, ok)
+	require.NotNil(t, aiUsage.PromptTokens)
+	assert.Equal(t, 8, *aiUsage.PromptTokens)
+	assert.Nil(t, aiUsage.CompletionTokens)
+	require.NotNil(t, aiUsage.TotalTokens)
+	assert.Equal(t, 8, *aiUsage.TotalTokens)
+
+	aiTokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
+	require.True(t, ok)
+	assert.Zero(t, aiTokenUsage.CompletionToken)
 }
 
 func TestPrepareAnalyticEvent_WithLatencies(t *testing.T) {
@@ -867,6 +923,7 @@ func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 		constants.LLMCostMetadataKey: "0.0000423100",
 	})
 
+	logEntry.Request.RequestMethod = corev3.RequestMethod_POST
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
@@ -875,6 +932,53 @@ func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	aiMetadata, ok := aiMetadataValue.(dto.AIMetadata)
 	require.True(t, ok)
 	assert.Equal(t, 0.00004231, aiMetadata.LLMCost)
+}
+
+// Reading a stored result back (GET /responses/{id}) returns the original usage and, with
+// llm-cost attached, its cost; neither may be counted again.
+func TestPrepareAnalyticEvent_DropsUsageAndCostUnlessPost(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	for method, keep := range map[corev3.RequestMethod]bool{
+		corev3.RequestMethod_POST:               true,
+		corev3.RequestMethod_METHOD_UNSPECIFIED: true,
+		corev3.RequestMethod_GET:                false,
+		corev3.RequestMethod_DELETE:             false,
+	} {
+		logEntry := createLogEntryWithMetadata(map[string]string{
+			AIProviderNameMetadataKey:       "openai",
+			ModelIDMetadataKey:              "gpt-4o",
+			PromptTokenCountMetadataKey:     "100",
+			CompletionTokenCountMetadataKey: "50",
+			TotalTokenCountMetadataKey:      "150",
+			constants.LLMCostMetadataKey:    "0.001",
+		})
+		logEntry.Request.RequestMethod = method
+
+		event := analytics.prepareAnalyticEvent(logEntry)
+
+		aiMetadata, ok := event.Properties["aiMetadata"].(dto.AIMetadata)
+		require.True(t, ok, method)
+		assert.Equal(t, "gpt-4o", aiMetadata.Model, method)
+		usage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+		require.True(t, ok, method)
+		tokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
+		require.True(t, ok, method)
+		if keep {
+			require.NotNil(t, usage.PromptTokens, method)
+			assert.Equal(t, 100, tokenUsage.PromptToken, method)
+			assert.Equal(t, 50, tokenUsage.CompletionToken, method)
+			assert.Equal(t, 150, tokenUsage.TotalToken, method)
+			assert.Equal(t, 0.001, aiMetadata.LLMCost, method)
+		} else {
+			assert.Zero(t, tokenUsage.PromptToken, method)
+			assert.Zero(t, tokenUsage.CompletionToken, method)
+			assert.Zero(t, tokenUsage.TotalToken, method)
+			assert.Nil(t, usage.PromptTokens, method)
+			assert.Nil(t, usage.CompletionTokens, method)
+			assert.Nil(t, usage.TotalTokens, method)
+			assert.Nil(t, aiMetadata.LLMCost, method)
+		}
+	}
 }
 
 func TestPrepareAnalyticEvent_WithGuardrailMetadata(t *testing.T) {

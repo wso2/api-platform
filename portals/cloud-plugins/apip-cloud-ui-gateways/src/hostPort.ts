@@ -59,6 +59,14 @@ export type GatewayVersionEntry = {
   channel: 'STS' | 'LTS';
 };
 
+/**
+ * The gateway quotas this feature may ask about. Each hosting kind is capped
+ * separately, so a control committing to one kind asks about that kind;
+ * `gateways` answers the broader "may any gateway be created" for a control
+ * that only opens the choice, and is false only once no kind has room.
+ */
+export type GatewayLimitComponent = 'gateways' | 'managedGateways' | 'selfHostedGateways';
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -88,8 +96,8 @@ export type AIWorkspaceHostPort = {
 
   resourceLimits?: {
     refresh: () => void;
-    canCreate?: (component: 'gateways') => boolean;
-    limitMessage?: (component: 'gateways') => string;
+    canCreate?: (component: GatewayLimitComponent) => boolean;
+    limitMessage?: (component: GatewayLimitComponent) => string;
     /**
      * The organization may not write at all — a different question from
      * whether it has room for one more gateway, and the one that governs
