@@ -231,10 +231,10 @@ blocks:
         features:
           - features/apiportal/organizations/foreign_org_login.feature
 
-  # Which hostnames the HTTPS listener asks for a client certificate. What it asks is state of
-  # the whole gateway, so runners take turns, and each block sets its own downstream_tls
-  # settings. The settings do not depend on the database, so these three repeat on one engine
-  # only; the default (no flag set) case lives in gateway-core, which sweeps every engine.
+  # Which hostnames the HTTPS listener asks for a client certificate is state of the whole
+  # gateway, so runners take turns, and each block below sets its own downstream_tls value. These
+  # settings do not depend on the database, so these three repeat on one engine only; the default
+  # (no flag set) case lives in the gateway-mtls-hostnames block, which sweeps every engine.
   - name: gateway-mtls-hostnames-required
     parallel: 1
     components:
@@ -275,16 +275,7 @@ blocks:
           - features/mtls_hostnames_all_connections_required.feature
 
   # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
-  # asks for a certificate, which is state of the whole gateway, so runners take turns. Also
-  # hosts the outbound block (its mtls.toml settings already coexisted on the two-controller
-  # gateway-mtls-ha overlay): outbound identities and trust certificates never a client
-  # authority, and the overlay's present_default_identity=false also covers the
-  # default-identity-off scenario. Kept out of gateway-core: each mTLS runner changes
-  # gateway-wide client-authority-pool/listener state, which raced when these ran inside
-  # gateway-core's parallel: 12 pool (confirmed by a real CI run - "the gateway still holds
-  # client authorities [...] from an earlier scenario"), and gateway-core's unrelated runners
-  # started timing out too once this block's always-on access logging and tls-backend
-  # dependency applied to the whole shared gateway instance.
+  # asks for a certificate, which is state of the whole gateway, so runners take turns.
   - name: gateway-mtls
     parallel: 1
     components:
@@ -637,7 +628,7 @@ blocks:
 
   # Restart-behavior isolation: every runner here restarts gateway-controller mid-scenario, so
   # this block hosts them alone rather than alongside runners that expect it continuously
-  # reachable - see dp-to-cp-reconnect's own comment for the flake that mixing them caused.
+  # reachable.
   - name: gateway-restart
     parallel: 1
     components:
@@ -681,11 +672,9 @@ blocks:
         features:
           - features/gateway/security/jwks_disabled.feature
 
-  # Kept out of gateway-core: this is the only scenario that needs router.vhosts.main/sandbox
-  # restricted to *.wso2.com/*-sandbox.wso2.com, and every gateway-core runner that deploys an
-  # API without setting a request Host relies on the unrestricted default - CI confirmed this
-  # broke most of gateway-core (health, cel-conditions, api-deploy, template-functions,
-  # request-id-response, and more) once this vhost restriction applied gateway-wide.
+  # This block is the only scenario that restricts router.vhosts.main/sandbox to
+  # *.wso2.com/*-sandbox.wso2.com. Keep it out of gateway-core, because gateway-core runners
+  # that deploy an API without a request Host rely on the unrestricted default.
   - name: vhost-routing-single
     parallel: 1
     components:
@@ -716,11 +705,9 @@ blocks:
         features:
           - features/gateway/routes/vhost_routing_multiple_production_hosts.feature
 
-  # Also hosts the gateway-native Agent (A2A) runners: they need the mock-jwks keymanager this
-  # block's overlay configures and an A2A agent upstream, and the Agent kind exists only after
-  # Gateway 1.2.0. Also hosts the analytics runners, which use the identical overlay and
-  # components; serialized (parallel: 1) since their counters must not see concurrent traffic
-  # from the other runners sharing this gateway.
+  # Hosts the Agent (A2A) and analytics runners, which share this overlay and component set.
+  # Serialized (parallel: 1): the analytics counters must not see concurrent traffic from other
+  # runners sharing this gateway.
   - name: mcp-agent-policies-analytics
     parallel: 1
     components:
@@ -786,9 +773,6 @@ blocks:
         features:
           - features/gateway/observability/mcp_analytics.feature
 
-  # Also hosts the AI Workspace CLI smoke test: it is only version-gated, not database-gated,
-  # so it now runs across every db.matrix combination below rather than a dedicated sqlite-only
-  # boot.
   - name: platform-api-core
     parallel: 2
     components:
@@ -803,6 +787,7 @@ blocks:
       - name: testbench
       - name: a2a-trip-planner
     runners:
+      # Version-gated only, not database-gated, so this runs across the full db.matrix above.
       - name: ai-workspace-cli
         tags: "gateway-version>1.1.0"
         features:
@@ -939,11 +924,9 @@ blocks:
   # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
   # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
   # of the key platform-api publishes with. The portal stages its product role file, which grants
-  # the platform-api-system role the publishing calls are authorized as; the shared IT role files
-  # do not. Also hosts the devportal webhook runners, which use the same components with their
-  # webhook settings folded into these overlays; they too run authorized as that staged role,
-  # not the shared IT role the devportal-webhook block ran them as before this merge. The outage
-  # runner stops the portal, so runners must not overlap: keep parallel at 1.
+  # the platform-api-system role the publishing calls (including the devportal webhook runners
+  # hosted here) are authorized as. The outage runner stops the portal, so runners must not
+  # overlap: keep parallel at 1.
   - name: platform-api-gateway-api-portal
     parallel: 1
     components:

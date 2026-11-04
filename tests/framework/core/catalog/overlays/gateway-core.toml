@@ -1,4 +1,7 @@
-# Gateway signing keys for blocks wired with signingKeys: true, which copies the fixed test keys
+# This block's runners each need one of the settings below; none of them are the gateway's own
+# defaults, so every group here is labeled with the runner it's for.
+
+# For gateway-jwks, and any runner wired with signingKeys: true, which copies the fixed test keys
 # to these paths. The active key's kid is its RFC 7638 thumbprint; the previous key is
 # verify-only and still published.
 [signing]
@@ -12,24 +15,23 @@ active = true
 path = "/secrets/gateway-runtime/signing/previous.pem"
 kid = "it-gateway-previous"
 
+# For the metrics runner.
 [controller.metrics]
 enabled = true
 
 [policy_engine.metrics]
 enabled = true
 
-# Raise the downstream buffer limit from its 1 MiB default so the request-body-size runner can
-# send buffered bodies above gRPC's 4 MiB default message size, and raise the policy engine's body
-# ceiling with it, as operators are told to: the ext_proc message limits are sized from it.
+# For the request-body-size runner: raise the downstream buffer limit from its 1 MiB default so
+# it can send buffered bodies above gRPC's 4 MiB default message size, and raise the policy
+# engine's body ceiling with it, as operators are told to: the ext_proc message limits are sized
+# from it.
 [router.http_listener]
 per_connection_buffer_limit_bytes = 16777216
-
-[router.http_listener.timeouts]
-request_headers_timeout = "5s"
 
 [policy_engine.request_body]
 max_decompressed_bytes = 16777216
 
-# The controller propagates a change to the runtime when it next polls the event hub.
-[controller.event_hub]
-poll_interval = "200ms"
+# For the backend-route-timeout runner.
+[router.http_listener.timeouts]
+request_headers_timeout = "5s"
