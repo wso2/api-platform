@@ -23,10 +23,14 @@ const MODEL_CATALOG_BY_KEY: Record<string, string[]> = {
     'us.meta.llama3-3-70b-instruct-v1:0',
     'us.meta.llama4-maverick-17b-instruct-v1:0',
   ],
-  openai: ['gpt-4o-mini', 'gpt-4.1-mini', 'o4-mini'],
-  anthropic: ['claude-3.5-sonnet', 'claude-3-opus'],
-  'google-vertex': ['gemini-1.5-pro', 'gemini-1.5-flash'],
-  'aws-bedrock': ['amazon.titan-text-premier', 'anthropic.claude-v2'],
+  openai: ['gpt-5', 'gpt-5-mini'],
+  anthropic: ['claude-sonnet-5-5', 'claude-opus-5-5'],
+  'google-vertex': ['gemini-2.5-pro', 'gemini-2.5-flash'],
+  'aws-bedrock': [
+    'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+    'us.amazon.nova-pro-v1:0',
+    'us.amazon.nova-lite-v1:0',
+  ],
   mistralai: [
     'mistral-large-latest',
     'mistral-small-latest',
