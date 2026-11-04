@@ -365,3 +365,44 @@ func TestAgentValidator_WithUpstreamTLSValidator_RefusesAMissingIdentity(t *test
 		t.Fatalf("expected the missing identity to be refused, got %+v", errs)
 	}
 }
+
+// wsAPIWithTLSDefinition builds a WebSocketApi whose main upstream references one
+// definition carrying tls, with one target per url.
+func wsAPIWithTLSDefinition(tls map[string]interface{}, urls ...string) *api.WebSocketAPI {
+	def := api.WebSocketUpstreamDefinition{Name: "chat-backend", Tls: &tls}
+	for _, u := range urls {
+		def.Upstreams = append(def.Upstreams, struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{Url: u})
+	}
+	defs := []api.WebSocketUpstreamDefinition{def}
+	ref := "chat-backend"
+	cfg := &api.WebSocketAPI{Kind: api.WebSocketAPIKindWebSocketApi}
+	cfg.Spec.UpstreamDefinitions = &defs
+	cfg.Spec.Upstream.Main = api.Upstream{Ref: &ref}
+	return cfg
+}
+
+// A WebSocketApi definition's tls is checked with the REST rules, except that its
+// targets are wss:// rather than https://.
+func TestUpstreamTLSValidator_ValidateWebSocketAPI(t *testing.T) {
+	store := newFakeMtlsCertStore(gatewayIdentityCert("chat-identity"))
+	validator := NewUpstreamTLSValidator(store, false)
+
+	errs := validator.ValidateWebSocketAPI(wsAPIWithTLSDefinition(map[string]interface{}{"identity": "chat-identity"}, "wss://chat:8443"))
+	if len(errs) != 0 {
+		t.Fatalf("a wss target with a known identity must validate, got %+v", errs)
+	}
+
+	errs = validator.ValidateWebSocketAPI(wsAPIWithTLSDefinition(map[string]interface{}{"identity": "no-such-identity"}, "wss://chat:8443"))
+	if !hasError(errs, "spec.upstreamDefinitions[0].tls.identity", "no gateway identity named no-such-identity exists on this gateway") {
+		t.Fatalf("an unknown identity must be rejected, got %+v", errs)
+	}
+
+	errs = validator.ValidateWebSocketAPI(wsAPIWithTLSDefinition(map[string]interface{}{"identity": "chat-identity"}, "ws://chat:8080"))
+	if !hasError(errs, "spec.upstreamDefinitions[0].upstreams[0].url",
+		"tls is configured but this target is ws://; every target of a definition with tls must be wss://") {
+		t.Fatalf("a ws:// target under tls must be rejected, got %+v", errs)
+	}
+}

@@ -190,6 +190,7 @@ func (m *minimalStorage) GetLLMProviderTemplateByHandle(handle string) (*models.
 	return nil, nil
 }
 func (m *minimalStorage) SaveAPIKey(apiKey *models.APIKey) error              { return nil }
+func (m *minimalStorage) CreateAPIKey(apiKey *models.APIKey) error            { return nil }
 func (m *minimalStorage) UpsertAPIKey(apiKey *models.APIKey) error            { return nil }
 func (m *minimalStorage) GetAPIKeyByID(id string) (*models.APIKey, error)     { return nil, nil }
 func (m *minimalStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) { return nil, nil }

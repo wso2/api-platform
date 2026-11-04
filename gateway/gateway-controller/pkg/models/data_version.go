@@ -43,6 +43,7 @@ var dataMinorVersions = map[ArtifactKind]int{
 	KindWebBrokerApi: 0,
 	KindMcp:          0,
 	KindGraphQLApi:   0,
+	KindWebSocketApi: 0,
 	KindLlmProxy:     0,
 	KindLlmProvider:  0,
 	KindAgent:        0,

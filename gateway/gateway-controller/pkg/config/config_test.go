@@ -154,6 +154,30 @@ func TestConfig_Validate_StorageType(t *testing.T) {
 	}
 }
 
+func TestConfig_Validate_WebSocketMaxConnectionDuration(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		value   time.Duration
+		wantErr bool
+	}{
+		{name: "unset means no cap", value: 0},
+		{name: "positive cap", value: time.Hour},
+		{name: "negative rejected", value: -time.Second, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.WebSocket.MaxConnectionDuration = tc.value
+			err := cfg.Validate()
+			if tc.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "router.websocket.max_connection_duration")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfig_Validate_SQLiteConfig(t *testing.T) {
 	cfg := validConfig()
 	cfg.Controller.Storage.Type = "sqlite"
@@ -461,6 +485,24 @@ dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'
 	require.NotNil(t, cfg.Controller.Storage.Database)
 	assert.Equal(t, "sqlserver", cfg.Controller.Storage.Type)
 	assert.Equal(t, dsn, cfg.Controller.Storage.Database.DSN)
+}
+
+// router.websocket.max_connection_duration loads as a duration and defaults to
+// zero (no cap) when the key is absent.
+func TestLoadConfig_WebSocketMaxConnectionDuration(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	unsetPath := filepath.Join(tmpDir, "unset.toml")
+	require.NoError(t, os.WriteFile(unsetPath, []byte("[router.websocket]\n"), 0o644))
+	cfg, err := LoadConfig(unsetPath)
+	require.NoError(t, err)
+	assert.Equal(t, time.Duration(0), cfg.Router.WebSocket.MaxConnectionDuration)
+
+	setPath := filepath.Join(tmpDir, "set.toml")
+	require.NoError(t, os.WriteFile(setPath, []byte("[router.websocket]\nmax_connection_duration = \"45m\"\n"), 0o644))
+	cfg, err = LoadConfig(setPath)
+	require.NoError(t, err)
+	assert.Equal(t, 45*time.Minute, cfg.Router.WebSocket.MaxConnectionDuration)
 }
 
 // TestLoadConfig_EnvDoesNotOverrideWithoutToken verifies the koanf APIP_GW_ prefix

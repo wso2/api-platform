@@ -622,6 +622,347 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
+## WebSocketChannel
+
+<a id="schemawebsocketchannel"></a>
+<a id="schema_WebSocketChannel"></a>
+<a id="tocSwebsocketchannel"></a>
+<a id="tocswebsocketchannel"></a>
+
+```json
+{
+  "path": "/rooms/{roomId}",
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  }
+}
+
+```
+
+One WebSocket channel - a single path clients open a connection to. Mirrors an AsyncAPI channel. A channel handshake is always a GET upgrade, so no method field is carried.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|path|string|true|none|Channel path relative to the API context, optionally containing {parameter} segments. Each parameter matches exactly one path segment.|
+|policies|[[Policy](#schemapolicy)]|false|none|Policies applied only to this channel, in addition to the API-level policies. Every entry must be handshake-only - a policy declaring request- or response-body processing is rejected at deploy time.|
+|resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
+
+## WebSocketUpstreamConnection
+
+<a id="schemawebsocketupstreamconnection"></a>
+<a id="schema_WebSocketUpstreamConnection"></a>
+<a id="tocSwebsocketupstreamconnection"></a>
+<a id="tocswebsocketupstreamconnection"></a>
+
+```json
+{
+  "maxConnections": 500,
+  "maxPendingHandshakes": 10
+}
+
+```
+
+Connection-count bounds for the gateway-to-backend connections of one WebSocket upstream definition, enforced per API. maxConnections falls back to the gateway-wide default when omitted, and a value above the gateway-configured upper bound is rejected at deploy time. Connection lifetime is not set here: the gateway's route idle timeout and router.websocket.max_connection_duration bound every WebSocket connection.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|maxConnections|integer|false|none|Maximum concurrent connections this gateway instance opens to the backend. At the limit, at most maxPendingHandshakes further handshakes wait for a free connection; beyond that a handshake is rejected with 503. Best-effort rather than exact - Envoy guarantees at least one connection per selected host, so a multi-target definition can exceed this by a small amount, and a burst of simultaneous handshakes can briefly be admitted beyond it before the limit takes hold.|
+|maxPendingHandshakes|integer|false|none|Maximum handshakes that may wait for a backend connection at once; any further handshake is rejected immediately with 503. Defaults to maxConnections. A waiting handshake is held until a connection frees up or the gateway's route timeout ends it. Every handshake waits briefly while its own backend connection is being opened, so a small value also rejects bursts of simultaneous handshakes below maxConnections; size it to the expected handshake burst.|
+
+## WebSocketUpstreamDefinition
+
+<a id="schemawebsocketupstreamdefinition"></a>
+<a id="schema_WebSocketUpstreamDefinition"></a>
+<a id="tocSwebsocketupstreamdefinition"></a>
+<a id="tocswebsocketupstreamdefinition"></a>
+
+```json
+{
+  "name": "chat-backend",
+  "basePath": "/ws",
+  "timeout": {
+    "connect": "5s"
+  },
+  "connection": {
+    "maxConnections": 500,
+    "maxPendingHandshakes": 10
+  },
+  "upstreams": [
+    {
+      "url": "wss://chat-backend:8443",
+      "weight": 80
+    }
+  ],
+  "tls": {
+    "identity": "chat-identity",
+    "trustedCAs": [
+      "chat-ca"
+    ],
+    "verifyHostName": true
+  }
+}
+
+```
+
+Reusable WebSocket backend, referenced from upstream.main / upstream.sandbox by name. Same shape as a RestApi upstreamDefinition, with ws:// / wss:// targets and a `connection` block bounding how many backend connections the API holds.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Unique identifier for this upstream definition|
+|basePath|string|false|none|Base path prefix sent to the backend for every channel (e.g., /ws).|
+|timeout|[UpstreamTimeout](#schemaupstreamtimeout)|false|none|Timeout configuration for upstream requests|
+|connection|[WebSocketUpstreamConnection](#schemawebsocketupstreamconnection)|false|none|Connection-count bounds for the gateway-to-backend connections of one WebSocket upstream definition, enforced per API. maxConnections falls back to the gateway-wide default when omitted, and a value above the gateway-configured upper bound is rejected at deploy time. Connection lifetime is not set here: the gateway's route idle timeout and router.websocket.max_connection_duration bound every WebSocket connection.|
+|upstreams|[object]|true|none|Backend targets. Every target uses the same scheme - all ws:// or all wss:// - and carries host and port only; the path comes from basePath.|
+|» url|string(uri)|true|none|Backend URL (ws:// or wss://, host and port only)|
+|» weight|integer|false|none|Relative weight for load balancing across multiple targets.|
+|tls|object|false|none|Optional mutual-TLS presentation and trust for a wss:// backend, with the same fields as a RestApi upstreamDefinition: `identity` names a gateway identity certificate to present, `trustedCAs` lists usage: upstream certificates to trust in place of the gateway-wide bundle, and `verifyHostName` (default true) controls hostname verification. Every target in a definition carrying `tls` must use wss://.|
+
+## WebSocketAPIConfigData
+
+<a id="schemawebsocketapiconfigdata"></a>
+<a id="schema_WebSocketAPIConfigData"></a>
+<a id="tocSwebsocketapiconfigdata"></a>
+<a id="tocswebsocketapiconfigdata"></a>
+
+```json
+{
+  "displayName": "Chat",
+  "version": "v1.0",
+  "context": "/chat/$version",
+  "upstream": {
+    "main": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    },
+    "sandbox": {
+      "url": "http://prod-backend:5000/api/v2",
+      "ref": "string",
+      "hostRewrite": "auto",
+      "tls": {}
+    }
+  },
+  "upstreamDefinitions": [
+    {
+      "name": "chat-backend",
+      "basePath": "/ws",
+      "timeout": {
+        "connect": "5s"
+      },
+      "connection": {
+        "maxConnections": 500,
+        "maxPendingHandshakes": 10
+      },
+      "upstreams": [
+        {
+          "url": "wss://chat-backend:8443",
+          "weight": 80
+        }
+      ],
+      "tls": {
+        "identity": "chat-identity",
+        "trustedCAs": [
+          "chat-ca"
+        ],
+        "verifyHostName": true
+      }
+    }
+  ],
+  "vhosts": {
+    "main": "ws.example.com",
+    "sandbox": "sandbox-ws.example.com"
+  },
+  "channels": [
+    {
+      "path": "/rooms/{roomId}",
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "resilience": {
+        "timeout": "15s",
+        "idleTimeout": "0s"
+      }
+    }
+  ],
+  "subscriptionPlans": [
+    "Gold",
+    "Silver"
+  ],
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  },
+  "deploymentState": "deployed"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
+|version|string|true|none|Semantic version of the API. Both major-only (v1) and major.minor (v1.0) forms are accepted.|
+|context|string|true|none|Base path for the API (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /chat/$version resolves to /chat/v1.0). Each channel's path is appended to this context to form the route a client connects to.|
+|upstream|object|true|none|API-level upstream configuration. Each slot takes either a direct `ws://`/`wss://` url, which uses the gateway-wide connection defaults, or a `ref` naming an entry in upstreamDefinitions, which carries connect timeout, connection-pool bounds and tls.|
+|» main|[Upstream](#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
+|» sandbox|[Upstream](#schemaupstream)|false|none|Upstream backend configuration (single target or reference)|
+|upstreamDefinitions|[[WebSocketUpstreamDefinition](#schemawebsocketupstreamdefinition)]|false|none|Reusable WebSocket backends referenced from upstream.main / upstream.sandbox via `ref`. Definition names are unique within the API.|
+|vhosts|object|false|none|Custom virtual hosts/domains for the API, as on a RestApi. When omitted, the gateway's default main and sandbox virtual hosts apply.|
+|» main|string|true|none|Custom virtual host(s)/domain(s) for production traffic. One or more hostnames<br>separated by ';' — each hostname serves the main upstream. The first entry is the<br>primary vhost. Each hostname may be a wildcard such as *.example.com.|
+|» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
+|channels|[[WebSocketChannel](#schemawebsocketchannel)]|true|none|The channels this API exposes. At least one is required, and channel paths must be unique within the API.|
+|subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
+|policies|[[Policy](#schemapolicy)]|false|none|API-level policies, applied to every channel's handshake. Every entry must be handshake-only - a policy declaring request- or response-body processing deadlocks the upgrade and is rejected at deploy time.|
+|resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
+## WebSocketAPIRequest
+
+<a id="schemawebsocketapirequest"></a>
+<a id="schema_WebSocketAPIRequest"></a>
+<a id="tocSwebsocketapirequest"></a>
+<a id="tocswebsocketapirequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "WebSocketApi",
+  "metadata": {
+    "name": "chat-websocket-v1.0"
+  },
+  "spec": {
+    "displayName": "Chat",
+    "version": "v1.0",
+    "context": "/chat/$version",
+    "upstream": {
+      "main": {
+        "url": "wss://chat-backend:8443/ws"
+      }
+    },
+    "channels": [
+      {
+        "path": "/rooms/{roomId}"
+      }
+    ],
+    "policies": [
+      {
+        "name": "jwt-auth",
+        "version": "v1"
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|API specification version|
+|kind|string|true|none|API type|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[WebSocketAPIConfigData](#schemawebsocketapiconfigdata)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|WebSocketApi|
+
+## WebSocketAPI
+
+<a id="schemawebsocketapi"></a>
+<a id="schema_WebSocketAPI"></a>
+<a id="tocSwebsocketapi"></a>
+<a id="tocswebsocketapi"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "WebSocketApi",
+  "metadata": {
+    "name": "chat-websocket-v1.0"
+  },
+  "spec": {
+    "displayName": "Chat",
+    "version": "v1.0",
+    "context": "/chat/$version",
+    "upstream": {
+      "main": {
+        "url": "wss://chat-backend:8443/ws"
+      }
+    },
+    "channels": [
+      {
+        "path": "/rooms/{roomId}"
+      }
+    ]
+  },
+  "status": {
+    "id": "chat-websocket-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-08-11T10:00:00Z",
+    "updatedAt": "2026-08-11T10:00:00Z",
+    "deployedAt": "2026-08-11T10:00:00Z"
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[WebSocketAPIRequest](#schemawebsocketapirequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
 ## UpstreamDefinition
 
 <a id="schemaupstreamdefinition"></a>

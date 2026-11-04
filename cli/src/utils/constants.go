@@ -37,18 +37,20 @@ const (
 	DefaultGatewayRuntime    = "ghcr.io/wso2/api-platform/gateway-runtime:%s"    // %s = version
 
 	// REST API Endpoints
-	GatewayHealthPath          = "/health"
-	GatewayAPIsPath            = "/rest-apis"
-	GatewayAPIByIDPath         = "/rest-apis/%s"
-	GatewayMCPProxiesPath      = "/mcp-proxies"
-	GatewayMCPProxyByIDPath    = "/mcp-proxies/%s"
-	GatewayLLMProvidersPath    = "/llm-providers"
-	GatewayLLMProviderByIDPath = "/llm-providers/%s"
-	GatewayLLMProxiesPath      = "/llm-proxies"
-	GatewayLLMProxyByIDPath    = "/llm-proxies/%s"
-	GatewayGraphQLAPIsPath     = "/graphql-apis"
-	GatewayGraphQLAPIByIDPath  = "/graphql-apis/%s"
-	DevPortalHealthPath        = "/health"
+	GatewayHealthPath           = "/health"
+	GatewayAPIsPath             = "/rest-apis"
+	GatewayAPIByIDPath          = "/rest-apis/%s"
+	GatewayMCPProxiesPath       = "/mcp-proxies"
+	GatewayMCPProxyByIDPath     = "/mcp-proxies/%s"
+	GatewayLLMProvidersPath     = "/llm-providers"
+	GatewayLLMProviderByIDPath  = "/llm-providers/%s"
+	GatewayLLMProxiesPath       = "/llm-proxies"
+	GatewayLLMProxyByIDPath     = "/llm-proxies/%s"
+	GatewayGraphQLAPIsPath      = "/graphql-apis"
+	GatewayGraphQLAPIByIDPath   = "/graphql-apis/%s"
+	GatewayWebSocketAPIsPath    = "/websocket-apis"
+	GatewayWebSocketAPIByIDPath = "/websocket-apis/%s"
+	DevPortalHealthPath         = "/health"
 
 	// API Key Endpoints (scoped to a REST API)
 	GatewayAPIKeysPath          = "/rest-apis/%s/api-keys"    // %s = REST API id
@@ -59,6 +61,11 @@ const (
 	GatewayGraphQLAPIKeysPath          = "/graphql-apis/%s/api-keys"    // %s = GraphQL API id
 	GatewayGraphQLAPIKeyByNamePath     = "/graphql-apis/%s/api-keys/%s" // %s = GraphQL API id, %s = api key name
 	GatewayGraphQLAPIKeyRegeneratePath = "/graphql-apis/%s/api-keys/%s/regenerate"
+
+	// API Key Endpoints (scoped to a WebSocket API)
+	GatewayWebSocketAPIKeysPath          = "/websocket-apis/%s/api-keys"    // %s = WebSocket API id
+	GatewayWebSocketAPIKeyByNamePath     = "/websocket-apis/%s/api-keys/%s" // %s = WebSocket API id, %s = api key name
+	GatewayWebSocketAPIKeyRegeneratePath = "/websocket-apis/%s/api-keys/%s/regenerate"
 
 	// Subscription Plan Endpoints
 	GatewaySubscriptionPlansPath    = "/subscription-plans"

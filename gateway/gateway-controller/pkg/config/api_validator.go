@@ -465,6 +465,12 @@ func (v *APIValidator) validateResilience(fieldPrefix string, r *api.Resilience)
 	return validateResilienceTimeouts(fieldPrefix, r)
 }
 
+// ValidateResilience validates a resilience block with the same rules RestApi
+// applies, for kinds whose validator lives outside this package (WebSocketApi).
+func ValidateResilience(fieldPrefix string, r *api.Resilience) []ValidationError {
+	return validateResilienceTimeouts(fieldPrefix, r)
+}
+
 // validateResilienceTimeouts validates the timeout fields of a resilience block.
 func validateResilienceTimeouts(fieldPrefix string, r *api.Resilience) []ValidationError {
 	var errors []ValidationError

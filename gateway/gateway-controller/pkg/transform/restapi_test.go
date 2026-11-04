@@ -1302,7 +1302,7 @@ func TestDefaultClientCertificate_EveryAPIKind(t *testing.T) {
 	llmT := NewLLMTransformer(storage.NewConfigStore(), db, routerCfg, systemCfg, map[string]models.PolicyDefinition{}, nil)
 	agentT := agentTransformer()
 	graphqlT := NewGraphQLAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{})
-	registry := NewRegistry(restT, llmT, agentT, graphqlT)
+	registry := NewRegistry(restT, llmT, agentT, graphqlT, nil)
 	transformers := map[string]models.ConfigTransformer{}
 	for _, kind := range []string{models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindAgent} {
 		transformers[kind] = registry

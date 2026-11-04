@@ -23,6 +23,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 func graphqlUpstreamStrPtr(s string) *string { return &s }
@@ -83,5 +84,29 @@ func TestValidateGraphQLUpstream_URLOnly_NoRefError(t *testing.T) {
 
 	if len(errs) != 0 {
 		t.Errorf("expected no validation errors for a valid direct url, got: %+v", errs)
+	}
+}
+
+func TestGraphQLAPIDesiredState(t *testing.T) {
+	undeployed := api.GraphQLAPIConfigDataDeploymentStateUndeployed
+	deployed := api.GraphQLAPIConfigDataDeploymentStateDeployed
+
+	cases := []struct {
+		name  string
+		state *api.GraphQLAPIConfigDataDeploymentState
+		want  models.DesiredState
+	}{
+		{"omitted defaults to deployed", nil, models.StateDeployed},
+		{"explicit deployed", &deployed, models.StateDeployed},
+		{"explicit undeployed", &undeployed, models.StateUndeployed},
+	}
+	for _, tc := range cases {
+		cfg := api.GraphQLAPI{Kind: api.GraphQLAPIKindGraphQLApi, Spec: api.GraphQLAPIConfigData{DeploymentState: tc.state}}
+		if got := graphQLAPIDesiredState(cfg); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	if got := graphQLAPIDesiredState("not a GraphQLApi"); got != models.StateDeployed {
+		t.Errorf("unexpected type: got %q, want %q", got, models.StateDeployed)
 	}
 }

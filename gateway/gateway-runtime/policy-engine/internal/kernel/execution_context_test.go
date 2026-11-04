@@ -208,6 +208,54 @@ func TestGetModeOverride_BothBodiesRequired(t *testing.T) {
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
 }
 
+// TestGetModeOverride_WebSocketForcesBodyModeNone is the FR-021 fail-safe: even
+// if a WebSocketApi chain somehow carries a policy that declares body
+// processing (bypassing the handshake-only deploy-time contract), the engine
+// must never ask Envoy to buffer or stream a WebSocket data frame as an HTTP
+// body. This must win regardless of what the chain itself declares.
+func TestGetModeOverride_WebSocketForcesBodyModeNone(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
+
+	chain := &registry.PolicyChain{
+		RequiresRequestBody:  true,
+		RequiresResponseBody: true,
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
+	execCtx.sharedCtx = &policy.SharedContext{APIKind: policy.APIKindWebSocket}
+
+	mode := execCtx.getModeOverride()
+
+	require.NotNil(t, mode)
+	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.RequestBodyMode)
+	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.ResponseBodyMode)
+}
+
+// TestGetModeOverride_NonWebSocketUnaffected guards against the fail-safe
+// over-firing: a non-WebSocket kind with the same body-requiring chain must
+// keep buffering, so the override is scoped to APIKindWebSocket specifically.
+func TestGetModeOverride_NonWebSocketUnaffected(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
+
+	chain := &registry.PolicyChain{
+		RequiresRequestBody:  true,
+		RequiresResponseBody: true,
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
+	execCtx.sharedCtx = &policy.SharedContext{APIKind: policy.APIKindRestApi}
+
+	mode := execCtx.getModeOverride()
+
+	require.NotNil(t, mode)
+	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.RequestBodyMode)
+	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
+}
+
 func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)

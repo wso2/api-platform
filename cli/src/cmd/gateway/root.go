@@ -26,6 +26,7 @@ import (
 	"github.com/wso2/api-platform/cli/cmd/gateway/restapi"
 	"github.com/wso2/api-platform/cli/cmd/gateway/subscription"
 	"github.com/wso2/api-platform/cli/cmd/gateway/subscriptionplan"
+	"github.com/wso2/api-platform/cli/cmd/gateway/websocketapi"
 )
 
 const (
@@ -60,6 +61,7 @@ func init() {
 	GatewayCmd.AddCommand(image.ImageCmd)
 	GatewayCmd.AddCommand(restapi.APICmd)
 	GatewayCmd.AddCommand(graphqlapi.APICmd)
+	GatewayCmd.AddCommand(websocketapi.APICmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)
 	GatewayCmd.AddCommand(subscriptionplan.SubscriptionPlanCmd)
 	GatewayCmd.AddCommand(subscription.SubscriptionCmd)

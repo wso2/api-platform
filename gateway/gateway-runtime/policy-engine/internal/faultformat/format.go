@@ -47,6 +47,7 @@ var knownAPIKinds = []policy.APIKind{
 	policy.APIKindMCP,
 	policy.APIKindAgent,
 	policy.APIKindWebSubApi,
+	policy.APIKindWebSocket,
 }
 
 // supportedKinds is the set of API kinds the gateway synthesizes an error body for.

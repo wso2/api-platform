@@ -30,4 +30,4 @@ Shipped tables that don't conform to R1–R10, frozen under Directive 1. **Do no
 
 | Product | Table | Rule | Deviation | Recorded |
 |---|---|---|---|---|
-| _(populate from the first full audit)_ | | | | |
+| Platform API | `graphql_apis` | R6-NO-REDUNDANT-INDEX | Carries both `UNIQUE(organization_uuid, handle)` and a separate single-column `idx_graphql_apis_org` index on `organization_uuid` — the UNIQUE constraint's leftmost column already covers org-scoped lookups, making the extra index redundant (minor, no correctness impact). Found incidentally while designing the new `websocket_apis` table (`specs/001-websocket-api-support`); not fixed on `graphql_apis` per R0-FROZEN/R0-LEGACY-ACCEPTED. | 2026-10-14 |

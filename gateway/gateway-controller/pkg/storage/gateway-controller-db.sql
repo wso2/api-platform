@@ -103,6 +103,17 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- WebSocketApi artifacts. Same reasoning and same shape as graphql_apis above:
+-- a one-column-identical clone of rest_apis, defined here in core rather than
+-- in a supplemental-DDL module.
+CREATE TABLE IF NOT EXISTS websocket_apis (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Note: Policy definitions are no longer stored in the database.
 -- They are loaded from files at controller startup (see policies/ directory).
 -- The policy_definitions table has been removed as of schema version 3.

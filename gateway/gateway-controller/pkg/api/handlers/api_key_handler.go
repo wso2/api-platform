@@ -19,7 +19,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -90,7 +89,7 @@ func (s *APIServer) CreateAPIKey(w http.ResponseWriter, r *http.Request, id stri
 				Status:  "error",
 				Message: err.Error(),
 			})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if utils.IsAPIKeyBadRequest(err) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
@@ -249,7 +248,7 @@ func (s *APIServer) UpdateAPIKey(w http.ResponseWriter, r *http.Request, id stri
 				Status:  "error",
 				Message: err.Error(),
 			})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if utils.IsAPIKeyBadRequest(err) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
@@ -328,7 +327,7 @@ func (s *APIServer) RegenerateAPIKey(w http.ResponseWriter, r *http.Request, id 
 				Status:  "error",
 				Message: err.Error(),
 			})
-		} else if errors.Is(err, utils.ErrAPIKeyExpirationInPast) || errors.Is(err, utils.ErrUnsupportedAPIKeyExpirationUnit) {
+		} else if utils.IsAPIKeyBadRequest(err) {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),

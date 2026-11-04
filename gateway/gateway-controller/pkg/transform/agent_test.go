@@ -1704,6 +1704,7 @@ func TestRegistryKindsMatchDispatch(t *testing.T) {
 		nil,
 		agentTransformer(),
 		NewGraphQLAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{}),
+		NewWebSocketAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{}),
 	)
 
 	for _, kind := range Kinds() {
@@ -1723,6 +1724,7 @@ func TestAgentRegistryDispatch(t *testing.T) {
 		NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{}),
 		nil,
 		agentTransformer(),
+		nil,
 		nil,
 	)
 

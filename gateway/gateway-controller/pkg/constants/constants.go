@@ -157,6 +157,17 @@ const (
 	// fails open, such a request gets Envoy's 503 rather than reaching anything.
 	GatewayInternalSinkClusterName = "api-platform/gateway-internal-sink"
 
+	// GatewayNoAPIFoundClusterName is deliberately never defined. The catch-all
+	// WebSocket handshake route targets it with cluster_not_found_response_code
+	// NOT_FOUND, so an upgrade to a path no API serves gets 404 and can never be
+	// forwarded anywhere.
+	GatewayNoAPIFoundClusterName = "api-platform/no-api-found"
+
+	// GatewayNoAPIFoundUpgradeRouteName names the catch-all route for WebSocket
+	// handshakes to paths no API serves. It is the one route outside a
+	// WebSocketApi channel that enables the upgrade, and it can only answer 404.
+	GatewayNoAPIFoundUpgradeRouteName = "no-api-found-upgrade"
+
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"
 	DefaultALSSocketPath     = "/var/run/api-platform/gateway-analytics.sock"

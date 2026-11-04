@@ -282,6 +282,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"mcp.yaml":                   "Mcp",
 		"rest-api.yaml":              "RestApi",
 		"subscription.yaml":          "Subscription",
+		"websocket-api.yaml":         "WebSocketApi",
 	}
 	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
 	controlPlaneProtocols := map[string]string{

@@ -114,6 +114,7 @@ func (m *MockStorage) GetLLMProviderTemplateByHandle(handle string) (*models.Sto
 	return nil, nil
 }
 func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error                 { return nil }
+func (m *MockStorage) CreateAPIKey(apiKey *models.APIKey) error               { return nil }
 func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error               { return nil }
 func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error)        { return nil, nil }
 func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error)    { return nil, nil }

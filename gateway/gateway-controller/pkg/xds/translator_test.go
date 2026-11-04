@@ -1505,6 +1505,43 @@ func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
 	}
 }
 
+// With router.websocket.allow_http2_connect on, the listener accepts RFC 8441
+// extended CONNECT and runs the filter that supplies the Sec-WebSocket-Key such
+// clients never send, immediately before the router; with it off, neither is
+// present.
+func TestTranslator_CreateListener_HTTP2WebSocketKeyFilter(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allow_http2_connect=%t", enabled), func(t *testing.T) {
+			routerCfg := testRouterConfig()
+			routerCfg.WebSocket.AllowHTTP2Connect = enabled
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator, err := NewTranslator(createTestLogger(), routerCfg, nil, cfg)
+			require.NoError(t, err)
+
+			lis, _, err := translator.createListener(nil, false, false)
+			require.NoError(t, err)
+			manager := extractHCM(t, lis)
+
+			filters := manager.GetHttpFilters()
+			keyIdx := -1
+			for i, f := range filters {
+				if f.GetName() == webSocketKeyFilterName {
+					keyIdx = i
+				}
+			}
+			assert.Equal(t, enabled, manager.GetHttp2ProtocolOptions().GetAllowConnect())
+			if !enabled {
+				assert.Equal(t, -1, keyIdx, "the key filter must not be installed without extended CONNECT")
+				return
+			}
+			require.NotEqual(t, -1, keyIdx, "the key filter must be installed")
+			assert.Equal(t, len(filters)-2, keyIdx, "the key filter must run immediately before the router")
+			assert.Equal(t, "envoy.filters.http.router", filters[len(filters)-1].GetName())
+		})
+	}
+}
+
 // The generated HttpConnectionManager must canonicalize the request path
 // (NormalizePath, MergeSlashes) before routing/policy/authz matching — an
 // un-normalized path could desynchronize the route Envoy selects from what
@@ -2195,6 +2232,66 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		require.True(t, vhostsSeen["localhost"], "expected the API's own vhost to carry the health routes too")
 		require.True(t, vhostsSeen["*"], "expected the wildcard vhost to still be present")
 	})
+}
+
+// A WebSocket handshake to a path no API serves must get 404, not the 403 Envoy
+// gives a disallowed upgrade. Every virtual host carries a handshake-only
+// catch-all, ahead of the direct-response one, that enables the upgrade and
+// targets a cluster that is never defined, so the router answers 404 and nothing
+// can be forwarded.
+func TestTranslator_TranslateConfigs_NoAPIFoundUpgradeRoute(t *testing.T) {
+	logger := createTestLogger()
+	translator, err := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+	require.NoError(t, err)
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{}, "test-correlation-id")
+	require.NoError(t, err)
+
+	for _, res := range resources[resource.ClusterType] {
+		c, ok := res.(*cluster.Cluster)
+		require.True(t, ok)
+		assert.NotEqual(t, constants.GatewayNoAPIFoundClusterName, c.GetName(),
+			"the no-api-found cluster must never be defined, or handshakes would be forwarded to it")
+	}
+
+	vhosts := 0
+	for _, res := range resources[resource.RouteType] {
+		rc, ok := res.(*route.RouteConfiguration)
+		require.True(t, ok)
+		for _, vh := range rc.GetVirtualHosts() {
+			vhosts++
+			upgradeIdx, catchAllIdx := -1, -1
+			for i, r := range vh.GetRoutes() {
+				switch r.GetName() {
+				case constants.GatewayNoAPIFoundUpgradeRouteName:
+					upgradeIdx = i
+				case "no-api-found":
+					catchAllIdx = i
+				}
+			}
+			require.NotEqual(t, -1, upgradeIdx, "virtual host %q missing the handshake catch-all", vh.GetName())
+			assert.Equal(t, catchAllIdx-1, upgradeIdx,
+				"virtual host %q: the handshake catch-all must sit directly before the direct-response catch-all", vh.GetName())
+
+			r := vh.GetRoutes()[upgradeIdx]
+			headers := r.GetMatch().GetHeaders()
+			require.Len(t, headers, 1, "only WebSocket handshakes may match")
+			assert.Equal(t, "upgrade", headers[0].GetName())
+			assert.Equal(t, "websocket", headers[0].GetStringMatch().GetExact())
+			assert.True(t, headers[0].GetStringMatch().GetIgnoreCase())
+
+			action := r.GetRoute()
+			require.NotNil(t, action)
+			assert.Equal(t, constants.GatewayNoAPIFoundClusterName, action.GetCluster())
+			assert.Equal(t, route.RouteAction_NOT_FOUND, action.GetClusterNotFoundResponseCode())
+			upgrades := action.GetUpgradeConfigs()
+			require.Len(t, upgrades, 1)
+			assert.Equal(t, "websocket", upgrades[0].GetUpgradeType())
+			assert.True(t, upgrades[0].GetEnabled().GetValue())
+			_, extProcOverridden := r.GetTypedPerFilterConfig()[constants.ExtProcFilterName]
+			assert.True(t, extProcOverridden, "ext_proc must be disabled on the handshake catch-all")
+		}
+	}
+	assert.Greater(t, vhosts, 0)
 }
 
 func TestTranslator_TranslateConfigs_GatewayJWKSRoute(t *testing.T) {

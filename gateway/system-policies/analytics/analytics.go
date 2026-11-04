@@ -858,6 +858,8 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 				analyticsMetadata["graphql_request_properties"] = string(data)
 			}
 		}
+	case policy.APIKindWebSocket:
+		// Handshake-only: WebSocket data frames never reach the policy engine.
 	case policy.APIKindLlmProvider:
 		// Collect analytics data for AI API(LLM Provider) specific scenario
 	case policy.APIKindLlmProxy:
@@ -994,6 +996,8 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 				}
 			}
 		}
+	case policy.APIKindWebSocket:
+		// Handshake-only: no response body analytics for WebSocket APIs
 	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		slog.Info("Template handle(extracted from route metadata): ", "templateHandle", templateHandle)
@@ -1126,8 +1130,8 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 
 	apiKind := ctx.SharedContext.APIKind
 	switch apiKind {
-	case policy.APIKindRestApi:
-		// No body analytics for REST API
+	case policy.APIKindRestApi, policy.APIKindWebSocket:
+		// No body analytics for REST API or WebSocket API
 	case policy.APIKindGraphQL:
 		// No streaming-body analytics for GraphQL API (GraphQL responses aren't SSE).
 	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:

@@ -339,6 +339,24 @@ func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	return nil
 }
 
+// CreateAPIKey mirrors the SQL store: a live key of the same name is a conflict,
+// a revoked one is replaced.
+func (m *MockStorage) CreateAPIKey(apiKey *models.APIKey) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	for id, key := range m.apiKeys {
+		if key.ArtifactUUID == apiKey.ArtifactUUID && key.Name == apiKey.Name {
+			if key.Status != models.APIKeyStatusRevoked {
+				return fmt.Errorf("%w: %s", storage.ErrAPIKeyNameConflict, apiKey.Name)
+			}
+			delete(m.apiKeys, id)
+		}
+	}
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
+	return nil
+}
+
 func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error {
 	if m.saveErr != nil {
 		return m.saveErr
@@ -427,7 +445,8 @@ func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey
 			return cloneAPIKey(key), nil
 		}
 	}
-	return nil, errors.New("API key not found")
+	// Mirrors the SQL store, which returns storage.ErrNotFound for a missing name.
+	return nil, fmt.Errorf("%w: API key not found", storage.ErrNotFound)
 }
 
 func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error {
@@ -2432,7 +2451,7 @@ func TestCreateAPIKeyExpirationInPast_ReturnsBadRequest(t *testing.T) {
 	request := api.APIKeyCreationRequest{
 		Name: &name,
 		ExpiresIn: &struct {
-			Duration int                                        `json:"duration" yaml:"duration"`
+			Duration int                                    `json:"duration" yaml:"duration"`
 			Unit     api.APIKeyCreationRequestExpiresInUnit `json:"unit" yaml:"unit"`
 		}{Duration: -10, Unit: api.APIKeyCreationRequestExpiresInUnitSeconds},
 	}

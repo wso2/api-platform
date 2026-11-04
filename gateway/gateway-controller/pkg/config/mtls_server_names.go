@@ -63,17 +63,49 @@ func RestAPIHasSandbox(spec api.APIConfigData) bool {
 // first is the primary vhost. sandbox is vhosts.sandbox as written, or the
 // sandbox default when it is blank, and applies only when hasSandbox is true.
 func RestAPIVhosts(spec api.APIConfigData, vhosts VHostsConfig) (main []string, sandbox string, hasSandbox bool) {
+	var rawMain string
+	var rawSandbox *string
+	if spec.Vhosts != nil {
+		rawMain, rawSandbox = spec.Vhosts.Main, spec.Vhosts.Sandbox
+	}
+	main, sandbox = resolveVhosts(rawMain, rawSandbox, vhosts)
+	return main, sandbox, RestAPIHasSandbox(spec)
+}
+
+// WebSocketAPIHasSandbox reports whether a WebSocket API has a sandbox
+// upstream, set through either url or ref.
+func WebSocketAPIHasSandbox(spec api.WebSocketAPIConfigData) bool {
+	sb := spec.Upstream.Sandbox
+	return sb != nil &&
+		((sb.Url != nil && strings.TrimSpace(*sb.Url) != "") ||
+			(sb.Ref != nil && strings.TrimSpace(*sb.Ref) != ""))
+}
+
+// WebSocketAPIVhosts resolves the vhosts a WebSocket API's channel routes are
+// served on, with the same rules as RestAPIVhosts.
+func WebSocketAPIVhosts(spec api.WebSocketAPIConfigData, vhosts VHostsConfig) (main []string, sandbox string, hasSandbox bool) {
+	var rawMain string
+	var rawSandbox *string
+	if spec.Vhosts != nil {
+		rawMain, rawSandbox = spec.Vhosts.Main, spec.Vhosts.Sandbox
+	}
+	main, sandbox = resolveVhosts(rawMain, rawSandbox, vhosts)
+	return main, sandbox, WebSocketAPIHasSandbox(spec)
+}
+
+// resolveVhosts applies an API's vhosts.main and vhosts.sandbox over the
+// gateway defaults: every main entry, or the main default when none is set, and
+// the sandbox value, or the sandbox default when it is blank.
+func resolveVhosts(rawMain string, rawSandbox *string, vhosts VHostsConfig) (main []string, sandbox string) {
 	main = []string{vhosts.Main.Default}
 	sandbox = vhosts.Sandbox.Default
-	if spec.Vhosts != nil {
-		if parsed := SplitVhosts(spec.Vhosts.Main); len(parsed) > 0 {
-			main = parsed
-		}
-		if s := spec.Vhosts.Sandbox; s != nil && strings.TrimSpace(*s) != "" {
-			sandbox = *s
-		}
+	if parsed := SplitVhosts(rawMain); len(parsed) > 0 {
+		main = parsed
 	}
-	return main, sandbox, RestAPIHasSandbox(spec)
+	if rawSandbox != nil && strings.TrimSpace(*rawSandbox) != "" {
+		sandbox = *rawSandbox
+	}
+	return main, sandbox
 }
 
 // Domains returns the routing domains of a resolved vhost: the configured

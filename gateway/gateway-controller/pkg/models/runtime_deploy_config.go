@@ -80,6 +80,15 @@ type Route struct {
 	AutoHostRewrite bool
 	Timeout         *RouteTimeout
 	Upstream        RouteUpstream
+
+	// UpgradeWebSocket enables the WebSocket protocol upgrade on this route
+	// alone -> RouteAction.UpgradeConfigs[websocket].Enabled.
+	//
+	// Upgrades are disabled at the HCM for every route, so this is the only way
+	// a route accepts one. Keeping it opt-in per route is what stops a REST,
+	// GraphQL, MCP or LLM route from being turned into a tunnel whenever its
+	// backend happens to agree to an upgrade.
+	UpgradeWebSocket bool
 	// Order is the operation/rule index from the source API spec. It is used as the
 	// Gateway-API "earlier-rule-wins" tie-break when two routes share the same match
 	// precedence (same path, method, and header-match count). Routes are emitted in
@@ -192,6 +201,43 @@ type UpstreamCluster struct {
 	Endpoints      []Endpoint
 	TLS            *UpstreamTLS
 	ConnectTimeout *time.Duration // ConnectTimeout is the per-upstream TCP connect timeout
+
+	// ─── Connection-pool bounds (WebSocketApi) ───────────────────────────────
+	//
+	// These bound the gateway-to-backend connection, independently of whatever
+	// bounds the downstream client connection. They are set only for kinds whose
+	// upstream connections are long-lived enough to need them; nil means "leave
+	// Envoy's default alone", which is what every other kind wants.
+
+	// MaxConnections caps concurrent connections this gateway instance opens to
+	// the cluster -> CircuitBreakers.Thresholds[].MaxConnections.
+	//
+	// Best-effort, not exact: Envoy guarantees at least one connection per
+	// selected host, so a cluster resolving to several hosts can exceed this by
+	// a small amount. That is acceptable here because the bounded resource —
+	// this instance's outbound sockets — is itself per-instance.
+	MaxConnections *uint32
+
+	// MaxPendingRequests caps requests waiting for a connection to the cluster
+	// -> CircuitBreakers.Thresholds[].MaxPendingRequests; a request beyond it is
+	// rejected with 503. Nil falls back to MaxConnections when that is set.
+	MaxPendingRequests *uint32
+
+	// MaxStreamDuration caps the total lifetime of each stream through the
+	// cluster regardless of activity -> the cluster's HttpProtocolOptions
+	// common_http_protocol_options.max_stream_duration. When it fires, Envoy
+	// resets the upstream stream, which closes the client side too.
+	//
+	// It exists for WebSocketApi clusters, where the route Timeout ends only the
+	// handshake: once Envoy answers 101 the stream is a byte pipe that only the
+	// route idle timeout and this bound can close, so access granted at the
+	// handshake cannot outlive its revocation indefinitely. It is set on the
+	// cluster rather than as RouteAction.MaxStreamDuration because a route that
+	// carries max_stream_duration switches Envoy to its stream-duration timeout
+	// model and stops enforcing the route Timeout, which would leave a backend
+	// that never answers the upgrade holding the handshake until the idle
+	// timeout. Nil leaves the lifetime uncapped.
+	MaxStreamDuration *time.Duration
 }
 
 // Endpoint is a single upstream host:port target.

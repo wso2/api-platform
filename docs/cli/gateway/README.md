@@ -11,6 +11,8 @@ Available command groups:
 - `ap gateway rest-api api-key` — manage API keys for a REST API
 - `ap gateway graphql-api` — manage GraphQL APIs on a gateway
 - `ap gateway graphql-api api-key` — manage API keys for a GraphQL API
+- `ap gateway websocket-api` — manage WebSocket APIs on a gateway
+- `ap gateway websocket-api api-key` — manage API keys for a WebSocket API
 - `ap gateway mcp` — manage MCP proxies on a gateway
 - `ap gateway subscription-plan` — manage subscription plans on a gateway
 - `ap gateway subscription` — manage subscriptions on a gateway
@@ -76,7 +78,7 @@ ap gateway apply -f mcp-proxy.yaml --platform eu --gateway prod
 
 Notes:
 
-- Supported kinds: `RestApi`, `Mcp`, `LlmProvider`, `LlmProxy`, and `GraphQLApi`.
+- Supported kinds: `RestApi`, `Mcp`, `LlmProvider`, `LlmProxy`, `GraphQLApi`, and `WebSocketApi`.
 - JSON input is converted to YAML before being sent.
 - Ready-to-use sample CRs live in [`gateway/examples`](../../../gateway/examples): [`sample-echo-api.yaml`](../../../gateway/examples/sample-echo-api.yaml) and [`petstore-api.yaml`](../../../gateway/examples/petstore-api.yaml) (`RestApi`), [`mcp-proxy.yaml`](../../../gateway/examples/mcp-proxy.yaml) (`Mcp`), and [`countries-graphql-api.yaml`](../../../gateway/examples/countries-graphql-api.yaml) and [`blog-graphql-api.yaml`](../../../gateway/examples/blog-graphql-api.yaml) (`GraphQLApi`).
 
@@ -375,6 +377,142 @@ Example:
 
 ```shell
 ap gateway graphql-api api-key revoke --id countries-graphql-api --key-name my-production-key
+```
+
+## WebSocket API Commands
+
+These commands manage WebSocket APIs using the `/websocket-apis` management endpoints. To create or update a WebSocket API, use [`ap gateway apply`](#ap-gateway-apply) with a `kind: WebSocketApi` file.
+
+### `ap gateway websocket-api list`
+
+Lists WebSocket APIs deployed on the gateway.
+
+```shell
+ap gateway websocket-api list [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway websocket-api list
+```
+
+Behavior:
+
+- Prints a table with `ID`, `DISPLAY_NAME`, `VERSION`, `CONTEXT`, `STATE`, and `CREATED_AT`.
+
+### `ap gateway websocket-api get`
+
+Retrieves a single WebSocket API by ID, or by name and version.
+
+```shell
+ap gateway websocket-api get --id <id> [--format <json|yaml>] [--platform <platform>] [--gateway <display-name>]
+ap gateway websocket-api get --display-name <name> --version <version> [--format <json|yaml>] [--platform <platform>] [--gateway <display-name>]
+```
+
+Examples:
+
+```shell
+ap gateway websocket-api get --id chat-websocket-api --format yaml
+ap gateway websocket-api get --display-name "Chat WebSocket API" --version v1.0 --format json
+```
+
+Notes:
+
+- `--display-name` here is the **API** name (not the gateway). When using `--display-name`, `--version` is required.
+- `--format` defaults to `yaml`.
+
+### `ap gateway websocket-api delete`
+
+Deletes a WebSocket API by ID.
+
+```shell
+ap gateway websocket-api delete --id <id> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway websocket-api delete --id chat-websocket-api
+```
+
+## WebSocket API Key Commands
+
+These commands manage API keys for a WebSocket API using the `/websocket-apis/{id}/api-keys` endpoints.
+
+### `ap gateway websocket-api api-key create`
+
+Generates a new API key for a WebSocket API. `--name` is optional — if omitted, the server generates a unique name. `--expires-in-duration` and `--expires-in-unit` must be supplied together to set an expiry; omit both for a key that never expires. The plaintext key is returned once in the response.
+
+```shell
+ap gateway websocket-api api-key create --id <websocket-api-id> [--name <name>] [--expires-in-duration <n> --expires-in-unit <seconds|minutes|hours|days|weeks|months>] [--platform <platform>] [--gateway <display-name>]
+```
+
+Examples:
+
+```shell
+ap gateway websocket-api api-key create --id chat-websocket-api
+ap gateway websocket-api api-key create --id chat-websocket-api --name my-production-key --expires-in-duration 30 --expires-in-unit days
+```
+
+### `ap gateway websocket-api api-key list`
+
+Lists API keys for a WebSocket API.
+
+```shell
+ap gateway websocket-api api-key list --id <websocket-api-id> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway websocket-api api-key list --id chat-websocket-api
+```
+
+Behavior:
+
+- Prints a table with `NAME`, `DISPLAY_NAME`, `API_ID`, `STATUS`, `CREATED_AT`, and `EXPIRES_AT`. The plaintext key value is only returned by `create`/`regenerate`.
+
+### `ap gateway websocket-api api-key regenerate`
+
+Regenerates an API key value, replacing the previous one. The new plaintext key is returned once.
+
+```shell
+ap gateway websocket-api api-key regenerate --id <websocket-api-id> --key-name <name> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway websocket-api api-key regenerate --id chat-websocket-api --key-name my-production-key
+```
+
+### `ap gateway websocket-api api-key update`
+
+Replaces an API key's value with a custom, externally generated one (minimum 36 characters). Omit `--api-key` to be prompted securely instead of passing the key on the command line.
+
+```shell
+ap gateway websocket-api api-key update --id <websocket-api-id> --key-name <name> [--api-key <value>] [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway websocket-api api-key update --id chat-websocket-api --key-name my-production-key
+```
+
+### `ap gateway websocket-api api-key revoke`
+
+Revokes an API key so it can no longer be used for authentication.
+
+```shell
+ap gateway websocket-api api-key revoke --id <websocket-api-id> --key-name <name> [--platform <platform>] [--gateway <display-name>]
+```
+
+Example:
+
+```shell
+ap gateway websocket-api api-key revoke --id chat-websocket-api --key-name my-production-key
 ```
 
 ## MCP Commands

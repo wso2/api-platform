@@ -41,6 +41,7 @@ const (
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
 	KindGraphQLApi          ArtifactKind = "GraphQLApi"
+	KindWebSocketApi        ArtifactKind = "WebSocketApi"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.
@@ -197,6 +198,8 @@ func apiVersionOf(cfg any) string {
 		return string(sc.ApiVersion)
 	case api.GraphQLAPI:
 		return string(sc.ApiVersion)
+	case api.WebSocketAPI:
+		return string(sc.ApiVersion)
 	}
 	return ""
 }
@@ -228,6 +231,8 @@ func (c *StoredConfig) GetContext() (string, error) {
 		return "", nil
 	case api.GraphQLAPI:
 		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
+	case api.WebSocketAPI:
+		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
 	}
 	return "", fmt.Errorf("unsupported source configuration type: %T", c.SourceConfiguration)
 }
@@ -237,6 +242,8 @@ func (c *StoredConfig) GetPolicies() *[]api.Policy {
 	case api.RestAPI:
 		return sc.Spec.Policies
 	case api.GraphQLAPI:
+		return sc.Spec.Policies
+	case api.WebSocketAPI:
 		return sc.Spec.Policies
 	}
 	// Agent is deliberately absent: an Agent has no single spec-level policy
@@ -257,6 +264,8 @@ func (c *StoredConfig) GetMetadata() *api.Metadata {
 		return &cfg.Metadata
 	case api.GraphQLAPI:
 		return &cfg.Metadata
+	case api.WebSocketAPI:
+		return &cfg.Metadata
 	}
 	return nil
 }
@@ -270,6 +279,8 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 		return cfg.Metadata.Labels
 	case api.GraphQLAPI:
 		return cfg.Metadata.Labels
+	case api.WebSocketAPI:
+		return cfg.Metadata.Labels
 	}
 	return nil
 }
@@ -282,6 +293,8 @@ func (c *StoredConfig) GetAnnotations() *map[string]string {
 	case api.AgentConfiguration:
 		return cfg.Metadata.Annotations
 	case api.GraphQLAPI:
+		return cfg.Metadata.Annotations
+	case api.WebSocketAPI:
 		return cfg.Metadata.Annotations
 	}
 	return nil

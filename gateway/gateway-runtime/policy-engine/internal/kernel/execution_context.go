@@ -968,6 +968,17 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
 
+	// Fail-safe for WebSocketApi: a chain is handshake-only by deploy-time contract
+	// (no attached policy may declare body processing), but this is the backstop in
+	// case that contract is ever bypassed — a misconfigured/stale chain must never
+	// make the engine ask Envoy to buffer or stream a WebSocket data frame as an
+	// HTTP body. The 101 response already resolves to NONE via responseHasNoBody();
+	// this covers the request side, which has no equivalent protocol-level signal.
+	if ec.sharedCtx != nil && ec.sharedCtx.APIKind == policy.APIKindWebSocket {
+		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
+		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
+	}
+
 	// Always skip trailers (not used by policies)
 	mode.RequestTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 	mode.ResponseTrailerMode = extprocconfigv3.ProcessingMode_SKIP

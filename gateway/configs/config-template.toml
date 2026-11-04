@@ -498,6 +498,24 @@ stream_idle_timeout = "5m"
 # Idle timeout for the downstream connection
 idle_timeout = "1h"
 
+# WebSocketApi client connections
+[router.websocket]
+# Maximum lifetime of a client WebSocket connection (e.g. "1h"). Unset or "0s" sets no cap.
+# A WebSocket is authorized only at its handshake, so without a cap a connection that keeps
+# carrying traffic stays open after its API key or token is revoked. Applied to every
+# WebSocketApi upstream cluster; it never shortens the handshake timeout (resilience.timeout).
+# max_connection_duration = "1h"
+# Allow RFC 8441 extended CONNECT, so a client can open a WebSocket as a stream on an
+# HTTP/2 connection. Off by default; clients fall back to an HTTP/1.1 upgrade, which always works.
+allow_http2_connect = false
+
+# Gateway-to-backend connection limits for each WebSocketApi upstream cluster
+[router.websocket.upstream]
+# connection.maxConnections applied when an upstream definition does not set one (0 = no limit)
+max_connections_default = 0
+# Highest connection.maxConnections an upstream definition may set; above it a deploy gets 400
+max_connections_max = 100000
+
 [router.policy_engine]
 host = "policy-engine"
 port = 9001

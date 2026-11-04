@@ -26,6 +26,7 @@ import (
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // GraphQLApi is not known to api_deployment.go's core switch (it is only handled there
@@ -38,6 +39,7 @@ import (
 func init() {
 	RegisterKindDeployParser(graphQLApiKind, parseGraphQLAPIDeployment)
 	RegisterKindConfigValidator(graphQLApiKind, validateGraphQLAPIConfig)
+	RegisterKindDesiredStateResolver(graphQLApiKind, graphQLAPIDesiredState)
 }
 
 const graphQLApiKind = string(api.GraphQLAPIKindGraphQLApi)
@@ -62,6 +64,16 @@ var graphQLPolicyValidator *config.PolicyValidator
 // has no constructor call site of its own to pass the validator through.
 func SetGraphQLPolicyValidator(pv *config.PolicyValidator) {
 	graphQLPolicyValidator = pv
+}
+
+// graphQLAPIDesiredState is the KindDesiredStateResolver for GraphQLApi.
+func graphQLAPIDesiredState(cfg any) models.DesiredState {
+	graphqlConfig, ok := cfg.(api.GraphQLAPI)
+	if ok && graphqlConfig.Spec.DeploymentState != nil &&
+		*graphqlConfig.Spec.DeploymentState == api.GraphQLAPIConfigDataDeploymentStateUndeployed {
+		return models.StateUndeployed
+	}
+	return models.StateDeployed
 }
 
 // parseGraphQLAPIDeployment is the KindDeployParser for GraphQLApi. It mirrors the
