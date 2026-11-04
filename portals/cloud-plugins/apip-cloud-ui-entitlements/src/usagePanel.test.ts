@@ -12,12 +12,20 @@ import { describe, expect, it } from 'vitest';
 import type { Entitlement, EntitlementSummary } from './entitlementTypes';
 import { toUsagePanel } from './usagePanel';
 
+/**
+ * One quota meter as billing sends it: the limits live in `quota`, and
+ * `enforcement.mode` is the only statement of unlimited. `null` here means
+ * that — a plan with no ceiling for this meter.
+ */
 const quota = (name: string, limit: number | null, used: number): Entitlement => ({
   name,
   type: 'quota',
-  limit,
   used,
-  remaining: limit === null ? null : Math.max(0, limit - used),
+  enforcement: { mode: limit === null ? 'unlimited' : 'hard', source: 'plan' },
+  quota:
+    limit === null
+      ? { used }
+      : { hard_limit: limit, used, remaining: Math.max(0, limit - used) },
 });
 
 const summary = (entitlements: Entitlement[]): EntitlementSummary => ({
@@ -126,6 +134,48 @@ describe('toUsagePanel', () => {
     );
     // No Managed Interfaces group: its one meter is unlimited.
     expect(panel!.sections.map((section) => section.key)).toEqual(['gateways']);
+  });
+
+  // Soft mode: the row names where overage starts, which is the figure the
+  // user is spending against, not the ceiling they are blocked at.
+  it('shows the soft quota for a soft meter', () => {
+    const panel = toUsagePanel(
+      summary([
+        {
+          name: 'apis',
+          type: 'quota',
+          used: 6,
+          enforcement: { mode: 'soft', source: 'plan' },
+          quota: { soft_limit: 5, hard_limit: 10, used: 6, remaining: 4 },
+        },
+      ]),
+    );
+    expect(panel!.sections[0].items).toEqual([
+      { key: 'apis', label: 'APIs', count: 6, limit: 5 },
+    ]);
+  });
+
+  // No quota at all is a failed resolve, not a ceiling of zero.
+  it('omits a meter billing resolved no limit for', () => {
+    expect(toUsagePanel(summary([{ name: 'apis', type: 'quota', used: 4 }]))).toBeNull();
+  });
+
+  // A plan that allows none of something still has a row: 0 of 0 is a fact.
+  it('shows a zero quota rather than hiding it', () => {
+    const panel = toUsagePanel(
+      summary([
+        {
+          name: 'api_developer_portals',
+          type: 'quota',
+          used: 0,
+          enforcement: { mode: 'hard', source: 'plan' },
+          quota: { hard_limit: 0, used: 0, remaining: 0 },
+        },
+      ]),
+    );
+    expect(panel!.sections[0].items).toEqual([
+      { key: 'api_developer_portals', label: 'Portals', count: 0, limit: 0 },
+    ]);
   });
 
   it('gives every item and section a stable key', () => {
