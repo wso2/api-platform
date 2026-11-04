@@ -459,7 +459,9 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	// Delete from database
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete config from database", slog.Any("error", err))
-		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "rest_api", audit.OutcomeFailed, params.Actor, params.CorrelationID)
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "rest_api", audit.OutcomeFailed, params.Actor, params.CorrelationID)
+		}
 		return nil, fmt.Errorf("failed to delete configuration: %w", err)
 	}
 

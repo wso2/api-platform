@@ -340,9 +340,10 @@ format = "text"
 # Off by default. enabled = true records changes made through the management API
 # to REST and GraphQL APIs, LLM providers, proxies and provider templates, MCP
 # proxies, agents, API keys, certificates, subscriptions and subscription plans in
-# the audit table. Secrets and certificate reloads are not recorded. While it is
-# false, nothing is recorded: no table rows and no output lines. Changes pushed
-# from the control plane are never recorded.
+# the audit table. Secrets and certificate reloads are not recorded. Deleting an
+# API also removes its API keys and subscriptions; only the API's DELETE is
+# recorded. While it is false, nothing is recorded: no table rows and no output
+# lines. Changes pushed from the control plane are never recorded.
 [controller.audit]
 enabled = false
 # true writes "****" instead of the user (basic-auth username or token sub) in the

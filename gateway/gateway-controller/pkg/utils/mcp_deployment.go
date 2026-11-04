@@ -507,7 +507,9 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID, actor strin
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		logger.Error("Failed to delete config from database", slog.Any("error", err))
-		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "mcp_proxy", audit.OutcomeFailed, actor, correlationID)
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "mcp_proxy", audit.OutcomeFailed, actor, correlationID)
+		}
 		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishMCPProxyEvent("DELETE", cfg.UUID, correlationID, logger)

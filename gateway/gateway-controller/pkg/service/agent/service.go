@@ -523,7 +523,9 @@ func (s *AgentService) Delete(params DeleteParams) (*DeleteResult, error) {
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete agent config from database", slog.Any("error", err))
-		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "agent", audit.OutcomeFailed, params.Actor, params.CorrelationID)
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "agent", audit.OutcomeFailed, params.Actor, params.CorrelationID)
+		}
 		return nil, fmt.Errorf("failed to delete configuration: %w", err)
 	}
 

@@ -953,7 +953,9 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID, 
 	}
 
 	if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
-		s.auditService.Record("DELETE", tmpl.UUID, tmpl.GetHandle(), "llm_provider_template", audit.OutcomeFailed, actor, correlationID)
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", tmpl.UUID, tmpl.GetHandle(), "llm_provider_template", audit.OutcomeFailed, actor, correlationID)
+		}
 		return nil, fmt.Errorf("failed to delete template from database: %w", err)
 	}
 	s.publishLLMTemplateEvent("DELETE", tmpl.UUID, correlationID, logger)
@@ -1229,7 +1231,9 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID, actor st
 		return cfg, fmt.Errorf("failed to delete LLM provider API keys from database: %w", err)
 	}
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "llm_provider", audit.OutcomeFailed, actor, correlationID)
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "llm_provider", audit.OutcomeFailed, actor, correlationID)
+		}
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
@@ -1361,7 +1365,9 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID, actor strin
 		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)
 	}
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "llm_proxy", audit.OutcomeFailed, actor, correlationID)
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "llm_proxy", audit.OutcomeFailed, actor, correlationID)
+		}
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)

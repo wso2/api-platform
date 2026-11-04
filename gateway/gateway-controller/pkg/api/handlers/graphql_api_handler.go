@@ -283,7 +283,9 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 	}
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "graphql_api", audit.OutcomeFailed, actorFromRequest(r), middleware.GetCorrelationID(r))
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "graphql_api", audit.OutcomeFailed, actorFromRequest(r), middleware.GetCorrelationID(r))
+		}
 		log.Error("Failed to delete GraphQL API config from database", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
