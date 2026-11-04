@@ -1,0 +1,615 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Runs the unit tests and the test framework's integration and UI suites for a pull request.
+#
+# Only what the change needs runs, and the suites run only after every unit-test job that ran
+# has passed:
+#   backend change -> backend unit tests -> integration suite (3 Gateway legs)
+#   UI change      -> UI unit tests      -> UI suite
+#   both           -> both unit jobs in parallel, then both suites
+# A failing unit-test job stops both suites.
+
+name: Platform Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      ui: ${{ steps.filter.outputs.ui }}
+    steps:
+      # Depth 2: a pull_request checkout is the merge commit, and its first parent is the base
+      # it was merged onto, so HEAD^1..HEAD is exactly what this pull request changes.
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      # backend: anything except the UI-only portals, the UI suite and docs. Matching what to
+      # skip rather than what to run means a new or unlisted folder still runs the
+      # integration suite.
+      # ui: the portals, the Platform API they call (and whose spec the Control Plane portal
+      # generates types from), and the UI suite.
+      # A manual run runs everything.
+      - name: Classify changed files
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed="$(git diff --name-only HEAD^1 HEAD)"
+          echo "Changed files:"
+          echo "$changed"
+
+          backend_skip='^(portals/(ai-workspace|api-control-plane|cloud-plugins)/|tests/framework/suites/ui/|docs/)|\.md$'
+          ui_match='^(portals/|platform-api/|tests/framework/suites/ui/|\.github/workflows/platform-tests\.yml$)'
+
+          # Captured rather than piped into grep -q: under pipefail an early-exiting grep -q can
+          # turn a match into a failed pipeline.
+          backend_files="$(echo "$changed" | grep -vE "$backend_skip" || true)"
+          ui_files="$(echo "$changed" | grep -E "$ui_match" || true)"
+
+          backend=false
+          ui=false
+          if [ -n "$backend_files" ]; then backend=true; fi
+          if [ -n "$ui_files" ]; then ui=true; fi
+
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "ui=$ui" >> "$GITHUB_OUTPUT"
+          echo "backend=$backend ui=$ui"
+
+  unit-backend:
+    name: Unit tests (backend)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Gateway-controller unit tests
+        run: cd gateway/gateway-controller && make test
+
+      - name: Policy-engine unit tests
+        run: cd gateway/gateway-runtime && make test
+
+      - name: Platform-API unit tests
+        run: cd platform-api && make test
+
+      - name: Upload gateway-controller unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: gateway/gateway-controller/unit-test-coverage.txt
+          flags: gateway-controller-unit
+
+      - name: Upload policy-engine unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: gateway/gateway-runtime/policy-engine/unit-test-coverage.txt
+          flags: policy-engine-unit
+
+      - name: Upload platform-api unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: platform-api/unit-test-coverage.txt
+          flags: platform-api-unit
+
+  unit-ui:
+    name: Unit tests (UI)
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            portals/api-portal/package-lock.json
+            portals/ai-workspace/package-lock.json
+            portals/api-control-plane/package-lock.json
+
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: AI Workspace BFF unit tests
+        working-directory: portals/ai-workspace/bff
+        run: GOWORK=off go test -coverprofile=unit-test-coverage.txt ./...
+
+      - name: AI Workspace UI unit tests
+        working-directory: portals/ai-workspace
+        run: |
+          npm ci
+          npm run test:unit:coverage
+          sed -i 's|^SF:|SF:portals/ai-workspace/|' coverage/lcov.info
+
+      - name: API Portal unit tests
+        working-directory: portals/api-portal
+        run: |
+          npm ci
+          npm rebuild better-sqlite3 --ignore-scripts=false
+          mapfile -d '' -t test_files < <(find src -type f -name '*.test.js' -print0)
+          if [ "${#test_files[@]}" -eq 0 ]; then
+            echo 'No API Portal unit-test files found' >&2
+            exit 1
+          fi
+          # --experimental-test-coverage with the lcov reporter so these tests
+          # count toward the api-portal coverage Codecov reports. Without it the
+          # suite is a pass/fail gate only: it runs, it blocks the build on a
+          # failure, and every line it covers is discarded. The lcov reporter
+          # writes the report; --test-reporter=spec keeps the human-readable
+          # output on stdout, which a single reporter would otherwise replace.
+          node --test \
+            --experimental-test-coverage \
+            --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=lcov --test-reporter-destination=unit-test-coverage.info \
+            "${test_files[@]}"
+
+      # Prints what the unit run actually produced. The Codecov upload below is
+      # continue-on-error, so a report that was never written, or written empty,
+      # uploads nothing and leaves the job green — which is precisely how a
+      # missing api-portal-unit flag stayed invisible. This makes the producing
+      # side visible in the log without being able to fail the build.
+      - name: Report API Portal unit coverage size
+        if: always()
+        working-directory: portals/api-portal
+        run: |
+          if [ -s unit-test-coverage.info ]; then
+            echo "unit-test-coverage.info: $(wc -c < unit-test-coverage.info) bytes, $(grep -c '^SF:' unit-test-coverage.info) files"
+            grep -m 5 '^SF:' unit-test-coverage.info
+          else
+            echo "unit-test-coverage.info is MISSING or EMPTY — nothing will be uploaded for the api-portal-unit flag" >&2
+          fi
+
+      # The API Control Plane is otherwise built only at release time, so anything
+      # that breaks its typecheck is not seen until an image build days or weeks
+      # later — by someone who did not write it. Both steps below exist because
+      # that happened: agent-proxy operations were added to the Platform API spec,
+      # operationScopes.ts could not be regenerated from them, and the mismatch
+      # surfaced as a failed release build.
+      #
+      # The codegen check is the stronger of the two: it fails in the pull request
+      # that changes the spec, rather than in the portal that consumes it.
+      - name: API Control Plane generated API types are current
+        working-directory: portals/api-control-plane
+        run: |
+          npm ci
+          npm run api:codegen:check
+
+      # Typecheck only. The image build runs `tsc --noEmit && vite build`, and it is
+      # the typecheck that catches generated-code drift, so this buys the same signal
+      # without the bundling time.
+      - name: API Control Plane typecheck
+        working-directory: portals/api-control-plane
+        run: npx tsc --noEmit
+
+      - name: Upload AI Workspace BFF unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/ai-workspace/bff/unit-test-coverage.txt
+          flags: ai-workspace-bff-unit
+
+      - name: Upload AI Workspace UI unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/ai-workspace/coverage/lcov.info
+          flags: ai-workspace-ui-unit
+
+      # Unit coverage, kept as its own flag rather than merged into the
+      # integration ones: the two runs cover different halves of the same files —
+      # the UI suite enters the handlers through real requests, these enter the
+      # validators and error branches directly — and Codecov unions the flags.
+      # Reporting them separately is also what shows which half moved.
+      - name: Upload API Portal unit coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: portals/api-portal/unit-test-coverage.info
+          flags: api-portal-unit
+
+  # A suite runs only when its kind of change is present and no unit-test job failed or was
+  # cancelled. !cancelled() lets it run when the other unit job was skipped as not needed.
+  integration:
+    name: Integration suite (${{ matrix.leg }})
+    needs: [changes, unit-backend, unit-ui]
+    if: >-
+      !cancelled()
+      && needs.changes.outputs.backend == 'true'
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "1"
+    strategy:
+      # Each leg is an independent compatibility verdict
+      fail-fast: false
+      matrix:
+        include:
+          # The source-built coverage instrumented Gateway.
+          - leg: gateway-latest
+            suite_flags: '-coverage'
+          # The released 1.2.0 Gateway.
+          - leg: gateway-1.2.0
+            suite_flags: '-gateway-version=1.2.0'
+          # The released 1.1.0 Gateway.
+          - leg: gateway-1.1.0
+            suite_flags: '-gateway-version=1.1.0 -host=docker.io/isurangaws'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # The suite's own concurrency (it-suite.yaml) boots many short-lived containers and
+      # published ports across the run. Under enough concurrent connection churn the default
+      # conntrack table fills, and the kernel silently drops new NAT'd connections to an
+      # otherwise healthy, unaffected container - surfacing as an intermittent
+      # "connection refused" to a container that never actually crashed or restarted.
+      - name: Raise the conntrack table limit
+        run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+
+      - name: Build testbench image
+        run: make -C tests/framework testbench
+
+      - name: Build A2A trip-planner image
+        run: make -C tests/framework a2a-trip-planner
+
+      - name: Build ap CLI binary
+        run: make -C tests/framework ap-cli
+
+      - name: Run the integration suite
+        working-directory: tests/framework
+        env:
+          IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
+          IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/it/logs-out
+        run: |
+          go test -v ./suites/it -count=1 -timeout=60m -logs \
+            ${{ matrix.suite_flags }}
+
+      # always(), and per leg: a failing run is exactly when the container logs are needed,
+      # and each leg's artifact name must be unique or upload-artifact rejects the second.
+      - name: Upload container log captures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-logs-${{ matrix.leg }}
+          path: tests/framework/suites/it/logs-out/**/*.log
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      # Coverage belongs to the source-built leg only.
+      - name: Generate integration coverage report
+        if: matrix.leg == 'gateway-latest'
+        run: make -C tests/framework coverage-report
+
+      - name: Upload coverage HTML reports
+        if: matrix.leg == 'gateway-latest'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-reports-${{ matrix.leg }}
+          # The whole report tree: splitting by extension dropped the LCOV files Codecov
+          # actually consumes and the CSS/JS/images the HTML reports need to render. The
+          # raw per-run inputs live under a dot-prefixed .run-* directory, which
+          # upload-artifact excludes while include-hidden-files stays unset.
+          path: tests/framework/suites/it/coverage-out/**
+          if-no-files-found: warn
+
+      # Integration flags. Same component paths as codecov.yml's component_management, so
+      # unit and integration uploads for one component roll up into one component view.
+      # Gated on the report above having been generated from a clean run; continue-on-error
+      # keeps Codecov's availability from failing an otherwise green suite.
+      - name: Upload gateway-controller integration coverage to Codecov
+        if: matrix.leg == 'gateway-latest'
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/platform-gateway/controller/coverage.txt
+          flags: gateway-controller-integration
+
+      - name: Upload policy-engine integration coverage to Codecov
+        if: matrix.leg == 'gateway-latest'
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/platform-gateway/runtime/coverage.txt
+          flags: policy-engine-integration
+
+      - name: Upload platform-api integration coverage to Codecov
+        if: matrix.leg == 'gateway-latest'
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/platform-api/coverage.txt
+          flags: platform-api-integration
+
+      # Its own flag, not the UI suite's api-portal-server-integration: carryforward is per
+      # flag, so a shared one would replace the UI suite's report rather than carry it
+      # forward on a commit the UI suite does not run for.
+      - name: Upload API Portal server integration coverage to Codecov
+        if: matrix.leg == 'gateway-latest'
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/it/coverage-out/api-portal/server/lcov.info
+          flags: api-portal-server-it
+
+  ui:
+    name: UI suite
+    needs: [changes, unit-backend, unit-ui]
+    if: >-
+      !cancelled()
+      && needs.changes.outputs.ui == 'true'
+      && !contains(needs.*.result, 'failure')
+      && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: '**/go.sum'
+
+      # The coverage report merges Node/V8 and browser coverage with npm and node.
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      # ripgrep is used by the coverage report.
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ripgrep
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # UI runners boot several services and use published container ports. Keep the
+      # host networking prerequisite from the integration workflow for stable runs.
+      - name: Raise the conntrack table limit
+        run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+
+      - name: Build testbench image
+        run: make -C tests/framework testbench
+
+      # -coverage makes BuildSources build the source-backed product images with their
+      # coverage instrumentation. The UI suite then harvests Go, Node/V8, and Istanbul
+      # browser artifacts into the explicitly configured run directories.
+      - name: Run the UI suite with coverage
+        working-directory: tests/framework
+        env:
+          IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/ui/coverage-out
+          IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/ui/logs-out
+        run: go test -v ./suites/ui -count=1 -timeout=60m -coverage -logs
+
+      # COVERAGE_OUT is the parent directory, not the generated .run-* one: the report
+      # script resolves the run inside it and writes the reports here, which is where
+      # every upload step below reads them from.
+      - name: Generate UI coverage report
+        if: always()
+        env:
+          COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/ui/coverage-out
+        run: make -C tests/framework coverage-report
+
+      - name: Upload UI coverage HTML reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-coverage-reports
+          # The whole report tree: splitting by extension dropped the LCOV files Codecov
+          # actually consumes and the CSS/JS/images the HTML reports need to render. The
+          # raw per-run inputs live under a dot-prefixed .run-* directory, which
+          # upload-artifact excludes while include-hidden-files stays unset.
+          path: tests/framework/suites/ui/coverage-out/**
+          if-no-files-found: warn
+
+      - name: Upload UI container log captures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-container-logs
+          path: tests/framework/suites/ui/logs-out/**/*.log
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      # The page a failing scenario was actually looking at, saved by
+      # saveFailureArtifacts (steps/artifacts.go) as <scenario>.html + <scenario>.png.
+      # Without this the evidence is written on the runner and thrown away with it,
+      # which leaves a UI failure diagnosable only by re-running and guessing: the
+      # container logs say what the server did, not what the browser was showing.
+      - name: Upload UI failure page captures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-failure-pages
+          path: tests/framework/suites/ui/artifacts/**
+          if-no-files-found: ignore
+
+      - name: Upload AI Workspace BFF integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/ai-workspace/bff/coverage.txt
+          flags: ai-workspace-bff-integration
+
+      - name: Upload AI Workspace UI integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/ai-workspace/ui/lcov.info
+          flags: ai-workspace-ui-integration
+
+      - name: Upload API Portal server integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/api-portal/server/lcov.info
+          flags: api-portal-server-integration
+
+      - name: Upload API Portal UI integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/api-portal/ui/lcov.info
+          flags: api-portal-ui-integration
+
+      - name: Upload gateway-controller integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/platform-gateway/controller/coverage.txt
+          flags: gateway-controller-integration
+
+      - name: Upload policy-engine integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/platform-gateway/runtime/coverage.txt
+          flags: policy-engine-integration
+
+      - name: Upload platform-api integration coverage to Codecov
+        if: always()
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: tests/framework/suites/ui/coverage-out/platform-api/coverage.txt
+          flags: platform-api-integration
