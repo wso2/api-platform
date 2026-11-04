@@ -669,6 +669,23 @@ though the routing policy keeps nominating it, and that load spreads across the 
 - **FR-030j**: When the attempt count is absent or unparseable, the system MUST assume a single
   attempt. That grades only the first target and never invents failures for targets the request may
   not have reached.
+- **FR-030k**: Health grading and the exhaustion response MUST continue to work when the deployment
+  routes upstream failures through the **fault flow**. With that flow enabled the gateway runs a
+  failing response through the fault chain *instead of* the response flow, which is precisely the
+  set of responses FR-030g exists to grade — so attaching to the response flow alone leaves failover
+  not degraded but inert: nothing is recorded, no target is ever suspended, and the upstream's own
+  error reaches the client. The policy MUST therefore also attach to the fault flow, and MUST record
+  each outcome exactly **once** however many flows a single request passes through.
+- **FR-030l**: Attachment to the fault flow MUST NOT be something a publisher configures. Failover
+  is declared once; the system MUST place it on the fault chain itself for any operation whose
+  failover configuration resolved, and MUST NOT place it there for one where the policy is inert.
+  Requiring the same policy to be listed in two separate blocks to obtain one behaviour is a
+  configuration whose only symptom, when forgotten, is silence.
+- **FR-030m**: On the fault flow the exhaustion response MUST be a **default** rather than a final
+  word: it is applied before any fault handling the operator authored, so an operator's own entries
+  may still reshape the status, body or description, and the failure recorded by telemetry is the
+  one actually delivered. The status and body a client receives MUST be identical whichever flow
+  produced them (FR-014).
 
 **Observability**
 
