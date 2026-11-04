@@ -383,23 +383,26 @@ func openAIMessage(e policy.FaultDetails, status int) string {
 // so a policy that wrote one keeps it. Each format's document is an object whose `error`
 // member is an object with a string `message` — what its SDKs read — and an Anthropic one
 // also says `"type": "error"` at the top.
+//
+// The members are looked up by their exact names. Decoding into a struct would also take
+// `Error` or `MESSAGE`, which encoding/json matches case-insensitively but an SDK does not,
+// so a body naming them so would stand and its client would find no message in it.
 func InRouteFormat(format string, body []byte) bool {
 	switch ShapeID(format) {
 	case ShapeOpenAI, ShapeAnthropic, ShapeGemini:
 	default:
 		return false
 	}
-	var doc struct {
-		Type  *string `json:"type"`
-		Error *struct {
-			Message *string `json:"message"`
-		} `json:"error"`
-	}
-	if json.Unmarshal(body, &doc) != nil || doc.Error == nil || doc.Error.Message == nil {
+	var doc, errObj map[string]json.RawMessage
+	var message *string
+	if json.Unmarshal(body, &doc) != nil ||
+		json.Unmarshal(doc["error"], &errObj) != nil || errObj == nil ||
+		json.Unmarshal(errObj["message"], &message) != nil || message == nil {
 		return false
 	}
 	if ShapeID(format) == ShapeAnthropic {
-		return doc.Type != nil && *doc.Type == "error"
+		var typ *string
+		return json.Unmarshal(doc["type"], &typ) == nil && typ != nil && *typ == "error"
 	}
 	return true
 }

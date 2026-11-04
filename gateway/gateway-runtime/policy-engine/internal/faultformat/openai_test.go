@@ -280,6 +280,11 @@ func TestInRouteFormat(t *testing.T) {
 		`{"error":"Unauthorized","message":"Valid API key required"}`: false,
 		`{"error":{"type":"x"}}`:                                      false,
 		`{"error":{"message":42}}`:                                    false,
+		`{"error":{"message":null}}`:                                  false,
+		`{"error":null}`:                                              false,
+		`{"Error":{"Message":"x"}}`:                                   false,
+		`{"error":{"Message":"x"}}`:                                   false,
+		`["error"]`:                                                   false,
 		`Too Many Requests`:                                           false,
 		``:                                                            false,
 	} {

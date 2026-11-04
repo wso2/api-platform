@@ -92,6 +92,8 @@ func TestInRouteFormat_ModelFormats(t *testing.T) {
 	assert.True(t, InRouteFormat("openai", openAI))
 	assert.True(t, InRouteFormat("anthropic", anthropic))
 	assert.False(t, InRouteFormat("anthropic", openAI), "an Anthropic error says type: error")
+	assert.False(t, InRouteFormat("anthropic", []byte(`{"Type":"error","error":{"message":"m"}}`)),
+		"members are matched by their exact names")
 	assert.True(t, InRouteFormat("gemini", gemini))
 	assert.False(t, InRouteFormat("gemini", []byte(`{"message":"m"}`)))
 	assert.False(t, InRouteFormat("cohere", openAI))
