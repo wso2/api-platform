@@ -956,10 +956,18 @@ func TestPrepareAnalyticEvent_DropsUsageAndCostUnlessPost(t *testing.T) {
 		assert.Equal(t, "gpt-4o", aiMetadata.Model, method)
 		usage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
 		require.True(t, ok, method)
+		tokenUsage, ok := event.Properties["aiTokenUsage"].(dto.AITokenUsage)
+		require.True(t, ok, method)
 		if keep {
 			require.NotNil(t, usage.PromptTokens, method)
+			assert.Equal(t, 100, tokenUsage.PromptToken, method)
+			assert.Equal(t, 50, tokenUsage.CompletionToken, method)
+			assert.Equal(t, 150, tokenUsage.TotalToken, method)
 			assert.Equal(t, 0.001, aiMetadata.LLMCost, method)
 		} else {
+			assert.Zero(t, tokenUsage.PromptToken, method)
+			assert.Zero(t, tokenUsage.CompletionToken, method)
+			assert.Zero(t, tokenUsage.TotalToken, method)
 			assert.Nil(t, usage.PromptTokens, method)
 			assert.Nil(t, usage.CompletionTokens, method)
 			assert.Nil(t, usage.TotalTokens, method)

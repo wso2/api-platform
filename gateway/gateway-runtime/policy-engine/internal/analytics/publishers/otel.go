@@ -1095,9 +1095,9 @@ func otelGenAIProviderName(templateName string) string {
 // it is left unclassified. OpenAI's Responses API (/responses), the successor to
 // Chat Completions, is chat. Every endpoint is matched on the route's suffix, so the
 // API context, sub-resources (/messages/count_tokens), reads of a stored result
-// (/responses/{id}) and lookalike routes are not classified.
+// (/responses/{id}) and lookalike routes are not classified. Trailing slashes are ignored.
 func otelGenAIOperationName(route string) string {
-	r := strings.TrimSuffix(strings.ToLower(route), "/")
+	r := strings.TrimRight(strings.ToLower(route), "/")
 	hasSuffix := func(suffixes ...string) bool {
 		for _, s := range suffixes {
 			if strings.HasSuffix(r, s) {
