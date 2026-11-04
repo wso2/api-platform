@@ -44,7 +44,7 @@ func loadRuntimeKoanf(t *testing.T, body string) *koanf.Koanf {
 }
 
 // A feature flag is only honoured if it reaches the browser, so the key has to stay
-// on browserSafeKeys, or be emitted by buildRuntimeConfig, and keep the name the SPA reads.
+// on browserSafeKeys and keep the name the SPA reads.
 func TestBuildRuntimeConfig_FeatureFlagReachesTheSPA(t *testing.T) {
 	flags := map[string]string{
 		"agent_proxy_enabled":            "APIP_AIW_FEATURE_FLAGS_AGENT_PROXY_ENABLED",
@@ -59,20 +59,6 @@ func TestBuildRuntimeConfig_FeatureFlagReachesTheSPA(t *testing.T) {
 			if got := out[runtimeName]; got != set {
 				t.Errorf("%s = %s reached the SPA as %q, want %q", key, set, got, set)
 			}
-		}
-	}
-}
-
-// The BFF requests the hub publishing scopes on its own reading of this flag, so the
-// SPA must get that reading too, whatever spelling turned it on.
-func TestBuildRuntimeConfig_APIPortalIntegrationFlagReachesTheSPAAsTheBFFReadsIt(t *testing.T) {
-	for set, want := range map[string]string{`"TRUE"`: "true", `"t"`: "true", `"1"`: "true", `"0"`: "false"} {
-		k := loadRuntimeKoanf(t, "[feature_flags]\napi_portal_integration_enabled = "+set+"\n")
-
-		out := buildRuntimeConfig(&Config{}, k)
-
-		if got := out["APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED"]; got != want {
-			t.Errorf("api_portal_integration_enabled = %s reached the SPA as %q, want %q", set, got, want)
 		}
 	}
 }

@@ -631,15 +631,8 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:api_portal:publication:read" +
 	" ap:api_portal:mcp_proxy:publish ap:api_portal:mcp_proxy:unpublish ap:api_portal:mcp_proxy:manage" +
 	" ap:api_publication:read" +
+	" ap:subscription_plan:read ap:docs:read" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
-
-// apiPortalIntegrationOIDCScopes list the organization's plans and the MCP proxy's documents
-// on the MCP Hub publish pages. They are requested only where those pages are on, so a
-// deployment without them never asks its IDP for scopes it does not use.
-const apiPortalIntegrationOIDCScopes = "ap:subscription_plan:read ap:docs:read"
-
-// apiPortalIntegrationFlagKey is the feature flag that turns the MCP Hub publish pages on.
-const apiPortalIntegrationFlagKey = "feature_flags.api_portal_integration_enabled"
 
 // Load resolves configuration from one or more config.toml files. At least one path
 // is required and each must exist and parse — there is no default path and no
@@ -678,44 +671,13 @@ func Load(paths ...string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Before normalize, so token exchange inherits them with the rest. An operator's own
-	// scope list already says exactly what to request, so it is left as written.
-	apiPortalIntegration := k.Bool(apiPortalIntegrationFlagKey)
-	if cfg.Auth.OIDC.Scopes == defaultOIDCScopes && apiPortalIntegration {
-		cfg.Auth.OIDC.Scopes += " " + apiPortalIntegrationOIDCScopes
-	}
-
 	cfg.normalize()
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}
-	if apiPortalIntegration {
-		cfg.warnMissingAPIPortalIntegrationScopes()
-	}
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg, k)
 	return cfg, nil
-}
-
-// warnMissingAPIPortalIntegrationScopes flags an operator's own scope list that leaves out the
-// MCP Hub publish pages' scopes, which would make those pages fail to list plans or
-// documents. Role mode is skipped: there the scopes come from the user's roles.
-func (c *Config) warnMissingAPIPortalIntegrationScopes() {
-	if !c.Auth.OIDCEnabled() || c.Auth.Authorization.Mode != AuthzModeScope {
-		return
-	}
-	requested := strings.Fields(c.Auth.OIDC.Scopes)
-	var missing []string
-	for _, scope := range strings.Fields(apiPortalIntegrationOIDCScopes) {
-		if !slices.Contains(requested, scope) {
-			missing = append(missing, scope)
-		}
-	}
-	if len(missing) > 0 {
-		slog.Warn("[auth.oidc] scope is missing scopes the MCP Hub publish pages need — "+
-			"they cannot list subscription plans or documents",
-			"missing", strings.Join(missing, " "))
-	}
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config key:

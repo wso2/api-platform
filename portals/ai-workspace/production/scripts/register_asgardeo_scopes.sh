@@ -291,6 +291,10 @@ SCOPES=(
   "ap:subscription_plan:update"
   "ap:subscription_plan:delete"
   "ap:subscription_plan:manage"
+
+  # docs
+  "ap:docs:read"
+  "ap:docs:manage"
 )
 
 # Derive a human-readable display name: "ap:llm_proxy:manage" -> "llm proxy manage"
