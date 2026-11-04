@@ -399,11 +399,12 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	// Dual-write: database first, then in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {
 		log.Error("Failed to update config in database", slog.Any("error", err))
+		s.auditService.Record("UPDATE", existing.UUID, existing.Handle, "rest_api", audit.OutcomeFailed, params.Actor, params.CorrelationID)
 		return nil, fmt.Errorf("failed to persist configuration update: %w", err)
 	}
 
 	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
-	s.auditService.Record("UPDATE", existing.UUID, "rest_api", params.Actor, params.CorrelationID)
+	s.auditService.Record("UPDATE", existing.UUID, existing.Handle, "rest_api", audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
 
 	// Trigger bottom-up sync if enabled and connected
 	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() &&
@@ -458,6 +459,7 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	// Delete from database
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete config from database", slog.Any("error", err))
+		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "rest_api", audit.OutcomeFailed, params.Actor, params.CorrelationID)
 		return nil, fmt.Errorf("failed to delete configuration: %w", err)
 	}
 
@@ -478,7 +480,7 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 
 	// Publish deletion event so all replicas (including self) converge through event listener sync.
 	s.publishEvent(eventhub.EventTypeAPI, "DELETE", cfg.UUID, params.CorrelationID, log)
-	s.auditService.Record("DELETE", cfg.UUID, "rest_api", params.Actor, params.CorrelationID)
+	s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "rest_api", audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
 
 	log.Info("API configuration deleted",
 		slog.String("id", cfg.UUID),

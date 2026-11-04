@@ -83,7 +83,7 @@ func NewMockStorage() *MockStorage {
 	}
 }
 
-func (m *MockStorage) SaveAudit(string, time.Time, string, string, string, string, string) error {
+func (m *MockStorage) SaveAudit(string, time.Time, string, string, string, string, string, string, string) error {
 	return nil
 }
 

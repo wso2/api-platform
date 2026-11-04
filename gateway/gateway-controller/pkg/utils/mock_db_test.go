@@ -224,7 +224,7 @@ func (m *testMockDB) Close() error   { return nil }
 
 // Secret management methods
 
-func (m *testMockDB) SaveAudit(string, time.Time, string, string, string, string, string) error {
+func (m *testMockDB) SaveAudit(string, time.Time, string, string, string, string, string, string, string) error {
 	return nil
 }
 

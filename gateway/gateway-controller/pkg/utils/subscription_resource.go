@@ -74,9 +74,12 @@ func (s *SubscriptionResourceService) SaveSubscription(sub *models.Subscription,
 	if err := s.persistAndSync(eventhub.EventTypeSubscription, "CREATE", sub.ID, true, correlationID, logger, func() error {
 		return s.requireDB().SaveSubscription(sub)
 	}); err != nil {
+		if !storage.IsNotFoundError(err) && !storage.IsConflictError(err) {
+			s.auditService.Record("CREATE", sub.ID, "", "subscription", audit.OutcomeFailed, actor, correlationID)
+		}
 		return err
 	}
-	s.auditService.Record("CREATE", sub.ID, "subscription", actor, correlationID)
+	s.auditService.Record("CREATE", sub.ID, "", "subscription", audit.OutcomeSucceeded, actor, correlationID)
 	return nil
 }
 
@@ -111,9 +114,12 @@ func (s *SubscriptionResourceService) UpdateSubscription(sub *models.Subscriptio
 	if err := s.persistAndSync(eventhub.EventTypeSubscription, "UPDATE", sub.ID, true, correlationID, logger, func() error {
 		return s.requireDB().UpdateSubscription(sub)
 	}); err != nil {
+		if !storage.IsNotFoundError(err) && !storage.IsConflictError(err) {
+			s.auditService.Record("UPDATE", sub.ID, "", "subscription", audit.OutcomeFailed, actor, correlationID)
+		}
 		return err
 	}
-	s.auditService.Record("UPDATE", sub.ID, "subscription", actor, correlationID)
+	s.auditService.Record("UPDATE", sub.ID, "", "subscription", audit.OutcomeSucceeded, actor, correlationID)
 	return nil
 }
 
@@ -122,9 +128,12 @@ func (s *SubscriptionResourceService) DeleteSubscription(id, correlationID, acto
 	if err := s.persistAndSync(eventhub.EventTypeSubscription, "DELETE", id, true, correlationID, logger, func() error {
 		return s.requireDB().DeleteSubscription(id, "")
 	}); err != nil {
+		if !storage.IsNotFoundError(err) && !storage.IsConflictError(err) {
+			s.auditService.Record("DELETE", id, "", "subscription", audit.OutcomeFailed, actor, correlationID)
+		}
 		return err
 	}
-	s.auditService.Record("DELETE", id, "subscription", actor, correlationID)
+	s.auditService.Record("DELETE", id, "", "subscription", audit.OutcomeSucceeded, actor, correlationID)
 	return nil
 }
 
@@ -133,9 +142,12 @@ func (s *SubscriptionResourceService) SaveSubscriptionPlan(plan *models.Subscrip
 	if err := s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "CREATE", plan.ID, true, correlationID, logger, func() error {
 		return s.requireDB().SaveSubscriptionPlan(plan)
 	}); err != nil {
+		if !storage.IsNotFoundError(err) && !storage.IsConflictError(err) {
+			s.auditService.Record("CREATE", plan.ID, plan.PlanName, "subscription_plan", audit.OutcomeFailed, actor, correlationID)
+		}
 		return err
 	}
-	s.auditService.Record("CREATE", plan.ID, "subscription_plan", actor, correlationID)
+	s.auditService.Record("CREATE", plan.ID, plan.PlanName, "subscription_plan", audit.OutcomeSucceeded, actor, correlationID)
 	return nil
 }
 
@@ -163,9 +175,12 @@ func (s *SubscriptionResourceService) UpdateSubscriptionPlan(plan *models.Subscr
 	if err := s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "UPDATE", plan.ID, true, correlationID, logger, func() error {
 		return s.requireDB().UpdateSubscriptionPlan(plan)
 	}); err != nil {
+		if !storage.IsNotFoundError(err) && !storage.IsConflictError(err) {
+			s.auditService.Record("UPDATE", plan.ID, plan.PlanName, "subscription_plan", audit.OutcomeFailed, actor, correlationID)
+		}
 		return err
 	}
-	s.auditService.Record("UPDATE", plan.ID, "subscription_plan", actor, correlationID)
+	s.auditService.Record("UPDATE", plan.ID, plan.PlanName, "subscription_plan", audit.OutcomeSucceeded, actor, correlationID)
 	return nil
 }
 
@@ -174,9 +189,12 @@ func (s *SubscriptionResourceService) DeleteSubscriptionPlan(id, correlationID, 
 	if err := s.persistAndSync(eventhub.EventTypeSubscriptionPlan, "DELETE", id, true, correlationID, logger, func() error {
 		return s.requireDB().DeleteSubscriptionPlan(id, "")
 	}); err != nil {
+		if !storage.IsNotFoundError(err) && !storage.IsConflictError(err) {
+			s.auditService.Record("DELETE", id, "", "subscription_plan", audit.OutcomeFailed, actor, correlationID)
+		}
 		return err
 	}
-	s.auditService.Record("DELETE", id, "subscription_plan", actor, correlationID)
+	s.auditService.Record("DELETE", id, "", "subscription_plan", audit.OutcomeSucceeded, actor, correlationID)
 	return nil
 }
 

@@ -33,7 +33,7 @@ import (
 )
 
 type auditTable interface {
-	SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceType, performedBy, correlationID string) error
+	SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error
 }
 
 type recordJSON struct {
@@ -45,8 +45,16 @@ type recordJSON struct {
 	Action        string    `json:"action"`
 	ResourceType  string    `json:"resourceType"`
 	ResourceID    string    `json:"resourceId"`
+	ResourceName  string    `json:"resourceName"`
+	Outcome       string    `json:"outcome"`
 	PerformedBy   string    `json:"performedBy"`
 }
+
+// Outcomes of an audited call.
+const (
+	OutcomeSucceeded = "succeeded"
+	OutcomeFailed    = "failed"
+)
 
 // AuditService records changes made through the management API: a row in the
 // audit table and, optionally, the same record as a JSON line on every sink.
@@ -116,7 +124,7 @@ func newSinks(cfg config.AuditConfig, logger *slog.Logger) ([]sink, error) {
 
 // Record never fails the request: a failed table insert is logged, and each
 // sink handles its own failures.
-func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, correlationID string) {
+func (s *AuditService) Record(action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) {
 	if s == nil || !s.enabled {
 		return
 	}
@@ -131,7 +139,7 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 	// the row and the line hold the same time.
 	performedAt := time.Now().UTC().Truncate(time.Microsecond)
 
-	if err := s.store.SaveAudit(id, performedAt, action, resourceUUID, resourceType, performedBy, correlationID); err != nil {
+	if err := s.store.SaveAudit(id, performedAt, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID); err != nil {
 		s.logger.Warn("Failed to save audit record",
 			slog.String("action", action), slog.String("resource_type", resourceType),
 			slog.String("resource_uuid", resourceUUID), slog.Any("error", err))
@@ -153,6 +161,8 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, performedBy, c
 		Action:        action,
 		ResourceType:  resourceType,
 		ResourceID:    resourceUUID,
+		ResourceName:  resourceName,
+		Outcome:       outcome,
 		PerformedBy:   shownBy,
 	})
 	if err != nil {

@@ -33,9 +33,9 @@ import (
 )
 
 type auditRow struct {
-	id                                                             string
-	performedAt                                                    time.Time
-	action, resourceUUID, resourceType, performedBy, correlationID string
+	id                                                                                    string
+	performedAt                                                                           time.Time
+	action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string
 }
 
 type recordingAuditTable struct {
@@ -43,8 +43,8 @@ type recordingAuditTable struct {
 	err  error
 }
 
-func (t *recordingAuditTable) SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceType, performedBy, correlationID string) error {
-	t.rows = append(t.rows, auditRow{id, performedAt, action, resourceUUID, resourceType, performedBy, correlationID})
+func (t *recordingAuditTable) SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error {
+	t.rows = append(t.rows, auditRow{id, performedAt, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID})
 	return t.err
 }
 
@@ -68,7 +68,7 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 				t.Fatalf("NewAuditService error = %v", err)
 			}
 
-			s.Record("CREATE", "res-1", "rest_api", "admin", "corr-1")
+			s.Record("CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
 			if err := s.Close(context.Background()); err != nil {
 				t.Fatalf("Close error = %v", err)
 			}
@@ -84,7 +84,7 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 			if row.id == "" || row.performedAt.Location() != time.UTC {
 				t.Fatalf("row id = %q, performedAt = %v; want an id and a UTC time", row.id, row.performedAt)
 			}
-			if want := (auditRow{row.id, row.performedAt, "CREATE", "res-1", "rest_api", "admin", "corr-1"}); row != want {
+			if want := (auditRow{row.id, row.performedAt, "CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1"}); row != want {
 				t.Fatalf("db row = %+v, want %+v", row, want)
 			}
 
@@ -101,6 +101,8 @@ func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
 				"action":        "CREATE",
 				"resourceType":  "rest_api",
 				"resourceId":    "res-1",
+				"resourceName":  "petstore",
+				"outcome":       OutcomeSucceeded,
 				"performedBy":   "admin",
 			} {
 				if line[key] != value {
@@ -118,7 +120,7 @@ func TestAuditServiceNoOutput(t *testing.T) {
 		t.Fatalf("NewAuditService error = %v", err)
 	}
 
-	s.Record("DELETE", "res-1", "rest_api", "admin", "corr-1")
+	s.Record("DELETE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
 
 	if len(db.rows) != 1 {
 		t.Fatalf("db rows = %d, want 1", len(db.rows))
@@ -135,7 +137,7 @@ func TestDisabledAuditServiceRecordsNothing(t *testing.T) {
 		t.Fatalf("NewAuditService error = %v", err)
 	}
 
-	s.Record("CREATE", "res-1", "rest_api", "admin", "corr-1")
+	s.Record("CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
 
 	if len(db.rows) != 0 {
 		t.Fatalf("db rows = %d, want 0 while audit is disabled", len(db.rows))
@@ -144,5 +146,5 @@ func TestDisabledAuditServiceRecordsNothing(t *testing.T) {
 
 func TestNilAuditServiceRecordsNothing(t *testing.T) {
 	var s *AuditService
-	s.Record("CREATE", "res-1", "rest_api", "admin", "corr-1") // must not panic
+	s.Record("CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1") // must not panic
 }

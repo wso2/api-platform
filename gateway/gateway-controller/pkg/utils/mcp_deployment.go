@@ -286,8 +286,13 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	// Save or update using timestamp-guarded upsert.
 	// affected=true means the DB row was actually inserted or updated.
 	// affected=false means a newer version already exists (stale event — no-op).
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
+	}
 	affected, err := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
+		s.auditService.Record(action, apiID, storedCfg.Handle, "mcp_proxy", audit.OutcomeFailed, params.Actor, params.CorrelationID)
 		return nil, err
 	}
 
@@ -315,12 +320,8 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	action := "CREATE"
-	if isUpdate {
-		action = "UPDATE"
-	}
 	s.publishMCPProxyEvent(action, apiID, params.CorrelationID, params.Logger)
-	s.auditService.Record(action, apiID, "mcp_proxy", params.Actor, params.CorrelationID)
+	s.auditService.Record(action, apiID, storedCfg.Handle, "mcp_proxy", audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
@@ -499,16 +500,18 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID, actor strin
 	if s.policyManager != nil {
 		if err := s.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
 			logger.Error("Failed to remove runtime config for MCP proxy", slog.Any("error", err))
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "mcp_proxy", audit.OutcomeFailed, actor, correlationID)
 			return nil, fmt.Errorf("failed to remove runtime config for MCP proxy: %w", err)
 		}
 	}
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		logger.Error("Failed to delete config from database", slog.Any("error", err))
+		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "mcp_proxy", audit.OutcomeFailed, actor, correlationID)
 		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	s.publishMCPProxyEvent("DELETE", cfg.UUID, correlationID, logger)
-	s.auditService.Record("DELETE", cfg.UUID, "mcp_proxy", actor, correlationID)
+	s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "mcp_proxy", audit.OutcomeSucceeded, actor, correlationID)
 	return cfg, nil
 }
 

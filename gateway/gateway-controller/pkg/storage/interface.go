@@ -445,7 +445,7 @@ type Storage interface {
 	GetAllWebhookSecrets() ([]*models.WebhookSecret, error)
 
 	// SaveAudit inserts one audit row for this gateway.
-	SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceType, performedBy, correlationID string) error
+	SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error
 
 	// GetDB returns the underlying *sql.DB for direct access.
 	// Used by EventHub for event synchronization.

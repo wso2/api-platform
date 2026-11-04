@@ -286,7 +286,9 @@ CREATE TABLE IF NOT EXISTS audit (
     correlation_id TEXT,
     action TEXT NOT NULL,
     resource_uuid TEXT NOT NULL,
+    resource_name TEXT,
     resource_type TEXT NOT NULL,
+    outcome TEXT NOT NULL,
     performed_by TEXT,
     performed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (gateway_id, uuid)

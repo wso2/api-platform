@@ -483,7 +483,7 @@ func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {
 }
 
 // Secret methods (not used in deletion tests but required by interface)
-func (m *mockStorageForDeletion) SaveAudit(string, time.Time, string, string, string, string, string) error {
+func (m *mockStorageForDeletion) SaveAudit(string, time.Time, string, string, string, string, string, string, string) error {
 	return nil
 }
 

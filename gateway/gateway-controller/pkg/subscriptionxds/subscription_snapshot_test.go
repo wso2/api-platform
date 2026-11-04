@@ -676,6 +676,6 @@ func TestSubscriptionStateTypeURL(t *testing.T) {
 	assert.Equal(t, "api-platform.wso2.org/v1.SubscriptionState", SubscriptionStateTypeURL)
 }
 
-func (m *MockStorage) SaveAudit(string, time.Time, string, string, string, string, string) error {
+func (m *MockStorage) SaveAudit(string, time.Time, string, string, string, string, string, string, string) error {
 	return nil
 }

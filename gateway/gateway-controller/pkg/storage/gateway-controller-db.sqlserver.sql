@@ -337,7 +337,9 @@ CREATE TABLE dbo.audit (
     correlation_id NVARCHAR(64),
     action NVARCHAR(50) NOT NULL,
     resource_uuid NVARCHAR(64) NOT NULL,
+    resource_name NVARCHAR(255),
     resource_type NVARCHAR(50) NOT NULL,
+    outcome NVARCHAR(20) NOT NULL,
     performed_by NVARCHAR(200),
     performed_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (gateway_id, uuid)

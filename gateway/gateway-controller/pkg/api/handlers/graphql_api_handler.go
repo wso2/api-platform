@@ -31,6 +31,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -282,6 +283,7 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 	}
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "graphql_api", audit.OutcomeFailed, actorFromRequest(r), middleware.GetCorrelationID(r))
 		log.Error("Failed to delete GraphQL API config from database", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
@@ -292,7 +294,7 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 
 	correlationID := middleware.GetCorrelationID(r)
 	s.publishGraphQLAPIEvent("DELETE", cfg.UUID, correlationID, log)
-	s.auditService.Record("DELETE", cfg.UUID, "graphql_api", actorFromRequest(r), correlationID)
+	s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "graphql_api", audit.OutcomeSucceeded, actorFromRequest(r), correlationID)
 
 	// Notify the control plane (DP->CP) that this artifact was deleted via the shared
 	// handler path; it keeps the artifact and marks it undeployed.

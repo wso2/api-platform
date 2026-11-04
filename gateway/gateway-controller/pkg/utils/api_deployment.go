@@ -381,8 +381,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Try to save/update the configuration using timestamp-guarded upsert.
 	// affected=true means the row was actually inserted or updated in the DB.
 	// affected=false means a newer version already exists (stale event — no-op).
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
+	}
 	affected, saveErr := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if saveErr != nil {
+		if resourceType, ok := auditResourceTypes[models.ArtifactKind(kind)]; ok {
+			s.auditService.Record(action, storedCfg.UUID, storedCfg.Handle, resourceType, audit.OutcomeFailed, params.Actor, params.CorrelationID)
+		}
 		return nil, saveErr
 	}
 
@@ -420,13 +427,9 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	action := "CREATE"
-	if isUpdate {
-		action = "UPDATE"
-	}
 	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
 	if resourceType, ok := auditResourceTypes[models.ArtifactKind(kind)]; ok {
-		s.auditService.Record(action, storedCfg.UUID, resourceType, params.Actor, params.CorrelationID)
+		s.auditService.Record(action, storedCfg.UUID, storedCfg.Handle, resourceType, audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
 	}
 
 	return &APIDeploymentResult{
