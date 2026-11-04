@@ -844,8 +844,6 @@ CREATE TABLE IF NOT EXISTS user_idp_references (
     display_name VARCHAR(255),
     UNIQUE(idp_id)
 );
--- Existing databases get display_name from DB.InitSchema (SQLite has no
--- ADD COLUMN IF NOT EXISTS).
 
 -- User-to-organization membership, populated on org onboarding.
 CREATE TABLE IF NOT EXISTS user_organization_mappings (

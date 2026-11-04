@@ -843,10 +843,6 @@ CREATE TABLE IF NOT EXISTS user_idp_references (
     UNIQUE(idp_id)
 );
 
--- Upgrade path for databases created before display_name existed. Idempotent:
--- re-applying this file to an existing database adds the column.
-ALTER TABLE user_idp_references ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);
-
 -- User-to-organization membership, populated on org onboarding.
 CREATE TABLE IF NOT EXISTS user_organization_mappings (
     user_uuid  VARCHAR(40) NOT NULL,

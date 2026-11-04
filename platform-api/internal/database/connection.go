@@ -240,35 +240,6 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 		return fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	return db.addMissingSQLiteColumns()
-}
-
-// sqliteAddedColumns lists columns added to tables that have already shipped.
-// SQLite has no ADD COLUMN IF NOT EXISTS, so InitSchema adds each one an
-// existing database lacks; the Postgres and SQL Server schema files carry
-// guarded ALTER TABLE statements instead. Fresh databases already get the
-// column from the CREATE TABLE body.
-var sqliteAddedColumns = []struct {
-	table, column, definition string
-}{
-	{table: "user_idp_references", column: "display_name", definition: "VARCHAR(255)"},
-}
-
-// addMissingSQLiteColumns adds every sqliteAddedColumns entry missing from the
-// database. Table and column names come only from that fixed list.
-func (db *DB) addMissingSQLiteColumns() error {
-	for _, c := range sqliteAddedColumns {
-		var count int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.column).Scan(&count); err != nil {
-			return fmt.Errorf("failed to inspect column %s.%s: %w", c.table, c.column, err)
-		}
-		if count > 0 {
-			continue
-		}
-		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", c.table, c.column, c.definition)); err != nil {
-			return fmt.Errorf("failed to add column %s.%s: %w", c.table, c.column, err)
-		}
-	}
 	return nil
 }
 

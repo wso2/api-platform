@@ -999,12 +999,6 @@ CREATE TABLE dbo.user_idp_references (
     display_name NVARCHAR(255) NULL
 );
 
--- Upgrade path for databases created before display_name existed. Idempotent:
--- re-applying this file to an existing database adds the column.
--- NVARCHAR so names outside the database's code page survive.
-IF COL_LENGTH(N'dbo.user_idp_references', N'display_name') IS NULL
-ALTER TABLE dbo.user_idp_references ADD display_name NVARCHAR(255) NULL;
-
 -- User-to-organization membership, populated on org onboarding.
 IF OBJECT_ID(N'dbo.user_organization_mappings', N'U') IS NULL
 CREATE TABLE dbo.user_organization_mappings (
