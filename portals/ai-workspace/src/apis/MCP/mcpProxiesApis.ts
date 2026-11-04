@@ -18,6 +18,7 @@
 
 import { get, getBlob, getText, post, put, putFormData, putText, del } from '../../clients/choreoApiClient';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 import { BFF_API_BASE_URL } from '../../paths';
 
 import type {
@@ -28,6 +29,7 @@ import type {
   Publication,
   PublicationDraftDetails,
   PublicationDraftDetailsInput,
+  PublicationSummaryItem,
   PublicationSummaryResponse,
   MCPProxyDocument,
   MCPProxyDocumentContent,
@@ -249,13 +251,10 @@ export async function unpublishMcpProxyFromApiPortal(
   await post<void>(mcpProxyPortalPath(apiPortalId, mcpProxyId, '/unpublish'), undefined, baseUrl);
 }
 
-/** The server's maximum page size for a publication list. */
-const PUBLICATIONS_PAGE_SIZE = 100;
-
 /**
  * Every API Portal registered in the organization, each annotated with this MCP
- * proxy's publication status on it (`GET /api-publications`). An organization with
- * no portals gets an empty list, not an error.
+ * proxy's publication status on it (`GET /api-publications`), across all pages. An
+ * organization with no portals gets an empty list, not an error.
  *
  * Scope: `ap:api_publication:read`.
  */
@@ -263,11 +262,15 @@ export async function listMcpProxyApiPortalPublications(
   mcpProxyId: string,
   baseUrl: string
 ): Promise<PublicationSummaryResponse> {
-  return get<PublicationSummaryResponse>(
-    '/api-publications',
-    { apiType: MCP_PROXY_API_TYPE, apiId: mcpProxyId, limit: PUBLICATIONS_PAGE_SIZE },
-    baseUrl
-  );
+  const { list, pagination } = await fetchAllPages<PublicationSummaryItem>(async (limit, offset) => {
+    const page = await get<PublicationSummaryResponse>(
+      '/api-publications',
+      { apiType: MCP_PROXY_API_TYPE, apiId: mcpProxyId, limit, offset },
+      baseUrl
+    );
+    return { ...page, count: page.list.length };
+  });
+  return { list, pagination };
 }
 
 /**

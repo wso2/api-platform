@@ -69,18 +69,35 @@ beforeEach(() => {
 });
 
 describe('listMcpProxyApiPortalPublications', () => {
-  it('asks for this MCP proxy across every portal, as one page of up to 100', async () => {
-    const summary = { list: [], pagination: { total: 0, offset: 0, limit: 100 } };
-    vi.mocked(get).mockResolvedValue(summary);
+  it('asks for this MCP proxy across every portal, in pages of 100', async () => {
+    vi.mocked(get).mockResolvedValue({ list: [], pagination: { total: 0, offset: 0, limit: 100 } });
 
     const result = await listMcpProxyApiPortalPublications(PROXY, BASE);
 
     expect(get).toHaveBeenCalledWith(
       '/api-publications',
-      { apiType: 'mcp-proxy', apiId: PROXY, limit: 100 },
+      { apiType: 'mcp-proxy', apiId: PROXY, limit: 100, offset: 0 },
       BASE
     );
-    expect(result).toBe(summary);
+    expect(result.list).toEqual([]);
+  });
+
+  it('reads past the first 100 portals', async () => {
+    const portals = (from: number, count: number) =>
+      Array.from({ length: count }, (_, index) => ({ apiPortalId: `hub-${from + index}`, status: 'NOT_PUBLISHED' }));
+    vi.mocked(get)
+      .mockResolvedValueOnce({ list: portals(0, 100), pagination: { total: 130, offset: 0, limit: 100 } })
+      .mockResolvedValueOnce({ list: portals(100, 30), pagination: { total: 130, offset: 100, limit: 100 } });
+
+    const result = await listMcpProxyApiPortalPublications(PROXY, BASE);
+
+    expect(get).toHaveBeenLastCalledWith(
+      '/api-publications',
+      { apiType: 'mcp-proxy', apiId: PROXY, limit: 100, offset: 100 },
+      BASE
+    );
+    expect(result.list).toHaveLength(130);
+    expect(result.pagination.total).toBe(130);
   });
 
   it('propagates a failed read rather than reporting no portals', async () => {

@@ -182,6 +182,46 @@ describe('McpPublishHubs', () => {
     });
   });
 
+  describe('paging', () => {
+    const many = Array.from({ length: 7 }, (_, index) =>
+      hub({ apiPortalId: `hub-${index + 1}`, apiPortalName: `Hub ${index + 1}` })
+    );
+
+    it('offers no pages while every hub fits on one', async () => {
+      renderPage();
+      await waitForCards();
+
+      expect(screen.queryByRole('button', { name: 'Go to next page' })).not.toBeInTheDocument();
+    });
+
+    it('shows six hubs a page, and the rest on the next', async () => {
+      hubsAre(many);
+      const { user } = renderPage();
+      await waitForCards();
+
+      expect(screen.getByText('Hub 6')).toBeInTheDocument();
+      expect(screen.queryByText('Hub 7')).not.toBeInTheDocument();
+      expect(screen.getByText('MCP Hubs per page')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Go to next page' }));
+
+      expect(screen.getByText('Hub 7')).toBeInTheDocument();
+      expect(screen.queryByText('Hub 1')).not.toBeInTheDocument();
+      expect(screen.getByText('Published to 0 of 7 MCP Hubs')).toBeInTheDocument();
+    });
+
+    it('goes back to the first page when the search changes', async () => {
+      hubsAre(many);
+      const { user } = renderPage();
+      await waitForCards();
+      await user.click(screen.getByRole('button', { name: 'Go to next page' }));
+
+      await user.type(screen.getByPlaceholderText('Search MCP Hubs'), 'Hub 1');
+
+      expect(screen.getByText('Hub 1')).toBeInTheDocument();
+    });
+  });
+
   describe('an organization with no hubs yet', () => {
     it('says so, as an empty state with nothing to search', async () => {
       hubsAre([]);

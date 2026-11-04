@@ -20,7 +20,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
-import { Box, Button, PageTitle, SearchBar, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, PageTitle, SearchBar, Stack, TablePagination, Typography } from '@wso2/oxygen-ui';
 
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
@@ -85,7 +85,14 @@ const messages = defineMessages({
     id: 'aiWorkspace.pages.appShell.appShellPages.publish.hubs.publishedCount',
     defaultMessage: 'Published to {published} of {total} {total, plural, one {MCP Hub} other {MCP Hubs}}',
   },
+  hubsPerPage: {
+    id: 'aiWorkspace.pages.appShell.appShellPages.publish.hubs.hubsPerPage',
+    defaultMessage: 'MCP Hubs per page',
+  },
 });
+
+// Whole rows of the one-, two- and three-column card grid.
+const HUBS_PER_PAGE_OPTIONS = [6, 12, 24];
 
 /** Every MCP Hub of the organization with this proxy's status on it. No hubs is an empty state, not an error. */
 export default function McpPublishHubs(): React.JSX.Element {
@@ -99,6 +106,8 @@ export default function McpPublishHubs(): React.JSX.Element {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [hubsPerPage, setHubsPerPage] = useState(HUBS_PER_PAGE_OPTIONS[0]);
 
   useEffect(() => {
     if (!organizationId || !serverId) return;
@@ -136,6 +145,9 @@ export default function McpPublishHubs(): React.JSX.Element {
         .some((text) => text?.toLowerCase().includes(term))
     );
   }, [publications, search]);
+  // Held in range when a reload leaves fewer hubs than the page assumed.
+  const shownPage = Math.min(page, Math.max(0, Math.ceil(visiblePublications.length / hubsPerPage) - 1));
+  const pagePublications = visiblePublications.slice(shownPage * hubsPerPage, (shownPage + 1) * hubsPerPage);
 
   if (isLoading) {
     return (
@@ -194,7 +206,10 @@ export default function McpPublishHubs(): React.JSX.Element {
         <Stack spacing={3}>
           <SearchBar
             fullWidth
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(0);
+            }}
             placeholder={intl.formatMessage(messages.search)}
             value={search}
           />
@@ -214,7 +229,7 @@ export default function McpPublishHubs(): React.JSX.Element {
                 '& > *': { minWidth: 0 },
               }}
             >
-              {visiblePublications.map((publication) => (
+              {pagePublications.map((publication) => (
                 <HubPublicationCard
                   key={publication.apiPortalId}
                   mcpProxyId={serverId}
@@ -223,6 +238,26 @@ export default function McpPublishHubs(): React.JSX.Element {
                   publishPath={(apiPortalId) => portalsPath(serverId, apiPortalId)}
                 />
               ))}
+            </Box>
+          )}
+          {visiblePublications.length > HUBS_PER_PAGE_OPTIONS[0] && (
+            // Pulled up into the Stack's spacing, and a shorter toolbar, so the pager
+            // sits close to the last card, as on the API Control Plane's card listings.
+            <Box sx={{ mt: -1.5 }}>
+              <TablePagination
+                component="div"
+                count={visiblePublications.length}
+                labelRowsPerPage={intl.formatMessage(messages.hubsPerPage)}
+                onPageChange={(_event, nextPage) => setPage(nextPage)}
+                onRowsPerPageChange={(event) => {
+                  setHubsPerPage(parseInt(event.target.value, 10));
+                  setPage(0);
+                }}
+                page={shownPage}
+                rowsPerPage={hubsPerPage}
+                rowsPerPageOptions={HUBS_PER_PAGE_OPTIONS}
+                sx={{ '& .MuiTablePagination-toolbar': { minHeight: 40 } }}
+              />
             </Box>
           )}
         </Stack>
