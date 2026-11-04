@@ -32,8 +32,10 @@ import { useRef } from 'react';
 export function useDirtyTracking<T>(snapshot: T) {
   const baseline = useRef(JSON.stringify(snapshot));
   const dirty = JSON.stringify(snapshot) !== baseline.current;
+  // The last saved state, for callers that want to say *what* changed, not just that it did.
+  const saved = JSON.parse(baseline.current) as T;
   const markSaved = (savedSnapshot: T = snapshot) => {
     baseline.current = JSON.stringify(savedSnapshot);
   };
-  return { dirty, markSaved };
+  return { dirty, markSaved, saved };
 }

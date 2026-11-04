@@ -119,6 +119,7 @@ var excludedScopeResources = []string{
 	"ap:api_portal:graphql_api:",
 	"ap:docs:",
 	"ap:thumbnail:",
+	"ap:service_account:",
 }
 
 func isExcludedScope(scope string) bool {

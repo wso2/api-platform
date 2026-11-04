@@ -22,7 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useMetersById } from '@/api/resources/meters';
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
-import { pricingSummary, summaryMeterIds } from '../../settings/components/pricingFormat';
+import { pricingSummary, summaryMeterIds } from '../../orgManage/components/pricingFormat';
 import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
@@ -43,7 +43,7 @@ const messages = defineMessages({
   },
   emptyDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription',
-    defaultMessage: 'Create subscription plans in Settings to choose from here.',
+    defaultMessage: 'Create subscription plans in Manage › Subscription Plans to choose from here.',
   },
   publishedEmptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedEmptyTitle',

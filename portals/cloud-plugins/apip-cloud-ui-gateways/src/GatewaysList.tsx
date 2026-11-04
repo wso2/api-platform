@@ -45,12 +45,17 @@ import GatewaySettingsDrawer from './components/GatewaySettingsDrawer';
 import { gatewayStatusColor, gatewayStatusLabel, gatewayTypeLabel } from './utils/gateway';
 import NoGatewayState from './components/NoGatewayState';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { hostingBlocked } from './utils/limits';
 import type { Environment, Gateway, GatewayHosting } from './types';
 
 /**
- * Create button, disabled with the host's message when the gateway quota is
- * full. The span is required: a disabled MUI button sets `pointer-events:
- * none`, so a Tooltip on it never fires.
+ * Create button, disabled with the host's message when NO hosting kind has
+ * room left. `gateways` is the generic verdict for exactly this case: the
+ * button only opens the form, where each kind is gated on its own quota, so
+ * blocking it because one kind is full would hide the kind that is not.
+ *
+ * The span is required: a disabled MUI button sets `pointer-events: none`, so
+ * a Tooltip on it never fires.
  */
 const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> = ({
   port,
@@ -475,13 +480,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
 
         {gateways.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <NoGatewayState
-              onAdd={onAddClick}
-              disabled={
-                port.resourceLimits?.canCreate ? !port.resourceLimits.canCreate('gateways') : false
-              }
-              disabledMessage={port.resourceLimits?.limitMessage?.('gateways') ?? ''}
-            />
+            <NoGatewayState onAdd={onAddClick} blocked={hostingBlocked(port)} />
           </Grid>
         ) : (
           <Grid size={{ xs: 12 }}>

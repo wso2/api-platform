@@ -134,6 +134,26 @@ Feature: API publication drafts are prepared and validated before anything reach
     Then the response status code should be 200
     And the JSON response field "subscriptionPlans[0].id" should be "${CTX:plan}"
 
+  Scenario: A draft shows when a plan it offers was deleted in the API Portal
+    When I send a "PUT" request to the control plane at "/api-portals/${CTX:portal}/apis/rest-api/${CTX:api}/draft" with body:
+      """
+      {"displayName": "${CTX:apiName}", "version": "v1", "subscriptionPlanIds": ["${CTX:plan}"]}
+      """
+    Then the response status code should be 200
+    And the JSON response field "subscriptionPlans[0].sourceStatus" should be "UNCHANGED"
+
+    # A plan the draft offers can't be deleted here; the API Portal deleting it does.
+    When the API Portal sends the "subscription_plan.deleted" event to the control plane with data:
+      """
+      {"handle":"${CTX:plan}"}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/api-portals/${CTX:portal}/apis/rest-api/${CTX:api}/draft"
+    Then the response status code should be 200
+    And the JSON response field "subscriptionPlans[0].id" should be "${CTX:plan}"
+    And the JSON response field "subscriptionPlans[0].displayName" should be "${CTX:plan}"
+    And the JSON response field "subscriptionPlans[0].sourceStatus" should be "DELETED"
+
   Scenario: Publishing needs a definition, and an unreachable portal leaves the draft unpublished
     When I send a "POST" request to the control plane at "/api-portals/${CTX:portal}/apis/rest-api/${CTX:api}/publish"
     Then the response status code should be 404

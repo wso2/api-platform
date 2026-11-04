@@ -44,6 +44,68 @@ func TestLoadRejectsInvalidPolicyHubURL(t *testing.T) {
 	}
 }
 
+func TestLoadGatewayControlPlaneHostRuntimeConfig(t *testing.T) {
+	for name, tc := range map[string]struct{ env, want string }{
+		"host with path, as WSO2 Cloud routes it": {
+			env:  "dev-wso2cloud.gateway.example.com/apip-platform-api-apip-platform-api-internal-endpoint",
+			want: "dev-wso2cloud.gateway.example.com/apip-platform-api-apip-platform-api-internal-endpoint",
+		},
+		"host and port":               {env: "cp.example.com:9243", want: "cp.example.com:9243"},
+		"highest port":                {env: "cp.example.com:65535", want: "cp.example.com:65535"},
+		"surrounding space and slash": {env: "  cp.example.com/ ", want: "cp.example.com"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("APIP_ACP_GATEWAY_CONTROLPLANE_HOST", tc.env)
+			cfg, err := Load("../../../configs/config.toml")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.RuntimeConfig["GATEWAY_CONTROL_PLANE_HOST"]; got != tc.want {
+				t.Fatalf("GATEWAY_CONTROL_PLANE_HOST = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadOmitsGatewayControlPlaneHostWhenUnset(t *testing.T) {
+	t.Setenv("APIP_ACP_GATEWAY_CONTROLPLANE_HOST", "")
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Absent, not empty: the SPA reads a missing key as "not configured" and
+	// keeps a placeholder in the cloud setup commands.
+	if _, ok := cfg.RuntimeConfig["GATEWAY_CONTROL_PLANE_HOST"]; ok {
+		t.Fatal("GATEWAY_CONTROL_PLANE_HOST present for an unset host, want it omitted")
+	}
+}
+
+func TestLoadRejectsUnsafeGatewayControlPlaneHost(t *testing.T) {
+	// The value is pasted into a user's shell, so anything beyond
+	// host[:port][/path] must stop startup rather than reach a terminal.
+	for name, host := range map[string]string{
+		"scheme":            "https://cp.example.com",
+		"command separator": "cp.example.com; rm -rf ~",
+		"quote":             `cp.example.com"`,
+		"inner space":       "cp.example.com /x",
+		"substitution":      "$(whoami).example.com",
+		"heredoc break":     "cp.example.com\nENVFILE",
+		"port zero":         "cp.example.com:0",
+		"port out of range": "cp.example.com:99999",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("APIP_ACP_GATEWAY_CONTROLPLANE_HOST", host)
+			cfg, err := Load("../../../configs/config.toml")
+			if err == nil || !strings.Contains(err.Error(), "[gateway] controlplane_host") {
+				t.Fatalf("Load error = %v, want controlplane_host validation error", err)
+			}
+			if cfg != nil {
+				t.Fatal("Load must not return configuration for an invalid control plane host")
+			}
+		})
+	}
+}
+
 func TestLoadPolicyHubRuntimeConfig(t *testing.T) {
 	for _, baseURL := range []string{"", "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0/"} {
 		t.Run(baseURL, func(t *testing.T) {
@@ -207,5 +269,65 @@ func TestBuildRuntimeConfig_SanitizeHTMLDocsBlankEnvIsAbsent(t *testing.T) {
 	cfg := loadWithSanitize(t, `enabled = '{{ env "APIP_ACP_SANITIZE_HTML_DOCS_ENABLED" "" }}'`)
 	if v, present := cfg.RuntimeConfig["sanitizeHtmlDocsEnabled"]; present {
 		t.Errorf("sanitizeHtmlDocsEnabled = %q, want absent", v)
+	}
+}
+
+func loadWithDisableFeatures(t *testing.T, line string) *Config {
+	t.Helper()
+	overlay := filepath.Join(t.TempDir(), "overlay.toml")
+	if err := os.WriteFile(overlay, []byte("[api_control_plane]\n"+line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load("../../../configs/config.toml", overlay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesAbsentByDefault(t *testing.T) {
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, present := cfg.RuntimeConfig["disableFeatures"]; present {
+		t.Errorf("disableFeatures = %q, want absent so every feature stays on", v)
+	}
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesPassThrough(t *testing.T) {
+	for name, tc := range map[string]struct{ line, want string }{
+		"TOML array":  {`disable_features = ["metrics", "meters"]`, `["metrics","meters"]`},
+		"JSON string": {`disable_features = '["metrics"]'`, `["metrics"]`},
+		"comma list":  {`disable_features = 'metrics,meters'`, `metrics,meters`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := loadWithDisableFeatures(t, tc.line)
+			if got := cfg.RuntimeConfig["disableFeatures"]; got != tc.want {
+				t.Errorf("disableFeatures = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesBlankEnvIsAbsent(t *testing.T) {
+	t.Setenv("APIP_ACP_DISABLE_FEATURES", "")
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, present := cfg.RuntimeConfig["disableFeatures"]; present {
+		t.Errorf("disableFeatures = %q, want absent", v)
+	}
+}
+
+func TestBuildRuntimeConfig_DisableFeaturesFromEnv(t *testing.T) {
+	t.Setenv("APIP_ACP_DISABLE_FEATURES", "metrics,logs")
+	cfg, err := Load("../../../configs/config.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.RuntimeConfig["disableFeatures"]; got != "metrics,logs" {
+		t.Errorf("disableFeatures = %q, want metrics,logs", got)
 	}
 }

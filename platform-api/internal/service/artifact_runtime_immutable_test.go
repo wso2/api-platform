@@ -191,15 +191,31 @@ func baseTemplate(origin string) *model.LLMProviderTemplate {
 }
 
 func TestTemplateRuntimeArtifactGuard(t *testing.T) {
-	t.Run("name and description edit allowed", func(t *testing.T) {
+	t.Run("description and openapi edit allowed", func(t *testing.T) {
+		existing := baseTemplate(constants.OriginDP)
+		updated := baseTemplate(constants.OriginDP)
+		updated.Description = "new description"
+		updated.OpenAPISpec = "{...}"
+		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); err != nil {
+			t.Errorf("description/openapi edit rejected: %v", err)
+		}
+	})
+
+	t.Run("display name edit rejected", func(t *testing.T) {
 		existing := baseTemplate(constants.OriginDP)
 		updated := baseTemplate(constants.OriginDP)
 		updated.Name = "Renamed Template"
-		updated.Description = "new description"
+		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); !apperror.ArtifactRuntimeImmutable.Is(err) {
+			t.Errorf("display name edit: got %v, want read-only", err)
+		}
+	})
+
+	t.Run("managedBy edit rejected", func(t *testing.T) {
+		existing := baseTemplate(constants.OriginDP)
+		updated := baseTemplate(constants.OriginDP)
 		updated.ManagedBy = "someone"
-		updated.OpenAPISpec = "{...}"
-		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); err != nil {
-			t.Errorf("name/description edit rejected: %v", err)
+		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); !apperror.ArtifactRuntimeImmutable.Is(err) {
+			t.Errorf("managedBy edit: got %v, want read-only", err)
 		}
 	})
 

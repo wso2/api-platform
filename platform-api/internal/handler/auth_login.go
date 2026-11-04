@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -172,43 +173,10 @@ func (h *AuthLoginHandler) effectiveScopes(user *config.FileBasedUser) string {
 // claimKey returns name, falling back to def when the operator has left the
 // corresponding auth.claim_mappings field unset.
 func claimKey(name, def string) string {
-	if name == "" {
-		return def
-	}
-	return name
+	return utils.ClaimKey(name, def)
 }
 
-// setClaim writes value at path, where path is either a flat claim name
-// ("roles") or a dot-separated path into nested claim objects
-// ("realm_access.roles"). It is the write-side mirror of the middleware's
-// resolveClaimPath, so a mapping configured for an IDP's nested layout reads
-// back the same way from a token this endpoint signed.
-//
-// Intermediate objects are created as needed and merged into, never replaced,
-// so two mappings sharing a prefix ("realm_access.roles" and
-// "realm_access.org_id") both survive regardless of the order they are set. A
-// prefix that already holds a non-object value is overwritten with an object:
-// that only happens when one mapping is a strict prefix of another, which is a
-// contradictory configuration either way, and the deeper path is the one an
-// operator wrote deliberately.
+// setClaim writes value at a flat or dot-separated claim path; see utils.SetClaim.
 func setClaim(claims jwt.MapClaims, path string, value interface{}) {
-	if path == "" {
-		return
-	}
-	parts := strings.Split(path, ".")
-	if len(parts) == 1 {
-		claims[path] = value
-		return
-	}
-
-	current := map[string]interface{}(claims)
-	for _, part := range parts[:len(parts)-1] {
-		next, ok := current[part].(map[string]interface{})
-		if !ok {
-			next = map[string]interface{}{}
-			current[part] = next
-		}
-		current = next
-	}
-	current[parts[len(parts)-1]] = value
+	utils.SetClaim(claims, path, value)
 }

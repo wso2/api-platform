@@ -140,18 +140,18 @@ describe('useResourceLimits', () => {
       );
     });
 
-    // Only the supplier can name the cap that actually binds, which may be a
-    // shared budget rather than this component's own ceiling.
+    // Only the supplier can name the cap that actually binds, in commercial
+    // vocabulary this portal does not have.
     it("prefers the supplier's own wording when it gave one", () => {
       const { supply } = renderLimits();
       supply({
         restApis: {
           max: 5,
           used: 5,
-          message: 'You have reached the maximum of 10 Managed Interfaces.',
+          message: 'You have reached the maximum of 10 APIs on the Free plan.',
         },
       });
-      expect(apiMessage()).toBe('You have reached the maximum of 10 Managed Interfaces.');
+      expect(apiMessage()).toBe('You have reached the maximum of 10 APIs on the Free plan.');
     });
 
     it('ignores a blank supplier message rather than showing an empty tooltip', () => {

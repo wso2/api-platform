@@ -340,7 +340,7 @@ const (
 	TargetFailureRangeEnd      = 101600
 )
 
-// Codes any shipped policy may use, for the two conditions nearly all of them share.
+// Codes any shipped policy may use, for conditions many of them share rather than one owns.
 //
 // A policy that could not complete its own transformation, and a request body a policy could
 // not read, are not one-policy conditions — most of them can hit both. Before these, each
@@ -352,9 +352,10 @@ const (
 // the analytics event. Encoding it a second time in the number says nothing the reader did
 // not already have, and costs a registry entry per policy to keep straight.
 //
-// A policy still allocates its own code for a condition genuinely its own — no model
-// available to route to, a provider's stream breaking mid-response — where the code names
-// something the policy identity does not.
+// A policy still allocates its own code for a condition genuinely its own, where the code
+// names something the policy identity does not. A condition several shipped policies can hit
+// — a provider's stream breaking mid-response, no model left to route to — is shared below
+// instead.
 const (
 	// FaultCodeMediationFailed is a policy failing to do its own job: a transformation it
 	// could not complete, a credential it could not mint, a rewrite it could not apply.
@@ -364,6 +365,38 @@ const (
 	// not — malformed JSON, a JSON-RPC envelope that is not one, a body whose shape the
 	// policy's configuration does not fit. The failure is the caller's.
 	FaultCodeInvalidRequestBody = "960001"
+	// FaultCodeProviderStreamFailed is a provider ending a streamed response with a failure
+	// after the response began: an error event, an exception frame. The failure is the
+	// provider's, reported in its own stream, so it is neither the policy failing its job nor
+	// the router failing to proxy — the router saw a stream that completed normally.
+	//
+	// Shared rather than per policy because every policy translating a provider stream can
+	// see it, and Policy already names which one did. Pair it with FaultTypeMediation and
+	// DirectionResponse.
+	FaultCodeProviderStreamFailed = "960002"
+	// FaultCodeNoModelAvailable is a model-routing policy with no model left to send the
+	// request to — every configured model suspended or otherwise excluded. The policy could
+	// not route, so the request never reached a provider.
+	//
+	// Not FaultCodeUpstreamUnavailable: that code is the router finding no healthy host for
+	// a route, a different thing to fix. Here the router was never asked. Pair it with
+	// FaultTypeMediation and DirectionRequest.
+	FaultCodeNoModelAvailable = "960003"
+	// FaultCodeInvalidRequestHeader is a request header a policy needed and could not use —
+	// missing, malformed, or contradicting the body it describes, such as an MCP mirrored
+	// header that does not match the JSON-RPC message. The failure is the caller's.
+	//
+	// The header counterpart of FaultCodeInvalidRequestBody, kept apart because the fix is
+	// in a different place: a client sending a well-formed body with a wrong header. Pair it
+	// with FaultTypeValidation and DirectionRequest.
+	FaultCodeInvalidRequestHeader = "960004"
+	// FaultCodeInvalidRequestURI is a request path or query string a policy needed and could
+	// not use — a query string that does not parse, a path that does not match the shape the
+	// policy rewrites. The failure is the caller's.
+	//
+	// The URI counterpart of FaultCodeInvalidRequestBody and FaultCodeInvalidRequestHeader.
+	// Pair it with FaultTypeValidation and DirectionRequest.
+	FaultCodeInvalidRequestURI = "960005"
 )
 
 // Blocks a policy may allocate in.

@@ -606,7 +606,8 @@ paths:
         - Billing
       summary: Set up the billing configuration
       description: >-
-        Verifies the keys with Moesif and Stripe, connects the Moesif application to Stripe with the Stripe key
+        Verifies the keys with Moesif and Stripe (Moesif keys set in the portal's config are used but never
+        stored), connects the Moesif application to Stripe with the Stripe key
         (replacing a connection already there), registers Moesif's endpoint and the portal's webhook endpoint in
         Stripe, creates in Moesif each paid plan already offered on an API, and saves. When any step fails, the steps already done are undone and nothing is saved. A key Moesif or
         Stripe refuses returns `400` with code `BILLING_KEY_INVALID`, listing each refused key under `errors` by its
@@ -658,7 +659,9 @@ paths:
         `409` (`BILLING_SUBSCRIPTIONS_ACTIVE`) while a paid subscription is active. When a provider refuses a step,
         nothing is removed (`400` or `502`, `BILLING_REMOVE_FAILED`): the connection and endpoints already removed are
         put back, while ended checkouts and plans taken off sale stay so, and removing billing again finishes the
-        job.
+        job. When the portal's config holds the keys of a different Moesif application from the one setup used,
+        the plans and the connection to Stripe in the earlier application can't be reached and are left there; the
+        rest is removed.
       operationId: deleteBillingConfiguration
       responses:
         "204":
@@ -6925,12 +6928,12 @@ components:
     BillingConfigurationRequest:
       type: object
       description: >-
-        The billing engine, the payment provider it bills through, and their keys. All four are required: the Moesif
-        Collector Application Id, the Moesif management key, the Stripe key and the Stripe publishable key. The
-        billing engine and payment provider default to MOESIF and STRIPE.
+        The billing engine, the payment provider it bills through, and their keys: the Moesif Collector Application
+        Id, the Moesif management key, the Stripe key and the Stripe publishable key. When the portal's config sets
+        the Moesif keys, only the Stripe keys are sent, and a request that sends a Moesif key is refused
+        with `400` (`BILLING_INPUT_INVALID`); otherwise all four are required. The billing engine and payment
+        provider default to MOESIF and STRIPE.
       required:
-        - moesifCollectorApplicationId
-        - moesifManagementKey
         - stripeApiKey
         - stripePublishableKey
       properties:
