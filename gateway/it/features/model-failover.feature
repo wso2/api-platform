@@ -2140,3 +2140,92 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the API "mf-passthru-v1.0"
     Then the response status code should be 200
+
+  Scenario: However the primary fails, a healthy fallback means the client never sees a 5xx
+    # The property the whole feature exists for, asserted as its own subject
+    # rather than as a side effect of scenarios testing something else.
+    #
+    # Two failure modes behind one chain and one API, because they reach the
+    # guarantee by different routes and only one of them involves this policy at
+    # all. An error status is graded by the policy; an attempt cut off at
+    # perTryTimeout is a local reply Envoy never calls ext_proc for, so the
+    # rescue there is Envoy's retry policy alone. A guarantee that holds for the
+    # path the policy drives says nothing about the path it never sees.
+    #
+    # A refused connection is the third mode and is deliberately NOT here: it is
+    # already the subject of the RestApi parity scenario above, which turns on
+    # refusal being retriable on both API kinds.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-no5xx-v1.0
+      spec:
+        displayName: MF No 5xx
+        version: v1.0
+        context: /mf-no5xx/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-no5xx-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /status/503
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+          - method: POST
+            path: /delay/5
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  perTryTimeout: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # The primary answers with an error status. The policy grades it, and the
+    # retry lands on the fallback.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-no5xx/v1.0/status/503" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-no5xx-alive"
+
+    # The primary hangs five seconds against a one-second per-try bound. No
+    # response ever reaches the policy, so nothing here is graded; the client is
+    # still served, and still never sees a 5xx.
+    When I send a POST request to "http://localhost:8080/mf-no5xx/v1.0/delay/5" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-no5xx-alive"
+
+    # Cleanup
+    When I delete the API "mf-no5xx-v1.0"
+    Then the response status code should be 200

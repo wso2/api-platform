@@ -21,10 +21,24 @@ rules live in [data-model.md](./data-model.md).
 
 ```bash
 cd gateway/it
-make test                       # full integration suite
+make test                       # default suite (load scenarios excluded)
 make test-verbose               # verbose
-go test -run TestFeatures -godog.tags=@model-failover ./...   # this feature only
+make test-load                  # ONLY the load scenarios
+
+# This feature only. The warm-up prefix is not optional: at cold start Envoy
+# answers the first requests with 503 no_healthy_upstream for several seconds
+# while clusters warm and xDS syncs, and the per-feature readiness wait is
+# shorter than that. Running health + api_deploy first reproduces the warm
+# gateway this feature sees inside the full suite.
+IT_FEATURE_PATHS=features/health.feature,features/api_deploy.feature,features/model-failover.feature make test
 ```
+
+Tag selection is `IT_TAGS` (default `~@load`), NOT godog's `-godog.tags` flag — the suite builds
+`godog.Options` directly and never calls `BindCommandLineFlags`, so that flag is undefined and
+`go test ... -godog.tags=@model-failover` exits 2 before any test runs. It is also worth knowing
+that `IT_TAGS` selects only WITHIN the features already loaded by `Paths`: setting a tag without
+also setting `IT_FEATURE_PATHS` to a file containing it selects zero scenarios and the suite
+reports `0 scenarios ... PASS` with exit 0 — a false green, not a pass.
 
 New feature files:
 
