@@ -28,6 +28,11 @@ on:
       - 'gateway/gateway-controller/**'
       - 'common/**'
       - 'sdk/**'
+      # Shared code the event gateway imports or builds into its images.
+      - 'httpkit/**'
+      - 'gateway/common/**'
+      - 'gateway/gateway-runtime/policy-engine/**'
+      - 'gateway/system-policies/analytics/**'
       - '.github/workflows/event-gateway-integration-test.yml'
 
 concurrency:
