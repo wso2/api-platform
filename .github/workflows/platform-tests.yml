@@ -23,7 +23,8 @@
 #   backend change -> backend unit tests -> integration suite (3 Gateway legs)
 #   UI change      -> UI unit tests      -> UI suite
 #   both           -> both unit jobs in parallel, then both suites
-# A failing unit-test job stops both suites.
+#   cloud suite    -> compile check and unit tests of tests/framework/suites/cloud
+# A failing unit-test job (cloud suite check included) stops both suites.
 
 name: Platform Tests
 
@@ -47,6 +48,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       ui: ${{ steps.filter.outputs.ui }}
+      cloud: ${{ steps.filter.outputs.cloud }}
     steps:
       # Depth 2: a pull_request checkout is the merge commit, and its first parent is the base
       # it was merged onto, so HEAD^1..HEAD is exactly what this pull request changes.
@@ -62,6 +64,9 @@ jobs:
       # ui: the portals, the Platform API they call (and whose spec the Control Plane portal
       # generates types from), and the UI suite. Not portals/cloud-plugins: the portals here
       # only carry an empty slot for it (src/cloud), so the UI suite never runs that code.
+      # cloud: the cloud suite and the framework code it builds on. Its scenarios run against a
+      # live cloud deployment from apim-saas, not here, so a cloud-suite-only change doesn't run
+      # the integration suite.
       # A manual run runs everything.
       - name: Classify changed files
         id: filter
@@ -71,6 +76,7 @@ jobs:
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
             echo "ui=true" >> "$GITHUB_OUTPUT"
+            echo "cloud=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -78,22 +84,27 @@ jobs:
           echo "Changed files:"
           echo "$changed"
 
-          backend_skip='^(portals/(ai-workspace|api-control-plane|cloud-plugins)/|tests/framework/suites/ui/|docs/)|\.md$'
+          backend_skip='^(portals/(ai-workspace|api-control-plane|cloud-plugins)/|tests/framework/suites/(ui|cloud)/|docs/)|\.md$'
+          cloud_match='^(tests/framework/|\.github/workflows/platform-tests\.yml$)'
           ui_match='^(portals/|platform-api/|tests/framework/suites/ui/|\.github/workflows/platform-tests\.yml$)'
 
           # Captured rather than piped into grep -q: under pipefail an early-exiting grep -q can
           # turn a match into a failed pipeline.
           backend_files="$(echo "$changed" | grep -vE "$backend_skip" || true)"
           ui_files="$(echo "$changed" | grep -E "$ui_match" | grep -v '^portals/cloud-plugins/' || true)"
+          cloud_files="$(echo "$changed" | grep -E "$cloud_match" | grep -vE '^tests/framework/suites/(it|ui)/' || true)"
 
           backend=false
           ui=false
+          cloud=false
           if [ -n "$backend_files" ]; then backend=true; fi
           if [ -n "$ui_files" ]; then ui=true; fi
+          if [ -n "$cloud_files" ]; then cloud=true; fi
 
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "ui=$ui" >> "$GITHUB_OUTPUT"
-          echo "backend=$backend ui=$ui"
+          echo "cloud=$cloud" >> "$GITHUB_OUTPUT"
+          echo "backend=$backend ui=$ui cloud=$cloud"
 
   unit-backend:
     name: Unit tests (backend)
@@ -298,11 +309,39 @@ jobs:
           files: portals/api-portal/unit-test-coverage.info
           flags: api-portal-unit
 
+  # The cloud suite's scenarios need a live cloud deployment and run from apim-saas. Here it is
+  # only compiled (as apim-saas's e2e image does, with go test -c) and its unit tests run, so a
+  # broken change is caught before merge rather than when that image is next built.
+  cloud-suite:
+    name: Cloud suite (compile + unit tests)
+    needs: changes
+    if: needs.changes.outputs.cloud == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Compile the cloud suite
+        working-directory: tests/framework
+        run: go test -c -o /dev/null ./suites/cloud
+
+      - name: Cloud suite unit tests
+        working-directory: tests/framework
+        run: go test -count=1 ./suites/cloud/steps/...
+
   # A suite runs only when its kind of change is present and no unit-test job failed or was
   # cancelled. !cancelled() lets it run when the other unit job was skipped as not needed.
   integration:
     name: Integration suite (${{ matrix.leg }})
-    needs: [changes, unit-backend, unit-ui]
+    needs: [changes, unit-backend, unit-ui, cloud-suite]
     if: >-
       !cancelled()
       && needs.changes.outputs.backend == 'true'
@@ -448,7 +487,7 @@ jobs:
 
   ui:
     name: UI suite
-    needs: [changes, unit-backend, unit-ui]
+    needs: [changes, unit-backend, unit-ui, cloud-suite]
     if: >-
       !cancelled()
       && needs.changes.outputs.ui == 'true'
