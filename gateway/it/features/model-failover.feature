@@ -1878,3 +1878,162 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the API "mf-allsusp-v1.0"
     Then the response status code should be 200
+
+  # ====================================================================
+  # FR-018b / FR-018e — the two degradations a consecutive-failure rule
+  # never sees (SC-011a, SC-011b)
+  # ====================================================================
+
+  Scenario: A target failing roughly one request in three is suspended on its error rate
+    # The degradation a consecutive-failure rule is blind to: the target is badly
+    # degraded but rarely fails twice running, so a run never accumulates.
+    #
+    # go-httpbin's weighted form answers 200 twice as often as 503, at random.
+    # suspendAfterFailures is pushed to 100 so that rule CANNOT fire even if the
+    # random draw happens to produce a run — leaving the error-rate rule as the
+    # only thing that can suspend this target, which is what makes the reason
+    # assertion below meaningful rather than circumstantial.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-rate-v1.0
+      spec:
+        displayName: MF Error Rate
+        version: v1.0
+        context: /mf-rate/$version
+        upstreamDefinitions:
+          - name: flaky
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-rate-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: flaky
+        operations:
+          - method: POST
+            path: /status/200:2,503:1
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 100
+                  suspendDuration: 120
+                  errorRatePercent: 20
+                  minimumRequests: 20
+                  windowSeconds: 120
+                  statusCodes:
+                    - 503
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I note the current gateway runtime log position
+    And I drive 40 POST requests to "http://localhost:8080/mf-rate/v1.0/status/200:2,503:1" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # SC-011a: suspended, and the record names WHICH criterion did it. An operator
+    # triaging a suspension needs to tell a hard outage from this.
+    Then the gateway runtime log since then should contain "reason=error_rate"
+    And the gateway runtime log since then should not contain "reason=consecutive_failures"
+
+    # The effect, not just the record: traffic has moved off the flaky target, so
+    # the fallback's own base path now appears in the response.
+    When I send a POST request to "http://localhost:8080/mf-rate/v1.0/status/200:2,503:1" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-rate-alive"
+
+    # Cleanup
+    When I delete the API "mf-rate-v1.0"
+    Then the response status code should be 200
+
+  Scenario: A target that is slow but never fails is suspended on its latency percentile
+    # SC-011b, and the case a timeout-only rule cannot see: every request
+    # completes, none errors, none comes close to a timeout — the target has
+    # simply got slow. Before this rule existed the only signal was a client
+    # complaint.
+    #
+    # Note what is NOT configured here: no perTryTimeout. Nothing is being cut
+    # off. The target is suspended on the aggregate alone.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-latency-v1.0
+      spec:
+        displayName: MF Latency
+        version: v1.0
+        context: /mf-latency/$version
+        upstreamDefinitions:
+          - name: slow
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-latency-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: slow
+        operations:
+          - method: POST
+            path: /delay/0.3
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 120
+                  errorRatePercent: 0
+                  p95LatencyMs: 200
+                  minimumRequests: 20
+                  windowSeconds: 120
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I note the current gateway runtime log position
+    And I drive 25 POST requests to "http://localhost:8080/mf-latency/v1.0/delay/0.3" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # Suspended on the percentile, with no failure anywhere in the run. This is
+    # the assertion that would not have been reachable before: the rule was only
+    # ever evaluated when something failed, and nothing here does.
+    Then the gateway runtime log since then should contain "reason=latency_p95"
+    And the gateway runtime log since then should not contain "reason=consecutive_failures"
+    And the gateway runtime log since then should not contain "reason=error_rate"
+
+    # Traffic has moved to the fast target.
+    When I send a POST request to "http://localhost:8080/mf-latency/v1.0/delay/0.3" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-latency-alive"
+
+    # Cleanup
+    When I delete the API "mf-latency-v1.0"
+    Then the response status code should be 200

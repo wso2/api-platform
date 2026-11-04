@@ -1746,3 +1746,49 @@ failover-worthy — because there the members only need to fail, not to differ.
 
 This unblocks T041 #5, T064 (the weighted form drives a precise one-in-three failure rate) and
 T065 (`/delay/N`).
+
+## The latency rule could never fire for the target it was written for (2026-11-04)
+
+Found while writing T065's integration scenario, which is the only reason it was found at all:
+the rule had a passing unit test and read as covered.
+
+FR-018e and SC-011b both describe the same target — one that has got slow while *working*:
+
+> A target whose p95 triples while **every request still completes** under `perAttemptTimeoutMs`
+> is suspended by FR-018e — the case a timeout-only rule never sees.
+
+The implementation evaluated the windowed rules only inside `RecordFailure`. `RecordSuccess` fed
+the window and returned. So a target that is slow and succeeds — which is every target this rule
+exists for — accumulated samples that nothing ever read. The rule was unreachable in production.
+
+The existing unit test passed because it reached the rule through a failure, and said so in a
+comment that read as description rather than as a problem:
+
+```go
+// A failure is what triggers evaluation; the latency rule then fires on the window.
+suspended = store.RecordFailure(targetA, 2*time.Second, now)
+```
+
+That test proves the threshold arithmetic. It cannot prove the rule is reachable, and the
+arithmetic being right is not the requirement.
+
+**The fix.** `evaluateLatencyLocked` is now called from both record paths, and `RecordSuccess`
+returns `(*RecoveryEvent, *SuspensionEvent)` so a success can report the suspension it caused.
+
+The error-rate rule is deliberately NOT evaluated on success. A success can only push a rate
+down, so there is nothing there for it to discover; latency is different precisely because
+successes are its only samples in the case that matters. The asymmetry is pinned by
+`TestHealth_SuccessDoesNotEvaluateTheErrorRateRule` so it stays a decision rather than becoming
+a side effect of someone tidying the two paths together.
+
+**Risk.** Low, and bounded by configuration rather than by argument: `p95LatencyMs` defaults to
+0, which disables the rule, so no existing deployment changes behaviour unless an operator has
+already opted in — and for one that has, the rule starting to work is the point.
+`TestHealth_OneSlowRequestAmongFastOnesSuspendsNothing` pins the other half of SC-011b, since
+"a success can suspend" is exactly the change that could turn an aggregate rule into
+one-slow-request-condemns.
+
+**Why no probe found this.** Every earlier probe drove failures, because that is what failover
+is about. A target that never fails was outside the shape of every scenario written so far,
+which is also why T065 sat behind T029c as "needs a slow backend" rather than "needs the rule
+to work".
