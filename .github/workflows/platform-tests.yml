@@ -73,7 +73,7 @@ jobs:
             exit 0
           fi
 
-          changed="$(git diff --name-only HEAD^1 HEAD)"
+          changed="$(git diff --name-only HEAD^1 HEAD -- . ':!.github')"  # TEST ONLY: ignore workflow files
           echo "Changed files:"
           echo "$changed"
 
