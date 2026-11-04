@@ -63,15 +63,22 @@ func TestBuildTargetComposesEndpointAndContext(t *testing.T) {
 		{"plain http is honoured", "http://gw.internal:9090", "/pizza", "http://gw.internal:9090/pizza"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			target, err := BuildTarget("gw", []string{tc.endpoint}, tc.context)
+			target, err := BuildTarget("gw", []string{tc.endpoint}, tc.context, "")
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, target.URL.String())
 		})
 	}
 }
 
+func TestBuildTargetCarriesTheVhostButNotIntoTheURL(t *testing.T) {
+	target, err := BuildTarget("gw", []string{"https://gw.example.com:8443"}, "/pizza", " pizza.example.com ")
+	require.NoError(t, err)
+	assert.Equal(t, "https://gw.example.com:8443/pizza", target.URL.String())
+	assert.Equal(t, "pizza.example.com", target.Host)
+}
+
 func TestBuildTargetUsesTheFirstNonBlankEndpoint(t *testing.T) {
-	target, err := BuildTarget("gw", []string{" ", "https://gw.example.com"}, "/pizza")
+	target, err := BuildTarget("gw", []string{" ", "https://gw.example.com"}, "/pizza", "")
 	require.NoError(t, err)
 	assert.Equal(t, "https://gw.example.com/pizza", target.URL.String())
 	assert.Equal(t, "gw", target.GatewayID)
@@ -79,19 +86,19 @@ func TestBuildTargetUsesTheFirstNonBlankEndpoint(t *testing.T) {
 
 func TestBuildTargetDropsCredentialsAndQueryFromTheEndpoint(t *testing.T) {
 	// Userinfo in particular would otherwise go with every relayed request.
-	target, err := BuildTarget("gw", []string{"https://user:pass@gw.example.com/base?a=1#frag"}, "/pizza")
+	target, err := BuildTarget("gw", []string{"https://user:pass@gw.example.com/base?a=1#frag"}, "/pizza", "")
 	require.NoError(t, err)
 	assert.Equal(t, "https://gw.example.com/base/pizza", target.URL.String())
 }
 
 func TestBuildTargetRefusesAGatewayWithNoUsableEndpoint(t *testing.T) {
 	for _, endpoints := range [][]string{nil, {}, {"", "  "}, {"https://"}} {
-		_, err := BuildTarget("gw", endpoints, "/pizza")
+		_, err := BuildTarget("gw", endpoints, "/pizza", "")
 		assert.ErrorIs(t, err, ErrGatewayNoEndpoint, "%q", endpoints)
 	}
 }
 
 func TestBuildTargetRefusesANonHTTPEndpointScheme(t *testing.T) {
-	_, err := BuildTarget("gw", []string{"ftp://gw.example.com"}, "/pizza")
+	_, err := BuildTarget("gw", []string{"ftp://gw.example.com"}, "/pizza", "")
 	assert.ErrorIs(t, err, ErrUnsupportedScheme)
 }

@@ -813,7 +813,8 @@ paths:
       description: |
         Sends one request to the REST API (`restApiId`) as deployed on the gateway (`gatewayId`),
         for the console's Test console, and returns the gateway's response as data. The request goes to the gateway's
-        endpoint plus the REST API's context, only if the REST API is deployed there and the
+        endpoint plus the context of the REST API's deployment there, with that deployment's main
+        vhost as `Host` when it has one of its own, only if the REST API is deployed there and the
         endpoint is on the control plane's allow list (`gateway_relay.egress.allow_hosts`).
         Redirects are not followed, and the caller's own credentials never reach the gateway.
 

@@ -29,9 +29,11 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"gopkg.in/yaml.v3"
 )
 
 // APIService handles business logic for API operations
@@ -653,25 +655,40 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 	return response, nil
 }
 
-// GetAPIInvokeTarget returns the REST API's context and the endpoints of the
-// gateway it is deployed to. A gateway it is only associated with is refused, or
-// a caller could aim a test request at any associated gateway.
-func (s *APIService) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (apiContext string, endpoints []string, err error) {
+// APIInvokeTarget is where the Test console's request for a REST API goes on one
+// gateway: what that gateway serves, not what the API's definition says now.
+type APIInvokeTarget struct {
+	// Context is the API's context in the deployment the gateway runs. An API whose
+	// context changed since is still served at the deployed one until it is redeployed.
+	Context string
+	// Vhost is the deployment's main vhost, which the gateway matches against the
+	// request's Host. Empty when the deployment uses the gateway's default vhost.
+	Vhost string
+	// Endpoints are the gateway's endpoints.
+	Endpoints []string
+}
+
+// GetAPIInvokeTarget returns where a test request for the REST API apiHandle goes
+// on gatewayHandle: the gateway's endpoints and the context and main vhost of the
+// API's deployment on it. The API must belong to orgID. A gateway the API is only
+// associated with is refused, or a caller could aim a test request at any
+// associated gateway.
+func (s *APIService) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (*APIInvokeTarget, error) {
 	apiUUID, err := s.getAPIUUIDByHandle(apiHandle, orgID)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgID)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	if apiModel == nil || apiModel.OrganizationID != orgID {
-		return "", nil, apperror.RESTAPINotFound.New()
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgID)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	for _, gw := range gateways {
 		if gw == nil || gw.Handle != gatewayHandle {
@@ -680,12 +697,27 @@ func (s *APIService) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) 
 		if !gw.IsDeployed {
 			break
 		}
-		if apiModel.Configuration.Context != nil {
-			apiContext = *apiModel.Configuration.Context
+		deployed, err := s.deploymentRepo.GetCurrentByGateway(apiUUID, gw.ID, orgID)
+		if err != nil {
+			return nil, err
 		}
-		return apiContext, gw.Endpoints, nil
+		if deployed == nil {
+			break
+		}
+		var artifact dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(deployed.Content, &artifact); err != nil {
+			return nil, fmt.Errorf("failed to read deployment %s of REST API %s: %w", deployed.DeploymentID, apiUUID, err)
+		}
+		target := &APIInvokeTarget{Context: artifact.Spec.Context, Endpoints: gw.Endpoints}
+		if target.Context == "" && apiModel.Configuration.Context != nil {
+			target.Context = *apiModel.Configuration.Context
+		}
+		if v := artifact.Spec.Vhosts; v != nil && v.Main != nil && *v.Main != constants.VhostGatewayDefault {
+			target.Vhost = *v.Main
+		}
+		return target, nil
 	}
-	return "", nil, apperror.RESTAPIInvokeGatewayNotDeployed.New()
+	return nil, apperror.RESTAPIInvokeGatewayNotDeployed.New()
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API

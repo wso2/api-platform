@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/service"
 )
 
 const (
@@ -46,6 +47,7 @@ const (
 // fakeInvokeTargets answers GetAPIInvokeTarget from fixed values.
 type fakeInvokeTargets struct {
 	apiContext string
+	vhost      string
 	endpoints  []string
 	err        error
 	gotAPI     string
@@ -53,9 +55,23 @@ type fakeInvokeTargets struct {
 	gotOrg     string
 }
 
-func (f *fakeInvokeTargets) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (string, []string, error) {
+func (f *fakeInvokeTargets) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (*service.APIInvokeTarget, error) {
 	f.gotAPI, f.gotGateway, f.gotOrg = apiHandle, gatewayHandle, orgID
-	return f.apiContext, f.endpoints, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &service.APIInvokeTarget{Context: f.apiContext, Vhost: f.vhost, Endpoints: f.endpoints}, nil
+}
+
+// deadlineRelay records the deadline of the context Do is called with.
+type deadlineRelay struct {
+	deadline time.Time
+	ok       bool
+}
+
+func (d *deadlineRelay) Do(ctx context.Context, _ gatewayrelay.Target, _ gatewayrelay.Request) (gatewayrelay.Relayed, error) {
+	d.deadline, d.ok = ctx.Deadline()
+	return gatewayrelay.Relayed{Status: http.StatusOK}, nil
 }
 
 // failingRelay returns err from every Do.
@@ -86,7 +102,7 @@ func newRelay(t *testing.T, allowHosts ...string) *gatewayrelay.Relay {
 func serveInvoke(t *testing.T, targets invokeTargets, relay relayer, contentType, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	NewAPIInvokeHandler(targets, relay, 1<<10, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	NewAPIInvokeHandler(targets, relay, 1<<10, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
 
 	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(body))
 	if contentType != "" {
@@ -176,6 +192,70 @@ func TestInvokeRelaysTheRequestAndReturnsTheGatewayResponse(t *testing.T) {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 	}{"X-Order-Id", "42"})
+}
+
+func TestInvokeSendsTheDeploymentVhostAsHost(t *testing.T) {
+	var gotHost string
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+	}))
+	defer gateway.Close()
+
+	targets := &fakeInvokeTargets{apiContext: "/pizza", vhost: "pizza.example.com", endpoints: []string{gateway.URL}}
+	rec := serveInvoke(t, targets, newRelay(t, "*"), "application/json", invokeBody(`"path": "/"`))
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Equal(t, "pizza.example.com", gotHost)
+}
+
+// request_timeout has to cover reading the request and finding the target, which
+// the server's write deadline already counts, so it starts before the relay does.
+func TestInvokeStartsTheRequestTimeoutBeforeTheRelay(t *testing.T) {
+	relay := &deadlineRelay{}
+	mux := http.NewServeMux()
+	NewAPIInvokeHandler(&fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}},
+		relay, 1<<10, 30*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(invokeBody(`"path": "/"`)))
+	req.Header.Set("Content-Type", "application/json")
+	req = middleware.WithOrganization(req, invokeOrg)
+
+	before := time.Now()
+	mux.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.True(t, relay.ok, "the relay must get a context with a deadline")
+	assert.WithinDuration(t, before.Add(30*time.Second), relay.deadline, time.Second)
+}
+
+// JSON escaping doubles each quote in a text body, so a body within
+// max_request_bytes may be up to twice as long on the wire, and is still accepted.
+func TestInvokeAcceptsAnEscapedTextBodyWithinTheLimit(t *testing.T) {
+	const maxRequestBytes = 64 << 10
+	var gotLen int
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotLen = len(b)
+	}))
+	defer gateway.Close()
+	policy, err := egress.Parse(egress.Spec{AllowHosts: []string{"*"}})
+	require.NoError(t, err)
+	relay, err := gatewayrelay.NewRelay(gatewayrelay.RelayOptions{
+		RequestTimeout: 5 * time.Second, MaxRequestBytes: maxRequestBytes, MaxResponseBytes: 1 << 10,
+		MaxConcurrent: 1, MaxPending: 1, Egress: policy,
+	})
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	NewAPIInvokeHandler(&fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}},
+		relay, maxRequestBytes, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+
+	quotes := strings.Repeat(`\"`, maxRequestBytes-1<<10) // each decodes to one byte
+	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(invokeBody(`"method": "POST", "path": "/", "body": "`+quotes+`"`)))
+	req.Header.Set("Content-Type", "application/json")
+	req = middleware.WithOrganization(req, invokeOrg)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Equal(t, maxRequestBytes-1<<10, gotLen)
 }
 
 func TestInvokeReturnsAGatewayErrorStatusAsASuccessfulRelay(t *testing.T) {

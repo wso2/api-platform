@@ -102,13 +102,18 @@ type Target struct {
 	// URL is the API's invoke URL on the gateway: origin plus the API's
 	// context, with no trailing slash. The relayed path is appended to it.
 	URL *url.URL
+	// Host is the Host header to send: the deployment's main vhost, which the
+	// gateway routes on. Empty sends the endpoint's host, which the gateway's
+	// default vhost accepts. It never comes from the caller (see SanitizeHeaders).
+	Host string
 	// GatewayID names the gateway in log lines.
 	GatewayID string
 }
 
 // BuildTarget composes the invoke URL from the gateway's first endpoint and the
-// API's context, as the console does for the URL it shows.
-func BuildTarget(gatewayID string, endpoints []string, apiContext string) (Target, error) {
+// API's context, as the console does for the URL it shows. vhost is the
+// deployment's main vhost, or "" for the gateway's default.
+func BuildTarget(gatewayID string, endpoints []string, apiContext, vhost string) (Target, error) {
 	endpoint := ""
 	for _, e := range endpoints {
 		if strings.TrimSpace(e) != "" {
@@ -145,6 +150,7 @@ func BuildTarget(gatewayID string, endpoints []string, apiContext string) (Targe
 			Host:   u.Host,
 			Path:   strings.TrimRight(u.Path, "/") + strings.TrimRight(ctxPath, "/"),
 		},
+		Host:      strings.TrimSpace(vhost),
 		GatewayID: gatewayID,
 	}, nil
 }

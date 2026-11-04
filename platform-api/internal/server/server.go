@@ -1456,5 +1456,5 @@ func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIServic
 		return nil, fmt.Errorf("failed to initialize the gateway relay: %w", err)
 	}
 	slogger.Info("Gateway relay ready", "egress", policy.Describe())
-	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, slogger), nil
+	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, cfg.RequestTimeout, slogger), nil
 }

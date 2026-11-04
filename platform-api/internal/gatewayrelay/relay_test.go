@@ -95,6 +95,36 @@ func TestRelayForwardsOnlyTheSanitizedHeaders(t *testing.T) {
 	}
 }
 
+// A deployment on a vhost of its own is routed by Host, so the relay sends the
+// vhost while still connecting to the gateway's endpoint.
+func TestRelaySendsTheDeploymentVhostAsHost(t *testing.T) {
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+	}))
+	defer srv.Close()
+
+	target := targetFor(t, srv.URL+"/pizza")
+	target.Host = "pizza.example.com"
+	_, err := gatewayRelay(t, nil).Do(context.Background(), target, Request{Method: "GET", Path: "/"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "pizza.example.com", gotHost)
+}
+
+func TestRelaySendsTheEndpointHostWithoutAVhost(t *testing.T) {
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+	}))
+	defer srv.Close()
+
+	_, err := gatewayRelay(t, nil).Do(context.Background(), targetFor(t, srv.URL), Request{Method: "GET", Path: "/"})
+
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimPrefix(srv.URL, "http://"), gotHost)
+}
+
 func TestRelayReturnsGatewayErrorStatusAsData(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

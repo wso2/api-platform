@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 	"github.com/wso2/api-platform/platform-api/api"
@@ -33,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
+	"github.com/wso2/api-platform/platform-api/internal/service"
 )
 
 // invokeRequestStructuralBytes allows for the JSON around the body: ids,
@@ -41,7 +43,7 @@ const invokeRequestStructuralBytes = 32 << 10
 
 // invokeTargets finds where a test request goes (APIService.GetAPIInvokeTarget).
 type invokeTargets interface {
-	GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (apiContext string, endpoints []string, err error)
+	GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (*service.APIInvokeTarget, error)
 }
 
 // relayer sends the request (gatewayrelay.Relay).
@@ -51,21 +53,26 @@ type relayer interface {
 
 // APIInvokeHandler serves POST /gateway-relay/invoke.
 type APIInvokeHandler struct {
-	targets      invokeTargets
-	relay        relayer
-	maxBodyBytes int64
-	slogger      *slog.Logger
+	targets        invokeTargets
+	relay          relayer
+	maxBodyBytes   int64
+	requestTimeout time.Duration
+	slogger        *slog.Logger
 }
 
 // NewAPIInvokeHandler builds the handler. maxRequestBytes is the relay's limit
-// on the decoded request body.
-func NewAPIInvokeHandler(targets invokeTargets, relay relayer, maxRequestBytes int64, slogger *slog.Logger) *APIInvokeHandler {
+// on the decoded request body, and requestTimeout the limit on one test request.
+func NewAPIInvokeHandler(targets invokeTargets, relay relayer, maxRequestBytes int64, requestTimeout time.Duration, slogger *slog.Logger) *APIInvokeHandler {
 	return &APIInvokeHandler{
 		targets: targets,
 		relay:   relay,
-		// A binary body travels base64-encoded, a third larger than its bytes.
-		maxBodyBytes: maxRequestBytes/3*4 + invokeRequestStructuralBytes,
-		slogger:      slogger,
+		// The body travels as a JSON string. Base64 makes a binary body a third
+		// larger; escaping doubles a quote, a backslash, \n, \r or \t in a text one.
+		// Only the decoded body is held to maxRequestBytes (Relay.Do), so this
+		// bounds the read without refusing a body of quotes that is within it.
+		maxBodyBytes:   maxRequestBytes*2 + invokeRequestStructuralBytes,
+		requestTimeout: requestTimeout,
+		slogger:        slogger,
 	}
 }
 
@@ -73,6 +80,13 @@ func NewAPIInvokeHandler(targets invokeTargets, relay relayer, maxRequestBytes i
 func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) error {
 	// The answer describes one caller's gateway; nothing on the way may cache it.
 	w.Header().Set("Cache-Control", "no-store")
+
+	// request_timeout runs from here, not from the gateway call: the server's write
+	// deadline starts when the request arrives, so reading the body and finding the
+	// target count against it too. Kept below server.timeouts.write (see config),
+	// this leaves time to write a timeout answer before the connection is cut.
+	ctx, cancel := context.WithTimeout(r.Context(), h.requestTimeout)
+	defer cancel()
 
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -85,11 +99,11 @@ func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 
-	apiContext, endpoints, err := h.targets.GetAPIInvokeTarget(apiID, gatewayID, orgID)
+	invokeTarget, err := h.targets.GetAPIInvokeTarget(apiID, gatewayID, orgID)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to resolve gateway %s for REST API %s in org %s", gatewayID, apiID, orgID))
 	}
-	target, err := gatewayrelay.BuildTarget(gatewayID, endpoints, apiContext)
+	target, err := gatewayrelay.BuildTarget(gatewayID, invokeTarget.Endpoints, invokeTarget.Context, invokeTarget.Vhost)
 	if errors.Is(err, gatewayrelay.ErrUnsupportedScheme) {
 		return apperror.RESTAPIInvokeGatewayUnsupportedScheme.New()
 	}
@@ -97,7 +111,7 @@ func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) err
 		return apperror.RESTAPIInvokeGatewayNoEndpoint.New()
 	}
 
-	relayed, err := h.relay.Do(r.Context(), target, req)
+	relayed, err := h.relay.Do(ctx, target, req)
 	if err != nil {
 		return relayError(err, apiID, gatewayID)
 	}

@@ -172,6 +172,11 @@ func (r *Relay) Do(ctx context.Context, target Target, req Request) (Relayed, er
 	// Assigned, not merged: the sanitized headers are all that go on the wire.
 	outbound.Header = headers
 	outbound.ContentLength = int64(len(body))
+	// A deployment on a vhost of its own is routed by Host. Only the header moves:
+	// the connection, the egress check and the TLS server name stay on the endpoint.
+	if target.Host != "" {
+		outbound.Host = target.Host
+	}
 
 	started := time.Now()
 	res, err := r.client.Do(outbound)
