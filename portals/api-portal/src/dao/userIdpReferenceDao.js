@@ -26,20 +26,29 @@ const logger = require('../config/logger');
 const TABLE = 'user_idp_references';
 const DELETED_USER = 'deleted_user';
 
-// Width of user_idp_references.display_name.
-const MAX_DISPLAY_NAME_LENGTH = 255;
+// Width of user_idp_references.display_name in UTF-16 code units, the unit SQL
+// Server's NVARCHAR(255) counts (and JS string length measures). Capping in these
+// units also fits Postgres VARCHAR(255), which counts characters.
+const MAX_DISPLAY_NAME_UNITS = 255;
+
+// Control characters, NUL among them (Postgres rejects it in text).
+const CONTROL_CHARS = /\p{Cc}/gu;
 
 /**
- * Trims a token-supplied display name and caps it to the column width (in code
- * points), so an overlong claim can't fail the write. Non-strings become ''.
+ * Trims a token-supplied display name, drops control characters and caps it to
+ * MAX_DISPLAY_NAME_UNITS UTF-16 code units without splitting a character, so an
+ * overlong claim fits the column on every engine. Non-strings become ''.
  */
 const normalizeDisplayName = (name) => {
     if (typeof name !== 'string') return '';
-    const trimmed = name.trim();
-    const codePoints = [...trimmed];
-    return codePoints.length > MAX_DISPLAY_NAME_LENGTH
-        ? codePoints.slice(0, MAX_DISPLAY_NAME_LENGTH).join('').trim()
-        : trimmed;
+    const cleaned = name.replace(CONTROL_CHARS, '').trim();
+    if (cleaned.length <= MAX_DISPLAY_NAME_UNITS) return cleaned;
+    let capped = '';
+    for (const char of cleaned) {
+        if (capped.length + char.length > MAX_DISPLAY_NAME_UNITS) break;
+        capped += char;
+    }
+    return capped.trim();
 };
 
 /**
@@ -49,33 +58,43 @@ const normalizeDisplayName = (name) => {
  * back to a plain lookup on a unique-constraint race between concurrent
  * requests for the same (portal_id, idp_id) pair.
  *
- * displayName (the configured display-name claim) is optional: a new row stores
- * it, an existing row is updated only when it is non-empty and differs, and an
- * empty value never clears a stored name. A failure to save the name is logged
- * and does not fail the lookup.
+ * displayName (the configured display-name claim) is optional. The row is found
+ * or created without it, so a name the database rejects can never stop the user
+ * being mapped; the name is then saved by a separate update, made only when it
+ * is non-empty and differs from the stored one, so an empty value never clears a
+ * stored name. A failure to save the name is logged (without the driver message,
+ * which can quote the value) and does not fail the lookup.
+ *
+ * Resolves to { uuid, displayNameSaved }: displayNameSaved is false only when a
+ * name was given and could not be saved.
  */
-const resolveUuid = async (idpId, displayName) => {
+const resolveReference = async (idpId, displayName) => {
     const portalId = getPortalId();
     const name = normalizeDisplayName(displayName);
     const reference = await findOrCreateSafe(
         TABLE,
         { portal_id: portalId, idp_id: idpId },
-        { portal_id: portalId, uuid: crypto.randomUUID(), idp_id: idpId, display_name: name || null }
+        { portal_id: portalId, uuid: crypto.randomUUID(), idp_id: idpId }
     );
-    if (name && reference.display_name !== name) {
-        try {
-            await db.execute(
-                `UPDATE ${TABLE} SET display_name = ? WHERE portal_id = ? AND uuid = ?`,
-                [name, portalId, reference.uuid]
-            );
-        } catch (err) {
-            logger.warn('Failed to save the user\'s display name; continuing without it', {
-                error: err.message, operation: 'resolveUuid',
-            });
-        }
+    if (!name || reference.display_name === name) {
+        return { uuid: reference.uuid, displayNameSaved: true };
     }
-    return reference.uuid;
+    try {
+        await db.execute(
+            `UPDATE ${TABLE} SET display_name = ? WHERE portal_id = ? AND uuid = ?`,
+            [name, portalId, reference.uuid]
+        );
+        return { uuid: reference.uuid, displayNameSaved: true };
+    } catch (err) {
+        logger.warn('Failed to save the user\'s display name; continuing without it', {
+            code: err.code, operation: 'resolveReference',
+        });
+        return { uuid: reference.uuid, displayNameSaved: false };
+    }
 };
+
+/** resolveReference, resolving to the uuid alone. */
+const resolveUuid = async (idpId, displayName) => (await resolveReference(idpId, displayName)).uuid;
 
 /**
  * Resolve a single created_by/updated_by-style uuid to its raw idp_id, returning
@@ -168,6 +187,7 @@ const buildListAuditFields = async (models) => {
 module.exports = {
     DELETED_USER,
     resolveUuid,
+    resolveReference,
     resolveDisplay,
     resolveMany,
     resolveDisplayNames,

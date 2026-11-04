@@ -59,7 +59,7 @@ function loadDao({ row = null, rows = [], failUpdate = false } = {}) {
     });
     stub(STUBS.driver, {
         execute: async (sql, params) => {
-            if (failUpdate) throw new Error('database unavailable');
+            if (failUpdate) throw Object.assign(new Error(String(failUpdate)), { code: 'EREQUEST' });
             log.updates.push({ sql, params });
         },
         query: async () => rows,
@@ -79,20 +79,20 @@ const ROWS = [
     { uuid: 'u-blank', idp_id: 'sub-blank', display_name: '  ' },
 ];
 
-test('a new user is created with the display name, trimmed', async () => {
+test('a new user is created without the name, which is then saved, trimmed', async () => {
     const { dao, log } = loadDao();
     const uuid = await dao.resolveUuid('sub-1', '  Ada Lovelace ');
     assert.strictEqual(uuid, log.inserted.uuid);
-    assert.strictEqual(log.inserted.display_name, 'Ada Lovelace');
-    assert.deepStrictEqual(log.updates, []);
+    assert.ok(!('display_name' in log.inserted), 'the insert must not depend on the name');
+    assert.deepStrictEqual(log.updates.map((u) => u.params), [['Ada Lovelace', 'portal-a', uuid]]);
 });
 
-test('a missing claim creates the row exactly as before, with a NULL name', async () => {
+test('a missing claim creates the row exactly as before, with no name write', async () => {
     for (const claim of [undefined, null, '', '   ', 42]) {
         const { dao, log } = loadDao();
         await dao.resolveUuid('sub-1', claim);
-        assert.strictEqual(log.inserted.display_name, null, String(claim));
-        assert.strictEqual(log.inserted.idp_id, 'sub-1');
+        assert.deepStrictEqual(Object.keys(log.inserted).sort(), ['idp_id', 'portal_id', 'uuid'], String(claim));
+        assert.deepStrictEqual(log.updates, [], String(claim));
     }
 });
 
@@ -117,16 +117,38 @@ test('a row from before display names existed gets one when a token carries it',
     assert.deepStrictEqual(log.updates[0].params, ['Grace Hopper', 'portal-a', 'u-old']);
 });
 
-test('a failure to save the name is logged and the uuid still returned', async () => {
-    const { dao, log } = loadDao({ row: { uuid: 'u-1', idp_id: 'sub-1', display_name: null }, failUpdate: true });
-    assert.strictEqual(await dao.resolveUuid('sub-1', 'Ada'), 'u-1');
+test('a failure to save the name is logged without the driver message and reported', async () => {
+    // SQL Server's truncation error quotes the rejected value.
+    const { dao, log } = loadDao({
+        row: { uuid: 'u-1', idp_id: 'sub-1', display_name: null },
+        failUpdate: "String or binary data would be truncated, value 'Ada'",
+    });
+    assert.deepStrictEqual(await dao.resolveReference('sub-1', 'Ada'), { uuid: 'u-1', displayNameSaved: false });
     assert.strictEqual(log.warnings.length, 1);
-    assert.ok(!JSON.stringify(log.warnings).includes('Ada'), 'the name itself must not be logged');
+    assert.ok(!JSON.stringify(log.warnings).includes('Ada'), 'neither the name nor the driver message may be logged');
 });
 
-test('an overlong name is capped to 255 code points', () => {
+test('a saved or unchanged name is reported as saved', async () => {
+    const saved = loadDao({ row: { uuid: 'u-1', idp_id: 'sub-1', display_name: null } });
+    assert.deepStrictEqual(await saved.dao.resolveReference('sub-1', 'Ada'), { uuid: 'u-1', displayNameSaved: true });
+    const unchanged = loadDao({ row: { uuid: 'u-1', idp_id: 'sub-1', display_name: 'Ada' } });
+    assert.deepStrictEqual(await unchanged.dao.resolveReference('sub-1', 'Ada'), { uuid: 'u-1', displayNameSaved: true });
+});
+
+test('names are capped to 255 UTF-16 units without splitting a character', () => {
     const { dao } = loadDao();
-    assert.strictEqual([...dao.normalizeDisplayName('é'.repeat(300))].length, 255);
+    assert.strictEqual(dao.normalizeDisplayName('é'.repeat(300)).length, 255);
+    // SQL Server's NVARCHAR(255) counts UTF-16 units: an emoji is two.
+    const emoji = dao.normalizeDisplayName('😀'.repeat(200));
+    assert.strictEqual(emoji, '😀'.repeat(127));
+    assert.ok(emoji.length <= 255);
+});
+
+test('control characters, NUL among them, are dropped', () => {
+    const { dao } = loadDao();
+    assert.strictEqual(dao.normalizeDisplayName('Ada\u0000 Lovelace'), 'Ada Lovelace');
+    assert.strictEqual(dao.normalizeDisplayName('\tGrace\nHopper\r '), 'GraceHopper');
+    assert.strictEqual(dao.normalizeDisplayName('\u0000\u0001'), '');
 });
 
 test('display names fall back to the idp_id, then deleted_user', async () => {

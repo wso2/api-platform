@@ -75,10 +75,18 @@ func (s *IdentityService) InternalUserID(r *http.Request) (string, error) {
 		return utils.GenerateUUID()
 	}
 	displayName, _ := middleware.GetDisplayNameFromRequest(r)
+	return s.ToInternalUUIDWithDisplayName(identity, displayName)
+}
+
+// ToInternalUUIDWithDisplayName is ToInternalUUID that also stores (or
+// refreshes) the user's display name on the mapping row. The name is optional:
+// an empty one maps exactly as ToInternalUUID does, and a failure to save it is
+// logged and not returned. The driver error is left out of the log because it
+// can carry the rejected value.
+func (s *IdentityService) ToInternalUUIDWithDisplayName(identity, displayName string) (string, error) {
 	mapped, err := s.repo.GetOrCreateUUIDWithDisplayName(identity, displayName)
 	if errors.Is(err, repository.ErrDisplayNameNotSaved) {
-		slog.Default().Warn("Failed to save the user's display name; continuing without it",
-			"userUUID", mapped, "error", err)
+		slog.Default().Warn("Failed to save the user's display name; continuing without it", "userUUID", mapped)
 		return mapped, nil
 	}
 	return mapped, err

@@ -254,9 +254,10 @@ func scopes(claims map[string]any, path string) []string {
 	return []string{}
 }
 
+// first returns the first value that is not empty or whitespace only.
 func first(vals ...string) string {
 	for _, v := range vals {
-		if v != "" {
+		if strings.TrimSpace(v) != "" {
 			return v
 		}
 	}

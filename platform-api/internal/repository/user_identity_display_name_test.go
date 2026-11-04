@@ -18,8 +18,10 @@
 package repository
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf16"
 )
 
 // storedDisplayName reads the stored display_name for idp; ok is false when
@@ -98,13 +100,75 @@ func TestIdentity_GetOrCreateUUIDWithDisplayName_CapsOverlongNames(t *testing.T)
 	tdb := openSchemaDB(t)
 	repo := NewUserIdentityMappingRepo(tdb.db)
 
-	long := strings.Repeat("é", maxDisplayNameRunes+40)
+	long := strings.Repeat("é", maxDisplayNameUnits+40)
 	if _, err := repo.GetOrCreateUUIDWithDisplayName("sub-long", long); err != nil {
 		t.Fatalf("an overlong name must not fail the write: %v", err)
 	}
 	stored, _ := storedDisplayName(t, tdb, "sub-long")
-	if n := len([]rune(stored)); n != maxDisplayNameRunes {
-		t.Fatalf("stored %d runes, want %d", n, maxDisplayNameRunes)
+	if n := len(utf16.Encode([]rune(stored))); n != maxDisplayNameUnits {
+		t.Fatalf("stored %d UTF-16 units, want %d", n, maxDisplayNameUnits)
+	}
+}
+
+// SQL Server's NVARCHAR(255) counts UTF-16 code units, so a name of characters
+// outside the BMP (two units each) is capped at 127 of them, never split.
+func TestNormalizeDisplayName(t *testing.T) {
+	emoji := normalizeDisplayName(strings.Repeat("😀", 200))
+	if n := len(utf16.Encode([]rune(emoji))); n > maxDisplayNameUnits {
+		t.Fatalf("emoji name is %d UTF-16 units, over %d", n, maxDisplayNameUnits)
+	}
+	if emoji != strings.Repeat("😀", maxDisplayNameUnits/2) {
+		t.Fatalf("emoji name capped to %d runes, want %d whole characters", len([]rune(emoji)), maxDisplayNameUnits/2)
+	}
+	cases := map[string]string{
+		"Ada\x00 Lovelace":   "Ada Lovelace", // Postgres rejects NUL in text
+		"\tGrace\nHopper\r ": "GraceHopper",
+		"\x00\x01":           "",
+		"bad\xffutf8":        "badutf8",
+	}
+	for in, want := range cases {
+		if got := normalizeDisplayName(in); got != want {
+			t.Errorf("normalizeDisplayName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A NUL in the claim is dropped rather than reaching the database, so the
+// user is still mapped and the rest of the name kept.
+func TestIdentity_GetOrCreateUUIDWithDisplayName_DropsControlCharacters(t *testing.T) {
+	tdb := openSchemaDB(t)
+	repo := NewUserIdentityMappingRepo(tdb.db)
+
+	if _, err := repo.GetOrCreateUUIDWithDisplayName("sub-nul", "Ada\x00 Lovelace"); err != nil {
+		t.Fatalf("a name with a NUL must not fail the mapping: %v", err)
+	}
+	if stored, _ := storedDisplayName(t, tdb, "sub-nul"); stored != "Ada Lovelace" {
+		t.Fatalf("stored %q, want %q", stored, "Ada Lovelace")
+	}
+}
+
+// More UUIDs than one batch are looked up across several queries.
+func TestIdentity_GetIdentitiesByUUIDs_Batches(t *testing.T) {
+	tdb := openSchemaDB(t)
+	repo := NewUserIdentityMappingRepo(tdb.db)
+
+	uuids := make([]string, 0, identityLookupBatchSize+3)
+	for i := range identityLookupBatchSize + 3 {
+		id, err := repo.GetOrCreateUUID(fmt.Sprintf("sub-batch-%d", i))
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		uuids = append(uuids, id)
+	}
+	got, err := repo.GetIdentitiesByUUIDs(uuids)
+	if err != nil {
+		t.Fatalf("GetIdentitiesByUUIDs: %v", err)
+	}
+	if len(got) != len(uuids) {
+		t.Fatalf("resolved %d of %d UUIDs", len(got), len(uuids))
+	}
+	if last := got[uuids[len(uuids)-1]]; last.IdpID != fmt.Sprintf("sub-batch-%d", identityLookupBatchSize+2) {
+		t.Fatalf("last UUID resolved to %+v", last)
 	}
 }
 

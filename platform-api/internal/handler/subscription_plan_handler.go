@@ -235,7 +235,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Unauthorized.New().
 			WithLogMessage("user id claim not found in token")
 	}
-	actor, err := h.identity.ToInternalUUID(rawActor)
+	actorName, _ := middleware.GetDisplayNameFromRequest(r)
+	actor, err := h.identity.ToInternalUUIDWithDisplayName(rawActor, actorName)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to resolve user identity")
@@ -435,7 +436,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Unauthorized.New().
 			WithLogMessage("user id claim not found in token")
 	}
-	actor, err := h.identity.ToInternalUUID(rawActor)
+	actorName, _ := middleware.GetDisplayNameFromRequest(r)
+	actor, err := h.identity.ToInternalUUIDWithDisplayName(rawActor, actorName)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to resolve user identity")
@@ -471,7 +473,8 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Unauthorized.New().
 			WithLogMessage("user id claim not found in token")
 	}
-	actor, err := h.identity.ToInternalUUID(rawActor)
+	actorName, _ := middleware.GetDisplayNameFromRequest(r)
+	actor, err := h.identity.ToInternalUUIDWithDisplayName(rawActor, actorName)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to resolve user identity")

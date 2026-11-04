@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf16"
 
 	"github.com/wso2/api-platform/platform-api/internal/database"
 
@@ -131,8 +133,14 @@ func (r *UserIdentityMappingRepo) GetSubsByUUIDs(uuids []string) (map[string]str
 	return result, rows.Err()
 }
 
-// maxDisplayNameRunes is the width of user_idp_references.display_name.
-const maxDisplayNameRunes = 255
+// maxDisplayNameUnits is the width of user_idp_references.display_name in
+// UTF-16 code units, the unit SQL Server's NVARCHAR(255) counts. Capping in
+// these units also fits Postgres VARCHAR(255), which counts characters.
+const maxDisplayNameUnits = 255
+
+// identityLookupBatchSize bounds the UUIDs bound into one IN (...) query,
+// well under SQL Server's limit of 2,100 parameters per statement.
+const identityLookupBatchSize = 500
 
 // ErrDisplayNameNotSaved wraps a failure to record a display name on a row that
 // was otherwise found or created. The UUID returned alongside it is valid, so
@@ -147,10 +155,11 @@ type UserIdentity struct {
 }
 
 // GetOrCreateUUIDWithDisplayName is GetOrCreateUUID that also records the
-// user's display name. A new row stores it; an existing row is updated only
-// when displayName is non-empty and differs from the stored value, so an empty
-// value (the claim was absent from the token) never clears a stored name and
-// never blocks the lookup.
+// user's display name. The row is found or created exactly as GetOrCreateUUID
+// does, without the name, so a name the database rejects can never stop the
+// user being mapped; the name is then saved by a separate update, made only
+// when displayName is non-empty and differs from the stored value. An empty
+// value (the claim was absent from the token) never clears a stored name.
 func (r *UserIdentityMappingRepo) GetOrCreateUUIDWithDisplayName(identity, displayName string) (string, error) {
 	if identity == "" {
 		return "", nil
@@ -161,25 +170,13 @@ func (r *UserIdentityMappingRepo) GetOrCreateUUIDWithDisplayName(identity, displ
 	if err != nil {
 		return "", err
 	}
-	if existing != "" {
-		return existing, r.refreshDisplayName(existing, stored, displayName)
-	}
-
-	newUUID := uuid.New().String()
-	query := `INSERT INTO user_idp_references (uuid, idp_id, created_at, display_name) VALUES (?, ?, ?, ?)`
-	_, err = r.db.Exec(r.db.Rebind(query), newUUID, identity, time.Now().UTC(), nullIfEmpty(displayName))
-	if err != nil {
-		if isUniqueViolation(err) {
-			// Another request created the row first; fall back to it.
-			existing, stored, err := r.getUUIDAndDisplayName(identity)
-			if err != nil || existing == "" {
-				return existing, err
-			}
-			return existing, r.refreshDisplayName(existing, stored, displayName)
+	if existing == "" {
+		if existing, err = r.GetOrCreateUUID(identity); err != nil || existing == "" {
+			return existing, err
 		}
-		return "", err
+		stored = sql.NullString{}
 	}
-	return newUUID, nil
+	return existing, r.refreshDisplayName(existing, stored, displayName)
 }
 
 // refreshDisplayName updates the stored display name when the incoming one is
@@ -215,20 +212,26 @@ func (r *UserIdentityMappingRepo) getUUIDAndDisplayName(identity string) (string
 func (r *UserIdentityMappingRepo) GetIdentitiesByUUIDs(uuids []string) (map[string]UserIdentity, error) {
 	result := make(map[string]UserIdentity)
 	unique := dedupeNonEmpty(uuids)
-	if len(unique) == 0 {
-		return result, nil
+	for start := 0; start < len(unique); start += identityLookupBatchSize {
+		end := min(start+identityLookupBatchSize, len(unique))
+		if err := r.getIdentitiesInto(result, unique[start:end]); err != nil {
+			return nil, err
+		}
 	}
+	return result, nil
+}
 
-	placeholders := make([]string, len(unique))
-	args := make([]any, len(unique))
-	for i, id := range unique {
+func (r *UserIdentityMappingRepo) getIdentitiesInto(result map[string]UserIdentity, uuids []string) error {
+	placeholders := make([]string, len(uuids))
+	args := make([]any, len(uuids))
+	for i, id := range uuids {
 		placeholders[i] = "?"
 		args[i] = id
 	}
 	query := `SELECT uuid, idp_id, display_name FROM user_idp_references WHERE uuid IN (` + strings.Join(placeholders, ",") + `)`
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 
@@ -236,20 +239,32 @@ func (r *UserIdentityMappingRepo) GetIdentitiesByUUIDs(uuids []string) (map[stri
 		var mappedUUID, identity string
 		var displayName sql.NullString
 		if err := rows.Scan(&mappedUUID, &identity, &displayName); err != nil {
-			return nil, err
+			return err
 		}
 		result[mappedUUID] = UserIdentity{IdpID: identity, DisplayName: displayName.String}
 	}
-	return result, rows.Err()
+	return rows.Err()
 }
 
 // normalizeDisplayName trims a token-supplied display name, drops invalid
-// UTF-8 and caps it to the column width so an overlong claim can't fail the
-// write.
+// UTF-8 and control characters (Postgres rejects NUL in text), and caps it to
+// maxDisplayNameUnits UTF-16 code units without splitting a character, so an
+// overlong claim fits the column on every engine.
 func normalizeDisplayName(name string) string {
-	name = strings.TrimSpace(strings.ToValidUTF8(name, ""))
-	if runes := []rune(name); len(runes) > maxDisplayNameRunes {
-		name = strings.TrimSpace(string(runes[:maxDisplayNameRunes]))
+	name = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, strings.ToValidUTF8(name, ""))
+	name = strings.TrimSpace(name)
+
+	units := 0
+	for i, r := range name {
+		units += utf16.RuneLen(r)
+		if units > maxDisplayNameUnits {
+			return strings.TrimSpace(name[:i])
+		}
 	}
 	return name
 }

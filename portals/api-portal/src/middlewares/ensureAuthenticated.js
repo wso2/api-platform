@@ -28,13 +28,22 @@ const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
 const logger = require('../config/logger');
 const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent } = require('../utils/tokenUtil');
-const { resolveUserUuid, verifyBearerToken, displayNameClaim } = require('./authMiddleware');
+const { resolveUserUuid, verifyBearerToken } = require('./authMiddleware');
 const {
     effectiveScopes,
     isAuthorizationEnabled,
     portalRoles,
     isPageRoleValidationEnabled,
 } = require('./authorization');
+
+/**
+ * The display name captured at login, when token is that session's own access
+ * token. These paths decode the token before its signature is checked, so a
+ * name is only ever taken from the verified login, never from the token.
+ */
+function sessionDisplayName(req, token) {
+    return token && req.user?.[constants.ACCESS_TOKEN] === token ? req.user.displayName : undefined;
+}
 
 // System page-access gates (constants.js) merged with any deployer-supplied additions
 // (config.pageAccessRules, via config.toml) — the config side only ever adds patterns,
@@ -104,8 +113,7 @@ function enforceSecurity(scope) {
                     }
                 }
                 const decodedAccessToken = safeDecodeJwt(token);
-                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID],
-                    req.user?.displayName || displayNameClaim(decodedAccessToken));
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID], sessionDisplayName(req, token));
                 return validateAuthentication(scope)(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
@@ -233,8 +241,7 @@ const ensureAuthenticated = async (req, res, next) => {
             const earlyToken = accessTokenPresent(req);
             if (earlyToken) {
                 const earlyDecoded = safeDecodeJwt(earlyToken);
-                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID],
-                    req.user.displayName || displayNameClaim(earlyDecoded));
+                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID], sessionDisplayName(req, earlyToken));
             }
         }
     }
@@ -317,8 +324,7 @@ const ensureAuthenticated = async (req, res, next) => {
             if (token) {
                 const decodedAccessToken = safeDecodeJwt(token);
                 req.orgId = req.orgId || orgDetails?.uuid;
-                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID],
-                    req.user?.displayName || displayNameClaim(decodedAccessToken));
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID], sessionDisplayName(req, token));
             }
             if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];

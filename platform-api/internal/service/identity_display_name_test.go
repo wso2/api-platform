@@ -18,9 +18,12 @@
 package service
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -88,9 +91,17 @@ func TestInternalUserID_PassesTheDisplayNameClaim(t *testing.T) {
 func TestInternalUserID_DisplayNameSaveFailureIsNotFatal(t *testing.T) {
 	req := middleware.WithDisplayName(middleware.WithUserID(httptest.NewRequest("GET", "/", nil), "sub-1"), "Ada")
 
-	repo := &displayNameRepo{saveErr: fmt.Errorf("%w: disk full", repository.ErrDisplayNameNotSaved)}
+	var logged bytes.Buffer
+	defer slog.SetDefault(slog.Default())
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+
+	// SQL Server's truncation error quotes the rejected value.
+	repo := &displayNameRepo{saveErr: fmt.Errorf("%w: String or binary data would be truncated, value 'Ada'", repository.ErrDisplayNameNotSaved)}
 	if got, err := NewIdentityService(repo).InternalUserID(req); err != nil || got != "uuid-sub-1" {
 		t.Fatalf("display-name failure: got %q, %v; want the UUID and no error", got, err)
+	}
+	if !strings.Contains(logged.String(), "uuid-sub-1") || strings.Contains(logged.String(), "Ada") {
+		t.Fatalf("the warning must name the user's UUID and not the name or driver error: %s", logged.String())
 	}
 
 	repo = &displayNameRepo{saveErr: errors.New("database unavailable")}

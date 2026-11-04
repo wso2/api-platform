@@ -60,7 +60,7 @@ const USER_UUID_CACHE_TTL_MS = 5 * 60 * 1000;
 const USER_UUID_CACHE_MAX_ENTRIES = 5000;
 const userUuidCache = new Map(); // sub -> { uuid, displayName, expiresAt }
 const orgMappingCache = new Map(); // `${userUuid}:${orgId}` -> expiresAt
-const pendingUserUuidLookups = new Map(); // `${sub}\0${displayName}` -> in-flight resolveUuid() promise
+const pendingUserUuidLookups = new Map(); // `${sub}\0${displayName}` -> in-flight resolveReference() promise
 
 function getCached(cache, key) {
     const entry = cache.get(key);
@@ -100,7 +100,8 @@ function displayNameClaim(decoded) {
  * displayName is the configured display-name claim, if the token carried one. It
  * is stored on the reference row for display only; when absent nothing about the
  * lookup changes. A name the cache has not seen for this sub costs one more
- * lookup, which stores it.
+ * lookup, which stores it; the cache records a name only once it is saved, so a
+ * failed save is retried on the next request.
  */
 async function resolveUserUuid(req, sub, displayName) {
     if (!sub) return undefined;
@@ -112,21 +113,22 @@ async function resolveUserUuid(req, sub, displayName) {
         const pendingKey = `${sub}\0${name}`;
         let pending = pendingUserUuidLookups.get(pendingKey);
         if (!pending) {
-            pending = userIdpReferenceDao.resolveUuid(sub, name).finally(() => {
+            pending = userIdpReferenceDao.resolveReference(sub, name).finally(() => {
                 pendingUserUuidLookups.delete(pendingKey);
             });
             pendingUserUuidLookups.set(pendingKey, pending);
         }
+        let displayNameSaved;
         try {
-            userUuid = await pending;
+            ({ uuid: userUuid, displayNameSaved } = await pending);
         } catch (err) {
             logger.error('Failed to resolve user identity reference; continuing without one', {
                 error: err.message, operation: 'resolveUserUuid',
             });
             return undefined;
         }
-        setCached(userUuidCache, sub,
-            { uuid: userUuid, displayName: name || cached?.displayName }, USER_UUID_CACHE_MAX_ENTRIES);
+        const knownName = name && displayNameSaved ? name : cached?.displayName;
+        setCached(userUuidCache, sub, { uuid: userUuid, displayName: knownName }, USER_UUID_CACHE_MAX_ENTRIES);
     }
 
     if (req.orgId) {
@@ -637,6 +639,5 @@ module.exports = {
     OAuth2Security,
     apiKeyAuth,
     resolveUserUuid,
-    displayNameClaim,
     verifyBearerToken,
 };

@@ -289,6 +289,7 @@ func TestUserFromClaims_DisplayNamePrecedence(t *testing.T) {
 		{"display name", map[string]any{"name": "Ada Lovelace", "username": "ada", "email": "ada@example.com", "sub": "u-1"}, "Ada Lovelace"},
 		{"no display name", map[string]any{"username": "ada", "email": "ada@example.com", "sub": "u-1"}, "ada"},
 		{"empty display name", map[string]any{"name": "", "email": "ada@example.com", "sub": "u-1"}, "ada@example.com"},
+		{"whitespace-only display name", map[string]any{"name": "   ", "username": "ada", "sub": "u-1"}, "ada"},
 		{"non-string display name", map[string]any{"name": 42, "sub": "u-1"}, "u-1"},
 	}
 	for _, tc := range cases {
