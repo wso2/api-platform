@@ -1230,3 +1230,30 @@ func TestTrackMCPToolResultReportsAFailedUndo(t *testing.T) {
 		})
 	require.ErrorContains(t, err, "no cleanup is defined")
 }
+
+func TestDiscardCreateDeletesWithTheCreatorsTokenAndStillFails(t *testing.T) {
+	status := http.StatusNoContent
+	var deletes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.Equal(t, "Bearer org-b", r.Header.Get("Authorization"))
+		deletes = append(deletes, r.URL.Path)
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(server.Close)
+	s := &Steps{client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+	created := func(location string) *httpx.Response {
+		return &httpx.Response{StatusCode: http.StatusCreated, Headers: http.Header{"Location": {location}}}
+	}
+
+	err := s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created(apiBase+"/secrets/s1"))
+	require.ErrorContains(t, err, "cleanup cannot delete")
+	require.NotContains(t, err.Error(), "deleting it")
+	require.Equal(t, []string{apiBase + "/secrets/s1"}, deletes)
+
+	status = http.StatusInternalServerError
+	require.ErrorContains(t, s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created(apiBase+"/secrets/s2")), "deleting it as")
+
+	require.ErrorContains(t, s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created("")), "names no Location")
+	require.Len(t, deletes, 2)
+}

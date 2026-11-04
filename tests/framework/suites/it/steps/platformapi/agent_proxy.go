@@ -228,14 +228,34 @@ func (s *Steps) sendControlPlane(ctx context.Context, call controlPlaneCall) (*h
 		return nil, fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	// Cleanup deletes as the default organization's administrator, which cannot reach another
-	// organization's resources, so a create as org B would leak silently.
+	// organization's resources, so a create as org B is deleted as org B and the step fails.
 	if resp.StatusCode == http.StatusCreated && strings.TrimSpace(call.who) == secondOrganizationAdmin {
-		return resp, fmt.Errorf("%s %s created a resource as %q, which cleanup cannot delete", method, path, secondOrganizationAdmin)
+		return resp, s.discardCreate(ctx, base, token, method+" "+path, resp)
 	}
 	if err := s.trackControlPlaneResource(ctx, method, call.body, resp); err != nil {
 		return resp, err
 	}
 	return resp, nil
+}
+
+// discardCreate deletes what a create reported at its Location, with the creator's token, and
+// returns the error that fails the creating step.
+func (s *Steps) discardCreate(ctx context.Context, base, token, request string, resp *httpx.Response) error {
+	createErr := fmt.Errorf("%s created a resource as %q, which cleanup cannot delete", request, secondOrganizationAdmin)
+	location := locationPath(resp.Headers.Get("Location"))
+	if location == "" {
+		return fmt.Errorf("%w; the response names no Location to delete", createErr)
+	}
+	deleted, err := s.client.Do(ctx, httpx.Request{
+		Method: http.MethodDelete, URL: base + location, Headers: map[string]string{"Authorization": "Bearer " + token},
+	}, 0, 0)
+	if err != nil {
+		return fmt.Errorf("%w; deleting it as %q: %v", createErr, secondOrganizationAdmin, err)
+	}
+	if !deleted.Succeeded() {
+		return fmt.Errorf("%w; deleting it as %q: %s", createErr, secondOrganizationAdmin, deleted.Describe())
+	}
+	return createErr
 }
 
 // callToken is the bearer token a request carries: the call's own when it sets one, otherwise a
