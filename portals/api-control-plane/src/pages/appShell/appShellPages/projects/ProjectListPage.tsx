@@ -25,13 +25,14 @@ import {
   Stack,
   TablePagination,
 } from '@wso2/oxygen-ui';
-import { Plus, Search } from '@wso2/oxygen-ui-icons-react';
+import { Plus, Search, SearchX } from '@wso2/oxygen-ui-icons-react';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
 import { AppPage } from '@/components/AppPage';
+import { EmptyResults } from '@/components/common/EmptyResults';
 import { useDeleteProject, useProjects } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -47,6 +48,11 @@ const PAGE_SIZE_OPTIONS = [12, 24, 48];
 const SEARCH_DEBOUNCE_MS = 300;
 
 const messages = defineMessages({
+  clearSearch: {
+    id: 'project.list.clearSearch',
+    defaultMessage: 'Clear search',
+    description: 'Button that empties the search box when no project matches it.',
+  },
   createProject: {
     id: 'project.list.createProjectButton',
     defaultMessage: 'Create Project',
@@ -260,9 +266,12 @@ function ProjectListPageContent() {
             value={search}
           />
           {projects.length === 0 ? (
-            <EmptyState
-              title={intl.formatMessage(messages.noMatchesTitle)}
+            <EmptyResults
+              actionLabel={intl.formatMessage(messages.clearSearch)}
               description={intl.formatMessage(messages.noMatchesDescription)}
+              illustration={<SearchX size={34} strokeWidth={1.5} />}
+              onAction={() => setSearch('')}
+              title={intl.formatMessage(messages.noMatchesTitle)}
             />
           ) : (
             <>
@@ -277,7 +286,9 @@ function ProjectListPageContent() {
               </Box>
 
               {total > PAGE_SIZE_OPTIONS[0] && (
-                <Box>
+                // Pulled up into the Stack's spacing, and a shorter toolbar, so the pager
+                // sits close to the last card.
+                <Box sx={{ mt: -1.5 }}>
                   <TablePagination
                     component="div"
                     count={total}
@@ -290,6 +301,7 @@ function ProjectListPageContent() {
                     page={currentPage}
                     rowsPerPage={rowsPerPage}
                     rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+                    sx={{ '& .MuiTablePagination-toolbar': { minHeight: 40 } }}
                   />
                 </Box>
               )}

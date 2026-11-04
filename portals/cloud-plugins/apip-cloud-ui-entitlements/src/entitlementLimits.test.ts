@@ -71,13 +71,47 @@ describe('toResourceLimits', () => {
     expect(toResourceLimits(other)).toBeNull();
   });
 
-  it('maps gateways from hybrid_gateways', () => {
-    const limits = toResourceLimits(growth({ gateways: 1 }));
-    expect(limits?.gateways).toMatchObject({ max: 3, used: 1 });
+  describe('the two gateway caps', () => {
+    it('maps self-hosted gateways from hybrid_gateways', () => {
+      const limits = toResourceLimits(growth({ gateways: 1 }));
+      expect(limits?.selfHostedGateways).toMatchObject({ max: 3, used: 1 });
+    });
+
+    it('maps managed gateways from the gateways meter', () => {
+      const limits = toResourceLimits(summary([quota('gateways', 1, 1)]));
+      expect(limits?.managedGateways).toMatchObject({ max: 1, used: 1 });
+      expect(limits?.managedGateways?.message).toContain('Managed Gateways');
+    });
+
+    // "May ANY gateway be created" — a full managed quota does not stop a
+    // self-hosted one, so this reports whichever kind still has room.
+    it('reports the roomiest kind for the generic gateways verdict', () => {
+      const limits = toResourceLimits(
+        summary([quota('gateways', 1, 1), quota('hybrid_gateways', 2, 0)])
+      );
+      expect(limits?.gateways).toMatchObject({ max: 2, used: 0 });
+    });
+
+    // With neither kind having room the verdict is "full" whichever meter
+    // names it, so assert the verdict rather than which one won the tie.
+    it('reports a full cap for the generic verdict only when both kinds are full', () => {
+      const limits = toResourceLimits(
+        summary([quota('gateways', 1, 1), quota('hybrid_gateways', 2, 2)])
+      );
+      expect(limits!.gateways!.used).toBeGreaterThanOrEqual(limits!.gateways!.max);
+    });
+
+    it('treats an unlimited kind as room for the generic verdict', () => {
+      const limits = toResourceLimits(
+        summary([quota('gateways', 1, 1), quota('hybrid_gateways', null, 9)])
+      );
+      expect(limits?.gateways?.max).toBe(-1);
+    });
   });
 
   describe('the APIs budget', () => {
-    // The Create API gate binds on `apis` and nothing else.
+    // The Create API gate binds on `apis` and nothing else: MCP, LLM and
+    // agent proxies are not metered, so there is no shared budget above it.
     it('binds on apis when it is exhausted', () => {
       const limits = toResourceLimits(growth({ apis: 5 }));
       expect(limits?.restApis).toMatchObject({ max: 5, used: 5 });
@@ -87,35 +121,6 @@ describe('toResourceLimits', () => {
     it('leaves headroom when the cap is not reached', () => {
       const limits = toResourceLimits(growth({ apis: 2 }));
       expect(limits?.restApis).toMatchObject({ max: 5, used: 2 });
-    });
-
-    // Every interface type spends the shared budget, so an exhausted budget
-    // stops the next API even while the narrower `apis` meter looks roomy —
-    // the case a plan with equal limits hides until types are mixed.
-    it('binds on the shared budget when it is the tighter of the two', () => {
-      const limits = toResourceLimits(
-        summary([quota('apis', 5, 1), quota('managed_interfaces', 10, 10)])
-      );
-      expect(limits?.restApis).toMatchObject({ max: 10, used: 10 });
-      // And names the cap that actually binds, not this component's own.
-      expect(limits?.restApis?.message).toContain('Managed Interfaces');
-    });
-
-    it('binds on the apis meter when that one is tighter', () => {
-      const limits = toResourceLimits(
-        summary([quota('apis', 5, 5), quota('managed_interfaces', 10, 5)])
-      );
-      expect(limits?.restApis).toMatchObject({ max: 5, used: 5 });
-      expect(limits?.restApis?.message).toContain('APIs');
-    });
-
-    // Both exhausted: the broader budget names itself, since it is the one the
-    // user has to raise to get anywhere.
-    it('names the budget when both are equally exhausted', () => {
-      const limits = toResourceLimits(
-        summary([quota('apis', 5, 5), quota('managed_interfaces', 5, 5)])
-      );
-      expect(limits?.restApis?.message).toContain('Managed Interfaces');
     });
   });
 

@@ -324,25 +324,28 @@ describe('organization-level items', () => {
   });
 
   /*
-   * Settings needs no scope of its own, so it never gates — but it does follow you
-   * down one level: the organization's settings while browsing the org, that
-   * project's once you are inside one. One pinned link at a time, never both,
-   * which is what `AppRoutes.orgSettings.test.tsx` exercises end to end.
+   * Manage replaced the Settings link: both of its pages are organization-scoped,
+   * so it points at the organization's tabs at every scope and never gates.
    */
-  it('follows the scope down to the project, and no further', () => {
-    const { to } = definitionFor('settings');
-    expect(to(atOrg())).toBe(`${ORG}/settings`);
-    expect(to(atProject())).toBe(`${PROJECT}/settings`);
-    // No API tier: an API has no settings page of its own, so inside one the item
-    // stays on the project's.
-    expect(to(atApi())).toBe(`${PROJECT}/settings`);
+  it('points at the organization-level pages at every scope', () => {
+    const { to, children } = definitionFor('manage');
+    expect(to(atOrg())).toBe(`${ORG}/subscription-plans`);
+    expect(to(atProject())).toBe(`${ORG}/subscription-plans`);
+    expect(children?.map((child) => child.id)).toEqual([
+      'manage-subscription-plans',
+      'manage-meters',
+    ]);
+    expect(children?.[1].to(atApi())).toBe(`${ORG}/meters`);
   });
 
-  it('lights Settings up at either of its entry points', () => {
-    const match = matcherFor('settings');
-    expect(match(`${ORG}/settings`)).toBe(true);
-    expect(match(`${PROJECT}/settings`)).toBe(true);
-    expect(match(`${API}/settings`)).toBe(false);
+  it('lights the page entry, not the Manage parent, on either page', () => {
+    const manage = definitionFor('manage');
+    expect(manage.match?.(`${ORG}/subscription-plans`)).toBe(false);
+    const [plans, meters] = manage.children ?? [];
+    expect(plans.match?.(`${ORG}/subscription-plans`)).toBe(true);
+    expect(plans.match?.(`${ORG}/meters`)).toBe(false);
+    expect(meters.match?.(`${ORG}/meters`)).toBe(true);
+    expect(meters.match?.(`${ORG}/settings`)).toBe(false);
   });
 });
 
@@ -356,19 +359,11 @@ describe('organization-level items', () => {
  * actually on at the target scope, in either direction.
  */
 describe('findTargetAtScope', () => {
-  it('keeps the user on Settings when dropping a project to its organization', () => {
-    const target = findTargetAtScope(`${PROJECT}/settings/general`, atProject(), {
+  it('keeps the user on a Manage tab when dropping a project to its organization', () => {
+    const target = findTargetAtScope(`${ORG}/meters`, atProject(), {
       orgHandle: anOrganization().id,
     });
-    expect(target).toBe(`${ORG}/settings`);
-  });
-
-  it('keeps the user on Settings when picking a project from the organization', () => {
-    const target = findTargetAtScope(`${ORG}/settings/general`, atOrg(), {
-      orgHandle: anOrganization().id,
-      projectHandler: aProject().id,
-    });
-    expect(target).toBe(`${PROJECT}/settings`);
+    expect(target).toBe(`${ORG}/meters`);
   });
 
   it('keeps the user on an API-only page when dropping its API, via the scope-less alias', () => {
@@ -386,12 +381,44 @@ describe('findTargetAtScope', () => {
   });
 });
 
+describe('Manage menu', () => {
+  it('shows Meters in the sidebar', () => {
+    const meters = definitionFor('manage').children?.find((child) => child.id === 'manage-meters');
+    expect(meters?.isVisible?.(atOrg()) ?? true).toBe(true);
+    expect(meters?.to(atOrg())).toBe(`${ORG}/meters`);
+  });
+
+  it('shows Subscription Plans', () => {
+    const plans = definitionFor('manage').children?.find(
+      (child) => child.id === 'manage-subscription-plans',
+    );
+    expect(plans?.isVisible?.(atOrg()) ?? true).toBe(true);
+  });
+
+  it('sits in the same section as Insights and Observability, after them', () => {
+    const [insights, observability, manage] = ['insights', 'observability', 'manage'].map(
+      definitionFor,
+    );
+    expect(insights.group).toBe(manage.group);
+    expect(observability.group).toBe(manage.group);
+    expect(insights.order).toBeLessThan(observability.order);
+    expect(observability.order).toBeLessThan(manage.order);
+  });
+
+  it('keeps Insights and Observability out of the Develop to Publish section', () => {
+    const develop = definitionFor('develop');
+    expect(definitionFor('insights').group).not.toBe(develop.group);
+    expect(definitionFor('observability').group).not.toBe(develop.group);
+    expect(definitionFor('publish').group).toBe(develop.group);
+  });
+});
+
 describe('sidebar structure', () => {
   it('carries no section headings, only divider clusters', () => {
     // Clusters separate; they are never rendered as text (see
     // NavigationDefinition.group), so they are keys, not labels.
     expect(new Set(navigationRegistry.map((item) => item.group))).toEqual(
-      new Set(['place', 'api', 'global']),
+      new Set(['place', 'api', 'operate']),
     );
   });
 
@@ -401,7 +428,7 @@ describe('sidebar structure', () => {
       .map((item) => item.group)
       .filter((group, index, all) => group !== all[index - 1]);
 
-    expect(clusterRun).toEqual(['place', 'api', 'global']);
+    expect(clusterRun).toEqual(['place', 'api', 'operate']);
   });
 
   it('leaves `level` to extensions, which need it for path building', () => {

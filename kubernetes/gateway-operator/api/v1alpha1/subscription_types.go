@@ -21,16 +21,28 @@ import (
 )
 
 // SubscriptionSpec mirrors the management-API SubscriptionCreateRequest
-// payload. The gateway-controller issues a UUID id which the controller
-// persists to .status.id for subsequent PUT/DELETE.
+// payload. The gateway-controller issues a UUID id (or uses externalRefId when
+// set) which the controller persists to .status.id for subsequent PUT/DELETE.
+// subscriptionToken, subscriptionPlanId and status can be changed after the
+// subscription is deployed; the other fields are immutable.
 type SubscriptionSpec struct {
+	// ExternalRefId is an optional caller-supplied reference ID. When set, the
+	// gateway uses it as the subscription id instead of generating one.
+	// Must be unique on the gateway. Immutable once deployed.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._-]*$`
+	// +optional
+	ExternalRefId *string `json:"externalRefId,omitempty"`
+
 	// ApiId is the API identifier (deployment id or handle).
 	// +kubebuilder:validation:Required
 	ApiId string `json:"apiId"`
 
 	// SubscriptionToken is the opaque token used to invoke the API. The
 	// token is sent as plaintext to the gateway which stores only its hash;
-	// inline in the CR or supplied via valueFrom.
+	// inline in the CR or supplied via valueFrom. Changing it (or the
+	// referenced Secret data) rotates the token on the gateway in place.
 	// +kubebuilder:validation:Required
 	SubscriptionToken SecretValueSource `json:"subscriptionToken"`
 
@@ -38,9 +50,9 @@ type SubscriptionSpec struct {
 	// +optional
 	ApplicationId *string `json:"applicationId,omitempty"`
 
-	// SubscriptionPlanId is an optional plan UUID. When the plan is also
-	// managed via SubscriptionPlan CR, set this to the SubscriptionPlan's
-	// .status.id once it has been deployed.
+	// SubscriptionPlanId is an optional plan UUID, or the name of a
+	// SubscriptionPlan CR in the same namespace. Changing it moves the
+	// subscription to the new plan in place; removing it removes the plan.
 	// +optional
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty"`
 

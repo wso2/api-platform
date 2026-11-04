@@ -22,6 +22,7 @@ import { Lock } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
 import { AppLoader } from './AppLoader';
+import { SecondaryText } from './common/SecondaryText';
 import { CanCreate } from '@/permissions';
 import type { LimitedComponent } from '@/hooks/useResourceLimits';
 
@@ -116,11 +117,7 @@ export function EmptyState({
           <Typography sx={{ fontWeight: 700, pt: 2 }} variant="h5">
             {title}
           </Typography>
-          {description && (
-            <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
-              {description}
-            </Typography>
-          )}
+          {description && <SecondaryText sx={{ textAlign: 'center' }}>{description}</SecondaryText>}
           {action && <Box sx={{ pt: 2 }}>{action}</Box>}
         </Stack>
       </Box>

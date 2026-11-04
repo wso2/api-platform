@@ -341,16 +341,31 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"agent-proxy.yaml":     "a2a",
 		"llm-provider-cp.yaml": "upstream",
 	}
+	// Control-plane payloads without a protocol block name the fields every request carries.
+	controlPlaneFields := map[string][]string{
+		"service-account.yaml": {"displayName", "roles"},
+	}
 
 	paths, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	require.NoError(t, err)
-	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneBlocks))
+	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneBlocks)+len(controlPlaneFields))
 	for _, path := range paths {
 		name := filepath.Base(path)
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 		var document map[string]any
 		require.NoError(t, yaml.Unmarshal(content, &document))
+
+		if fields, isControlPlane := controlPlaneFields[name]; isControlPlane {
+			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
+			}
+			require.Len(t, document, len(fields), "template %q", name)
+			for _, field := range fields {
+				require.Contains(t, document, field, "template %q", name)
+			}
+			continue
+		}
 
 		if blockName, isControlPlane := controlPlaneBlocks[name]; isControlPlane {
 			if name == "agent-proxy.yaml" {

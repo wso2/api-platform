@@ -30,9 +30,13 @@ import (
 // portalContentFileName must end in .zip, or the portal refuses the upload.
 const portalContentFileName = "content.zip"
 
-// PublishContent implements PortalPublisher with PUT /apis/{handle}/assets. The portal only
+// PublishContent implements PortalPublisher with PUT on the listing's /assets. The portal only
 // adds or replaces files, so the call is safe to repeat.
-func (p *HTTPPortalPublisher) PublishContent(ctx context.Context, portal *model.APIPortal, apiHandle string, content *PortalContent) error {
+func (p *HTTPPortalPublisher) PublishContent(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, content *PortalContent) error {
+	listing, err := portalListingFor(apiType)
+	if err != nil {
+		return err
+	}
 	body, contentType, err := buildPortalContentMultipart(content)
 	if err != nil {
 		return err
@@ -43,7 +47,7 @@ func (p *HTTPPortalPublisher) PublishContent(ctx context.Context, portal *model.
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, apiURL(portal, apiHandle)+"/assets", body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, listingURL(portal, listing, apiHandle)+"/assets", body)
 	if err != nil {
 		return fmt.Errorf("failed to build portal content request: %w", err)
 	}

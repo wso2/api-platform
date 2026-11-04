@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { isPolicyHubConfigured } from './policyHub.endpoints';
 import { policyHubQueries } from './policyHub.queries';
@@ -38,22 +38,19 @@ import { policyHubQueries } from './policyHub.queries';
 export const useIsPolicyHubConfigured = (): boolean => isPolicyHubConfigured();
 
 /**
- * One page of the policy catalog, optionally narrowed to categories.
- *
- * `keepPreviousData` for the same reason the REST API list uses it: paging
- * changes the key, and without it the catalog would unmount into a spinner on
- * every Next click.
+ * The catalog for an infinite-scroll list. `search` and `categories` are applied by
+ * the hub across every policy, so the list is complete for the filter even before
+ * the user has scrolled to it; `fetchNextPage` loads the following page.
  */
-export const usePolicyHubPolicies = (
-  page: number,
+export const usePolicyHubInfinitePolicies = (
   pageSize: number,
+  search: string,
   categories: string[] = [],
   enabled = true,
 ) =>
-  useQuery({
-    ...policyHubQueries.policies(page, pageSize, categories),
+  useInfiniteQuery({
+    ...policyHubQueries.policiesInfinite(pageSize, search, categories),
     enabled: enabled && isPolicyHubConfigured(),
-    placeholderData: keepPreviousData,
   });
 
 /** Category names, for the catalog's filter chips. */

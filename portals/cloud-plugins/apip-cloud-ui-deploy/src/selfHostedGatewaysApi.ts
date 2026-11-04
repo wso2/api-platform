@@ -20,12 +20,12 @@ import type { ApiFetch, GatewayVersionEntry } from './hostPort';
 
 export type SelfHostedGatewayType = 'regular' | 'ai';
 
-export const DEFAULT_SELF_HOSTED_NAME = 'Default Self-Hosted Gateway';
+export const DEFAULT_SELF_HOSTED_NAME = 'Self-Hosted';
 
 /** The default gateway's display name; an AI gateway is named for its type so it does not shadow the regular one. */
 export const defaultSelfHostedName = (type: SelfHostedGatewayType): string =>
-  type === 'ai' ? 'Default AI Self-Hosted Gateway' : DEFAULT_SELF_HOSTED_NAME;
-const DEFAULT_SELF_HOSTED_DESCRIPTION = 'Default API Platform Self-Hosted Gateway';
+  type === 'ai' ? 'AI Self-Hosted' : DEFAULT_SELF_HOSTED_NAME;
+const DEFAULT_SELF_HOSTED_DESCRIPTION = 'Default self-hosted gateway';
 
 /**
  * platform-api's native create needs at least one endpoint, and a self-hosted
@@ -67,41 +67,66 @@ const fingerprint = (value: string): string => {
 };
 
 /**
- * `<environment>-<name>`, as the Gateways page derives it. When that does not fit the
- * 40-character column the environment is shortened and a fingerprint of the complete
- * environment name is added, so two environments sharing a long prefix keep distinct ids.
+ * The name half of the gateway's handle. The server builds the handle as
+ * `<environment>-<name>` and refuses one longer than the 40-character column, so
+ * a name that does not fit beside the environment is shortened, with a
+ * fingerprint of the full name so two shortened names stay distinct.
  */
-export const deriveHandle = (name: string, environment: string): string => {
+export const deriveHandleName = (name: string, environment: string): string => {
   const slug = slugify(name);
-  const env = slugify(environment) || 'env';
-  const full = `${env}-${slug}`;
-  if (full.length <= MAX_HANDLE_LENGTH) return full;
-  const tag = fingerprint(`${environment}|${name}`);
-  const room = MAX_HANDLE_LENGTH - slug.length - tag.length - 2;
-  if (room < 1) return `${tag}-${slug}`.slice(0, MAX_HANDLE_LENGTH).replace(/-+$/, '');
-  return `${env.slice(0, room).replace(/-+$/, '')}-${tag}-${slug}`;
+  const room = MAX_HANDLE_LENGTH - environment.length - 1;
+  if (slug.length <= room) return slug;
+  const tag = fingerprint(name);
+  const keep = room - tag.length - 1;
+  if (keep < 1) return tag.slice(0, Math.max(room, 1));
+  return `${slug.slice(0, keep).replace(/-+$/, '')}-${tag}`;
 };
 
+const SELF_HOSTED_PATH = '/self-hosted-gateways';
+
+/** The gateway's own path, with the id encoded. */
+const gatewayPath = (gatewayId: string) => `${SELF_HOSTED_PATH}/${encodeURIComponent(gatewayId)}`;
+
 /**
- * Registers and sets up a self-hosted gateway. The calls are the Gateways page's
- * own: platform-api's native `/gateways` resource, with the environment and the
- * default marking carried in `properties`.
+ * Registers and sets up a self-hosted gateway through apip-platform-api's cloud
+ * `/self-hosted-gateways` resource, the Gateways page's own calls. The
+ * environment is its own field; a self-hosted gateway is never the default.
  */
 export function createSelfHostedGatewaysClient(apiFetch: ApiFetch) {
   const generateToken = async (gatewayId: string): Promise<string> => {
-    const response = await apiFetch<{ token?: string }>(
-      'POST',
-      `/gateways/${encodeURIComponent(gatewayId)}/tokens`,
-      {}
-    );
+    const response = await apiFetch<{ token?: string }>('POST', `${gatewayPath(gatewayId)}/tokens`, {});
     if (!response?.token) {
       throw new Error('The gateway registration service did not return a token.');
     }
     return response.token;
   };
 
+  /** The ids of the gateway's active registration tokens. */
+  const listActiveTokenIds = async (gatewayId: string): Promise<string[]> => {
+    const response = await apiFetch<{ list?: { id?: string; status?: string }[] }>(
+      'GET',
+      `${gatewayPath(gatewayId)}/tokens`
+    );
+    return (response?.list ?? [])
+      .filter((token) => token.id && (!token.status || token.status === 'active'))
+      .map((token) => token.id as string);
+  };
+
   return {
     generateToken,
+
+    /** Whether the gateway has any active registration token. */
+    async hasActiveToken(gatewayId: string): Promise<boolean> {
+      return (await listActiveTokenIds(gatewayId)).length > 0;
+    },
+
+    /** Revokes the gateway's existing registration tokens, then mints a new one. */
+    async reconfigureToken(gatewayId: string): Promise<string> {
+      for (const tokenId of await listActiveTokenIds(gatewayId)) {
+        await apiFetch('DELETE', `${gatewayPath(gatewayId)}/tokens/${encodeURIComponent(tokenId)}`);
+      }
+      return generateToken(gatewayId);
+    },
 
     /**
      * Creates the default self-hosted gateway in `environment` at `version` (a
@@ -115,15 +140,14 @@ export function createSelfHostedGatewaysClient(apiFetch: ApiFetch) {
       type: SelfHostedGatewayType = 'regular'
     ): Promise<{ id: string; token: string | null }> {
       const name = defaultSelfHostedName(type);
-      const created = await apiFetch<{ id?: string }>('POST', '/gateways', {
-        id: deriveHandle(name, environment),
+      const created = await apiFetch<{ id?: string }>('POST', SELF_HOSTED_PATH, {
         displayName: name,
+        handle: deriveHandleName(name, environment),
         description: DEFAULT_SELF_HOSTED_DESCRIPTION,
+        environment,
         endpoints: [PENDING_ENDPOINT],
         functionalityType: type,
-        isCritical: false,
         ...(version ? { version } : {}),
-        properties: { environment, isDefault: 'true' },
       });
       if (!created?.id) {
         throw new Error('The gateway registration service returned an incomplete response.');

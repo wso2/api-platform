@@ -46,16 +46,16 @@ describe('listGateways', () => {
   it('lists every kind when none is asked for', async () => {
     const { apiFetch, calls } = recording(() => ({ list: [] }));
     await createSelfHostedGatewaysClient(apiFetch).listGateways();
-    expect(calls[0]).toMatchObject({ method: 'GET', path: '/gateways' });
+    expect(calls[0]).toMatchObject({ method: 'GET', path: '/self-hosted-gateways' });
   });
 
   it('filters by the requested kinds', async () => {
     const { apiFetch, calls } = recording(() => ({ list: [] }));
     await createSelfHostedGatewaysClient(apiFetch).listGateways(['regular', 'event']);
-    expect(calls[0].path).toBe('/gateways?functionalityType=regular,event');
+    expect(calls[0].path).toBe('/self-hosted-gateways?functionalityType=regular,event');
   });
 
-  it('maps a native record to a self-hosted gateway', async () => {
+  it('maps a record to a self-hosted gateway, in its bound environment and never the default', async () => {
     const { apiFetch } = recording(() => ({
       list: [
         {
@@ -65,7 +65,8 @@ describe('listGateways', () => {
           endpoints: ['https://edge.example.com'],
           isActive: true,
           version: '1.2',
-          properties: { environment: 'dev', isDefault: 'true' },
+          environment: 'dev',
+          isDefault: true,
         },
       ],
     }));
@@ -78,7 +79,7 @@ describe('listGateways', () => {
       environmentId: 'dev',
       url: 'https://edge.example.com',
       status: 'active',
-      isDefault: true,
+      isDefault: false,
       version: '1.2',
     });
   });
@@ -116,19 +117,6 @@ describe('listGateways', () => {
     expect(gateways[0].name).toBe('a');
   });
 
-  it('only marks a gateway default when the property is exactly "true"', async () => {
-    const { apiFetch } = recording(() => ({
-      list: [
-        { id: 'a', properties: { isDefault: 'true' } },
-        { id: 'b', properties: { isDefault: 'false' } },
-        { id: 'c', properties: { isDefault: true } },
-        { id: 'd' },
-      ],
-    }));
-    const gateways = await createSelfHostedGatewaysClient(apiFetch).listGateways();
-    expect(gateways.map((g) => g.isDefault)).toEqual([true, false, false, false]);
-  });
-
   it('is empty when the server returns nothing', async () => {
     const { apiFetch } = recording(() => undefined);
     expect(await createSelfHostedGatewaysClient(apiFetch).listGateways()).toEqual([]);
@@ -140,7 +128,7 @@ describe('generateToken', () => {
     const { apiFetch, calls } = recording(() => ({ token: 'tok-1' }));
     const token = await createSelfHostedGatewaysClient(apiFetch).generateToken('dev edge');
     expect(token).toBe('tok-1');
-    expect(calls[0]).toEqual({ method: 'POST', path: '/gateways/dev%20edge/tokens', body: {} });
+    expect(calls[0]).toEqual({ method: 'POST', path: '/self-hosted-gateways/dev%20edge/tokens', body: {} });
   });
 
   it('throws when the response carries no token', async () => {
@@ -151,23 +139,80 @@ describe('generateToken', () => {
   });
 });
 
+describe('hasActiveToken', () => {
+  it('is true when an active token exists', async () => {
+    const { apiFetch, calls } = recording(() => ({ list: [{ id: 't1', status: 'active' }] }));
+    expect(await createSelfHostedGatewaysClient(apiFetch).hasActiveToken('g')).toBe(true);
+    expect(calls[0]).toMatchObject({ method: 'GET', path: '/self-hosted-gateways/g/tokens' });
+  });
+
+  it('is false when there are none, or only revoked ones', async () => {
+    const none = recording(() => ({ list: [] }));
+    expect(await createSelfHostedGatewaysClient(none.apiFetch).hasActiveToken('g')).toBe(false);
+    const revoked = recording(() => ({ list: [{ id: 't0', status: 'revoked' }] }));
+    expect(await createSelfHostedGatewaysClient(revoked.apiFetch).hasActiveToken('g')).toBe(false);
+  });
+});
+
+describe('reconfigureToken', () => {
+  it('revokes every active token first, then mints a new one', async () => {
+    const { apiFetch, calls } = recording((call) => {
+      if (call.method === 'GET') {
+        return {
+          list: [
+            { id: 't1', status: 'active' },
+            { id: 't2', status: 'active' },
+            { id: 't0', status: 'revoked' },
+          ],
+        };
+      }
+      return call.method === 'POST' ? { token: 'new' } : undefined;
+    });
+    expect(await createSelfHostedGatewaysClient(apiFetch).reconfigureToken('g')).toBe('new');
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      'GET /self-hosted-gateways/g/tokens',
+      'DELETE /self-hosted-gateways/g/tokens/t1',
+      'DELETE /self-hosted-gateways/g/tokens/t2',
+      'POST /self-hosted-gateways/g/tokens',
+    ]);
+  });
+
+  it('mints a token when there is nothing to revoke', async () => {
+    const { apiFetch, calls } = recording((call) => (call.method === 'GET' ? { list: [] } : { token: 'new' }));
+    expect(await createSelfHostedGatewaysClient(apiFetch).reconfigureToken('g')).toBe('new');
+    expect(calls.map((c) => c.method)).toEqual(['GET', 'POST']);
+  });
+
+  it('mints nothing when a revoke fails', async () => {
+    const { apiFetch, calls } = recording((call) => {
+      if (call.method === 'GET') return { list: [{ id: 't1', status: 'active' }] };
+      if (call.method === 'DELETE') throw new Error('revoke failed');
+      return { token: 'new' };
+    });
+    await expect(createSelfHostedGatewaysClient(apiFetch).reconfigureToken('g')).rejects.toThrow(/revoke failed/);
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+});
+
 describe('createGateway', () => {
   const answerCreateAndToken = (call: Call) =>
-    call.path === '/gateways' && call.method === 'POST'
-      ? { id: 'dev-edge-one', displayName: 'Edge One', endpoints: [PENDING_ENDPOINT] }
+    call.path === '/self-hosted-gateways' && call.method === 'POST'
+      ? { id: 'dev-edge-one', displayName: 'Edge One', endpoints: [PENDING_ENDPOINT], environment: 'dev' }
       : { token: 'tok-1' };
 
-  it('sends the derived handle, the pending endpoint, and the environment in properties', async () => {
+  it('sends the environment as its own field, with the pending endpoint', async () => {
     const { apiFetch, calls } = recording(answerCreateAndToken);
     await createSelfHostedGatewaysClient(apiFetch).createGateway(input());
-    expect(calls[0].body).toEqual({
-      id: 'dev-edge-one',
-      displayName: 'Edge One',
-      description: undefined,
-      endpoints: [PENDING_ENDPOINT],
-      functionalityType: 'regular',
-      isCritical: false,
-      properties: { environment: 'dev' },
+    expect(calls[0]).toEqual({
+      method: 'POST',
+      path: '/self-hosted-gateways',
+      body: {
+        displayName: 'Edge One',
+        description: undefined,
+        environment: 'dev',
+        functionalityType: 'regular',
+        endpoints: [PENDING_ENDPOINT],
+      },
     });
   });
 
@@ -187,25 +232,18 @@ describe('createGateway', () => {
     expect(without.calls[0].body).not.toHaveProperty('version');
   });
 
-  it('marks the default in properties only when asked', async () => {
-    const asked = recording(answerCreateAndToken);
-    await createSelfHostedGatewaysClient(asked.apiFetch).createGateway(input({ isDefault: true }));
-    expect((asked.calls[0].body as { properties: unknown }).properties).toEqual({
-      environment: 'dev',
-      isDefault: 'true',
-    });
-
-    const notAsked = recording(answerCreateAndToken);
-    await createSelfHostedGatewaysClient(notAsked.apiFetch).createGateway(input({ isDefault: false }));
-    expect((notAsked.calls[0].body as { properties: unknown }).properties).toEqual({ environment: 'dev' });
+  it('never asks for the default', async () => {
+    const { apiFetch, calls } = recording(answerCreateAndToken);
+    await createSelfHostedGatewaysClient(apiFetch).createGateway(input({ isDefault: true }));
+    expect(calls[0].body).not.toHaveProperty('isDefault');
   });
 
   it('mints the first token and returns it with the gateway', async () => {
     const { apiFetch, calls } = recording(answerCreateAndToken);
     const result = await createSelfHostedGatewaysClient(apiFetch).createGateway(input());
     expect(result.token).toBe('tok-1');
-    expect(result.gateway).toMatchObject({ id: 'dev-edge-one', hosting: 'self-hosted', url: '' });
-    expect(calls[1]).toMatchObject({ method: 'POST', path: '/gateways/dev-edge-one/tokens' });
+    expect(result.gateway).toMatchObject({ id: 'dev-edge-one', hosting: 'self-hosted', url: '', environmentId: 'dev' });
+    expect(calls[1]).toMatchObject({ method: 'POST', path: '/self-hosted-gateways/dev-edge-one/tokens' });
   });
 
   it('keeps the gateway and returns a null token when minting fails', async () => {
@@ -224,79 +262,22 @@ describe('createGateway', () => {
       /incomplete response/
     );
   });
-
-  it('clears the default marker on sibling gateways of the same environment and type', async () => {
-    const { apiFetch, calls } = recording((call) => {
-      if (call.method === 'POST' && call.path === '/gateways') return { id: 'dev-new' };
-      if (call.method === 'GET') {
-        return {
-          list: [
-            { id: 'dev-new', displayName: 'New', properties: { environment: 'dev', isDefault: 'true' } },
-            { id: 'dev-old', displayName: 'Old', properties: { environment: 'dev', isDefault: 'true' } },
-            { id: 'prod-old', displayName: 'Prod', properties: { environment: 'prod', isDefault: 'true' } },
-            { id: 'dev-plain', displayName: 'Plain', properties: { environment: 'dev' } },
-          ],
-        };
-      }
-      return { token: 't' };
-    });
-    await createSelfHostedGatewaysClient(apiFetch).createGateway(input({ name: 'New', isDefault: true }));
-    const puts = calls.filter((c) => c.method === 'PUT');
-    expect(puts).toEqual([
-      {
-        method: 'PUT',
-        path: '/gateways/dev-old',
-        body: { displayName: 'Old', properties: { environment: 'dev' } },
-      },
-    ]);
-  });
-
-  it('does not fail the create when clearing other defaults fails', async () => {
-    const { apiFetch } = recording((call) => {
-      if (call.method === 'POST' && call.path === '/gateways') return { id: 'dev-new' };
-      if (call.method === 'GET') throw new Error('list failed');
-      return { token: 't' };
-    });
-    const result = await createSelfHostedGatewaysClient(apiFetch).createGateway(input({ isDefault: true }));
-    expect(result.gateway.id).toBe('dev-new');
-    expect(result.token).toBe('t');
-  });
-
-  it('does not look at other gateways when not marking a default', async () => {
-    const { apiFetch, calls } = recording(answerCreateAndToken);
-    await createSelfHostedGatewaysClient(apiFetch).createGateway(input());
-    expect(calls.some((c) => c.method === 'GET')).toBe(false);
-  });
 });
 
 describe('updateGateway', () => {
   it('sends only the editable fields', async () => {
-    const { apiFetch, calls } = recording(() => ({ list: [] }));
+    const { apiFetch, calls } = recording(() => undefined);
     await createSelfHostedGatewaysClient(apiFetch).updateGateway(
       'dev-edge',
       input({ description: 'd', isDefault: true })
     );
-    expect(calls[0]).toEqual({
-      method: 'PUT',
-      path: '/gateways/dev-edge',
-      body: { displayName: 'Edge One', description: 'd', properties: { environment: 'dev', isDefault: 'true' } },
-    });
-  });
-
-  it('leaves the other gateways alone when not marking a default', async () => {
-    const { apiFetch, calls } = recording(() => undefined);
-    await createSelfHostedGatewaysClient(apiFetch).updateGateway('dev-edge', input());
-    expect(calls).toHaveLength(1);
-  });
-
-  it('swallows a failure to clear other defaults', async () => {
-    const { apiFetch } = recording((call) => {
-      if (call.method === 'GET') throw new Error('nope');
-      return undefined;
-    });
-    await expect(
-      createSelfHostedGatewaysClient(apiFetch).updateGateway('dev-edge', input({ isDefault: true }))
-    ).resolves.toBeUndefined();
+    expect(calls).toEqual([
+      {
+        method: 'PUT',
+        path: '/self-hosted-gateways/dev-edge',
+        body: { displayName: 'Edge One', description: 'd' },
+      },
+    ]);
   });
 });
 
@@ -304,6 +285,6 @@ describe('deleteGateway', () => {
   it('deletes the encoded gateway route', async () => {
     const apiFetch = vi.fn(async () => undefined) as unknown as ApiFetch;
     await createSelfHostedGatewaysClient(apiFetch).deleteGateway('dev edge');
-    expect(apiFetch).toHaveBeenCalledWith('DELETE', '/gateways/dev%20edge');
+    expect(apiFetch).toHaveBeenCalledWith('DELETE', '/self-hosted-gateways/dev%20edge');
   });
 });

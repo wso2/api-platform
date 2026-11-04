@@ -638,7 +638,7 @@ func TestOfferedCurrencies_MatchThePortals(t *testing.T) {
 	code := regexp.MustCompile(`code: '([A-Z]{3})'`)
 	for _, file := range []string{
 		"../../../portals/api-portal/src/utils/currencies.js",
-		"../../../portals/api-control-plane/src/pages/appShell/appShellPages/settings/components/currencies.ts",
+		"../../../portals/api-control-plane/src/pages/appShell/appShellPages/orgManage/components/currencies.ts",
 	} {
 		source, err := os.ReadFile(file)
 		if err != nil {

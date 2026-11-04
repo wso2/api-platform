@@ -461,6 +461,7 @@ func TestValidateAuthConfig(t *testing.T) {
 			if tt.auth.Authorization.Mode == "" {
 				tt.auth.Authorization.Mode = AuthzModeScope
 			}
+			tt.auth.ServiceAccount = defaultConfig().Auth.ServiceAccount
 			err := validateAuthConfig(&tt.auth)
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -541,9 +542,10 @@ func TestValidateAuthorizationConfig(t *testing.T) {
 func TestValidateAuthConfig_InternalTokenSkipValidation(t *testing.T) {
 	t.Run("no public key needed when validation is skipped", func(t *testing.T) {
 		auth := Auth{
-			Mode:          AuthModeInternalToken,
-			InternalToken: InternalToken{SkipValidation: true},
-			Authorization: Authorization{Mode: AuthzModeScope},
+			Mode:           AuthModeInternalToken,
+			InternalToken:  InternalToken{SkipValidation: true},
+			Authorization:  Authorization{Mode: AuthzModeScope},
+			ServiceAccount: defaultConfig().Auth.ServiceAccount,
 		}
 		assert.NoError(t, validateAuthConfig(&auth))
 	})
@@ -575,10 +577,11 @@ func TestValidateAuthConfig_InternalTokenSkipValidation(t *testing.T) {
 // lived under [auth.idp] and was unreachable.
 func TestValidateAuthConfig_RoleAuthorizationInInternalTokenMode(t *testing.T) {
 	auth := Auth{
-		Mode:          AuthModeInternalToken,
-		JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile},
-		Authorization: Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
-		ClaimMappings: ClaimMappings{Roles: "roles"},
+		Mode:           AuthModeInternalToken,
+		JWT:            JWT{PublicKeyFile: validJWTPublicKeyFile},
+		Authorization:  Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
+		ClaimMappings:  ClaimMappings{Roles: "roles"},
+		ServiceAccount: defaultConfig().Auth.ServiceAccount,
 	}
 	assert.NoError(t, validateAuthConfig(&auth))
 }

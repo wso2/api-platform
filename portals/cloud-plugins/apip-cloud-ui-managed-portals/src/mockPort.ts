@@ -96,6 +96,7 @@ export function createMockPortalPort(seed?: ManagedPortal[]): PortalPort {
       if (idx === -1) throw new Error('Portal not found');
       portals.splice(idx, 1);
       await delay(undefined);
+      return { pending: false };
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
       // Fixed non-empty list so form interactions render sensibly offline.

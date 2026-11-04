@@ -17,15 +17,25 @@
  */
 
 import type { ReactNode } from 'react';
-import { Box, ButtonBase, Divider, Grid, Skeleton, Stack, Typography } from '@wso2/oxygen-ui';
-import { Network } from '@wso2/oxygen-ui-icons-react';
+import {
+  Box,
+  ButtonBase,
+  Card,
+  CardHeader,
+  CardContent,
+  CardActions,
+  Divider,
+  Skeleton,
+  Stack,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { Braces, ChartColumn } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
 
 import { useAllGraphQLApis } from '@/api/resources/graphqlApis';
 import { useAllRestApis } from '@/api/resources/restApis';
 import grpcIcon from '@/assets/icons/gRPC.svg';
 import graphqlIcon from '@/assets/icons/graphql.svg';
-import restIcon from '@/assets/icons/rest.svg';
 import websocketIcon from '@/assets/icons/websocket.svg';
 import {
   matchesApiType,
@@ -33,14 +43,17 @@ import {
 } from '@/pages/appShell/appShellPages/apis/listing/apiTypeFilter';
 
 const messages = defineMessages({
-  apis: { id: 'apiControlPlane.projects.ProjectStatistics.apis', defaultMessage: 'APIs' },
+  apis: {
+    id: 'apiControlPlane.projects.ProjectStatistics.apis',
+    defaultMessage: 'API types',
+  },
   async: {
     id: 'apiControlPlane.projects.ProjectStatistics.async',
     defaultMessage: 'Async / events',
   },
-  deployments: {
-    id: 'apiControlPlane.projects.ProjectStatistics.deployments',
-    defaultMessage: 'Deployments',
+  total: {
+    id: 'apiControlPlane.projects.ProjectStatistics.total',
+    defaultMessage: 'Total',
   },
   graphql: { id: 'apiControlPlane.projects.ProjectStatistics.graphql', defaultMessage: 'GraphQL' },
   grpc: { id: 'apiControlPlane.projects.ProjectStatistics.grpc', defaultMessage: 'gRPC' },
@@ -53,14 +66,14 @@ const messages = defineMessages({
 
 function MetricCard({
   ariaLabel,
-  iconSrc,
+  icon,
   label,
   onClick,
   selected = false,
   value,
 }: {
   ariaLabel: string;
-  iconSrc: string;
+  icon: ReactNode;
   label: ReactNode;
   onClick?: () => void;
   selected?: boolean;
@@ -77,47 +90,30 @@ function MetricCard({
         bgcolor: selected ? 'action.selected' : 'transparent',
         border: 1,
         borderColor: selected ? 'primary.main' : 'transparent',
-        borderRadius: 1,
+        borderRadius: '6px',
+        '&.Mui-focusVisible': {
+          outline: '2px solid',
+          outlineColor: 'primary.main',
+          outlineOffset: 2,
+        },
         px: 1.25,
-        py: 1,
+        py: 1.1,
         transition: 'background-color 150ms ease, border-color 150ms ease',
         width: '100%',
       }}
     >
       <Stack alignItems="center" direction="row" spacing={1.25} sx={{ width: '100%' }}>
-        <Box
-          sx={{
-            alignItems: 'center',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 0.4,
-            display: 'flex',
-            flexShrink: 0,
-            height: 26,
-            justifyContent: 'center',
-            width: 26,
-          }}
-        >
-          <Box
-            alt=""
-            aria-hidden
-            component="img"
-            src={iconSrc}
-            sx={{ height: 22, objectFit: 'contain', width: 22 }}
-          />
-        </Box>
-        <Box sx={{ minWidth: 0, textAlign: 'left' }}>
-          <Typography color={selected ? 'text.primary' : 'text.secondary'} noWrap variant="body1">
-            {label}
+        {icon}
+        <Typography color="text.secondary" sx={{ flex: 1, textAlign: 'left' }} variant="body2">
+          {label}
+        </Typography>
+        {value === undefined ? (
+          <Skeleton width={24} />
+        ) : (
+          <Typography sx={{ fontWeight: 700 }} variant="body2">
+            <FormattedNumber value={value} />
           </Typography>
-          {value === undefined ? (
-            <Skeleton height={30} width={30} />
-          ) : (
-            <Typography sx={{ fontWeight: 700, lineHeight: 1.15 }} variant="h6">
-              <FormattedNumber value={value} />
-            </Typography>
-          )}
-        </Box>
+        )}
       </Stack>
     </ButtonBase>
   );
@@ -151,71 +147,109 @@ export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectS
 
   if (!isPending && total === 0) return null;
 
+  const typeIcon = (type: ApiTypeFilter, src?: string) => (
+    <Box
+      aria-hidden
+      sx={{
+        width: 28,
+        height: 28,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: '6px',
+        bgcolor: type === 'grpc' ? '#254c4c' : 'action.hover',
+        color: '#A6B3FF',
+        overflow: 'hidden',
+      }}
+    >
+      {type === 'rest' ? (
+        <Braces size={16} strokeWidth={2} />
+      ) : (
+        <Box
+          component="img"
+          src={src}
+          alt=""
+          sx={{
+            width: type === 'grpc' ? 28 : 16,
+            height: type === 'grpc' ? 28 : 16,
+            objectFit: 'contain',
+          }}
+        />
+      )}
+    </Box>
+  );
   const metrics = [
-    { type: 'rest' as const, message: messages.rest, icon: restIcon },
-    { type: 'graphql' as const, message: messages.graphql, icon: graphqlIcon },
-    { type: 'async' as const, message: messages.async, icon: websocketIcon },
-    { type: 'grpc' as const, message: messages.grpc, icon: grpcIcon },
+    { type: 'rest' as const, message: messages.rest, icon: typeIcon('rest') },
+    { type: 'graphql' as const, message: messages.graphql, icon: typeIcon('graphql', graphqlIcon) },
+    { type: 'async' as const, message: messages.async, icon: typeIcon('async', websocketIcon) },
+    { type: 'grpc' as const, message: messages.grpc, icon: typeIcon('grpc', grpcIcon) },
   ];
 
   return (
-    <Grid alignItems="center" container sx={{ minHeight: 68, py: 1 }}>
-      <Grid size={{ md: 2, xs: 12 }}>
-        <Stack spacing={0.5}>
-          <Typography color="text.secondary" sx={{ textTransform: 'uppercase' }} variant="caption">
-            <FormattedMessage {...messages.apis} />
-          </Typography>
-          {total === undefined ? (
-            <Skeleton height={40} width={32} />
-          ) : (
-            <Typography sx={{ fontWeight: 700 }} variant="h2">
-              <FormattedNumber value={total} />
-            </Typography>
-          )}
-        </Stack>
-      </Grid>
-
-      <Grid size={{ md: 'auto', xs: 12 }} sx={{ alignSelf: 'stretch', px: { md: 2.5, xs: 0 } }}>
-        <Divider orientation="vertical" sx={{ display: { md: 'block', xs: 'none' } }} />
-        <Divider sx={{ display: { md: 'none', xs: 'block' } }} />
-      </Grid>
-
-      <Grid size={{ md: 7, xs: 12 }}>
-        <Grid container spacing={2.5}>
+    <Card variant="outlined" sx={{ borderRadius: '14px' }}>
+      <CardHeader
+        avatar={<ChartColumn size={18} strokeWidth={1.5} />}
+        title={intl.formatMessage(messages.apis)}
+        slotProps={{
+          title: { variant: 'subtitle2', color: 'text.secondary', sx: { fontWeight: 600 } },
+        }}
+        sx={{ px: 2.25, pt: 2.25, pb: 1 }}
+      />
+      <CardContent sx={{ px: 2.25, py: 0 }}>
+        <Stack divider={<Divider />}>
           {metrics.map(({ type, message, icon }) => {
             const label = intl.formatMessage(message);
             return (
-              <Grid key={type} size={{ md: 3, sm: 6, xs: 12 }}>
-                <MetricCard
-                  ariaLabel={filterLabel(label)}
-                  iconSrc={icon}
-                  label={label}
-                  onClick={() => selectType(type)}
-                  selected={selectedType === type}
-                  value={countType(type)}
-                />
-              </Grid>
+              <MetricCard
+                key={type}
+                ariaLabel={filterLabel(label)}
+                icon={icon}
+                label={label}
+                onClick={() => selectType(type)}
+                selected={selectedType === type}
+                value={countType(type)}
+              />
             );
           })}
-        </Grid>
-      </Grid>
-
-      <Grid size={{ md: 'auto', xs: 12 }} sx={{ alignSelf: 'stretch', px: { md: 2.5, xs: 0 } }}>
-        <Divider orientation="vertical" sx={{ display: { md: 'block', xs: 'none' } }} />
-        <Divider sx={{ display: { md: 'none', xs: 'block' } }} />
-      </Grid>
-
-      <Grid size={{ md: 2, xs: 12 }}>
-        <Stack alignItems="center" direction="row" spacing={1.25}>
-          <Network size={16} />
-          <Typography color="text.secondary" variant="body1">
-            <FormattedMessage {...messages.deployments} />
-          </Typography>
-          <Box sx={{ ml: 'auto' }}>
-            <Skeleton height={24} width={28} />
-          </Box>
         </Stack>
-      </Grid>
-    </Grid>
+        <Divider />
+      </CardContent>
+      <CardActions sx={{ px: 2.25, pt: 1.5, pb: 2.25 }}>
+        <ButtonBase
+          onClick={() => onTypeFilterChange(null)}
+          aria-pressed={selectedType === null}
+          sx={{
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'space-between',
+            p: 1.5,
+            bgcolor: 'action.hover',
+            borderRadius: '8px',
+            border: 1,
+            borderColor: 'divider',
+            '&:hover': { bgcolor: 'action.selected' },
+            '&.Mui-focusVisible': {
+              outline: '2px solid',
+              outlineColor: 'primary.main',
+              outlineOffset: 2,
+            },
+          }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            <FormattedMessage {...messages.total} />
+          </Typography>
+          {total === undefined ? (
+            <Skeleton width={24} />
+          ) : (
+            <Typography color="primary" variant="body2" sx={{ fontWeight: 700 }}>
+              <FormattedNumber value={total} />
+            </Typography>
+          )}
+        </ButtonBase>
+      </CardActions>
+    </Card>
   );
 }

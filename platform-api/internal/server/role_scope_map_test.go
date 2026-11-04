@@ -233,3 +233,14 @@ func TestShippedRolesReachTheBuildsTheirDeploymentsRun(t *testing.T) {
 		}
 	}
 }
+
+// The shipped mapping must load against the shipped spec, ap_service_account included.
+func TestLoadRoleScopeMap_ShippedFile(t *testing.T) {
+	m, err := loadRoleScopeMap(roleModeConfig("../../resources/role-to-scope-mapping.yaml"), loadMergedRegistry(t), testLogger())
+	if err != nil {
+		t.Fatalf("shipped role-to-scope-mapping.yaml: %v", err)
+	}
+	if len(m["ap_service_account"]) == 0 {
+		t.Fatal("shipped mapping has no ap_service_account role")
+	}
+}

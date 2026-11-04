@@ -16,8 +16,23 @@
  * under the License.
  */
 
-import { useState, type FC } from 'react';
-import { Box, Card, CardContent, Chip, Drawer, IconButton, Stack, Typography } from '@wso2/oxygen-ui';
+import { useEffect, useRef, useState, type FC } from 'react';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Drawer,
+  IconButton,
+  Stack,
+  Typography,
+} from '@wso2/oxygen-ui';
 import { Check, X } from '@wso2/oxygen-ui-icons-react';
 import {
   DISTRIBUTION_NAME,
@@ -40,8 +55,12 @@ export type SelfHostedSetupDrawerProps = {
   initialToken: string | null;
   /** Whether the gateway has connected yet (its controller dialed in). */
   isActive: boolean;
-  /** Mints a new token, revoking the previous one. */
+  /** Whether the gateway already has an active registration token. */
+  onHasActiveToken: () => Promise<boolean>;
+  /** Mints the gateway's first registration token, revoking nothing. */
   onGenerateToken: () => Promise<string>;
+  /** Revokes the gateway's existing registration tokens, then mints a new one. */
+  onReconfigureToken: () => Promise<string>;
   onError: (message: string) => void;
   onClose: () => void;
 };
@@ -88,13 +107,18 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
   controlPlaneHost,
   initialToken,
   isActive,
+  onHasActiveToken,
   onGenerateToken,
+  onReconfigureToken,
   onError,
   onClose,
 }) => {
   const [token, setToken] = useState<string | null>(initialToken);
   const [regenerated, setRegenerated] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // The first-token check runs once per drawer, not again on a re-render.
+  const firstTokenCheckedRef = useRef(false);
 
   const gatewayVersion = versionEntry?.latestVersion ?? `v${versionEntry?.version ?? '1.0.0'}`;
   const distVersion = versionEntry?.distVersion ?? gatewayVersion.replace(/^v/, '');
@@ -102,13 +126,37 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
   const gatewayKind = versionEntry?.type ?? 'regular';
   const zipName = `wso2apip-${DISTRIBUTION_NAME[gatewayKind]}-${distVersion}`;
 
-  const handleRegenerate = async () => {
+  // Minting failed at creation: a gateway with no active token gets its first one
+  // straight away, with nothing to revoke and so nothing to confirm. No
+  // cancellation on cleanup: the ref keeps a remount (StrictMode) from starting a
+  // second check, so this one has to be the one that lands.
+  useEffect(() => {
+    if (initialToken || firstTokenCheckedRef.current) return;
+    firstTokenCheckedRef.current = true;
+    void (async () => {
+      setRegenerating(true);
+      try {
+        if (await onHasActiveToken()) return;
+        setToken(await onGenerateToken());
+      } catch (error) {
+        onError(error instanceof Error ? error.message : 'Unable to generate a registration token.');
+      } finally {
+        setRegenerating(false);
+      }
+    })();
+  }, [initialToken, onHasActiveToken, onGenerateToken, onError]);
+
+  const handleReconfigure = async () => {
+    setConfirmOpen(false);
     setRegenerating(true);
     try {
-      setToken(await onGenerateToken());
+      setToken(await onReconfigureToken());
       setRegenerated(true);
     } catch (error) {
-      onError(error instanceof Error ? error.message : 'Unable to generate a registration token.');
+      // The revoke may have gone through before the failure, so the token on screen
+      // can no longer be trusted; the Reconfigure prompt takes its place.
+      setToken(null);
+      onError(error instanceof Error ? error.message : 'Unable to reconfigure the registration token.');
     } finally {
       setRegenerating(false);
     }
@@ -123,7 +171,7 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
     registrationToken: token,
     hasJustRegeneratedToken: regenerated,
     isRegeneratingToken: regenerating,
-    onRegenerateToken: () => void handleRegenerate(),
+    onRegenerateToken: () => setConfirmOpen(true),
   };
 
   return (
@@ -176,6 +224,23 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
           <ConnectionStatus isActive={isActive} />
         </Card>
       </Stack>
+
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>Reconfigure gateway</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Regenerating the registration token will revoke the existing token for this gateway and disconnect the gateway from the control plane. Do you want to continue?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)} variant="outlined" color="secondary">
+            Cancel
+          </Button>
+          <Button color="error" onClick={() => void handleReconfigure()}>
+            Reconfigure
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Drawer>
   );
 };

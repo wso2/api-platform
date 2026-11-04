@@ -16,11 +16,12 @@
  * under the License.
  */
 
-import { Avatar, Box, Card, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Box, Card, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { BoxIcon, Clock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Project } from '@/api/resources/projects';
+import { PageTitleAvatar } from '@/components/common/PageTitleAvatar';
 import { openableProps } from '@/components/openable';
 import { focusRingSx } from '@/theme';
 import { useFormatters } from '@/i18n/useFormatters';
@@ -112,18 +113,15 @@ function ProjectRow({ project, onOpen, onDelete }: ProjectRowProps) {
     >
       {/* `minWidth: 0` is what lets a long name truncate instead of widening the grid. */}
       <Stack alignItems="center" direction="row" spacing={1.75} sx={{ minWidth: 0 }}>
-        <Avatar
+        <PageTitleAvatar
           sx={{
-            bgcolor: 'primary.light',
-            color: 'primary.contrastText',
             flexShrink: 0,
             height: AVATAR_SIZE,
             width: AVATAR_SIZE,
           }}
-          variant="rounded"
         >
           <BoxIcon size={AVATAR_ICON_SIZE} />
-        </Avatar>
+        </PageTitleAvatar>
         <Box sx={{ minWidth: 0 }}>
           <Typography component="div" noWrap sx={{ fontWeight: 600 }} variant="subtitle2">
             {project.displayName}

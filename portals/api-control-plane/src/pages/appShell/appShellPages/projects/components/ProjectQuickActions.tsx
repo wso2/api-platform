@@ -17,20 +17,18 @@
  */
 
 import { Button, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { FileUp, UserPlus } from '@wso2/oxygen-ui-icons-react';
+import { FileUp } from '@wso2/oxygen-ui-icons-react';
+import { useEffect } from 'react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { routes } from '@/routes/paths';
+import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
 
 const messages = defineMessages({
   importApi: {
     id: 'apiControlPlane.projects.ProjectQuickActions.importApi',
     defaultMessage: 'Import an OpenAPI definition',
-  },
-  inviteMember: {
-    id: 'apiControlPlane.projects.ProjectQuickActions.inviteMember',
-    defaultMessage: 'Invite a team member',
   },
   title: {
     id: 'apiControlPlane.projects.ProjectQuickActions.title',
@@ -42,6 +40,7 @@ type ProjectQuickActionsProps = { orgHandle: string; projectId: string };
 
 export function ProjectQuickActions({ orgHandle, projectId }: ProjectQuickActionsProps) {
   const navigate = useNavigate();
+  useEffect(preloadApiCreationWizard, []);
 
   return (
     <Stack spacing={0.5}>
@@ -63,13 +62,6 @@ export function ProjectQuickActions({ orgHandle, projectId }: ProjectQuickAction
             variant="text"
           >
             <FormattedMessage {...messages.importApi} />
-          </Button>
-          <Button
-            onClick={() => navigate(routes.projectSettings(orgHandle, projectId))}
-            startIcon={<UserPlus size={16} />}
-            variant="text"
-          >
-            <FormattedMessage {...messages.inviteMember} />
           </Button>
         </Stack>
       </Stack>

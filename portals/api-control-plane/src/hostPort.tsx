@@ -162,6 +162,8 @@ export type CloudHostPort = {
   gatewayControlPlaneHost?: string;
   resourceLimits: ResourceLimitsPort;
   resources: ResourcesPort;
+  /** The signed-in user, from the session the host already holds. */
+  user?: { name?: string; email?: string };
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

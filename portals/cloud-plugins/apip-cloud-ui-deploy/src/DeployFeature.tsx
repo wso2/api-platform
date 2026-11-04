@@ -388,7 +388,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       controlPlaneHost={gatewayControlPlaneHost ?? CONTROL_PLANE_HOST_PLACEHOLDER}
       initialToken={selfHosted.token}
       isActive={selfHostedActive}
+      onHasActiveToken={() => selfHostedClient.hasActiveToken(selfHosted.id)}
       onGenerateToken={() => selfHostedClient.generateToken(selfHosted.id)}
+      onReconfigureToken={() => selfHostedClient.reconfigureToken(selfHosted.id)}
       onError={(message) => notify(message, 'error')}
       onClose={() => setSelfHosted(null)}
     />

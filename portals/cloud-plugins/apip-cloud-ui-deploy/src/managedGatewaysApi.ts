@@ -20,12 +20,12 @@ import type { ApiFetch } from './hostPort';
 
 export type ManagedGatewayType = 'regular' | 'ai';
 
-export const DEFAULT_GATEWAY_NAME = 'Default Cloud Gateway';
-const DEFAULT_GATEWAY_DESCRIPTION = 'Default API Platform Cloud Gateway';
+export const DEFAULT_GATEWAY_NAME = 'Cloud Gateway';
+const DEFAULT_GATEWAY_DESCRIPTION = 'Default cloud gateway';
 
 /** The default gateway's display name; an AI gateway is named for its type so it does not shadow the regular one. */
 export const defaultGatewayName = (type: ManagedGatewayType): string =>
-  type === 'ai' ? 'Default AI Cloud Gateway' : DEFAULT_GATEWAY_NAME;
+  type === 'ai' ? 'AI Cloud' : DEFAULT_GATEWAY_NAME;
 
 /** A managed gateway as far as the Deploy page needs: which one, and how far along. */
 export type ManagedGatewayState = {

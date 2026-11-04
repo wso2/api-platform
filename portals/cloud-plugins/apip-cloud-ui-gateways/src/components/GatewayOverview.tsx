@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type FC, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FC, type ReactNode } from 'react';
 import {
   Box,
   Button,
@@ -24,6 +24,11 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Grid,
   IconButton,
   PageContent,
@@ -57,8 +62,12 @@ export type GatewayOverviewProps = {
   initialRegistrationToken?: string | null;
   onBack: () => void;
   onEditClick: (gatewayId: string) => void;
-  /** Mints (and revokes the previous) registration token — see `selfHostedGatewaysApi.generateToken`. */
+  /** Whether the gateway already has an active registration token. */
+  onHasActiveRegistrationToken: (gatewayId: string) => Promise<boolean>;
+  /** Mints the gateway's first registration token, revoking nothing. */
   onGenerateRegistrationToken: (gatewayId: string) => Promise<string>;
+  /** Revokes the gateway's existing registration tokens, then mints a new one. */
+  onReconfigureRegistrationToken: (gatewayId: string) => Promise<string>;
   notify: (message: string, severity?: 'success' | 'info' | 'warning' | 'error') => void;
 };
 
@@ -144,7 +153,9 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   initialRegistrationToken,
   onBack,
   onEditClick,
+  onHasActiveRegistrationToken,
   onGenerateRegistrationToken,
+  onReconfigureRegistrationToken,
   notify,
 }) => {
   const [tab, setTab] = useState<'configurations' | 'policies'>('configurations');
@@ -152,6 +163,9 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   const [registrationToken, setRegistrationToken] = useState<string | null>(initialRegistrationToken ?? null);
   const [hasJustRegeneratedToken, setHasJustRegeneratedToken] = useState(false);
   const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
+  const [isReconfigureConfirmOpen, setIsReconfigureConfirmOpen] = useState(false);
+  // The first-token check runs once per opened gateway, not again on a re-render.
+  const firstTokenCheckedRef = useRef(false);
 
   // The catalog entry whose release this gateway was created against. A gateway that
   // reports a version is matched by it, and when the catalog does not list it the setup
@@ -167,22 +181,53 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   const releaseChannel = RELEASE_PATH[gateway.type];
   const gatewayZipName = `wso2apip-${DISTRIBUTION_NAME[gateway.type]}-${distVersion}`;
 
-  const handleRegenerateToken = async () => {
+  // A gateway opened without a token in hand that has never had one (or whose
+  // tokens are all revoked) gets its first token straight away: there is nothing
+  // to revoke, so nothing to confirm. One that already has a token keeps the
+  // Reconfigure prompt, since only the gateway running on it knows the value.
+  useEffect(() => {
+    if (initialRegistrationToken || firstTokenCheckedRef.current) return;
+    firstTokenCheckedRef.current = true;
+    // No cancellation on cleanup: the ref keeps a remount (StrictMode) from
+    // starting a second check, so this one has to be the one that lands.
+    void (async () => {
+      setIsRegeneratingToken(true);
+      try {
+        if (await onHasActiveRegistrationToken(gateway.id)) return;
+        setRegistrationToken(await onGenerateRegistrationToken(gateway.id));
+      } catch (generateError) {
+        notify(
+          generateError instanceof Error ? generateError.message : 'Unable to generate a registration token.',
+          'error',
+        );
+      } finally {
+        setIsRegeneratingToken(false);
+      }
+    })();
+  }, [gateway.id, initialRegistrationToken, onHasActiveRegistrationToken, onGenerateRegistrationToken, notify]);
+
+  const handleReconfigureToken = async () => {
+    setIsReconfigureConfirmOpen(false);
     setIsRegeneratingToken(true);
     try {
-      const token = await onGenerateRegistrationToken(gateway.id);
+      const token = await onReconfigureRegistrationToken(gateway.id);
       setRegistrationToken(token);
       setHasJustRegeneratedToken(true);
       notify(`Generated a new registration token for "${gateway.name}".`, 'success');
     } catch (generateError) {
+      // The revoke may have gone through before the failure, so the token on screen
+      // can no longer be trusted; the Reconfigure prompt takes its place.
+      setRegistrationToken(null);
       notify(
-        generateError instanceof Error ? generateError.message : 'Unable to generate a registration token.',
+        generateError instanceof Error ? generateError.message : 'Unable to reconfigure the registration token.',
         'error',
       );
     } finally {
       setIsRegeneratingToken(false);
     }
   };
+
+  const requestReconfigure = () => setIsReconfigureConfirmOpen(true);
 
   const setupStepsProps = {
     gatewayVersion: resolvedVersion,
@@ -193,7 +238,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
     registrationToken,
     hasJustRegeneratedToken,
     isRegeneratingToken,
-    onRegenerateToken: () => void handleRegenerateToken(),
+    onRegenerateToken: requestReconfigure,
   };
 
   const isActive = gateway.status === 'active';
@@ -390,7 +435,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
                     registrationToken={registrationToken}
                     hasJustRegeneratedToken={hasJustRegeneratedToken}
                     isRegeneratingToken={isRegeneratingToken}
-                    onRegenerateToken={() => void handleRegenerateToken()}
+                    onRegenerateToken={requestReconfigure}
                   />
                 ) : isGatewayV12OrAbove(distVersion) ? (
                   <GatewaySetupStepsV1_2Plus {...setupStepsProps} />
@@ -488,6 +533,24 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={isReconfigureConfirmOpen} onClose={() => setIsReconfigureConfirmOpen(false)}>
+        <DialogTitle>Reconfigure gateway</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This action will revoke the existing key and create a new one, so connected gateways will lose
+            connection.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIsReconfigureConfirmOpen(false)} variant="outlined" color="secondary">
+            Cancel
+          </Button>
+          <Button color="error" onClick={() => void handleReconfigureToken()}>
+            Reconfigure
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {isRegeneratingToken ? (
         <Box sx={{ position: 'fixed', bottom: 24, right: 24 }}>

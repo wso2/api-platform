@@ -69,6 +69,12 @@ export type GatewayFormProps = {
   gatewayVersions: GatewayVersionEntry[];
   /** Preselects the Hosting option when creating, e.g. from the empty state's buttons. */
   initialHosting?: GatewayHosting | null;
+  /**
+   * Hosting kinds this organization has no room for, each with the message
+   * explaining why. Each kind is capped separately, so one being full says
+   * nothing about the other — hence a map rather than one flag.
+   */
+  hostingBlocked?: Partial<Record<GatewayHosting, string>>;
   onBack: () => void;
   /** Returning a promise lets the form keep its submit button busy until the save settles. Unchanged: still the `/managed-gateways` path. */
   onSubmit: (input: GatewayInput) => void | Promise<void>;
@@ -113,6 +119,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
   gateways,
   gatewayVersions,
   initialHosting = null,
+  hostingBlocked,
   onBack,
   onSubmit,
   onSubmitSelfHosted,
@@ -123,9 +130,14 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // nothing to choose, so the picker and its comparison table are left out
   // entirely rather than shown read-only; the fields below just reflect the
   // gateway's own hosting from the start.
-  const [hosting, setHosting] = useState<GatewayHosting | null>(
-    isEdit ? gateway!.hosting : initialHosting
-  );
+  // A kind whose quota is full must never arrive preselected — the form would
+  // open on a choice its own card refuses. An edit keeps its gateway's hosting
+  // regardless: a full quota does not stop editing what already exists.
+  const [hosting, setHosting] = useState<GatewayHosting | null>(() => {
+    if (isEdit) return gateway!.hosting;
+    if (initialHosting && hostingBlocked?.[initialHosting]) return null;
+    return initialHosting;
+  });
   const [showCompare, setShowCompare] = useState(false);
   const isSelfHosted = hosting === 'self-hosted';
 
@@ -161,18 +173,16 @@ const GatewayForm: FC<GatewayFormProps> = ({
     nameError ??
     (derivedHandle ? `Handle: ${derivedHandle}` : isEdit ? undefined : NAME_HELPER_TEXT);
 
-  // "First of its kind" is scoped to the chosen hosting too: a managed and a
-  // self-hosted gateway of the same type and environment are tracked by two
-  // entirely separate mechanisms (the binding table vs. a client-side
-  // property marker — see `selfHostedGatewaysApi`), so one becoming the
-  // default says nothing about the other.
+  // "First of its kind" counts managed gateways only: only a managed gateway can
+  // be an environment's default, so a self-hosted one neither becomes the
+  // default nor stops the first managed gateway from becoming it.
   const isFirstOfType =
     !isEdit &&
-    hosting !== null &&
+    hosting === 'managed' &&
     environmentId.length > 0 &&
     !gateways.some(
       (candidate) =>
-        candidate.hosting === hosting &&
+        candidate.hosting === 'managed' &&
         candidate.environmentId === environmentId &&
         candidate.type === type
     );
@@ -218,7 +228,13 @@ const GatewayForm: FC<GatewayFormProps> = ({
         isDefault,
       };
       if (hosting === 'self-hosted') {
-        await onSubmitSelfHosted({ ...input, url: url.trim() || undefined, version: version || undefined });
+        // A self-hosted gateway is never the default, whatever the switch last held.
+        await onSubmitSelfHosted({
+          ...input,
+          isDefault: false,
+          url: url.trim() || undefined,
+          version: version || undefined,
+        });
       } else {
         await onSubmit(input);
       }
@@ -264,9 +280,17 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   const step = ARROW_STEPS[event.key];
                   if (!step) return;
                   event.preventDefault();
-                  const current = HOSTING_OPTIONS.findIndex((option) => option.value === hosting);
                   const count = HOSTING_OPTIONS.length;
-                  const next = current === -1 ? (step > 0 ? 0 : count - 1) : (current + step + count) % count;
+                  const current = HOSTING_OPTIONS.findIndex((option) => option.value === hosting);
+                  // Step past any kind with no room rather than landing on a
+                  // card that cannot be chosen; stop if none is choosable.
+                  let next = current === -1 ? (step > 0 ? -1 : 0) : current;
+                  for (let tried = 0; tried < count; tried += 1) {
+                    next = (next + step + count) % count;
+                    if (!hostingBlocked?.[HOSTING_OPTIONS[next].value]) break;
+                    if (tried === count - 1) return;
+                  }
+                  if (hostingBlocked?.[HOSTING_OPTIONS[next].value]) return;
                   setHosting(HOSTING_OPTIONS[next].value);
                   event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
                 }}
@@ -279,6 +303,8 @@ const GatewayForm: FC<GatewayFormProps> = ({
                     description={option.description}
                     selected={hosting === option.value}
                     tabIndex={hosting === option.value || (hosting === null && index === 0) ? 0 : -1}
+                    disabled={Boolean(hostingBlocked?.[option.value])}
+                    disabledMessage={hostingBlocked?.[option.value]}
                     onClick={() => setHosting(option.value)}
                   />
                 ))}
@@ -421,28 +447,32 @@ const GatewayForm: FC<GatewayFormProps> = ({
               ) : null}
 
               <Grid size={{ xs: 12 }}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={isDefault}
-                      // Locked in three cases: nothing to be the default of until an
-                      // environment is chosen; an existing default cannot be unset
-                      // here (it is handed over by marking another gateway); and the
-                      // first gateway of its kind BECOMES the default whatever this
-                      // says, so offering to untick it would be a lie.
-                      disabled={
-                        (gateway?.isDefault ?? false) || environmentId.length === 0 || isFirstOfType
-                      }
-                      onChange={(event) => setIsDefault(event.target.checked)}
-                    />
-                  }
-                  label="Default gateway for this environment"
-                />
                 {isSelfHosted ? (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: -1 }}>
-                    Self-hosted gateways track their own default separately from WSO2-managed ones.
+                  // Only a WSO2-managed gateway can be the environment's default, so
+                  // there is no switch to offer; say why rather than leave it missing.
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Self-hosted gateways are never the default gateway of an environment. Select this
+                    gateway explicitly when you deploy to it.
                   </Typography>
-                ) : null}
+                ) : (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={isDefault}
+                        // Locked in three cases: nothing to be the default of until an
+                        // environment is chosen; an existing default cannot be unset
+                        // here (it is handed over by marking another gateway); and the
+                        // first gateway of its kind BECOMES the default whatever this
+                        // says, so offering to untick it would be a lie.
+                        disabled={
+                          (gateway?.isDefault ?? false) || environmentId.length === 0 || isFirstOfType
+                        }
+                        onChange={(event) => setIsDefault(event.target.checked)}
+                      />
+                    }
+                    label="Default gateway for this environment"
+                  />
+                )}
               </Grid>
             </>
           ) : null}

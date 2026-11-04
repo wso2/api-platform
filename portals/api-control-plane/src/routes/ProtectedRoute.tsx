@@ -20,6 +20,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { LoadingState } from '../components/StateViews';
 import { useAuth } from '../contexts/auth/AuthProvider';
+import { ServerErrorPage } from '../pages/appShell/appShellPages/system/SystemPages';
 import { routes } from './paths';
 
 export function ProtectedRoute() {
@@ -35,6 +36,11 @@ export function ProtectedRoute() {
 
   if (auth.status === 'expired') {
     return <Navigate to={routes.sessionExpired} replace />;
+  }
+
+  // Whether a session exists is unknown, and sign-in is behind the same server.
+  if (auth.status === 'unavailable') {
+    return <ServerErrorPage />;
   }
 
   if (!auth.isAuthenticated) {

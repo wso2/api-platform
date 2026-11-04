@@ -271,9 +271,10 @@ describe('TestPage — the cURL builder', () => {
     expectNoRenderLoop();
   });
 
-  // A `404` is the API simply never having had a definition uploaded, which is
-  // a prompt to add one — not the failure the message above describes.
-  it('shows the add-a-definition empty state when the API has no definition', async () => {
+  // A `404` is the API simply never having had a definition uploaded — not the
+  // failure the message above describes. A deployed API can still be called, so
+  // the page falls back to the cURL builder alone.
+  it('shows only the cURL builder when the API has no definition', async () => {
     server.use(
       ...pathFor(API).slice(0, 3),
       http.get(apiUrl('/rest-apis/payments-api/openapi'), () =>
@@ -286,10 +287,11 @@ describe('TestPage — the cURL builder', () => {
 
     renderPage();
 
-    expect(
-      await screen.findByText(/You must add an API definition to start testing/i),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/cURL command/i)).not.toBeInTheDocument();
+    expect(await screen.findByText(/cURL command/i)).toBeInTheDocument();
+    await waitFor(() => expect(curlText()).toMatch(/https:\/\/gw\.example\.com/));
+    expect(screen.queryByTestId('spec-viewer')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Console view/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/definition could not be loaded/i)).not.toBeInTheDocument();
     expectNoRenderLoop();
   });
 });

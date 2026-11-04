@@ -16,20 +16,18 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
-  Divider,
   SearchBar,
   Stack,
   TablePagination,
   ToggleButton,
   ToggleButtonGroup,
-  Typography,
 } from '@wso2/oxygen-ui';
-import { LayoutGrid, List, Plus } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'react-intl';
+import { LayoutGrid, List, Plus, SearchX } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { useAllGraphQLApis, useDeleteGraphQLApi } from '@/api/resources/graphqlApis';
@@ -37,22 +35,32 @@ import { useAllRestApis, useDeleteRestApi } from '@/api/resources/restApis';
 import { toGraphQLListableApi, toRestListableApi, type ListableApi } from './apiListItem';
 import { ApiGridView } from './ApiGridView';
 import { ApiListView } from './ApiListView';
+import { EmptyResults } from '@/components/common/EmptyResults';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ImportApiIllustration } from '@/components/illustrations/ImportApiIllustration';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
+import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
 import { matchesApiType, type ApiTypeFilter } from './apiTypeFilter';
 import { CanCreate } from '@/permissions/CanCreate';
 
 type ViewMode = 'grid' | 'list';
 
-/** Divisible by the grid's 2/3/4 columns, so no page ends in a ragged row. */
-const PAGE_SIZE_OPTIONS = [12, 24, 48];
+/**
+ * Page sizes per view; the first is the default. The grid's are divisible by
+ * its 2/3/4 columns, so no page ends in a ragged row.
+ */
+const PAGE_SIZE_OPTIONS: Record<ViewMode, number[]> = {
+  list: [10, 20, 50],
+  grid: [12, 24, 48],
+};
 const SEARCH_DEBOUNCE_MS = 300;
 
 const messages = defineMessages({
+  clearSearch: { id: 'apiListPage.clearSearch', defaultMessage: 'Clear search' },
+  clearFilters: { id: 'apiListPage.clearFilters', defaultMessage: 'Clear filters' },
   createApiButton: {
     id: 'apiListPage.createApiButton',
     defaultMessage: 'Create API',
@@ -135,7 +143,15 @@ const messages = defineMessages({
   },
 });
 
-export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | null }) {
+export function ApiList({
+  typeFilter = null,
+  sidebar,
+  onClearTypeFilter,
+}: {
+  typeFilter?: ApiTypeFilter | null;
+  sidebar?: ReactNode;
+  onClearTypeFilter?: () => void;
+}) {
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();
@@ -144,35 +160,65 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
   const { notify } = useNotifications();
 
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
-  const [view, setView] = useState<ViewMode>('grid');
+  const [view, setView] = useState<ViewMode>('list');
+  // Each view pages on its own: switching views keeps both where you left them.
+  const [paging, setPaging] = useState<Record<ViewMode, { page: number; rowsPerPage: number }>>({
+    list: { page: 0, rowsPerPage: PAGE_SIZE_OPTIONS.list[0] },
+    grid: { page: 0, rowsPerPage: PAGE_SIZE_OPTIONS.grid[0] },
+  });
+  const { page, rowsPerPage } = paging[view];
+  const pageSizeOptions = PAGE_SIZE_OPTIONS[view];
+  const setPage = (next: number) =>
+    setPaging((current) => ({ ...current, [view]: { ...current[view], page: next } }));
+  const setRowsPerPage = (next: number) =>
+    setPaging((current) => ({ ...current, [view]: { page: 0, rowsPerPage: next } }));
   const [toDelete, setToDelete] = useState<ListableApi | null>(null);
 
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
 
-  // Reset to page 1 when the filter or sort changes.
-  useEffect(() => setPage(0), [debouncedSearch, typeFilter]);
+  // Back to page 1 when the search or type filter changes. Adjusted while
+  // rendering rather than in an effect: an effect runs after a render that has
+  // already requested the old, deeper page's window from the server.
+  const filterKey = `${debouncedSearch}\u0000${typeFilter ?? ''}`;
+  const [pagedFilterKey, setPagedFilterKey] = useState(filterKey);
+  if (pagedFilterKey !== filterKey) {
+    setPagedFilterKey(filterKey);
+    setPaging((current) => ({
+      list: { ...current.list, page: 0 },
+      grid: { ...current.grid, page: 0 },
+    }));
+  }
 
   // Two independent resource types, each already sorted `createdAt desc` by
-  // the server — fetched in full (not paged server-side) so they can be
-  // merged, filtered, and paged together as one list. Search is still a
-  // server-side substring match on each source; only the combining is local.
-  const restApisQuery = useAllRestApis({
+  // the server, merged into one newest-first list. Paging is server-side: the
+  // newest `end` items of the merged list are always within the newest `end`
+  // of each source, so fetching just that window from both (not the whole
+  // collection) is enough to slice the page out exactly. Search is a
+  // server-side substring match on each source.
+  //
+  // A type filter changes that: `kind` is not a query parameter, so filtering
+  // by it needs every item and is done locally; GraphQL has its own endpoint,
+  // so it alone is fetched, and windowed.
+  const start = page * rowsPerPage;
+  const end = start + rowsPerPage;
+  const filterByKind = typeFilter !== null && typeFilter !== 'graphql';
+  const windowSize = filterByKind ? undefined : end;
+  const listFilters = {
     query: debouncedSearch || undefined,
     sortBy: 'createdAt',
     sortOrder: 'desc',
-  });
-  const graphqlApisQuery = useAllGraphQLApis({
-    query: debouncedSearch || undefined,
-    sortBy: 'createdAt',
-    sortOrder: 'desc',
-  });
+  } as const;
+  const restEnabled = typeFilter !== 'graphql';
+  const restApisQuery = useAllRestApis(listFilters, {}, { enabled: restEnabled, max: windowSize });
+  const graphqlApisQuery = useAllGraphQLApis(listFilters, {}, { max: windowSize });
 
-  const isPending = restApisQuery.isPending || graphqlApisQuery.isPending;
-  const error = restApisQuery.error ?? graphqlApisQuery.error;
+  // A disabled query never leaves `isPending`; ignore it rather than hang.
+  const isPending = (restEnabled && restApisQuery.isPending) || graphqlApisQuery.isPending;
+  const error = (restEnabled ? restApisQuery.error : null) ?? graphqlApisQuery.error;
+  const isPlaceholderData =
+    (restEnabled && restApisQuery.isPlaceholderData) || graphqlApisQuery.isPlaceholderData;
 
-  const restItems = (restApisQuery.data?.list ?? []).map(toRestListableApi);
+  const restItems = restEnabled ? (restApisQuery.data?.list ?? []).map(toRestListableApi) : [];
   const graphqlItems = (graphqlApisQuery.data?.list ?? []).map(toGraphQLListableApi);
   const mergedApis: ListableApi[] = [...restItems, ...graphqlItems].sort((a, b) =>
     (b.createdAt ?? '').localeCompare(a.createdAt ?? ''),
@@ -185,14 +231,29 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
   // filter matching zero rows despite APIs existing — the list item's `kind`
   // was simply never populated server-side; fixed, but the client should not
   // depend on it for the one type it can determine for certain another way).
-  const filteredApis = typeFilter
-    ? mergedApis.filter((api) =>
-        typeFilter === 'graphql' ? api.apiType === 'graphql' : matchesApiType(api.kind, typeFilter),
-      )
+  const filteredApis = filterByKind
+    ? mergedApis.filter((api) => matchesApiType(api.kind, typeFilter))
     : mergedApis;
-  const total = filteredApis.length;
+  // The server's totals, except under a kind filter, which only the client
+  // can count.
+  const total = filterByKind
+    ? filteredApis.length
+    : (restEnabled ? (restApisQuery.data?.pagination.total ?? 0) : 0) +
+      (graphqlApisQuery.data?.pagination.total ?? 0);
   const lastPage = Math.max(0, Math.ceil(total / rowsPerPage) - 1);
-  const apis = filteredApis.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+  const pageApis = filteredApis.slice(start, end);
+  // While the next page loads, `keepPreviousData` leaves the old window in
+  // place; re-slicing it at the new offset would flash an empty page, so keep
+  // showing the page that was last complete. Only when it came from the same
+  // search, type filter and view, though: rows from another query (say,
+  // unfiltered ones under a REST filter) must never be shown as if they matched.
+  const viewKey = `${filterKey}\u0000${view}`;
+  const settledApis = useRef<{ key: string; apis: ListableApi[] }>({ key: '', apis: [] });
+  useEffect(() => {
+    if (!isPlaceholderData) settledApis.current = { key: viewKey, apis: pageApis };
+  });
+  const apis =
+    isPlaceholderData && settledApis.current.key === viewKey ? settledApis.current.apis : pageApis;
   // Deleting the last card of the last page leaves `page` past the end. Render
   // the clamped value (an out-of-range `page` makes TablePagination complain),
   // and correct the state so the next request asks for a window that exists.
@@ -202,8 +263,8 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
   const isFirstRun = total === 0 && !isSearching;
 
   useEffect(() => {
-    if (page > lastPage) setPage(lastPage);
-  }, [page, lastPage]);
+    if (page > lastPage) setPaging((current) => ({ ...current, [view]: { ...current[view], page: lastPage } }));
+  }, [page, lastPage, view]);
 
   const confirmDelete = () => {
     if (!toDelete?.id) return;
@@ -229,7 +290,18 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
         ? routes.graphqlApi(orgHandle, projectHandler, api.id ?? '')
         : routes.api(orgHandle, projectHandler, api.id ?? ''),
     );
+  useEffect(preloadApiCreationWizard, []);
   const createApi = () => navigate(routes.newApi(orgHandle, projectHandler));
+
+  const layoutSx = {
+    display: 'grid',
+    gridTemplateColumns: {
+      xs: 'minmax(0, 1fr)',
+      lg: sidebar ? 'minmax(0, 1fr) 280px' : 'minmax(0, 1fr)',
+    },
+    gap: 4,
+    alignItems: 'start',
+  } as const;
 
   // `isPending` rather than `isLoading`: the queries stay disabled until the
   // route's org/project resolve, and in that window `isLoading` is already
@@ -238,7 +310,13 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
   if (error) {
-    return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
+    // The sidebar (the type statistics and their filters) outlives a failed list.
+    return (
+      <Box sx={layoutSx}>
+        <ErrorState message={intl.formatMessage(messages.errorMessage)} />
+        {sidebar && <Box sx={{ minWidth: 0 }}>{sidebar}</Box>}
+      </Box>
+    );
   }
 
   return (
@@ -261,53 +339,24 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
           operationId="CreateRESTAPI"
         />
       ) : (
-        <Stack spacing={2.5} sx={{ flexGrow: 1 }}>
-          <Box
-            sx={{
-              alignItems: 'center',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 2,
-              justifyContent: 'space-between',
-            }}
-          >
-            <Stack
-              alignItems="center"
-              direction="row"
-              divider={<Divider flexItem orientation="vertical" />}
-              spacing={1.25}
+        <Box sx={layoutSx}>
+          <Stack spacing={2.5} sx={{ minWidth: 0 }}>
+            <Box
+              sx={{
+                alignItems: 'center',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 2,
+                justifyContent: 'space-between',
+              }}
             >
-              <Typography sx={{ fontWeight: 800 }} variant="h4">
-                <FormattedMessage
-                  defaultMessage="APIs"
-                  description="Page title for the API list page"
-                  id="apiListPage.title"
-                />
-              </Typography>
-              <Typography color="text.secondary" variant="body2">
-                <FormattedNumber value={total} />
-              </Typography>
-            </Stack>
-            <Stack alignItems="center" direction="row" spacing={1.5}>
               <SearchBar
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={intl.formatMessage(messages.searchPlaceholder)}
                 size="small"
-                sx={{ minWidth: 320 }}
+                sx={{ flex: 1, minWidth: { xs: '100%', sm: 160 } }}
                 value={search}
               />
-              {/*
-                One gate for the whole wizard, not one per API type: the type
-                picker runs at step 1, *after* this button, so the button cannot
-                know what will be created. A single verdict covering everything
-                the wizard can produce is the only coherent choice — and a
-                deployment that caps nothing leaves it enabled exactly as before.
-              */}
-              <CanCreate component="restApis" denied="hide" do="CreateRESTAPI">
-                <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
-                  <FormattedMessage {...messages.createApiButton} />
-                </Button>
-              </CanCreate>
               <ToggleButtonGroup
                 exclusive
                 onChange={(_event, value: ViewMode | null) => {
@@ -316,60 +365,78 @@ export function ApiList({ typeFilter = null }: { typeFilter?: ApiTypeFilter | nu
                 size="small"
                 value={view}
               >
-                <ToggleButton aria-label={intl.formatMessage(messages.gridView)} value="grid">
-                  <LayoutGrid size={16} />
-                </ToggleButton>
                 <ToggleButton aria-label={intl.formatMessage(messages.listView)} value="list">
-                  <List size={16} />
+                  <List size={18} />
+                </ToggleButton>
+                <ToggleButton aria-label={intl.formatMessage(messages.gridView)} value="grid">
+                  <LayoutGrid size={18} />
                 </ToggleButton>
               </ToggleButtonGroup>
-            </Stack>
-          </Box>
+              <CanCreate component="restApis" denied="hide" do="CreateRESTAPI">
+                <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
+                  <FormattedMessage {...messages.createApiButton} />
+                </Button>
+              </CanCreate>
+            </Box>
 
-          {apis.length === 0 ? (
-            <EmptyState
-              description={intl.formatMessage(messages.noMatchesDescription)}
-              title={intl.formatMessage(messages.noMatchesTitle)}
-            />
-          ) : (
-            <>
-              {/* Keeps pagination pinned and the page stable during loading. */}
-              <Box
-                sx={{
-                  flexGrow: 1,
-                  opacity:
-                    restApisQuery.isPlaceholderData || graphqlApisQuery.isPlaceholderData
-                      ? 0.6
-                      : 1,
-                  transition: 'opacity .15s ease',
-                }}
-              >
-                {view === 'grid' ? (
-                  <ApiGridView apis={apis} onDelete={setToDelete} onOpen={openApi} />
-                ) : (
-                  <ApiListView apis={apis} onDelete={setToDelete} onOpen={openApi} />
+            {apis.length === 0 ? (
+              <EmptyResults
+                title={intl.formatMessage(messages.noMatchesTitle)}
+                description={intl.formatMessage(messages.noMatchesDescription)}
+                illustration={<SearchX size={34} strokeWidth={1.5} />}
+                actionLabel={intl.formatMessage(
+                  typeFilter ? messages.clearFilters : messages.clearSearch,
                 )}
-              </Box>
-              {total > PAGE_SIZE_OPTIONS[0] && (
-                <Box>
-                  <TablePagination
-                    component="div"
-                    count={total}
-                    labelRowsPerPage={intl.formatMessage(messages.rowsPerPage)}
-                    onPageChange={(_event, nextPage) => setPage(nextPage)}
-                    onRowsPerPageChange={(event) => {
-                      setRowsPerPage(parseInt(event.target.value, 10));
-                      setPage(0);
-                    }}
-                    page={currentPage}
-                    rowsPerPage={rowsPerPage}
-                    rowsPerPageOptions={PAGE_SIZE_OPTIONS}
-                  />
+                onAction={
+                  search || onClearTypeFilter
+                    ? () => {
+                        setSearch('');
+                        setPage(0);
+                        onClearTypeFilter?.();
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <>
+                {/* Keeps pagination pinned and the page stable during loading. */}
+                <Box
+                  sx={{
+                    flexGrow: 1,
+                    opacity: isPlaceholderData ? 0.6 : 1,
+                    transition: 'opacity .15s ease',
+                  }}
+                >
+                  {view === 'grid' ? (
+                    <ApiGridView apis={apis} onDelete={setToDelete} onOpen={openApi} />
+                  ) : (
+                    <ApiListView apis={apis} onDelete={setToDelete} onOpen={openApi} />
+                  )}
                 </Box>
-              )}
-            </>
-          )}
-        </Stack>
+                {total > pageSizeOptions[0] && (
+                  // Pulled up into the Stack's spacing, and a shorter toolbar, so the pager
+                  // sits close to the last row in both views.
+                  <Box sx={{ mt: -1.5 }}>
+                    <TablePagination
+                      component="div"
+                      count={total}
+                      labelRowsPerPage={intl.formatMessage(messages.rowsPerPage)}
+                      onPageChange={(_event, nextPage) => setPage(nextPage)}
+                      onRowsPerPageChange={(event) => {
+                        setRowsPerPage(parseInt(event.target.value, 10));
+                      }}
+                      page={currentPage}
+                      rowsPerPage={rowsPerPage}
+                      rowsPerPageOptions={pageSizeOptions}
+                      sx={{ '& .MuiTablePagination-toolbar': { minHeight: 40 } }}
+                    />
+                  </Box>
+                )}
+              </>
+            )}
+          </Stack>
+          {sidebar && <Box sx={{ minWidth: 0 }}>{sidebar}</Box>}
+        </Box>
       )}
 
       <ConfirmDialog
