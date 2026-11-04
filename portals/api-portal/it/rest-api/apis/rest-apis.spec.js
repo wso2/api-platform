@@ -16,7 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// POST/GET/PUT/DELETE /apis (type: REST). See docs/api-portal-openapi-spec-v0.9.yaml
+// POST/GET/PUT/DELETE /apis (type: REST). See resources/openapi/api-portal-openapi-spec-v0.9.yaml
 // ApiMetadataMultipartBody — creation is multipart (metadata JSON + definition
 // file). Publisher owns API management; follow support/fixtures.js createApi()
 // for the request shape; organizations.spec.js for the assertion style.
