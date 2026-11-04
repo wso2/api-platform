@@ -51,9 +51,8 @@ type auditRecordJSON struct {
 	PerformedBy    string    `json:"performedBy"`
 }
 
-// AuditService records audited changes. It implements repository.AuditRepository
-// for backward compatibility: the services that already record through that
-// interface are given an AuditService, so their calls are unchanged.
+// AuditService implements repository.AuditRepository, so the services that
+// already record through it are unchanged.
 type AuditService struct {
 	enabled  bool
 	maskPII  bool

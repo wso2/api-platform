@@ -176,8 +176,7 @@ func defaultConfig() *Server {
 		},
 		Audit: Audit{
 			Enabled: false,
-			// 100 MiB live + 100 MiB backup at most.
-			File: AuditFile{MaxSizeMB: 100},
+			File:    AuditFile{MaxSizeMB: 100},
 			HTTP: AuditHTTP{
 				BatchMaxEvents: 100,
 				BatchMaxBytes:  1 << 20, // 1 MiB

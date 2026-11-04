@@ -208,7 +208,6 @@ func (s *auditHTTPSink) run() {
 func (s *auditHTTPSink) deliver(batch [][]byte) {
 	body := encodeAuditNDJSON(batch)
 	var lastErr error
-	// A receiver's Retry-After replaces the computed backoff rather than adding to it.
 	var nextDelay time.Duration
 	for attempt := 0; attempt <= s.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
