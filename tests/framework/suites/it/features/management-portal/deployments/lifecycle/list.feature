@@ -74,6 +74,7 @@ Feature: An artifact's deployments list filters by gateway and by status
       | LlmProvider | llm-providers |
       | LlmProxy    | llm-proxies   |
       | Mcp         | mcp-proxies   |
+      | RestApi     | rest-apis     |
 
     @graphql
     Examples:

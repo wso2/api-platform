@@ -56,6 +56,7 @@ Feature: Only an undeployed deployment can be deleted
       | LlmProvider | llm-providers | /chat/completions | {"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}                                                                  |
       | LlmProxy    | llm-proxies   | /chat/completions | {"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}                                                                  |
       | Mcp         | mcp-proxies   | /mcp              | {"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"deplc","version":"1.0.0"}}} |
+      | RestApi     | rest-apis     | /health           | {}                                                                                                                                 |
 
     # GraphQL deployments need a gateway newer than 1.2.0; older gateway legs skip @graphql rows.
     @graphql

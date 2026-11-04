@@ -51,12 +51,8 @@ scenarios:
     title: Restore a deployment that is currently deployed; 409 DEPLOYMENT_RESTORE_CONFLICT and nothing changes.
     priority: P1
     ui:
-      status: automated
-      refs:
-        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
-          scenario: "Journey: a REST API's live deployment can be neither deleted nor restored over itself"
-        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
-          scenario: "Journey: a GraphQL API's live deployment can be neither deleted nor restored over itself"
+      status: exempt
+      reason: The console never offers delete or restore for a live deployment, so it cannot send the request; the refusal is tested at the API level in IT (decided 2026-11-04).
     it:
       status: automated
       refs:
@@ -66,12 +62,8 @@ scenarios:
     title: Delete a deployment that is currently deployed; 409 DEPLOYMENT_ACTIVE, and it remains listed and served.
     priority: P1
     ui:
-      status: automated
-      refs:
-        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
-          scenario: "Journey: a REST API's live deployment can be neither deleted nor restored over itself"
-        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
-          scenario: "Journey: a GraphQL API's live deployment can be neither deleted nor restored over itself"
+      status: exempt
+      reason: The console never offers delete or restore for a live deployment, so it cannot send the request; the refusal is tested at the API level in IT (decided 2026-11-04).
     it:
       status: automated
       refs:

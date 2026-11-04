@@ -37,7 +37,11 @@ const keyDeployableBase = "platformDeployableBase:"
 func (s *Steps) createDeployable(ctx context.Context, kind, name, project, resourceContext string) error {
 	switch kind {
 	case "RestApi":
-		return s.createRestAPIPlain(ctx, name, project, resourceContext)
+		// POST /health too, so the outlines' POST probe reaches a REST API like the other kinds.
+		return s.createRestAPIWithSecret(ctx, name, project, resourceContext, []map[string]any{
+			{"request": map[string]any{"method": "GET", "path": "/health"}},
+			{"request": map[string]any{"method": "POST", "path": "/health"}},
+		}, map[string]any{"url": "http://testbench:3000"})
 	case "GraphQLApi":
 		return s.createGraphQLAPI(ctx, name, project, resourceContext)
 	case "LlmProvider":
