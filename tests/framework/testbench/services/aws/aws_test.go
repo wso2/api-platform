@@ -439,6 +439,7 @@ func TestParseAuthorizationRejectsMalformedHeaders(t *testing.T) {
 		"empty credential":     strings.Replace(valid, "AKID/20260101/us-east-1/execute-api/aws4_request", "", 1),
 		"empty credential key": strings.Replace(valid, "AKID/", "/", 1),
 		"unsorted headers":     strings.Replace(valid, "host;x-amz-date", "x-amz-date;host", 1),
+		"repeated header":      strings.Replace(valid, "host;x-amz-date", "host;host;x-amz-date", 1),
 		"no x-amz-date":        strings.Replace(valid, "host;x-amz-date", "host", 1),
 		"short signature":      strings.Replace(valid, strings.Repeat("a", 64), "abc", 1),
 		"component without =":  valid + ", Extra",
@@ -671,6 +672,12 @@ func TestUpstreamRejectsInvalidRequests(t *testing.T) {
 			r.Header.Set(HeaderSignerClockSkew, "ten minutes")
 			return r
 		}, http.StatusBadRequest, "InvalidRequest"},
+		{"unsigned, with a malformed signer clock skew", func() *http.Request {
+			r := httptest.NewRequest(http.MethodGet, backendURL, nil)
+			r.Host = "testbench"
+			r.Header.Set(HeaderSignerClockSkew, "ten minutes")
+			return r
+		}, http.StatusForbidden, codeMissingAuthenticationToken},
 		{"path without service and region", func() *http.Request {
 			return signedUpstreamRequest(http.MethodGet, "http://testbench/items", "", permanentKey, permanent, testNow)
 		}, http.StatusNotFound, "NotFound"},
@@ -987,6 +994,36 @@ func TestSTSReleasesAnUnresponsiveRequestWhenTheCallerLeaves(t *testing.T) {
 		require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 	case <-time.After(5 * time.Second):
 		t.Fatal("the unresponsive request was not released when its caller left")
+	}
+}
+
+// The receipt grace accepts a request signed before its credentials expired and received just
+// after, but not one signed after they expired.
+func TestCredentialsExpiryIsJudgedWhenSignedAndWhenReceived(t *testing.T) {
+	const lifetime = time.Minute
+	accessKeyID, issued := issueCredentials(testNow.Add(-lifetime), lifetime)
+	expiry := issued.expiresAt
+	for _, tc := range []struct {
+		name               string
+		signedAt, received time.Time
+		status             int
+		code               string
+	}{
+		{"signed before expiry, received within the grace", expiry.Add(-time.Second), expiry.Add(expiryGrace - time.Second),
+			http.StatusOK, ""},
+		{"signed after expiry, received within the grace", expiry.Add(time.Second), expiry.Add(2 * time.Second),
+			http.StatusForbidden, codeExpiredToken},
+		{"signed before expiry, received after the grace", expiry.Add(-time.Second), expiry.Add(expiryGrace + time.Second),
+			http.StatusForbidden, codeExpiredToken},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := signedUpstreamRequest(http.MethodGet, backendURL, "", accessKeyID, issued, tc.signedAt)
+			recorder := serve(testService(tc.received).Handler(), r)
+			require.Equal(t, tc.status, recorder.Code, recorder.Body.String())
+			if tc.code != "" {
+				require.Equal(t, tc.code, errorCode(t, recorder))
+			}
+		})
 	}
 }
 

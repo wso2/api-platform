@@ -143,7 +143,8 @@ func (v verifier) verify(r *http.Request, body []byte, want scope, ctl controls)
 	if !hmac.Equal([]byte(r.Header.Get(headerAmzSecurityToken)), []byte(cred.sessionToken)) {
 		return identity{}, reject(codeInvalidClientTokenID, "The security token included in the request is invalid")
 	}
-	if cred.expired(v.now()) {
+	// X-Amz-Date is judged as the signer's clock stamped it, as the skew check above does.
+	if cred.expired(v.now()) || cred.signedAfterExpiry(amzDate.Add(ctl.signerClockSkew)) {
 		return identity{}, reject(codeExpiredToken, "The security token included in the request is expired")
 	}
 
@@ -164,6 +165,16 @@ func (v verifier) verify(r *http.Request, body []byte, want scope, ctl controls)
 			"The request signature we calculated does not match the signature you provided")
 	}
 	return identity{accessKeyID: auth.accessKeyID, service: auth.service, region: auth.region}, nil
+}
+
+// strictlyIncreasing reports whether names are sorted and none repeats, as SigV4 lists signed headers.
+func strictlyIncreasing(names []string) bool {
+	for i := 1; i < len(names); i++ {
+		if names[i-1] >= names[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // parseAuthorization parses "AWS4-HMAC-SHA256 Credential=..., SignedHeaders=..., Signature=...".
@@ -189,9 +200,9 @@ func parseAuthorization(header string) (authorization, *awsError) {
 		return incomplete("malformed Credential")
 	}
 	signedHeaders := strings.Split(fields["SignedHeaders"], ";")
-	if fields["SignedHeaders"] == "" || !slices.IsSorted(signedHeaders) ||
+	if fields["SignedHeaders"] == "" || !strictlyIncreasing(signedHeaders) ||
 		!slices.Contains(signedHeaders, "host") || !slices.Contains(signedHeaders, "x-amz-date") {
-		return incomplete("SignedHeaders must be sorted and include host and x-amz-date")
+		return incomplete("SignedHeaders must be sorted, name each header once, and include host and x-amz-date")
 	}
 	if len(fields["Signature"]) != 64 {
 		return incomplete("malformed Signature")

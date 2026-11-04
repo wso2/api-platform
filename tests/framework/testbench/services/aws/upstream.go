@@ -68,14 +68,16 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request, ep endpoint) {
 		return
 	}
 
-	ctl, rejected := requestControls(r)
+	// Like AWS, the upstream authenticates a request before anything else, so a malformed test
+	// control is reported only for a request whose signature verifies.
+	ctl, controlErr := requestControls(r)
+	id, rejected := u.verifier.verify(r, body, scope{service: ep.service, region: ep.region}, ctl)
 	if rejected != nil {
 		writeJSONError(w, rejected)
 		return
 	}
-	id, rejected := u.verifier.verify(r, body, scope{service: ep.service, region: ep.region}, ctl)
-	if rejected != nil {
-		writeJSONError(w, rejected)
+	if controlErr != nil {
+		writeJSONError(w, controlErr)
 		return
 	}
 	// As AWS does, the upstream authorizes an authenticated caller before it looks up the resource.
@@ -111,13 +113,14 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request, ep endpoint) {
 	})
 }
 
-// requestControls parses the request's test-control headers.
+// requestControls parses the request's test-control headers. A malformed header is returned as an
+// error, with the controls that did parse.
 func requestControls(r *http.Request) (controls, *awsError) {
 	ctl := controls{revoked: revokedKeys(r)}
 	if value := r.Header.Get(HeaderSignerClockSkew); value != "" {
 		skew, err := time.ParseDuration(value)
 		if err != nil {
-			return controls{}, &awsError{status: http.StatusBadRequest, code: "InvalidRequest",
+			return ctl, &awsError{status: http.StatusBadRequest, code: "InvalidRequest",
 				message: HeaderSignerClockSkew + " must be a Go duration"}
 		}
 		ctl.signerClockSkew = skew

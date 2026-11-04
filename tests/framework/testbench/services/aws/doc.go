@@ -33,8 +33,9 @@
 //
 // The upstream and STS verify a request's signature before anything else, for their own service
 // and, for the upstream, its own region; signature verification and the fixture credentials are
-// shared (signature.go, credentials.go). The service keeps no state: every answer depends only on
-// the request, so concurrent callers never affect one another.
+// shared (signature.go, credentials.go). The service keeps no state between requests: every answer
+// depends only on the request and the service's clock, so concurrent callers never affect one
+// another.
 //
 // Verification follows SigV4 as the AWS SDKs implement it for services other than Amazon S3: the
 // path is URI-encoded twice in the canonical request, and the signature, credential scope, session

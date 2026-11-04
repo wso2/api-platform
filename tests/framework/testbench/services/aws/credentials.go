@@ -141,3 +141,10 @@ func underPath(path, base string) bool {
 func (c credential) expired(now time.Time) bool {
 	return !c.expiresAt.IsZero() && now.After(c.expiresAt.Add(expiryGrace))
 }
+
+// signedAfterExpiry reports whether the credential had already expired when a request was signed
+// at signedAt. The receipt grace is for a request signed in time and received late, not for one
+// signed with credentials that had expired.
+func (c credential) signedAfterExpiry(signedAt time.Time) bool {
+	return !c.expiresAt.IsZero() && signedAt.After(c.expiresAt)
+}
