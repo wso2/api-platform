@@ -64,7 +64,7 @@ const GATEWAY_METRICS = [GATEWAYS, HYBRID_GATEWAYS] as const;
 const INFRASTRUCTURE_METRICS = [API_DEVELOPER_PORTALS] as const;
 
 /** Managed interfaces: only APIs are metered. */
-conMANAGED_INTERFACE_METRICS = [APIS] as const;
+const MANAGED_INTERFACE_METRICS = [APIS] as const;
 
 /** Display names for the caps we may need to name in a tooltip. */
 const METRIC_LABELS: Record<string, string> = {
