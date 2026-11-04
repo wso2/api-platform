@@ -132,6 +132,9 @@ const DeployPage: FC<DeployPageProps> = ({
   // Environments exist but none has a gateway, so there is nowhere to deploy yet.
   const hasNoGateways =
     environments.length > 0 && environments.every((environment) => environment.gateways.length === 0);
+  // Without any gateway, managed or self-hosted, a build has nowhere to go, so any
+  // stale builds are hidden along with the build area.
+  const showBuildArea = !hasNoGateways;
 
   return (
     <PageContent fullWidth>
@@ -152,31 +155,14 @@ const DeployPage: FC<DeployPageProps> = ({
       )}
 
       {hasNoGateways && !lockedReason ? (
-        <>
-          <NoGatewayState
-            apiName={apiName}
-            environments={environments.map((environment) => environment.name)}
-            onAddSelfHosted={onAddGateway}
-            onAddCloud={onAddCloudGateway}
-            provisioning={provisioning}
-            selfHostedPending={selfHostedPending}
-          />
-          {/* Builds belong to no gateway yet, so they can still be deleted to free a slot;
-              deploying stays off until a gateway is active. */}
-          {builds.length > 0 && (
-            <Box sx={{ maxWidth: 640, mx: 'auto', mt: 4 }}>
-              <BuildAreaCard
-                builds={builds}
-                targetEnvironment={environments[0]}
-                undeletableBuilds={undeletableBuildReasons(environments)}
-                busy={busy}
-                lockedReason="Add a gateway to deploy."
-                onDeployClick={() => undefined}
-                onDeleteBuild={onDeleteBuild}
-              />
-            </Box>
-          )}
-        </>
+        <NoGatewayState
+          apiName={apiName}
+          environments={environments.map((environment) => environment.name)}
+          onAddSelfHosted={onAddGateway}
+          onAddCloud={onAddCloudGateway}
+          provisioning={provisioning}
+          selfHostedPending={selfHostedPending}
+        />
       ) : environments.length === 0 ? (
         <Box
           sx={{
@@ -228,21 +214,23 @@ const DeployPage: FC<DeployPageProps> = ({
               minWidth: '100%',
             }}
           >
-            <BuildAreaCard
-              builds={builds}
-              targetEnvironment={environments[0]}
-              undeletableBuilds={undeletableBuildReasons(environments)}
-              busy={busy}
-              lockedReason={lockedReason}
-              onDeployClick={(buildId, createBuild) =>
-                setDialog({ targetIndex: 0, buildId, createBuild })
-              }
-              onDeleteBuild={onDeleteBuild}
-            />
+            {showBuildArea && (
+              <BuildAreaCard
+                builds={builds}
+                targetEnvironment={environments[0]}
+                undeletableBuilds={undeletableBuildReasons(environments)}
+                busy={busy}
+                lockedReason={lockedReason}
+                onDeployClick={(buildId, createBuild) =>
+                  setDialog({ targetIndex: 0, buildId, createBuild })
+                }
+                onDeleteBuild={onDeleteBuild}
+              />
+            )}
 
             {environments.map((environment, index) => (
               <Fragment key={environment.name}>
-                <PipelineConnector />
+                {(showBuildArea || index > 0) && <PipelineConnector />}
                 <EnvironmentCard
                   environment={environment}
                   nextEnvironment={environments[index + 1]}
