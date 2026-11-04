@@ -46,7 +46,8 @@ const hubsAre = (...statuses: string[]) =>
 const inOrganization = (organizationId: string) =>
   vi.mocked(usePublishProject).mockReturnValue({
     organizationId,
-    publishPath: (suffix = '') => `/publish${suffix}`,
+    portalsPath: (id: string, hub?: string) =>
+      `/mcp-proxy/${encodeURIComponent(id)}/portals${hub ? `/${encodeURIComponent(hub)}` : ''}`,
   } as never);
 
 /** Lets the read settle, for the cases whose answer is the same as before it. */
@@ -132,7 +133,7 @@ describe('useHubPublishing', () => {
 
       const { result } = renderHook(() => useHubPublishing('a b'));
 
-      expect(result.current.publishUrl).toBe('/publish/a%20b');
+      expect(result.current.publishUrl).toBe('/mcp-proxy/a%20b/portals');
     });
   });
 

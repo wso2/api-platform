@@ -31,7 +31,8 @@ vi.mock('../../../../hooks/usePublishProject', () => ({
     currentOrganization: { handle: 'acme' },
     organizationId: 'org-1',
     overviewPath: (id: string) => `/mcp-proxy/${id}`,
-    publishPath: (suffix = '') => `/publish${suffix}`,
+    portalsPath: (id: string, hub?: string) =>
+      `/mcp-proxy/${encodeURIComponent(id)}/portals${hub ? `/${encodeURIComponent(hub)}` : ''}`,
   }),
 }));
 vi.mock('../../../../Components/AILoader', () => ({ default: () => <div data-testid="loader" /> }));
@@ -63,7 +64,7 @@ const hubsAre = (list: PublicationSummaryItem[]) =>
   });
 
 const renderPage = () =>
-  renderWithProviders(<McpPublishHubs />, { path: '/publish/:serverId', route: '/publish/travel' });
+  renderWithProviders(<McpPublishHubs />, { path: '/mcp-proxy/:serverId/portals', route: '/mcp-proxy/travel/portals' });
 
 const waitForCards = () => screen.findByRole('heading', { name: 'Publish Travel MCP' });
 
@@ -123,7 +124,7 @@ describe('McpPublishHubs', () => {
     await waitForCards();
 
     const links = screen.getAllByRole('link', { name: 'Go to publish' }).map((link) => link.getAttribute('href'));
-    expect(links).toEqual(['/publish/travel/portals/main', '/publish/travel/portals/eu', '/publish/travel/portals/old']);
+    expect(links).toEqual(['/mcp-proxy/travel/portals/main', '/mcp-proxy/travel/portals/eu', '/mcp-proxy/travel/portals/old']);
   });
 
   it('encodes ids that are not URL-safe in those links', async () => {
@@ -134,7 +135,7 @@ describe('McpPublishHubs', () => {
 
     expect(screen.getByRole('link', { name: 'Go to publish' })).toHaveAttribute(
       'href',
-      '/publish/travel/portals/a%20b%2Fc'
+      '/mcp-proxy/travel/portals/a%20b%2Fc'
     );
   });
 

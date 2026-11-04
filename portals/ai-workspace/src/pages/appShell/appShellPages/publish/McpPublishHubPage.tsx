@@ -261,11 +261,11 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
   const navigate = useNavigate();
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
-  const { organizationId, publishPath } = usePublishProject();
+  const { organizationId, portalsPath } = usePublishProject();
 
   // Only the middle scrolls, so switching tabs never moves the header or the actions.
   const fill = useFillScrollArea<HTMLDivElement>(MIN_PAGE_HEIGHT);
-  const hubsPath = publishPath(`/${encodeURIComponent(serverId)}`);
+  const hubsPath = portalsPath(serverId);
 
   const [tab, setTab] = useState<PublishTab>('details');
   // Which version the user picked; until they pick, the live version if there is one, else the draft.

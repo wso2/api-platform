@@ -91,7 +91,7 @@ const messages = defineMessages({
 export default function McpPublishHubs(): React.JSX.Element {
   const intl = useIntl();
   const { serverId = '' } = useParams<{ serverId: string }>();
-  const { currentOrganization, organizationId, overviewPath, publishPath } = usePublishProject();
+  const { currentOrganization, organizationId, overviewPath, portalsPath } = usePublishProject();
 
   const [server, setServer] = useState<MCPServer | null>(null);
   const [publications, setPublications] = useState<PublicationSummaryItem[]>([]);
@@ -220,9 +220,7 @@ export default function McpPublishHubs(): React.JSX.Element {
                   mcpProxyId={serverId}
                   orgHandle={currentOrganization?.handle ?? ''}
                   publication={publication}
-                  publishPath={(apiPortalId) =>
-                    publishPath(`/${encodeURIComponent(serverId)}/portals/${encodeURIComponent(apiPortalId)}`)
-                  }
+                  publishPath={(apiPortalId) => portalsPath(serverId, apiPortalId)}
                 />
               ))}
             </Box>

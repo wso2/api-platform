@@ -52,7 +52,13 @@ export function usePublishProject() {
       (mcpProxyId: string) => scopedPath(`/mcp-proxy/${encodeURIComponent(mcpProxyId)}`),
       [scopedPath]
     ),
-    /** `/publish` and below, in the current scope. */
-    publishPath: useCallback((suffix = '') => scopedPath(`/publish${suffix}`), [scopedPath]),
+    /** An MCP proxy's MCP Hub list, or with a hub, its publish page on that hub. */
+    portalsPath: useCallback(
+      (mcpProxyId: string, apiPortalId?: string) =>
+        scopedPath(
+          `/mcp-proxy/${encodeURIComponent(mcpProxyId)}/portals${apiPortalId ? `/${encodeURIComponent(apiPortalId)}` : ''}`
+        ),
+      [scopedPath]
+    ),
   };
 }

@@ -60,7 +60,7 @@ describe('usePublishProject', () => {
 
     const { result } = renderAt('/organizations/acme/projects/beta/x', '/organizations/acme/projects/:projectSlug/x');
 
-    expect(result.current.publishPath('/travel')).toBe('/organizations/acme/projects/beta/publish/travel');
+    expect(result.current.portalsPath('travel')).toBe('/organizations/acme/projects/beta/mcp-proxy/travel/portals');
     expect(result.current.overviewPath('travel')).toBe('/organizations/acme/projects/beta/mcp-proxy/travel');
   });
 
@@ -69,7 +69,7 @@ describe('usePublishProject', () => {
 
     const { result } = renderAt('/organizations/acme/x', '/organizations/acme/x');
 
-    expect(result.current.publishPath()).toBe('/organizations/acme/projects/alpha/publish');
+    expect(result.current.portalsPath('travel')).toBe('/organizations/acme/projects/alpha/mcp-proxy/travel/portals');
   });
 
   it('stays at the organization when there is no project at all', () => {
@@ -77,7 +77,7 @@ describe('usePublishProject', () => {
 
     const { result } = renderAt('/organizations/acme/x', '/organizations/acme/x');
 
-    expect(result.current.publishPath('/travel')).toBe('/organizations/acme/publish/travel');
+    expect(result.current.portalsPath('travel')).toBe('/organizations/acme/mcp-proxy/travel/portals');
   });
 
   it('encodes an MCP proxy id in the overview link', () => {
@@ -86,6 +86,16 @@ describe('usePublishProject', () => {
     const { result } = renderAt('/organizations/acme/x', '/organizations/acme/x');
 
     expect(result.current.overviewPath('a/b c')).toBe('/organizations/acme/projects/alpha/mcp-proxy/a%2Fb%20c');
+  });
+
+  it('links to one hub’s publish page, encoding both ids', () => {
+    shell();
+
+    const { result } = renderAt('/organizations/acme/x', '/organizations/acme/x');
+
+    expect(result.current.portalsPath('a/b', 'eu hub')).toBe(
+      '/organizations/acme/projects/alpha/mcp-proxy/a%2Fb/portals/eu%20hub'
+    );
   });
 
   it('reports the organization it acts in', () => {

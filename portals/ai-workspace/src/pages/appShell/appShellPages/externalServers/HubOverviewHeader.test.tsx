@@ -57,7 +57,7 @@ const renderHeader = (props: Props = {}) => {
       isReadOnlyServer={false}
       onBlockedNavigation={onBlockedNavigation}
       onDeleteClick={onDeleteClick}
-      publishUrl="/publish/travel"
+      publishUrl="/mcp-proxy/travel/portals"
       server={server}
       {...props}
     />
@@ -228,7 +228,7 @@ describe('HubOverviewHeader', () => {
     it('leads to the hub list', () => {
       renderHeader();
 
-      expect(screen.getByRole('link', { name: 'Publish to MCP Hub' })).toHaveAttribute('href', '/publish/travel');
+      expect(screen.getByRole('link', { name: 'Publish to MCP Hub' })).toHaveAttribute('href', '/mcp-proxy/travel/portals');
     });
 
     it('opens for a user who may manage publications, since each action is done from that page', () => {

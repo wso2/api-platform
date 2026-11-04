@@ -771,7 +771,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
             {isFeatureEnabled('api-portal-integration') && (
               <>
                 <Route
-                  path="publish/:serverId"
+                  path="mcp-proxy/:serverId/portals"
                   element={
                     <WithPageBoundary>
                       <McpPublishHubs />
@@ -779,7 +779,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                   }
                 />
                 <Route
-                  path="publish/:serverId/portals/:apiPortalId"
+                  path="mcp-proxy/:serverId/portals/:apiPortalId"
                   element={
                     <WithPageBoundary>
                       <McpPublishHubPage />
@@ -1102,7 +1102,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
               {isFeatureEnabled('api-portal-integration') && (
                 <>
                   <Route
-                    path="publish/:serverId"
+                    path="mcp-proxy/:serverId/portals"
                     element={
                       <WithPageBoundary>
                         <McpPublishHubs />
@@ -1110,7 +1110,7 @@ function WorkspaceRoutes({ extensions = [] }: AppProps) {
                     }
                   />
                   <Route
-                    path="publish/:serverId/portals/:apiPortalId"
+                    path="mcp-proxy/:serverId/portals/:apiPortalId"
                     element={
                       <WithPageBoundary>
                         <McpPublishHubPage />

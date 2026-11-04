@@ -198,7 +198,7 @@ describe('ExternalServersOverview publishing', () => {
 
       expect(await screen.findByRole('link', { name: 'Publish to MCP Hub' })).toHaveAttribute(
         'href',
-        '/organizations/acme/projects/alpha/publish/travel'
+        '/organizations/acme/projects/alpha/mcp-proxy/travel/portals'
       );
     });
 
@@ -226,7 +226,7 @@ describe('ExternalServersOverview publishing', () => {
 
       await user.click(await screen.findByRole('button', { name: 'Publish to MCP Hub' }));
 
-      expect(navigate).toHaveBeenCalledWith('/organizations/acme/projects/alpha/publish/travel');
+      expect(navigate).toHaveBeenCalledWith('/organizations/acme/projects/alpha/mcp-proxy/travel/portals');
     });
 
     it('keeps the publish step from leaving the page without the permission the header button needs', async () => {

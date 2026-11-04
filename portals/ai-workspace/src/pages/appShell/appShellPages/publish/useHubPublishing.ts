@@ -35,7 +35,7 @@ import { isPublished } from './publicationDisplay';
  * flow: it is reachable either way.
  */
 export function useHubPublishing(mcpProxyId?: string) {
-  const { organizationId, publishPath } = usePublishProject();
+  const { organizationId, portalsPath } = usePublishProject();
   const [published, setPublished] = useState(false);
 
   useEffect(() => {
@@ -58,6 +58,6 @@ export function useHubPublishing(mcpProxyId?: string) {
   return {
     isPublished: published,
     /** The hub list for this proxy. */
-    publishUrl: publishPath(`/${encodeURIComponent(mcpProxyId ?? '')}`),
+    publishUrl: portalsPath(mcpProxyId ?? ''),
   };
 }

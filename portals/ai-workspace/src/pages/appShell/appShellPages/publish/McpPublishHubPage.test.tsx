@@ -66,7 +66,8 @@ vi.mock('../../../../hooks/useFillScrollArea', () => ({
 vi.mock('../../../../hooks/usePublishProject', () => ({
   usePublishProject: () => ({
     organizationId: 'org-1',
-    publishPath: (suffix = '') => `/publish${suffix}`,
+    portalsPath: (id: string, hub?: string) =>
+      `/mcp-proxy/${encodeURIComponent(id)}/portals${hub ? `/${encodeURIComponent(hub)}` : ''}`,
   }),
 }));
 vi.mock('../../../../Components/AILoader', () => ({ default: () => <div data-testid="loader" /> }));
@@ -151,8 +152,8 @@ const documentsAre = (documents: unknown[]) =>
 
 const renderPage = async ({ showPlansAndDocuments = false } = {}) => {
   const view = renderWithProviders(<McpPublishHubPage showPlansAndDocuments={showPlansAndDocuments} />, {
-    path: '/publish/:serverId/portals/:apiPortalId',
-    route: '/publish/travel/portals/main',
+    path: '/mcp-proxy/:serverId/portals/:apiPortalId',
+    route: '/mcp-proxy/travel/portals/main',
   });
   await screen.findByRole('tab', { name: 'MCP Proxy Details' });
   return view;
@@ -192,8 +193,8 @@ describe('McpPublishHubPage', () => {
 
     it('shows a loader until everything it opens on is read', async () => {
       renderWithProviders(<McpPublishHubPage />, {
-        path: '/publish/:serverId/portals/:apiPortalId',
-        route: '/publish/travel/portals/main',
+        path: '/mcp-proxy/:serverId/portals/:apiPortalId',
+        route: '/mcp-proxy/travel/portals/main',
       });
 
       expect(screen.getByTestId('loader')).toBeInTheDocument();
@@ -227,15 +228,15 @@ describe('McpPublishHubPage', () => {
     it('goes back to the hub list', async () => {
       await renderPage();
 
-      expect(screen.getByRole('link', { name: 'Back to MCP Hubs' })).toHaveAttribute('href', '/publish/travel');
+      expect(screen.getByRole('link', { name: 'Back to MCP Hubs' })).toHaveAttribute('href', '/mcp-proxy/travel/portals');
     });
 
     it('says so when the page cannot be read, and offers a retry', async () => {
       api.getMCPServer.mockRejectedValue(apiError('Something broke', undefined, 500));
 
       renderWithProviders(<McpPublishHubPage />, {
-        path: '/publish/:serverId/portals/:apiPortalId',
-        route: '/publish/travel/portals/main',
+        path: '/mcp-proxy/:serverId/portals/:apiPortalId',
+        route: '/mcp-proxy/travel/portals/main',
       });
 
       expect(await screen.findByRole('alert')).toBeInTheDocument();
@@ -329,7 +330,7 @@ describe('McpPublishHubPage', () => {
 
       await user.click(mainButton());
 
-      await waitFor(() => expect(navigate).toHaveBeenCalledWith('/publish/travel'));
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith('/mcp-proxy/travel/portals'));
       expect(showSnackbar).toHaveBeenCalledWith('Published to Main Hub.', 'success');
       expect(order(api.saveMcpProxyApiPortalDraft)).toBeLessThan(order(api.saveMcpProxyApiPortalDraftDefinition));
       expect(order(api.saveMcpProxyApiPortalDraftDefinition)).toBeLessThan(order(api.publishSavedMcpProxyDraft));
@@ -973,7 +974,7 @@ describe('McpPublishHubPage', () => {
       await user.type(within(dialog).getByLabelText('Type "Travel MCP" to confirm'), 'Travel MCP');
       await user.click(confirm);
 
-      await waitFor(() => expect(navigate).toHaveBeenCalledWith('/publish/travel'));
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith('/mcp-proxy/travel/portals'));
       expect(api.unpublishMcpProxyFromApiPortal).toHaveBeenCalledWith('main', 'travel', expect.any(String));
       expect(showSnackbar).toHaveBeenCalledWith('Unpublished from Main Hub.', 'success');
     });
@@ -999,7 +1000,7 @@ describe('McpPublishHubPage', () => {
       await user.type(within(dialog).getByLabelText('Type "Travel MCP" to confirm'), 'Travel MCP');
       await user.click(within(dialog).getByRole('button', { name: 'Confirm' }));
 
-      await waitFor(() => expect(navigate).toHaveBeenCalledWith('/publish/travel'));
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith('/mcp-proxy/travel/portals'));
       expect(api.deprecateMcpProxyOnApiPortal).toHaveBeenCalledWith('main', 'travel', expect.any(String));
       expect(showSnackbar).toHaveBeenCalledWith('Deprecated on Main Hub.', 'success');
     });
