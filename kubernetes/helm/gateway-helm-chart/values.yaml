@@ -336,6 +336,29 @@ gateway:
         # - text: Human-readable text format (recommended for development)
         format: json
 
+      # Audit records of management API changes, rendered as [controller.audit]
+      # only when set. Every key is optional and takes the controller's default
+      # (config-template.toml documents each). Off unless enabled is true.
+      # audit:
+      #   enabled: true
+      #   mask_pii: false
+      #   outputs: ["stdout", "file", "http"]
+      #   # The "file" output gets a writable volume (gateway.controller.auditLogVolume),
+      #   # and path must be under its mountPath.
+      #   file:
+      #     path: /var/log/wso2/audit/audit.log
+      #     max_size_mb: 100
+      #   http:
+      #     endpoint: https://splunk.example.com:8088/services/collector/raw
+      #     auth:
+      #       type: bearer
+      #       # A credential must be an {{ env }} or {{ file }} token; a literal fails
+      #       # the render. Inject the variable via gateway.controller.deployment.extraEnv.
+      #       bearer:
+      #         token: '{{ env "APIP_GW_AUDIT_HTTP_TOKEN" }}'
+      #     tls:
+      #       ca_file: /etc/gateway-controller/audit-ca.pem
+
     # Router (Envoy) configuration
     router:
       # Gateway host for incoming requests
@@ -908,6 +931,23 @@ gateway:
       #   annotations:
       #     helm.sh/resource-policy: keep
       annotations: {}
+    # Writable volume backing the audit "file" output, kept apart from the
+    # database volume above so the audit log cannot fill it. It is an emptyDir:
+    # per pod, which is what the file output needs (one writer per file), and
+    # emptied when the pod is replaced, so ship the file elsewhere or also use the
+    # "stdout" or "http" output if records must outlive the pod.
+    #
+    # Keep sizeLimit above 2 x audit.file.max_size_mb so rotation bounds the
+    # file, not the kubelet — the kubelet's limit EVICTS the pod.
+    auditLogVolume:
+      # enabled is auto-derived: on when audit.enabled is true and audit.outputs
+      # contains "file". Uncomment only to override; set false to mount your own
+      # volume through deployment.extraVolumes instead.
+      # enabled: true
+      mountPath: /var/log/wso2
+      sizeLimit: 512Mi
+      # medium: "Memory"         # tmpfs — off disk entirely, but counts against
+                                 # the container's memory limit.
     deployment:
       enabled: true
       replicaCount: 1

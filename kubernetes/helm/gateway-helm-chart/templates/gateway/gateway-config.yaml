@@ -342,6 +342,132 @@ data:
     [controller.logging]
     level = {{ $gc.logging.level | quote }}
     format = {{ $gc.logging.format | quote }}
+    {{- with $gc.audit }}
+
+    [controller.audit]
+    enabled = {{ and (kindIs "bool" .enabled) .enabled }}
+    {{- if kindIs "bool" .mask_pii }}
+    mask_pii = {{ .mask_pii }}
+    {{- end }}
+    {{- if .outputs }}
+    outputs = [{{- range $i, $o := .outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]
+    {{- end }}
+    {{- with .file }}
+
+    [controller.audit.file]
+    {{- if .path }}
+    path = {{ .path | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .max_size_mb) }}
+    max_size_mb = {{ .max_size_mb | int64 }}
+    {{- end }}
+    {{- end }}
+    {{- with .http }}
+
+    [controller.audit.http]
+    {{- if .endpoint }}
+    endpoint = {{ .endpoint | quote }}
+    {{- end }}
+    {{- if .content_type }}
+    content_type = {{ .content_type | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .allow_insecure_transport }}
+    allow_insecure_transport = {{ .allow_insecure_transport }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .batch_max_events) }}
+    batch_max_events = {{ .batch_max_events | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .batch_max_bytes) }}
+    batch_max_bytes = {{ .batch_max_bytes | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .flush_interval) }}
+    flush_interval = {{ .flush_interval | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .queue_capacity) }}
+    queue_capacity = {{ .queue_capacity | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .request_timeout) }}
+    request_timeout = {{ .request_timeout | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .max_retries) }}
+    max_retries = {{ .max_retries | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .retry_backoff) }}
+    retry_backoff = {{ .retry_backoff | quote }}
+    {{- end }}
+    {{- with .auth }}
+    {{- /*
+      Same rule as traffic_logging.http.auth: config.toml is a ConfigMap, so a
+      credential must be an {{ env }} or {{ file }} token the controller resolves
+      at startup, never a literal. Only a real true opts out (see there).
+    */ -}}
+    {{- $allowPlain := false -}}
+    {{- if hasKey . "allow_plaintext_credentials" -}}
+      {{- $allowPlain = eq (toString .allow_plaintext_credentials) "true" -}}
+    {{- end -}}
+    {{- if not $allowPlain -}}
+      {{- $whole := "^\\{\\{-? *(env|file) [^{}]*\\}\\}$" -}}
+      {{- $suffixed := "^[^{}]*\\{\\{-? *(env|file) [^{}]*\\}\\}$" -}}
+      {{- $sensitive := dict -}}
+      {{- with .bearer }}{{- if .token }}{{- $sensitive = set $sensitive "auth.bearer.token" (dict "v" .token "re" $whole) }}{{- end }}{{- end -}}
+      {{- with .basic }}{{- if .password }}{{- $sensitive = set $sensitive "auth.basic.password" (dict "v" .password "re" $whole) }}{{- end }}{{- end -}}
+      {{- with .header }}{{- if .value }}{{- $sensitive = set $sensitive "auth.header.value" (dict "v" .value "re" $suffixed) }}{{- end }}{{- end -}}
+      {{- range $field, $spec := $sensitive -}}
+        {{- $val := toString $spec.v -}}
+        {{- if not (regexMatch $spec.re (trim $val)) -}}
+          {{- fail (printf "gateway.config.controller.audit.http.%s holds a literal value, which would be written in plaintext into the gateway ConfigMap. Supply it as an interpolation token resolved at runtime instead, e.g. '{{ env \"APIP_GW_AUDIT_HTTP_TOKEN\" }}' (injected via gateway.controller.deployment.extraEnv or extraEnvFrom) or '{{ file \"/secrets/gateway-controller/audit-token\" }}' (allowed source dirs: /etc/gateway-controller, /secrets/gateway-controller). Set gateway.config.controller.audit.http.auth.allow_plaintext_credentials=true only for local development." $field) -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end }}
+
+    [controller.audit.http.auth]
+    type = {{ .type | default "none" | quote }}
+    {{- with .bearer }}
+
+    [controller.audit.http.auth.bearer]
+    {{- if .token }}
+    token = {{ .token | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .basic }}
+
+    [controller.audit.http.auth.basic]
+    {{- if .username }}
+    username = {{ .username | quote }}
+    {{- end }}
+    {{- if .password }}
+    password = {{ .password | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .header }}
+
+    [controller.audit.http.auth.header]
+    {{- if .name }}
+    name = {{ .name | quote }}
+    {{- end }}
+    {{- if .value }}
+    value = {{ .value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .tls }}
+
+    [controller.audit.http.tls]
+    {{- if .ca_file }}
+    ca_file = {{ .ca_file | quote }}
+    {{- end }}
+    {{- if .cert_file }}
+    cert_file = {{ .cert_file | quote }}
+    {{- end }}
+    {{- if .key_file }}
+    key_file = {{ .key_file | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .insecure_skip_verify }}
+    insecure_skip_verify = {{ .insecure_skip_verify }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
 
     [controller.metrics]
     enabled = {{ .Values.gateway.controller.metrics.enabled }}
