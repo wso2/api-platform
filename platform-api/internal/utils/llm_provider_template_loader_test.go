@@ -18,9 +18,13 @@
 package utils
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
+
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 // The loader must take groupId from the YAML's spec.groupId, independent of the
@@ -91,6 +95,60 @@ func TestLoadLLMProviderTemplates_BuiltInsHaveGroupId(t *testing.T) {
 	for _, tpl := range got {
 		if tpl.GroupID == "" {
 			t.Errorf("built-in %q has empty groupId", tpl.ID)
+		}
+	}
+}
+
+// The built-in awsbedrock template reads the model id from the request path.
+// Its pattern must capture base model ids, inference profile ids, and ARNs sent
+// percent-encoded as one segment.
+func TestLoadLLMProviderTemplates_AWSBedrockModelFromPath(t *testing.T) {
+	dir := filepath.Join("..", "..", "resources", "default-llm-provider-templates")
+	got, err := LoadLLMProviderTemplatesFromDirectory(dir)
+	if err != nil {
+		t.Fatalf("load built-ins: %v", err)
+	}
+	var bedrock *model.LLMProviderTemplate
+	for _, tpl := range got {
+		if tpl.ID == "awsbedrock" {
+			bedrock = tpl
+		}
+	}
+	if bedrock == nil {
+		t.Fatal("built-in awsbedrock template not loaded")
+	}
+	if bedrock.RequestModel == nil || bedrock.ResponseModel == nil {
+		t.Fatal("awsbedrock must declare requestModel and responseModel")
+	}
+	if bedrock.RequestModel.Location != "pathParam" || bedrock.RequestModel.Identifier != bedrock.ResponseModel.Identifier {
+		t.Fatalf("requestModel %+v / responseModel %+v must be the same pathParam pattern", bedrock.RequestModel, bedrock.ResponseModel)
+	}
+	if bedrock.Metadata == nil || bedrock.Metadata.Auth == nil || bedrock.Metadata.Auth.Header != "Authorization" || bedrock.Metadata.Auth.ValuePrefix != "Bearer " {
+		t.Fatalf("awsbedrock auth metadata = %+v, want Authorization with Bearer prefix", bedrock.Metadata)
+	}
+
+	re := regexp.MustCompile(bedrock.RequestModel.Identifier)
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/model/anthropic.claude-3-sonnet-20240229-v1:0/converse", "anthropic.claude-3-sonnet-20240229-v1:0"},
+		{"/model/us.anthropic.claude-3-5-sonnet-20240620-v1:0/converse-stream", "us.anthropic.claude-3-5-sonnet-20240620-v1:0"},
+		{
+			"/model/arn%3Aaws%3Abedrock%3Aus-east-1%3A123456789012%3Ainference-profile%2Fus.anthropic.claude-3-5-sonnet-20240620-v1%3A0/converse",
+			"arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+		},
+		{"/model/my_marketplace_endpoint/converse", "my_marketplace_endpoint"},
+	}
+	for _, tt := range tests {
+		match := re.FindStringSubmatch(tt.path)
+		if len(match) != 2 {
+			t.Errorf("%s: no capture", tt.path)
+			continue
+		}
+		decoded, err := url.PathUnescape(match[1])
+		if err != nil || decoded != tt.want {
+			t.Errorf("%s: got %q (%v), want %q", tt.path, decoded, err, tt.want)
 		}
 	}
 }

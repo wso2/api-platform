@@ -1,0 +1,83 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# AWS Bedrock LLM Provider Configuration (native Converse API, SigV4 auth)
+#
+# Same built-in `awsbedrock` template as bedrock-provider.yaml, but the gateway
+# signs every upstream request with AWS Signature Version 4 instead of sending a
+# Bedrock API key. Use this for long-running deployments: credentials come from
+# the AWS SDK default credential chain of the policy-engine process (environment,
+# shared config, EC2 instance profile, ECS task role, or EKS Pod Identity) and are
+# refreshed by the SDK, so nothing expires in this file and no secret lives here.
+#
+# upstream.auth.type `other` attaches the named policy as the provider's upstream
+# auth. The gateway appends it after every other policy on each route, which
+# SigV4 needs: the signature covers the request body, so it must be computed
+# after any policy that rewrites the body.
+#
+# Requirements:
+#   * the gateway build includes the aws-authentication policy (default builds do)
+#   * `region` matches the Region in upstream.url
+#   * the resolved IAM principal is allowed bedrock:InvokeModel (Converse) and
+#     bedrock:InvokeModelWithResponseStream (ConverseStream) on the model or
+#     inference profile being called
+#
+# Clients authenticate to the gateway the way Bedrock clients do, with
+# `Authorization: Bearer <gateway API key>`. The aws-authentication policy then
+# replaces that header with the SigV4 signature, so the gateway key never
+# reaches AWS.
+#
+# Never put awsAccessKeyID/awsSecretAccessKey/awsSessionToken in this file.
+# See llm-provider-specs/awsbedrock/README.md.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: bedrock-provider-sigv4
+spec:
+  displayName: AWS Bedrock Provider (SigV4)
+  version: v1.0
+  template: awsbedrock
+  context: /bedrock-sigv4
+  upstream:
+    url: https://bedrock-runtime.us-east-1.amazonaws.com
+    auth:
+      type: other
+      policyName: aws-authentication
+      policyVersion: v0
+      policyParams:
+        service: bedrock
+        region: us-east-1
+        authenticationType: default-credential-chain
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            key: Authorization
+            in: header
+            valuePrefix: "Bearer "
+        - path: /model/{modelId}/converse-stream
+          methods: [POST]
+          params:
+            key: Authorization
+            in: header
+            valuePrefix: "Bearer "
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /model/{modelId}/converse
+        methods: [POST]
+      - path: /model/{modelId}/converse-stream
+        methods: [POST]

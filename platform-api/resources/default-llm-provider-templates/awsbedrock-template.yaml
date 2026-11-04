@@ -23,14 +23,27 @@ spec:
   displayName: AWS Bedrock
   managedBy: wso2
   version: v1.0
+  # This template drives the portal (auth form, logo, OpenAPI resources) and the
+  # deployment that references the gateway's built-in `awsbedrock` template by
+  # handle. Runtime extraction is done by the gateway's copy
+  # (gateway/gateway-controller/default-llm-provider-templates/awsbedrock-template.yaml),
+  # which additionally maps fallback identifiers, cache read/write tokens, the
+  # per-TTL cache breakdown, cache accounting, and service tier. Those fields are
+  # absent here on purpose: the Platform API template schema does not model them.
+  # The fields both copies declare must stay identical.
   metadata:
-    # AWS Bedrock now supports Bearer-token auth (Amazon Bedrock API keys) in
-    # addition to the legacy SigV4 flow. The gateway injects this as
+    # Default upstream auth is an Amazon Bedrock API key, sent by the gateway as
     # `Authorization: Bearer <key>`; the portal prepends the `Bearer ` prefix so
-    # the operator only pastes the raw key. endpointUrl is deliberately omitted
-    # because the Bedrock runtime host is region-specific
-    # (https://bedrock-runtime.<region>.amazonaws.com) and must be supplied per
-    # provider.
+    # the operator only pastes the raw key. Bedrock also accepts AWS SigV4: set
+    # the upstream auth type to `none` and attach the `aws-authentication` policy
+    # (service `bedrock`, the endpoint's Region, `default-credential-chain`) to
+    # the Converse and ConverseStream operations. Bedrock API keys are not OAuth
+    # tokens and have no token-exchange endpoint. See
+    # llm-provider-specs/awsbedrock/README.md.
+    #
+    # endpointUrl is deliberately omitted because the Bedrock runtime host is
+    # Region-specific (https://bedrock-runtime.<region>.amazonaws.com) and must
+    # be supplied per provider.
     auth:
       type: apiKey
       header: Authorization
@@ -48,7 +61,7 @@ spec:
     identifier: $.usage.totalTokens
   requestModel:
     location: pathParam
-    identifier: model/([A-Za-z0-9.:-]+)/
+    identifier: model/([A-Za-z0-9._:%-]+)/
   responseModel:
     location: pathParam
-    identifier: model/([A-Za-z0-9.:-]+)/
+    identifier: model/([A-Za-z0-9._:%-]+)/

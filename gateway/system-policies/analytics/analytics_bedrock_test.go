@@ -2,6 +2,10 @@ package analytics
 
 import "testing"
 
+// bedrockModelPattern mirrors the requestModel/responseModel identifier of the
+// built-in awsbedrock template.
+const bedrockModelPattern = "model/([A-Za-z0-9._:%-]+)/"
+
 // TestExtractPathParam covers the pathParam extraction used to meter the model
 // id for providers that carry it in the URL path (AWS Bedrock, Gemini) rather
 // than the body or a header.
@@ -16,14 +20,38 @@ func TestExtractPathParam(t *testing.T) {
 		{
 			name:    "bedrock converse model id",
 			path:    "/bedrock/model/us.amazon.nova-lite-v1:0/converse",
-			pattern: "model/([A-Za-z0-9.:-]+)/",
+			pattern: bedrockModelPattern,
 			want:    "us.amazon.nova-lite-v1:0",
 		},
 		{
 			name:    "bedrock streaming model id",
 			path:    "/bedrock/model/us.anthropic.claude-3-5-sonnet-20240620-v1:0/converse-stream",
-			pattern: "model/([A-Za-z0-9.:-]+)/",
+			pattern: bedrockModelPattern,
 			want:    "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+		},
+		{
+			name:    "percent-encoded inference profile arn is decoded",
+			path:    "/bedrock/model/arn%3Aaws%3Abedrock%3Aus-east-1%3A123456789012%3Ainference-profile%2Fus.anthropic.claude-3-5-sonnet-20240620-v1%3A0/converse",
+			pattern: bedrockModelPattern,
+			want:    "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+		},
+		{
+			name:    "application inference profile arn on converse-stream",
+			path:    "/bedrock/model/arn%3Aaws%3Abedrock%3Aeu-west-1%3A123456789012%3Aapplication-inference-profile%2Fa1b2c3d4e5f6/converse-stream",
+			pattern: bedrockModelPattern,
+			want:    "arn:aws:bedrock:eu-west-1:123456789012:application-inference-profile/a1b2c3d4e5f6",
+		},
+		{
+			name:    "underscore in model id",
+			path:    "/bedrock/model/my_imported_model/converse",
+			pattern: bedrockModelPattern,
+			want:    "my_imported_model",
+		},
+		{
+			name:    "malformed percent escape is returned undecoded",
+			path:    "/bedrock/model/bad%zzid/converse",
+			pattern: bedrockModelPattern,
+			want:    "bad%zzid",
 		},
 		{
 			name:    "no capture group returns whole match",
@@ -34,13 +62,13 @@ func TestExtractPathParam(t *testing.T) {
 		{
 			name:    "empty path errors",
 			path:    "",
-			pattern: "model/([A-Za-z0-9.:-]+)/",
+			pattern: bedrockModelPattern,
 			wantErr: true,
 		},
 		{
 			name:    "no match errors",
 			path:    "/bedrock/health",
-			pattern: "model/([A-Za-z0-9.:-]+)/",
+			pattern: bedrockModelPattern,
 			wantErr: true,
 		},
 		{
@@ -86,8 +114,8 @@ func TestExtractLLMAnalyticsBedrockPathParam(t *testing.T) {
 			"promptTokens":     map[string]interface{}{"location": "payload", "identifier": "$.usage.inputTokens"},
 			"completionTokens": map[string]interface{}{"location": "payload", "identifier": "$.usage.outputTokens"},
 			"totalTokens":      map[string]interface{}{"location": "payload", "identifier": "$.usage.totalTokens"},
-			"requestModel":     map[string]interface{}{"location": "pathParam", "identifier": "model/([A-Za-z0-9.:-]+)/"},
-			"responseModel":    map[string]interface{}{"location": "pathParam", "identifier": "model/([A-Za-z0-9.:-]+)/"},
+			"requestModel":     map[string]interface{}{"location": "pathParam", "identifier": bedrockModelPattern},
+			"responseModel":    map[string]interface{}{"location": "pathParam", "identifier": bedrockModelPattern},
 		},
 	}
 
