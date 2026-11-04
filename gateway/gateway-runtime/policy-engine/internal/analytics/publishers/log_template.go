@@ -22,13 +22,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	"cel.dev/cel-go/cel"
 
+	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 )
@@ -125,11 +129,11 @@ type logTemplate struct {
 // template that cannot be used at all; an expression that does not compile is written as null.
 // collectorCfg says which headers and bodies the collector captures.
 func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorConfig, maskedHeaders map[string]bool) (*logTemplate, error) {
-	if logCfg.Template != "" && logCfg.TemplateFile != "" {
-		return nil, fmt.Errorf("%s, %s: both are set; set only one", inlineTemplateSetting, fileTemplateSetting)
+	text, source, err := templateText(logCfg)
+	if err != nil {
+		return nil, err
 	}
-	source := inlineTemplateSetting
-	root, err := parseTemplate(source, logCfg.Template)
+	root, err := parseTemplate(source, text)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +156,50 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.Co
 	t.compile(env, collectorCfg, root)
 	markExclusions(root)
 	return t, nil
+}
+
+// templateText returns the template's text and the setting it came from. A template file is
+// read only here, so a change to it takes effect after a restart.
+func templateText(logCfg *config.TrafficLoggingConfig) (text, source string, err error) {
+	switch {
+	case logCfg.Template != "" && logCfg.TemplateFile != "":
+		return "", "", fmt.Errorf("%s, %s: both are set; set only one", inlineTemplateSetting, fileTemplateSetting)
+	case logCfg.TemplateFile != "":
+		text, err = readTemplateFile(logCfg.TemplateFile)
+		return text, fileTemplateSetting, err
+	default:
+		return logCfg.Template, inlineTemplateSetting, nil
+	}
+}
+
+// readTemplateFile returns the content of the template file at path, which may be at most
+// configinterpolate.DefaultMaxFileBytes long. Unlike an inline template, the content is not
+// interpolated.
+func readTemplateFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", templateFileError(path, err)
+	}
+	defer f.Close()
+	// One byte over the limit is enough to tell that a file is too large.
+	data, err := io.ReadAll(io.LimitReader(f, configinterpolate.DefaultMaxFileBytes+1))
+	if err != nil {
+		return "", templateFileError(path, err)
+	}
+	if int64(len(data)) > configinterpolate.DefaultMaxFileBytes {
+		return "", fmt.Errorf("%s: %q is larger than the %d MiB limit", fileTemplateSetting, path, configinterpolate.DefaultMaxFileBytes>>20)
+	}
+	return string(data), nil
+}
+
+// templateFileError reports a template file that cannot be read. An *fs.PathError also names
+// the path, so only its reason is kept.
+func templateFileError(path string, err error) error {
+	reason := err
+	if pathErr, ok := errors.AsType[*fs.PathError](err); ok {
+		reason = pathErr.Err
+	}
+	return fmt.Errorf("%s: cannot read %q: %w", fileTemplateSetting, path, reason)
 }
 
 // excludeTemplatePath applies one exclude_fields path to an object node. A path that ends at a

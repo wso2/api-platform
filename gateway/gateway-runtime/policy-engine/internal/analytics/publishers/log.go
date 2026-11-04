@@ -98,7 +98,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 	}
 
 	var template *logTemplate
-	if logCfg.Enabled && logCfg.Template != "" {
+	if logCfg.Enabled && (logCfg.Template != "" || logCfg.TemplateFile != "") {
 		var err error
 		template, err = newLogTemplate(logCfg, collectorCfg, masked)
 		if err != nil {

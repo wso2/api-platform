@@ -21,12 +21,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 )
@@ -83,6 +86,14 @@ func templateLine(t *testing.T, template string, event *dto.Event) string {
 	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: template})
 	l.Publish(event)
 	return strings.TrimSuffix(buf.String(), "\n")
+}
+
+// writeTemplateFile writes text to a file in a new temporary directory and returns its path.
+func writeTemplateFile(t *testing.T, text string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "template.json")
+	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
+	return path
 }
 
 func TestLogTemplate_WritesTheTemplateLayout(t *testing.T) {
@@ -217,6 +228,9 @@ func logged(logs, level, msg string) bool {
 // no line is written, not even the default line.
 func TestLogTemplate_TemplateErrors(t *testing.T) {
 	tooDeep := strings.Repeat(`{"a":`, maxTemplateDepth+1) + "1" + strings.Repeat("}", maxTemplateDepth+1)
+	missingFile := filepath.Join(t.TempDir(), "missing.json")
+	tooLargeFile := writeTemplateFile(t, strings.Repeat(" ", int(configinterpolate.DefaultMaxFileBytes)+1))
+	invalidFile := writeTemplateFile(t, "{\n  \"a\": x\n}")
 	tests := []struct {
 		name string
 		cfg  config.TrafficLoggingConfig
@@ -226,6 +240,21 @@ func TestLogTemplate_TemplateErrors(t *testing.T) {
 			name: "both sources",
 			cfg:  config.TrafficLoggingConfig{Template: `{"a":1}`, TemplateFile: "/etc/gateway/template.json"},
 			want: "traffic_logging.template, traffic_logging.template_file: both are set; set only one",
+		},
+		{
+			name: "file unreadable",
+			cfg:  config.TrafficLoggingConfig{TemplateFile: missingFile},
+			want: `traffic_logging.template_file: cannot read "` + missingFile + `": no such file or directory`,
+		},
+		{
+			name: "file too large",
+			cfg:  config.TrafficLoggingConfig{TemplateFile: tooLargeFile},
+			want: `traffic_logging.template_file: "` + tooLargeFile + `" is larger than the 1 MiB limit`,
+		},
+		{
+			name: "invalid JSON in the file",
+			cfg:  config.TrafficLoggingConfig{TemplateFile: invalidFile},
+			want: "traffic_logging.template_file: invalid JSON at line 2, column 8: invalid character 'x' looking for beginning of value",
 		},
 		{
 			name: "invalid JSON",
@@ -723,4 +752,56 @@ func TestLogTemplate_Bodies(t *testing.T) {
 		assert.Equal(t, `{"n":1}`+"\n", buf.String())
 		assert.Empty(t, logs.String())
 	})
+}
+
+// A template read from a file writes the same lines as the same template given inline.
+func TestLogTemplate_TemplateFileWritesTheSameLinesAsInline(t *testing.T) {
+	const template = `{
+  "service": "orders",
+  "http": {"method": "$ctx:request.method", "status": "$ctx:response.status"},
+  "hdrs": "$ctx:request.header",
+  "tags": ["gw", "$ctx:api.name"]
+}`
+	inline := templateLine(t, template, ordersEvent())
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, template)})
+
+	l.Publish(ordersEvent())
+
+	assert.Equal(t, `{"service":"orders","http":{"method":"GET","status":200},"hdrs":{"authorization":"****","x-foo":"bar"},"tags":["gw","Orders"]}`, inline)
+	assert.Equal(t, inline+"\n", buf.String())
+}
+
+// The file is read once, at startup: changing it later does not change the lines.
+func TestLogTemplate_TemplateFileIsReadOnceAtStartup(t *testing.T) {
+	path := writeTemplateFile(t, `{"v":1}`)
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: path})
+	require.NoError(t, os.WriteFile(path, []byte(`{"v":2}`), 0o600))
+
+	l.Publish(ordersEvent())
+
+	assert.Equal(t, `{"v":1}`+"\n", buf.String())
+}
+
+// A file of exactly the size limit is read; one byte more is a template error, checked in
+// TestLogTemplate_TemplateErrors.
+func TestLogTemplate_TemplateFileAtTheSizeLimit(t *testing.T) {
+	const prefix, suffix = `{"pad":"`, `"}`
+	template := prefix + strings.Repeat("a", int(configinterpolate.DefaultMaxFileBytes)-len(prefix)-len(suffix)) + suffix
+	require.Len(t, template, int(configinterpolate.DefaultMaxFileBytes))
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, template)})
+
+	l.Publish(ordersEvent())
+
+	assert.Equal(t, template+"\n", buf.String())
+}
+
+// Config interpolation applies to config strings, so {{ ... }} in the file is written as is.
+func TestLogTemplate_TemplateFileIsNotInterpolated(t *testing.T) {
+	t.Setenv("TRAFFIC_LOG_TEST_SERVICE", "orders")
+	const template = `{"service":"{{ env \"TRAFFIC_LOG_TEST_SERVICE\" }}"}`
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, template)})
+
+	l.Publish(ordersEvent())
+
+	assert.Equal(t, template+"\n", buf.String())
 }
