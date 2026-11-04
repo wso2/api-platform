@@ -355,6 +355,32 @@ config:
     signatureTolerance: 5m
     maxBodySize: 1048576
     signatureHeader: X-Api-Portal-Signature
+  # Audit records of changes made through the Platform API, rendered as
+  # [platform_api.audit] only when set. Every key is optional and takes the
+  # Platform API's default (config-template.toml documents each under its
+  # snake_case name). Off unless enabled is true.
+  # audit:
+  #   enabled: true
+  #   maskPii: false
+  #   outputs: ["stdout", "file", "http"]
+  #   # The "file" output gets a writable volume (auditLogVolume), and path must
+  #   # be under its mountPath.
+  #   file:
+  #     path: /var/log/wso2/audit/audit.log
+  #     maxSizeMb: 100
+  #   http:
+  #     endpoint: https://splunk.example.com:8088/services/collector/raw
+  #     auth:
+  #       type: bearer
+  #       # A credential must be an {{ env }} or {{ file }} token; a literal fails
+  #       # the render. Add the key to secrets.existingSecret and inject it with
+  #       # deployment.extraEnv:
+  #       #   - name: APIP_CP_AUDIT_HTTP_TOKEN
+  #       #     valueFrom: {secretKeyRef: {name: <existingSecret>, key: APIP_CP_AUDIT_HTTP_TOKEN}}
+  #       bearer:
+  #         token: '{{ env "APIP_CP_AUDIT_HTTP_TOKEN" }}'
+  #     tls:
+  #       caFile: /etc/platform-api/audit-ca.pem
 
 # Escape hatch: raw TOML appended verbatim to the generated config file, for keys
 # not exposed as structured values above.
@@ -501,6 +527,23 @@ persistence:
   # Set to {} if you'd rather the PVC be deleted on uninstall.
   annotations:
     helm.sh/resource-policy: keep
+
+# Writable volume backing the audit "file" output (config.audit), kept apart
+# from the data volume above so the audit log cannot fill it. It is an emptyDir:
+# per pod, which is what the file output needs (one writer per file), and
+# emptied when the pod is replaced, so ship the file elsewhere or also use the
+# "stdout" or "http" output if records must outlive the pod. Keep sizeLimit
+# above 2 x config.audit.file.maxSizeMb so rotation bounds the file, not the
+# kubelet — the kubelet's limit EVICTS the pod.
+auditLogVolume:
+  # enabled is auto-derived: on when config.audit.enabled is true and
+  # config.audit.outputs contains "file". Uncomment only to override; set false
+  # to mount your own volume through deployment.extraVolumes instead.
+  # enabled: true
+  mountPath: /var/log/wso2
+  sizeLimit: 512Mi
+  # medium: "Memory"         # tmpfs — off disk entirely, but counts against
+                             # the container's memory limit.
 
 # ----------------------------------------------------------------------------
 # deployment — the pod/Deployment spec
