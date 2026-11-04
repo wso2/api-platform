@@ -123,8 +123,34 @@ func registerSecondOrganization(ctx context.Context, client *http.Client, base, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+	switch resp.StatusCode {
+	case http.StatusCreated:
+		return nil
+	case http.StatusConflict:
+		return confirmSecondOrganization(ctx, client, base, token)
+	default:
 		return fmt.Errorf("registering the second organization -> %d: %s", resp.StatusCode, bytes.TrimSpace(raw))
+	}
+}
+
+// confirmSecondOrganization checks that a conflicting registration found this organization, not
+// another one holding the same handle: only the token's own organization reads back as 200.
+func confirmSecondOrganization(ctx context.Context, client *http.Client, base, token string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		base+"/api/v0.9/organizations/"+SecondOrganizationHandle, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("reading the second organization: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("the second organization's handle %q is taken by another organization -> %d: %s",
+			SecondOrganizationHandle, resp.StatusCode, bytes.TrimSpace(raw))
 	}
 	return nil
 }

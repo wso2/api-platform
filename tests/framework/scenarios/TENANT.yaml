@@ -71,6 +71,7 @@ scenarios:
       refs:
         - feature: suites/it/features/management-portal/tenant-isolation/gateway_connection.feature
           scenario: "Another organization's gateway token gets not found for the API and its subscriptions, and none of the secrets"
+      note: Passes through per-gateway scoping, as TENANT-006 does; an API cannot deploy across organizations, so no test can isolate the organization check from it.
   - id: TENANT-006
     title: One organization with gateways G1 and G2 and an API deployed to G1 only; with G2's token the API returns 404 and the secret list is empty.
     priority: P1

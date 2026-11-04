@@ -19,7 +19,9 @@
 package platformapi
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -100,4 +102,37 @@ func TestIsLastProjectRetention(t *testing.T) {
 		[]byte(`{"code":"VALIDATION_FAILED","message":"Invalid project id"}`)), "another validation failure is a real error")
 	require.False(t, IsLastProjectRetention(http.StatusBadRequest, []byte(`not json`)))
 	require.False(t, IsLastProjectRetention(http.StatusBadRequest, nil))
+}
+
+func TestRegisterSecondOrganizationAcceptsAConflictOnlyForItsOwnOrganization(t *testing.T) {
+	for name, tc := range map[string]struct {
+		register, read int
+		ok             bool
+	}{
+		"created":                 {register: http.StatusCreated, ok: true},
+		"already registered":      {register: http.StatusConflict, read: http.StatusOK, ok: true},
+		"handle taken by another": {register: http.StatusConflict, read: http.StatusNotFound},
+		"refused":                 {register: http.StatusBadRequest},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, "Bearer token", r.Header.Get("Authorization"))
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/api/v0.9/organizations":
+					w.WriteHeader(tc.register)
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v0.9/organizations/"+SecondOrganizationHandle:
+					w.WriteHeader(tc.read)
+				default:
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+			}))
+			defer server.Close()
+			err := registerSecondOrganization(context.Background(), server.Client(), server.URL, "token")
+			if tc.ok {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
 }
