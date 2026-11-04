@@ -37,9 +37,7 @@ vi.mock('../../../../config.env', async (importOriginal) => ({
   get API_PORTAL_ENABLED() {
     return settings.apiPortal;
   },
-  get MULTI_HUB_PUBLISHING() {
-    return settings.apiPortal && settings.multiHub;
-  },
+  isFeatureEnabled: (feature: string) => feature === 'api-portal-integration' && settings.multiHub,
 }));
 vi.mock('../../../../contexts/AppAuthContext', () => ({ useAppAuth: vi.fn() }));
 vi.mock('../../../../contexts/AppShellContext', () => ({ useAppShell: vi.fn() }));

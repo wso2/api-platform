@@ -32,9 +32,9 @@ const renderBar = (props: Partial<PublishActionsBarProps> = {}) => {
   };
   const view = renderWithProviders(
     <PublishActionsBar
-      canDeprecate={false}
       canSaveDraft
       deprecating={false}
+      isLive={false}
       isPublished={false}
       permissions={everything}
       publishing={false}
@@ -86,7 +86,7 @@ describe('PublishActionsBar', () => {
     });
 
     it('reads Republish once the listing is already published', () => {
-      renderBar({ canDeprecate: true, isPublished: true });
+      renderBar({ isLive: true, isPublished: true });
 
       expect(screen.getByRole('button', { name: 'Republish' })).toBeInTheDocument();
     });
@@ -109,7 +109,7 @@ describe('PublishActionsBar', () => {
     });
 
     it('arms Deprecate on a published listing, then fires it from the main button', async () => {
-      const { onDeprecate, onPublish, user } = renderBar({ canDeprecate: true, isPublished: true });
+      const { onDeprecate, onPublish, user } = renderBar({ isLive: true, isPublished: true });
 
       await openMenu(user);
       await user.click(screen.getByRole('menuitem', { name: 'Deprecate' }));
@@ -122,7 +122,7 @@ describe('PublishActionsBar', () => {
     });
 
     it('offers Unpublish, but not Deprecate, on a listing that is already deprecated', async () => {
-      const { onUnpublish, user } = renderBar({ canDeprecate: false, isPublished: true });
+      const { onUnpublish, user } = renderBar({ isLive: false, isPublished: true });
 
       await openMenu(user);
       expect(screen.getByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
@@ -135,7 +135,7 @@ describe('PublishActionsBar', () => {
 
     it('turns off an action the user lacks the scope for, even when it applies', async () => {
       const { user } = renderBar({
-        canDeprecate: true,
+        isLive: true,
         isPublished: true,
         permissions: { ...everything, deprecate: false },
       });
@@ -147,16 +147,16 @@ describe('PublishActionsBar', () => {
     });
 
     it('goes back to Publish when the live state changes under an armed action', async () => {
-      const { rerender, user } = renderBar({ canDeprecate: true, isPublished: true });
+      const { rerender, user } = renderBar({ isLive: true, isPublished: true });
       await openMenu(user);
       await user.click(screen.getByRole('menuitem', { name: 'Deprecate' }));
       expect(mainButton()).toHaveTextContent('Deprecate');
 
       rerender(
         <PublishActionsBar
-          canDeprecate={false}
           canSaveDraft
           deprecating={false}
+          isLive={false}
           isPublished
           onDeprecate={vi.fn()}
           onPublish={vi.fn()}
@@ -174,7 +174,7 @@ describe('PublishActionsBar', () => {
   });
 
   it('locks every action while one is running', () => {
-    renderBar({ canDeprecate: true, isPublished: true, publishing: true });
+    renderBar({ isLive: true, isPublished: true, publishing: true });
 
     expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
     expect(mainButton()).toBeDisabled();

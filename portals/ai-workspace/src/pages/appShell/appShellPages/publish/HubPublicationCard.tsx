@@ -25,7 +25,7 @@ import { Circle, ExternalLink, Globe } from '@wso2/oxygen-ui-icons-react';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import type { PublicationSummaryItem } from '../../../../utils/types';
 import { hairline } from './publishStyles';
-import { buildViewInPortalUrl, isListedOnPortal, publicationStatusMeta } from './publicationDisplay';
+import { buildViewInPortalUrl, isPublished, publicationStatusMeta } from './publicationDisplay';
 
 const messages = defineMessages({
   status: {
@@ -102,7 +102,7 @@ export function HubPublicationCard({ mcpProxyId, orgHandle, publication, publish
 
   // NOT_PUBLISHED has never had a page on the hub to link to.
   const viewInHubHref =
-    publication.apiPortalUrl && isListedOnPortal(publication.status)
+    publication.apiPortalUrl && isPublished(publication.status)
       ? buildViewInPortalUrl(publication.apiPortalUrl, orgHandle, mcpProxyId)
       : undefined;
 

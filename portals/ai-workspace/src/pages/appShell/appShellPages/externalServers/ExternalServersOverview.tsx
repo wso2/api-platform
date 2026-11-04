@@ -68,7 +68,7 @@ import {
   getProjectSlug,
 } from '../../../../utils/projectRouting';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
-import { API_PORTAL_ENABLED, DEFAULT_API_PORTAL_ID, MULTI_HUB_PUBLISHING } from '../../../../config.env';
+import { API_PORTAL_ENABLED, DEFAULT_API_PORTAL_ID, isFeatureEnabled } from '../../../../config.env';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import * as mcpServerValidationApis from '../../../../apis/MCP/mcpServerValidationApis';
 import {
@@ -1006,7 +1006,7 @@ export default function ExternalServersOverview(): JSX.Element {
   // least one active gateway deployment — never on the status check below,
   // so a failed/not-yet-implemented publish backend can't hide the action.
   useEffect(() => {
-    setIsAPIPortalAvailable(API_PORTAL_ENABLED && !MULTI_HUB_PUBLISHING && deployedGateways.length > 0);
+    setIsAPIPortalAvailable(API_PORTAL_ENABLED && !isFeatureEnabled('api-portal-integration') && deployedGateways.length > 0);
   }, [deployedGateways]);
 
   // The portal's address, not the listing's: read once per organization, and
@@ -1342,13 +1342,14 @@ export default function ExternalServersOverview(): JSX.Element {
         serverName={server?.displayName}
         hasPolicies={(server?.policies?.length ?? 0) > 0}
         hasDeployments={deployedGateways.length > 0}
-        hasPublication={hubPublishing.hasPublication}
+        showPublishStep={isFeatureEnabled('api-portal-integration')}
+        isPublished={hubPublishing.isPublished}
         onStepClick={handleStepBannerClick}
       />
 
       <Stack spacing={3} sx={{ mt: 2, mb: 4 }}>
         {/* Top Card - Server Info */}
-        {MULTI_HUB_PUBLISHING ? (
+        {isFeatureEnabled('api-portal-integration') ? (
           <HubOverviewHeader
             deleteBlockedReason={deleteBlockedReason}
             initials={getInitials(server.displayName)}

@@ -29,7 +29,7 @@ afterEach(() => {
   delete window.__RUNTIME_CONFIG__;
 });
 
-describe('MULTI_HUB_PUBLISHING', () => {
+describe("isFeatureEnabled('api-portal-integration')", () => {
   it.each([
     // [api_portal_enabled, api_portal_integration_enabled, hub list and per-hub pages]
     ['true', 'true', true],
@@ -42,7 +42,7 @@ describe('MULTI_HUB_PUBLISHING', () => {
       APIP_AIW_FEATURE_FLAGS_API_PORTAL_INTEGRATION_ENABLED: hubs,
     });
 
-    expect(config.MULTI_HUB_PUBLISHING).toBe(expected);
+    expect(config.isFeatureEnabled('api-portal-integration')).toBe(expected);
   });
 
   it('is off for a deployment that sets neither, leaving the single-hub dialog as it is', async () => {
@@ -50,13 +50,12 @@ describe('MULTI_HUB_PUBLISHING', () => {
 
     expect(config.API_PORTAL_ENABLED).toBe(false);
     expect(config.isFeatureEnabled('api-portal-integration')).toBe(false);
-    expect(config.MULTI_HUB_PUBLISHING).toBe(false);
   });
 
   it('is off where the single-hub dialog is on but the flag is absent', async () => {
     const config = await loadConfig({ APIP_AIW_API_PORTAL_ENABLED: 'true' });
 
     expect(config.API_PORTAL_ENABLED).toBe(true);
-    expect(config.MULTI_HUB_PUBLISHING).toBe(false);
+    expect(config.isFeatureEnabled('api-portal-integration')).toBe(false);
   });
 });

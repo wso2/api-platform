@@ -108,7 +108,7 @@ var excludedScopeResources = []string{
 	"ap:rest_api:",
 	"ap:subscription:",
 	// Only ap:subscription_plan:read is requested, and only with the MCP Hub publish
-	// pages on (hubPublishingOIDCScopes); creating plans is the Platform API's own job.
+	// pages on (apiPortalIntegrationOIDCScopes); creating plans is the Platform API's own job.
 	"ap:subscription_plan:",
 	"ap:meter:",
 	"ap:websub_api:",
@@ -222,7 +222,7 @@ func TestDefaultOIDCScopesRequestGranularScopes(t *testing.T) {
 
 // The MCP Hub publish pages list the organization's plans and the proxy's documents. Their
 // scopes are requested only where the pages are on, and never added to an operator's own list.
-func TestLoad_RequestsHubPublishingScopesOnlyWithTheFlag(t *testing.T) {
+func TestLoad_RequestsAPIPortalIntegrationScopesOnlyWithTheFlag(t *testing.T) {
 	const oidc = `
 [ai_workspace.auth]
 mode = "oidc"
@@ -239,7 +239,7 @@ redirect_url  = "https://localhost:9643/api/auth/callback"
 [ai_workspace.session.cookie]
 encryption_key = "test-session-key-at-least-32-characters"
 `
-	hub := strings.Fields(hubPublishingOIDCScopes)
+	hub := strings.Fields(apiPortalIntegrationOIDCScopes)
 	for _, tc := range []struct {
 		name  string
 		extra string

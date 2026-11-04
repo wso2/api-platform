@@ -38,8 +38,10 @@ export type ExternalServerStepBannerProps = {
   serverName?: string;
   hasPolicies: boolean;
   hasDeployments: boolean;
-  /** Whether it is published to an MCP Hub. Leave unset where publishing to hubs is not offered: the step is then not shown. */
-  hasPublication?: boolean;
+  /** Adds the Publish to MCP Hub step. */
+  showPublishStep?: boolean;
+  /** Whether it is published to an MCP Hub; completes that step. */
+  isPublished?: boolean;
   onStepClick?: (stepId: ExternalServerStepBannerStepId) => void;
   /** Shown when serverName is empty. */
   fallbackName?: string;
@@ -75,7 +77,8 @@ export default function ExternalServerStepBanner({
   serverName,
   hasPolicies,
   hasDeployments,
-  hasPublication,
+  showPublishStep = false,
+  isPublished = false,
   onStepClick,
   fallbackName = 'External Server',
   description = 'Click each step to configure and deploy your MCP Proxy.',
@@ -83,9 +86,8 @@ export default function ExternalServerStepBanner({
   const [isVisible, setIsVisible] = useState(true);
 
   const resolvedServerName = serverName?.trim() || fallbackName;
-  const showPublishStep = hasPublication !== undefined;
   const totalSteps = BASE_STEPS + (showPublishStep ? 1 : 0);
-  const completedSteps = 1 + (hasPolicies ? 1 : 0) + (hasDeployments ? 1 : 0) + (hasPublication ? 1 : 0);
+  const completedSteps = 1 + (hasPolicies ? 1 : 0) + (hasDeployments ? 1 : 0) + (showPublishStep && isPublished ? 1 : 0);
   const progressValue = (completedSteps / totalSteps) * 100;
 
   if (!isVisible) return null;
@@ -212,7 +214,7 @@ export default function ExternalServerStepBanner({
                 onClick={() => onStepClick?.('publish-to-mcp-hub')}
                 sx={stepButtonSx}
               >
-                {hasPublication ? <QuickStartCompletedIcon size={16} /> : <Megaphone size={16} />}
+                {isPublished ? <QuickStartCompletedIcon size={16} /> : <Megaphone size={16} />}
                 <Typography sx={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>
                   <FormattedMessage
                     id="aiWorkspace.pages.appShell.appShellPages.quickStart.externalServerStepBanner.publishToMcpHub"

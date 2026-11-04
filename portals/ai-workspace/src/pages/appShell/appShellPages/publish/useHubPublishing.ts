@@ -19,43 +19,36 @@
 import { useEffect, useState } from 'react';
 
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
-import { MULTI_HUB_PUBLISHING } from '../../../../config.env';
+import { isFeatureEnabled } from '../../../../config.env';
 import { usePublishProject } from '../../../../hooks/usePublishProject';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
-import { isListedOnPortal } from './publicationDisplay';
+import { isPublished } from './publicationDisplay';
 
 /**
  * Where one MCP proxy stands with publishing to MCP Hubs, for the pages that
- * only need to show it: whether it is listed on any hub, and where the publish
+ * only need to show it: whether it is published on any hub, and where the publish
  * flow starts.
  *
- * Reads nothing unless the deployment publishes to more than one hub. `isListed`
- * is `null` until it is known, and stays `null` when the read fails: a status that
- * could not be read is not reported as "not published", and does not block the
- * publish flow, which is reachable either way.
+ * Reads nothing unless publishing to MCP Hubs is on. `isPublished` stays false
+ * until it is known, and when the read fails, which does not block the publish
+ * flow: it is reachable either way.
  */
 export function useHubPublishing(mcpProxyId?: string) {
   const { organizationId, publishPath } = usePublishProject();
-  const [isListed, setIsListed] = useState<boolean | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [published, setPublished] = useState(false);
 
   useEffect(() => {
-    if (!MULTI_HUB_PUBLISHING || !mcpProxyId || !organizationId) return;
+    if (!isFeatureEnabled('api-portal-integration') || !mcpProxyId || !organizationId) return;
     let cancelled = false;
-    setIsListed(null);
-    setIsLoading(true);
+    setPublished(false);
     mcpProxiesApis
       .listMcpProxyApiPortalPublications(mcpProxyId, PLATFORM_API_BASE_URL)
       .then((summary) => {
-        if (!cancelled) setIsListed(summary.list.some(({ status }) => isListedOnPortal(status)));
+        if (!cancelled) setPublished(summary.list.some(({ status }) => isPublished(status)));
       })
       .catch((error) => {
         logger.error('Failed to check the MCP Hub publish status:', error);
-        if (!cancelled) setIsListed(null);
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -63,10 +56,7 @@ export function useHubPublishing(mcpProxyId?: string) {
   }, [mcpProxyId, organizationId]);
 
   return {
-    isListed,
-    isLoading,
-    /** For the setup banner: `undefined` where publishing to hubs is not offered, so it shows no such step. */
-    hasPublication: MULTI_HUB_PUBLISHING ? isListed === true : undefined,
+    isPublished: published,
     /** The hub list for this proxy. */
     publishUrl: publishPath(`/${encodeURIComponent(mcpProxyId ?? '')}`),
   };

@@ -79,17 +79,17 @@ const segmentedSwitchSx = (theme: Theme, accent: 'primary' | 'success') => {
 
 type PublicationVersionToggleProps = {
   disabled?: boolean;
+  /** There is no published version to show until the proxy is published on the hub. */
+  isPublished: boolean;
   onChange: (version: PublicationVersionTone) => void;
-  /** There is no published version to show until the proxy is live on the hub. */
-  publishedAvailable: boolean;
   value: PublicationVersionTone;
 };
 
 /** Switches between the draft and the published version, in the colour of the frame each one gets. */
 export function PublicationVersionToggle({
   disabled,
+  isPublished,
   onChange,
-  publishedAvailable,
   value,
 }: PublicationVersionToggleProps) {
   const intl = useIntl();
@@ -113,7 +113,7 @@ export function PublicationVersionToggle({
         <Pencil size={16} />
         <FormattedMessage {...messages.draft} />
       </ToggleButton>
-      <ToggleButton disabled={disabled || !publishedAvailable} sx={{ gap: 1 }} value="published">
+      <ToggleButton disabled={disabled || !isPublished} sx={{ gap: 1 }} value="published">
         <Eye size={16} />
         <FormattedMessage {...messages.published} />
       </ToggleButton>

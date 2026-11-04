@@ -18,17 +18,17 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildViewInPortalUrl, isListedOnPortal, publicationStatusMeta } from './publicationDisplay';
+import { buildViewInPortalUrl, isPublished, publicationStatusMeta } from './publicationDisplay';
 
-describe('isListedOnPortal', () => {
+describe('isPublished', () => {
   it('counts a published listing and a deprecated one, which is still on the hub', () => {
-    expect(isListedOnPortal('PUBLISHED')).toBe(true);
-    expect(isListedOnPortal('DEPRECATED')).toBe(true);
+    expect(isPublished('PUBLISHED')).toBe(true);
+    expect(isPublished('DEPRECATED')).toBe(true);
   });
 
   it('does not count a proxy that was never published, or no status at all', () => {
-    expect(isListedOnPortal('NOT_PUBLISHED')).toBe(false);
-    expect(isListedOnPortal(undefined)).toBe(false);
+    expect(isPublished('NOT_PUBLISHED')).toBe(false);
+    expect(isPublished(undefined)).toBe(false);
   });
 });
 

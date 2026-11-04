@@ -23,7 +23,7 @@ import { PublicationVersionToggle } from './PublicationVersionToggle';
 
 describe('PublicationVersionToggle', () => {
   it('marks the version on screen as the selected one', () => {
-    renderWithProviders(<PublicationVersionToggle onChange={vi.fn()} publishedAvailable value="draft" />);
+    renderWithProviders(<PublicationVersionToggle isPublished onChange={vi.fn()} value="draft" />);
 
     expect(screen.getByRole('button', { name: 'Draft' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Published' })).toHaveAttribute('aria-pressed', 'false');
@@ -32,7 +32,7 @@ describe('PublicationVersionToggle', () => {
   it('switches to the other version', async () => {
     const onChange = vi.fn();
     const { user } = renderWithProviders(
-      <PublicationVersionToggle onChange={onChange} publishedAvailable value="draft" />
+      <PublicationVersionToggle isPublished onChange={onChange} value="draft" />
     );
 
     await user.click(screen.getByRole('button', { name: 'Published' }));
@@ -43,7 +43,7 @@ describe('PublicationVersionToggle', () => {
   it('does not report a click on the version already shown', async () => {
     const onChange = vi.fn();
     const { user } = renderWithProviders(
-      <PublicationVersionToggle onChange={onChange} publishedAvailable value="draft" />
+      <PublicationVersionToggle isPublished onChange={onChange} value="draft" />
     );
 
     await user.click(screen.getByRole('button', { name: 'Draft' }));
@@ -52,14 +52,14 @@ describe('PublicationVersionToggle', () => {
   });
 
   it('offers no Published version until the proxy is live', () => {
-    renderWithProviders(<PublicationVersionToggle onChange={vi.fn()} publishedAvailable={false} value="draft" />);
+    renderWithProviders(<PublicationVersionToggle isPublished={false} onChange={vi.fn()} value="draft" />);
 
     expect(screen.getByRole('button', { name: 'Published' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Draft' })).toBeEnabled();
   });
 
   it('locks both versions while an action runs', () => {
-    renderWithProviders(<PublicationVersionToggle disabled onChange={vi.fn()} publishedAvailable value="draft" />);
+    renderWithProviders(<PublicationVersionToggle disabled isPublished onChange={vi.fn()} value="draft" />);
 
     expect(screen.getByRole('button', { name: 'Draft' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Published' })).toBeDisabled();

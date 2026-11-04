@@ -36,8 +36,8 @@ const statusMessages = defineMessages({
   },
 });
 
-/** A status that has a page on the hub to link to, now or until it was deprecated. */
-export const isListedOnPortal = (status: PublicationStatus): boolean => status === 'PUBLISHED' || status === 'DEPRECATED';
+/** A publication exists on the hub; deprecated is still published. */
+export const isPublished = (status: PublicationStatus): boolean => status === 'PUBLISHED' || status === 'DEPRECATED';
 
 /** The status chip on a hub card; a pending draft never changes it. */
 export const publicationStatusMeta = (status: PublicationStatus): { color: ChipColor; label: MessageDescriptor } => {

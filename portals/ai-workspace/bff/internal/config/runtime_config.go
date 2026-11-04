@@ -45,8 +45,9 @@ var browserSafeKeys = []string{
 
 	// Per-feature switches, one key each. Absent means off, so a deployment only
 	// names a feature it is ready to serve.
+	// feature_flags.api_portal_integration_enabled is emitted by buildRuntimeConfig, as
+	// the BFF reads it.
 	"feature_flags.agent_proxy_enabled",
-	"feature_flags.api_portal_integration_enabled",
 
 	// Claim names the SPA displays user/org identity from. The keys mirror the
 	// Platform API's [auth.claim_mappings] exactly — same claim, same name. Shared
@@ -108,8 +109,8 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 	// The BFF acts on this flag itself (the hub publishing OIDC scopes), so the SPA
 	// gets the BFF's reading of it as a bare boolean, not the raw spelling: "TRUE"
 	// would otherwise turn the scopes on and leave the pages hidden.
-	if k.Exists(hubPublishingFlagKey) {
-		out[runtimeKey(hubPublishingFlagKey)] = strconv.FormatBool(k.Bool(hubPublishingFlagKey))
+	if k.Exists(apiPortalIntegrationFlagKey) {
+		out[runtimeKey(apiPortalIntegrationFlagKey)] = strconv.FormatBool(k.Bool(apiPortalIntegrationFlagKey))
 	}
 
 	// Whether the BFF has a billing upstream, as a bare boolean — the URL itself is

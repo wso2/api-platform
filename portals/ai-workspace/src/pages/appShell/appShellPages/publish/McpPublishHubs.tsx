@@ -32,7 +32,7 @@ import type { MCPServer, PublicationSummaryItem } from '../../../../utils/types'
 
 import { AppPage } from './AppPage';
 import { HubPublicationCard } from './HubPublicationCard';
-import { isListedOnPortal } from './publicationDisplay';
+import { isPublished } from './publicationDisplay';
 import { EmptyState, ErrorState, LoadingState } from './PublishStates';
 
 const messages = defineMessages({
@@ -126,7 +126,7 @@ export default function McpPublishHubs(): React.JSX.Element {
     };
   }, [organizationId, serverId, reloadKey]);
 
-  const publishedCount = publications.filter(({ status }) => isListedOnPortal(status)).length;
+  const publishedCount = publications.filter(({ status }) => isPublished(status)).length;
   const visiblePublications = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return publications;

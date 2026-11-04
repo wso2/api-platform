@@ -16,19 +16,18 @@
  * under the License.
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import { usePublishProject } from '../../../../hooks/usePublishProject';
+import { logger } from '../../../../utils/logger';
 import { useHubPublishing } from './useHubPublishing';
 
 const gate = vi.hoisted(() => ({ on: true }));
 
 vi.mock('../../../../config.env', () => ({
-  get MULTI_HUB_PUBLISHING() {
-    return gate.on;
-  },
+  isFeatureEnabled: (feature: string) => feature === 'api-portal-integration' && gate.on,
 }));
 vi.mock('../../../../apis/MCP/mcpProxiesApis', () => ({ mcpProxiesApis: { listMcpProxyApiPortalPublications: vi.fn() } }));
 vi.mock('../../../../hooks/usePublishProject', () => ({ usePublishProject: vi.fn() }));
@@ -50,21 +49,24 @@ const inOrganization = (organizationId: string) =>
     publishPath: (suffix = '') => `/publish${suffix}`,
   } as never);
 
+/** Lets the read settle, for the cases whose answer is the same as before it. */
+const settle = () => act(async () => undefined);
+
 beforeEach(() => {
   gate.on = true;
   list.mockReset();
+  vi.mocked(logger.error).mockReset();
   inOrganization('org-1');
 });
 
 describe('useHubPublishing', () => {
-  describe('where the deployment publishes to hubs', () => {
-    it('is listed once any hub carries the proxy as published', async () => {
+  describe('where publishing to MCP Hubs is on', () => {
+    it('is published once any hub carries the proxy as published', async () => {
       hubsAre('NOT_PUBLISHED', 'PUBLISHED');
 
       const { result } = renderHook(() => useHubPublishing('travel'));
 
-      await waitFor(() => expect(result.current.isListed).toBe(true));
-      expect(result.current.hasPublication).toBe(true);
+      await waitFor(() => expect(result.current.isPublished).toBe(true));
       expect(list).toHaveBeenCalledWith('travel', expect.any(String));
     });
 
@@ -73,57 +75,48 @@ describe('useHubPublishing', () => {
 
       const { result } = renderHook(() => useHubPublishing('travel'));
 
-      await waitFor(() => expect(result.current.isListed).toBe(true));
+      await waitFor(() => expect(result.current.isPublished).toBe(true));
     });
 
-    it('is not listed when no hub carries it', async () => {
+    it('is not published when no hub carries it', async () => {
       hubsAre('NOT_PUBLISHED', 'NOT_PUBLISHED');
 
       const { result } = renderHook(() => useHubPublishing('travel'));
+      await settle();
 
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-      expect(result.current.isListed).toBe(false);
-      expect(result.current.hasPublication).toBe(false);
+      expect(list).toHaveBeenCalled();
+      expect(result.current.isPublished).toBe(false);
     });
 
-    it('is not listed in an organization with no hubs, which is not an error', async () => {
+    it('is not published in an organization with no hubs, which is not an error', async () => {
       hubsAre();
 
       const { result } = renderHook(() => useHubPublishing('travel'));
+      await settle();
 
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-      expect(result.current.isListed).toBe(false);
+      expect(result.current.isPublished).toBe(false);
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
-    it('is loading while it reads', async () => {
-      hubsAre('PUBLISHED');
-
-      const { result } = renderHook(() => useHubPublishing('travel'));
-
-      expect(result.current.isLoading).toBe(true);
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-    });
-
-    it('does not claim the proxy is unpublished when the read fails', async () => {
+    it('stays not published, and logs, when the read fails', async () => {
       list.mockRejectedValue(new Error('forbidden'));
 
       const { result } = renderHook(() => useHubPublishing('travel'));
+      await settle();
 
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
-      expect(result.current.isListed).toBeNull();
-      expect(result.current.hasPublication).toBe(false);
+      expect(result.current.isPublished).toBe(false);
+      expect(logger.error).toHaveBeenCalled();
     });
 
     it('forgets the previous proxy while the next one is read', async () => {
       hubsAre('PUBLISHED');
       const { rerender, result } = renderHook(({ id }) => useHubPublishing(id), { initialProps: { id: 'travel' } });
-      await waitFor(() => expect(result.current.isListed).toBe(true));
+      await waitFor(() => expect(result.current.isPublished).toBe(true));
 
       list.mockReturnValue(new Promise(() => undefined));
       rerender({ id: 'weather' });
 
-      await waitFor(() => expect(result.current.isLoading).toBe(true));
-      expect(result.current.isListed).toBeNull();
+      await waitFor(() => expect(result.current.isPublished).toBe(false));
     });
 
     it('reads nothing before there is a proxy or an organization', () => {
@@ -143,23 +136,16 @@ describe('useHubPublishing', () => {
     });
   });
 
-  describe('where the deployment has a single hub', () => {
+  describe('where publishing to MCP Hubs is off', () => {
     beforeEach(() => {
       gate.on = false;
     });
 
-    it('reads nothing at all', () => {
-      renderHook(() => useHubPublishing('travel'));
-
-      expect(list).not.toHaveBeenCalled();
-    });
-
-    it('tells the banner to show no publish step', () => {
+    it('reads nothing at all, and reports nothing published', () => {
       const { result } = renderHook(() => useHubPublishing('travel'));
 
-      expect(result.current.hasPublication).toBeUndefined();
-      expect(result.current.isListed).toBeNull();
-      expect(result.current.isLoading).toBe(false);
+      expect(list).not.toHaveBeenCalled();
+      expect(result.current.isPublished).toBe(false);
     });
   });
 });

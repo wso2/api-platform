@@ -361,7 +361,7 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
 
   const { server } = data;
   const isPublished = Boolean(publication);
-  const canDeprecate = publication?.status === 'PUBLISHED';
+  const isLive = publication?.status === 'PUBLISHED';
   const canManage = hasPermission(SCOPES.MCP_PROXY_API_PORTAL_MANAGE);
   const canUpdateDraft = hasPermission(SCOPES.API_PORTAL_DRAFT_UPDATE);
 
@@ -518,7 +518,7 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
 
   const banner = showingPublished
     ? {
-        meta: canDeprecate
+        meta: isLive
           ? intl.formatMessage(messages.updated, { time: formatRelativeTime(publication?.updatedAt) })
           : intl.formatMessage(messages.deprecatedAt, { time: formatRelativeTime(publication?.updatedAt) }),
       }
@@ -678,8 +678,8 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
             </Tabs>
             <PublicationVersionToggle
               disabled={busy}
+              isPublished={isPublished}
               onChange={setChosenView}
-              publishedAvailable={isPublished}
               value={view}
             />
           </Stack>
@@ -695,9 +695,9 @@ export default function McpPublishHubPage({ showPlansAndDocuments = false }: Mcp
           <Box sx={{ minHeight: ACTION_BAR_HEIGHT }}>
             {!showingPublished && (
               <PublishActionsBar
-                canDeprecate={canDeprecate}
                 canSaveDraft={hasUnsavedChanges}
                 deprecating={pendingAction === 'deprecating'}
+                isLive={isLive}
                 isPublished={isPublished}
                 onDeprecate={() => setConfirmingDeprecate(true)}
                 onPublish={handlePublish}

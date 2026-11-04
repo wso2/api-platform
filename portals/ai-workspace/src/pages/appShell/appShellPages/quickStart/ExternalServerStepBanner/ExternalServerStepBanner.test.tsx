@@ -60,26 +60,26 @@ describe('ExternalServerStepBanner', () => {
 
   describe('where publishing to hubs is offered', () => {
     it('adds a publish step and counts out of four', () => {
-      renderBanner({ hasPublication: false });
+      renderBanner({ showPublishStep: true });
 
       expect(screen.getByRole('button', { name: 'Publish to MCP Hub' })).toBeInTheDocument();
       expect(screen.getByText('1/4')).toBeInTheDocument();
     });
 
     it('counts a published proxy as a completed step', () => {
-      renderBanner({ hasPublication: true });
+      renderBanner({ showPublishStep: true, isPublished: true });
 
       expect(screen.getByText('2/4')).toBeInTheDocument();
     });
 
     it('is complete only when every step is', () => {
-      renderBanner({ hasDeployments: true, hasPolicies: true, hasPublication: true });
+      renderBanner({ hasDeployments: true, hasPolicies: true, showPublishStep: true, isPublished: true });
 
       expect(screen.getByText('4/4')).toBeInTheDocument();
     });
 
     it('reports a click on the publish step', async () => {
-      const { onStepClick, user } = renderBanner({ hasPublication: false });
+      const { onStepClick, user } = renderBanner({ showPublishStep: true });
 
       await user.click(screen.getByRole('button', { name: 'Publish to MCP Hub' }));
 
@@ -87,7 +87,7 @@ describe('ExternalServerStepBanner', () => {
     });
 
     it('still reports the other steps by their own ids', async () => {
-      const { onStepClick, user } = renderBanner({ hasPublication: false });
+      const { onStepClick, user } = renderBanner({ showPublishStep: true });
 
       await user.click(screen.getByRole('button', { name: 'Configure Policies' }));
       await user.click(screen.getByRole('button', { name: 'Deploy to Gateway & Test' }));

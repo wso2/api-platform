@@ -33,10 +33,10 @@ const messages = defineMessages({
 });
 
 export type PublishActionsBarProps = {
-  /** Whether this proxy is currently live on this hub (published or deprecated) — what enables Unpublish. */
+  /** Whether this proxy is published on this hub, deprecated included — what enables Unpublish. */
   isPublished: boolean;
-  /** Whether the live listing is in the published state — what enables Deprecate. */
-  canDeprecate: boolean;
+  /** Whether it is published and not deprecated — what enables Deprecate. */
+  isLive: boolean;
   /** Whether there are edits to save; Save Draft is off until there are. */
   canSaveDraft: boolean;
   /** Save Draft and Publish are off: saving now would lose a part of the listing the page could not read. */
@@ -80,9 +80,9 @@ const ACTION_COLOR = { publish: 'primary', unpublish: 'error', deprecate: 'warni
  * that doesn't apply is disabled, not hidden; form errors are reported on submit, not here.
  */
 export function PublishActionsBar({
-  canDeprecate,
   canSaveDraft,
   deprecating,
+  isLive,
   isPublished,
   onDeprecate,
   onPublish,
@@ -100,7 +100,7 @@ export function PublishActionsBar({
   // The action the primary button performs. Picking one from the menu arms it
   // rather than firing it; it resets when the live state changes, so cancelling
   // a confirm dialog keeps it armed.
-  const liveState = `${isPublished}:${canDeprecate}`;
+  const liveState = `${isPublished}:${isLive}`;
   const [seenLiveState, setSeenLiveState] = useState(liveState);
   const [armedAction, setArmedAction] = useState<PrimaryAction>('publish');
   if (seenLiveState !== liveState) {
@@ -112,7 +112,7 @@ export function PublishActionsBar({
   const available: Record<PrimaryAction, boolean> = {
     publish: permissions.publish && !saveBlocked,
     unpublish: isPublished && permissions.unpublish,
-    deprecate: canDeprecate && permissions.deprecate,
+    deprecate: isLive && permissions.deprecate,
   };
   const run: Record<PrimaryAction, () => void> = {
     publish: onPublish,
@@ -123,8 +123,8 @@ export function PublishActionsBar({
   const effectiveAction: PrimaryAction = armedAction === 'publish' || available[armedAction] ? armedAction : 'publish';
   const alternatives = (['publish', 'deprecate', 'unpublish'] as const).filter((action) => action !== effectiveAction);
 
-  // "Republish" once the listing is published, which is exactly when canDeprecate is true.
-  const isRepublish = (action: PrimaryAction) => action === 'publish' && canDeprecate;
+  // "Republish" once the listing is published, which is exactly when isLive is true.
+  const isRepublish = (action: PrimaryAction) => action === 'publish' && isLive;
   const actionLabel = (action: PrimaryAction) => intl.formatMessage(isRepublish(action) ? LABEL.republish : LABEL[action]);
   const actionIcon = (action: PrimaryAction) => ACTION_ICON[isRepublish(action) ? 'republish' : action];
 
