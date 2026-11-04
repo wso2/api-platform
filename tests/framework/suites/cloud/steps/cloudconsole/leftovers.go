@@ -50,9 +50,10 @@ const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
 // order: a gateway goes before the environment it runs in, a project before the pipeline it
-// is bound to, and an LLM proxy before its provider, which goes before the secret it uses.
-// idFields name the list-item fields that identify a resource in its own route. REST APIs are
-// listed per project, so restAPISweep reads them and runs ahead of these.
+// is bound to, and an LLM provider before the secret it uses.
+// idFields name the list-item fields that identify a resource in its own route. REST APIs and
+// LLM proxies are listed per project, so projectScopedSweep reads them and runs ahead of these:
+// each goes before the gateway it is deployed to and the project it belongs to.
 var finalizerCollections = []struct {
 	collection string
 	idFields   []string
@@ -60,7 +61,6 @@ var finalizerCollections = []struct {
 }{
 	{collection: "/managed-gateways", idFields: []string{"id"}},
 	{collection: "/projects", idFields: []string{"id"}},
-	{collection: llmProxiesCollection, idFields: []string{"id"}},
 	{collection: llmProvidersCollection, idFields: []string{"id"}},
 	{collection: secretsCollection, idFields: []string{"handle", "id"}},
 	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
@@ -155,7 +155,9 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 // whether a resource's names belong to a tracked run.
 func cloudSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
 	sweeps := make([]finalizer.Collection, 0, len(finalizerCollections)+1)
-	sweeps = append(sweeps, restAPISweep(client, base, token, owns))
+	for _, collection := range projectScopedCollections {
+		sweeps = append(sweeps, projectScopedSweep(client, base, token, owns, collection))
+	}
 	for _, entry := range finalizerCollections {
 		sweeps = append(sweeps, finalizer.Collection{
 			Name:    entry.collection,
@@ -177,11 +179,13 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 	return sweeps
 }
 
-// restAPISweep describes the REST APIs of the organisation. The platform lists them per project,
-// so it reads the default project and every project a tracked run created. It runs first: an API
-// goes before the gateway it is deployed to and the project it belongs to.
-func restAPISweep(client *httpx.Client, base, token string, owns func(names []string) bool) finalizer.Collection {
-	const collection = "/rest-apis"
+// projectScopedCollections are the collections the platform lists only for one project: a list
+// request without projectId is refused with 400.
+var projectScopedCollections = []string{"/rest-apis", llmProxiesCollection}
+
+// projectScopedSweep describes a collection the platform lists per project, so it reads the
+// default project and every project a tracked run created.
+func projectScopedSweep(client *httpx.Client, base, token string, owns func(names []string) bool, collection string) finalizer.Collection {
 	return finalizer.Collection{
 		Name:    collection,
 		Timeout: finalizerCollectionBudget,
@@ -192,7 +196,7 @@ func restAPISweep(client *httpx.Client, base, token string, owns func(names []st
 			}
 			var errs []error
 			if err != nil {
-				errs = append(errs, fmt.Errorf("listing the projects that hold REST APIs: %w", err))
+				errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
 			}
 			scopes := []string{defaultProjectID}
 			for _, project := range projects {

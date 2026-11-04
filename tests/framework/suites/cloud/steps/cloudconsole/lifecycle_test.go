@@ -1292,17 +1292,6 @@ func TestAssertDeploymentStatusReason(t *testing.T) {
 	require.ErrorContains(t, steps.assertDeploymentStatusReason(ctx), "not listed")
 }
 
-func TestChooseUnusedAPIHandleGeneratesAUniqueHandle(t *testing.T) {
-	steps, ctx, _, registry := cloudSteps(t, nil)
-	require.NoError(t, steps.chooseUnusedAPIHandle(ctx))
-	first, err := requiredValue(ctx, keyAPIID)
-	require.NoError(t, err)
-	require.NoError(t, steps.chooseUnusedAPIHandle(ctx))
-	second, _ := requiredValue(ctx, keyAPIID)
-	require.NotEqual(t, first, second)
-	require.Empty(t, registry.Pending(), "an API that is never created needs no cleanup")
-}
-
 func TestEmptyEnvironmentDeletesOnlyThatEnvironmentsGateways(t *testing.T) {
 	var deleted []string
 	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
@@ -2170,8 +2159,8 @@ type leftoverStub struct {
 	lists   map[string][]map[string]any
 	failing map[string]int
 	deleted []string
-	// listedProjects records the project of each REST API listing.
-	listedProjects []string
+	// listedProjects records, per collection, the project of each per-project listing.
+	listedProjects map[string][]string
 }
 
 func (s *leftoverStub) handler(w http.ResponseWriter, r *http.Request) {
@@ -2183,13 +2172,13 @@ func (s *leftoverStub) handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		key := r.URL.Path
-		if r.URL.Path == "/rest-apis" {
+		if slices.Contains(projectScopedCollections, r.URL.Path) {
 			project := r.URL.Query().Get("projectId")
 			if project == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"code": "validation_failed", "message": "projectId query parameter is required"})
+				writeJSON(w, http.StatusBadRequest, map[string]any{"code": "VALIDATION_FAILED", "message": "projectId query parameter is required"})
 				return
 			}
-			s.listedProjects = append(s.listedProjects, project)
+			s.listedProjects[r.URL.Path] = append(s.listedProjects[r.URL.Path], project)
 			key += "?projectId=" + project
 		}
 		if status, bad := s.failing[key]; bad {
@@ -2213,22 +2202,24 @@ func (s *leftoverStub) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func newLeftoverStub() *leftoverStub {
-	return &leftoverStub{failing: map[string]int{}, lists: map[string][]map[string]any{
+	return &leftoverStub{failing: map[string]int{}, listedProjects: map[string][]string{}, lists: map[string][]map[string]any{
 		"/managed-gateways": {
 			{"id": "development-syn-gw-abcde234-1", "environment": "development"},
 			{"id": "development-default", "environment": "development"},
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
-		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
-		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
-		"/llm-proxies":                                {{"id": "syn-llm-proxy-abcde234-1"}},
-		"/llm-providers":                              {{"id": "syn-llm-provider-abcde234-1"}, {"id": "ops-provider"}},
-		"/secrets":                                    {{"handle": "syn-secret-abcde234-1"}, {"handle": "ops-secret"}},
-		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
-		"/environments":                               {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
+		"/projects":                                     {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
+		"/rest-apis?projectId=default":                  {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/rest-apis?projectId=syn-project-abcde234-2":   {{"id": "syn-api-abcde234-2"}},
+		"/rest-apis?projectId=ops-project":              {{"id": "syn-api-abcde234-9"}},
+		"/llm-proxies?projectId=default":                {{"id": "syn-llm-proxy-abcde234-1"}},
+		"/llm-proxies?projectId=syn-project-abcde234-2": {{"id": "syn-llm-proxy-abcde234-2"}},
+		"/llm-proxies?projectId=ops-project":            {{"id": "syn-llm-proxy-abcde234-9"}},
+		"/llm-providers":                                {{"id": "syn-llm-provider-abcde234-1"}, {"id": "ops-provider"}},
+		"/secrets":                                      {{"handle": "syn-secret-abcde234-1"}, {"handle": "ops-secret"}},
+		"/pipelines":                                    {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
+		"/environments":                                 {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
 	}}
 }
 
@@ -2251,18 +2242,21 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 	require.Equal(t, []string{
 		"rest-apis/syn-api-abcde234-1",
 		"rest-apis/syn-api-abcde234-2",
+		"llm-proxies/syn-llm-proxy-abcde234-1",
+		"llm-proxies/syn-llm-proxy-abcde234-2",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
-		"llm-proxies/syn-llm-proxy-abcde234-1",
 		"llm-providers/syn-llm-provider-abcde234-1",
 		"secrets/syn-secret-abcde234-1",
 		"pipelines/syn-pipeline-abcde234-1",
 		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:10])
-	require.Len(t, removed, 10)
-	require.ElementsMatch(t, []string{"default", "syn-project-abcde234-2"}, stub.listedProjects,
-		"REST APIs are listed for the default project and the run's projects only")
+	}, stub.deleted[:11])
+	require.Len(t, removed, 11)
+	for _, collection := range projectScopedCollections {
+		require.ElementsMatch(t, []string{"default", "syn-project-abcde234-2"}, stub.listedProjects[collection],
+			collection+" is listed for the default project and the run's projects only")
+	}
 	for _, id := range stub.deleted {
 		require.NotContains(t, id, "default")
 		require.NotContains(t, id, "zzzzz222")
@@ -2270,6 +2264,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		require.NotContains(t, id, "ops-provider")
 		require.NotContains(t, id, "ops-api")
 		require.NotContains(t, id, "syn-api-abcde234-9")
+		require.NotContains(t, id, "syn-llm-proxy-abcde234-9")
 	}
 }
 
@@ -2281,9 +2276,26 @@ func TestCloudSweepsStillSweepTheDefaultProjectWhenTheProjectsCannotBeListed(t *
 	require.NoError(t, err)
 
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
-	require.ErrorContains(t, err, "listing the projects that hold REST APIs")
+	require.ErrorContains(t, err, "listing the projects that hold /rest-apis")
+	require.ErrorContains(t, err, "listing the projects that hold /llm-proxies")
 	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-1", "the default project is still swept")
+	require.Contains(t, removed, "/llm-proxies/syn-llm-proxy-abcde234-1", "the default project is still swept")
 	require.NotContains(t, removed, "/rest-apis/syn-api-abcde234-2")
+	require.NotContains(t, removed, "/llm-proxies/syn-llm-proxy-abcde234-2")
+}
+
+func TestCloudSweepsKeepSweepingTheOtherProjectsWhenOneProjectCannotBeListed(t *testing.T) {
+	stub := newLeftoverStub()
+	stub.failing["/llm-proxies?projectId=default"] = http.StatusForbidden
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
+	require.ErrorContains(t, err, "project default")
+	require.Contains(t, removed, "/llm-proxies/syn-llm-proxy-abcde234-2")
+	require.NotContains(t, removed, "/llm-proxies/syn-llm-proxy-abcde234-1")
+	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-1")
 }
 
 func TestListCollectionKeepsThePagesItReadWhenALaterPageFails(t *testing.T) {

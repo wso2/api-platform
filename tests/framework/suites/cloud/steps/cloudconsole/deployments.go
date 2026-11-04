@@ -86,12 +86,6 @@ func optionalValue(ctx context.Context, key string) string {
 	return strings.TrimSpace(value)
 }
 
-// chooseUnusedAPIHandle picks a REST API handle that no API has, for a request that is refused
-// before it reaches the API.
-func (s *Steps) chooseUnusedAPIHandle(ctx context.Context) error {
-	return generateResourceAndStore(ctx, "syn-api", keyAPIID)
-}
-
 // ownBuildState drops the builds a previous scenario recorded. Scenario state lives as long as the
 // runner and a build id is a day and an index that is only unique within one API, so builds
 // recorded for another API must not be mistaken for this API's.

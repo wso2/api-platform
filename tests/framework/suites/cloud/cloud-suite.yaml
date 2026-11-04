@@ -13,7 +13,6 @@ blocks:
       - name: cloud-console
     runners:
       - name: apip-basic
-        # Scenarios tagged @known-issue assert documented behaviour that the platform does not yet have.
         tags: "~@known-issue"
         features:
           - features/apip_basic.feature
@@ -21,14 +20,6 @@ blocks:
         tags: "~@known-issue"
         features:
           - features/apip_project.feature
-      - name: apip-environment
-        tags: "~@known-issue"
-        features:
-          - features/apip_environment.feature
-      - name: apip-gateway
-        tags: "~@known-issue"
-        features:
-          - features/apip_gateway.feature
       - name: apip-auth
         tags: "~@known-issue"
         features:

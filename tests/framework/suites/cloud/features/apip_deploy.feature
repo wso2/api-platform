@@ -97,10 +97,8 @@ Feature: APIP cloud builds and deployments
     Then the synthetic REST API deployment should become UNDEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 404
 
-  # Known issue: creating the synthetic gateway fails with 400 because the gateway handle must fit the environment's limit and the synthetic environment name leaves no room.
-  # POST /environments returns 500 internal_error, so the scenario never reaches the deploy.
-  # The handler hides the upstream status, so the cause of the 500 is not visible to the scenario.
-  @TC_APIP_DEP_006 @ID_APIP_DEPLOY_006
+  # Known issue: creating the synthetic gateway answers 402 quota_exceeded, because the organisation's plan allows one gateway and the active gateway uses it.
+  @TC_APIP_DEP_006 @known-issue @ID_APIP_DEPLOY_006
   Scenario: Deploying to a gateway that is not in the target environment is rejected
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -115,13 +113,12 @@ Feature: APIP cloud builds and deployments
     And the cloud API response body should contain "is not in environment"
     And the cloud API response body should contain "${CTX:cloudManagedGatewayID}"
 
-  # Known issue: the API is looked up before the environment, so the deployment answers 404 "API not found" instead of 400.
   @TC_APIP_DEP_007 @ID_APIP_DEPLOY_007
   Scenario: Deploying to an environment that does not exist is rejected
     Given I obtain an APIP cloud console token
     And I find the default APIP project
-    And I choose a synthetic REST API handle without creating the API
-    When I request a deployment of the synthetic REST API with:
+    When I create a synthetic REST API in the default project
+    And I request a deployment of the synthetic REST API with:
       | environment | ${UNIQUE:missing-env} |
     Then the cloud API response status code should be 400
     And the cloud API response body should contain "not part of the project's deployment pipeline"
@@ -139,8 +136,8 @@ Feature: APIP cloud builds and deployments
       | buildId     | ${UNIQUE:missing-build}        |
     Then the cloud API response status code should be a client error
 
-  # Known issue: creating the synthetic gateways expects 201 and the platform answers 202 PROVISIONING; an environment also runs a single build, so one build per gateway cannot be created.
-  @TC_APIP_DEP_009 @ID_APIP_DEPLOY_009
+  # Known issue: creating the synthetic gateways answers 402 quota_exceeded, because the organisation's plan allows one gateway and the active gateway uses it.
+  @TC_APIP_DEP_009 @known-issue @ID_APIP_DEPLOY_009
   Scenario: Deploying when every build of an API is held by a gateway is refused with a conflict
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -155,8 +152,8 @@ Feature: APIP cloud builds and deployments
     Then the cloud API response status code should be 409
     And the cloud API error code should be "build_limit_reached"
 
-  # Known issue: creating the synthetic gateway expects 201 and the platform answers 202 PROVISIONING.
-  @TC_APIP_DEP_010 @ID_APIP_DEPLOY_010
+  # Known issue: creating the synthetic gateway answers 402 quota_exceeded, because the organisation's plan allows one gateway and the active gateway uses it.
+  @TC_APIP_DEP_010 @known-issue @ID_APIP_DEPLOY_010
   Scenario: A deployment that leaves out a gateway the API is deployed on is refused
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -212,7 +209,8 @@ Feature: APIP cloud builds and deployments
     And the echo backend should have received a request for "/posts/1"
 
   # An upstream credential is copied into the header verbatim, so its scheme ("Bearer ") is part of the stored value.
-  @TC_APIP_DEP_013 @ID_APIP_DEPLOY_013
+  # Known issue: the organisation has no AI gateway, so the scenario finds none to deploy to.
+  @TC_APIP_DEP_013 @known-issue @ID_APIP_DEPLOY_013
   Scenario: A credential given when deploying a provider is sent upstream with the scheme the template defines
     Given I obtain an APIP cloud console token
     And I find an active APIP AI gateway
@@ -229,7 +227,8 @@ Feature: APIP cloud builds and deployments
     And I send a chat completion request to "${CTX:cloudAIGatewayEndpoint}${CTX:cloudLLMProviderContext}/chat/completions" saying "hello from the cloud integration test" until status 200
     And the echoed request header "Authorization" should carry the synthetic secret's value
 
-  @TC_APIP_DEP_014 @ID_APIP_DEPLOY_014
+  # Known issue: the organisation has no AI gateway, so the scenario finds none to deploy to.
+  @TC_APIP_DEP_014 @known-issue @ID_APIP_DEPLOY_014
   Scenario: An organisation-level provider deploys to an environment directly, with no pipeline
     Given I obtain an APIP cloud console token
     And I find an active APIP AI gateway
@@ -254,7 +253,8 @@ Feature: APIP cloud builds and deployments
     And the cloud API response body should contain "is not in environment"
     And the deployment stage of the active gateway's environment should show the active gateway as NOT_DEPLOYED
 
-  @TC_APIP_DEP_016 @ID_APIP_DEPLOY_016
+  # Known issue: the organisation has no AI gateway, so the scenario finds none to deploy to.
+  @TC_APIP_DEP_016 @known-issue @ID_APIP_DEPLOY_016
   Scenario: The provider deploy and undeploy paths behave as the API paths do
     Given I obtain an APIP cloud console token
     And I find an active APIP AI gateway

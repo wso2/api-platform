@@ -168,7 +168,6 @@ func (s *Steps) registerIdentitySteps(sc *godog.ScenarioContext) {
 
 // registerDeploymentSteps binds the build, deployment and synthetic-gateway steps.
 func (s *Steps) registerDeploymentSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I choose a synthetic REST API handle without creating the API$`, s.chooseUnusedAPIHandle)
 	sc.Step(`^I prepare a build of the synthetic REST API with metadata:$`, s.prepareBuild)
 	sc.Step(`^the prepared build should have a day-and-index identifier$`, s.assertBuildIDShape)
 	sc.Step(`^the synthetic REST API builds should include the prepared build$`, s.assertBuildListed)
