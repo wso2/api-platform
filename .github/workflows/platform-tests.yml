@@ -60,7 +60,8 @@ jobs:
       # skip rather than what to run means a new or unlisted folder still runs the
       # integration suite.
       # ui: the portals, the Platform API they call (and whose spec the Control Plane portal
-      # generates types from), and the UI suite.
+      # generates types from), and the UI suite. Not portals/cloud-plugins: the portals here
+      # only carry an empty slot for it (src/cloud), so the UI suite never runs that code.
       # A manual run runs everything.
       - name: Classify changed files
         id: filter
@@ -83,7 +84,7 @@ jobs:
           # Captured rather than piped into grep -q: under pipefail an early-exiting grep -q can
           # turn a match into a failed pipeline.
           backend_files="$(echo "$changed" | grep -vE "$backend_skip" || true)"
-          ui_files="$(echo "$changed" | grep -E "$ui_match" || true)"
+          ui_files="$(echo "$changed" | grep -E "$ui_match" | grep -v '^portals/cloud-plugins/' || true)"
 
           backend=false
           ui=false
