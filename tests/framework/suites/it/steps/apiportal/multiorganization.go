@@ -224,6 +224,9 @@ func withReplacedClaim(token, claim, value string) (string, error) {
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return "", fmt.Errorf("decoding the payload: %w", err)
 	}
+	if claims == nil {
+		return "", errors.New("the payload is not a JSON object")
+	}
 	claims[claim] = value
 	if payload, err = json.Marshal(claims); err != nil {
 		return "", err

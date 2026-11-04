@@ -179,6 +179,7 @@ func TestWithReplacedClaimKeepsHeaderAndSignature(t *testing.T) {
 		"not a JWS":       "only.two",
 		"bad base64":      "h.!!!.s",
 		"payload not map": "h." + base64.RawURLEncoding.EncodeToString([]byte(`[1]`)) + ".s",
+		"null payload":    "h." + base64.RawURLEncoding.EncodeToString([]byte(`null`)) + ".s",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := withReplacedClaim(malformed, "name", "x")
