@@ -1322,6 +1322,7 @@ func defaultConfig() *Config {
 				Enabled: false,
 				File:    AuditFileConfig{MaxSizeMB: 100},
 				HTTP: AuditHTTPConfig{
+					ContentType:    "application/x-ndjson",
 					BatchMaxEvents: 100,
 					BatchMaxBytes:  1 << 20, // 1 MiB
 					FlushInterval:  5 * time.Second,
