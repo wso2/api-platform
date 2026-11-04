@@ -90,12 +90,18 @@ func TestFeatures(t *testing.T) {
 // and wrong in CI: they would dominate the suite's runtime and turn an unrelated failure into
 // a long wait. Tagging them and excluding them by default is what lets them live in the same
 // repo as the functional scenarios without being paid for on every run.
-const defaultTagFilter = "~@load"
+// @faultflow joins it for the same reason, from the other direction: those scenarios assert
+// the gateway is running with handle_upstream_faults ON, which is a process-level setting the
+// default stack does not have — so in an ordinary run they would not merely be irrelevant,
+// they would fail. `make test-faultflow` starts the stack that makes them true and sets
+// IT_TAGS to let them in.
+const defaultTagFilter = "~@load && ~@faultflow"
 
 // getTags returns the godog tag expression, overridable with IT_TAGS.
 //
-// Set IT_TAGS to "@load" to run ONLY the load scenarios (what `make test-load` does), or to
-// an empty string to run everything. Unset, load scenarios are skipped.
+// Set IT_TAGS to "@load" to run ONLY the load scenarios (what `make test-load` does), to
+// "~@load" to admit the fault-flow scenarios (what `make test-faultflow` does), or to an empty
+// string to run everything. Unset, both excluded sets are skipped.
 func getTags() string {
 	if tags, ok := os.LookupEnv("IT_TAGS"); ok {
 		return tags

@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-load test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
+.PHONY: all test test-load test-faultflow test-postgres test-sqlserver test-vhosts-single test-vhosts-multi test-dp-to-cp-nosync test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -64,6 +64,28 @@ LOAD_FEATURES ?= features/health.feature,features/api_deploy.feature,features/mo
 
 test-load: ensure-test-tags
 	COMPOSE_FILE=$(COMPOSE_FILE) IT_TAGS=@load IT_FEATURE_PATHS=$(LOAD_FEATURES) go test -v -timeout 90m ./...
+
+# Run the failover features with the fault flow handling upstream failures.
+#
+# Why this needs its own target rather than a tag: handle_upstream_faults is a
+# process-level setting read from the policy engine's config, with no env override and
+# no per-API form, so selecting it means starting a differently-configured stack.
+#
+# Why it is worth a stack of its own: with the flag on, the gateway runs a failing
+# response through the fault chain INSTEAD of the response flow. For model-failover
+# that is exactly the set of responses it grades, so a regression there leaves the
+# policy inert — nothing recorded, nothing suspended, the upstream's own error
+# reaching the client — while every scenario in the default run still passes. The
+# failure mode is silence, so the default suite cannot catch it.
+#
+# IT_FEATURE_PATHS is set explicitly for the same reason test-load sets it: the
+# feature is not in suite_test.go's default list, and a filter alone would select
+# zero scenarios and still report PASS.
+FAULTFLOW_FEATURES ?= features/health.feature,features/api_deploy.feature,features/model-failover.feature
+
+test-faultflow: ensure-test-tags
+	COMPOSE_FILE=docker-compose.test.yaml:docker-compose.test.faultflow.override.yaml \
+		IT_TAGS='~@load' IT_FEATURE_PATHS=$(FAULTFLOW_FEATURES) go test -v -timeout 50m ./...
 
 # Build all coverage-instrumented gateway components
 build-coverage:

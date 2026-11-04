@@ -204,38 +204,28 @@ before merging anything that touches chain traversal.
 
 ### Fault-flow posture (FR-030k/l/m)
 
-Nothing in CI exercises the fault flow either, and the gap is sharper than the load one: with
-`handle_upstream_faults` enabled the gateway runs a failing response through the fault chain
-*instead of* the response flow, so a regression there makes failover silently inert — no grading,
-no suspension, the upstream's own error reaching the client — while every existing scenario still
-passes. The policy engine reads config from a mounted file with no env override, so this is a
-config edit rather than a flag:
-
 ```bash
 cd gateway/it
-cat >> test-config.toml <<'TOML'
-
-[policy_engine.fault_policies]
-handle_upstream_faults = true
-TOML
-IT_FEATURE_PATHS=features/health.feature,features/api_deploy.feature,features/model-failover.feature make test
-git checkout -- test-config.toml      # revert; this flag changes error handling for EVERY feature
+make test-faultflow     # failover features, with the fault flow handling upstream failures
 ```
 
-The same scenarios must pass with it on. Two in particular are the real probes: *Once every target
-is suspended…* needs health graded from a response the response flow never sees, and *An exhausted
-chain returns the gateway's own error* needs the exhaustion substitution to survive the different
-return type the fault path uses.
+A separate target rather than a tag, because `handle_upstream_faults` is a process-level setting
+read from the policy engine's config — no env override, no per-API form — so selecting it means
+starting a differently-configured stack. The target layers a one-stanza config fragment and a
+small compose override onto the base; the engine accepts `-config` more than once and merges
+last-wins, so nothing duplicates the base config and nothing can drift from it.
 
-A green run is not sufficient evidence on its own — if the flag failed to apply, the suite would
-look identical. Confirm the flow actually engaged:
+Worth its own run because with the flag on the gateway runs a failing response through the fault
+chain *instead of* the response flow, which for model-failover is exactly the set of responses it
+grades. A regression there leaves the policy not degraded but inert — nothing recorded, nothing
+suspended, the upstream's own error reaching the client — while every scenario in the default run
+still passes. The failure mode is silence.
 
-```bash
-docker logs it-gateway-runtime 2>&1 | grep -c "skipping the response policies for the fault policies"
-```
-
-T030t covers giving this a permanent home as a compose overlay, alongside the postgres and vhosts
-variants, so it stops depending on someone remembering to do it.
+For the same reason the run validates its own posture rather than trusting the Makefile: the
+`@faultflow` scenario asserts the engine actually diverted the response before it asserts anything
+about failover. Confirmed in both directions — it passes under `make test-faultflow`, and fails at
+exactly that step when run against the ordinary stack. `@faultflow` is excluded from every other
+target, because in an ordinary run those scenarios would not merely be irrelevant, they would fail.
 
 ## Docs to update in the same PR
 

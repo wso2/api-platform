@@ -80,8 +80,9 @@ gateway/it/
 
 | Command | Description |
 |---------|-------------|
-| `make test` | Run integration tests (excludes `@load`) |
+| `make test` | Run integration tests (excludes `@load` and `@faultflow`) |
 | `make test-load` | Run **only** the `@load` scenarios — local only, not run by CI |
+| `make test-faultflow` | Run the failover features against a stack with the fault flow enabled |
 | `make test-postgres` | Run integration tests with Postgres backend |
 | `make test-all` | Build coverage images + run tests |
 | `make test-verbose` | Run tests with verbose output |
@@ -113,6 +114,32 @@ point it elsewhere.
 Run `make test-load` locally before changing anything that affects how often a target is attempted,
 or what an attempt costs — those are the properties a functional scenario cannot catch, because they
 only show up over a large number of requests.
+
+## Fault-flow Scenarios
+
+```bash
+make test-faultflow   # failover features, with the fault flow handling upstream failures
+```
+
+`policy_engine.fault_policies.handle_upstream_faults` is a process-level setting with no env
+override and no per-API form, so exercising it means starting a differently-configured stack
+rather than selecting a tag. `docker-compose.test.faultflow.override.yaml` layers onto the base
+compose file, and `test-config.faultflow.toml` is a one-stanza FRAGMENT layered onto the base
+config — the policy engine accepts `-config` more than once and merges last-wins, and the
+entrypoint forwards every `--pol.*` argument in order. Nothing duplicates the base, so nothing can
+drift from it; prefer this shape over the full-copy `vhosts`/`postgres` variants when adding a new
+posture.
+
+With the flag on, a failing response goes through the fault chain *instead of* the response flow.
+A policy that only attaches to the response flow therefore stops running on exactly the responses
+it cares about — not degraded, inert — while every scenario in the default run still passes. The
+failure mode is silence, which is why the `@faultflow` scenarios assert the engine actually
+diverted the response *before* asserting anything else: a run whose overlay stopped applying would
+otherwise be indistinguishable from an ordinary green one.
+
+`@faultflow` is excluded from every other target. In an ordinary run those scenarios would not
+merely be irrelevant — they would fail, because they assert a posture the default stack does not
+have.
 
 ## Running Tests
 

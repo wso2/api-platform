@@ -2229,3 +2229,94 @@ Feature: Automatic fallback to a healthy model
     # Cleanup
     When I delete the API "mf-no5xx-v1.0"
     Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030k/l/m — the fault flow. @faultflow scenarios assert the gateway
+  # is running with handle_upstream_faults ON, which the default stack
+  # does not do, so they are excluded from an ordinary run and would FAIL
+  # in one. `make test-faultflow` starts the stack that makes them true.
+  # ====================================================================
+
+  @faultflow
+  Scenario: Failover keeps grading and keeps substituting when the fault flow handles the failure
+    # This scenario's FIRST job is to prove the posture is real. A fault-flow run
+    # whose overlay silently stopped applying would otherwise be indistinguishable
+    # from an ordinary green run — the other scenarios would pass either way,
+    # because they pass on both paths by design. That is the exact failure mode
+    # this target exists to rule out, so it is asserted directly rather than
+    # assumed from the Makefile.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-faultflow-v1.0
+      spec:
+        displayName: MF Fault Flow
+        version: v1.0
+        context: /mf-faultflow/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /mf-faultflow-primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: secondary
+            basePath: /mf-faultflow-secondary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 404
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: secondary
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I note the current gateway runtime log position
+    And I send a POST request to "http://localhost:8080/mf-faultflow/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # The posture itself. Without this line the engine never diverted the response,
+    # and everything below would be proving the ordinary path all over again.
+    Then the gateway runtime log since then should contain "skipping the response policies for the fault policies"
+
+    # The exhaustion substitution survives the different return type the fault path
+    # uses: there is no ImmediateResponse there, so the same decision has to be
+    # expressed as an edit to the error the client is already receiving.
+    And the response status code should be 503
+    And the response body should contain "failover_exhausted"
+    And the response body should not contain "404 page not found"
+
+    # ...and health was still graded, by the hook that runs INSTEAD of the response
+    # one. Both members were charged, so the chain is now out of rotation and the
+    # next request is refused before anything is dispatched. This is the assertion
+    # that would fail if the two chains did not share a health store: grading would
+    # land in an instance nothing reads, and this request would traverse instead.
+    When I send a POST request to "http://localhost:8080/mf-faultflow/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the gateway runtime log since then should contain "every target is suspended; nothing was attempted"
+
+    # Cleanup
+    When I delete the API "mf-faultflow-v1.0"
+    Then the response status code should be 200
