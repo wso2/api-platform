@@ -102,7 +102,7 @@ func benchmarkLogPublisher(b *testing.B) *Log {
 			"status":  "$ctx:response.status",
 		},
 	}
-	l, err := NewLog(cfg)
+	l, err := NewLog(cfg, nil)
 	if err != nil {
 		b.Fatalf("NewLog: %v", err)
 	}

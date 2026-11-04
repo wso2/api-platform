@@ -75,9 +75,15 @@ type Log struct {
 // container log, which is precisely what a file or http sink is configured to
 // avoid. config.Validate has already proven every configured sink is constructible,
 // so an error here means the environment changed during startup.
-func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
+//
+// collectorCfg holds the collector's capture settings. A nil value means nothing is
+// captured.
+func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorConfig) (*Log, error) {
 	if logCfg == nil {
 		logCfg = &config.TrafficLoggingConfig{}
+	}
+	if collectorCfg == nil {
+		collectorCfg = &config.CollectorConfig{}
 	}
 
 	masked := make(map[string]bool, len(logCfg.MaskedHeaders))

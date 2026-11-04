@@ -145,7 +145,7 @@ func TestNewLog_DisabledBuildsNoSinks(t *testing.T) {
 		Enabled: false,
 		Outputs: []string{config.TrafficLogSinkFile},
 		File:    config.TrafficLogFileConfig{Path: path, MaxSizeMB: 10},
-	})
+	}, nil)
 	require.NoError(t, err)
 	assert.Empty(t, l.sinks)
 
@@ -159,7 +159,7 @@ func TestNewLog_PropagatesSinkFailure(t *testing.T) {
 		Enabled: true,
 		Outputs: []string{config.TrafficLogSinkFile},
 		File:    config.TrafficLogFileConfig{Path: ""},
-	})
+	}, nil)
 	assert.Error(t, err)
 }
 
@@ -169,7 +169,7 @@ func TestLog_CloseClosesEverySink(t *testing.T) {
 		Enabled: true,
 		Outputs: []string{config.TrafficLogSinkStdout, config.TrafficLogSinkFile},
 		File:    config.TrafficLogFileConfig{Path: path, MaxSizeMB: 10},
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.NoError(t, l.Close(context.Background()))
 	require.NoError(t, l.Close(context.Background()), "Close must be idempotent")

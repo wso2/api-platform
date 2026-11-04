@@ -121,6 +121,11 @@ type CollectorConfig struct {
 	// onto the collected event.
 	RequestBody  bool `koanf:"request_body"`
 	ResponseBody bool `koanf:"response_body"`
+	// RequestHeaders / ResponseHeaders are read only to warn about traffic log
+	// template fields that read headers the collector does not capture. The
+	// gateway-controller reads the same keys to switch header capture on.
+	RequestHeaders  bool `koanf:"request_headers"`
+	ResponseHeaders bool `koanf:"response_headers"`
 	// Server tunes the policy-engine ALS receiver (the gRPC server that ingests
 	// collected access logs). It is part of the collector transport and is
 	// configured under the shared [collector.server] section (the controller
@@ -408,6 +413,7 @@ type TrafficLoggingConfig struct {
 	// arbitrary depth into nested JSON objects (e.g. "requestHeaders.authorization",
 	// or "properties.claims.internal_debug" to reach into a nested object produced
 	// by a Properties $ctx: expression that evaluates to a CEL map wholesale).
+	// With a template, the paths name fields of the template line.
 	ExcludeFields []string `koanf:"exclude_fields"`
 	// Properties adds extra key->value pairs to the emitted line's top-level
 	// "properties" object. A value prefixed "$ctx:" is evaluated as a CEL
@@ -417,6 +423,11 @@ type TrafficLoggingConfig struct {
 	// generically for any authenticated request; other values are emitted as
 	// literal strings.
 	Properties map[string]string `koanf:"properties"`
+	// Template is an inline template (JSON text). Non-empty selects template lines.
+	Template string `koanf:"template"`
+	// TemplateFile is the path to a file holding the template. Non-empty selects
+	// template lines.
+	TemplateFile string `koanf:"template_file"`
 }
 
 // TrafficLogFileConfig configures the "file" traffic-log sink
@@ -1380,6 +1391,8 @@ func defaultConfig() *Config {
 		Collector: CollectorConfig{
 			RequestBody:      false,
 			ResponseBody:     false,
+			RequestHeaders:   false,
+			ResponseHeaders:  false,
 			Server:           defaultAccessLogsServiceConfig(),
 			CorrelationStore: defaultCorrelationStoreConfig(),
 		},
@@ -1399,6 +1412,8 @@ func defaultConfig() *Config {
 			ResponseBody:    false,
 			ExcludeFields:   []string{},
 			Properties:      map[string]string{},
+			Template:        "",
+			TemplateFile:    "",
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,

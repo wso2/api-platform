@@ -2369,3 +2369,49 @@ handle_upstream_faults = true
 	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
 		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
 }
+
+// The traffic log template keys and the collector header keys load empty or false when a
+// config file leaves them out, and load the values a config file sets.
+func TestLoad_TrafficLogTemplateAndCollectorHeaderKeys(t *testing.T) {
+	const base = `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	load := func(t *testing.T, extra string) *Config {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(base+extra), 0644))
+		cfg, err := Load(configPath)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	t.Run("left out", func(t *testing.T) {
+		cfg := load(t, "")
+
+		assert.Empty(t, cfg.TrafficLogging.Template)
+		assert.Empty(t, cfg.TrafficLogging.TemplateFile)
+		assert.False(t, cfg.Collector.RequestHeaders)
+		assert.False(t, cfg.Collector.ResponseHeaders)
+	})
+
+	t.Run("set", func(t *testing.T) {
+		cfg := load(t, `
+[collector]
+request_headers = true
+response_headers = true
+
+[traffic_logging]
+template = '''{"api": "$ctx:api.name"}'''
+template_file = "/etc/gateway/traffic-log-template.json"
+`)
+
+		assert.Equal(t, `{"api": "$ctx:api.name"}`, cfg.TrafficLogging.Template)
+		assert.Equal(t, "/etc/gateway/traffic-log-template.json", cfg.TrafficLogging.TemplateFile)
+		assert.True(t, cfg.Collector.RequestHeaders)
+		assert.True(t, cfg.Collector.ResponseHeaders)
+	})
+}

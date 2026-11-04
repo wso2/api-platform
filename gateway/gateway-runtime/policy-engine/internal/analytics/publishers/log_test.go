@@ -62,7 +62,7 @@ func newLogToFile(t *testing.T, cfg *config.TrafficLoggingConfig) (*Log, func() 
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = f.Close() })
 
-	l, err := NewLog(cfg)
+	l, err := NewLog(cfg, nil)
 	require.NoError(t, err)
 	useWriterSink(l, f)
 	return l, func() string {
@@ -105,7 +105,7 @@ func headerMap(t *testing.T, v interface{}) map[string]interface{} {
 }
 
 func TestNewLog_NilConfig(t *testing.T) {
-	l, err := NewLog(nil)
+	l, err := NewLog(nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, l)
 	assert.Empty(t, l.maskedHeaders)
@@ -697,7 +697,7 @@ func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing
 		Enabled:    true,
 		Outputs:    []string{config.TrafficLogSinkStdout},
 		Properties: map[string]string{"apiName": "$ctx:api.name"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	require.Nil(t, l.globalDir.Properties, "globalDir must never carry baked-in properties")
 
@@ -741,7 +741,7 @@ func TestLog_Publish_GlobalFallback_ConcurrentPropertiesNoRace(t *testing.T) {
 		Enabled:    true,
 		Outputs:    []string{config.TrafficLogSinkStdout},
 		Properties: map[string]string{"apiName": "$ctx:api.name"},
-	})
+	}, nil)
 	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "out.log")
 	f, err := os.Create(path)

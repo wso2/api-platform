@@ -174,7 +174,7 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 
 	// Traffic logging is a standalone consumer, independent of analytics.
 	if cfg.TrafficLogging.Enabled {
-		logPublisher, err := analytics_publisher.NewLog(&cfg.TrafficLogging)
+		logPublisher, err := analytics_publisher.NewLog(&cfg.TrafficLogging, &cfg.Collector)
 		if err != nil {
 			// Fail closed. Continuing without the configured sinks would leave
 			// traffic logging on stdout or on nothing at all, and the stdout path

@@ -20,6 +20,8 @@ package publishers
 import (
 	"testing"
 
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/ext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -386,4 +388,91 @@ func TestGlobalPropertyEvaluator_ReferencedVariableWithNilEventField_ResolvesToZ
 	assert.Equal(t, float64(0), resolved["targetStatus"])
 	assert.Equal(t, "", resolved["targetDest"])
 	assert.Equal(t, "", resolved["appId"])
+}
+
+// Traffic log templates rely on two cel-go behaviours: evaluating a declared variable that is
+// missing from the activation fails, and a variable name whose last part is also a CEL
+// function name (type, timestamp) still compiles and evaluates as the variable.
+func TestGlobalPropertyEnvAssumptions(t *testing.T) {
+	env, err := cel.NewEnv(
+		ext.Strings(),
+		cel.Variable("error.type", cel.StringType),
+		cel.Variable("request.timestamp", cel.StringType),
+	)
+	require.NoError(t, err)
+
+	compile := func(t *testing.T, expr string) cel.Program {
+		t.Helper()
+		ast, issues := env.Compile(expr)
+		require.NoError(t, issues.Err(), expr)
+		program, err := env.Program(ast)
+		require.NoError(t, err, expr)
+		return program
+	}
+
+	t.Run("unbound variable fails evaluation", func(t *testing.T) {
+		_, _, err := compile(t, "request.timestamp").Eval(map[string]interface{}{})
+		assert.Error(t, err)
+	})
+
+	t.Run("names ending in a function name resolve to the variable", func(t *testing.T) {
+		vars := map[string]interface{}{
+			"error.type":        "authentication",
+			"request.timestamp": "2026-10-30T10:15:30.123Z",
+		}
+		for expr, want := range vars {
+			out, _, err := compile(t, expr).Eval(vars)
+			require.NoError(t, err, expr)
+			assert.Equal(t, want, out.Value(), expr)
+		}
+	})
+}
+
+// fullyPopulatedEvent returns an event that carries a non-zero value for every variable in
+// globalPropertyVariables.
+func fullyPopulatedEvent() *dto.Event {
+	event := createBaseEvent()
+	event.Target = &dto.Target{TargetResponseCode: 200, Destination: "backend.internal:8080/resource"}
+	event.Application = &dto.Application{
+		ApplicationID:    "app-1",
+		ApplicationName:  "my-app",
+		ApplicationOwner: "alice",
+		KeyType:          "PRODUCTION",
+	}
+	event.Properties = map[string]interface{}{
+		dto.PropKeyOperationPath:    "/resource/{id}",
+		dto.PropKeyRequestHeaders:   `{"x-request-id":"req-1"}`,
+		dto.PropKeyResponseHeaders:  `{"content-type":"application/json"}`,
+		dto.PropKeyAuthUserID:       "alice",
+		dto.PropKeyAuthType:         "jwt",
+		dto.PropKeyAuthIssuer:       "https://idp.example.com",
+		dto.PropKeyAuthCredentialID: "client-1",
+		dto.PropKeyAuthTokenID:      "jti-1",
+		dto.PropKeyAuthAudience:     "aud1,aud2",
+		dto.PropKeyAuthScopes:       "read write",
+		dto.PropKeyAuthProperties:   `{"tenant":"acme"}`,
+		dto.PropKeyAuthAuthorized:   "true",
+		dto.PropKeyMetadata:         `{"region":"eu"}`,
+	}
+	return event
+}
+
+// A variable added to globalPropertyVariables without a binding in buildGlobalPropertyEvalCtx
+// would always read as its zero value. With every variable referenced and a fully populated
+// event, each one must be bound to a value taken from the event.
+func TestBuildGlobalPropertyEvalCtx_FillsEveryVariable(t *testing.T) {
+	referenced := make(map[string]bool, len(globalPropertyVariables))
+	for _, v := range globalPropertyVariables {
+		referenced[v.name] = true
+	}
+
+	ctx := buildGlobalPropertyEvalCtx(fullyPopulatedEvent(), referenced, nil)
+
+	for _, v := range globalPropertyVariables {
+		value, bound := ctx[v.name]
+		if assert.True(t, bound, "%s is not bound", v.name) {
+			assert.NotEqual(t, v.zero, value,
+				"%s is still its zero value: bind it in buildGlobalPropertyEvalCtx and set it in fullyPopulatedEvent", v.name)
+		}
+	}
 }
