@@ -117,14 +117,21 @@ func (u *upstream) serve(w http.ResponseWriter, r *http.Request, ep endpoint) {
 // error, with the controls that did parse.
 func requestControls(r *http.Request) (controls, *awsError) {
 	ctl := controls{revoked: revokedKeys(r)}
-	if value := r.Header.Get(HeaderSignerClockSkew); value != "" {
-		skew, err := time.ParseDuration(value)
-		if err != nil {
-			return ctl, &awsError{status: http.StatusBadRequest, code: "InvalidRequest",
-				message: HeaderSignerClockSkew + " must be a Go duration"}
-		}
-		ctl.signerClockSkew = skew
+	values := r.Header.Values(HeaderSignerClockSkew)
+	if len(values) == 0 {
+		return ctl, nil
 	}
+	// One request has one signer clock, so the header must carry exactly one duration.
+	malformed := &awsError{status: http.StatusBadRequest, code: "InvalidRequest",
+		message: HeaderSignerClockSkew + " must be a single Go duration"}
+	if len(values) > 1 {
+		return ctl, malformed
+	}
+	skew, err := time.ParseDuration(values[0])
+	if err != nil {
+		return ctl, malformed
+	}
+	ctl.signerClockSkew = skew
 	return ctl, nil
 }
 

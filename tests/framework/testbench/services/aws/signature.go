@@ -200,7 +200,8 @@ func parseAuthorization(header string) (authorization, *awsError) {
 		return incomplete("malformed Credential")
 	}
 	signedHeaders := strings.Split(fields["SignedHeaders"], ";")
-	if fields["SignedHeaders"] == "" || !strictlyIncreasing(signedHeaders) ||
+	if fields["SignedHeaders"] == "" || slices.Contains(signedHeaders, "") ||
+		!strictlyIncreasing(signedHeaders) ||
 		!slices.Contains(signedHeaders, "host") || !slices.Contains(signedHeaders, "x-amz-date") {
 		return incomplete("SignedHeaders must be sorted, name each header once, and include host and x-amz-date")
 	}

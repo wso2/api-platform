@@ -440,6 +440,7 @@ func TestParseAuthorizationRejectsMalformedHeaders(t *testing.T) {
 		"empty credential key": strings.Replace(valid, "AKID/", "/", 1),
 		"unsorted headers":     strings.Replace(valid, "host;x-amz-date", "x-amz-date;host", 1),
 		"repeated header":      strings.Replace(valid, "host;x-amz-date", "host;host;x-amz-date", 1),
+		"empty header name":    strings.Replace(valid, "host;x-amz-date", ";host;x-amz-date", 1),
 		"no x-amz-date":        strings.Replace(valid, "host;x-amz-date", "host", 1),
 		"short signature":      strings.Replace(valid, strings.Repeat("a", 64), "abc", 1),
 		"component without =":  valid + ", Extra",
@@ -670,6 +671,18 @@ func TestUpstreamRejectsInvalidRequests(t *testing.T) {
 		{"malformed signer clock skew", func() *http.Request {
 			r := signedUpstreamRequest(http.MethodGet, backendURL, "", permanentKey, permanent, testNow)
 			r.Header.Set(HeaderSignerClockSkew, "ten minutes")
+			return r
+		}, http.StatusBadRequest, "InvalidRequest"},
+		{"two signer clock skews", func() *http.Request {
+			r := signedUpstreamRequest(http.MethodGet, backendURL, "", permanentKey, permanent, testNow)
+			r.Header.Add(HeaderSignerClockSkew, "0s")
+			r.Header.Add(HeaderSignerClockSkew, "0s")
+			return r
+		}, http.StatusBadRequest, "InvalidRequest"},
+		{"a valid then a malformed signer clock skew", func() *http.Request {
+			r := signedUpstreamRequest(http.MethodGet, backendURL, "", permanentKey, permanent, testNow)
+			r.Header.Add(HeaderSignerClockSkew, "0s")
+			r.Header.Add(HeaderSignerClockSkew, "ten minutes")
 			return r
 		}, http.StatusBadRequest, "InvalidRequest"},
 		{"unsigned, with a malformed signer clock skew", func() *http.Request {
