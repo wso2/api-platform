@@ -323,7 +323,7 @@ func TestBuildRecordSuccessOmitsErrorAttributes(t *testing.T) {
 }
 
 // gen_ai.operation.name is the only AI attribute derived from the route rather
-// than from a property the AI pipeline wrote, and otelGenAIOperationName
+// than from a property the AI pipeline wrote, and genai.OperationName
 // substring-matches "/messages" and "/completions". Without a gate, ordinary REST
 // routes containing those words emit a GenAI attribute and pollute GenAI
 // dashboards with traffic that never reached a model.

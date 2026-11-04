@@ -190,7 +190,11 @@ func main() {
 		slog.ErrorContext(ctx, "Invalid policy_engine.http_client configuration", "error", err)
 		os.Exit(1)
 	}
-	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg)
+	var sharedHTTPClientOpts []httpclient.Option
+	if cfg.TracingConfig.Enabled {
+		sharedHTTPClientOpts = append(sharedHTTPClientOpts, httpclient.WithRoundTripperWrapper(tracing.WrapTransport))
+	}
+	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg, sharedHTTPClientOpts...)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to build shared outbound HTTP client for policies", "error", err)
 		os.Exit(1)
@@ -480,10 +484,10 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 	// process-wide prefix would corrupt it.
 	var handler slog.Handler
 	if cfg.PolicyEngine.Logging.Format == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+		handler = tracing.NewTraceLogHandler(slog.NewJSONHandler(os.Stdout, opts))
 		return slog.New(handler).With(slog.String(logComponentField, logComponentValue))
 	}
-	handler = slog.NewTextHandler(newComponentPrefixWriter(os.Stdout, logComponentPrefix), opts)
+	handler = tracing.NewTraceLogHandler(slog.NewTextHandler(newComponentPrefixWriter(os.Stdout, logComponentPrefix), opts))
 
 	return slog.New(handler)
 }

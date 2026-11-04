@@ -279,13 +279,24 @@ type IDPConfig struct {
 	Audience    []string            `koanf:"audience"`
 }
 
+// OTLP transports for TracingConfig.Protocol.
+const (
+	TracingProtocolGRPC = "grpc"
+	TracingProtocolHTTP = "http"
+)
+
 // TracingConfig holds OpenTelemetry tracing configuration
 type TracingConfig struct {
 	// Enabled toggles tracing on/off
 	Enabled bool `koanf:"enabled"`
 
-	// Endpoint is the OTLP gRPC endpoint (host:port)
+	// Endpoint is the OTLP collector endpoint (host:port): the gRPC port (4317) for
+	// protocol "grpc", the HTTP port (4318) for protocol "http".
 	Endpoint string `koanf:"endpoint"`
+
+	// Protocol is the OTLP transport: "grpc" (default) or "http" (OTLP/HTTP protobuf,
+	// POST /v1/traces). Collectors that accept only OTLP/HTTP need "http".
+	Protocol string `koanf:"protocol"`
 
 	// Insecure indicates whether to use an insecure connection (no TLS)
 	Insecure bool `koanf:"insecure"`
@@ -1485,6 +1496,7 @@ func defaultConfig() *Config {
 		TracingConfig: TracingConfig{
 			Enabled:        false,
 			Endpoint:       "otel-collector:4317",
+			Protocol:       TracingProtocolGRPC,
 			Insecure:       true,
 			ServiceVersion: "1.0.0", BatchTimeout: 1 * time.Second,
 			MaxExportBatchSize: 512,
@@ -1513,6 +1525,12 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	if c.TracingConfig.Enabled {
+		if p := c.TracingConfig.Protocol; p != "" && p != TracingProtocolGRPC && p != TracingProtocolHTTP {
+			return fmt.Errorf("tracing.protocol must be %q or %q, got %q", TracingProtocolGRPC, TracingProtocolHTTP, p)
+		}
+	}
+
 	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,
 	// which is incompatible with external shared databases like Postgres.
 	if c.ImmutableGateway.Enabled && !strings.EqualFold(c.Controller.Storage.Type, "sqlite") {

@@ -74,9 +74,8 @@ func TestA2A_TraceContextAndResolutionAttributesEndToEnd(t *testing.T) {
 	registerA2AJSONRPCRoute(t, k, routeKey, "SendMessage")
 
 	// A caller-supplied traceparent, arriving the way Envoy forwards it: as a request
-	// header inside the RequestHeaders message. Not on the ext_proc gRPC stream's
-	// metadata — that is set once when the long-lived stream is established, so it
-	// never carries a per-request trace context.
+	// header inside the RequestHeaders message. The mock stream carries no gRPC
+	// metadata, so this exercises the header fallback rather than Envoy's own context.
 	stream := newMockStream([]*extprocv3.ProcessingRequest{
 		withTraceparent(
 			requestHeadersWithBodyToFollow(routeKey, "POST", "/weather/1.0.0"),
@@ -112,10 +111,16 @@ func TestA2A_TraceContextAndResolutionAttributesEndToEnd(t *testing.T) {
 		"a2a.operation":                 "SendMessage",
 		"a2a.transport":                 string(agentproto.TransportJSONRPC),
 		"a2a.protocol.version":          "1.0",
-		"a2a.message.id":                "msg-1",
-		"a2a.context.id":                "ctx-1",
-		"a2a.task.id":                   "task-1",
 	})
+
+	// The caller-chosen ids are one value per request, so they stay off the ext_proc
+	// spans (#3737). Policies still read them from the shared context.
+	for _, span := range []sdktrace.ReadOnlySpan{root, bodySpan} {
+		for _, name := range []string{"a2a.message.id", "a2a.context.id", "a2a.task.id"} {
+			_, present := attrOf(span, attribute.Key(name))
+			assert.False(t, present, "%s must not be on span %q", name, span.Name())
+		}
+	}
 }
 
 // A request with no incoming traceparent still records the A2A attributes; it simply
@@ -255,9 +260,9 @@ func withA2AVersion(req *extprocv3.ProcessingRequest, version string) *extprocv3
 }
 
 // withTraceparent appends the W3C traceparent request header, in the lowercase form
-// Envoy delivers header names in. This is where a caller's trace context actually
-// arrives — inside the RequestHeaders message — which is why traceContextCarrier reads
-// it from there rather than from the ext_proc stream's gRPC metadata.
+// Envoy delivers header names in. These tests set no gRPC metadata on the stream, so
+// they exercise traceContextCarrier as the fallback the engine uses when Envoy's own
+// context is absent from the stream metadata.
 func withTraceparent(req *extprocv3.ProcessingRequest, traceparent string) *extprocv3.ProcessingRequest {
 	headers := req.GetRequestHeaders().GetHeaders()
 	headers.Headers = append(headers.Headers, &corev3.HeaderValue{

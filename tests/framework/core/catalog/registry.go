@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/catalog/browser"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/infrastructure"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/otelcollector"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformgateway"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
@@ -248,6 +249,7 @@ func All() []*components.Definition {
 		tlsbackend.TLSBackend(),
 		infrastructure.Redis(),
 		a2aagent.TripPlanner(),
+		otelcollector.Collector(),
 	}
 }
 

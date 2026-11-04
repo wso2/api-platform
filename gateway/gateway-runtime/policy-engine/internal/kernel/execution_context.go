@@ -30,6 +30,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -253,6 +254,18 @@ type PolicyExecutionContext struct {
 	// subsequent upstream chunks that Envoy delivers after EndOfStream was sent
 	// downstream are silently suppressed — forwarding more data would be undefined.
 	streamTerminated bool
+
+	// requestStream / responseStream trace a streamed body as one phase span with one
+	// span per policy. Unused for a buffered body.
+	requestStream  bodyStreamTrace
+	responseStream bodyStreamTrace
+
+	// genai is what is kept of the exchange for its GenAI client span.
+	genai genaiCapture
+
+	// rootSpan is the stream's external_processing.process span. Its context is
+	// stamped on analytics events, and GenAI client spans are its children.
+	rootSpan trace.Span
 
 	// Reference to server components
 	server *ExternalProcessorServer
@@ -944,6 +957,10 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		} else {
 			mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 		}
+	} else if ec.genaiReadsRequestBody() {
+		// Read for the GenAI span only: partial, so a body over the buffer limit is
+		// never rejected on the span's account (see genaiCapture).
+		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED_PARTIAL
 	} else {
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
@@ -956,6 +973,12 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 			)
 		} else {
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
+		}
+	} else if ec.genaiReadsResponseBody() {
+		if ec.isStreamingResponse {
+			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+		} else {
+			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED_PARTIAL
 		}
 	} else {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
@@ -1042,6 +1065,11 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	if f, isFault := faultFromRequestHeaders(execResult); isFault {
 		ec.handleFault(ctx, f)
 	}
+	// The ctx is deliberately dropped: the callee takes none, and the span ends
+	// with this call rather than containing later work.
+	_, span := ec.server.tracer.Start(ctx, constants.SpanTranslateActions,
+		trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
 	return TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
 }
 
@@ -1147,6 +1175,9 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 	if f, isFault := faultFromRequestBody(bodyResult); isFault {
 		ec.handleFault(ctx, f)
 	}
+	_, span := ec.server.tracer.Start(ctx, constants.SpanTranslateActions,
+		trace.WithSpanKind(trace.SpanKindInternal))
+	defer span.End()
 	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
 
@@ -1268,6 +1299,9 @@ func (ec *PolicyExecutionContext) processRequestBody(
 		return TranslateRequestBodyActions(execResult, ec.policyChain, ec)
 	}
 
+	if ec.genaiReadsRequestBody() {
+		ec.captureRequestBody(body.Body)
+	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{},
@@ -1372,11 +1406,12 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 			ec.sharedCtx.APIName,
 			ec.routeKey,
 			ec.policyChain.HasExecutionConditions,
+			ec.requestStream.policySpans(),
 		)
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
 		}
-		return TranslateStreamingRequestChunkAction(execResult, chunk, ec)
+		return TranslateStreamingRequestChunkAction(ctx, execResult, chunk, ec)
 	}
 
 	// Uncompressed (chunked): use the existing accumulation path.
@@ -1458,13 +1493,14 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
+		ec.requestStream.policySpans(),
 	)
 	if err != nil {
 		ec.requestStreamAccumulator = nil
 		return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
 	}
 
-	return TranslateStreamingRequestChunkAction(execResult, flushChunk, ec)
+	return TranslateStreamingRequestChunkAction(ctx, execResult, flushChunk, ec)
 }
 
 // suppressedRequestChunk emits nothing for this request chunk while keeping
@@ -1519,7 +1555,10 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		// response through untouched rather than dereferencing a nil chain.
 		return ec.noChainPassThroughResponseHeaders(), nil
 	}
+	_, buildSpan := ec.server.tracer.Start(ctx, constants.SpanBuildResponseContext,
+		trace.WithSpanKind(trace.SpanKindInternal))
 	ec.buildResponseContexts(headers)
+	buildSpan.End()
 
 	// Reject here, at the last point an HTTP status can still be chosen: response
 	// headers have not been forwarded downstream yet, so this becomes a clean 502
@@ -1590,7 +1629,10 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	if f, isFault := faultFromResponseHeaders(execResult); isFault {
 		ec.handleFault(ctx, f)
 	}
+	_, translateSpan := ec.server.tracer.Start(ctx, constants.SpanTranslateActions,
+		trace.WithSpanKind(trace.SpanKindInternal))
 	resp, err := TranslateResponseHeaderActions(execResult, ec)
+	translateSpan.End()
 	if err != nil {
 		return nil, err
 	}
@@ -1658,6 +1700,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			EndOfStream: body.EndOfStream,
 			Present:     true,
 		}
+		ec.captureResponse(bodyContent, body.EndOfStream)
 
 		bodyPols, bodySpecs := ec.responsePolicies()
 		execResult, err := ec.server.executor.ExecuteResponsePolicies(
@@ -1684,6 +1727,18 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		return TranslateResponseBodyActions(execResult, ec)
 	}
 
+	if ec.genaiReadsResponseBody() {
+		bodyContent := body.Body
+		if ec.responseContentEncoding != "" {
+			// Pin the deflate variant from the bytes, as the policy path does, without
+			// changing the stored encoding: nothing else reads this response's body.
+			encoding := resolveEncodingFromBody(ec.responseContentEncoding, body.Body)
+			if decoded, err := decompressBody(body.Body, encoding, ec.server.maxResponseDecompressedBytes); err == nil {
+				bodyContent = decoded
+			}
+		}
+		ec.captureResponse(bodyContent, body.EndOfStream)
+	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
 			ResponseBody: &extprocv3.BodyResponse{},
@@ -1786,6 +1841,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		)
 	}
 
+	ec.captureResponse(chunk.Chunk, chunk.EndOfStream)
 	if len(chunk.Chunk) > 0 {
 		ec.streamAccumulator = append(ec.streamAccumulator, chunk.Chunk...)
 	}
@@ -1869,6 +1925,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
+		ec.responseStream.policySpans(),
 	)
 	if err != nil {
 		ec.streamAccumulator = nil
@@ -1888,7 +1945,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 			ec.handleFault(ctx, faultFromStream(nil, declared))
 		}
 	}
-	return TranslateStreamingResponseChunkAction(execResult, flushChunk, ec)
+	return TranslateStreamingResponseChunkAction(ctx, execResult, flushChunk, ec)
 }
 
 // ─── Context builders ────────────────────────────────────────────────────────
@@ -2251,7 +2308,9 @@ func isServerSentEventResponse(headers *policy.Headers) bool {
 // (processResponseBody), so the two can never disagree. Callable only once
 // responseHeaderCtx has been populated (i.e. from processResponseHeaders).
 func (ec *PolicyExecutionContext) responseStreamingEnabled(endOfStream bool) bool {
-	if !ec.policyChain.SupportsResponseStreaming || endOfStream {
+	// A streamed LLM response that no response policy reads still streams when the engine
+	// reads it for the GenAI span, rather than being buffered on the span's account.
+	if !(ec.policyChain.SupportsResponseStreaming || ec.genaiStreamsResponse()) || endOfStream {
 		return false
 	}
 	if !isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders) {

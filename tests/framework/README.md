@@ -54,8 +54,9 @@ go test ./suites/cloud -count=1 -timeout=15m \
   -args -blocks=apip-cloud -cloud-env=development
 ```
 
-Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
-`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner` or
+`otel-collector`, `make a2a-trip-planner` or `make otel-collector` here. The `ai-workspace-cli`
+block also needs the host `ap` binary:
 `make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
 missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate

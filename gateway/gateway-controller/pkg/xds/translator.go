@@ -2420,25 +2420,7 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 		return nil
 	}
 
-	// Parse endpoint to extract host and port
-	otelEndpoint := t.config.TracingConfig.Endpoint
-	if otelEndpoint == "" {
-		otelEndpoint = "otel-collector:4317"
-	}
-
-	// Split host:port
-	host, port := otelEndpoint, uint32(4317)
-	if colonIdx := strings.LastIndex(otelEndpoint, ":"); colonIdx != -1 {
-		host = otelEndpoint[:colonIdx]
-		portStr := otelEndpoint[colonIdx+1:]
-		if parsedPort, err := strconv.ParseUint(portStr, 10, 16); err != nil {
-			t.logger.Warn("Invalid OTEL collector port, using default 4317",
-				slog.String("endpoint", otelEndpoint))
-			port = 4317
-		} else {
-			port = uint32(parsedPort)
-		}
-	}
+	otelEndpoint, host, port := t.otelCollectorEndpoint()
 
 	// Build the endpoint address
 	address := &core.Address{
@@ -2467,7 +2449,6 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
 	}
 
-	// Create the cluster with HTTP/2 support for gRPC
 	c := &cluster.Cluster{
 		Name:                 OTELCollectorClusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
@@ -2478,8 +2459,10 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 			ClusterName: OTELCollectorClusterName,
 			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
 		},
-		// Enable HTTP/2 for gRPC (OTLP uses gRPC)
-		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+	// OTLP/gRPC needs HTTP/2; OTLP/HTTP is plain HTTP/1.1.
+	if !t.otelOverHTTP() {
+		c.Http2ProtocolOptions = &core.Http2ProtocolOptions{}
 	}
 
 	t.logger.Info("Created OTEL collector cluster",
@@ -2487,6 +2470,35 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 		slog.String("endpoint", otelEndpoint))
 
 	return c
+}
+
+// otelOverHTTP reports whether spans are exported with OTLP/HTTP rather than OTLP/gRPC.
+func (t *Translator) otelOverHTTP() bool {
+	return t.config.TracingConfig.Protocol == config.TracingProtocolHTTP
+}
+
+// otelCollectorEndpoint splits the configured collector endpoint into host and port,
+// defaulting to the protocol's standard OTLP port.
+func (t *Translator) otelCollectorEndpoint() (endpoint, host string, port uint32) {
+	defaultPort := uint32(4317)
+	if t.otelOverHTTP() {
+		defaultPort = 4318
+	}
+	endpoint = t.config.TracingConfig.Endpoint
+	if endpoint == "" {
+		endpoint = fmt.Sprintf("otel-collector:%d", defaultPort)
+	}
+	host, port = endpoint, defaultPort
+	if colonIdx := strings.LastIndex(endpoint, ":"); colonIdx != -1 {
+		host = endpoint[:colonIdx]
+		if parsedPort, err := strconv.ParseUint(endpoint[colonIdx+1:], 10, 16); err != nil {
+			t.logger.Warn("Invalid OTEL collector port, using the protocol default",
+				slog.String("endpoint", endpoint), slog.Uint64("port", uint64(defaultPort)))
+		} else {
+			port = uint32(parsedPort)
+		}
+	}
+	return endpoint, host, port
 }
 
 // createUpstreamTLSContext creates an upstream TLS context. tlsOpts carries a
@@ -3465,15 +3477,28 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 
 	// Create OpenTelemetry tracing configuration
 	otelConfig := &tracev3.OpenTelemetryConfig{
-		GrpcService: &core.GrpcService{
+		ServiceName:       serviceName,
+		ResourceDetectors: resourceDetectors,
+	}
+	if t.otelOverHTTP() {
+		// The cluster carries the address; Envoy takes the request's authority and
+		// path from the URI.
+		_, host, port := t.otelCollectorEndpoint()
+		otelConfig.HttpService = &core.HttpService{
+			HttpUri: &core.HttpUri{
+				Uri:              fmt.Sprintf("http://%s/v1/traces", net.JoinHostPort(host, strconv.FormatUint(uint64(port), 10))),
+				HttpUpstreamType: &core.HttpUri_Cluster{Cluster: OTELCollectorClusterName},
+				Timeout:          durationpb.New(5 * time.Second),
+			},
+		}
+	} else {
+		otelConfig.GrpcService = &core.GrpcService{
 			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
 				EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
 					ClusterName: OTELCollectorClusterName,
 				},
 			},
-		},
-		ServiceName:       serviceName,
-		ResourceDetectors: resourceDetectors,
+		}
 	}
 
 	// Marshal to Any
@@ -3502,6 +3527,7 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 	t.logger.Info("Tracing configuration created",
 		slog.String("service_name", serviceName),
 		slog.Float64("sampling_rate", samplingRate),
+		slog.String("protocol", t.config.TracingConfig.Protocol),
 		slog.String("collector_cluster", OTELCollectorClusterName))
 
 	return tracingConfig, nil

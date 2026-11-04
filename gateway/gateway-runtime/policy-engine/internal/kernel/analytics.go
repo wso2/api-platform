@@ -354,7 +354,7 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		// The token key is reserved for the stream's own token (added below). A
 		// policy-supplied value could point this request's access-log entry at
 		// another request's stored fields.
-		if key == analytics.CorrelationTokenKey {
+		if key == analytics.CorrelationTokenKey || key == analytics.TraceIDKey || key == analytics.SpanIDKey {
 			continue
 		}
 		correlated := isCorrelatedField(key)
@@ -375,6 +375,14 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	// stored fields are.
 	if execCtx != nil && execCtx.correlationToken != "" {
 		fields[analytics.CorrelationTokenKey] = structpb.NewStringValue(execCtx.correlationToken)
+	}
+	// Only a sampled span is exported, so an unsampled request's ids would point at a
+	// trace no backend has.
+	if execCtx != nil && execCtx.rootSpan != nil {
+		if sc := execCtx.rootSpan.SpanContext(); sc.IsValid() && sc.IsSampled() {
+			fields[analytics.TraceIDKey] = structpb.NewStringValue(sc.TraceID().String())
+			fields[analytics.SpanIDKey] = structpb.NewStringValue(sc.SpanID().String())
+		}
 	}
 
 	// Add system-level metadata if context is provided

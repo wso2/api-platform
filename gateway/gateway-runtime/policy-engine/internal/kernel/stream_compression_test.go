@@ -20,6 +20,7 @@ package kernel
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"strings"
 	"testing"
@@ -198,6 +199,7 @@ func TestTranslateStreamingChunkAction_NilCompressorFailsStreamNotPanics(t *test
 			dynamicMetadata:         map[string]map[string]interface{}{},
 		}
 		_, err := TranslateStreamingResponseChunkAction(
+			context.Background(),
 			&executor.StreamingResponseExecutionResult{},
 			&policy.StreamBody{Chunk: []byte("payload"), EndOfStream: true},
 			execCtx,
@@ -214,6 +216,7 @@ func TestTranslateStreamingChunkAction_NilCompressorFailsStreamNotPanics(t *test
 			dynamicMetadata:        map[string]map[string]interface{}{},
 		}
 		_, err := TranslateStreamingRequestChunkAction(
+			context.Background(),
 			&executor.StreamingRequestExecutionResult{},
 			&policy.StreamBody{Chunk: []byte("payload"), EndOfStream: true},
 			execCtx,
@@ -331,6 +334,7 @@ func TestTranslateStreamingResponseChunkAction_TerminatedStreamIsFinalised(t *te
 
 	for i, c := range chunks {
 		resp, err := TranslateStreamingResponseChunkAction(
+			context.Background(),
 			&executor.StreamingResponseExecutionResult{StreamTerminated: c.terminated},
 			&policy.StreamBody{Chunk: []byte(c.body), EndOfStream: false}, // Envoy never signals EOS
 			execCtx,
