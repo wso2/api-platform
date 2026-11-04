@@ -209,7 +209,7 @@ jobs:
 
             This PR bumps the CLI version to the next development version `${{ inputs.next_dev_version }}`.
           branch: cli-version-bump-${{ github.run_id }}
-          base: main
+          base: ${{ github.ref_name }}
           delete-branch: true
           assignees: renuka-fernando
           labels: |
