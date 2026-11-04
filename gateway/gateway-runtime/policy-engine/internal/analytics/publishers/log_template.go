@@ -57,6 +57,8 @@ var capturedVariables = []struct {
 }{
 	{"request.header", "collector.request_headers", "request headers", func(c *config.CollectorConfig) bool { return c.RequestHeaders }},
 	{"response.header", "collector.response_headers", "response headers", func(c *config.CollectorConfig) bool { return c.ResponseHeaders }},
+	{"request.body", "collector.request_body", "request body", func(c *config.CollectorConfig) bool { return c.RequestBody }},
+	{"response.body", "collector.response_body", "response body", func(c *config.CollectorConfig) bool { return c.ResponseBody }},
 }
 
 // templateNodeKind says which kind of JSON value a template node holds.
@@ -115,6 +117,8 @@ type logTemplate struct {
 	referencedVars map[string]bool
 	// maskedHeaders are redacted in request.header and response.header, as in the default line.
 	maskedHeaders map[string]bool
+	// maxPayloadSize cuts request.body and response.body, as in the default line.
+	maxPayloadSize int
 }
 
 // newLogTemplate parses and compiles the template in logCfg. It returns an error only for a
@@ -143,6 +147,7 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.Co
 		root:           root,
 		referencedVars: make(map[string]bool),
 		maskedHeaders:  maskedHeaders,
+		maxPayloadSize: logCfg.MaxPayloadSize,
 	}
 	t.compile(env, collectorCfg, root)
 	markExclusions(root)
@@ -276,7 +281,7 @@ func compileExpression(env *cel.Env, expression string) (*cel.Ast, cel.Program, 
 
 // render returns one line for event in the template's layout.
 func (t *logTemplate) render(event *dto.Event) []byte {
-	evalCtx := buildGlobalPropertyEvalCtx(event, t.referencedVars, t.maskedHeaders)
+	evalCtx := buildGlobalPropertyEvalCtx(event, t.referencedVars, t.maskedHeaders, t.maxPayloadSize)
 	var buf bytes.Buffer
 	if !t.write(&buf, t.root, evalCtx) {
 		buf.WriteString("{}") // exclude_fields emptied every field for this request

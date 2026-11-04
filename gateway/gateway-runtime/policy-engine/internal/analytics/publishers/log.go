@@ -105,7 +105,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 			// A template mistake must not stop API traffic, and the default line may
 			// carry fields the template leaves out, so no lines are written at all.
 			slog.Error(err.Error() + "; no traffic log lines will be written until the template is fixed and the gateway restarted")
-			return &Log{maskedHeaders: masked, globalProperties: newGlobalPropertyEvaluator(nil, masked)}, nil
+			return &Log{maskedHeaders: masked, globalProperties: newGlobalPropertyEvaluator(nil, masked, logCfg.MaxPayloadSize)}, nil
 		}
 	}
 
@@ -120,7 +120,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 		maskedHeaders:    masked,
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
-		globalProperties: newGlobalPropertyEvaluator(properties, masked),
+		globalProperties: newGlobalPropertyEvaluator(properties, masked, logCfg.MaxPayloadSize),
 		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
 		template:         template,
 	}
@@ -244,12 +244,12 @@ func (l *Log) Close(ctx context.Context) error {
 
 // truncatePayload returns up to maxPayloadSize bytes of the payload (0 = no
 // limit). Truncation is on a byte boundary, matching the previous capture-time
-// behavior.
-func (l *Log) truncatePayload(s string) string {
-	if l.maxPayloadSize <= 0 || len(s) <= l.maxPayloadSize {
+// behavior. The default line and the request.body/response.body variables share it.
+func truncatePayload(s string, maxPayloadSize int) string {
+	if maxPayloadSize <= 0 || len(s) <= maxPayloadSize {
 		return s
 	}
-	return s[:l.maxPayloadSize]
+	return s[:maxPayloadSize]
 }
 
 // applyFieldsProjection mutates m in place, dropping the configured fields and

@@ -373,14 +373,15 @@ func TestLogTemplate_StartupMessagesCarryNoRequestValues(t *testing.T) {
 
 // exclusionTemplate writes fixed values, nested objects, a flat key with a dot, a claims map, the
 // request header map and an array.
-const exclusionTemplate = `{"service":"orders","http":{"method":"$ctx:request.method","status":"$ctx:response.status"},"http.route":"$ctx:request.pathTemplate","client":{"ip":"$ctx:request.header['x-forwarded-for']"},"auth_prop":"$ctx:auth.property","hdrs":"$ctx:request.header","tags":["gw","$ctx:api.name"]}`
+const exclusionTemplate = `{"service":"orders","http":{"method":"$ctx:request.method","status":"$ctx:response.status"},"http.route":"$ctx:request.pathTemplate","client":{"ip":"$ctx:client.ip"},"auth_prop":"$ctx:auth.property","hdrs":"$ctx:request.header","tags":["gw","$ctx:api.name"]}`
 
-// exclusionEvent is ordersEvent with a route, two claims and more request headers.
+// exclusionEvent is ordersEvent with a route, a client IP, two claims and more request headers.
 func exclusionEvent() *dto.Event {
 	event := ordersEvent()
+	event.UserIP = "10.0.0.1"
 	event.Properties[dto.PropKeyOperationPath] = "/orders/{id}"
 	event.Properties[dto.PropKeyAuthProperties] = `{"tenant":"acme","region":"eu"}`
-	event.Properties[dto.PropKeyRequestHeaders] = `{"authorization":"Bearer secret","x-foo":"bar","x-user":"alice","x-forwarded-for":"10.0.0.1"}`
+	event.Properties[dto.PropKeyRequestHeaders] = `{"authorization":"Bearer secret","x-foo":"bar","x-user":"alice"}`
 	return event
 }
 
@@ -402,7 +403,7 @@ func TestLogTemplate_ExcludeFields(t *testing.T) {
 		route    = `"http.route":"/orders/{id}"`
 		client   = `"client":{"ip":"10.0.0.1"}`
 		authProp = `"auth_prop":{"region":"eu","tenant":"acme"}`
-		hdrs     = `"hdrs":{"authorization":"****","x-foo":"bar","x-forwarded-for":"10.0.0.1","x-user":"alice"}`
+		hdrs     = `"hdrs":{"authorization":"****","x-foo":"bar","x-user":"alice"}`
 		tags     = `"tags":["gw","Orders"]`
 	)
 	line := func(fields ...string) string { return "{" + strings.Join(fields, ",") + "}" }
@@ -421,8 +422,8 @@ func TestLogTemplate_ExcludeFields(t *testing.T) {
 		{"a flat key with a dot", []string{"http.route"}, line(service, http, client, authProp, hdrs, tags)},
 		{"a key inside an expression's value", []string{"auth_prop.tenant"}, line(service, http, route, client, `"auth_prop":{"region":"eu"}`, hdrs, tags)},
 		{"claim names match exactly", []string{"auth_prop.Tenant"}, full},
-		{"header names match in any case", []string{"hdrs.X-User"}, line(service, http, route, client, authProp, `"hdrs":{"authorization":"****","x-foo":"bar","x-forwarded-for":"10.0.0.1"}`, tags)},
-		{"a masked header can be removed", []string{"hdrs.authorization"}, line(service, http, route, client, authProp, `"hdrs":{"x-foo":"bar","x-forwarded-for":"10.0.0.1","x-user":"alice"}`, tags)},
+		{"header names match in any case", []string{"hdrs.X-User"}, line(service, http, route, client, authProp, `"hdrs":{"authorization":"****","x-foo":"bar"}`, tags)},
+		{"a masked header can be removed", []string{"hdrs.authorization"}, line(service, http, route, client, authProp, `"hdrs":{"x-foo":"bar","x-user":"alice"}`, tags)},
 		{"arrays are not reached", []string{"tags.0"}, full},
 		{"fixed values are not reached", []string{"service.name"}, full},
 		{"header values are not reached", []string{"hdrs.x-foo.bar"}, full},
@@ -550,4 +551,176 @@ func TestLogTemplate_PathInsideAFieldThatDoesNotCompile(t *testing.T) {
 	assert.Equal(t, `{"bad":null,"n":1}`, line)
 	assert.Equal(t, 1, strings.Count(logs, "level=WARN"), logs)
 	assert.Contains(t, logs, `field \"bad\" is written as null`)
+}
+
+// latencyEvent is ordersEvent with the given backend latency in microseconds; its total
+// duration is 250,000 µs.
+func latencyEvent(backendUs int64) *dto.Event {
+	event := ordersEvent()
+	event.TrafficLogLatencies.BackendLatencyUs = backendUs
+	return event
+}
+
+func TestLogTemplate_LatenciesInAnyUnit(t *testing.T) {
+	tests := []struct {
+		name      string
+		template  string
+		backendUs int64
+		want      string
+	}{
+		{
+			name:      "whole microseconds and converted",
+			template:  `{"backend":"$ctx:latencies.backendLatency","backend_ms":"$ctx:convertUnit(latencies.backendLatency, 'ms')","backend_s":"$ctx:convertUnit(latencies.backendLatency, 's')"}`,
+			backendUs: 12345,
+			want:      `{"backend":12345,"backend_ms":12.345,"backend_s":0.012345}`,
+		},
+		{"nanoseconds", `{"v":"$ctx:convertUnit(latencies.backendLatency, 'ns')"}`, 12345, `{"v":12345000}`},
+		{"microseconds", `{"v":"$ctx:convertUnit(latencies.backendLatency, 'us')"}`, 12345, `{"v":12345}`},
+		{"milliseconds", `{"v":"$ctx:convertUnit(latencies.backendLatency, 'ms')"}`, 12345, `{"v":12.345}`},
+		{"seconds", `{"v":"$ctx:convertUnit(latencies.backendLatency, 's')"}`, 12345, `{"v":0.012345}`},
+		{"no decimals lost", `{"v":"$ctx:convertUnit(latencies.backendLatency, 'ms')"}`, 420, `{"v":0.42}`},
+		{"any int expression", `{"v":"$ctx:convertUnit(latencies.duration - latencies.backendLatency, 'ms')"}`, 12345, `{"v":237.655}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, templateLine(t, tt.template, latencyEvent(tt.backendUs)))
+		})
+	}
+}
+
+func TestLogTemplate_ConvertUnitMistakeIsNull(t *testing.T) {
+	tests := []struct {
+		name       string
+		expression string
+		message    string
+	}{
+		{"unsupported unit", "$ctx:convertUnit(latencies.duration, 'mins')", `convertUnit: unsupported unit "mins" (supported: ns, us, ms, s)`},
+		{"unit not a constant", "$ctx:convertUnit(latencies.duration, request.header['unit'])", "convertUnit: the unit must be a constant: 'ns', 'us', 'ms' or 's'"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+			l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: `{"dur":"` + tt.expression + `","n":1}`})
+			for i := 0; i < 3; i++ {
+				l.Publish(ordersEvent())
+			}
+
+			assert.Equal(t, strings.Repeat(`{"dur":null,"n":1}`+"\n", 3), buf.String())
+			assert.Equal(t, 1, strings.Count(logs.String(), "level=WARN"), logs.String())
+			assert.True(t, logged(logs.String(), "WARN", `traffic_logging.template: field "dur" is written as null: `+tt.message), logs.String())
+		})
+	}
+}
+
+// A request rejected before it reached the backend has no latencies.
+func TestLogTemplate_NoLatenciesWritesNull(t *testing.T) {
+	event := ordersEvent()
+	event.TrafficLogLatencies = nil
+
+	line := templateLine(t, `{"d":"$ctx:latencies.duration","rq":"$ctx:latencies.requestMediationLatency","rs":"$ctx:latencies.responseMediationLatency","b":"$ctx:latencies.backendLatency","ms":"$ctx:convertUnit(latencies.duration, 'ms')"}`, event)
+
+	assert.Equal(t, `{"d":null,"rq":null,"rs":null,"b":null,"ms":null}`, line)
+}
+
+// dropEmpty removes "", 0 and objects left empty, so a template line, which writes every
+// field, can be compared with the default line, which leaves empty fields out.
+func dropEmpty(m map[string]interface{}) {
+	for k, v := range m {
+		if nested, ok := v.(map[string]interface{}); ok {
+			dropEmpty(nested)
+			if len(nested) == 0 {
+				delete(m, k)
+			}
+			continue
+		}
+		if v == "" || v == float64(0) {
+			delete(m, k)
+		}
+	}
+}
+
+func TestLogTemplate_TimestampClientAndErrorMatchTheDefaultLine(t *testing.T) {
+	const template = `{"timestamp":"$ctx:request.timestamp",` +
+		`"client":{"ip":"$ctx:client.ip","userAgent":"$ctx:client.userAgent"},` +
+		`"errorType":"$ctx:error.category",` +
+		`"error":{"errorCode":"$ctx:error.errorCode","errorMessage":"$ctx:error.errorMessage","wso2ErrorCode":"$ctx:error.wso2ErrorCode",` +
+		`"type":"$ctx:error.type","direction":"$ctx:error.direction","summary":"$ctx:error.summary","policy":"$ctx:error.policy",` +
+		`"policyPhase":"$ctx:error.policyPhase","source":"$ctx:error.source","originalStatus":"$ctx:error.originalStatus",` +
+		`"jsonRpcCode":"$ctx:error.jsonRpcCode",` +
+		`"guardrail":{"name":"$ctx:error.guardrail.name","action":"$ctx:error.guardrail.action","reason":"$ctx:error.guardrail.reason"}}}`
+
+	events := defaultLineEvents()
+	guardrail := defaultLineEvents()["auth failure"]
+	guardrail.ErrorType = "OTHER"
+	guardrail.Error = &dto.Error{
+		ErrorCode: 446, ErrorMessage: dto.OtherMediationError, Wso2ErrorCode: 906201, Type: "guardrail",
+		Direction: "response", Summary: "Response blocked", Policy: "pii-guardrail", PolicyPhase: "response_body",
+		Source: "gateway", OriginalStatus: 200, JSONRPCCode: -32603,
+		Guardrail: &dto.ErrorGuardrail{Name: "pii", Action: "block", Reason: "email address found"},
+	}
+	events["guardrail"] = guardrail
+
+	for name, event := range events {
+		t.Run(name, func(t *testing.T) {
+			defaultLog, err := NewLog(defaultLineConfigs()["plain"], nil)
+			require.NoError(t, err)
+			var defaultBuf bytes.Buffer
+			useWriterSink(defaultLog, &defaultBuf)
+			defaultLog.Publish(event)
+
+			var defaultLine, line map[string]interface{}
+			require.NoError(t, json.Unmarshal(defaultBuf.Bytes(), &defaultLine))
+			require.NoError(t, json.Unmarshal([]byte(templateLine(t, template, event)), &line))
+			for key := range defaultLine {
+				if key != "timestamp" && key != "client" && key != "errorType" && key != "error" {
+					delete(defaultLine, key)
+				}
+			}
+			dropEmpty(line)
+			assert.Equal(t, defaultLine, line)
+		})
+	}
+}
+
+func TestLogTemplate_Bodies(t *testing.T) {
+	const template = `{"req":{"body":"$ctx:request.body"},"resp":"$ctx:response.body","n":1}`
+	withBodies := func() *dto.Event {
+		event := ordersEvent()
+		event.Properties[dto.PropKeyRequestPayload] = `{"order":1}`
+		event.Properties[dto.PropKeyResponsePayload] = `{"id":7}`
+		return event
+	}
+	const requestBodyWarning = `traffic_logging.template: field "req.body" reads request.body but collector.request_body is false; no request body will be logged`
+	const responseBodyWarning = `traffic_logging.template: field "resp" reads response.body but collector.response_body is false; no response body will be logged`
+
+	t.Run("captured bodies are cut to max_payload_size whatever the traffic_logging switches say", func(t *testing.T) {
+		logs := captureLogs(t)
+		l, buf := newTemplateLogWithCollector(t,
+			config.TrafficLoggingConfig{Template: template, MaxPayloadSize: 5, RequestBody: false, ResponseBody: false},
+			&config.CollectorConfig{RequestBody: true, ResponseBody: true})
+		l.Publish(withBodies())
+
+		assert.Equal(t, `{"req":{"body":"{\"ord"},"resp":"{\"id\"","n":1}`+"\n", buf.String())
+		assert.Empty(t, logs.String())
+	})
+
+	t.Run("bodies the collector does not capture are warned about and written as null", func(t *testing.T) {
+		logs := captureLogs(t)
+		l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: template})
+		l.Publish(ordersEvent())
+
+		assert.Equal(t, `{"req":{"body":null},"resp":null,"n":1}`+"\n", buf.String())
+		assert.True(t, logged(logs.String(), "WARN", requestBodyWarning), logs.String())
+		assert.True(t, logged(logs.String(), "WARN", responseBodyWarning), logs.String())
+		assert.Equal(t, 2, strings.Count(logs.String(), "level=WARN"), logs.String())
+	})
+
+	t.Run("an excluded body field is removed and not warned about", func(t *testing.T) {
+		logs := captureLogs(t)
+		l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: template, ExcludeFields: []string{"req.body", "resp"}})
+		l.Publish(withBodies())
+
+		assert.Equal(t, `{"n":1}`+"\n", buf.String())
+		assert.Empty(t, logs.String())
+	})
 }

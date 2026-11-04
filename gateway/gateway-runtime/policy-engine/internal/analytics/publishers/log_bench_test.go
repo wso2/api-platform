@@ -126,7 +126,7 @@ func BenchmarkLog_Publish(b *testing.B) {
 }
 
 // benchmarkTemplate is a template of about 15 fields: fixed values, nested objects, an array,
-// scalar variables, one masked header and the claims map.
+// scalar variables, one masked header, the claims map and two latencies in milliseconds.
 const benchmarkTemplate = `{
   "service": "orders",
   "env": "prod",
@@ -138,6 +138,8 @@ const benchmarkTemplate = `{
   "auth": "$ctx:request.header['authorization']",
   "traceId": "$ctx:request.header['x-request-id']",
   "auth_prop": "$ctx:auth.property",
+  "durationMs": "$ctx:convertUnit(latencies.duration, 'ms')",
+  "backendMs": "$ctx:convertUnit(latencies.backendLatency, 'ms')",
   "tags": ["gateway", "$ctx:api.name"]
 }`
 
