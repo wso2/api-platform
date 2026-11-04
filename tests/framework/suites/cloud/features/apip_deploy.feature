@@ -20,8 +20,6 @@ Feature: APIP cloud builds and deployments
   I want to prepare builds of an API and deploy them through the project's pipeline
   So that what a gateway serves can always be traced to a build
 
-  # The handler and OpenAPI define the route (POST .../builds), but the gateway doesn’t expose it.
-  # Same reason as @TC_APIP_AUTH_008
   @TC_APIP_DEP_001 @ID_APIP_DEPLOY_001
   Scenario: A build can be prepared for an API and is listed
     Given I obtain an APIP cloud console token
@@ -99,36 +97,36 @@ Feature: APIP cloud builds and deployments
     Then the synthetic REST API deployment should become UNDEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 404
 
-  # Not enabled: creating the synthetic gateway fails with 400 because the gateway handle must fit the environment's limit and the synthetic environment name leaves no room.
+  # Known issue: creating the synthetic gateway fails with 400 because the gateway handle must fit the environment's limit and the synthetic environment name leaves no room.
   # POST /environments returns 500 internal_error, so the scenario never reaches the deploy.
   # The handler hides the upstream status, so the cause of the 500 is not visible to the scenario.
-  # @TC_APIP_DEP_006 @known-issue @ID_APIP_DEPLOY_006
-  # Scenario: Deploying to a gateway that is not in the target environment is rejected
-    # Given I obtain an APIP cloud console token
-    # And I find the default APIP project
-    # And I find an active APIP gateway
-    # And I create a synthetic non-production APIP environment
-    # And I create a synthetic managed APIP gateway
-    # When I create a synthetic REST API in the default project
-    # And I request a deployment of the synthetic REST API with:
-      # | environment | ${CTX:cloudGatewayEnvironment} |
-      # | gatewayId   | ${CTX:cloudManagedGatewayID}   |
-    # Then the cloud API response status code should be 400
-    # And the cloud API response body should contain "is not in environment"
-    # And the cloud API response body should contain "${CTX:cloudManagedGatewayID}"
+  @TC_APIP_DEP_006 @ID_APIP_DEPLOY_006
+  Scenario: Deploying to a gateway that is not in the target environment is rejected
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I create a synthetic non-production APIP environment
+    And I create a synthetic managed APIP gateway
+    When I create a synthetic REST API in the default project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment} |
+      | gatewayId   | ${CTX:cloudManagedGatewayID}   |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should contain "is not in environment"
+    And the cloud API response body should contain "${CTX:cloudManagedGatewayID}"
 
-  # Not enabled: the API is looked up before the environment, so the deployment answers 404 "API not found" instead of 400.
-  # @TC_APIP_DEP_007 @known-issue @ID_APIP_DEPLOY_007
-  # Scenario: Deploying to an environment that does not exist is rejected
-    # Given I obtain an APIP cloud console token
-    # And I find the default APIP project
-    # And I choose a synthetic REST API handle without creating the API
-    # When I request a deployment of the synthetic REST API with:
-      # | environment | ${UNIQUE:missing-env} |
-    # Then the cloud API response status code should be 400
-    # And the cloud API response body should contain "not part of the project's deployment pipeline"
+  # Known issue: the API is looked up before the environment, so the deployment answers 404 "API not found" instead of 400.
+  @TC_APIP_DEP_007 @ID_APIP_DEPLOY_007
+  Scenario: Deploying to an environment that does not exist is rejected
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I choose a synthetic REST API handle without creating the API
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${UNIQUE:missing-env} |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should contain "not part of the project's deployment pipeline"
 
-  @TC_APIP_DEP_008 @known-issue @ID_APIP_DEPLOY_008
+  @TC_APIP_DEP_008 @ID_APIP_DEPLOY_008
   # The OpenAPI documents a 4xx, and the code returns 500.
   Scenario: Deploying a build that does not exist is rejected
     Given I obtain an APIP cloud console token
@@ -141,43 +139,43 @@ Feature: APIP cloud builds and deployments
       | buildId     | ${UNIQUE:missing-build}        |
     Then the cloud API response status code should be a client error
 
-  # Not enabled: creating the synthetic gateways expects 201 and the platform answers 202 PROVISIONING; an environment also runs a single build, so one build per gateway cannot be created.
-  # @TC_APIP_DEP_009 @ID_APIP_DEPLOY_009
-  # Scenario: Deploying when every build of an API is held by a gateway is refused with a conflict
-    # Given I obtain an APIP cloud console token
-    # And I find the default APIP project
-    # And I find an active APIP gateway
-    # And I create 4 synthetic managed APIP gateways in the active gateway's environment
-    # When I create a synthetic REST API in the default project
-    # And I deploy a build of the synthetic REST API to the active gateway and every synthetic gateway
-    # Then the synthetic REST API should hold 5 builds
-    # When I request a deployment of the synthetic REST API with:
-      # | environment | ${CTX:cloudGatewayEnvironment}                        |
-      # | gatewayIds   | ${CTX:cloudGatewayID},${CTX:cloudSyntheticGatewayIDs} |
-    # Then the cloud API response status code should be 409
-    # And the cloud API error code should be "build_limit_reached"
+  # Known issue: creating the synthetic gateways expects 201 and the platform answers 202 PROVISIONING; an environment also runs a single build, so one build per gateway cannot be created.
+  @TC_APIP_DEP_009 @ID_APIP_DEPLOY_009
+  Scenario: Deploying when every build of an API is held by a gateway is refused with a conflict
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I create 4 synthetic managed APIP gateways in the active gateway's environment
+    When I create a synthetic REST API in the default project
+    And I deploy a build of the synthetic REST API to the active gateway and every synthetic gateway
+    Then the synthetic REST API should hold 5 builds
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                        |
+      | gatewayIds  | ${CTX:cloudGatewayID},${CTX:cloudSyntheticGatewayIDs} |
+    Then the cloud API response status code should be 409
+    And the cloud API error code should be "build_limit_reached"
 
-  # Not enabled: creating the synthetic gateway expects 201 and the platform answers 202 PROVISIONING.
-  # @TC_APIP_DEP_010 @known-issue @ID_APIP_DEPLOY_010
-  # Scenario: A deployment that leaves out a gateway the API is deployed on is refused
-    # Given I obtain an APIP cloud console token
-    # And I find the default APIP project
-    # And I find an active APIP gateway
-    # And I create 1 synthetic managed APIP gateway in the active gateway's environment
-    # And the synthetic managed APIP gateways should become active
-    # When I create a synthetic REST API in the default project
-    # And I request a deployment of the synthetic REST API with:
-      # | environment | ${CTX:cloudGatewayEnvironment}                         |
-      # | gatewayIds   | ${CTX:cloudGatewayID},${CTX:cloudManagedGatewayID}     |
-    # Then the cloud API response status code should be 201
-    # And the deployment response should list 2 gateways
-    # And the synthetic REST API should be DEPLOYED on every gateway the deployment request named
-    # When I request a deployment of the synthetic REST API with:
-      # | environment | ${CTX:cloudGatewayEnvironment} |
-      # | gatewayId   | ${CTX:cloudGatewayID}          |
-    # Then the cloud API response status code should be 409
-    # And the cloud API error code should be "gateway_set_incomplete"
-    # And the cloud API response body should contain "${CTX:cloudManagedGatewayID}"
+  # Known issue: creating the synthetic gateway expects 201 and the platform answers 202 PROVISIONING.
+  @TC_APIP_DEP_010 @ID_APIP_DEPLOY_010
+  Scenario: A deployment that leaves out a gateway the API is deployed on is refused
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I create 1 synthetic managed APIP gateway in the active gateway's environment
+    And the synthetic managed APIP gateways should become active
+    When I create a synthetic REST API in the default project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment}                         |
+      | gatewayIds  | ${CTX:cloudGatewayID},${CTX:cloudManagedGatewayID}     |
+    Then the cloud API response status code should be 201
+    And the deployment response should list 2 gateways
+    And the synthetic REST API should be DEPLOYED on every gateway the deployment request named
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment} |
+      | gatewayId   | ${CTX:cloudGatewayID}          |
+    Then the cloud API response status code should be 409
+    And the cloud API error code should be "gateway_set_incomplete"
+    And the cloud API response body should contain "${CTX:cloudManagedGatewayID}"
 
   @TC_APIP_DEP_011 @ID_APIP_DEPLOY_011
   Scenario: A deployment the gateway refuses is reported as failed with a reason

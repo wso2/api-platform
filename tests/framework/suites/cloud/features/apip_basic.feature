@@ -91,7 +91,7 @@ Feature: APIP cloud REST API lifecycle
     And I deploy the synthetic REST API to the active gateway
     Then the synthetic REST API deployment should become DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
-    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/not-exposed" until status 404
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" until status 404
 
   @TC_APIP_API_014 @ID_APIP_BASIC_007
   Scenario: A new version of an API routes independently of the previous version

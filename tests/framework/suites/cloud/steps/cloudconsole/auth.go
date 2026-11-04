@@ -21,11 +21,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"time"
 
+	"github.com/cucumber/godog"
 	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 )
@@ -112,7 +115,7 @@ func (s *Steps) sendWithAuthorizationHeader(ctx context.Context, method, path, v
 // sendWithForgedToken sends a request bearing a token the platform must refuse.
 func (s *Steps) sendWithForgedToken(ctx context.Context, method, path, kind string) error {
 	var header, claims map[string]any
-	if kind == forgeExpired {
+	if kind == forgeBadSignature {
 		var err error
 		if header, claims, err = tokenParts(ctx); err != nil {
 			return fmt.Errorf("reading the console token the forgery is based on: %w", err)
@@ -123,6 +126,27 @@ func (s *Steps) sendWithForgedToken(ctx context.Context, method, path, kind stri
 		return err
 	}
 	_, err = s.sendAndPublish(ctx, method, path, map[string]string{"Authorization": "Bearer " + forged})
+	return err
+}
+
+func (s *Steps) sendWithExpiredToken(ctx context.Context, method, path string) error {
+	token := strings.TrimSpace(os.Getenv(cloudConsoleExpiredTokenEnv))
+	if token == "" {
+		slog.Warn("skipping: no expired console token supplied", "environment", cloudConsoleExpiredTokenEnv)
+		return godog.ErrSkip
+	}
+	_, claims, err := decodeJWT(token)
+	if err != nil {
+		return fmt.Errorf("%s is not a readable JWT: %w", cloudConsoleExpiredTokenEnv, err)
+	}
+	expiry, ok := tokenExpiry(claims)
+	if !ok {
+		return fmt.Errorf("%s has no exp claim", cloudConsoleExpiredTokenEnv)
+	}
+	if expiry.After(time.Now()) {
+		return fmt.Errorf("%s has not expired: it is valid until %s", cloudConsoleExpiredTokenEnv, expiry.UTC().Format(time.RFC3339))
+	}
+	_, err = s.sendAndPublish(ctx, method, path, map[string]string{"Authorization": "Bearer " + token})
 	return err
 }
 

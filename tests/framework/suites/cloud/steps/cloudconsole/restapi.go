@@ -477,8 +477,15 @@ func (s *Steps) waitDeployment(ctx context.Context, label, status string) error 
 	return nil
 }
 
+const (
+	redeployProbeInterval  = retry.BaseInterval
+	redeployStatusInterval = 2 * time.Second
+	redeployTolerableDrops = 1
+)
+
 // keepServingUntilDeployed probes a data-plane URL for as long as the redeployment is in flight
-// and fails on the first response that is not the expected status.
+// and fails on the first response that is not the expected status, or when more than
+// redeployTolerableDrops requests in a row get no answer at all.
 func (s *Steps) keepServingUntilDeployed(ctx context.Context, method, target string, want int) error {
 	method = strings.ToUpper(strings.TrimSpace(method))
 	target, err := expandCloudValue(ctx, target)
@@ -489,17 +496,36 @@ func (s *Steps) keepServingUntilDeployed(ctx context.Context, method, target str
 	if err != nil {
 		return err
 	}
-	last, err := retry.Until(ctx, retry.Options{Timeout: 3 * time.Minute, Interval: 2 * time.Second},
+	var (
+		status     string
+		polledAt   time.Time
+		unanswered int
+	)
+	last, err := retry.Until(ctx, retry.Options{Timeout: 3 * time.Minute, Interval: redeployProbeInterval},
 		func(ctx context.Context) (string, error) {
 			probe, probeErr := s.client.Do(ctx, httpx.Request{Method: method, URL: target}, 0, 0)
-			if probeErr != nil {
-				return "", retry.Transient(probeErr)
-			}
-			if probe.StatusCode != want {
+			switch {
+			case probeErr != nil:
+				unanswered++
+				if unanswered > redeployTolerableDrops {
+					return "", fmt.Errorf("traffic was interrupted during the redeployment: %d requests in a row got no answer: %w",
+						unanswered, probeErr)
+				}
+			case probe.StatusCode != want:
 				return "", fmt.Errorf("traffic was interrupted during the redeployment: expected %d, got %s",
 					want, probe.Describe())
+			default:
+				unanswered = 0
 			}
-			return s.deploymentStatus(ctx, primaryAPI)
+			if status != "" && time.Since(polledAt) < redeployStatusInterval {
+				return status, nil
+			}
+			current, statusErr := s.deploymentStatus(ctx, primaryAPI)
+			if statusErr != nil {
+				return "", statusErr
+			}
+			status, polledAt = current, time.Now()
+			return status, nil
 		},
 		func(status string) bool { return status == "DEPLOYED" })
 	if err != nil {

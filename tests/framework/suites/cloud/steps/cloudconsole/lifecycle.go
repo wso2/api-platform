@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -75,8 +76,12 @@ func (s *Steps) findDefaultProject(ctx context.Context) error {
 // generic gateway one. A cloud scenario should exercise the same route a console
 // user drives, so the managed-gateway view is part of what is under test here;
 // reading the generic endpoint would skip it.
+//
+// Only a regular gateway that the platform accepts a deployment to is chosen: one whose
+// environment is in the deployment pipeline of the project the scenario found, that no suite run
+// created for itself, and, when CLOUD_GATEWAY_ID names one, only that gateway.
 func (s *Steps) findActiveGateway(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways", nil)
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways?functionalityType="+url.QueryEscape(regularGatewayKind), nil)
 	if err != nil {
 		return err
 	}
@@ -87,7 +92,18 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
-	choice, err := s.chooseActiveGateway(ctx, items, "APIP gateway")
+	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway}
+	if pin := strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)); pin != "" {
+		filters = append(filters, pinnedGateway(pin))
+	}
+	if projectID, resolveErr := tcontext.ResolveString(ctx, keyProjectID); resolveErr == nil && strings.TrimSpace(projectID) != "" {
+		environments, err := s.pipelineEnvironments(ctx)
+		if err != nil {
+			return fmt.Errorf("reading the environments of the project's deployment pipeline: %w", err)
+		}
+		filters = append(filters, inPipelineEnvironments(environments))
+	}
+	choice, err := s.chooseActiveGateway(ctx, items, "APIP gateway", filters...)
 	if err != nil {
 		return err
 	}
@@ -111,9 +127,62 @@ type gatewayChoice struct {
 	endpoint    string
 }
 
-// chooseActiveGateway picks the first listed gateway that is active and has an approved data-plane
-// endpoint. label names the kind of gateway in the failure.
-func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any, label string) (gatewayChoice, error) {
+// gatewayFilter returns why a listed gateway must not be chosen, or "" when it may be.
+type gatewayFilter func(item map[string]any) string
+
+// regularGatewayKind is the functionality type of a gateway that serves REST APIs.
+const regularGatewayKind = "regular"
+
+// syntheticGatewayName is the display name a suite run gives the managed gateways it creates:
+// "sgw" and the run's suffix and counter.
+var syntheticGatewayName = regexp.MustCompile(`^sgw-[a-z2-7]{8}-\d+$`)
+
+// regularGatewaysOnly rejects a gateway that is not of the regular kind. A listing that does not
+// say what kind a gateway is leaves it to the platform's own filter.
+func regularGatewaysOnly(item map[string]any) string {
+	if kind, ok := item["functionalityType"].(string); ok && kind != regularGatewayKind {
+		return fmt.Sprintf("functionality type %q", kind)
+	}
+	return ""
+}
+
+// notSyntheticGateway rejects a gateway that a suite run created for its own scenario: it is
+// deleted when that scenario ends, and it may still be provisioning.
+func notSyntheticGateway(item map[string]any) string {
+	for _, field := range []string{"displayName", "name"} {
+		if name, _ := item[field].(string); syntheticGatewayName.MatchString(strings.ToLower(strings.TrimSpace(name))) {
+			return "a synthetic gateway of a suite run"
+		}
+	}
+	return ""
+}
+
+// pinnedGateway rejects every gateway but the one a run was told to use.
+func pinnedGateway(id string) gatewayFilter {
+	return func(item map[string]any) string {
+		if got, _ := item["id"].(string); strings.TrimSpace(got) != id {
+			return "not the gateway named by " + cloudGatewayPinEnv
+		}
+		return ""
+	}
+}
+
+// inPipelineEnvironments rejects a gateway whose environment is not one the project's deployment
+// pipeline reaches, because the platform refuses a deployment to it.
+func inPipelineEnvironments(environments map[string]bool) gatewayFilter {
+	return func(item map[string]any) string {
+		environment, _ := item["environment"].(string)
+		environment = strings.TrimSpace(environment)
+		if !environments[environment] {
+			return fmt.Sprintf("environment %q is not in the project's deployment pipeline", environment)
+		}
+		return ""
+	}
+}
+
+// chooseActiveGateway picks the first listed gateway that is active, has an approved data-plane
+// endpoint and passes every filter. label names the kind of gateway in the failure.
+func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any, label string, filters ...gatewayFilter) (gatewayChoice, error) {
 	// Record why each candidate was rejected. Skipping silently and reporting
 	// only "none found" hides the difference between an organization with no
 	// gateways and one whose gateways were all filtered out here.
@@ -127,6 +196,16 @@ func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any,
 		}
 		if active, ok := item["isActive"].(bool); !ok || !active {
 			skipped = append(skipped, id+": not active")
+			continue
+		}
+		rejected := ""
+		for _, filter := range filters {
+			if rejected = filter(item); rejected != "" {
+				break
+			}
+		}
+		if rejected != "" {
+			skipped = append(skipped, id+": "+rejected)
 			continue
 		}
 		endpoints, ok := item["endpoints"].([]any)

@@ -73,6 +73,10 @@ const (
 
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
 
+	cloudConsoleExpiredTokenEnv = "CLOUD_CONSOLE_EXPIRED_ACCESS_TOKEN"
+
+	cloudGatewayPinEnv = "CLOUD_GATEWAY_ID"
+
 	resourceActor = "apip-console"
 )
 
@@ -153,8 +157,9 @@ func (s *Steps) registerIdentitySteps(sc *godog.ScenarioContext) {
 		s.assertForeignOrganisationHeaderIgnored)
 	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" without an Authorization header$`, s.sendWithoutAuthorization)
 	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" with the Authorization header "([^"]*)"$`, s.sendWithAuthorizationHeader)
-	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" bearing a token (that expired an hour ago|with no signature|signed with an unknown key|signed with an unknown shared secret)$`,
+	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" bearing a token (carrying the real claims and key id with a forged signature|with no signature|signed with an unknown key|signed with an unknown shared secret)$`,
 		s.sendWithForgedToken)
+	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" bearing an expired console token$`, s.sendWithExpiredToken)
 	sc.Step(`^the cloud API error response should not expose internal detail$`, s.assertNoInternalDetail)
 	sc.Step(`^the cloud API response status code should be a client error$`, s.assertCloudResponseClientError)
 	sc.Step(`^the cloud API response body should contain "([^"]*)"$`, s.assertCloudResponseContains)

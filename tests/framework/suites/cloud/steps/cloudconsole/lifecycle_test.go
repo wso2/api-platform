@@ -542,16 +542,18 @@ func TestForgeTokenKinds(t *testing.T) {
 	realHeader := map[string]any{"alg": "RS256", "kid": "real-key"}
 	realClaims := map[string]any{"ouId": "real-org", "ouHandle": "real", "exp": float64(now.Add(time.Hour).Unix())}
 
-	expired, err := forgeToken(forgeExpired, realHeader, realClaims, now)
+	resigned, err := forgeToken(forgeBadSignature, realHeader, realClaims, now)
 	require.NoError(t, err)
-	header, claims, err := decodeJWT(expired)
+	header, claims, err := decodeJWT(resigned)
 	require.NoError(t, err)
 	require.Equal(t, "RS256", header["alg"])
 	require.Equal(t, "real-key", header["kid"])
 	require.Equal(t, "real-org", claims["ouId"])
-	require.Equal(t, float64(now.Add(-time.Hour).Unix()), claims["exp"])
+	require.Equal(t, float64(now.Add(time.Hour).Unix()), claims["exp"], "the claims are the real ones, so only the signature is wrong")
 	require.Equal(t, "real-org", realClaims["ouId"], "the real claims are copied, not modified")
-	require.Equal(t, float64(now.Add(time.Hour).Unix()), realClaims["exp"])
+	signed, err := base64.RawURLEncoding.DecodeString(strings.Split(resigned, ".")[2])
+	require.NoError(t, err)
+	require.Len(t, signed, 256)
 
 	unsigned, err := forgeToken(forgeUnsigned, nil, nil, now)
 	require.NoError(t, err)
@@ -670,7 +672,7 @@ func TestSendWithForgedTokenSendsABearerThatIsNotTheConsoleToken(t *testing.T) {
 		sent = r.Header.Get("Authorization")
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	for _, kind := range []string{forgeExpired, forgeUnsigned, forgeUnknownKey, forgeUnknownSecret} {
+	for _, kind := range []string{forgeBadSignature, forgeUnsigned, forgeUnknownKey, forgeUnknownSecret} {
 		require.NoError(t, steps.sendWithForgedToken(ctx, "GET", "/projects", kind), kind)
 		require.True(t, strings.HasPrefix(sent, "Bearer "), kind)
 		require.NotEqual(t, "Bearer "+real, sent, kind)
@@ -679,11 +681,53 @@ func TestSendWithForgedTokenSendsABearerThatIsNotTheConsoleToken(t *testing.T) {
 	}
 }
 
-func TestSendWithForgedTokenNeedsTheConsoleTokenOnlyForTheExpiredKind(t *testing.T) {
+func TestSendWithForgedTokenNeedsTheConsoleTokenOnlyForTheBadSignatureKind(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "")
 	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) })
 	require.NoError(t, steps.sendWithForgedToken(ctx, "GET", "/projects", forgeUnknownKey))
-	require.ErrorContains(t, steps.sendWithForgedToken(ctx, "GET", "/projects", forgeExpired), cloudConsoleAccessTokenEnv)
+	require.ErrorContains(t, steps.sendWithForgedToken(ctx, "GET", "/projects", forgeBadSignature), cloudConsoleAccessTokenEnv)
+}
+
+func TestSendWithExpiredTokenSkipsWithoutOne(t *testing.T) {
+	t.Setenv(cloudConsoleExpiredTokenEnv, "")
+	called := false
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	require.ErrorIs(t, steps.sendWithExpiredToken(ctx, "GET", "/projects"), godog.ErrSkip)
+	require.False(t, called, "no request is sent without an expired token")
+}
+
+func TestSendWithExpiredTokenSendsTheTokenOnlyWhenItHasExpired(t *testing.T) {
+	var sent string
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		sent = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	header := map[string]any{"alg": "RS256", "kid": "k"}
+
+	expired := jwtFor(t, header, map[string]any{"exp": float64(time.Now().Add(-time.Hour).Unix())})
+	t.Setenv(cloudConsoleExpiredTokenEnv, expired)
+	require.NoError(t, steps.sendWithExpiredToken(ctx, "GET", "/projects"))
+	require.Equal(t, "Bearer "+expired, sent)
+
+	sent = ""
+	live := jwtFor(t, header, map[string]any{"exp": float64(time.Now().Add(time.Hour).Unix())})
+	t.Setenv(cloudConsoleExpiredTokenEnv, live)
+	err := steps.sendWithExpiredToken(ctx, "GET", "/projects")
+	require.ErrorContains(t, err, "has not expired")
+	require.NotContains(t, err.Error(), live)
+	require.Empty(t, sent, "a token that is still valid is never sent")
+
+	t.Setenv(cloudConsoleExpiredTokenEnv, jwtFor(t, header, map[string]any{"ouId": "org"}))
+	require.ErrorContains(t, steps.sendWithExpiredToken(ctx, "GET", "/projects"), "no exp claim")
+
+	t.Setenv(cloudConsoleExpiredTokenEnv, "not-a-jwt")
+	err = steps.sendWithExpiredToken(ctx, "GET", "/projects")
+	require.ErrorContains(t, err, "not a readable JWT")
+	require.NotContains(t, err.Error(), "not-a-jwt,")
+	require.Empty(t, sent)
 }
 
 func TestForeignOrganisationHeaderIsIgnoredOrReported(t *testing.T) {
@@ -2449,4 +2493,197 @@ func TestFinalizerNeedsTheConsoleTokenToLookForLeftovers(t *testing.T) {
 
 	_, err = finalizer.Finalize(context.Background())
 	require.ErrorContains(t, err, cloudConsoleAccessTokenEnv)
+}
+
+func redeploymentStub(t *testing.T, probe func(call int) (answer bool, status int), deployedAfter int) (*Steps, context.Context, string) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var mu sync.Mutex
+	calls := 0
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Connection", "close")
+		if strings.Contains(r.URL.Path, "/data/probe") {
+			mu.Lock()
+			calls++
+			call := calls
+			mu.Unlock()
+			answer, status := probe(call)
+			if !answer {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				require.NoError(t, err)
+				require.NoError(t, conn.Close())
+				return
+			}
+			w.WriteHeader(status)
+			return
+		}
+		mu.Lock()
+		state := "DEPLOYING"
+		if calls >= deployedAfter {
+			state = "DEPLOYED"
+		}
+		mu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]string{{"deploymentId": "dep-1", "status": state}}})
+	})
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set(keyAPIID, "syn-api-1")
+	local.Set(keyDeploymentID, "dep-1")
+	local.Set(keyGatewayID, "gw-1")
+	target, err := steps.apiURL("/data/probe")
+	require.NoError(t, err)
+	return steps, ctx, target
+}
+
+func TestKeepServingUntilDeployedToleratesOneDroppedConnection(t *testing.T) {
+	steps, ctx, target := redeploymentStub(t, func(call int) (bool, int) { return call != 1, http.StatusOK }, 1)
+	require.NoError(t, steps.keepServingUntilDeployed(ctx, "GET", target, http.StatusOK))
+}
+
+func TestKeepServingUntilDeployedFailsOnTwoDroppedConnectionsInARow(t *testing.T) {
+	steps, ctx, target := redeploymentStub(t, func(int) (bool, int) { return false, 0 }, 1<<30)
+	err := steps.keepServingUntilDeployed(ctx, "GET", target, http.StatusOK)
+	require.ErrorContains(t, err, "traffic was interrupted")
+	require.ErrorContains(t, err, "2 requests in a row got no answer")
+}
+
+func TestKeepServingUntilDeployedCountsOnlyConsecutiveDrops(t *testing.T) {
+	steps, ctx, target := redeploymentStub(t, func(call int) (bool, int) { return call%2 == 0, http.StatusOK }, 4)
+	require.NoError(t, steps.keepServingUntilDeployed(ctx, "GET", target, http.StatusOK))
+}
+
+func TestKeepServingUntilDeployedFailsOnAnotherStatus(t *testing.T) {
+	steps, ctx, target := redeploymentStub(t, func(int) (bool, int) { return true, http.StatusServiceUnavailable }, 1)
+	err := steps.keepServingUntilDeployed(ctx, "GET", target, http.StatusOK)
+	require.ErrorContains(t, err, "expected 200")
+	require.ErrorContains(t, err, "503")
+}
+
+// gatewayChoiceStub serves the managed-gateway list, a project bound to the "default" pipeline
+// and that pipeline, whose only promotion path runs from development to staging.
+func gatewayChoiceStub(t *testing.T, gateways []map[string]any, queries *[]string) (*Steps, context.Context) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/managed-gateways":
+			if queries != nil {
+				*queries = append(*queries, r.URL.RawQuery)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"list": gateways})
+		case strings.HasSuffix(r.URL.Path, "/deployment-pipeline"):
+			writeJSON(w, http.StatusOK, map[string]string{"pipeline": "default"})
+		case r.URL.Path == "/pipelines":
+			writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{
+				"name":           "default",
+				"promotionPaths": []map[string]any{{"sourceEnvironment": "development", "targetEnvironments": []string{"staging"}}},
+			}}})
+		default:
+			t.Errorf("unexpected request %s", r.URL)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set(keyProjectID, "default")
+	return steps, ctx
+}
+
+func listedGateway(id, environment string, extra map[string]any) map[string]any {
+	gateway := map[string]any{
+		"id": id, "isActive": true, "environment": environment,
+		"endpoints": []any{"https://" + id + ".example.com/"},
+	}
+	for key, value := range extra {
+		gateway[key] = value
+	}
+	return gateway
+}
+
+func TestFindActiveGatewayChoosesARegularGatewayOfThePipelineThatNoRunCreated(t *testing.T) {
+	var queries []string
+	steps, ctx := gatewayChoiceStub(t, []map[string]any{
+		listedGateway("prod-default", "production", nil),
+		listedGateway("dev-ai", "development", map[string]any{"functionalityType": "ai"}),
+		listedGateway("dev-sgw-other", "development", map[string]any{"displayName": "sgw-abcdefg2-3"}),
+		listedGateway("dev-sgw-upper", "development", map[string]any{"name": "SGW-ABCDEFG2-4"}),
+		listedGateway("dev-default", "development", map[string]any{"functionalityType": "regular", "displayName": "default"}),
+		listedGateway("stage-default", "staging", nil),
+	}, &queries)
+
+	require.NoError(t, steps.findActiveGateway(ctx))
+	id, err := tcontext.ResolveString(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "dev-default", id)
+	env, err := tcontext.ResolveString(ctx, keyGatewayEnv)
+	require.NoError(t, err)
+	require.Equal(t, "development", env)
+	require.Equal(t, []string{"functionalityType=regular"}, queries, "the platform is asked for regular gateways only")
+}
+
+func TestFindActiveGatewayNamesWhyEveryGatewayWasRejected(t *testing.T) {
+	steps, ctx := gatewayChoiceStub(t, []map[string]any{
+		listedGateway("prod-default", "production", nil),
+		listedGateway("dev-ai", "development", map[string]any{"functionalityType": "ai"}),
+		listedGateway("dev-sgw", "development", map[string]any{"displayName": "sgw-abcdefg2-1"}),
+		listedGateway("", "development", nil),
+	}, nil)
+
+	err := steps.findActiveGateway(ctx)
+	require.ErrorContains(t, err, "no usable APIP gateway among 4 listed")
+	require.ErrorContains(t, err, `prod-default: environment "production" is not in the project's deployment pipeline`)
+	require.ErrorContains(t, err, `dev-ai: functionality type "ai"`)
+	require.ErrorContains(t, err, "dev-sgw: a synthetic gateway of a suite run")
+}
+
+func TestFindActiveGatewayWithoutAProjectDoesNotFilterByPipeline(t *testing.T) {
+	steps, ctx := gatewayChoiceStub(t, []map[string]any{listedGateway("prod-default", "production", nil)}, nil)
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyProjectID, "")
+	require.NoError(t, steps.findActiveGateway(ctx), "no project, so no pipeline to read")
+	id, err := tcontext.ResolveString(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "prod-default", id)
+}
+
+func TestFindActiveGatewayHonoursAPinnedGateway(t *testing.T) {
+	steps, ctx := gatewayChoiceStub(t, []map[string]any{
+		listedGateway("dev-first", "development", nil),
+		listedGateway("dev-pinned", "development", nil),
+	}, nil)
+
+	t.Setenv(cloudGatewayPinEnv, " dev-pinned ")
+	require.NoError(t, steps.findActiveGateway(ctx))
+	id, err := tcontext.ResolveString(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "dev-pinned", id)
+
+	t.Setenv(cloudGatewayPinEnv, "dev-missing")
+	err = steps.findActiveGateway(ctx)
+	require.ErrorContains(t, err, "not the gateway named by "+cloudGatewayPinEnv)
+}
+
+func TestFindActiveGatewayFailsWhenThePipelineCannotBeRead(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/managed-gateways" {
+			writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{listedGateway("dev-default", "development", nil)}})
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+	})
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set(keyProjectID, "default")
+	require.ErrorContains(t, steps.findActiveGateway(ctx), "deployment pipeline")
+}
+
+func TestChooseActiveGatewayAppliesNoFilterToAnAIGateway(t *testing.T) {
+	steps := &Steps{dataPlaneURLResolver: func(_ context.Context, target string) (string, error) { return target, nil }}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	choice, err := steps.chooseActiveGateway(ctx, []map[string]any{
+		listedGateway("sgw-like", "development", map[string]any{"displayName": "sgw-abcdefg2-1", "functionalityType": "ai"}),
+	}, "APIP AI gateway")
+	require.NoError(t, err)
+	require.Equal(t, "sgw-like", choice.id)
 }

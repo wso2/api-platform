@@ -34,7 +34,7 @@ import (
 
 // Forgery kinds a scenario can ask for; each names a way a bearer token fails verification.
 const (
-	forgeExpired       = "that expired an hour ago"
+	forgeBadSignature  = "carrying the real claims and key id with a forged signature"
 	forgeUnsigned      = "with no signature"
 	forgeUnknownKey    = "signed with an unknown key"
 	forgeUnknownSecret = "signed with an unknown shared secret"
@@ -107,19 +107,19 @@ func randomHex(size int) (string, error) {
 	return hex.EncodeToString(buffer), nil
 }
 
-// forgeToken builds a bearer token that the platform must refuse. The expired kind reuses the
-// real token's claims and key id so only its lifetime and signature differ; the other kinds
-// carry a random organisation, issuer and subject that no identity provider ever issued.
+// forgeToken builds a bearer token that the platform must refuse. The bad-signature kind reuses
+// the real token's claims and key id so only its signature differs, which tests that a verifier
+// checks the signature, not that it checks expiry: no forged token can reach the expiry check
+// without a valid signature. The other kinds carry a random organisation, issuer and subject
+// that no identity provider ever issued.
 func forgeToken(kind string, realHeader, realClaims map[string]any, now time.Time) (string, error) {
 	header := map[string]any{"typ": "JWT"}
 	claims := map[string]any{}
 	switch kind {
-	case forgeExpired:
+	case forgeBadSignature:
 		for key, value := range realClaims {
 			claims[key] = value
 		}
-		claims["iat"] = now.Add(-2 * time.Hour).Unix()
-		claims["exp"] = now.Add(-1 * time.Hour).Unix()
 		header["alg"] = "RS256"
 		if keyID, ok := realHeader["kid"].(string); ok && keyID != "" {
 			header["kid"] = keyID

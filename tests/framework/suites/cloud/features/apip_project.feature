@@ -45,36 +45,36 @@ Feature: APIP cloud project lifecycle
     Then the cloud API response status code should be 409
     And the cloud API error code should be "PROJECT_EXISTS"
 
-  # Not enabled: two of the six handle defects are not rejected (consecutive hyphens give 201, a handle over 40 characters gives 500).
-  # @TC_APIP_PROJ_007 @ID_APIP_PROJECT_004
-  # Scenario Outline: A project whose handle breaks the naming rules is rejected and leaves nothing behind
-    # Given I obtain an APIP cloud console token
-    # When I request a synthetic APIP project whose handle is "<defect>"
-    # Then the cloud API response status code should be 400
-    # And the rejected APIP project should not exist
+  # Four of the six handle defects are rejected. The other two are in the second Examples block: consecutive hyphens give 201, a handle over 40 characters gives 500.
+  @TC_APIP_PROJ_007 @ID_APIP_PROJECT_004
+  Scenario Outline: A project whose handle breaks the naming rules is rejected and leaves nothing behind
+    Given I obtain an APIP cloud console token
+    When I request a synthetic APIP project whose handle is "<defect>"
+    Then the cloud API response status code should be 400
+    And the rejected APIP project should not exist
 
-    # Examples:
-      # | defect                   |
-      # | uppercase                |
-      # | containing an underscore |
-      # | starting with a hyphen   |
-      # | ending with a hyphen     |
+    Examples:
+      | defect                   |
+      | uppercase                |
+      | containing an underscore |
+      | starting with a hyphen   |
+      | ending with a hyphen     |
 
     # Known issue: the platform record skips the handle rules and stores the handle in 40 characters (B7).
-    # @known-issue
-    # Examples:
-      # | defect                         |
-      # | containing consecutive hyphens |
-      # | longer than 40 characters      |
+    Examples:
+      | defect                         |
+      | containing consecutive hyphens |
+      | longer than 40 characters      |
 
-  # Not enabled: the quota probe needs an organisation with a known project quota; the shared organisation accepted 50 projects without refusing one.
-  # @TC_APIP_PROJ_008 @ID_APIP_PROJECT_005
-  # Scenario: A project beyond the organisation's quota is refused with the quota error
-    # Given I obtain an APIP cloud console token
-    # When I create synthetic APIP projects until the organisation refuses one
-    # Then the cloud API response status code should be 402
-    # And the cloud API error code should be "quota_exceeded"
-    # And the rejected APIP project should not exist
+  # Known issue: the quota probe needs an organisation with a known project quota; the shared organisation accepted 50 projects without refusing one.
+  # It creates projects until the organisation refuses one.
+  @TC_APIP_PROJ_008 @ID_APIP_PROJECT_005
+  Scenario: A project beyond the organisation's quota is refused with the quota error
+    Given I obtain an APIP cloud console token
+    When I create synthetic APIP projects until the organisation refuses one
+    Then the cloud API response status code should be 402
+    And the cloud API error code should be "quota_exceeded"
+    And the rejected APIP project should not exist
 
   @TC_APIP_PROJ_009 @ID_APIP_PROJECT_006
   Scenario: Reading a project that does not exist returns not found

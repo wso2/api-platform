@@ -44,8 +44,7 @@ Feature: APIP cloud access and identity
 
   @TC_APIP_AUTH_005 @ID_APIP_AUTH_005
   Scenario: A request bearing an expired token is refused
-    Given I obtain an APIP cloud console token
-    When I send a "GET" request to the APIP cloud path "/projects" bearing a token that expired an hour ago
+    When I send a "GET" request to the APIP cloud path "/projects" bearing an expired console token
     Then the cloud API response status code should be 401
 
   @TC_APIP_AUTH_006 @ID_APIP_AUTH_006
@@ -54,10 +53,11 @@ Feature: APIP cloud access and identity
     Then the cloud API response status code should be 401
 
     Examples:
-      | forgery                              |
-      | signed with an unknown key           |
-      | with no signature                    |
-      | signed with an unknown shared secret |
+      | forgery                                                     |
+      | signed with an unknown key                                  |
+      | with no signature                                           |
+      | signed with an unknown shared secret                        |
+      | carrying the real claims and key id with a forged signature |
 
   @TC_APIP_AUTH_007 @ID_APIP_AUTH_007
   Scenario Outline: A malformed bearer value is refused without leaking internal detail
