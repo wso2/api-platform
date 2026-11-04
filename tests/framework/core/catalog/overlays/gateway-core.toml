@@ -1,4 +1,4 @@
-# Gateway signing keys for blocks wired with signingKeys: true, which copies the fixed test keys
+# For gateway-jwks, and any runner wired with signingKeys: true, which copies the fixed test keys
 # to these paths. The active key's kid is its RFC 7638 thumbprint; the previous key is
 # verify-only and still published.
 [signing]
