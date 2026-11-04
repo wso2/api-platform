@@ -24,7 +24,6 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
 
   # The console has deploy pages for REST and GraphQL APIs only; LLM providers, LLM proxies and
   # MCP proxies are covered by the integration suite.
-  @DEPLC-004 @DEPLC-003
   Scenario: Journey: a REST API's live deployment can be neither deleted nor restored over itself
     Given I generate a unique handle from "deplc-ui-rest-project" and store it as "project"
     And I generate a unique handle from "deplc-ui-rest" and store it as "api"
@@ -100,7 +99,6 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     And the Management Portal offers no "Delete ${CTX:live}" button
     And the Management Portal offers a "Delete ${CTX:first}" button
 
-  @DEPLC-004 @DEPLC-003
   Scenario: Journey: a GraphQL API's live deployment can be neither deleted nor restored over itself
     Given I generate a unique handle from "deplc-ui-graphql-project" and store it as "project"
     And I generate a unique handle from "deplc-ui-graphql" and store it as "api"
