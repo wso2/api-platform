@@ -172,7 +172,7 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
                       // Dark surfaces swallow a transparent card; lift it with a
                       // text-colour tint. Light mode keeps the recipe's flat look.
                       ...(theme.palette.mode === 'dark' && {
-                        backgroundColor: alpha(theme.palette.text.primary, 0.),
+                        backgroundColor: alpha(theme.palette.text.primary, 0.04),
                       }),
                       borderColor: alpha(
                         theme.palette.text.primary,

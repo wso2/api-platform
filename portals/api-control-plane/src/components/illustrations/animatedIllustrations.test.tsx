@@ -21,7 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders, screen } from '@/test/utils';
 import { ApiDesignerCanvasIllustration } from './ApiDesignerCanvasIllustration';
-import { ContractFlowIllustration } from './ContractFlowIllustration';
+import { PortalPublishIllustration } from './PortalPublishIllustration';
+import { ReadyToConnectIllustration } from './ReadyToConnectIllustration';
 
 type ObserverCallback = (entries: { contentRect: { width: number } }[]) => void;
 
@@ -48,56 +49,59 @@ describe('animated illustrations', () => {
     vi.unstubAllGlobals();
   });
 
-  describe('ContractFlowIllustration', () => {
-    it('is decorative and finds three sample resources', () => {
-      const { container } = renderWithProviders(<ContractFlowIllustration />);
+  describe('ReadyToConnectIllustration', () => {
+    it('is decorative and shows three sample resources feeding a backend card', () => {
+      renderWithProviders(<ReadyToConnectIllustration />);
 
-      expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true');
-      expect(screen.getByText('3 resources found')).toBeInTheDocument();
-      for (const method of ['GET', 'POST', 'PUT']) {
-        expect(screen.getByText(method)).toBeInTheDocument();
-      }
-      expect(screen.getByText('/products/{id}')).toBeInTheDocument();
+      expect(screen.getByTestId('ready-to-connect')).toHaveAttribute('aria-hidden', 'true');
+      expect(screen.getAllByText('GET')).toHaveLength(2);
+      expect(screen.getByText('POST')).toBeInTheDocument();
+      expect(screen.getByText('/orders/{id}')).toBeInTheDocument();
+      expect(screen.getByText('Backend')).toBeInTheDocument();
+      expect(screen.getByText('https://')).toBeInTheDocument();
     });
 
-    it('colours each verb badge from the shared method palette', () => {
-      renderWithProviders(<ContractFlowIllustration />);
+    it('shrinks to a narrower container and keeps its height in proportion', () => {
+      renderWithProviders(<ReadyToConnectIllustration />);
 
-      const get = screen.getByText('GET').parentElement as HTMLElement;
-      const post = screen.getByText('POST').parentElement as HTMLElement;
-      expect(get.style.getPropertyValue('--apict-method')).not.toBe('');
-      expect(get.style.getPropertyValue('--apict-method')).not.toBe(
-        post.style.getPropertyValue('--apict-method'),
-      );
+      act(() => callbacks[0]?.([{ contentRect: { width: 234 } }]));
+
+      const frame = screen.getByTestId('ready-to-connect');
+      expect(getComputedStyle(frame).height).toBe('84px');
+      expect(getComputedStyle(frame.firstElementChild as Element).transform).toBe('scale(0.5)');
     });
 
-    it('scales the artwork to the width it is given and stops observing on unmount', () => {
-      const { container, unmount } = renderWithProviders(<ContractFlowIllustration />);
-
-      act(() => callbacks[0]?.([{ contentRect: { width: 210 } }]));
-
-      const art = container.querySelector('.apict-anim') as HTMLElement;
-      expect(art.style.transform || getComputedStyle(art).transform).toContain('0.5');
-
-      unmount();
-      expect(disconnect).toHaveBeenCalled();
-    });
-
-    it('measures the container on mount, before the observer reports', () => {
-      const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(210);
-
-      const { container } = renderWithProviders(<ContractFlowIllustration />);
-
-      const art = container.querySelector('.apict-anim') as HTMLElement;
-      expect(art.style.transform || getComputedStyle(art).transform).toContain('0.5');
-      width.mockRestore();
-    });
-
-    it('renders without a ResizeObserver, at natural scale', () => {
+    it('draws at natural size without a ResizeObserver', () => {
       vi.unstubAllGlobals();
       vi.stubGlobal('ResizeObserver', undefined);
 
-      expect(() => renderWithProviders(<ContractFlowIllustration />)).not.toThrow();
+      renderWithProviders(<ReadyToConnectIllustration />);
+
+      expect(
+        getComputedStyle(screen.getByTestId('ready-to-connect').firstElementChild as Element)
+          .transform,
+      ).toBe('scale(1)');
+    });
+  });
+
+  describe('PortalPublishIllustration', () => {
+    it('is decorative and walks a portal from empty to an API published', () => {
+      const { container } = renderWithProviders(<PortalPublishIllustration />);
+
+      expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+      for (const text of [
+        'developer.example.com',
+        'Live',
+        'API catalog',
+        'Discover and subscribe to APIs',
+        'Payments API',
+        'Untitled API',
+        'Published',
+        'Visible to developers',
+        '1 of 1 portals',
+      ]) {
+        expect(screen.getByText(text)).toBeInTheDocument();
+      }
     });
   });
 

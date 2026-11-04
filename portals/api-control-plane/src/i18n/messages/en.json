@@ -785,10 +785,6 @@
     "defaultMessage": "Spectral rules passed",
     "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
   },
-  "apiControlPlane.components.ContractFlowIllustration.resourcesFound": {
-    "defaultMessage": "{count, plural, one {# resource found} other {# resources found}}",
-    "description": "Status chip in the animated contract-import preview."
-  },
   "apiControlPlane.components.ErrorFallback.action.goHome": {
     "defaultMessage": "Go to console home",
     "description": "Leaves the failing page for the console landing page. Escapes a page that fails every time it is opened."
@@ -842,6 +838,38 @@
   },
   "apiControlPlane.components.MeterIllustration.skipped": {
     "defaultMessage": "skipped"
+  },
+  "apiControlPlane.components.PortalPublishIllustration.catalog": {
+    "defaultMessage": "API catalog",
+    "description": "Heading of the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.catalogHint": {
+    "defaultMessage": "Discover and subscribe to APIs",
+    "description": "Subheading of the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.count": {
+    "defaultMessage": "1 of 1 portals",
+    "description": "Footer count in the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.live": {
+    "defaultMessage": "Live",
+    "description": "Status on the animated portal preview once the portal is up."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.published": {
+    "defaultMessage": "Published",
+    "description": "Badge on the sample API in the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.untitledApi": {
+    "defaultMessage": "Untitled API",
+    "description": "Name of the sample API that drops into the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.visible": {
+    "defaultMessage": "Visible to developers",
+    "description": "Footer of the animated portal preview."
+  },
+  "apiControlPlane.components.ReadyToConnectIllustration.backend": {
+    "defaultMessage": "Backend",
+    "description": "Title of the backend card in the \"Ready to connect\" preview. Noun."
   },
   "apiControlPlane.components.StateViews.forbiddenDescription": {
     "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
@@ -2802,7 +2830,7 @@
     "defaultMessage": "Add a portal for this organization before publishing an API to it."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle": {
-    "defaultMessage": "No Portals Available",
+    "defaultMessage": "Create your first portal",
     "description": "Shown when the organization has not registered any portal yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.errorMessage": {

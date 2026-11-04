@@ -28,8 +28,7 @@ import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { BackendEndpointField } from './BackendEndpointField';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
 import { DefineApproachLayout, type DefineApproach } from './DefineApproachLayout';
-import { SecondaryText } from '@/components/common/SecondaryText';
-import { ContractFlowIllustration } from '@/components/illustrations/ContractFlowIllustration';
+import { ReadyToConnectIllustration } from '@/components/illustrations/ReadyToConnectIllustration';
 
 type ApproachKey = 'contract' | 'scratch';
 
@@ -164,10 +163,7 @@ export const DefineApiPanel = ({
       approaches={APPROACHES}
       form={
         approach === 'contract' ? (
-          <ContractSourceForm
-            initialApiTypeKey={initialApiTypeKey}
-            onContractChange={setContract}
-          />
+          <ContractSourceForm initialApiTypeKey={initialApiTypeKey} onContractChange={setContract} />
         ) : (
           <BackendEndpointField
             description={<FormattedMessage {...messages.endpointDescription} />}
@@ -200,13 +196,13 @@ export const DefineApiPanel = ({
               textAlign: 'center',
             }}
           >
-            <ContractFlowIllustration />
+            <ReadyToConnectIllustration />
             <Typography sx={{ fontWeight: 700, mt: 2 }} variant="body1">
               {intl.formatMessage(messages.endpointPreviewTitle)}
             </Typography>
-            <SecondaryText sx={{ maxWidth: 420, mt: 0.5 }}>
+            <Typography color="text.secondary" sx={{ maxWidth: 360, mt: 0.5 }} variant="body2">
               {intl.formatMessage(messages.endpointPreviewDescription)}
-            </SecondaryText>
+            </Typography>
           </Stack>
         )
       }
