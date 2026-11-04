@@ -241,7 +241,7 @@ func (s *auditHTTPSink) post(body []byte) (time.Duration, bool, error) {
 	if err != nil {
 		return 0, false, fmt.Errorf("building request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/x-ndjson")
+	req.Header.Set("Content-Type", s.cfg.ContentType)
 	if s.authName != "" {
 		req.Header.Set(s.authName, s.authValue)
 	}

@@ -59,6 +59,7 @@ type AuditFile struct {
 
 type AuditHTTP struct {
 	Endpoint               string        `koanf:"endpoint"`
+	ContentType            string        `koanf:"content_type"`
 	AllowInsecureTransport bool          `koanf:"allow_insecure_transport"`
 	BatchMaxEvents         int           `koanf:"batch_max_events"`
 	BatchMaxBytes          int           `koanf:"batch_max_bytes"`
@@ -275,6 +276,9 @@ func validateAuditHTTPConfig(cfg AuditHTTP) error {
 	}
 	if cfg.RetryBackoff > maxAuditRetryBackoff {
 		return fmt.Errorf("retry_backoff must be at most %s, got %s", maxAuditRetryBackoff, cfg.RetryBackoff)
+	}
+	if cfg.ContentType == "" || !httpguts.ValidHeaderFieldValue(cfg.ContentType) {
+		return fmt.Errorf("content_type must be a valid Content-Type header value, got %q", cfg.ContentType)
 	}
 
 	if _, _, err := cfg.Auth.AuthHeader(); err != nil {

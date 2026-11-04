@@ -124,13 +124,14 @@ max_size_mb = 100
 
 # "http" output — read only when outputs contains "http".
 #
-# Batches records and POSTs them as newline-delimited JSON
-# (application/x-ndjson), which Splunk HEC's /services/collector/raw, Fluent Bit
-# and Vector accept as-is. Elasticsearch/OpenSearch _bulk needs an action line
-# before each record, so send to them through one of these collectors. The queue is held
-# in memory only: an outage longer than the queue and retries can absorb loses
-# records from this output (the audit table still has them). On shutdown the
-# queue is flushed for up to 5s, and a batch that fails then is not retried.
+# Batches records and POSTs them as newline-delimited JSON, one record per line.
+# Splunk HEC's /services/collector/raw and Vector accept it as-is; Fluent Bit's
+# http input needs content_type = "application/json". Elasticsearch/OpenSearch
+# _bulk needs an action line before each record, so send to them through one of
+# these collectors. The queue is held in memory only: an outage longer than the
+# queue and retries can absorb loses records from this output (the audit table
+# still has them). On shutdown the queue is flushed for up to 5s, and a batch
+# that fails then is not retried.
 # A retried batch may reach the receiver twice (e.g. after a timeout on a request
 # it already stored); deduplicate on "id" if that matters.
 [platform_api.audit.http]
@@ -141,6 +142,8 @@ endpoint = ""
 # Permits a plaintext http:// endpoint; without it, http:// fails startup. Use
 # only for a trusted collector on the same network.
 allow_insecure_transport = false
+# Content-Type header sent with each batch.
+content_type = "application/x-ndjson"
 # A batch is sent when any of these is reached first. batch_max_bytes caps the
 # body: a record that would take it past the limit goes in the next batch, and a
 # single record larger than the limit is sent alone.
