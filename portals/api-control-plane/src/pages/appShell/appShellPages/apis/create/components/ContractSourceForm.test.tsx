@@ -65,6 +65,18 @@ const filePicker = (): HTMLInputElement => {
   return input as HTMLInputElement;
 };
 
+describe('ContractSourceForm — sample URL', () => {
+  it('fills the REST contract field with the reading-list sample', async () => {
+    const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);
+
+    await user.click(screen.getByRole('button', { name: 'Try with Sample URL' }));
+
+    expect(screen.getByRole('textbox')).toHaveValue(
+      'https://raw.githubusercontent.com/wso2/bijira-samples/refs/heads/main/reading-list-api/openapi.yaml',
+    );
+  });
+});
+
 describe('ContractSourceForm — file upload', () => {
   it('says a file was unsupported instead of silently dropping the valid one', async () => {
     const { user } = renderWithProviders(<ContractSourceForm onContractChange={() => {}} />);

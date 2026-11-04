@@ -29,14 +29,8 @@
   "api.create.ApiCreationProgress.stage.done": {
     "defaultMessage": "{kind, select, graphql {GraphQL API} other {API Proxy}} created. Taking you there…"
   },
-  "api.create.ApiCreationProgress.step.configuring": {
-    "defaultMessage": "{kind, select, graphql {Preparing GraphQL schema and policies} other {Configuring routes and policies}}"
-  },
-  "api.create.ApiCreationProgress.step.connecting": {
-    "defaultMessage": "Connecting to backend"
-  },
   "api.create.ApiCreationProgress.step.deploying": {
-    "defaultMessage": "{kind, select, graphql {Creating GraphQL API} other {Saving proxy}}"
+    "defaultMessage": "Creating {kind, select, graphql {GraphQL API} other {API Proxy}}"
   },
   "api.create.ApiCreationProgress.step.state.active": {
     "defaultMessage": "In progress",
@@ -157,31 +151,31 @@
     "defaultMessage": "API resources"
   },
   "api.create.apiType.graphQl.description": {
-    "defaultMessage": "Serve a GraphQL schema through the gateway."
+    "defaultMessage": "Serve a GraphQL schema."
   },
   "api.create.apiType.graphQl.title": {
     "defaultMessage": "GraphQL API"
   },
   "api.create.apiType.grpc.description": {
-    "defaultMessage": "Expose high-performance gRPC services."
+    "defaultMessage": "Expose gRPC services."
   },
   "api.create.apiType.grpc.title": {
     "defaultMessage": "gRPC API"
   },
   "api.create.apiType.rest.description": {
-    "defaultMessage": "Expose REST and other HTTP backends."
+    "defaultMessage": "Expose REST and HTTP backends."
   },
   "api.create.apiType.rest.title": {
     "defaultMessage": "REST API"
   },
   "api.create.apiType.webSocket.description": {
-    "defaultMessage": "Stream data over long-lived WebSocket connections."
+    "defaultMessage": "Stream data over WebSocket."
   },
   "api.create.apiType.webSocket.title": {
     "defaultMessage": "WebSocket API"
   },
   "api.create.apiType.webSub.description": {
-    "defaultMessage": "Deliver events to subscribers over WebSub."
+    "defaultMessage": "Deliver events over WebSub."
   },
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
@@ -779,6 +773,18 @@
     "defaultMessage": "Updated {relative}",
     "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
   },
+  "apiControlPlane.components.ApiDesignerCanvasIllustration.aiReadiness": {
+    "defaultMessage": "AI-readiness",
+    "description": "Label beside the score in the animated API Designer preview."
+  },
+  "apiControlPlane.components.ApiDesignerCanvasIllustration.openApiValid": {
+    "defaultMessage": "OpenAPI 3.x valid",
+    "description": "A passed check in the animated API Designer preview."
+  },
+  "apiControlPlane.components.ApiDesignerCanvasIllustration.spectralPassed": {
+    "defaultMessage": "Spectral rules passed",
+    "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
+  },
   "apiControlPlane.components.ErrorFallback.action.goHome": {
     "defaultMessage": "Go to console home",
     "description": "Leaves the failing page for the console landing page. Escapes a page that fails every time it is opened."
@@ -832,6 +838,38 @@
   },
   "apiControlPlane.components.MeterIllustration.skipped": {
     "defaultMessage": "skipped"
+  },
+  "apiControlPlane.components.PortalPublishIllustration.catalog": {
+    "defaultMessage": "API catalog",
+    "description": "Heading of the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.catalogHint": {
+    "defaultMessage": "Discover and subscribe to APIs",
+    "description": "Subheading of the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.count": {
+    "defaultMessage": "1 of 1 portals",
+    "description": "Footer count in the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.live": {
+    "defaultMessage": "Live",
+    "description": "Status on the animated portal preview once the portal is up."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.published": {
+    "defaultMessage": "Published",
+    "description": "Badge on the sample API in the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.untitledApi": {
+    "defaultMessage": "Untitled API",
+    "description": "Name of the sample API that drops into the animated portal preview."
+  },
+  "apiControlPlane.components.PortalPublishIllustration.visible": {
+    "defaultMessage": "Visible to developers",
+    "description": "Footer of the animated portal preview."
+  },
+  "apiControlPlane.components.ReadyToConnectIllustration.backend": {
+    "defaultMessage": "Backend",
+    "description": "Title of the backend card in the \"Ready to connect\" preview. Noun."
   },
   "apiControlPlane.components.StateViews.forbiddenDescription": {
     "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
@@ -2800,7 +2838,7 @@
     "defaultMessage": "Add a portal for this organization before publishing an API to it."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle": {
-    "defaultMessage": "No Portals Available",
+    "defaultMessage": "Create your first portal",
     "description": "Shown when the organization has not registered any portal yet."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.errorMessage": {
