@@ -189,16 +189,26 @@ config:
             - ap:gateway_custom_policy:read
             - ap:rest_api:read
             - ap:rest_api:deployment:read
+            - ap:rest_api:build:read
+            - ap:graphql_api:read
+            - ap:graphql_api:deployment:read
+            - ap:graphql_api:build:read
             - ap:application:read
             - ap:subscription:read
             - ap:subscription_plan:read
             - ap:llm_template:read
             - ap:llm_provider:read
             - ap:llm_provider:deployment:read
+            - ap:llm_provider:build:read
             - ap:llm_proxy:read
             - ap:llm_proxy:deployment:read
+            - ap:llm_proxy:build:read
             - ap:mcp_proxy:read
             - ap:mcp_proxy:deployment:read
+            - ap:mcp_proxy:build:read
+            - ap:agent_proxy:read
+            - ap:agent_proxy:deployment:read
+            - ap:agent_proxy:build:read
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization

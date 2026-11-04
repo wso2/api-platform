@@ -303,6 +303,7 @@ skip_validation = false
 # and SQL Server, apply the service_accounts and service_account_revocations
 # tables from the schema file first. Turning it off again refuses every
 # service-account token; accounts are kept and work again when turned back on.
+# Needs auth.authorization.role_to_scope_mapping: an account's roles come from it.
 enabled = false
 # Lifetime of a service-account token.
 token_ttl = "15m"

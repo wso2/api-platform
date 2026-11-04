@@ -3608,7 +3608,7 @@ export interface paths {
         };
         /**
          * List service accounts
-         * @description Returns the organization's service accounts. The client secret is never included, only its masked form. `query` also matches the owner.
+         * @description Returns the organization's service accounts. The client secret is never included, only its masked form.
          */
         get: operations["listServiceAccounts"];
         put?: never;

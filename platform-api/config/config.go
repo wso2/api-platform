@@ -1149,6 +1149,10 @@ func validateServiceAccountConfig(auth *Auth) error {
 	if sa.Revocation.PollInterval <= 0 || sa.Revocation.PollInterval/2 == 0 {
 		return fmt.Errorf("auth.service_account.revocation.poll_interval must be a positive duration of at least 2ns")
 	}
+	// An account's roles are checked against this file; without it none can be created.
+	if strings.TrimSpace(auth.Authorization.RoleToScopeMapping) == "" {
+		return fmt.Errorf("auth.authorization.role_to_scope_mapping is required when service accounts are enabled")
+	}
 
 	return validateServiceAccountSigning(auth)
 }

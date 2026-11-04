@@ -1104,8 +1104,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 // claim whether the platform verifies it against a JWKS endpoint or with a local
 // public key, and file-mode users name a role from this same file to inherit its
 // scopes even while authorization itself runs in "scope" mode. Config validation
-// requires the path wherever it is needed, so an empty path here means nothing
-// consumes the mapping.
+// requires the path wherever it is needed (role-mode authorization, service
+// accounts), so an empty path here means nothing consumes the mapping.
 func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
 	if cfg.Auth.Authorization.RoleToScopeMapping == "" {
 		return nil, nil

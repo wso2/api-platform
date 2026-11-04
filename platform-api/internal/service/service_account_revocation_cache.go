@@ -78,6 +78,10 @@ func (c *RevocationCache) Remember(rev *model.ServiceAccountRevocation) {
 // raise stores wm unless a higher watermark is already held. Callers hold mu.
 func (c *RevocationCache) raise(accountUUID string, wm watermark) {
 	if cur, ok := c.watermarks[accountUUID]; !ok || wm.minVersion > cur.minVersion {
+		// Keep the later expiry, as the stored row does.
+		if ok && cur.expiresAt.After(wm.expiresAt) {
+			wm.expiresAt = cur.expiresAt
+		}
 		c.watermarks[accountUUID] = wm
 	}
 }
