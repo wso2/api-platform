@@ -346,7 +346,8 @@ func TestDefaultOIDCScopes_FollowTheSpec(t *testing.T) {
 	have := " " + defaultOIDCScopes + " "
 	for _, s := range []string{"openid", "offline_access", "ap:rest_api:read", "ap:graphql_api:read",
 		"ap:llm_proxy:manage", "ap:mcp_proxy:read", "ap:agent_proxy:read", "ap:api_portal:draft:read",
-		"ap:meter:read", "ap:subscription_plan:pricing:read"} {
+		"ap:meter:read", "ap:subscription_plan:pricing:read", "ap:api_portal:mcp_proxy:manage",
+		"ap:service_account:read", "ap:service_account:manage"} {
 		if !strings.Contains(have, " "+s+" ") {
 			t.Errorf("default scopes miss %q", s)
 		}

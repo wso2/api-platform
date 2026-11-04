@@ -423,7 +423,7 @@ const CSRFHeaderName = "X-Requested-By"
 
 // defaultOIDCScopes requests every ap:* permission Platform API authorizes
 // against, so a logged-in user's access token carries them all: the scopes
-// platform-api/resources/openapi.yaml declares under securitySchemes (197 as of
+// platform-api/resources/openapi.yaml declares under securitySchemes (200 as of
 // 0.9.0), regenerated from that file when it changes. The IDP must have these
 // scopes registered and granted to the user, otherwise it drops the ungranted
 // ones. Override with the [auth.oidc] scope key (APIP_ACP_AUTH_OIDC_SCOPE) to
@@ -450,7 +450,8 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:api_key:all:manage ap:api_key:read" +
 	" ap:api_portal:create ap:api_portal:delete ap:api_portal:draft:manage ap:api_portal:draft:read" +
 	" ap:api_portal:draft:update ap:api_portal:graphql_api:manage ap:api_portal:manage" +
-	" ap:api_portal:publication:read ap:api_portal:read ap:api_portal:rest_api:manage" +
+	" ap:api_portal:mcp_proxy:manage ap:api_portal:publication:read ap:api_portal:read" +
+	" ap:api_portal:rest_api:manage" +
 	" ap:api_portal:update" +
 	" ap:api_publication:read" +
 	" ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
