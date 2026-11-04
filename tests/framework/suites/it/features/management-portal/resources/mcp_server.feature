@@ -85,6 +85,7 @@ Feature: The Platform API's MCP tools
       {"apiType": "rest-api", "projectId": "${CTX:project}"}
       """
     Then the JSON response array "result.structuredContent.items" should contain an item with "id" equal to "${CTX:apiId}"
+    And the JSON response field "result.structuredContent.apiType" should not exist
     When I call the MCP tool "list_gateways" with arguments:
       """
       {"limit": 100}
@@ -100,6 +101,7 @@ Feature: The Platform API's MCP tools
       {"apiType": "rest-api", "apiId": "${CTX:apiId}", "gatewayId": "it-gateway"}
       """
     Then the JSON response field "result.structuredContent.deployments[0].status" should be "DEPLOYING"
+    And the JSON response field "result.structuredContent.id" should be "${CTX:apiId}"
     When I call the MCP tool "list_api_deployments" until the JSON field "result.structuredContent.items[0].status" is "DEPLOYED" with arguments:
       """
       {"apiType": "rest-api", "apiId": "${CTX:apiId}"}
@@ -110,6 +112,7 @@ Feature: The Platform API's MCP tools
       {"apiType": "rest-api", "apiId": "${CTX:apiId}", "gatewayId": "it-gateway", "confirm": true}
       """
     Then the JSON response array field "result.structuredContent.undeployed" should have 1 item
+    And the JSON response field "result.structuredContent.id" should be "${CTX:apiId}"
     And I send a "GET" request to "${CTX:apiContext}/health" until status 404
     When I call the MCP tool "delete_api" with arguments:
       """

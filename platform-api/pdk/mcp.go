@@ -53,8 +53,14 @@ type MCPTool struct {
 	// A destructive tool must not have a confirm input: the server adds it.
 	Input  any
 	Titles map[string]string // titles for inputs the Platform API does not title
-	// Run returns the tool's result, a struct or a map. A *ClientError's message
-	// reaches the caller; any other error is logged and becomes a generic message.
+	// Output is a zero value of the tool's result struct. Its type gives the
+	// output schema, which MCP clients use to show the result: a list as a table,
+	// an object as a card. Every result is checked against it, so Run must return
+	// this type. Leave it nil and the tool has no output schema.
+	Output any
+	// Run returns the tool's result: the Output type, or a struct or a map when
+	// Output is nil. A *ClientError's message reaches the caller; any other error
+	// is logged and becomes a generic message.
 	Run func(ctx context.Context, call MCPCall) (any, error)
 }
 
