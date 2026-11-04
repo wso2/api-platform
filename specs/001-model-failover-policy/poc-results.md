@@ -1672,3 +1672,77 @@ consumer. Both are the same shape of gap — the policy SDK's two documented out
 The difference is where the fix sits. Metrics need a new SDK surface. This needs roughly the MCP
 sweep applied to policy metadata generally — small, and it changes the shape of every analytics
 event, which is why it is not a unilateral call.
+
+## `handle_upstream_faults` silently disables failover's response phase (2026-11-04)
+
+Found while implementing T039, by reading the engine rather than by a probe — worth recording
+because nothing in the policy or its documentation hints at it.
+
+`PolicyExecutionContext.processResponseHeaders` calls `noteUpstreamFault(status)`, and when the
+response arrived with status >= 400 **and** `policy_engine.fault_policies.handle_upstream_faults`
+is on, it sets `upstreamFault`. `responsePolicies()` then returns `nil, nil`:
+
+```go
+func (ec *PolicyExecutionContext) responsePolicies() ([]policy.Policy, []policy.PolicySpec) {
+	if ec.upstreamFault {
+		return nil, nil
+	}
+	return ec.policyChain.Policies, ec.policyChain.PolicySpecs
+}
+```
+
+Every response policy is skipped in favour of the fault chain. For model-failover that means, on
+exactly the responses it cares about:
+
+- **no health grading.** `OnResponseHeaders` is where failures are recorded, so a target that
+  fails with a real error status is never counted toward suspension. A provider could be down
+  indefinitely and never be suspended.
+- **no exhaustion response.** T039's sterile error is produced in that same phase, so the final
+  upstream's own error body reaches the client after all.
+
+Not a defect in either component — the fault flow is doing what it was built to do, and this
+policy was written before it existed. The interaction is simply unowned.
+
+**Why nothing was changed for it.** The flag is `false` by default in both
+`gateway/configs/config-template.toml` and the Helm chart's `values.yaml`, so no default
+deployment is affected, and the fix is not the policy's to make: a response policy cannot opt
+itself back into a phase the engine decided to skip. Recorded here so that whoever turns the flag
+on knows what it costs, and so the eventual fix — a chain that needs the response phase declaring
+it, rather than the engine inferring from status alone — starts from a stated problem.
+
+## `echo-backend-multi-arch` is the controllable failure backend T029c asked for (2026-11-04)
+
+T029c was filed because `sample-service` echoes `?statusCode=` back in its `query` field and still
+answers 200, so no scenario could force a chosen upstream status. The suite already contains a
+service that can: `echo-backend-multi-arch` (`mccutchen/go-httpbin`, port 8080). Verified directly
+against the image:
+
+| Path | Behaviour |
+|---|---|
+| `/status/503` | returns exactly 503 |
+| `/status/200:2,503:1` | weighted random — measured 18/12 over 30 calls |
+| `/delay/1` | responds after 1.02s, status 200 |
+| anything unrouted | 404 with body `404 page not found` |
+
+The constraint is the path. An upstream's final path is `basePath + operation path`, and go-httpbin
+matches `/status/NNN` **exactly** — `/status/503/` and `/status/503/chat/completions` both 404. So a
+member that must return a chosen status omits `basePath` (optional: "omit for root") and names the
+status in the OPERATION path, and chain members are differentiated by HOST rather than by basePath:
+
+```yaml
+upstreamDefinitions:
+  - name: primary                                  # returns the chosen status
+    upstreams: [{url: "http://echo-backend-multi-arch:8080"}]
+  - name: alive                                    # echoes 200
+    upstreams: [{url: "http://sample-backend:9080"}]
+operations:
+  - method: POST
+    path: /status/503
+```
+
+The two exhaustion scenarios added with T039 use the simpler variant of the same idea — both members
+on go-httpbin under basePaths it does not serve, with `statusCodes: [404]` nominating 404 as
+failover-worthy — because there the members only need to fail, not to differ.
+
+This unblocks T041 #5, T064 (the weighted form drives a precise one-in-three failure rate) and
+T065 (`/delay/N`).

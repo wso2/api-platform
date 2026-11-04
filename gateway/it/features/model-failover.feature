@@ -1699,3 +1699,182 @@ Feature: Automatic fallback to a healthy model
     Then the response should be successful
     When I delete the subscription plan with stored id "planId"
     Then the response should be successful
+
+  # ====================================================================
+  # FR-014 — what the client receives when the chain runs out
+  # ====================================================================
+
+  Scenario: An exhausted chain returns the gateway's own error, not the last provider's
+    # Both targets are the SAME live service on paths it does not serve, which is
+    # what makes this scenario possible at all: a chain of dead hosts fails at
+    # transport level, and Envoy answers those itself without ever calling the
+    # policy, so there is nothing for the policy to replace. A real 404 from a
+    # reachable upstream is a response the policy actually sees.
+    #
+    # statusCodes is set to [404] for the same reason — it is the only error
+    # status a plain httpbin can be made to return under a basePath, and the
+    # parameter exists precisely so a publisher can nominate what counts.
+    #
+    # The two basePaths differ so the attempts are distinguishable in the access
+    # log; neither is served, so both attempts fail and the chain is spent.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-exhaust-v1.0
+      spec:
+        displayName: MF Exhaustion
+        version: v1.0
+        context: /mf-exhaust/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /mf-exhaust-primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: secondary
+            basePath: /mf-exhaust-secondary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  statusCodes:
+                    - 404
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: secondary
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-exhaust/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # One consistent status for exhaustion, NOT the 404 the last target answered.
+    # A chain that ends on a 404 is not a missing resource — the resource exists,
+    # the gateway simply had nowhere left to send the request.
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # THE assertion this scenario exists for. Anything the upstream wrote must be
+    # gone: here it is httpbin's own 404 text, standing in for the provider error
+    # that in production names the account, region or key that was refused.
+    And the response body should not contain "404 page not found"
+
+    # ...and the body says nothing about the chain either. Which models a
+    # publisher configured is not something the caller was ever shown.
+    And the response body should not contain "gpt-4o"
+    And the response body should not contain "claude"
+    And the response body should not contain "mf-exhaust-secondary"
+
+    # Cleanup
+    When I delete the API "mf-exhaust-v1.0"
+    Then the response status code should be 200
+
+  Scenario: Once every target is suspended the next request is refused without an attempt
+    # Suspension that still sends traffic to the suspended target is not
+    # suspension. With every member out of rotation the policy used to publish no
+    # ranking and go inert, which handed the request to the route's configured
+    # upstream — the primary, the very target health had just withdrawn.
+    #
+    # The discriminator is the body. Inert would dispatch and return the
+    # primary's own 404; refusing returns this gateway's 503.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-allsusp-v1.0
+      spec:
+        displayName: MF All Suspended
+        version: v1.0
+        context: /mf-allsusp/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /mf-allsusp-primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: secondary
+            basePath: /mf-allsusp-secondary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 404
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: secondary
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # Request one walks the whole chain and fails it. Both members are graded —
+    # the first from the attempt count, the second from the response in hand — so
+    # one request is enough to put the entire chain out of rotation.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-allsusp/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # Request two never leaves the gateway. The suspension window is far longer
+    # than this scenario, so a pass here cannot be a window quietly expiring.
+    #
+    # The response ALONE cannot prove that: refusing before any attempt and
+    # exhausting a chain of attempts return byte-identical responses, which is
+    # the design — one consistent error, whatever the reason. So the client-side
+    # assertions below establish only that the request was refused, and the log
+    # assertions after them establish that it was refused WITHOUT being tried,
+    # which is the actual subject of this scenario.
+    When I note the current gateway runtime log position
+    And I send a POST request to "http://localhost:8080/mf-allsusp/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # Had the request been dispatched to the suspended primary, this is the body
+    # that would have come back.
+    And the response body should not contain "404 page not found"
+
+    # THE discriminator. This line is written only on the request-phase path,
+    # before anything is dispatched...
+    And the gateway runtime log since then should contain "every target is suspended; nothing was attempted"
+
+    # ...and this one only after a chain has actually been walked and spent. Its
+    # absence is what rules out the request having been attempted again.
+    And the gateway runtime log since then should not contain "every target in the chain failed"
+
+    # Cleanup
+    When I delete the API "mf-allsusp-v1.0"
+    Then the response status code should be 200
