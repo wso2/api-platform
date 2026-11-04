@@ -41,7 +41,7 @@ concurrency:
 
 jobs:
   integration-test:
-    name: integration-test (${{ matrix.db }})
+    name: Event gateway integration tests (${{ matrix.db }})
     runs-on: ubuntu-24.04
     strategy:
       # Each database is an independent check; one failing must not cancel the others.
