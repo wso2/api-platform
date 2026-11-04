@@ -103,8 +103,7 @@ func TestExtractLLMAnalyticsBedrockInvokeUsesFallbacks(t *testing.T) {
 	// Claude's own streaming envelope: the input count is only in message_start's message.usage.
 	stream = append(stream, encodeEventStreamFrame("chunk", []byte(`{"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-5","usage":{"input_tokens":1000,"output_tokens":1}}}`))...)
 	stream = append(stream, encodeEventStreamFrame("chunk", []byte(`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":500}}`))...)
-	headers := policy.NewHeaders(map[string][]string{"content-type": {"application/vnd.amazon.eventstream"}})
-	info, err = extractLLMProviderAnalyticsInfoFromBytes(template, nil, headers, nil, stream,
+	info, err = extractLLMProviderAnalyticsInfoFromBytes(template, nil, nil, nil, stream,
 		path+"-with-response-stream", "/model/x/invoke-with-response-stream")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

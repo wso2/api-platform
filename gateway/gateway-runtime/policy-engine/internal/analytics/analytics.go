@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -600,6 +601,15 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 	if guardrailName, exists := keyValuePairsFromMetadata[constants.GuardrailNameMetadataKey]; exists && guardrailName != "" {
 		event.Properties[constants.GuardrailNameMetadataKey] = guardrailName
+	}
+
+	// Only a POST invokes a model. Reading a stored result back (GET /responses/{id}) returns
+	// the original usage, which any policy may have reported, and which would otherwise be
+	// counted and priced as a second call. The provider and model stay on the event.
+	if method := request.GetRequestMethod(); method != corev3.RequestMethod_METHOD_UNSPECIFIED && method != corev3.RequestMethod_POST {
+		for _, key := range []string{PromptTokenCountMetadataKey, CompletionTokenCountMetadataKey, TotalTokenCountMetadataKey, constants.LLMCostMetadataKey} {
+			delete(keyValuePairsFromMetadata, key)
+		}
 	}
 
 	var parsedLLMCost interface{}

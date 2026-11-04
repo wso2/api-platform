@@ -3,9 +3,6 @@ package analytics
 import (
 	"encoding/binary"
 	"encoding/json"
-	"strings"
-
-	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // Bedrock's streaming APIs (converse-stream, invoke-with-response-stream) answer in Amazon's
@@ -14,24 +11,14 @@ import (
 // report their usage like buffered ones.
 
 const (
-	eventStreamContentType = "application/vnd.amazon.eventstream"
-	eventStreamPreludeLen  = 12
-	eventStreamOverhead    = 16
-	eventStreamMaxFrame    = 16 * 1024 * 1024
+	eventStreamPreludeLen = 12
+	eventStreamOverhead   = 16
+	eventStreamMaxFrame   = 16 * 1024 * 1024
 )
 
 type eventStreamFrame struct {
 	eventType string
 	payload   []byte
-}
-
-// isEventStreamContent reports whether the response is declared as an Amazon event stream.
-func isEventStreamContent(headers *policy.Headers) bool {
-	if headers == nil {
-		return false
-	}
-	contentTypes := headers.Get("content-type")
-	return len(contentTypes) > 0 && strings.Contains(strings.ToLower(contentTypes[0]), eventStreamContentType)
 }
 
 // decodeEventStream returns the JSON carried by a complete Amazon event-stream body: the

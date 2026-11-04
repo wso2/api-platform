@@ -5,8 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"testing"
-
-	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // TestExtractPathParam covers the pathParam extraction used to meter the model
@@ -31,6 +29,12 @@ func TestExtractPathParam(t *testing.T) {
 			path:    "/bedrock/model/us.anthropic.claude-3-5-sonnet-20240620-v1:0/converse-stream",
 			pattern: "model/([A-Za-z0-9.:-]+)/",
 			want:    "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+		},
+		{
+			name:    "percent-encoded model id from an AWS SDK is decoded",
+			path:    "/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1%3A0/converse",
+			pattern: "model/([A-Za-z0-9.:%-]+)/",
+			want:    "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
 		},
 		{
 			name:    "no capture group returns whole match",
@@ -180,9 +184,7 @@ func TestExtractLLMAnalyticsBedrockConverseStream(t *testing.T) {
 	body = append(body, encodeEventStreamFrame("messageStop", []byte(`{"stopReason":"end_turn"}`))...)
 	body = append(body, encodeEventStreamFrame("metadata",
 		[]byte(`{"usage":{"inputTokens":1000,"outputTokens":500,"totalTokens":1500},"metrics":{"latencyMs":90}}`))...)
-	headers := policy.NewHeaders(map[string][]string{"content-type": {"application/vnd.amazon.eventstream"}})
-
-	info, err := extractLLMProviderAnalyticsInfoFromBytes(bedrockStreamTemplate(), nil, headers, nil, body,
+	info, err := extractLLMProviderAnalyticsInfoFromBytes(bedrockStreamTemplate(), nil, nil, nil, body,
 		"/bedrock/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream", "/model/x/converse-stream")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -200,15 +202,6 @@ func TestExtractLLMAnalyticsBedrockConverseStream(t *testing.T) {
 		t.Errorf("ResponseModel = %v", info.ResponseModel)
 	}
 
-	// Without the event-stream content type the same bytes are not decoded.
-	plain, err := extractLLMProviderAnalyticsInfoFromBytes(bedrockStreamTemplate(), nil, nil, nil, body,
-		"/bedrock/model/x/converse-stream", "/model/x/converse-stream")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if plain.PromptTokens != nil {
-		t.Errorf("PromptTokens = %v, want nil for an undeclared binary body", *plain.PromptTokens)
-	}
 }
 
 // An InvokeModelWithResponseStream stream carries model-native chunks, base64-wrapped in some
@@ -251,22 +244,6 @@ func TestDecodeEventStreamLeavesUndecodableBodies(t *testing.T) {
 	} {
 		if got := decodeEventStream(body); string(got) != string(body) {
 			t.Errorf("%s: decodeEventStream changed an undecodable body", name)
-		}
-	}
-}
-
-// Only a POST invokes a model; reading a stored result back must not report its usage again.
-func TestDropUsageUnlessInvocation(t *testing.T) {
-	n := func(v int64) *int64 { return &v }
-	model := "gpt-4o"
-	for method, keep := range map[string]bool{"POST": true, "post": true, "": true, "GET": false, "DELETE": false} {
-		info := &LLMProviderAnalyticsInfo{PromptTokens: n(1), CompletionTokens: n(2), TotalTokens: n(3), ResponseModel: &model}
-		dropUsageUnlessInvocation(info, method)
-		if kept := info.PromptTokens != nil && info.CompletionTokens != nil && info.TotalTokens != nil; kept != keep {
-			t.Errorf("method %q: counts kept = %v, want %v", method, kept, keep)
-		}
-		if info.ResponseModel == nil {
-			t.Errorf("method %q: the model must stay on the event", method)
 		}
 	}
 }

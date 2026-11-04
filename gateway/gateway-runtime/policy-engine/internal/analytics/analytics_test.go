@@ -689,6 +689,7 @@ func TestPrepareAnalyticEvent_WithAIMetadata(t *testing.T) {
 		TotalTokenCountMetadataKey:      "150",
 	})
 
+	logEntry.Request.RequestMethod = corev3.RequestMethod_POST
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
@@ -759,6 +760,7 @@ func TestPrepareAnalyticEvent_WithAIMetadataMissingCompletionTokens(t *testing.T
 		TotalTokenCountMetadataKey:  "8",
 	})
 
+	logEntry.Request.RequestMethod = corev3.RequestMethod_POST
 	event := analytics.prepareAnalyticEvent(logEntry)
 	require.NotNil(t, event)
 
@@ -916,6 +918,7 @@ func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 		constants.LLMCostMetadataKey: "0.0000423100",
 	})
 
+	logEntry.Request.RequestMethod = corev3.RequestMethod_POST
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
@@ -924,6 +927,45 @@ func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	aiMetadata, ok := aiMetadataValue.(dto.AIMetadata)
 	require.True(t, ok)
 	assert.Equal(t, 0.00004231, aiMetadata.LLMCost)
+}
+
+// Reading a stored result back (GET /responses/{id}) returns the original usage and, with
+// llm-cost attached, its cost; neither may be counted again.
+func TestPrepareAnalyticEvent_DropsUsageAndCostUnlessPost(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	for method, keep := range map[corev3.RequestMethod]bool{
+		corev3.RequestMethod_POST:               true,
+		corev3.RequestMethod_METHOD_UNSPECIFIED: true,
+		corev3.RequestMethod_GET:                false,
+		corev3.RequestMethod_DELETE:             false,
+	} {
+		logEntry := createLogEntryWithMetadata(map[string]string{
+			AIProviderNameMetadataKey:       "openai",
+			ModelIDMetadataKey:              "gpt-4o",
+			PromptTokenCountMetadataKey:     "100",
+			CompletionTokenCountMetadataKey: "50",
+			TotalTokenCountMetadataKey:      "150",
+			constants.LLMCostMetadataKey:    "0.001",
+		})
+		logEntry.Request.RequestMethod = method
+
+		event := analytics.prepareAnalyticEvent(logEntry)
+
+		aiMetadata, ok := event.Properties["aiMetadata"].(dto.AIMetadata)
+		require.True(t, ok, method)
+		assert.Equal(t, "gpt-4o", aiMetadata.Model, method)
+		usage, ok := event.Properties[dto.PropKeyAIUsage].(dto.AIUsage)
+		require.True(t, ok, method)
+		if keep {
+			require.NotNil(t, usage.PromptTokens, method)
+			assert.Equal(t, 0.001, aiMetadata.LLMCost, method)
+		} else {
+			assert.Nil(t, usage.PromptTokens, method)
+			assert.Nil(t, usage.CompletionTokens, method)
+			assert.Nil(t, usage.TotalTokens, method)
+			assert.Nil(t, aiMetadata.LLMCost, method)
+		}
+	}
 }
 
 func TestPrepareAnalyticEvent_WithGuardrailMetadata(t *testing.T) {
