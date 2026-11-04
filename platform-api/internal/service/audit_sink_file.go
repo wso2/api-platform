@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/wso2/api-platform/platform-api/config"
 )
@@ -133,7 +134,9 @@ func (s *auditFileSink) open() error {
 	if info, err := os.Lstat(s.path); err == nil && !info.Mode().IsRegular() {
 		return fmt.Errorf("%q is not a regular file", s.path)
 	}
-	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	// O_NONBLOCK: a FIFO swapped in after the Lstat fails the open instead of
+	// blocking it; it has no effect on a regular file.
+	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND|syscall.O_NONBLOCK, 0o600)
 	if err != nil {
 		return err
 	}
@@ -142,8 +145,8 @@ func (s *auditFileSink) open() error {
 		_ = f.Close()
 		return err
 	}
-	// Catches a symlink swapped in between the Lstat and the open.
-	if link, err := os.Lstat(s.path); err != nil || !os.SameFile(info, link) {
+	// Catches a symlink or FIFO swapped in between the Lstat and the open.
+	if link, err := os.Lstat(s.path); err != nil || !os.SameFile(info, link) || !info.Mode().IsRegular() {
 		_ = f.Close()
 		return fmt.Errorf("%q is not a regular file", s.path)
 	}
