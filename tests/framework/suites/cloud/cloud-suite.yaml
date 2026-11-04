@@ -13,7 +13,6 @@ blocks:
       - name: cloud-console
     runners:
       - name: apip-basic
-        tags: "~@known-issue"
         features:
           - features/apip_basic.feature
       - name: apip-project
@@ -21,10 +20,8 @@ blocks:
         features:
           - features/apip_project.feature
       - name: apip-auth
-        tags: "~@known-issue"
         features:
           - features/apip_auth.feature
       - name: apip-deploy
-        tags: "~@known-issue"
         features:
           - features/apip_deploy.feature

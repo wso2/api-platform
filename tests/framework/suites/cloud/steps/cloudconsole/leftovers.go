@@ -49,11 +49,11 @@ const finalizerDeleteTimeout = 90 * time.Second
 const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
-// order: a gateway goes before the environment it runs in, a project before the pipeline it
-// is bound to, and an LLM provider before the secret it uses.
-// idFields name the list-item fields that identify a resource in its own route. REST APIs and
-// LLM proxies are listed per project, so projectScopedSweep reads them and runs ahead of these:
-// each goes before the gateway it is deployed to and the project it belongs to.
+// order: a gateway goes before the environment it runs in, and a project before the pipeline it
+// is bound to.
+// idFields name the list-item fields that identify a resource in its own route. REST APIs are
+// listed per project, so projectScopedSweep reads them and runs ahead of these: each goes before
+// the gateway it is deployed to and the project it belongs to.
 var finalizerCollections = []struct {
 	collection string
 	idFields   []string
@@ -61,8 +61,6 @@ var finalizerCollections = []struct {
 }{
 	{collection: "/managed-gateways", idFields: []string{"id"}},
 	{collection: "/projects", idFields: []string{"id"}},
-	{collection: llmProvidersCollection, idFields: []string{"id"}},
-	{collection: secretsCollection, idFields: []string{"handle", "id"}},
 	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
 	{collection: environmentsCollection, idFields: []string{"name"}, wait: true},
 }
@@ -181,7 +179,7 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 
 // projectScopedCollections are the collections the platform lists only for one project: a list
 // request without projectId is refused with 400.
-var projectScopedCollections = []string{"/rest-apis", llmProxiesCollection}
+var projectScopedCollections = []string{"/rest-apis"}
 
 // projectScopedSweep describes a collection the platform lists per project, so it reads the
 // default project and every project a tracked run created.

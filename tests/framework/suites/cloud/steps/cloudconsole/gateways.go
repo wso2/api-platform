@@ -17,15 +17,9 @@
 package cloudconsole
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
 	"reflect"
 	"strings"
-
-	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 )
 
 const (
@@ -57,26 +51,6 @@ func handleOfLength(name string, length int) string {
 		name = "a" + name[1:]
 	}
 	return name
-}
-
-// fetchGatewayList reads the managed gateways, narrowed to one kind when given.
-func (s *Steps) fetchGatewayList(ctx context.Context, kind string) ([]map[string]any, error) {
-	path := "/managed-gateways"
-	if kind != "" {
-		path += "?functionalityType=" + url.QueryEscape(kind)
-	}
-	resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, retry.Transient(err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, retry.Transient(responseError(resp))
-	}
-	items, err := listItems(resp)
-	if err != nil {
-		return nil, retry.Transient(fmt.Errorf("decoding managed gateways: %w", err))
-	}
-	return items, nil
 }
 
 // sameValue compares a value read from JSON with the value a table cell stands for.

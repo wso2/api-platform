@@ -60,7 +60,7 @@ func numberedKey(prefix string, n int) string { return fmt.Sprintf("%s%d", prefi
 // resetPromotionState drops what an earlier scenario of the runner recorded about its
 // environments, gateways and deployments, so a numbered key can only name this scenario's own.
 func resetPromotionState(ctx context.Context) error {
-	keys := []string{keySyntheticEnvironments, keyPipelineID, keyDeployedTargets, keyDeployedBuildID, keyDeploymentID}
+	keys := []string{keySyntheticEnvironments, keyPipelineID, keyDeployedBuildID, keyDeploymentID}
 	for n := 1; n <= maxPromotionEnvironments; n++ {
 		keys = append(keys, numberedKey(keySyntheticEnvironmentPrefix, n),
 			numberedKey(keySyntheticGatewayPrefix, n), numberedKey(keySyntheticEndpointPrefix, n))

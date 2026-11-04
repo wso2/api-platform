@@ -41,8 +41,6 @@ const (
 	echoBackendEnv = "CLOUD_IT_ECHO_BACKEND_URL"
 	// defaultEchoBackend is a public service that answers with the URL it was asked for.
 	defaultEchoBackend = "https://httpbin.org/anything"
-
-	deployedTimeout = 5 * time.Minute
 )
 
 // buildIDPattern is the shape of a build identifier: the day it was prepared and that day's index.
@@ -353,14 +351,13 @@ func (s *Steps) requestDeployment(ctx context.Context, table *godog.Table) error
 	return recordDeployments(ctx, resp)
 }
 
-// recordDeployments keeps the deployments a successful request created: which deployment runs
-// on each gateway, which build they run, and the one on the active gateway.
+// recordDeployments keeps what a successful request created: the build it deployed and the
+// deployment on the active gateway.
 func recordDeployments(ctx context.Context, resp *httpx.Response) error {
 	items, err := listItems(resp)
 	if err != nil {
 		return fmt.Errorf("decoding the deployment response: %w", err)
 	}
-	targets := map[string]string{}
 	build := ""
 	for _, item := range items {
 		gatewayID, _ := item["gatewayId"].(string)
@@ -368,7 +365,6 @@ func recordDeployments(ctx context.Context, resp *httpx.Response) error {
 		if gatewayID == "" || deploymentID == "" {
 			continue
 		}
-		targets[gatewayID] = deploymentID
 		if id, _ := item["buildId"].(string); id != "" {
 			build = id
 		}
@@ -377,13 +373,6 @@ func recordDeployments(ctx context.Context, resp *httpx.Response) error {
 				return err
 			}
 		}
-	}
-	encoded, err := json.Marshal(targets)
-	if err != nil {
-		return err
-	}
-	if err := tcontext.Set(ctx, keyDeployedTargets, string(encoded)); err != nil {
-		return err
 	}
 	return tcontext.Set(ctx, keyDeployedBuildID, build)
 }
@@ -417,21 +406,6 @@ func (s *Steps) assertDeploymentListsActiveGateway(ctx context.Context) error {
 	}
 	if id, _ := entry["deploymentId"].(string); id == "" {
 		return fmt.Errorf("the deployment on gateway %q has no deployment id: %s", gatewayID, response.Describe())
-	}
-	return nil
-}
-
-func (s *Steps) assertDeploymentCount(ctx context.Context, want int) error {
-	response, err := httpx.Published(ctx)
-	if err != nil {
-		return err
-	}
-	items, err := listItems(response)
-	if err != nil {
-		return fmt.Errorf("decoding the deployment response: %w", err)
-	}
-	if len(items) != want {
-		return fmt.Errorf("expected %d deployments, got %d: %s", want, len(items), response.Describe())
 	}
 	return nil
 }
@@ -699,60 +673,22 @@ func (s *Steps) assertActiveGatewayStageStatus(ctx context.Context, want string)
 	return fmt.Errorf("no deployment stage for environment %q", environment)
 }
 
-// recordedTargets reads the deployments the last successful request created, by gateway.
-func recordedTargets(ctx context.Context) (map[string]string, error) {
-	encoded, err := requiredValue(ctx, keyDeployedTargets)
-	if err != nil {
-		return nil, fmt.Errorf("no deployment has been requested: %w", err)
-	}
-	targets := map[string]string{}
-	if err := json.Unmarshal([]byte(encoded), &targets); err != nil {
-		return nil, err
-	}
-	if len(targets) == 0 {
-		return nil, fmt.Errorf("the deployment request created no deployment")
-	}
-	return targets, nil
-}
+// statusReasonCode is the only shape a deployment's status reason takes: an error code.
+var statusReasonCode = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 
-// waitDeployedOnTargets waits until every deployment the last request created is DEPLOYED.
-func (s *Steps) waitDeployedOnTargets(ctx context.Context) error {
-	targets, err := recordedTargets(ctx)
+// assertDeploymentStatusReason checks that the synthetic REST API's deployment carries a status
+// reason in the form of an error code.
+func (s *Steps) assertDeploymentStatusReason(ctx context.Context) error {
+	record, err := s.deploymentRecord(ctx, primaryAPI)
 	if err != nil {
 		return err
 	}
-	apiID, err := requiredValue(ctx, keyAPIID)
-	if err != nil {
-		return err
+	if record == nil {
+		return fmt.Errorf("the deployment is not listed")
 	}
-	return retry.Await(ctx, retry.Options{Timeout: deployedTimeout, Interval: 5 * time.Second},
-		func(ctx context.Context) (string, error) {
-			resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/rest-apis/"+url.PathEscape(apiID)+"/deployments", nil)
-			if err != nil {
-				return "", retry.Transient(err)
-			}
-			if resp.StatusCode != http.StatusOK {
-				return "", retry.Transient(responseError(resp))
-			}
-			items, err := listItems(resp)
-			if err != nil {
-				return "", retry.Transient(fmt.Errorf("decoding APIP deployments: %w", err))
-			}
-			status := map[string]string{}
-			for _, item := range items {
-				deploymentID, _ := item["deploymentId"].(string)
-				state, _ := item["status"].(string)
-				status[deploymentID] = state
-			}
-			pending := make([]string, 0, len(targets))
-			for gatewayID, deploymentID := range targets {
-				if status[deploymentID] != "DEPLOYED" {
-					pending = append(pending, gatewayID+": "+status[deploymentID])
-				}
-			}
-			sort.Strings(pending)
-			return strings.Join(pending, ", "), nil
-		},
-		func(pending string) bool { return pending == "" },
-		"waiting for every requested deployment to be DEPLOYED")
+	reason, _ := record["statusReason"].(string)
+	if !statusReasonCode.MatchString(reason) {
+		return fmt.Errorf("the deployment reports status reason %q, want an error code", reason)
+	}
+	return nil
 }

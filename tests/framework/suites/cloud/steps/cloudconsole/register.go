@@ -59,14 +59,12 @@ const (
 	keyVersionDeploymentID  = "cloudVersionDeploymentID"
 	keyVersionAPIDefinition = "cloudVersionAPIDefinition"
 
-	keyBuildID           = "cloudBuildID"
-	keyBuildIDs          = "cloudBuildIDs"
-	keyBuildsOwner       = "cloudBuildsOwner"
-	keyBuildMetadata     = "cloudBuildMetadata"
-	keyDeployedBuildID   = "cloudDeployedBuildID"
-	keyDeployedTargets   = "cloudDeployedTargets"
-	keySyntheticGateways = "cloudSyntheticGatewayIDs"
-	keyEchoBackendURL    = "cloudEchoBackendURL"
+	keyBuildID         = "cloudBuildID"
+	keyBuildIDs        = "cloudBuildIDs"
+	keyBuildsOwner     = "cloudBuildsOwner"
+	keyBuildMetadata   = "cloudBuildMetadata"
+	keyDeployedBuildID = "cloudDeployedBuildID"
+	keyEchoBackendURL  = "cloudEchoBackendURL"
 
 	keyManagedGatewayEnv   = "cloudManagedGatewayEnvironment"
 	keyGatewayDeleteStatus = "cloudGatewayDeleteStatus"
@@ -126,9 +124,8 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerIdentitySteps(sc)
 	s.registerDeploymentSteps(sc)
 	s.registerPromotionSteps(sc)
-	s.registerSecretSteps(sc)
-	s.registerAIWorkspaceSteps(sc)
 	s.registerProjectSteps(sc)
+	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
@@ -166,28 +163,22 @@ func (s *Steps) registerIdentitySteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the cloud API error code should be "([^"]*)"$`, s.assertCloudErrorCode)
 }
 
-// registerDeploymentSteps binds the build, deployment and synthetic-gateway steps.
+// registerDeploymentSteps binds the build and deployment steps.
 func (s *Steps) registerDeploymentSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I prepare a build of the synthetic REST API with metadata:$`, s.prepareBuild)
 	sc.Step(`^the prepared build should have a day-and-index identifier$`, s.assertBuildIDShape)
 	sc.Step(`^the synthetic REST API builds should include the prepared build$`, s.assertBuildListed)
 	sc.Step(`^the synthetic REST API builds should list the rendered builds newest first$`, s.assertBuildsNewestFirst)
 	sc.Step(`^the deployment should have rendered a build of the API$`, s.recordRenderedBuild)
-	sc.Step(`^the synthetic REST API should hold (\d+) builds$`, s.assertBuildCount)
 	sc.Step(`^I request a deployment of the synthetic REST API with:$`, s.requestDeployment)
 	sc.Step(`^the deployment response should list the active gateway$`, s.assertDeploymentListsActiveGateway)
-	sc.Step(`^the deployment response should list (\d+) gateways$`, s.assertDeploymentCount)
 	sc.Step(`^the deployed build should be the rendered build$`, s.assertDeployedBuildIsPrepared)
-	sc.Step(`^the synthetic REST API should be DEPLOYED on every gateway the deployment request named$`, s.waitDeployedOnTargets)
 	sc.Step(`^the synthetic REST API deployments should have one stage per environment of its project's deployment pipeline$`, s.assertStagesMatchPipeline)
 	sc.Step(`^the deployment stage of the active gateway's environment should show the active gateway as ([A-Z_]+)$`, s.assertActiveGatewayStageStatus)
 	sc.Step(`^the synthetic REST API deployment should report a status reason code$`, s.assertDeploymentStatusReason)
 	sc.Step(`^an echo backend is available for deployment overrides$`, s.useEchoBackend)
 	sc.Step(`^the deployment response should report the echo backend as the production endpoint$`, s.assertDeploymentReportsEchoEndpoint)
 	sc.Step(`^the echo backend should have received a request for "([^"]*)"$`, s.assertEchoBackendReceived)
-	sc.Step(`^I create (\d+) synthetic managed APIP gateways? in the active gateway's environment$`, s.createGatewaysInActiveEnvironment)
-	sc.Step(`^the synthetic managed APIP gateways should become active$`, s.waitSyntheticGatewaysActive)
-	sc.Step(`^I deploy a build of the synthetic REST API to the active gateway and every synthetic gateway$`, s.deployBuildPerGateway)
 }
 
 // registerPromotionSteps binds the steps that build a pipeline over synthetic environments, bind a
@@ -196,13 +187,6 @@ func (s *Steps) registerPromotionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I create (\d+) synthetic non-production APIP environments?$`, s.createSyntheticEnvironments)
 	sc.Step(`^I create a synthetic deployment pipeline with the promotion paths:$`, s.createPipeline)
 	sc.Step(`^I create a synthetic APIP project bound to the synthetic deployment pipeline$`, s.createProjectBoundToPipeline)
-}
-
-// registerSecretSteps binds the steps that create, rotate, read and delete a secret and read back
-// what a gateway sends upstream with it.
-func (s *Steps) registerSecretSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I create a synthetic secret holding a sample key with the prefix "([^"]*)"$`, s.createSecretWithPrefix)
-	sc.Step(`^the echoed request header "([^"]*)" should carry the synthetic secret's value$`, s.assertEchoedSecret)
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
@@ -227,15 +211,6 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindPipeline, cloudDeleter(topo, client, "/pipelines", true)); err != nil {
-		return err
-	}
-	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection, false)); err != nil {
-		return err
-	}
-	if err := reg.RegisterDeleter(kindLLMProxy, cloudDeleter(topo, client, llmProxiesCollection, false)); err != nil {
-		return err
-	}
-	if err := reg.RegisterDeleter(kindLLMProvider, cloudDeleter(topo, client, llmProvidersCollection, false)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))

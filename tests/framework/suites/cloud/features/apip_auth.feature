@@ -92,7 +92,6 @@ Feature: APIP cloud access and identity
       | GET    | /managed-gateways/no-such-gateway                                     |
       | GET    | /managed-gateways/no-such-gateway/configuration                       |
       | GET    | /managed-api-portals                                                  |
-      | GET    | /llm-providers/no-such-provider/environment-deployments               |
       | GET    | /logs                                                                 |
       | POST   | /projects                                                             |
       | POST   | /rest-apis                                                            |
