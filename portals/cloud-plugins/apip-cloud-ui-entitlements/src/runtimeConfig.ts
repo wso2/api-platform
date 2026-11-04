@@ -24,6 +24,7 @@
 type WindowConfig = Partial<{
   APIP_ACP_BILLING_CONSOLE_URL: string;
   billingConsoleUrl: string;
+  appBasePath: string;
 }>;
 
 const fromWindow = (): WindowConfig => {
@@ -36,6 +37,25 @@ const fromWindow = (): WindowConfig => {
     ...(globalWindow.config ?? {}),
   };
 };
+
+/**
+ * The console's serving prefix, e.g. "/console"; empty when served at the root.
+ *
+ * Same order and same normalization as the console's own `runtime.ts`: the
+ * injected global first, then what Vite baked in at build time. The build-time
+ * fallback is what carries the value today, since the server does not emit the
+ * key — without it this returns empty and the fetch below goes to the origin
+ * root however the console is served.
+ */
+export function appBasePath(): string {
+  const value =
+    fromWindow().appBasePath ||
+    import.meta.env.VITE_APP_BASE_PATH ||
+    import.meta.env.BASE_URL ||
+    '';
+  if (!value || value === '/') return '';
+  return `/${value.replace(/^\/|\/$/g, '')}`;
+}
 
 /**
  * The organization's upgrade page in the billing console.
