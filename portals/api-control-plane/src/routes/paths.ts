@@ -348,6 +348,7 @@ export const routes = {
   // and no scope-less alias: there is nothing to select.
   subscriptionPlans: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/subscription-plans`,
   meters: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/meters`,
+  serviceAccounts: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/service-accounts`,
 };
 
 export type ProjectPathBuilder = (orgHandle: string, projectHandler: ScopeHandle) => string;

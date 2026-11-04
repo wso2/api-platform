@@ -23,7 +23,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RestApi } from '@/api/resources/restApis';
 import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
 import { routes } from '@/routes/paths';
+import { AuthStateContext } from '../contexts/auth/AuthStateContext';
+import { PermissionProvider } from '../permissions/PermissionProvider';
 import { ConsoleScopeContext, type ConsoleScope } from '../scope/ConsoleScopeContext';
+import { makeAuthState } from '@/test/mockAuthState';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderHook } from '@/test/utils';
 import { useNavigationItems } from './useNavigationItems';
@@ -76,10 +79,23 @@ const atGraphqlApi = () =>
     params: { graphqlApiHandler: GRAPHQL_API, orgHandle: ORG, projectHandler: PROJECT },
   });
 
-const itemsAt = (scope: ConsoleScope, route: string) => {
+/** A signed-in session; with `scopes`, permissions are enforced against them. */
+const Permissions = ({ children, scopes }: { children: ReactNode; scopes?: string[] }) => (
+  <AuthStateContext.Provider
+    value={makeAuthState(
+      scopes ? { user: { email: 'user@example.com', name: 'User', scopes } } : {},
+    )}
+  >
+    <PermissionProvider mode={scopes ? 'enforce' : 'permissive'}>{children}</PermissionProvider>
+  </AuthStateContext.Provider>
+);
+
+const itemsAt = (scope: ConsoleScope, route: string, scopes?: string[]) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
-      <ConsoleScopeContext.Provider value={scope}>{children}</ConsoleScopeContext.Provider>
+      <Permissions scopes={scopes}>
+        <ConsoleScopeContext.Provider value={scope}>{children}</ConsoleScopeContext.Provider>
+      </Permissions>
     </MemoryRouter>
   );
   const { result } = renderHook(() => useNavigationItems(), { wrapper });
@@ -220,9 +236,11 @@ const itemsWithExtensions = (
 ) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[route]}>
-      <ConsoleScopeContext.Provider value={scope}>
-        <ExtensionsProvider extensions={extensions}>{children}</ExtensionsProvider>
-      </ConsoleScopeContext.Provider>
+      <Permissions>
+        <ConsoleScopeContext.Provider value={scope}>
+          <ExtensionsProvider extensions={extensions}>{children}</ExtensionsProvider>
+        </ConsoleScopeContext.Provider>
+      </Permissions>
     </MemoryRouter>
   );
   const { result } = renderHook(() => useNavigationItems(), { wrapper });
@@ -517,6 +535,7 @@ describe('disableFeatures', () => {
     expect(manage?.children?.map((child) => child.id)).toEqual([
       'manage-subscription-plans',
       'manage-meters',
+      'manage-service-accounts',
     ]);
   });
 
@@ -560,5 +579,39 @@ describe('disableFeatures', () => {
     const items = withDisabled(['subscription-plans'], atOrg(), routes.organizationHome(ORG));
 
     expect(items.find((item) => item.id === 'manage')?.to).toBe(routes.meters(ORG));
+  });
+});
+
+describe('permission-gated items', () => {
+  const manageChildren = (scopes: string[]) =>
+    itemsAt(atOrg(), routes.subscriptionPlans(ORG), scopes)
+      .find((item) => item.id === 'manage')
+      ?.children?.map((child) => child.id);
+
+  it('hides Service Accounts from a user who cannot manage service accounts', () => {
+    expect(manageChildren(['ap:service_account:read'])).not.toContain('manage-service-accounts');
+  });
+
+  it('shows Service Accounts to a user who can', () => {
+    expect(manageChildren(['ap:service_account:manage'])).toContain('manage-service-accounts');
+  });
+
+  describe('with Subscription Plans and Meters disabled', () => {
+    const manageFor = (scopes: string[]) => {
+      disabled.names = ['subscription-plans', 'meters'];
+      return itemsAt(atOrg(), routes.organizationHome(ORG), scopes).find((item) => item.id === 'manage');
+    };
+
+    afterEach(() => {
+      disabled.names = [];
+    });
+
+    it('hides Manage from a user who cannot manage service accounts', () => {
+      expect(manageFor(['ap:service_account:read'])).toBeUndefined();
+    });
+
+    it('opens Manage at Service Accounts for a user who can', () => {
+      expect(manageFor(['ap:service_account:manage'])?.to).toBe(routes.serviceAccounts(ORG));
+    });
   });
 });

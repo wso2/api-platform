@@ -225,6 +225,18 @@ describe('request bodies', () => {
     expect(captured?.headers.get('Content-Type')).not.toContain('application/json');
   });
 
+  it('sends a URLSearchParams body form-encoded, as the OAuth2 token exchange needs', async () => {
+    server.use(recording('post', '/service-accounts/token', ok()));
+
+    await http.post(
+      '/service-accounts/token',
+      new URLSearchParams({ client_id: 'sa_acme_ci', grant_type: 'client_credentials' })
+    );
+
+    expect(captured?.headers.get('Content-Type')).toContain('application/x-www-form-urlencoded');
+    expect(new URLSearchParams(captured!.body).get('client_id')).toBe('sa_acme_ci');
+  });
+
   it('sends no body at all when none is given', async () => {
     server.use(recording('delete', '/rest-apis/pizza-shack', () =>
       new HttpResponse(null, { status: 204 })
@@ -560,6 +572,38 @@ describe('a 401', () => {
     expect(error.status).toBe(401);
     expect(check).toHaveBeenCalledTimes(1);
     expect(bodies).toHaveLength(2);
+  });
+
+  it('is final at once when the request says the 401 is about its own credentials', async () => {
+    const bodies = answerInTurn('post', '/service-accounts/token', [401, 200]);
+    const check = registerCheck(true);
+
+    const error = await rejection(
+      http.post('/service-accounts/token', undefined, { authFailureIsSession: false })
+    );
+
+    expect(error.status).toBe(401);
+    expect(check).not.toHaveBeenCalled();
+    expect(bodies).toHaveLength(1);
+  });
+
+  it('still checks the session when the BFF says it is gone, even for a request with its own credentials', async () => {
+    server.use(
+      mswHttp.post(`${BASE}/service-accounts/token`, () =>
+        HttpResponse.json(
+          { status: 'error', code: 'SESSION_EXPIRED', message: 'session expired' },
+          { status: 401 }
+        )
+      )
+    );
+    const check = registerCheck(false);
+
+    const error = await rejection(
+      http.post('/service-accounts/token', undefined, { authFailureIsSession: false })
+    );
+
+    expect(error.status).toBe(401);
+    expect(check).toHaveBeenCalledTimes(1);
   });
 
   it('sends a POST again with the same body', async () => {

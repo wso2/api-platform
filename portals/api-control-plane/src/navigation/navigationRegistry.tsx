@@ -26,6 +26,7 @@ import {
   FileCheck,
   FileText,
   Gauge,
+  Laptop,
   LayoutDashboard,
   Logs,
   Megaphone,
@@ -546,8 +547,8 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     // Organization-level admin pages, grouped like Observability. The pages
-    // pages are organization-level routes (`/subscription-plans`, `/meters`). No `requires`, so the
-    // children show at every scope (both tabs are organization-scoped).
+    // pages are organization-level routes (`/subscription-plans`, `/meters`, `/service-accounts`). No
+    // `requires`, so the children show at every scope (all tabs are organization-scoped).
     id: 'manage',
     label: 'Manage',
     group: CLUSTER.operate,
@@ -555,9 +556,11 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <SlidersHorizontal />,
     // Opens whichever of its pages `disableFeatures` leaves on.
     to: orgLevelTo((orgHandle) =>
-      isFeatureDisabled('subscription-plans')
-        ? routes.meters(orgHandle)
-        : routes.subscriptionPlans(orgHandle),
+      !isFeatureDisabled('subscription-plans')
+        ? routes.subscriptionPlans(orgHandle)
+        : !isFeatureDisabled('meters')
+          ? routes.meters(orgHandle)
+          : routes.serviceAccounts(orgHandle),
     ),
     // Never matches: the sidebar highlights the first active item it finds,
     // parents before children, so a parent matching its own pages would take the
@@ -581,6 +584,16 @@ export const navigationRegistry: NavigationDefinition[] = [
         order: 1,
         to: orgLevelTo((orgHandle) => routes.meters(orgHandle)),
         match: matchRoutes(routes.meters()),
+      },
+      {
+        icon: <Laptop />,
+        id: 'manage-service-accounts',
+        label: 'Service Accounts',
+        order: 2,
+        // The page is for administrators; others would only see "forbidden".
+        permission: 'createServiceAccount',
+        to: orgLevelTo((orgHandle) => routes.serviceAccounts(orgHandle)),
+        match: matchRoutes(routes.serviceAccounts()),
       },
     ],
   },
