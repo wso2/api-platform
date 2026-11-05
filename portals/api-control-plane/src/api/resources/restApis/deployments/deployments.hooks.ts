@@ -181,10 +181,10 @@ export const useUndeployDeployment = (overrides: { orgId?: string } = {}) => {
   return useMutation<
     Deployment,
     ApiError,
-    { restApiId: string; deploymentId: string }
+    { restApiId: string; deploymentId: string; gatewayId: string }
   >({
-    mutationFn: ({ restApiId, deploymentId }) =>
-      undeployDeployment(restApiId, deploymentId, { orgId }),
+    mutationFn: ({ restApiId, deploymentId, gatewayId }) =>
+      undeployDeployment(restApiId, deploymentId, gatewayId, { orgId }),
     onSuccess: (_deployment, { restApiId }) => invalidate(restApiId),
   });
 };
@@ -196,10 +196,10 @@ export const useRestoreDeployment = (overrides: { orgId?: string } = {}) => {
   return useMutation<
     Deployment,
     ApiError,
-    { restApiId: string; deploymentId: string }
+    { restApiId: string; deploymentId: string; gatewayId: string }
   >({
-    mutationFn: ({ restApiId, deploymentId }) =>
-      restoreDeployment(restApiId, deploymentId, { orgId }),
+    mutationFn: ({ restApiId, deploymentId, gatewayId }) =>
+      restoreDeployment(restApiId, deploymentId, gatewayId, { orgId }),
     onSuccess: (_deployment, { restApiId }) => invalidate(restApiId),
   });
 };

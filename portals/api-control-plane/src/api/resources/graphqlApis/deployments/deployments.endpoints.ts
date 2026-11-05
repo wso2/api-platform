@@ -83,29 +83,34 @@ export const deployApi = async (
   });
 };
 
-/** Takes a deployment out of service while keeping its record. */
+/**
+ * Takes a deployment out of service while keeping its record. `gatewayId` must
+ * be the deployment's own gateway; the server rejects any other.
+ */
 export const undeployDeployment = async (
   graphqlApiId: string,
   deploymentId: string,
+  gatewayId: string,
   options?: RequestOptions,
 ): Promise<Deployment> => {
   return http.post<Deployment>(
     `${resourcePath(graphqlApiId, deploymentId)}/undeploy`,
     undefined,
-    { ...options, operationName: 'UndeployGraphQLAPIDeployment' },
+    { ...options, query: { gatewayId }, operationName: 'UndeployGraphQLAPIDeployment' },
   );
 };
 
-/** Returns a previously undeployed deployment to service. */
+/** Returns a previously undeployed deployment to service on its own `gatewayId`. */
 export const restoreDeployment = async (
   graphqlApiId: string,
   deploymentId: string,
+  gatewayId: string,
   options?: RequestOptions,
 ): Promise<Deployment> => {
   return http.post<Deployment>(
     `${resourcePath(graphqlApiId, deploymentId)}/restore`,
     undefined,
-    { ...options, operationName: 'RestoreGraphQLAPIDeployment' },
+    { ...options, query: { gatewayId }, operationName: 'RestoreGraphQLAPIDeployment' },
   );
 };
 

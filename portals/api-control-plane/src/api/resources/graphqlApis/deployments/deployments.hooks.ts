@@ -125,9 +125,13 @@ export const useUndeployDeployment = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
   const invalidate = useInvalidateDeployments(orgId);
 
-  return useMutation<Deployment, ApiError, { graphqlApiId: string; deploymentId: string }>({
-    mutationFn: ({ graphqlApiId, deploymentId }) =>
-      undeployDeployment(graphqlApiId, deploymentId, { orgId }),
+  return useMutation<
+    Deployment,
+    ApiError,
+    { graphqlApiId: string; deploymentId: string; gatewayId: string }
+  >({
+    mutationFn: ({ graphqlApiId, deploymentId, gatewayId }) =>
+      undeployDeployment(graphqlApiId, deploymentId, gatewayId, { orgId }),
     onSuccess: (_deployment, { graphqlApiId }) => invalidate(graphqlApiId),
   });
 };
@@ -136,9 +140,13 @@ export const useRestoreDeployment = (overrides: { orgId?: string } = {}) => {
   const { orgId } = useApiScope(overrides);
   const invalidate = useInvalidateDeployments(orgId);
 
-  return useMutation<Deployment, ApiError, { graphqlApiId: string; deploymentId: string }>({
-    mutationFn: ({ graphqlApiId, deploymentId }) =>
-      restoreDeployment(graphqlApiId, deploymentId, { orgId }),
+  return useMutation<
+    Deployment,
+    ApiError,
+    { graphqlApiId: string; deploymentId: string; gatewayId: string }
+  >({
+    mutationFn: ({ graphqlApiId, deploymentId, gatewayId }) =>
+      restoreDeployment(graphqlApiId, deploymentId, gatewayId, { orgId }),
     onSuccess: (_deployment, { graphqlApiId }) => invalidate(graphqlApiId),
   });
 };
