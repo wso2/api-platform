@@ -50,7 +50,7 @@
     "@tanstack/react-query": "5.101.0",
     "@wso2/oxygen-ui": "0.19.0",
     "@wso2/oxygen-ui-icons-react": "0.19.0",
-    "axios": "1.19.0",
+    "axios": "1.20.0",
     "graphiql": "5.4.0",
     "graphql": "^17.0.2",
     "js-yaml": "4.3.2",
@@ -100,6 +100,6 @@
     "vitest": "2.1.8"
   },
   "overrides": {
-    "dompurify": "3.4.14"
+    "dompurify": "3.4.17"
   }
 }
