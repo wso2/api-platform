@@ -124,12 +124,7 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		samplingRate = 1.0 // Default to sampling all requests
 	}
 
-	var sampler sdktrace.Sampler
-	if samplingRate >= 1.0 {
-		sampler = sdktrace.AlwaysSample()
-	} else {
-		sampler = sdktrace.TraceIDRatioBased(samplingRate)
-	}
+	sampler := newSampler(samplingRate)
 
 	slog.InfoContext(ctx, "Using trace sampler", "sampling_rate", samplingRate)
 
@@ -165,6 +160,27 @@ func InitTracer(cfg *config.Config) (func(), error) {
 			slog.ErrorContext(ctx, "Error shutting down tracer provider", "error", err)
 		}
 	}, nil
+}
+
+// newSampler creates a ParentBased sampler with a root sampler derived from samplingRate.
+// ParentBased ensures that if a parent span context exists (e.g. from an incoming traceparent header),
+// the parent's sampling decision is honored. The root sampler is only consulted when there is no parent context.
+// When samplingRate <= 0.0, it defaults to 1.0 (AlwaysSample).
+// For samplingRate >= 1.0, the root sampler is AlwaysSample.
+// Otherwise, the root sampler is TraceIDRatioBased(samplingRate).
+func newSampler(samplingRate float64) sdktrace.Sampler {
+	if samplingRate <= 0.0 {
+		samplingRate = 1.0
+	}
+
+	var rootSampler sdktrace.Sampler
+	if samplingRate >= 1.0 {
+		rootSampler = sdktrace.AlwaysSample()
+	} else {
+		rootSampler = sdktrace.TraceIDRatioBased(samplingRate)
+	}
+
+	return sdktrace.ParentBased(rootSampler)
 }
 
 // ExtractTraceContext extracts the W3C Trace Context (traceparent/tracestate)

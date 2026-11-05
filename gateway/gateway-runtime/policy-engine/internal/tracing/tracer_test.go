@@ -33,6 +33,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 // =============================================================================
@@ -848,3 +849,159 @@ func TestInitTracer_SecureConnectionWithoutCerts(t *testing.T) {
 	require.NotNil(t, shutdown)
 	defer shutdown()
 }
+
+func TestNewSampler_Descriptions(t *testing.T) {
+	testCases := []struct {
+		name         string
+		samplingRate float64
+		containsRoot string
+	}{
+		{
+			name:         "rate 1.0 uses AlwaysOnSampler",
+			samplingRate: 1.0,
+			containsRoot: "root:AlwaysOnSampler",
+		},
+		{
+			name:         "rate > 1.0 uses AlwaysOnSampler",
+			samplingRate: 1.5,
+			containsRoot: "root:AlwaysOnSampler",
+		},
+		{
+			name:         "rate 0.0 defaults to 1.0 AlwaysOnSampler",
+			samplingRate: 0.0,
+			containsRoot: "root:AlwaysOnSampler",
+		},
+		{
+			name:         "negative rate defaults to 1.0 AlwaysOnSampler",
+			samplingRate: -0.5,
+			containsRoot: "root:AlwaysOnSampler",
+		},
+		{
+			name:         "fractional rate uses TraceIDRatioBased",
+			samplingRate: 0.5,
+			containsRoot: "root:TraceIDRatioBased{0.5}",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			sampler := newSampler(tc.samplingRate)
+			desc := sampler.Description()
+			assert.Contains(t, desc, "ParentBased{")
+			assert.Contains(t, desc, tc.containsRoot)
+		})
+	}
+}
+
+func TestNewSampler_ParentSamplingDecision(t *testing.T) {
+	traceID := trace.TraceID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	spanID := trace.SpanID{1, 2, 3, 4, 5, 6, 7, 8}
+
+	t.Run("remote parent not sampled drops span even with sampling rate 1.0", func(t *testing.T) {
+		sampler := newSampler(1.0)
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(sampler))
+		tr := tp.Tracer("test")
+
+		// Create remote parent with sampled=false (flag 00)
+		parentSC := trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    traceID,
+			SpanID:     spanID,
+			TraceFlags: 0,
+			Remote:     true,
+		})
+		ctx := trace.ContextWithRemoteSpanContext(context.Background(), parentSC)
+
+		_, span := tr.Start(ctx, "child-span")
+		defer span.End()
+
+		assert.False(t, span.SpanContext().IsSampled(),
+			"child span must not be sampled when remote parent is not sampled (prevents orphan spans)")
+	})
+
+	t.Run("remote parent sampled keeps span sampled", func(t *testing.T) {
+		sampler := newSampler(0.01) // even with very low sampling rate, parent decision is respected
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(sampler))
+		tr := tp.Tracer("test")
+
+		// Create remote parent with sampled=true (flag 01)
+		parentSC := trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    traceID,
+			SpanID:     spanID,
+			TraceFlags: trace.FlagsSampled,
+			Remote:     true,
+		})
+		ctx := trace.ContextWithRemoteSpanContext(context.Background(), parentSC)
+
+		_, span := tr.Start(ctx, "child-span")
+		defer span.End()
+
+		assert.True(t, span.SpanContext().IsSampled(),
+			"child span must be sampled when remote parent is sampled")
+	})
+
+	t.Run("local parent not sampled drops child span", func(t *testing.T) {
+		sampler := newSampler(1.0)
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(sampler))
+		tr := tp.Tracer("test")
+
+		parentSC := trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    traceID,
+			SpanID:     spanID,
+			TraceFlags: 0,
+			Remote:     false,
+		})
+		ctx := trace.ContextWithSpanContext(context.Background(), parentSC)
+
+		_, span := tr.Start(ctx, "child-span")
+		defer span.End()
+
+		assert.False(t, span.SpanContext().IsSampled(),
+			"child span must not be sampled when local parent is not sampled")
+	})
+
+	t.Run("root span with default rate 1.0 is sampled", func(t *testing.T) {
+		sampler := newSampler(1.0)
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(sampler))
+		tr := tp.Tracer("test")
+
+		_, span := tr.Start(context.Background(), "root-span")
+		defer span.End()
+
+		assert.True(t, span.SpanContext().IsSampled(),
+			"root span must be sampled when sampling rate is 1.0")
+	})
+}
+
+func TestExtractTraceContext_ParentSamplingIntegration(t *testing.T) {
+	setupPropagator()
+	sampler := newSampler(1.0)
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(sampler))
+	tr := tp.Tracer("test")
+
+	t.Run("incoming traceparent with not sampled flag 00 produces unsampled span", func(t *testing.T) {
+		carrier := propagation.MapCarrier{
+			"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00",
+		}
+		ctx := ExtractTraceContext(context.Background(), carrier)
+
+		_, span := tr.Start(ctx, "policy-engine-span")
+		defer span.End()
+
+		assert.False(t, span.SpanContext().IsSampled(),
+			"policy engine must not sample when incoming traceparent has flag 00")
+	})
+
+	t.Run("incoming traceparent with sampled flag 01 produces sampled span", func(t *testing.T) {
+		carrier := propagation.MapCarrier{
+			"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		}
+		ctx := ExtractTraceContext(context.Background(), carrier)
+
+		_, span := tr.Start(ctx, "policy-engine-span")
+		defer span.End()
+
+		assert.True(t, span.SpanContext().IsSampled(),
+			"policy engine must sample when incoming traceparent has flag 01")
+	})
+}
+
