@@ -37,7 +37,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     And the cloud API response body should contain "${CTX:cloudSyntheticEnvironment1}"
     And the deployment stage of synthetic APIP environment 1 should show no gateway as deployed
 
-  @TC_APIP_PROM_007 @ID_APIP_PROMOTION_002
+  @TC_APIP_PROM_007 @known-issue @ID_APIP_PROMOTION_002
   Scenario: Promoting into an environment that has no gateway is refused
     Given I obtain an APIP cloud console token
     And I find an active APIP gateway

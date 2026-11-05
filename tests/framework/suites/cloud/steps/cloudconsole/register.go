@@ -129,7 +129,6 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerGatewaySteps(sc)
 	s.registerGatewayConfigSteps(sc)
 	s.registerPromotionSteps(sc)
-	s.registerResilienceSteps(sc)
 	s.registerSecretSteps(sc)
 	s.registerProjectSteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
@@ -216,16 +215,6 @@ func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I write the gateway configuration path "([^"]*)" with a string of (\d+) characters$`, s.writeLongString)
 	sc.Step(`^I write each of these gateway configuration values separately:$`, s.writeEachValue)
 	sc.Step(`^every one of those writes should have been refused as invalid$`, s.assertEveryWriteRejected)
-}
-
-// registerResilienceSteps binds the steps that send oversized requests and reach a backend that
-// is not there.
-func (s *Steps) registerResilienceSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a body of (\d+) (KiB|MiB) until status (\d+)$`, s.sendSizedUntilStatus)
-	sc.Step(`^a (chunked )?"([^"]*)" request to "([^"]*)" with a body of (\d+) (KiB|MiB) should be refused as too large$`, s.assertOversizedRefused)
-	sc.Step(`^an unreachable backend is available for deployment overrides$`, s.useUnreachableBackend)
-	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the gateway routes it$`, s.sendUntilRouted)
-	sc.Step(`^the gateway response should be the router's documented failure for an unreachable backend$`, s.assertRouterFailure)
 }
 
 // registerSecretSteps binds the steps that create, rotate, read and delete a secret and read back

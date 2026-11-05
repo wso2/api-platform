@@ -45,6 +45,11 @@ type EnvironmentConfig struct {
 // EnvironmentEntry contains non-secret endpoint data for one cloud environment.
 type EnvironmentEntry struct {
 	CloudBaseDomain string
+
+	// PlatformAPIEndpoint, when set, is the apip-platform-api endpoint used as it is instead of
+	// the one derived from CloudBaseDomain. It exists for a cloud that runs on the developer's
+	// machine, whose gateway is plain HTTP on a .localhost host and a port.
+	PlatformAPIEndpoint string
 }
 
 // LoadEnvironmentConfig loads and validates an environment mapping from TOML.
@@ -85,9 +90,33 @@ func LoadEnvironmentConfig(path string) (EnvironmentConfig, error) {
 		if err := validateDomain(domain); err != nil {
 			return EnvironmentConfig{}, fmt.Errorf("cloud-console: environment %q in %q: %w", name, path, err)
 		}
-		config.Environments[name] = EnvironmentEntry{CloudBaseDomain: strings.TrimSpace(domain)}
+		resolved := EnvironmentEntry{CloudBaseDomain: strings.TrimSpace(domain)}
+		if rawEndpoint, present := entry["platform_api_endpoint"]; present {
+			endpoint, ok := rawEndpoint.(string)
+			if !ok {
+				return EnvironmentConfig{}, fmt.Errorf("cloud-console: environment %q in %q: platform_api_endpoint must be a string", name, path)
+			}
+			if err := validatePlatformAPIEndpoint(endpoint); err != nil {
+				return EnvironmentConfig{}, fmt.Errorf("cloud-console: environment %q in %q: %w", name, path, err)
+			}
+			resolved.PlatformAPIEndpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+		}
+		config.Environments[name] = resolved
 	}
 	return config, nil
+}
+
+// Entry returns the configured entry for an environment.
+func (c EnvironmentConfig) Entry(environment string) (EnvironmentEntry, error) {
+	environment = strings.TrimSpace(environment)
+	if err := validateEnvironmentName(environment); err != nil {
+		return EnvironmentEntry{}, fmt.Errorf("cloud-console: %w", err)
+	}
+	entry, ok := c.Environments[environment]
+	if !ok {
+		return EnvironmentEntry{}, fmt.Errorf("cloud-console: environment %q is not configured", environment)
+	}
+	return entry, nil
 }
 
 // Domain returns the configured cloud base domain for an environment.
@@ -125,6 +154,38 @@ func validateDomain(domain string) error {
 	return nil
 }
 
+// validatePlatformAPIEndpoint accepts an absolute HTTPS URL, or an HTTP URL only on a .localhost
+// host: the console token travels in the Authorization header, so it must never cross a network
+// in the clear.
+func validatePlatformAPIEndpoint(endpoint string) error {
+	endpoint = strings.TrimSpace(endpoint)
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Host == "" || parsed.Hostname() == "" {
+		return fmt.Errorf("platform_api_endpoint %q must be an absolute URL", endpoint)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("platform_api_endpoint %q must not contain credentials, a query or a fragment", endpoint)
+	}
+	switch parsed.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if !isLocalhostName(parsed.Hostname()) {
+			return fmt.Errorf("platform_api_endpoint %q uses plain http, which is allowed only on a .localhost host", endpoint)
+		}
+		return nil
+	default:
+		return fmt.Errorf("platform_api_endpoint %q must use https, or http on a .localhost host", endpoint)
+	}
+}
+
+// isLocalhostName reports whether host is a name under .localhost, which resolves to the
+// loopback address. IP literals are not accepted.
+func isLocalhostName(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	return host == "localhost" || strings.HasSuffix(host, ".localhost")
+}
+
 func resolveEndpoints(repoRoot string, parameters map[string]string) (map[string]string, error) {
 	if strings.TrimSpace(repoRoot) == "" {
 		return nil, fmt.Errorf("repository root is required")
@@ -140,12 +201,16 @@ func resolveEndpoints(repoRoot string, parameters map[string]string) (map[string
 	if err != nil {
 		return nil, err
 	}
-	domain, err := config.Domain(environment)
+	entry, err := config.Entry(environment)
 	if err != nil {
 		return nil, err
 	}
+	platformAPI := entry.PlatformAPIEndpoint
+	if platformAPI == "" {
+		platformAPI = "https://" + environment + "-wso2cloud.gateway." + entry.CloudBaseDomain + "/apip-platform-api-apip-platform-api-endpoint/api/v0.9"
+	}
 	endpoints := map[string]string{
-		EndpointAPIPPlatformAPI: "https://" + environment + "-wso2cloud.gateway." + domain + "/apip-platform-api-apip-platform-api-endpoint/api/v0.9",
+		EndpointAPIPPlatformAPI: platformAPI,
 	}
 	for name, endpoint := range endpoints {
 		parsed, parseErr := url.Parse(endpoint)

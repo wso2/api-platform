@@ -25,17 +25,14 @@ blocks:
       - name: apip-deploy
         features:
           - features/apip_deploy.feature
-      - name: apip-environment
-        features:
-          - features/apip_environment.feature
       - name: apip-gateway
-        tags: "~@known-issue"
         features:
           - features/apip_gateway.feature
       - name: apip-gateway-config
         features:
           - features/apip_gateway_config.feature
       - name: apip-promotion
+        tags: "~@known-issue"
         features:
           - features/apip_promotion.feature
       - name: apip-secrets

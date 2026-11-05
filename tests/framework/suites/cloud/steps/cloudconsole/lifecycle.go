@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -297,6 +298,32 @@ var approvedCloudDataPlaneHost = regexp.MustCompile(
 	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
 )
 
+// cloudLocalDataPlaneEnv, when set to a true value, also approves gateway URLs on a .localhost
+// host over http or https and any port: the data plane of a cloud that runs on the developer's
+// machine. It is off by default, and no other destination is widened.
+const cloudLocalDataPlaneEnv = "CLOUD_IT_LOCAL_DATA_PLANE"
+
+var approvedLocalDataPlaneHost = regexp.MustCompile(
+	`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$`,
+)
+
+func localDataPlaneEnabled() bool {
+	enabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(cloudLocalDataPlaneEnv)))
+	return err == nil && enabled
+}
+
+// approvedLocalDataPlaneTarget reports whether target is an http(s) URL on a named .localhost
+// host with no credentials. IP literals never match.
+func approvedLocalDataPlaneTarget(parsed *url.URL) bool {
+	if parsed.User != nil || parsed.Host == "" {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return approvedLocalDataPlaneHost.MatchString(strings.ToLower(parsed.Hostname()))
+}
+
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
 	if s != nil && s.dataPlaneURLResolver != nil {
 		return s.dataPlaneURLResolver(ctx, target)
@@ -323,6 +350,9 @@ func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) 
 	parsed, err := url.Parse(target)
 	if err != nil {
 		return "", fmt.Errorf("invalid cloud data-plane URL %q: %w", target, err)
+	}
+	if localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed) {
+		return target, nil
 	}
 	if parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 		return "", fmt.Errorf("cloud data-plane target must be an approved HTTPS URL, got %q", target)

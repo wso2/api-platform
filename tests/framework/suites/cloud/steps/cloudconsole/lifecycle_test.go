@@ -2507,177 +2507,6 @@ func TestWriteEachValueRecordsEveryAnswer(t *testing.T) {
 	require.Error(t, steps.writeEachValue(ctx, valuesTable(t, []string{"path"})))
 }
 
-func TestBodyBytesAndSizedJSONBody(t *testing.T) {
-	size, err := bodyBytes(2, "MiB")
-	require.NoError(t, err)
-	require.Equal(t, 2<<20, size)
-	size, err = bodyBytes(3, "KiB")
-	require.NoError(t, err)
-	require.Equal(t, 3<<10, size)
-	for _, bad := range []struct {
-		count int
-		unit  string
-	}{{0, "KiB"}, {-1, "MiB"}, {1, "GiB"}} {
-		_, err := bodyBytes(bad.count, bad.unit)
-		require.Error(t, err, "%d %s", bad.count, bad.unit)
-	}
-
-	for _, want := range []int{11, 1 << 10, 2 << 20} {
-		body, err := sizedJSONBody(want)
-		require.NoError(t, err)
-		require.Len(t, body, want)
-		require.True(t, json.Valid(body), "a body of %d bytes is still JSON", want)
-	}
-	_, err = sizedJSONBody(10)
-	require.ErrorContains(t, err, "at least")
-}
-
-func TestConnectionCut(t *testing.T) {
-	for _, cut := range []error{
-		io.EOF, io.ErrUnexpectedEOF, errors.New("write tcp: connection reset by peer"),
-		errors.New("write: broken pipe"), errors.New(`http2: stream error: stream ID 3; CANCEL`),
-	} {
-		require.True(t, connectionCut(cut), cut.Error())
-	}
-	for _, other := range []error{errors.New("no such host"), errors.New("x509: certificate signed by unknown authority"), context.DeadlineExceeded} {
-		require.False(t, connectionCut(other), other.Error())
-	}
-}
-
-func TestJudgeOversizedRequest(t *testing.T) {
-	respond := func(status int) *httpx.Response {
-		return &httpx.Response{StatusCode: status, Method: "POST", URL: "https://gw/x"}
-	}
-	require.NoError(t, judgeOversizedRequest(respond(http.StatusRequestEntityTooLarge), nil, 100))
-	require.NoError(t, judgeOversizedRequest(respond(http.StatusBadRequest), nil, 100))
-	require.NoError(t, judgeOversizedRequest(nil, io.ErrUnexpectedEOF, 100), "a connection ended before the body was accepted is a refusal")
-
-	for _, accepted := range []int{http.StatusOK, http.StatusCreated, http.StatusFound} {
-		require.ErrorContains(t, judgeOversizedRequest(respond(accepted), nil, 2<<20), "passed it on to the upstream")
-	}
-	for _, other := range []int{http.StatusNotFound, http.StatusUnauthorized, http.StatusServiceUnavailable} {
-		require.ErrorContains(t, judgeOversizedRequest(respond(other), nil, 100), "want a refusal")
-	}
-	require.ErrorContains(t, judgeOversizedRequest(nil, errors.New("no such host"), 100), "without the gateway refusing")
-	require.ErrorContains(t, judgeOversizedRequest(nil, nil, 100), "no response")
-}
-
-func TestSendSizedUntilStatusPollsWithABody(t *testing.T) {
-	var mu sync.Mutex
-	calls, lastBytes := 0, 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		mu.Lock()
-		calls++
-		attempt := calls
-		lastBytes = len(raw)
-		mu.Unlock()
-		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
-		if attempt == 1 {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.WriteHeader(http.StatusCreated)
-	}))
-	defer server.Close()
-	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
-
-	require.NoError(t, steps.sendSizedUntilStatus(ctx, "POST", server.URL, 1, "KiB", http.StatusCreated))
-	require.Equal(t, 2, calls)
-	require.Equal(t, 1<<10, lastBytes)
-	require.Error(t, steps.sendSizedUntilStatus(ctx, "POST", server.URL, 1, "KiB", 99))
-}
-
-func TestAssertOversizedRefusedSendsTheBodyWholeOrChunked(t *testing.T) {
-	type seen struct {
-		contentLength int64
-		encoding      []string
-		bytes         int
-	}
-	received := make(chan seen, 4)
-	status := http.StatusRequestEntityTooLarge
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		received <- seen{contentLength: r.ContentLength, encoding: r.TransferEncoding, bytes: len(raw)}
-		w.WriteHeader(status)
-	}))
-	defer server.Close()
-	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
-
-	require.NoError(t, steps.assertOversizedRefused(ctx, "", "POST", server.URL+"/posts", 64, "KiB"))
-	whole := <-received
-	require.Equal(t, int64(64<<10), whole.contentLength)
-	require.Empty(t, whole.encoding)
-	require.Equal(t, 64<<10, whole.bytes)
-
-	require.NoError(t, steps.assertOversizedRefused(ctx, "chunked ", "POST", server.URL+"/posts", 64, "KiB"))
-	chunked := <-received
-	require.Equal(t, int64(-1), chunked.contentLength)
-	require.Equal(t, []string{"chunked"}, chunked.encoding)
-	require.Equal(t, 64<<10, chunked.bytes)
-
-	status = http.StatusCreated
-	require.ErrorContains(t, steps.assertOversizedRefused(ctx, "", "POST", server.URL+"/posts", 64, "KiB"), "passed it on")
-	require.ErrorContains(t, steps.assertOversizedRefused(ctx, "", "POST", server.URL+"/posts", 64, "GiB"), "unsupported body size unit")
-}
-
-func TestJudgeRouterFailure(t *testing.T) {
-	respond := func(status int, body string) *httpx.Response {
-		return &httpx.Response{StatusCode: status, Body: []byte(body), Method: "GET", URL: "https://gw/x"}
-	}
-	require.NoError(t, judgeRouterFailure(respond(http.StatusServiceUnavailable, "no healthy upstream"), "backend-unavailable.invalid"))
-	require.NoError(t, judgeRouterFailure(respond(http.StatusGatewayTimeout, "upstream request timeout"), ""))
-
-	for _, status := range []int{http.StatusBadRequest, http.StatusBadGateway, http.StatusInternalServerError, http.StatusOK} {
-		require.ErrorContains(t, judgeRouterFailure(respond(status, "x"), ""), "want the router's 503 or 504")
-	}
-	require.ErrorContains(t, judgeRouterFailure(respond(503, "goroutine 1 [running]"), ""), "exposes server detail")
-	require.ErrorContains(t, judgeRouterFailure(respond(503, "java.lang.NullPointerException at x"), ""), "exposes server detail")
-	require.ErrorContains(t, judgeRouterFailure(respond(503, "cannot reach Backend-Unavailable.invalid"), "backend-unavailable.invalid"), "names the backend host")
-}
-
-func TestAssertRouterFailureReadsTheScenarioBackend(t *testing.T) {
-	status := http.StatusServiceUnavailable
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte("no healthy upstream"))
-	}))
-	defer server.Close()
-	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
-	require.NoError(t, steps.useUnreachableBackend(ctx))
-	require.Equal(t, unreachableBackend, optionalValue(ctx, keyUnreachableBackendURL))
-
-	require.NoError(t, steps.sendUntilRouted(ctx, "GET", server.URL))
-	require.NoError(t, steps.assertRouterFailure(ctx))
-
-	status = http.StatusBadRequest
-	require.NoError(t, steps.sendUntilRouted(ctx, "GET", server.URL))
-	require.ErrorContains(t, steps.assertRouterFailure(ctx), "want the router's 503 or 504")
-}
-
-func TestSendUntilRoutedWaitsPastNotFound(t *testing.T) {
-	var mu sync.Mutex
-	calls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		mu.Lock()
-		calls++
-		attempt := calls
-		mu.Unlock()
-		if attempt < 3 {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer server.Close()
-	steps, ctx, _ := dataPlaneSteps(t, func(http.ResponseWriter, *http.Request) {})
-	require.NoError(t, steps.sendUntilRouted(ctx, "GET", server.URL))
-	require.Equal(t, 3, calls)
-	published, err := httpx.Published(ctx)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusServiceUnavailable, published.StatusCode)
-}
-
 func TestSecretReferenceEscapesTheQuotesForJSON(t *testing.T) {
 	reference := secretReference("syn-sec-1")
 	require.Equal(t, `{{ secret \"syn-sec-1\" }}`, reference)
@@ -3034,3 +2863,44 @@ const promotionStages = `{"list":[
 	{"environment":"dev","gateways":[{"gatewayId":"gw-dev","status":"DEPLOYED","buildId":"2026-01-31-1"}]},
 	{"environment":"env-1","gateways":[{"gatewayId":"gw-1","status":"NOT_DEPLOYED"}]},
 	{"environment":"env-2","gateways":[]}]}`
+
+func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) {
+	local := []string{
+		"http://gw-development.openchoreoapis.localhost:19080/api",
+		"https://gw-development.openchoreoapis.localhost:19443/api",
+		"http://gw.localhost/api",
+	}
+	t.Run("off by default", func(t *testing.T) {
+		for _, target := range local {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.Error(t, err, target)
+		}
+	})
+	t.Run("a false value leaves it off", func(t *testing.T) {
+		t.Setenv(cloudLocalDataPlaneEnv, "false")
+		_, err := resolveCloudDataPlaneURL(context.Background(), local[0])
+		require.Error(t, err)
+	})
+	t.Run("on approves named localhost hosts", func(t *testing.T) {
+		t.Setenv(cloudLocalDataPlaneEnv, "true")
+		for _, target := range local {
+			got, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.NoError(t, err, target)
+			require.Equal(t, target, got)
+		}
+	})
+	t.Run("on widens nothing else", func(t *testing.T) {
+		t.Setenv(cloudLocalDataPlaneEnv, "true")
+		for _, target := range []string{
+			"http://127.0.0.1:19080/api", "http://[::1]:19080/api", "http://localhost:19080/api",
+			"http://gateway.example.com/api", "http://gw.localhost.evil.example/api",
+			"http://user:password@gw.localhost/api", "ftp://gw.localhost/api", "gw.localhost/api",
+			"http://synthetic-wso2cloud.gateway.development.example/api",
+		} {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.Error(t, err, target)
+		}
+		_, err := resolveCloudDataPlaneURL(context.Background(), "https://synthetic-wso2cloud.gateway.wso2.com/api")
+		require.NoError(t, err, "the cloud hosts stay approved")
+	})
+}
