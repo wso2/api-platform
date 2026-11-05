@@ -15,6 +15,21 @@
   </div>
 </div>
 
+<!-- Replace content modal -->
+<div class="cfg-modal-overlay" id="cfg-replace-content-modal" style="display:none;">
+  <div class="cfg-modal" role="dialog" aria-modal="true" aria-labelledby="cfg-replace-content-title">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-arrow-repeat"></i></span>
+      <h2 class="cfg-modal-title" id="cfg-replace-content-title">Replace all content?</h2>
+    </div>
+    <p class="cfg-modal-body">This replaces all documents, links, the landing page, its images and the thumbnail of <strong id="cfg-replace-content-api"></strong> with the content of <strong id="cfg-replace-content-zip"></strong>. Continue?</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-replace-content-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-replace-content-confirm">Replace content</button>
+    </div>
+  </div>
+</div>
+
 <!-- Deprecate API modal -->
 <div class="cfg-modal-overlay" id="cfg-deprecate-api-modal" style="display:none;">
   <div class="cfg-modal">

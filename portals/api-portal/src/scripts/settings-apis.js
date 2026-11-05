@@ -32,7 +32,11 @@
   var allPolicies = [];
   var policyChips = [];
   var contentZipFile = null;
-  var hasContentStep = false;   /* the Content step exists only for existing, non-MCP APIs */
+  var assetsMode = 'docs';       /* Assets view: 'docs' (upload documents) or 'import' (import a content ZIP) */
+  var thumbnailChange = { action: 'none' }; /* 'none', 'replace' (with file) or 'remove'; the last choice wins */
+  var currentThumb = null;                  /* { name, src } of the saved thumbnail, or null */
+  var thumbObjectUrl = null;
+  var skipImportConfirm = false; /* the API was created in this wizard run; its first import replaces nothing */
   var wizardOrigin = 'cfg-apis'; /* tab that launched the wizard: 'cfg-apis' or 'cfg-mcps' */
   /* MCP is created via its own flow (type field hidden, always 'Mcp'); the API-type
      dropdown only offers the user-selectable API types. wizardEditType preserves the
@@ -83,6 +87,12 @@
     Mcp:       { av:'cfg-api-avatar--mcp',     tb:'cfg-type-badge--mcp',     label:'MCP' },
   };
   function typeInfo(t) { return typeMap[t] || typeMap['RestApi']; }
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+  function noun() { return wizardIsMcp ? 'MCP server' : 'API'; }
   function initials(name) { var w=String(name||'').trim().split(/\s+/); return (w[0]?w[0][0]:'') + (w[1]?w[1][0]:''); }
 
   /* ── org-label picker (toggle chips), same UX as the Views modal ── */
@@ -296,17 +306,14 @@
     /* MCP servers carry a tools schema instead of an API contract — relabel the Spec step. */
     var specStepLabel = document.querySelector('#cfg-apis-wizard .cfg-step[data-step="1"] .cfg-step-label');
     if (specStepLabel) specStepLabel.textContent = isMcp ? 'Tools Schema' : 'Spec';
-    var specDesc = document.querySelector('#cfg-wstep-1 .cfg-wstep-desc');
-    if (specDesc) specDesc.innerHTML = isMcp
-      ? 'Upload the MCP tools schema that defines this server’s tools. <span class="required">*</span> Required. Accepted: YAML or JSON (e.g. <code>definition.yaml</code>).'
-      : 'Upload the contract that defines this API. <span class="required">*</span> Required. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).';
-    var specOnFileTxt = document.querySelector('#wz-spec-onfile span');
-    if (specOnFileTxt) specOnFileTxt.textContent = isMcp
-      ? 'Existing tools schema on file — attach a new file above to replace it'
-      : 'Existing spec on file — attach a new file above to replace it';
+    document.querySelectorAll('#cfg-apis-wizard .wz-noun').forEach(function(el) { el.textContent = noun(); });
 
     currentStep = 0; specFile = null; docFiles = []; handleTouched = false;
-    editMode = !!api; existingDocs = []; docsToRemove = [];
+    editMode = !!api; existingDocs = []; docsToRemove = []; skipImportConfirm = false;
+    thumbnailChange = { action: 'none' };
+    currentThumb = api && api.thumbnailFileName
+      ? { name: api.thumbnailFileName, src: api.thumbnailUrl }
+      : null;
 
     if (api) {
       /* edit mode */
@@ -335,11 +342,11 @@
       setSelectedPolicies(api.subscriptionPlans || []);
       setSelectedLabels(api.labels || []);
       /* existing docs are embedded server-side in cfg-org-apis-data */
-      existingDocs = api.existingDocs || [];
+      existingDocs = (api.existingDocs || []).filter(function(n, i, all) { return all.indexOf(n) === i; });
     } else {
       /* add mode */
       editingId = null;
-      document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Add MCP Server' : 'Add API';
+      document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Create MCP Server' : 'Create API';
       ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
       setTags([]);
       document.getElementById('wz-handle').readOnly = false;
@@ -364,24 +371,16 @@
       var el = document.getElementById(fid); if (el) el.classList.remove('cfg-form-input--error');
     });
 
-    document.getElementById('wz-spec-chip').classList.remove('visible');
+    document.getElementById('wz-spec-input').value = '';
     var specErrEl = document.getElementById('wz-spec-error');
     if (specErrEl) specErrEl.style.display = 'none';
-    var specOnFile = document.getElementById('wz-spec-onfile');
-    if (specOnFile) specOnFile.style.display = editMode ? 'flex' : 'none';
-    document.getElementById('wz-docs-list').innerHTML = '';
-    renderExistingDocs();
-    document.getElementById('wz-docs-empty').style.display = 'block';
-
-    /* The Content step (landing page & assets) exists only for existing, non-MCP APIs.
-       The /apis/{handle}/assets endpoint resolves only REST/SOAP/WS/WebSub/GraphQL APIs;
-       MCP servers manage content via /mcp-servers/{id}/assets instead. */
-    hasContentStep = editMode && !!api && api.apiType !== 'Mcp';
-    var contentStepEl = document.getElementById('cfg-step-content');
-    var contentConnEl = document.getElementById('cfg-step-connector-content');
-    if (contentStepEl) contentStepEl.style.display = hasContentStep ? '' : 'none';
-    if (contentConnEl) contentConnEl.style.display = hasContentStep ? '' : 'none';
+    renderSpecStep();
+    showThumbError('');
+    renderThumbnail();
+    updateSubtitle();
+    renderDocs();
     resetContentUpload();
+    setAssetsMode('docs');
 
     updateWizardStep(0);
   }
@@ -397,9 +396,8 @@
   /* ── step navigation ── */
   function updateWizardStep(step) {
     currentStep = step;
-    /* Content (step 3) is the terminal step when present (edit, non-MCP); otherwise Documentation (2). */
-    var lastStep = hasContentStep ? 3 : 2;
-    for (var i=0; i<4; i++) {
+    var lastStep = 2;
+    for (var i=0; i<3; i++) {
       var p = document.getElementById('cfg-wstep-'+i);
       if (p) p.style.display = i===step ? 'flex' : 'none';
     }
@@ -415,7 +413,8 @@
     var backBtn = document.getElementById('cfg-wizard-back-step');
     var nextBtn = document.getElementById('cfg-wizard-next');
     backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
-    nextBtn.textContent = step === lastStep ? (editingId ? 'Save changes' : 'Save API') : 'Next';
+    nextBtn.textContent = step === lastStep ? (editingId ? 'Save changes' : 'Create ' + noun()) : 'Next';
+    if (step === 1) renderSpecStep();
     syncWizardNext(); /* step-0 stays disabled until Name/Version/Handle are filled */
     nextBtn.title = '';
   }
@@ -434,18 +433,15 @@
       return;
     }
 
-    /* Type resolution: MCP is always 'Mcp' (field hidden); when editing a type the
-       dropdown doesn't list (WebSub/SOAP), keep the original; otherwise take the
-       user's dropdown choice. */
-    var resolvedType = wizardIsMcp ? 'Mcp'
-      : (editMode && wizardEditType && !TYPE_DROPDOWN_VALUES[wizardEditType]) ? wizardEditType
-      : document.getElementById('wz-type').value;
+    var importing = assetsMode === 'import' && !!contentZipFile;
+    if (importing && editingId && !skipImportConfirm && !(await confirmReplaceContent())) return;
+    var removeOnSave = assetsMode === 'docs' ? docsToRemoveOnSave() : [];
 
     var meta = {
       name:        name,
       version:     version,
       handle:      handle,
-      type:        resolvedType,
+      type:        selectedApiType(),
       status:      document.getElementById('wz-status').value,
       description: v('wz-desc'),
       tags:           getTags(),
@@ -462,7 +458,8 @@
         sandboxURL:    v('wz-sandbox') || undefined,
       },
       subscriptionPlans: selectedPolicies().map(function(n){ return { id: n }; }),
-      docsToRemove: docsToRemove.length ? docsToRemove : undefined,
+      docsToRemove: removeOnSave.length ? removeOnSave : undefined,
+      removeThumbnail: editingId && thumbnailChange.action === 'remove' ? true : undefined,
     };
 
     var fd = new FormData();
@@ -470,7 +467,8 @@
     /* The single `definition` field carries the contract for every type. For MCP servers it is
        the tools schema (stored as SCHEMA_DEFINITION); for other types it is the API definition. */
     if (specFile) fd.append('definition', specFile);
-    docFiles.forEach(function(f) { fd.append('docs', f); });
+    if (assetsMode === 'docs') docFiles.forEach(function(f) { fd.append('docs', f); });
+    if (thumbnailChange.action === 'replace') fd.append('thumbnail', thumbnailChange.file);
 
     /* MCP servers are created/updated via /mcp-servers (which requires type MCP and rejects
        non-MCP); everything else goes through /apis (which rejects MCP). */
@@ -488,15 +486,70 @@
       });
       if (res.ok) {
         var savedNoun = meta.type === 'Mcp' ? 'MCP server' : 'API';
-        await showAlert(savedNoun + (editingId ? ' updated successfully.' : ' created successfully.'), 'success');
+        var created = !editingId;
+        if (importing) {
+          var contentError = await importContent(base, editingId || handle);
+          if (contentError) {
+            if (created) switchToEditAfterCreate(handle);
+            showContentError(contentError);
+            markContentRejected();
+            await showAlert(savedNoun + (created ? ' created' : ' updated') + ', but the content was not imported: ' + contentError, 'error');
+            return;
+          }
+        }
+        await showAlert(savedNoun + (created ? ' created successfully.' : ' updated successfully.'), 'success');
         window.location.reload();
       } else {
         var err = await res.json().catch(function(){ return {}; });
+        var firstError = err.errors && err.errors[0] && err.errors[0].message;
+        if (thumbnailChange.action === 'replace' && firstError === THUMBNAIL_TYPE_MESSAGE) {
+          showThumbError(firstError);
+          updateWizardStep(0);
+          return;
+        }
         await showAlert('Failed: ' + reasonOf(err, res.statusText), 'error');
       }
     } catch(e) {
       await showAlert('Error: ' + e.message, 'error');
     }
+  }
+
+  /* Replaces all content of the API with the selected package. Returns the reason on failure. */
+  async function importContent(base, handle) {
+    try {
+      var fd = new FormData();
+      fd.append('content', contentZipFile);
+      var res = await fetch(window.apiPortalApi.root(base + '/' + encodeURIComponent(handle) + '/assets'), {
+        method: 'PUT',
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+        credentials: 'same-origin',
+        body: fd,
+      });
+      if (res.ok) return '';
+      var err = await res.json().catch(function(){ return {}; });
+      return (err.errors && err.errors[0] && err.errors[0].message) || err.message || res.statusText;
+    } catch (e) {
+      return e.message;
+    }
+  }
+
+  /* The API now exists, so the next Save updates it and retries only the import. */
+  function switchToEditAfterCreate(handle) {
+    editingId = handle;
+    editMode = true;
+    skipImportConfirm = true;
+    specFile = null;
+    document.getElementById('wz-spec-input').value = '';
+    renderSpecStep();
+    if (thumbnailChange.action === 'replace') {
+      currentThumb = { name: 'api-icon.' + (thumbnailChange.file.type === 'image/png' ? 'png' : 'jpg'), src: thumbObjectUrl };
+      thumbnailChange = { action: 'none' };
+      renderThumbnail();
+    }
+    document.getElementById('wz-handle').readOnly = true;
+    document.getElementById('cfg-wizard-title').textContent = wizardIsMcp ? 'Edit MCP Server' : 'Edit API';
+    renderAssetsView();
+    updateWizardStep(2);
   }
 
   /* ── bulk selection (shared by the APIs and MCP tables, each scoped to its own tbody) ── */
@@ -746,9 +799,8 @@
     return u.protocol === 'http:' || u.protocol === 'https:';
   }
 
-  /* The type actually being saved, mirroring saveApi's resolvedType: MCP when the
-     field is hidden, the original type when editing a type the dropdown doesn't list,
-     otherwise the dropdown selection. */
+  /* The type being saved: MCP when the field is hidden, the original type when editing
+     a type the dropdown doesn't list (WebSub/SOAP), otherwise the dropdown selection. */
   function selectedApiType() {
     if (wizardIsMcp) return 'Mcp';
     if (editMode && wizardEditType && !TYPE_DROPDOWN_VALUES[wizardEditType]) return wizardEditType;
@@ -844,8 +896,6 @@
         return;
       }
       updateWizardStep(2);
-    } else if (currentStep === 2 && hasContentStep) {
-      updateWizardStep(3);
     } else {
       await saveApi();
     }
@@ -859,6 +909,36 @@
   });
 
   /* ── Spec ── */
+  var SPEC_FORMATS = { RestApi: 'OpenAPI', WS: 'AsyncAPI', WebSubApi: 'AsyncAPI', GRAPHQL: 'GraphQL SDL', SOAP: 'WSDL' };
+
+  /* The format follows the API type chosen on Details; the file itself is not parsed. */
+  function specFormatLabel() {
+    if (wizardIsMcp) return 'Tools schema';
+    return SPEC_FORMATS[selectedApiType()] || 'OpenAPI';
+  }
+
+  function renderSpecStep() {
+    var desc = document.getElementById('wz-spec-desc');
+    if (wizardIsMcp) {
+      desc.innerHTML = 'Upload the MCP tools schema that defines this server’s tools. <span class="required">*</span> Required. Accepted: YAML or JSON (e.g. <code>definition.yaml</code>).';
+    } else {
+      desc.textContent = editMode ? 'Upload a new spec to replace the current one.' : 'The contract that defines this API. Required.';
+    }
+    document.getElementById('wz-spec-onfile').style.display = editMode ? 'flex' : 'none';
+    document.getElementById('wz-spec-current-title').textContent = wizardIsMcp ? 'Current tools schema' : 'Current spec';
+    document.getElementById('wz-spec-current-sub').textContent = 'On file for this ' + noun();
+    document.getElementById('wz-spec-replaced-tag').hidden = !specFile;
+    document.getElementById('wz-spec-formats').hidden = wizardIsMcp;
+
+    var chip = document.getElementById('wz-spec-chip');
+    chip.classList.toggle('visible', !!specFile);
+    if (specFile) {
+      document.getElementById('wz-spec-name').textContent = specFile.name;
+      document.getElementById('wz-spec-sub').textContent =
+        fmtSize(specFile.size) + ' · ' + specFormatLabel() + ' · uploaded when you save';
+    }
+  }
+
   function handleSpecFile(f) {
     if (!f) return;
     if (!/\.(json|ya?ml|graphql|gql|wsdl|xml)$/i.test(f.name)) {
@@ -866,12 +946,9 @@
       return;
     }
     specFile = f;
-    document.getElementById('wz-spec-name').textContent = f.name;
-    document.getElementById('wz-spec-chip').classList.add('visible');
     var errEl = document.getElementById('wz-spec-error');
     if (errEl) errEl.style.display = 'none';
-    var onFile = document.getElementById('wz-spec-onfile');
-    if (onFile) onFile.style.display = 'none';
+    renderSpecStep();
   }
 
   document.getElementById('wz-spec-input').addEventListener('change', function(e) {
@@ -880,10 +957,84 @@
   document.getElementById('wz-spec-remove').addEventListener('click', function() {
     specFile = null;
     document.getElementById('wz-spec-input').value = '';
-    document.getElementById('wz-spec-chip').classList.remove('visible');
-    var onFile = document.getElementById('wz-spec-onfile');
-    if (onFile) onFile.style.display = editMode ? 'flex' : 'none';
+    renderSpecStep();
   });
+
+  /* ── Thumbnail (Details) ── */
+  var THUMBNAIL_TYPE_MESSAGE = 'Thumbnail must be a PNG or JPEG image.';
+
+  function setThumbPreview(src) {
+    var box = document.getElementById('wz-thumb-preview');
+    box.className = 'cfg-thumb-preview';
+    box.textContent = '';
+    if (src) {
+      var img = document.createElement('img');
+      img.src = src;
+      img.alt = '';
+      box.appendChild(img);
+      return;
+    }
+    box.classList.add('cfg-api-avatar', typeInfo(selectedApiType()).av);
+    box.textContent = initials(v('wz-name')) || '?';
+  }
+
+  function renderThumbnail() {
+    var action = thumbnailChange.action;
+    var tag = document.getElementById('wz-thumb-tag');
+    var name = document.getElementById('wz-thumb-name');
+    if (action === 'replace') {
+      setThumbPreview(thumbObjectUrl);
+      name.textContent = thumbnailChange.file.name;
+      tag.textContent = 'Replaced when you save';
+    } else if (action === 'remove') {
+      setThumbPreview(null);
+      name.textContent = currentThumb.name;
+      tag.textContent = 'Removed when you save';
+    } else {
+      setThumbPreview(currentThumb && currentThumb.src);
+      name.textContent = currentThumb ? currentThumb.name : 'No thumbnail';
+    }
+    tag.hidden = action === 'none';
+    name.classList.toggle('cfg-thumb-name--removed', action === 'remove');
+    document.getElementById('wz-thumb-undo').hidden = action !== 'remove';
+    document.getElementById('wz-thumb-remove').hidden = action === 'remove' || (action === 'none' && !currentThumb);
+  }
+
+  function showThumbError(message) {
+    var el = document.getElementById('wz-thumb-error');
+    el.textContent = message || '';
+    el.style.display = message ? 'block' : 'none';
+  }
+
+  document.getElementById('wz-thumb-input').addEventListener('change', function(e) {
+    var f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    if (thumbObjectUrl && !(currentThumb && currentThumb.src === thumbObjectUrl)) URL.revokeObjectURL(thumbObjectUrl);
+    thumbObjectUrl = URL.createObjectURL(f);
+    thumbnailChange = { action: 'replace', file: f };
+    showThumbError('');
+    renderThumbnail();
+  });
+  document.getElementById('wz-thumb-remove').addEventListener('click', function() {
+    thumbnailChange = currentThumb ? { action: 'remove' } : { action: 'none' };
+    showThumbError('');
+    renderThumbnail();
+  });
+  document.getElementById('wz-thumb-undo').addEventListener('click', function() {
+    thumbnailChange = { action: 'none' };
+    renderThumbnail();
+  });
+  /* The default badge shows the name's initials and the type's colour. */
+  document.getElementById('wz-name').addEventListener('input', function() { if (!thumbnailChange.file) renderThumbnail(); });
+  document.getElementById('wz-type').addEventListener('change', function() { if (!thumbnailChange.file) renderThumbnail(); });
+
+  function updateSubtitle() {
+    document.getElementById('cfg-wizard-subtitle').textContent =
+      [v('wz-name'), v('wz-version')].filter(Boolean).join(' · ');
+  }
+  document.getElementById('wz-name').addEventListener('input', updateSubtitle);
+  document.getElementById('wz-version').addEventListener('input', updateSubtitle);
 
   /* drag & drop on the upload zone */
   (function() {
@@ -908,38 +1059,93 @@
     });
   }());
 
-  /* ── Existing docs (edit mode) ── */
-  function renderExistingDocs() {
-    var list = document.getElementById('wz-existing-docs-list');
-    if (!list) return;
-    list.innerHTML = '';
-    existingDocs.forEach(function(name) {
-      var item = document.createElement('div');
-      item.className = 'cfg-docs-item';
-      item.innerHTML = '<span class="cfg-docs-icon"><i class="bi bi-file-text"></i></span>' +
-        '<span class="cfg-docs-name">' + esc(name) + '</span>' +
-        '<button type="button" class="cfg-docs-remove" title="Remove"><i class="bi bi-trash"></i></button>';
-      item.querySelector('.cfg-docs-remove').addEventListener('click', function() {
-        existingDocs = existingDocs.filter(function(n) { return n !== name; });
-        docsToRemove.push(name);
-        renderExistingDocs();
-      });
-      list.appendChild(item);
-    });
+  /* ── Assets: Upload documents ──
+     A new file named like an existing doc replaces it: on save its name goes in docsToRemove
+     too, and the server removes that name (in any category) before storing the new file. */
+  function isReplaced(name) {
+    return docFiles.some(function(f) { return f.name === name; });
   }
 
-  /* ── Docs ── */
-  function handleDocsFiles(files) {
-    var rejected = [];
-    Array.prototype.slice.call(files||[]).forEach(function(f) {
-      if (!/\.md$|\.markdown$/i.test(f.name)) { rejected.push(f.name); return; }
-      if (!docFiles.find(function(x){ return x.name===f.name; })) {
-        docFiles.push(f);
-        appendDocItem(f);
-      }
+  function docItem(name, tag, action, size) {
+    var item = document.createElement('div');
+    item.className = 'cfg-docs-item';
+    item.innerHTML = '<span class="cfg-docs-icon"><i class="bi bi-file-text"></i></span>' +
+      '<span class="cfg-docs-name">' + esc(name) + '</span>' +
+      (size !== undefined ? '<span class="cfg-docs-size">' + esc(fmtSize(size)) + '</span>' : '') +
+      (tag ? '<span class="cfg-docs-tag' + (tag === 'New' ? ' cfg-docs-tag--new' : '') + '">' + esc(tag) + '</span>' : '') +
+      (action === 'undo'
+        ? '<button type="button" class="cfg-docs-undo">Undo</button>'
+        : action === 'remove' ? '<button type="button" class="cfg-docs-remove" title="Remove"><i class="bi bi-trash"></i></button>' : '');
+    return item;
+  }
+
+  function renderDocs() {
+    var existingList = document.getElementById('wz-existing-docs-list');
+    var newList = document.getElementById('wz-docs-list');
+    if (!existingList || !newList) return;
+    existingList.innerHTML = '';
+    newList.innerHTML = '';
+
+    var shownExisting = 0;
+    existingDocs.forEach(function(name) {
+      if (isReplaced(name)) return;
+      shownExisting++;
+      var removed = docsToRemove.indexOf(name) !== -1;
+      var item = docItem(name, removed ? 'Will be removed' : '', removed ? 'undo' : 'remove');
+      if (removed) item.classList.add('cfg-docs-item--removed');
+      item.querySelector('button').addEventListener('click', function() {
+        docsToRemove = removed
+          ? docsToRemove.filter(function(n) { return n !== name; })
+          : docsToRemove.concat(name);
+        renderDocs();
+      });
+      existingList.appendChild(item);
     });
-    document.getElementById('wz-docs-empty').style.display = docFiles.length ? 'none' : 'block';
-    if (rejected.length) showAlert('Only .md files are accepted. Skipped: ' + rejected.join(', '), 'error');
+
+    docFiles.forEach(function(f) {
+      var item = docItem(f.name, existingDocs.indexOf(f.name) !== -1 ? 'Replaces existing' : 'New', 'remove', f.size);
+      item.querySelector('button').addEventListener('click', function() {
+        docFiles = docFiles.filter(function(x) { return x !== f; });
+        renderDocs();
+      });
+      newList.appendChild(item);
+    });
+
+    document.getElementById('wz-existing-docs-section').hidden = shownExisting === 0;
+    document.getElementById('wz-new-docs-section').hidden = docFiles.length === 0;
+    renderDocsSummary();
+  }
+
+  function renderDocsSummary() {
+    var el = document.getElementById('wz-docs-summary');
+    if (!el) return;
+    var replaced = docFiles.filter(function(f) { return existingDocs.indexOf(f.name) !== -1; }).length;
+    var added = docFiles.length - replaced;
+    var removed = docsToRemove.filter(function(n) { return !isReplaced(n); }).length;
+    var parts = [[added, 'added'], [replaced, 'replaced'], [removed, 'removed']]
+      .filter(function(p) { return p[0] > 0; })
+      .map(function(p, i) {
+        return i === 0 ? p[0] + (p[0] === 1 ? ' document will be ' : ' documents will be ') + p[1] : p[0] + ' ' + p[1];
+      });
+    var text = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts.join('');
+    el.textContent = text ? 'When you save: ' + text + '.' : '';
+  }
+
+  /* Names the API save removes before storing the uploaded docs. */
+  function docsToRemoveOnSave() {
+    var names = docsToRemove.slice();
+    docFiles.forEach(function(f) {
+      if (existingDocs.indexOf(f.name) !== -1 && names.indexOf(f.name) === -1) names.push(f.name);
+    });
+    return names;
+  }
+
+  function handleDocsFiles(files) {
+    Array.prototype.slice.call(files || []).forEach(function(f) {
+      docFiles = docFiles.filter(function(x) { return x.name !== f.name; });
+      docFiles.push(f);
+    });
+    renderDocs();
   }
 
   document.getElementById('wz-docs-input').addEventListener('change', function(e) {
@@ -967,94 +1173,114 @@
       handleDocsFiles(e.dataTransfer && e.dataTransfer.files);
     });
   }());
-  function appendDocItem(f) {
-    var list = document.getElementById('wz-docs-list');
-    var item = document.createElement('div');
-    item.className = 'cfg-docs-item';
-    item.innerHTML = '<span class="cfg-docs-icon"><i class="bi bi-file-text"></i></span>' +
-      '<span class="cfg-docs-name">'+esc(f.name)+'</span>' +
-      '<button type="button" class="cfg-docs-remove" title="Remove"><i class="bi bi-trash"></i></button>';
-    item.querySelector('.cfg-docs-remove').addEventListener('click', function() {
-      docFiles = docFiles.filter(function(x){ return x.name!==f.name; });
-      item.remove();
-      document.getElementById('wz-docs-empty').style.display = docFiles.length ? 'none' : 'block';
-    });
-    list.appendChild(item);
+
+  /* ── Assets: documents view and import view ── */
+  function renderAssetsView() {
+    document.getElementById('wz-assets-desc-docs').hidden = !!editingId;
+    document.getElementById('wz-assets-desc-import').hidden = !editingId;
   }
 
-  /* ── API content (landing page & assets) ZIP upload — edit mode only ──
-     Independent of the wizard's metadata Save: uploads immediately to
-     PUT /apis/{handle}/assets, mirroring the org-theming apply flow. */
+  function setAssetsMode(mode) {
+    assetsMode = mode;
+    ['docs', 'import'].forEach(function(name) {
+      document.getElementById('wz-assets-panel-' + name).hidden = name !== mode;
+    });
+    renderAssetsView();
+  }
+
+  /* Only the shown view is applied on save, so switching clears the one left. */
+  document.getElementById('wz-assets-to-import').addEventListener('click', function() {
+    docFiles = [];
+    docsToRemove = [];
+    renderDocs();
+    setAssetsMode('import');
+  });
+  document.getElementById('wz-assets-to-docs').addEventListener('click', function() {
+    resetContentUpload();
+    setAssetsMode('docs');
+  });
+
+  /* ── Assets: Import content ── */
+  function showContentError(message) {
+    var errEl = document.getElementById('wz-content-error');
+    if (!errEl) return;
+    errEl.textContent = message || '';
+    errEl.style.display = message ? 'block' : 'none';
+  }
+
+  function setContentRejected(rejected) {
+    document.getElementById('wz-content-chip').classList.toggle('cfg-spec-chip--error', rejected);
+    document.getElementById('wz-content-choose').hidden = !rejected;
+    document.getElementById('wz-content-remove').hidden = rejected;
+  }
+
   function resetContentUpload() {
     contentZipFile = null;
-    var input  = document.getElementById('wz-content-input');
-    var chip   = document.getElementById('wz-content-chip');
-    var errEl  = document.getElementById('wz-content-error');
-    var btn    = document.getElementById('wz-content-upload-btn');
+    var input = document.getElementById('wz-content-input');
+    var chip  = document.getElementById('wz-content-chip');
     if (input) input.value = '';
     if (chip)  chip.classList.remove('visible');
-    if (errEl) errEl.style.display = 'none';
-    if (btn)   btn.disabled = true;
+    setContentRejected(false);
+    showContentError('');
+  }
+
+  /* The rejected ZIP stays listed but is not sent again; another file must be chosen. */
+  function markContentRejected() {
+    contentZipFile = null;
+    document.getElementById('wz-content-input').value = '';
+    document.getElementById('wz-content-sub').textContent = 'Not uploaded';
+    setContentRejected(true);
+  }
+
+  function contentZipProblem(f) {
+    if (!/\.zip$/i.test(f.name)) return 'Unsupported file type. Accepted: .zip';
+    if (!f.size) return 'The selected ZIP is empty.';
+    return '';
   }
 
   function handleContentZipFile(f) {
-    var errEl = document.getElementById('wz-content-error');
     if (!f) return;
-    if (!/\.zip$/i.test(f.name)) {
-      if (errEl) { errEl.textContent = 'Unsupported file type. Accepted: .zip'; errEl.style.display = 'block'; }
-      return;
-    }
+    var problem = contentZipProblem(f);
+    if (problem) { showContentError(problem); return; }
     contentZipFile = f;
-    var nameEl = document.getElementById('wz-content-name');
-    var chip   = document.getElementById('wz-content-chip');
-    var btn    = document.getElementById('wz-content-upload-btn');
-    if (nameEl) nameEl.textContent = f.name;
-    if (chip)   chip.classList.add('visible');
-    if (errEl)  errEl.style.display = 'none';
-    if (btn)    btn.disabled = false;
+    document.getElementById('wz-content-name').textContent = f.name;
+    document.getElementById('wz-content-sub').textContent = fmtSize(f.size) + ' · Applied when you save';
+    document.getElementById('wz-content-chip').classList.add('visible');
+    setContentRejected(false);
+    showContentError('');
   }
 
-  async function uploadApiContent() {
-    if (!contentZipFile || !editingId) return;
-    var btn = document.getElementById('wz-content-upload-btn');
-    var original = btn ? btn.innerHTML : '';
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Uploading…';
-    }
-    try {
-      var fd = new FormData();
-      fd.append('content', contentZipFile);
-      var res = await fetch(window.apiPortalApi.root('/apis/' + encodeURIComponent(editingId) + '/assets'), {
-        method: 'PUT',
-        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-        credentials: 'same-origin',
-        body: fd,
-      });
-      if (res.ok) {
-        await showAlert('API content uploaded successfully.', 'success');
-        resetContentUpload();
-      } else {
-        var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Upload failed: ' + (err.description || err.message || res.statusText), 'error');
+  function confirmReplaceContent() {
+    var modal = document.getElementById('cfg-replace-content-modal');
+    document.getElementById('cfg-replace-content-api').textContent = v('wz-name');
+    document.getElementById('cfg-replace-content-zip').textContent = contentZipFile.name;
+    return new Promise(function(resolve) {
+      function done(ok) {
+        modal.style.display = 'none';
+        document.getElementById('cfg-replace-content-confirm').removeEventListener('click', onOk);
+        document.getElementById('cfg-replace-content-cancel').removeEventListener('click', onCancel);
+        modal.removeEventListener('click', onOverlay);
+        resolve(ok);
       }
-    } catch (e) {
-      await showAlert('Error: ' + e.message, 'error');
-    } finally {
-      if (btn) { btn.innerHTML = original; btn.disabled = !contentZipFile; }
-    }
+      function onOk() { done(true); }
+      function onCancel() { done(false); }
+      function onOverlay(e) { if (e.target === modal) done(false); }
+      document.getElementById('cfg-replace-content-confirm').addEventListener('click', onOk);
+      document.getElementById('cfg-replace-content-cancel').addEventListener('click', onCancel);
+      modal.addEventListener('click', onOverlay);
+      modal.style.display = 'flex';
+    });
   }
 
   (function() {
     var input  = document.getElementById('wz-content-input');
     var zone   = document.getElementById('wz-content-zone');
     var remove = document.getElementById('wz-content-remove');
-    var btn    = document.getElementById('wz-content-upload-btn');
     if (input) input.addEventListener('change', function(e) {
       handleContentZipFile(e.target.files && e.target.files[0]);
     });
     if (remove) remove.addEventListener('click', resetContentUpload);
-    if (btn) btn.addEventListener('click', uploadApiContent);
+    document.getElementById('wz-content-choose').addEventListener('click', function() { input.click(); });
     if (zone) {
       zone.addEventListener('dragover', function(e) {
         e.preventDefault(); e.stopPropagation();

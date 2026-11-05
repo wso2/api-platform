@@ -67,8 +67,6 @@ MCP servers use the same operations under `/mcp-servers/{mcpServerId}/assets`.
 
 To change a single existing file, delete it and add the new version, or replace all content with `PUT`.
 
-The **Upload content** button in the settings wizard uses `PUT`, so it also replaces all of the API's content.
-
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
 > TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
@@ -106,6 +104,14 @@ An image takes the slot named by its file name without the extension (`logo.png`
 - `imageMetadata` names a file that isn't in the upload.
 - `imageMetadata` names the same file for more than one slot. Each image fills one slot.
 - Two images would take the same slot, such as `logo.png` and `logo.jpg`. Name one of them in `imageMetadata` to choose which one gets the slot.
+
+## Admin Settings Wizard
+
+In **Settings → APIs** (and **MCP Servers**), the wizard has three steps. Nothing is changed until you save.
+
+- **Details**: the API's details, including its thumbnail. Choose a PNG or JPEG to replace the thumbnail, or remove it.
+- **Spec**: the API definition (the tools schema for an MCP server).
+- **Assets**: add or remove documents. A new file with the same name as an existing document replaces it. To replace all of the API's content with a content ZIP instead, choose **Import content from ZIP**. When editing an existing API, the wizard asks for confirmation first.
 
 ## Landing Page (`web/`)
 
