@@ -250,6 +250,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the JSON response field "([^"]*)" should not equal "([^"]*)"$`, b.jsonFieldNotEqual)
 	sc.Step(`^the JSON response field "([^"]*)" should be:$`, b.jsonFieldIsDoc)
 	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)"$`, b.jsonFieldContains)
+	sc.Step(`^the JSON response field "([^"]*)" should match pattern "([^"]*)"$`, b.jsonFieldMatchesPattern)
 	sc.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)" before "([^"]*)"$`,
 		b.jsonFieldContainsBefore)
 	sc.Step(`^the JSON response field "([^"]*)" should be greater than (\d+)$`,
@@ -274,6 +275,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.jsonArrayItemFieldIs)
 	sc.Step(`^the JSON response array "([^"]*)" item with "([^"]*)" equal to "([^"]*)" should not have field "([^"]*)"$`,
 		b.jsonArrayItemFieldAbsent)
+	sc.Step(`^the JSON response array "([^"]*)" item with "([^"]*)" equal to "([^"]*)" should come before the item with "([^"]*)" equal to "([^"]*)"$`,
+		b.jsonArrayItemOrder)
 	sc.Step(`^I set header "([^"]*)" to "([^"]*)"$`, b.setHeader)
 	sc.Step(`^I clear all headers$`, b.clearHeaders)
 	sc.Step(`^I reset the request$`, b.resetRequest)
@@ -294,6 +297,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
 	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
 		b.sendUntilStatusAt)
+	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" and it never returns status (\d+)$`,
+		b.sendNeverStatusAt)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) with body:$`,
 		b.sendUntilStatusWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until header "([^"]*)" is "([^"]*)"$`,
@@ -312,6 +317,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		})
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the response body contains "([^"]*)" with body:$`,
 		b.sendUntilBodyContains)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) and the response body contains "([^"]*)" with body:$`,
+		b.sendUntilStatusAndBodyContains)
 }
 
 func (b *Base) responseSuccessful(ctx context.Context) error {
@@ -617,6 +624,40 @@ func (b *Base) sendUntilStatusAt(ctx context.Context, method, ordinalWord, path 
 	}, fmt.Sprintf("waiting for %s %s to return %d", strings.ToUpper(method), url, want))
 }
 
+// neverStatusWindow is how long a gateway must keep refusing a status. Callers first prove
+// a positive deployment reached a gateway, so the window only has to outlast a delayed one.
+const neverStatusWindow = 15 * time.Second
+
+// sendNeverStatusAt polls a gateway replica's data plane for the whole window and fails the
+// moment it answers with the forbidden status.
+func (b *Base) sendNeverStatusAt(ctx context.Context, method, ordinalWord, path string, forbidden int) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURLAt(ordinalWord, resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	_, err = retry.Never(ctx, retry.Options{Interval: time.Second}, neverStatusWindow,
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, sendErr := b.funnel.Send(ctx, httpx.Request{
+				Method: strings.ToUpper(method), URL: url, Headers: headers, Host: b.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return resp, nil
+		}, func(resp *httpx.Response) bool {
+			return resp != nil && resp.StatusCode == forbidden
+		})
+	if err != nil {
+		return fmt.Errorf("checking that %s %s never returns %d: %w", strings.ToUpper(method), url, forbidden, err)
+	}
+	return nil
+}
+
 // sendUntilTimedOut polls a data-plane path until it fails with the wanted status AND its
 // elapsed time proves the configured timeout value is what is actually being enforced, rather
 // than accepting the first response with a matching status regardless of cause. A route whose
@@ -785,6 +826,15 @@ func (b *Base) sendUntilJSONFieldStringLength(
 // overall length, leaving a length check satisfied against wording that has not actually
 // changed to what the scenario expects next. A substring check catches that case.
 func (b *Base) sendUntilBodyContains(ctx context.Context, method, path, want string, body *godog.DocString) error {
+	return b.sendUntilStatusAndBodyContains(ctx, method, path, 200, want, body)
+}
+
+// sendUntilStatusAndBodyContains polls until a response has the given status and carries
+// want, telling apart two answers that share a status — e.g. an upstream's 401 from the
+// gateway's own while a new consumer key is still propagating.
+func (b *Base) sendUntilStatusAndBodyContains(
+	ctx context.Context, method, path string, status int, want string, body *godog.DocString,
+) error {
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return err
@@ -815,10 +865,10 @@ func (b *Base) sendUntilBodyContains(ctx context.Context, method, path, want str
 			return response, nil
 		},
 		func(r *httpx.Response) bool {
-			return r != nil && r.StatusCode == 200 && strings.Contains(string(r.Body), wantValue)
+			return r != nil && r.StatusCode == status && strings.Contains(string(r.Body), wantValue)
 		},
-		fmt.Sprintf("waiting for %s %s to answer with a body containing %q",
-			strings.ToUpper(method), url, wantValue))
+		fmt.Sprintf("waiting for %s %s to answer %d with a body containing %q",
+			strings.ToUpper(method), url, status, wantValue))
 }
 
 func (b *Base) statusCodeIs(ctx context.Context, want int) error {
@@ -1160,6 +1210,30 @@ func (b *Base) jsonFieldContains(ctx context.Context, field, want string) error 
 	}
 	if got := fmt.Sprintf("%v", value); !strings.Contains(got, resolved) {
 		return fmt.Errorf("expected field %q to contain %q, got %q", field, resolved, got)
+	}
+	return nil
+}
+
+// jsonFieldMatchesPattern asserts a JSON string field matches a regular expression.
+func (b *Base) jsonFieldMatchesPattern(ctx context.Context, field, pattern string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, pattern)
+	if err != nil {
+		return err
+	}
+	re, err := regexp.Compile(resolved)
+	if err != nil {
+		return fmt.Errorf("the expected pattern %q is not a valid regular expression: %w", resolved, err)
+	}
+	value, err := jsonStringField(resp.Body, field)
+	if err != nil {
+		return err
+	}
+	if !re.MatchString(value) {
+		return fmt.Errorf("expected JSON field %q to match %q, got %q", field, resolved, value)
 	}
 	return nil
 }
@@ -1667,6 +1741,48 @@ func (b *Base) jsonArrayItemPresence(ctx context.Context, field, presence, key, 
 		}
 	default:
 		return fmt.Errorf("unknown array presence %q", presence)
+	}
+	return nil
+}
+
+// jsonArrayItemOrder asserts two items of a JSON array appear in the stated order. It
+// compares positions within one response, so items other runners add in between do not
+// affect it.
+func (b *Base) jsonArrayItemOrder(ctx context.Context, field, firstKey, firstWant, secondKey, secondWant string) error {
+	items, resp, err := jsonArrayItems(ctx, field)
+	if err != nil {
+		return err
+	}
+	position := func(key, want string) (int, error) {
+		expected, err := stepscommon.Expand(ctx, want)
+		if err != nil {
+			return 0, err
+		}
+		found := -1
+		for i, item := range items {
+			if len(jsonArrayItemsMatching([]any{item}, key, expected)) == 1 {
+				if found >= 0 {
+					return 0, fmt.Errorf("JSON array %q has several items with %q equal to %q: %s", field, key, expected, resp.Describe())
+				}
+				found = i
+			}
+		}
+		if found < 0 {
+			return 0, fmt.Errorf("JSON array %q has no item with %q equal to %q: %s", field, key, expected, resp.Describe())
+		}
+		return found, nil
+	}
+	first, err := position(firstKey, firstWant)
+	if err != nil {
+		return err
+	}
+	second, err := position(secondKey, secondWant)
+	if err != nil {
+		return err
+	}
+	if first >= second {
+		return fmt.Errorf("JSON array %q has the %q=%q item at %d, not before the %q=%q item at %d",
+			field, firstKey, firstWant, first, secondKey, secondWant, second)
 	}
 	return nil
 }
