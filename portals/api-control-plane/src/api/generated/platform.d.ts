@@ -854,6 +854,9 @@ export interface paths {
          *     The content is pushed to the API Portal before anything is written locally, so a failed
          *     call leaves the draft intact and can simply be repeated.
          *
+         *     The listing's content on the API Portal is replaced, so documents, a landing page or a
+         *     thumbnail that are not in the draft are removed from it.
+         *
          *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
          */
         post: operations["publishRestApiToApiPortal"];
@@ -939,6 +942,9 @@ export interface paths {
          *     The content is pushed to the API Portal before anything is written locally, so a failed
          *     call leaves the draft intact and can simply be repeated.
          *
+         *     The listing's content on the API Portal is replaced, so documents, a landing page or a
+         *     thumbnail that are not in the draft are removed from it.
+         *
          *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
          */
         post: operations["publishGraphQLApiToApiPortal"];
@@ -1023,6 +1029,9 @@ export interface paths {
          *
          *     The content is pushed to the API Portal before anything is written locally, so a failed
          *     call leaves the draft intact and can simply be repeated.
+         *
+         *     The listing's content on the API Portal is replaced, so documents, a landing page or a
+         *     thumbnail that are not in the draft are removed from it.
          *
          *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
          */

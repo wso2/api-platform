@@ -81,7 +81,7 @@ type portalContentSource struct {
 }
 
 // loadPortalContent loads the selected documents and packs them with the thumbnail and
-// landing page; it returns nil when there is nothing to send. The count and running size
+// landing page; with nothing selected the archive is empty. The count and running size
 // are checked here as well as in buildContentArchive, so an oversized selection is refused
 // before every document is read.
 func (s *PublicationService) loadPortalContent(src portalContentSource) (*PortalContent, error) {

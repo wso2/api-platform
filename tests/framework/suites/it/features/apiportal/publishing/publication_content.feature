@@ -75,7 +75,6 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     And the JSON response field "message" should contain "too large"
     And the API Portal should not list the API "${CTX:apiHandle}"
 
-  @known-issue
   Scenario: Unselecting every document, the landing page and the thumbnail removes them from the API Portal
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I create a document "${CTX:docHandle}" of type "HowTo" with content "Step one: call the API." on the "RestApi" "${CTX:apiHandle}" via the control plane
@@ -101,7 +100,6 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiHandle}/assets?type=IMAGE&fileName=api-icon.png" as "admin"
     Then the response status code should be 404
 
-  @known-issue
   Scenario: Unselecting one of two documents removes only that document from the API Portal
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I generate a unique resource name from "publish-doc-b" and store it as "docHandleB"
@@ -126,7 +124,6 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiHandle}/assets?type=DOC_Samples&fileName=${CTX:docHandleB}.md" as "admin"
     Then the response status code should be 404
 
-  @known-issue
   Scenario: Unselecting the thumbnail removes it from the API Portal
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I create a document "${CTX:docHandle}" of type "HowTo" with content "Step one: call the API." on the "RestApi" "${CTX:apiHandle}" via the control plane
