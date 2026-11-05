@@ -814,12 +814,16 @@ func TestIsMisconfiguration(t *testing.T) {
 		err  error
 		want bool
 	}{
-		"postgres wrong password":      {wrap(&pgconn.PgError{Code: "28P01"}), true},
-		"postgres no pg_hba entry":     {wrap(&pgconn.PgError{Code: "28000"}), true},
-		"postgres unknown database":    {wrap(&pgconn.PgError{Code: "3D000"}), true},
-		"postgres starting up":         {wrap(&pgconn.PgError{Code: "57P03"}), false},
-		"sqlserver login failed":       {wrap(mssql.Error{Number: 18456}), true},
-		"sqlserver unknown database":   {wrap(mssql.Error{Number: 4060}), true},
+		"postgres wrong password":    {wrap(&pgconn.PgError{Code: "28P01"}), true},
+		"postgres no pg_hba entry":   {wrap(&pgconn.PgError{Code: "28000"}), true},
+		"postgres unknown database":  {wrap(&pgconn.PgError{Code: "3D000"}), true},
+		"postgres starting up":       {wrap(&pgconn.PgError{Code: "57P03"}), false},
+		"sqlserver login failed":     {wrap(mssql.Error{Number: 18456}), true},
+		"sqlserver unknown database": {wrap(mssql.Error{Number: 4060}), false},
+		"sqlserver database recovering": {wrap(mssql.Error{Number: 18456,
+			All: []mssql.Error{{Number: 4060}, {Number: 18456}}}), false},
+		"sqlserver wrong password": {wrap(mssql.Error{Number: 18456,
+			All: []mssql.Error{{Number: 18456}}}), true},
 		"sqlserver shutting down":      {wrap(mssql.Error{Number: 6005}), false},
 		"untrusted certificate":        {wrap(x509.UnknownAuthorityError{}), true},
 		"certificate for another host": {wrap(x509.HostnameError{Host: "db"}), true},

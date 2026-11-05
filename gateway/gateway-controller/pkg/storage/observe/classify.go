@@ -39,16 +39,20 @@ const (
 	mssqlLoginFailed      = 18456
 	mssqlShutdownProgress = 6005
 	mssqlShutdownRequest  = 6006
-	// mssqlCannotOpenDatabase is a login that cannot open the database it asked for.
+	// mssqlCannotOpenDatabase is a login that cannot open the database it asked for. The
+	// server also returns it, with 18456, while that database is still recovering after
+	// a restart, so it is never treated as a misconfiguration.
 	mssqlCannotOpenDatabase = 4060
 )
 
 // IsMisconfiguration reports whether err, from connecting to the database, is one that
 // retrying cannot fix because the connection settings are wrong: the server rejected
 // the credentials (PostgreSQL class 28, SQL Server 18456), the database does not exist
-// (PostgreSQL 3D000, SQL Server 4060), or the server's TLS certificate failed
-// verification. An unreachable host, a refused connection or a timeout is not: the
-// database may simply not be up yet.
+// (PostgreSQL 3D000), or the server's TLS certificate failed verification. An
+// unreachable host, a refused connection or a timeout is not: the database may simply
+// not be up yet. Nor is a SQL Server login failure that comes with 4060: SQL Server
+// reports a database still recovering after a restart that way, as well as one that
+// does not exist, so startup keeps waiting for it.
 func IsMisconfiguration(err error) bool {
 	if err == nil {
 		return false
@@ -59,7 +63,7 @@ func IsMisconfiguration(err error) bool {
 	}
 	var msErr mssql.Error
 	if errors.As(err, &msErr) {
-		return msErr.Number == mssqlLoginFailed || msErr.Number == mssqlCannotOpenDatabase
+		return msErr.Number == mssqlLoginFailed && !mssqlReports(msErr, mssqlCannotOpenDatabase)
 	}
 	var verifyErr *tls.CertificateVerificationError
 	var unknownAuthority x509.UnknownAuthorityError
@@ -67,6 +71,20 @@ func IsMisconfiguration(err error) bool {
 	var invalidCert x509.CertificateInvalidError
 	return errors.As(err, &verifyErr) || errors.As(err, &unknownAuthority) ||
 		errors.As(err, &hostnameErr) || errors.As(err, &invalidCert)
+}
+
+// mssqlReports reports whether SQL Server returned error number n in the same response
+// as err. The driver surfaces the last error of a response and keeps every error in All.
+func mssqlReports(err mssql.Error, n int32) bool {
+	if err.Number == n {
+		return true
+	}
+	for _, e := range err.All {
+		if e.Number == n {
+			return true
+		}
+	}
+	return false
 }
 
 // IsConnectionFailure reports whether err means the database could not be reached or a

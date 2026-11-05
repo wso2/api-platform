@@ -29,7 +29,7 @@ function setup(windowMs = 30000) {
 test('an empty window has no attempts and no activity', () => {
     const { win } = setup();
     assert.deepStrictEqual(win.snapshot(), {
-        attempts: 0, failures: 0, lastActivity: null, lastPing: null, lastFailureKind: null,
+        attempts: 0, failures: 0, lastActivity: null, lastPing: null, lastFailureKind: null, lastPoolError: null,
     });
 });
 
@@ -68,11 +68,15 @@ test('a ping is neither an attempt nor application activity', () => {
     assert.equal(snap.lastActivity, null);
 });
 
-test('an outcome no caller asked for is counted without marking activity', () => {
-    const { win } = setup();
-    win.record({ failure: 'unreachable', activity: false });
+test('a pool error is noted, not counted, and only when it is connection-class', () => {
+    const { win, clock } = setup();
+    win.notePoolError(Object.assign(new Error('operation timed out for an unknown reason'), { name: 'TimeoutError' }));
+    assert.equal(win.snapshot().lastPoolError, null, 'a queue timeout is not noted');
+
+    win.notePoolError(new Error('Connection terminated unexpectedly'));
     const snap = win.snapshot();
-    assert.equal(snap.failures, 1);
+    assert.deepStrictEqual([snap.attempts, snap.failures], [0, 0]);
+    assert.equal(snap.lastPoolError, clock.now);
     assert.equal(snap.lastActivity, null);
     assert.equal(snap.lastPing, null);
 });

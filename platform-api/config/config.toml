@@ -15,8 +15,9 @@ allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "*" }}'
 
 # The database check decides from the outcomes of the platform's own database operations
 # and pings the database itself, at most once per idle_period, only while they are too few to decide from.
-# During startup_wait the cause is logged at WARN; a rejected login, a database that does not
-# exist or an untrusted server certificate ends startup at once instead of waiting.
+# During startup_wait the cause is logged at WARN; a rejected login, a PostgreSQL database that
+# does not exist or an untrusted server certificate ends startup at once instead of waiting.
+# SQL Server reports a missing database the same way as one still recovering, so startup waits.
 [platform_api.health.database]
 # check_timeout   = '{{ env "APIP_CP_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for one run of the check and its ping
 # startup_wait    = '{{ env "APIP_CP_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting

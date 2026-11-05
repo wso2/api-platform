@@ -50,7 +50,6 @@ const { config } = require('../config/configLoader');
 const rebindHelpers = require('./rebind');
 const { binaryParam } = require('./paramTypes');
 const { OutcomeWindow } = require('../health/dbWindow');
-const { failureKind } = require('../health/dbFailure');
 
 const dialect = config.database.driver;
 
@@ -103,12 +102,13 @@ function createDesignModeStub() {
  */
 const outcomes = new OutcomeWindow({ windowMs: config.health?.database?.failureWindowMs ?? 30000 });
 
-// An error the pool raises about one of its idle connections — the database restarting
-// under it, say. No caller asked for that connection, so it counts against the
-// database without counting as application activity. Nothing is logged per event: the
-// health check's transition log reports the outage once.
+// An error the pool raises on its own: one of its idle connections dropping (pg), or
+// any failed acquire (mssql, whose caller sees and records the same error). It is not
+// counted as an attempt; a connection-class one makes the health check ping again (see
+// OutcomeWindow.notePoolError). Nothing is logged per event: the health check's
+// transition log reports the outage once.
 const adapterHooks = {
-    onPoolError: (err) => outcomes.record({ failure: failureKind(err), activity: false }),
+    onPoolError: (err) => outcomes.notePoolError(err),
 };
 
 function loadAdapter() {

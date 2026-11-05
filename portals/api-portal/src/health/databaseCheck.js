@@ -53,7 +53,8 @@ function isSaturated(stats, ratio) {
  *      bounded by `checkTimeout`, and that result decides. It does so even while the
  *      portal uses the database, since traffic too thin for rule 1 cannot show an outage
  *      or a recovery, and a decision left standing would never expire.
- *   3. Between those pings the last decided state stands; with none yet, rule 2 applies.
+ *   3. Between those pings the last decided state stands; with none yet, or once the
+ *      pool has raised a connection error since the last ping, rule 2 applies.
  *   4. An up result is turned down once the pool has stayed saturated for
  *      `poolWaitLimit`.
  *
@@ -84,7 +85,11 @@ function createDatabaseCheck({ window, ping, poolStats, settings, now = Date.now
             return { up: !down, reason: down ? reasonFor(snap.lastFailureKind) : null };
         }
         const quiet = (last) => last === null || nowMs - last >= settings.idlePeriodMs;
-        if (decided && !quiet(snap.lastPing)) {
+        // A connection error the pool raised since the last ping means the decided
+        // state may be stale either way, so it is checked again at once.
+        const poolErrorSincePing = snap.lastPoolError !== null &&
+            (snap.lastPing === null || snap.lastPoolError > snap.lastPing);
+        if (decided && !quiet(snap.lastPing) && !poolErrorSincePing) {
             return decided;
         }
         try {

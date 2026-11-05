@@ -39,6 +39,7 @@ class OutcomeWindow {
         this.lastActivity = null;
         this.lastPing = null;
         this.lastFailureKind = null;
+        this.lastPoolError = null;
     }
 
     bucketFor(nowMs) {
@@ -55,10 +56,9 @@ class OutcomeWindow {
     /**
      * Records one operation. `failure` is 'timeout' or 'unreachable' for a counted
      * failure, or null for any other outcome. `ping` marks the health check's own
-     * round trip; `activity: false` marks an outcome no caller asked for, such as an
-     * idle pooled connection dropping.
+     * round trip.
      */
-    record({ failure = null, ping = false, activity = !ping } = {}) {
+    record({ failure = null, ping = false } = {}) {
         const nowMs = this.now();
         if (ping) {
             this.lastPing = nowMs;
@@ -70,7 +70,22 @@ class OutcomeWindow {
             bucket.failures += 1;
             this.lastFailureKind = failure;
         }
-        if (activity) this.lastActivity = nowMs;
+        this.lastActivity = nowMs;
+    }
+
+    /**
+     * Notes an error the connection pool raised on its own, such as an idle pooled
+     * connection dropping when the database restarts. It is not an attempt: a restart
+     * drops every idle connection at once, so counting them would leave the failure
+     * ratio high for the whole window after a short blip, and on SQL Server the pool
+     * raises the error of every failed acquire, which the caller's own operation
+     * already records. A connection-class error only makes the database check ping
+     * again at its next evaluation, so the outage and the recovery are both decided
+     * from a fresh round trip. Any other error, such as a caller timing out in the pool
+     * queue, is ignored here: a busy pool is the saturation rule's to judge.
+     */
+    notePoolError(err) {
+        if (isConnectionFailure(err)) this.lastPoolError = this.now();
     }
 
     /** Records an operation that succeeded. */
@@ -101,6 +116,7 @@ class OutcomeWindow {
             lastActivity: this.lastActivity,
             lastPing: this.lastPing,
             lastFailureKind: this.lastFailureKind,
+            lastPoolError: this.lastPoolError,
         };
     }
 }

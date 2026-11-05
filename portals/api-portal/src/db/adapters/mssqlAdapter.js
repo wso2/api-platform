@@ -82,9 +82,10 @@ function createMssqlAdapter(config, hooks = {}) {
     // the process. Attach a no-op catch immediately to prevent that; the real error
     // still propagates through every `await ready` call site.
     ready.catch(() => { /* surfaced to callers via query rejections */ });
-    // Surface pool-level connection errors instead of letting them crash the
-    // process as unhandled 'error' events (mssql/tedious convention). Callers still see
-    // their own failures through query rejections; the hook only counts the event.
+    // Surface pool-level errors instead of letting them crash the process as unhandled
+    // 'error' events (mssql/tedious convention). The pool raises one for every failed
+    // acquire, which the caller also sees through its own rejection, so the hook must
+    // not count it as another outcome (see OutcomeWindow.notePoolError).
     pool.on('error', (err) => {
         if (hooks.onPoolError) hooks.onPoolError(err);
     });

@@ -248,11 +248,12 @@ test('a health ping that outlasts its timeout is rejected as timed out, and its 
     assert.ok(snap.lastPing);
 });
 
-test('pool errors reported by the adapter count as failures but not as activity', () => {
+test('pool errors reported by the adapter are noted for the health check, not counted', () => {
     const { db, hooks } = loadDriver();
     hooks().onPoolError(new Error('Connection terminated unexpectedly'));
     const snap = db.outcomeWindow.snapshot();
-    assert.deepStrictEqual([snap.attempts, snap.failures, snap.lastActivity], [1, 1, null]);
+    assert.deepStrictEqual([snap.attempts, snap.failures, snap.lastActivity], [0, 0, null]);
+    assert.ok(snap.lastPoolError);
 });
 
 test('poolStats comes from the adapter, and is null when it has none', () => {

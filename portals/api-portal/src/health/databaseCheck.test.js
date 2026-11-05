@@ -257,3 +257,48 @@ test('SQLite has no pool, so the pool rule never applies', async () => {
         clock.now += 5000;
     }
 });
+
+test('a pool connection error makes the next check ping instead of repeating the decision', async () => {
+    const { check, state, clock, window } = setup();
+    assert.equal(await check(), null);
+    assert.equal(state.pings, 1);
+
+    // The database restarts: every idle pooled connection drops at once.
+    clock.now += 1000;
+    state.pingResult = refused();
+    for (let i = 0; i < 5; i++) {
+        window.notePoolError(Object.assign(new Error('terminating connection due to administrator command'), { code: '57P01' }));
+    }
+    assert.equal(await check(), 'database unreachable', 'the outage is seen at once, not after the idle period');
+    assert.equal(state.pings, 2);
+    assert.equal(window.snapshot().attempts, 0, 'the dropped connections are not attempts');
+
+    // It is back three seconds later; the next ping sees it, no stale failures hold it down.
+    clock.now += 3000;
+    state.pingResult = null;
+    clock.now += 7000;
+    window.recordSuccess();
+    assert.equal(await check(), null);
+    assert.equal(state.pings, 3);
+
+    // No new pool error: the decision stands again until the idle period passes.
+    clock.now += 1000;
+    assert.equal(await check(), null);
+    assert.equal(state.pings, 3);
+});
+
+test('a caller timing out in the pool queue neither counts as a failure nor forces a ping', async () => {
+    const { check, state, clock, window, traffic } = setup();
+    assert.equal(await check(), null);
+    // node-mssql raises the pool error of every failed acquire; the caller records the
+    // same rejection as its own outcome.
+    const queued = Object.assign(new Error('operation timed out for an unknown reason'), { name: 'TimeoutError' });
+    clock.now += 1000;
+    for (let i = 0; i < 10; i++) {
+        window.notePoolError(queued);
+        traffic(0, 1, queued);
+    }
+    assert.deepStrictEqual([window.snapshot().attempts, window.snapshot().failures], [10, 0]);
+    assert.equal(await check(), null);
+    assert.equal(state.pings, 1);
+});
