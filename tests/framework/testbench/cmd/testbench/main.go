@@ -31,8 +31,8 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/agentcard"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/analytics"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/aws"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/backend"
-	"github.com/wso2/api-platform/tests/framework/testbench/services/bedrock"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/capture"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
@@ -113,7 +113,7 @@ func services() ([]testbench.Service, error) {
 		jwksSvc,
 		echo.New(),
 		backend.New(),
-		bedrock.New(),
+		aws.NewBedrock(),
 		openai.New(),
 		interceptor.New(),
 		mcp.New(),
@@ -133,6 +133,7 @@ func services() ([]testbench.Service, error) {
 		mcpscripted.New(),
 		stripeSvc,
 		moesifSvc,
+		aws.New(),
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))
