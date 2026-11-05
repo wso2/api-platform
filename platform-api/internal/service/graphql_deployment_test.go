@@ -74,6 +74,29 @@ func newGraphQLDeploymentTestService(repo *mockGraphQLAPIRepo, deploymentRepo *m
 	)
 }
 
+// withRecordingAudit gives svc an enabled audit service that keeps its rows.
+func withRecordingAudit(t *testing.T, svc *GraphQLAPIDeploymentService) *recordingAuditTable {
+	t.Helper()
+	rows := &recordingAuditTable{}
+	auditService, err := NewAuditService(rows, nil, config.Audit{Enabled: true}, newTestLogger())
+	if err != nil {
+		t.Fatalf("NewAuditService error = %v", err)
+	}
+	svc.auditService = auditService
+	return rows
+}
+
+func assertDeploymentAudited(t *testing.T, rows *recordingAuditTable, action, deploymentID, actor string) {
+	t.Helper()
+	if len(rows.rows) != 1 {
+		t.Fatalf("audit rows = %d, want 1", len(rows.rows))
+	}
+	got := rows.rows[0]
+	if got.action != action || got.resourceUUID != deploymentID || got.resourceType != "deployment" || got.orgUUID != "org-1" || got.performedBy != actor {
+		t.Fatalf("audit row = %+v, want %s of deployment %s in org-1 by %s", got, action, deploymentID, actor)
+	}
+}
+
 func graphQLDeploymentTestGateway() *model.Gateway {
 	return &model.Gateway{ID: "gw-uuid-1", OrganizationID: "org-1", Handle: "prod-gateway", Name: "Prod Gateway"}
 }
@@ -106,6 +129,7 @@ func TestGraphQLDeployAPI_Current_Success(t *testing.T) {
 	deploymentRepo := &mockDeploymentRepo{setCurrentUpdatedAt: time.Now()}
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
+	auditRows := withRecordingAudit(t, svc)
 
 	req := &api.DeployRequest{Name: "prod-deployment", Base: "current", GatewayId: "prod-gateway"}
 	resp, err := svc.DeployGraphQLAPI("countries-graphql-api", req, "org-1", "creator-uuid")
@@ -131,6 +155,7 @@ func TestGraphQLDeployAPI_Current_Success(t *testing.T) {
 	if resp.BuildId == nil || created == nil || created.BuildID == nil || *resp.BuildId != *created.BuildID {
 		t.Errorf("expected the response to name the build the deployment runs, got %v", resp.BuildId)
 	}
+	assertDeploymentAudited(t, auditRows, "DEPLOY", created.DeploymentID, "creator-uuid")
 }
 
 // TestGraphQLDeployAPI_LTSGateway_Refused verifies that a deploy to an LTS
@@ -501,8 +526,9 @@ func TestGraphQLUndeployDeployment_Success(t *testing.T) {
 	}
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
+	auditRows := withRecordingAudit(t, svc)
 
-	resp, err := svc.UndeployGraphQLAPIDeployment("countries-graphql-api", "dep-1", "prod-gateway", "org-1", "")
+	resp, err := svc.UndeployGraphQLAPIDeployment("countries-graphql-api", "dep-1", "prod-gateway", "org-1", "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -515,6 +541,7 @@ func TestGraphQLUndeployDeployment_Success(t *testing.T) {
 	if resp.BuildId == nil || *resp.BuildId != buildID {
 		t.Errorf("expected buildId %q, got %v", buildID, resp.BuildId)
 	}
+	assertDeploymentAudited(t, auditRows, "UNDEPLOY", "dep-1", "user-1")
 }
 
 // TestGraphQLUndeployDeployment_GatewayMismatch_Rejected verifies a gatewayId
@@ -577,8 +604,9 @@ func TestGraphQLRestoreDeployment_Success(t *testing.T) {
 	}
 
 	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
+	auditRows := withRecordingAudit(t, svc)
 
-	resp, err := svc.RestoreGraphQLAPIDeployment("countries-graphql-api", "dep-1", "prod-gateway", "org-1", "")
+	resp, err := svc.RestoreGraphQLAPIDeployment("countries-graphql-api", "dep-1", "prod-gateway", "org-1", "user-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -588,6 +616,7 @@ func TestGraphQLRestoreDeployment_Success(t *testing.T) {
 	if resp.BuildId == nil || *resp.BuildId != buildID {
 		t.Errorf("expected buildId %q, got %v", buildID, resp.BuildId)
 	}
+	assertDeploymentAudited(t, auditRows, "RESTORE", "dep-1", "user-1")
 }
 
 // TestGraphQLRestoreDeployment_LTSGateway_Refused verifies a restore is gated on

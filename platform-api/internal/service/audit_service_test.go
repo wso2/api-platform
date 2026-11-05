@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -131,5 +132,122 @@ func TestAuditServiceNoOutput(t *testing.T) {
 	}
 	if len(db.rows) != 1 {
 		t.Fatalf("db rows = %d, want 1", len(db.rows))
+	}
+}
+
+type unresolvableIdentity struct{}
+
+func (unresolvableIdentity) DisplayIdentity(string) (string, error) {
+	return "", errors.New("user lookup failed")
+}
+
+func TestAuditServiceMasksTheUserInTheLine(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		maskPII  bool
+		identity auditIdentity
+		wantLog  string
+	}{
+		{"mask_pii", true, unresolvableIdentity{}, ""}, // the identity is not looked up
+		{"identity lookup fails", false, unresolvableIdentity{}, "Failed to resolve the audit actor; masking it in the output"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := &recordingAuditTable{}
+			logPath := filepath.Join(t.TempDir(), "audit.log")
+			logs := &auditLogBuffer{}
+			s, err := NewAuditService(db, tc.identity, config.Audit{
+				Enabled: true,
+				MaskPII: tc.maskPII,
+				Outputs: []string{config.AuditOutputFile},
+				File:    config.AuditFile{Path: logPath},
+			}, slog.New(slog.NewTextHandler(logs, nil)))
+			if err != nil {
+				t.Fatalf("NewAuditService error = %v", err)
+			}
+
+			if err := s.Record("UPDATE", "res-1", "rest_api", "org-1", "user-1"); err != nil {
+				t.Fatalf("Record error = %v", err)
+			}
+			if err := s.Close(context.Background()); err != nil {
+				t.Fatalf("Close error = %v", err)
+			}
+
+			out, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var line auditRecordJSON
+			if err := json.Unmarshal(out, &line); err != nil {
+				t.Fatalf("output line is not one JSON object: %v: %q", err, out)
+			}
+			if line.PerformedBy != "****" {
+				t.Errorf("line performedBy = %q, want it masked", line.PerformedBy)
+			}
+			if db.rows[0].performedBy != "user-1" {
+				t.Errorf("row performedBy = %q, want the internal user id", db.rows[0].performedBy)
+			}
+			if tc.wantLog != "" && !strings.Contains(logs.String(), tc.wantLog) {
+				t.Errorf("log lacks %q:\n%s", tc.wantLog, logs)
+			}
+		})
+	}
+}
+
+func TestDisabledAuditServiceRecordsNothing(t *testing.T) {
+	db := &recordingAuditTable{}
+	s, err := NewAuditService(db, nil, config.Audit{Outputs: []string{"stdout"}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewAuditService error = %v", err)
+	}
+
+	if err := s.Record("CREATE", "res-1", "rest_api", "org-1", "user-1"); err != nil {
+		t.Fatalf("Record error = %v", err)
+	}
+	if len(db.rows) != 0 {
+		t.Fatalf("db rows = %d, want 0 while audit is disabled", len(db.rows))
+	}
+}
+
+func TestNewAuditServiceFailsOnABadOutput(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	for _, tc := range []struct {
+		name    string
+		cfg     config.Audit
+		wantErr string
+	}{
+		{"unknown output", config.Audit{Enabled: true, Outputs: []string{"syslog"}}, `unknown output "syslog"`},
+		// The file output is built first and must be closed again.
+		{"later output fails", config.Audit{
+			Enabled: true,
+			Outputs: []string{config.AuditOutputFile, config.AuditOutputHTTP},
+			File:    config.AuditFile{Path: filepath.Join(t.TempDir(), "audit.log")},
+		}, "audit.http"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := NewAuditService(&recordingAuditTable{}, nil, tc.cfg, logger)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("NewAuditService = %v, %v; want an error containing %q", s, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+type closeFailingAuditSink struct{ name string }
+
+func (closeFailingAuditSink) Write([]byte) {}
+
+func (closeFailingAuditSink) Close(context.Context) error { return errors.New("still flushing") }
+
+func (c closeFailingAuditSink) Name() string { return c.name }
+
+func TestAuditServiceCloseReportsEveryOutput(t *testing.T) {
+	s := &AuditService{sinks: []auditSink{closeFailingAuditSink{"file"}, closeFailingAuditSink{"http"}}}
+
+	err := s.Close(context.Background())
+
+	for _, want := range []string{"closing the file audit output", "closing the http audit output"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Close error = %v, want it to contain %q", err, want)
+		}
 	}
 }
