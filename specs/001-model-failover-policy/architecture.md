@@ -152,16 +152,23 @@ This is a genuine improvement over the rejected Override Host design, whose host
 upstream TODO (*"Validate that host health status did not change"*) and would select an unhealthy
 host that appeared in the list.
 
-## 6b. Overrun repeats the last group
+## 6b. A surplus attempt budget produces no surplus attempts
 
-When attempts exceed the number of groups, Envoy **stays on the last group**. It does not reach for
-an unranked target.
+When the attempt budget exceeds the number of published groups, the surplus attempts are **not
+made**. Each group is dialled once and the request ends; nothing reaches for an unranked target.
 
-This was the decisive POC finding. Under Override Host, probe A3 showed an excluded provider —
-the stand-in for a *suspended* one — receiving live traffic and serving the request when
-`num_retries` exceeded the list length. Probe B4 showed `priority_group` leaving that provider
-untouched. Matching `num_retries` to the chain length is still correct, but it is no longer the only
-thing standing between a suspended target and live traffic.
+**Corrected 2026-11-05.** This section previously said the surplus attempt *repeats the last group*,
+on the strength of spike probe B4. Measured end to end against the gateway — a budget of four over a
+published chain of two — the request made exactly two attempts, one per group, and returned the
+exhaustion error (`failover-core.feature`, *A chain shorter than the attempt budget ends at its last
+target*). The chain, not the budget, bounds the attempt sequence. The spike result stands for the
+static Envoy configuration it was run against; this is what the generated configuration does.
+
+The decisive comparison is unchanged and now rests on stronger ground. Under Override Host, probe A3
+showed an excluded provider — the stand-in for a *suspended* one — receiving live traffic and serving
+the request when `num_retries` exceeded the list length. `priority_group` does not dial it at all.
+Matching `num_retries` to the chain length is still correct, but it is no longer the only thing
+standing between a suspended target and live traffic.
 
 ## 6c. Two retry settings that must NOT be configured
 

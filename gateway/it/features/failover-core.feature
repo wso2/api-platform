@@ -325,6 +325,175 @@ Feature: Model Failover Core Behaviour
     Then the response status code should be 200
 
   # ====================================================================
+  # A SURPLUS ATTEMPT BUDGET PRODUCES NO SURPLUS ATTEMPTS
+  # ====================================================================
+  #
+  # The attempt budget and the published chain are sized from DIFFERENT things.
+  # num_retries comes from every target the operation can resolve, counted at
+  # deploy time; the chain published per request covers only the target the
+  # request actually resolved to, plus its own configured fallbacks. A proxy
+  # carrying two independent chains therefore has a budget larger than the chain
+  # serving any single request, and what happens to the difference is the
+  # property that decided the whole mechanism.
+  #
+  # Of the two proxy mechanisms that could carry a per-request ordering, one
+  # spends a surplus attempt on a target the policy had EXCLUDED, with correct
+  # retry arithmetic the only thing preventing it. We took the other and accepted
+  # an Envoy upgrade to get it, because suspension exists precisely to keep
+  # traffic off a target failover ruled out. Nothing in the suite asserted that
+  # until this scenario.
+  #
+  # Measured here (2026-11-05, against a budget of four and a published chain of
+  # two): the surplus attempts are NOT MADE. Each published group is dialled
+  # exactly once and the request then ends. That is stronger than the behaviour
+  # this scenario was first written to expect -- a spike had shown the surplus
+  # repeating the last group, so the scenario originally asserted a repeat and
+  # failed, correctly, against a gateway that makes no surplus attempt at all.
+  # The chain, not the budget, bounds the attempt sequence.
+  #
+  # The spare chain's provider is HEALTHY and deliberately so: it is the trap. If
+  # an attempt ever reached outside the published groups it would land on a target
+  # that answers 200, and this scenario would see a success where it demands an
+  # exhaustion. A dead spare would make the test pass for the wrong reason.
+
+  Scenario: A chain shorter than the attempt budget ends at its last target, reaching no other
+    # --- Chain 1, both members dead: this is the chain the request will use ---
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: fo-ovr-dead-primary
+      spec:
+        displayName: FO Overrun Dead Primary
+        version: v1.0
+        template: openai
+        context: /fo-ovr-dead-primary-ctx
+        upstream:
+          url: http://fo-overrun-nonexistent-a:9080/overrun-dead-a
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: fo-ovr-dead-fallback
+      spec:
+        displayName: FO Overrun Dead Fallback
+        version: v1.0
+        template: openai
+        context: /fo-ovr-dead-fallback-ctx
+        upstream:
+          url: http://fo-overrun-nonexistent-b:9080/overrun-dead-b
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    # --- Chain 2, healthy: never selected by this request, only widens the budget ---
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: fo-ovr-spare
+      spec:
+        displayName: FO Overrun Spare
+        version: v1.0
+        template: openai
+        context: /fo-ovr-spare-ctx
+        upstream:
+          url: http://sample-backend:9080/overrun-spare-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    # Four resolvable (model, provider) members across two chains, so the attempt
+    # budget is four. A request for gpt-4o publishes a chain of TWO -- its own
+    # target and the one fallback written for it. A chain written for one target
+    # is never borrowed for another, so the spare chain contributes attempts but
+    # no groups, which is exactly the surplus this scenario is about.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: fo-overrun-proxy
+      spec:
+        displayName: FO Overrun Proxy
+        version: v1.0
+        context: /fo-overrun-proxy
+        provider:
+          id: fo-ovr-dead-primary
+        additionalProviders:
+          - id: fo-ovr-dead-fallback
+            as: dead-fallback
+          - id: fo-ovr-spare
+            as: spare-provider
+        policies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: dead-fallback
+                    - model: gpt-4o-mini
+                      provider: spare-provider
+                      fallbacks:
+                        - model: claude-haiku-4-5-20251001
+                          provider: spare-provider
+      """
+    Then the response status should be 201
+    And I wait for 3 seconds
+
+    # Noted AFTER deployment settles, so configuration logging naming the spare
+    # upstream cannot satisfy -- or falsify -- an assertion about where this one
+    # request was dialled.
+    When I note the current gateway runtime log position
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/fo-overrun-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    # Exhaustion, not a 200. A surplus attempt that escaped the published groups
+    # would have found the healthy spare and answered successfully, so the status
+    # alone carries most of this scenario's weight.
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+    # The direct form of the same claim: the spare's upstream was never dialled.
+    And the gateway runtime log since then should not contain "/overrun-spare-upstream"
+    # The attempt sequence, pinned exactly: each published group dialled ONCE,
+    # and nothing more, against a budget that allowed four attempts.
+    #
+    # The search string is the router's own access-log line rather than the bare
+    # upstream path, and that is load-bearing. A single attempt writes the path
+    # TWICE -- once in the policy engine's structured log entry, once in the
+    # router's access line -- so counting "/overrun-dead-a" reports 2 for one
+    # attempt. An earlier version of this scenario asserted "at least 2 times"
+    # against that string and passed while observing nothing at all. Matching on
+    # "POST <context> HTTP/1.1" appears once per upstream attempt and nowhere
+    # else, verified directly against the container log.
+    And the gateway runtime log since then should contain "POST /fo-ovr-dead-primary-ctx/chat/completions HTTP/1.1" exactly 1 times
+    And the gateway runtime log since then should contain "POST /fo-ovr-dead-fallback-ctx/chat/completions HTTP/1.1" exactly 1 times
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/fo-overrun-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "fo-ovr-dead-primary"
+    Then the response status code should be 200
+    When I delete the LLM provider "fo-ovr-dead-fallback"
+    Then the response status code should be 200
+    When I delete the LLM provider "fo-ovr-spare"
+    Then the response status code should be 200
+
+  # ====================================================================
   # A POLICY THAT RESOLVES TO NOTHING IS A SILENT NO-OP
   # ====================================================================
 

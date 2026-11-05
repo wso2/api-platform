@@ -1879,7 +1879,11 @@ the T029c finding. Both corrected, pointing at `echo-backend-multi-arch` instead
 
 - **V0.1 negative half** — the generated config is asserted to carry `refresh_cluster_on_retry`
   (`TestFailoverRetryPolicy_RefreshClusterOnRetryIsSet`), but no scenario deploys with it FALSE to
-  pin the failure mode. T027, open.
+  pin the failure mode. **T027, closed 2026-11-05: not buildable.** The flag is a literal in
+  `buildFailoverRetryPolicy` with no configuration surface, so no deployment the suite can perform
+  omits it. Reaching the gap would mean giving the controller a way to generate a knowingly broken
+  route so a test could deploy it. The unit test guards the only level at which the bug can return,
+  and probe B3 above records the runtime behaviour from observation.
 - **V2 second bullet** — suspending one provider leaving the other's health untouched. T046, open.
 - **V3 first bullet** — a failover-only vendor taking zero traffic while in-house models are
   healthy. T051, open.
@@ -1892,3 +1896,78 @@ the T029c finding. Both corrected, pointing at `echo-backend-multi-arch` instead
 
 Every one of these is an existing open task or an explicit descoping, not a new gap — the value of
 the walk was confirming which, rather than discovering unknowns.
+
+---
+
+## T029a: the overrun never happens, and a log-count assertion that proved nothing (2026-11-05)
+
+Two findings from pinning the safety property that chose the mechanism — one about the gateway,
+one about how the scenario was measuring it.
+
+### The surplus attempts are not made at all
+
+The attempt budget and the published chain are sized from different things: `num_retries` from
+every target the operation resolves at deploy time, the chain from the target the request actually
+resolved to plus its own fallbacks. A proxy with two independent chains therefore has a budget
+larger than the chain serving any one request.
+
+Deployed exactly that — two chains, one of two dead providers, one of two healthy ones — and asked
+for the dead chain's model. Confirmed from Envoy's own config dump rather than inferred:
+
+```
+num_retries: 3                    # four attempts budgeted
+retry_on: 5xx,connect-failure,refused-stream,reset,retriable-status-codes
+refresh_cluster_on_retry: True
+cluster_specifier_plugin: failover-groups/POST|/fo-overrun-proxy/chat/completions|*
+```
+
+Two attempts were made:
+
+```
+"POST /fo-ovr-dead-primary-ctx/chat/completions"  -> /overrun-dead-a/... -> 503 UH
+"POST /fo-ovr-dead-fallback-ctx/chat/completions" -> /overrun-dead-b/... -> 503 UH
+"POST /fo-overrun-proxy/chat/completions"         -> 503 URX
+```
+
+One per published group, then the exhaustion error. **Attempts three and four were never made**,
+and the healthy spare chain — deliberately healthy, so that reaching it would have returned a
+loud `200` instead of the demanded `503` — was never dialled.
+
+**This supersedes probe B4**, which predicted the surplus attempt *repeating the last group*
+(`provider-a: 1, provider-c: 2` over two groups and three attempts). B4 stands for the static
+Envoy configuration it ran against; the generated configuration behaves differently, and better.
+The chain bounds the attempt sequence, not the budget. `architecture.md` §6b and the
+generated-config contract both asserted the repeat and have been corrected.
+
+The property that decided Option B is unaffected and now rests on stronger ground: Option A's
+probe A3 had an excluded target *serving* the request on overrun; here it is not contacted at all.
+
+### A `contains` assertion that a single attempt satisfied twice
+
+The scenario first asserted `"/overrun-dead-b" at least 2 times` in the runtime log, intending
+"this group was dialled more than once". It passed, and it was measuring nothing: **one attempt
+writes the upstream path twice** — once in the policy engine's structured log entry, once in the
+router's access line. Counted against the container log for a single request:
+
+| Search string | Occurrences | Attempts |
+|---|---:|---:|
+| `/overrun-dead-a` | 2 | 1 |
+| `/overrun-dead-b` | 2 | 1 |
+| `POST /fo-ovr-dead-primary-ctx/chat/completions HTTP/1.1` | 1 | 1 |
+| `/overrun-spare-upstream` | 0 | 0 |
+
+What exposed it was switching the floor to an **exact** count, which failed with the real number
+(`contains "/overrun-dead-b" 2 times ... want exactly 3`) and sent me to the container log. A floor
+cannot distinguish a repeated attempt from a repeated log line; where the count *is* the property,
+only an exact count can. The scenario now matches on `POST <context> HTTP/1.1`, which appears once
+per upstream attempt and nowhere else, verified directly rather than assumed.
+
+Two further notes for anyone asserting on this log:
+
+- **The router's access lines flush late** — 8-12s after the request, with the event timestamp
+  preserved, so they look contemporaneous when they arrive. An assertion reading immediately after
+  a request sees the `[pol]` entry only. The `exactly` step waits for the count to reach its target
+  and then settles before judging.
+- **The exhaustion response replaces upstream headers**, so `x-envoy-attempt-count` is not available
+  on an exhausted chain and the log is the only observable. Prefer the header wherever the chain
+  succeeds.

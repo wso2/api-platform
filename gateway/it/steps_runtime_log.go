@@ -53,6 +53,7 @@ func RegisterRuntimeLogSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I note the current gateway runtime log position$`, r.iNoteTheLogPosition)
 	ctx.Step(`^the gateway runtime log since then should contain "([^"]*)"$`, r.theLogSinceThenShouldContain)
 	ctx.Step(`^the gateway runtime log since then should not contain "([^"]*)"$`, r.theLogSinceThenShouldNotContain)
+	ctx.Step(`^the gateway runtime log since then should contain "([^"]*)" exactly (\d+) times$`, r.theLogSinceThenShouldContainExactly)
 }
 
 // runtimeLog returns everything the gateway-runtime container has written so far.
@@ -117,6 +118,55 @@ func (r *RuntimeLogSteps) theLogSinceThenShouldNotContain(unexpected string) err
 	}
 	if strings.Contains(tail, unexpected) {
 		return fmt.Errorf("gateway runtime log contains %q since the noted position, and must not", unexpected)
+	}
+	return nil
+}
+
+// sinceAtLeast waits until `expected` has been written at least n times after the noted
+// position, or the deadline passes. Separate from since() because a single occurrence is not
+// the condition: an assertion about a REPEATED line would otherwise pass on the first one and
+// never observe whether the repeat happened at all.
+func (r *RuntimeLogSteps) sinceAtLeast(expected string, n int) (string, int, error) {
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		full, err := runtimeLog()
+		if err != nil {
+			return "", 0, err
+		}
+		tail := full
+		if r.mark <= len(full) {
+			tail = full[r.mark:]
+		}
+		count := strings.Count(tail, expected)
+		if count >= n || time.Now().After(deadline) {
+			return tail, count, nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+// theLogSinceThenShouldContainExactly pins a count rather than a floor.
+//
+// Exactness is deliberate where the count IS the property — an attempt sequence, for
+// instance. "At least once" would be satisfied by a log that emits two lines per attempt as
+// readily as by one attempt logged twice, so a floor cannot tell a repeat from a formatting
+// detail. An exact count fails loudly if either changes, which is the correct outcome: both
+// would invalidate what the scenario claims to observe.
+//
+// Waits for the count to REACH n, then settles before judging, so a still-buffering log is
+// not mistaken for a smaller sequence and a late extra line is not missed.
+func (r *RuntimeLogSteps) theLogSinceThenShouldContainExactly(expected string, n int) error {
+	if _, _, err := r.sinceAtLeast(expected, n); err != nil {
+		return err
+	}
+	time.Sleep(2 * time.Second)
+	tail, err := r.since("")
+	if err != nil {
+		return err
+	}
+	if count := strings.Count(tail, expected); count != n {
+		return fmt.Errorf("gateway runtime log contains %q %d times since the noted position, want exactly %d (%d bytes written since)",
+			expected, count, n, len(tail))
 	}
 	return nil
 }

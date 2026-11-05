@@ -112,7 +112,7 @@ construction (FR-012d).
 | Downstream chain executes once per client request | FR-012d |
 | Each target attempted at most once | FR-010 — `num_retries` = chain length − 1 |
 | Suspended targets never attempted | FR-025 — omitted from the published groups |
-| Overrun repeats the last group, never an excluded target | POC probe B4 |
+| A budget larger than the published chain makes no extra attempt, and never reaches an excluded target | `failover-core.feature` (2026-11-05); supersedes POC probe B4, which predicted a repeat of the last group |
 | No failover after response headers/body reach the client | FR-013 |
 | Exhaustion returns the feature's sterile error | FR-014 |
 | Config scoped to the attaching operation; shared provider clusters unmutated | FR-030c/d |
