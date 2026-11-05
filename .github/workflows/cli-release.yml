@@ -26,6 +26,30 @@ jobs:
           echo "Releasing CLI version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+      # Fail before anything is tagged, built or published.
+      - name: Validate release inputs
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "${REF_TYPE}" != "branch" ]; then
+            echo "Error: run this workflow from a branch; the version bump PR targets the branch it ran from"
+            exit 1
+          fi
+          if [ -z "${NEXT_DEV_VERSION}" ]; then
+            echo "Error: next_dev_version input is required"
+            exit 1
+          fi
+          if [[ "${NEXT_DEV_VERSION}" != ?*-SNAPSHOT ]]; then
+            echo "Error: next_dev_version must be a version followed by -SNAPSHOT (e.g. 0.10.0-SNAPSHOT)"
+            exit 1
+          fi
+          if [ "${NEXT_DEV_VERSION}" = "${RELEASE_VERSION}-SNAPSHOT" ]; then
+            echo "Error: next_dev_version must differ from the version being released (${RELEASE_VERSION})"
+            exit 1
+          fi
+
       - name: Set version
         run: |
           VERSION=${{ steps.version.outputs.version }}
@@ -178,14 +202,6 @@ jobs:
         env:
           NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
         run: |
-          if [ -z "${NEXT_DEV_VERSION}" ]; then
-            echo "Error: next_dev_version input is required"
-            exit 1
-          fi
-          if [[ "${NEXT_DEV_VERSION}" != *-SNAPSHOT ]]; then
-            echo "Error: next_dev_version must end with -SNAPSHOT (e.g. 0.10.0-SNAPSHOT)"
-            exit 1
-          fi
           echo "Setting CLI to next dev version: ${NEXT_DEV_VERSION}"
           make -C cli/src version-set "VERSION=${NEXT_DEV_VERSION}"
 
