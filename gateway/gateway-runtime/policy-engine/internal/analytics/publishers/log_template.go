@@ -23,11 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"log/slog"
 	"math"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -176,35 +173,25 @@ func templateText(logCfg *config.TrafficLoggingConfig) (text, source string, err
 	}
 }
 
-// readTemplateFile returns the content of the template file at path, which may be at most
-// configinterpolate.DefaultMaxFileBytes long. Unlike an inline template, the content is not
-// interpolated.
+// templateFileRoot is the only directory a template_file may be in. A template is configuration,
+// not a secret, so /secrets/gateway-runtime is not allowed: a JSON secret file would otherwise be
+// a valid template whose values are written into every log line.
+const templateFileRoot = "/etc/gateway-runtime"
+
+// templateFileAllowlist is the directories readTemplateFile reads from. It is a variable only so
+// tests can use a temporary directory.
+var templateFileAllowlist = []string{templateFileRoot}
+
+// readTemplateFile returns the content of the template file at path, which must be inside
+// templateFileRoot and at most configinterpolate.DefaultMaxFileBytes long, the same limit as a
+// {{ file }} token. Unlike an inline template, the content is not interpolated.
 func readTemplateFile(path string) (string, error) {
-	f, err := os.Open(path)
+	data, err := configinterpolate.ReadAllowedFile(path, templateFileAllowlist, configinterpolate.DefaultMaxFileBytes)
 	if err != nil {
-		return "", templateFileError(path, err)
-	}
-	defer f.Close()
-	// One byte over the limit is enough to tell that a file is too large.
-	data, err := io.ReadAll(io.LimitReader(f, configinterpolate.DefaultMaxFileBytes+1))
-	if err != nil {
-		return "", templateFileError(path, err)
-	}
-	if int64(len(data)) > configinterpolate.DefaultMaxFileBytes {
-		return "", fmt.Errorf("%s: %q is larger than the %d MiB limit", fileTemplateSetting, path, configinterpolate.DefaultMaxFileBytes>>20)
+		return "", fmt.Errorf("%s: %w", fileTemplateSetting, err)
 	}
 	// Some editors start a file with a UTF-8 byte order mark, which is not part of the JSON.
 	return strings.TrimPrefix(string(data), "\uFEFF"), nil
-}
-
-// templateFileError reports a template file that cannot be read. An *fs.PathError also names
-// the path, so only its reason is kept.
-func templateFileError(path string, err error) error {
-	reason := err
-	if pathErr, ok := errors.AsType[*fs.PathError](err); ok {
-		reason = pathErr.Err
-	}
-	return fmt.Errorf("%s: cannot read %q: %w", fileTemplateSetting, path, reason)
 }
 
 // excludeTemplatePath applies one exclude_fields path to an object node. A path that ends at a

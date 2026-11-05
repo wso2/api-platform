@@ -678,9 +678,10 @@ gateway:
     # rendered. To write every line in your own JSON layout, set one of:
     #   - template: the layout as a YAML string, for example a | block. A YAML
     #     map would lose the key order.
-    #   - template_file: the path of a file holding the layout. Mount a ConfigMap
-    #     with the file through gateway.gatewayRuntime.deployment.extraVolumes
-    #     and extraVolumeMounts.
+    #   - template_file: the path of a file holding the layout. It must be inside
+    #     /etc/gateway-runtime and at most 1 MiB. Mount a ConfigMap with the file
+    #     there through gateway.gatewayRuntime.deployment.extraVolumes and
+    #     extraVolumeMounts, for example at /etc/gateway-runtime/traffic-log.
     # The rules and the $ctx: variables are described in
     # gateway/configs/config-template.toml.
     # traffic_logging:
