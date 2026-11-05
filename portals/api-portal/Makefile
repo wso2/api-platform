@@ -71,29 +71,68 @@ help: ## Show this help message
 # Build Targets
 
 .PHONY: build
-# ENABLE_COVERAGE=true instruments the browser scripts and creates /coverage in
-# the image, which is what the integration suite's coverage run needs. Off by
-# default: an instrumented image is for measuring, never for shipping.
+# ENABLE_COVERAGE=true builds the integration suite's coverage image instead: the
+# release image plus instrumented browser scripts and /coverage (Dockerfile.coverage,
+# via docker-bake.coverage.hcl), under the same tag. Off by default: an instrumented
+# image is for measuring, never for shipping.
 ENABLE_COVERAGE ?= false
 
 build: ## Build API Portal Docker image (ENABLE_COVERAGE=true to instrument it)
 	@echo "Building API Portal Docker image ($(VERSION), coverage=$(ENABLE_COVERAGE))..."
+ifeq ($(ENABLE_COVERAGE),true)
+	docker buildx bake -f docker-bake.coverage.hcl \
+		--allow=fs.read=../../tests/framework/tools \
+		--set coverage.tags=$(API_PORTAL_IMAGE):$(VERSION) \
+		--load \
+		coverage
+else
+	$(MAKE) --no-print-directory binary
+	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
+	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
 	docker buildx build \
-		--build-context coverage-scripts=../../tests/framework/tools \
-		--build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) \
 		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--load \
-		.
+		target/.binary-ctx/api-portal
+	@rm -rf target/.binary-ctx
+endif
 
 .PHONY: build-and-push-multiarch
-build-and-push-multiarch: ## Build and push multi-arch API Portal image to GHCR
+build-and-push-multiarch: binary ## Build and push multi-arch API Portal image to GHCR
 	@echo "Building and pushing multi-arch API Portal Docker image ($(VERSION))..."
+	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
+	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
-		--build-context coverage-scripts=../../tests/framework/tools \
 		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--push \
-		.
+		target/.binary-ctx/api-portal
+	@rm -rf target/.binary-ctx
+
+# Binary zip: the API Portal build folder (Dockerfile + source) customers download to
+# build their own image, for example on a different base image. The images above are
+# built from this zip itself: Docker can't build from a .zip, so it's unzipped into
+# target/.binary-ctx for the build and removed afterwards. A published image and the
+# zip of the same version therefore always hold the same files.
+#
+# Copies the files the Dockerfile's COPY lines read: tracked files plus untracked
+# ones .gitignore doesn't exclude (so a new, not-yet-added file is built too, while
+# local *.db files, node_modules, keys and certificates stay out). The copy is the
+# working-tree content, so a version bump made before the build is included. Tests
+# (*.test.js) are left out; the image never runs them. pipefail makes a failed git
+# or tar step (e.g. a tracked file deleted on disk) fail the build instead of
+# producing a partial folder. Binary zips of other versions left in target/ by
+# earlier builds are removed first, so target/ only ever holds the current one.
+.PHONY: binary
+binary: ## Build target/$(BINARY_NAME).zip
+	@rm -rf target/.binary-stage
+	@rm -f target/wso2apip-api-portal-binary-*.zip
+	@mkdir -p target/.binary-stage/api-portal
+	@set -o pipefail; git ls-files -z --cached --others --exclude-standard -- $(SOURCE_FILES) ':(exclude)*.test.js' \
+		| tar --null -T - -cf - | tar -xf - -C target/.binary-stage/api-portal
+	@cp distribution/binary-README.md target/.binary-stage/api-portal/README.md
+	@cd target/.binary-stage && zip -rq ../$(BINARY_NAME).zip api-portal
+	@rm -rf target/.binary-stage
+	@echo "✓ Built target/$(BINARY_NAME).zip"
 
 # Version Management Targets
 
@@ -139,6 +178,10 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 DIST_VERSION := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
 DIST_NAME    := wso2apip-api-portal-$(DIST_VERSION)
 DIST_DIR     := target/$(DIST_NAME)
+# Everything the Docker image build reads (see the COPY lines in Dockerfile),
+# staged by `make binary`.
+SOURCE_FILES := Dockerfile .npmrc package.json package-lock.json src database resources
+BINARY_NAME  := wso2apip-api-portal-binary-$(VERSION)
 DIST_ZIP     := target/$(DIST_NAME).zip
 
 # Version/image used to pin the optional ai-workspace image (the profile-gated
@@ -370,8 +413,8 @@ endif
 	@echo "✓ Built $(DIST_ZIP)"
 
 .PHONY: clean-dist
-clean-dist: ## Remove distribution staging dir and zip
-	@rm -rf target/wso2apip-api-portal-*
+clean-dist: ## Remove distribution staging dir and zip (binary zips are left alone; make binary replaces its own)
+	@find target -maxdepth 1 -name 'wso2apip-api-portal-*' ! -name 'wso2apip-api-portal-binary-*' -exec rm -rf {} + 2>/dev/null || true
 
 # Clean Targets
 

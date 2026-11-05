@@ -47,7 +47,9 @@ Makefile
 VERSION
 target/
 
-# ── Integration tests (not needed at runtime) ─────────────────────
+# ── Tests (not needed at runtime) ─────────────────────────────────
+# Unit tests sit next to the code in src/; the image never runs them.
+**/*.test.js
 it/
 
 # ── Documentation (markdown only — keep the OpenAPI spec for the validator) ───
