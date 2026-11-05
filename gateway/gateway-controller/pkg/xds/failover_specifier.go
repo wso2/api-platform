@@ -22,6 +22,7 @@ import (
 	"slices"
 	"time"
 
+	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	mutationrules "github.com/envoyproxy/go-control-plane/envoy/config/common/mutation_rules/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -35,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"github.com/wso2/api-platform/common/collector"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -67,6 +69,27 @@ const (
 	// failoverRetryOn always includes retriable-status-codes: without it Envoy never
 	// evaluates RetriableStatusCodes, and the configured failover status codes silently
 	// do nothing.
+	//
+	// `reset` is retained deliberately though it is already subsumed by `5xx` (T030l, decided
+	// 2026-11-05). Envoy retries a reset under `5xx` independently of `reset` — retry_state_impl.cc
+	// carries the comment "Currently we count an upstream reset as a '5xx' (since it will result
+	// in one)" — and `gateway-error` behaves the same way. So swapping `reset` for the narrower
+	// `reset-before-request`, which retries only while no bytes have reached the upstream, would
+	// change nothing at all while reading as though it had.
+	//
+	// Narrowing it is possible, but not here: it would mean dropping `5xx` AND `gateway-error`
+	// and rebuilding the trigger set from `retriable-status-codes` + `connect-failure` +
+	// `reset-before-request`. That buys protection against re-sending a prompt a provider has
+	// already begun billing for, and costs the most common real failure this feature exists to
+	// handle — a provider that accepts the request, starts inference, then dies without
+	// responding, leaving the client a hard failure with a healthy fallback sitting idle. The
+	// client never sees a double answer in either case (only one response is committed
+	// downstream), and paying a second provider is inherent to failover rather than specific to
+	// resets, so the retry is kept.
+	//
+	// Keeping the now-redundant `reset` token is the safer of the two spellings: should `5xx`
+	// ever be narrowed, `reset` becomes load-bearing again, where deleting it now would leave a
+	// silent trap for whoever does that.
 	failoverRetryOn = "5xx,connect-failure,refused-stream,reset,retriable-status-codes"
 )
 
@@ -487,4 +510,44 @@ func inertPerTryTimeouts(failover *models.FailoverConfig, routeTimeout *duration
 				"fires first and the request ends with no failover", ms, routeMs))
 	}
 	return inert
+}
+
+// failoverGradingResponseFlags is the agreement this sink's filter is built from. It is defined
+// in `common` because the policy-engine decodes exactly the same set back out of the entries it
+// receives — see collector.FailoverGradingResponseFlags for why the two sides must not drift.
+var failoverGradingResponseFlags = collector.FailoverGradingResponseFlags
+
+// failoverResponseFlagFilter scopes an access-log sink to attempts that failed upstream.
+//
+// This is what makes the failover-driven sink free for healthy traffic: a request the target
+// served to completion carries no flag, matches nothing here, and is never serialized, never
+// buffered, and never sent (FR-030o). Only the failures the policy needs to see cost anything.
+func failoverResponseFlagFilter() *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_ResponseFlagFilter{
+			ResponseFlagFilter: &accesslog.ResponseFlagFilter{
+				Flags: slices.Clone(failoverGradingResponseFlags),
+			},
+		},
+	}
+}
+
+// needsALSStream reports whether this translation must stand up the gRPC access-log stream.
+//
+// Two independent consumers want it — the collector (analytics / traffic logging) and failover
+// health grading — and both the ALS *cluster* and the access-log *sink* must follow the same
+// answer. They are emitted at two distant call sites, and a sink pointing at a cluster that was
+// never emitted is a listener Envoy rejects. One predicate for both removes the drift rather
+// than leaving a test to notice it later.
+func (t *Translator) needsALSStream() bool {
+	return t.config.IsCollectorEnabled() || t.anyRouteHasFailover()
+}
+
+// anyRouteHasFailover reports whether this translation produced at least one failover route.
+//
+// failoverPlugins is reset at the start of every translation and filled while routes are built,
+// which is before listeners and clusters are assembled — so this is an accurate listener-wide
+// answer at both the ALS-cluster and access-log-config call sites.
+func (t *Translator) anyRouteHasFailover() bool {
+	return len(t.failoverPlugins) > 0
 }

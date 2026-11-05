@@ -738,6 +738,20 @@ though the routing policy keeps nominating it, and that load spreads across the 
   The ext_proc stream is NOT an alternative — the filter defines six processing steps and has no
   stream-reset, termination or completion notification, so the engine cannot distinguish a response
   that finished from one that was cut on that channel.
+
+  The flag set the sink admits and the set the receiving component decodes MUST be one shared
+  definition, not two lists that happen to agree. A flag admitted by the sink but not decoded is a
+  verdict that arrives and is silently discarded; a flag decoded but not admitted never arrives.
+  Neither direction produces an error, so the agreement cannot be left to review. The set MUST be
+  upstream-only: a downstream disconnect (the client closing a tab mid-stream) says nothing about
+  the target and MUST NOT count against it.
+
+  Where the receiving component cannot stand up the sink's counterpart, the consequence MUST follow
+  the reason it was being started. A deployment that enabled analytics or traffic logging and cannot
+  stand up their only transport MUST fail at startup; one that was provisioning the stream solely
+  for failover grading MUST degrade instead — failover still functions, grading conservatively per
+  FR-030p, so an unusable transport there is a reduced capability rather than grounds to refuse
+  traffic.
 - **FR-030p** *(added 2026-11-05)*: Where the outcome of an attempt cannot be verified, the system
   MUST record **nothing** rather than a success. Verified-only accounting is what removes the
   immunity described in FR-030n, and it holds whether or not FR-030o's signal is available.

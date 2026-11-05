@@ -222,12 +222,67 @@ func TestStartAccessLogServiceServer_TCP(t *testing.T) {
 	}
 
 	// Start the server
-	grpcServer, _ := StartAccessLogServiceServer(cfg, nil)
-
-	require.NotNil(t, grpcServer)
+	als, err := StartAccessLogServiceServer(cfg, nil)
+	require.NoError(t, err)
+	require.NotNil(t, als)
+	require.NotNil(t, als.Server)
+	require.NotNil(t, als.Verdicts,
+		"the failover verdict consumer is registered whether or not the collector is enabled")
 
 	// Gracefully stop the server
-	grpcServer.GracefulStop()
+	als.Server.GracefulStop()
+}
+
+// TestStartAccessLogServiceServer_ReturnsErrorRatherThanPanicking pins the behaviour the two
+// callers depend on: a deployment that enabled analytics must fail loudly at boot, while one
+// that started this receiver only so failover can grade mid-stream failures must degrade
+// instead. Both need the error back; a panic would force the first choice on both.
+func TestStartAccessLogServiceServer_ReturnsErrorRatherThanPanicking(t *testing.T) {
+	cfg := &config.Config{
+		Collector: config.CollectorConfig{
+			Server: config.AccessLogsServiceConfig{
+				Mode:                  "tcp",
+				ServerPort:            19002,
+				ALSPlainText:          true,
+				ExtProcMaxMessageSize: 1024 * 1024 * 4,
+				ExtProcMaxHeaderLimit: 0, // never validated when the collector is disabled
+			},
+		},
+	}
+
+	var als *AccessLogService
+	var err error
+	require.NotPanics(t, func() { als, err = StartAccessLogServiceServer(cfg, nil) })
+	require.Error(t, err)
+	assert.Nil(t, als)
+	assert.Contains(t, err.Error(), "max_header_limit")
+}
+
+// TestNewAccessLogServiceServer_ConsumerRegistration covers which consumers run.
+//
+// Analytics is registered only when the collector is enabled: Process() builds a full analytic
+// event before discovering there are no publishers to take it, and logs an error for any entry
+// that does not fit its expected shape — so running it in a deployment whose stream exists purely
+// for failover grading would spend real work per entry and emit misleading errors.
+func TestNewAccessLogServiceServer_ConsumerRegistration(t *testing.T) {
+	names := func(s *AccessLogServiceServer) []string {
+		got := make([]string, 0, len(s.consumers))
+		for _, c := range s.consumers {
+			got = append(got, c.Name())
+		}
+		return got
+	}
+
+	collectorOff := &config.Config{}
+	require.False(t, collectorOff.IsCollectorEnabled(),
+		"both collector inputs default off — the premise FR-030o rests on")
+	assert.Equal(t, []string{"failover-attempt-verdict"}, names(newAccessLogServiceServer(collectorOff, nil)),
+		"failover grading works with analytics unconfigured")
+
+	collectorOn := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
+	require.True(t, collectorOn.IsCollectorEnabled())
+	assert.Equal(t, []string{"failover-attempt-verdict", "analytics"}, names(newAccessLogServiceServer(collectorOn, nil)),
+		"the collector's consumer joins the one that is always present")
 }
 
 func TestStartAccessLogServiceServer_UDS(t *testing.T) {

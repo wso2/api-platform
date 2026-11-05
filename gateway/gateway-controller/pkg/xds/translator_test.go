@@ -2549,7 +2549,7 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	translator, err := NewTranslator(logger, routerCfg, nil, cfg)
 	require.NoError(t, err)
 
-	accessLog, err := translator.createGRPCAccessLog()
+	accessLog, err := translator.createGRPCAccessLog(buildAccessLogFilter(cfg.Collector.IgnorePathPrefixes))
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
 	require.NotNil(t, accessLog.Filter, "reserved health-path suppression filter is always attached")
@@ -2575,7 +2575,7 @@ func TestTranslator_CreateGRPCAccessLog_WithIgnorePathPrefixes(t *testing.T) {
 	translator, err := NewTranslator(logger, routerCfg, nil, cfg)
 	require.NoError(t, err)
 
-	accessLog, err := translator.createGRPCAccessLog()
+	accessLog, err := translator.createGRPCAccessLog(buildAccessLogFilter(cfg.Collector.IgnorePathPrefixes))
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
 	assert.NotNil(t, accessLog.Filter, "ignore_path_prefixes configured -> filter attached")
@@ -2594,7 +2594,7 @@ func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
 	translator, err := NewTranslator(logger, routerCfg, nil, cfg)
 	require.NoError(t, err)
 
-	accessLog, err := translator.createGRPCAccessLog()
+	accessLog, err := translator.createGRPCAccessLog(buildAccessLogFilter(cfg.Collector.IgnorePathPrefixes))
 	assert.Error(t, err)
 	assert.Nil(t, accessLog)
 	assert.Contains(t, err.Error(), "buffer_size_bytes")
@@ -4102,4 +4102,136 @@ func TestTranslator_RoutesWithoutPolicyChain_StripClientCertificateHeaders(t *te
 		assert.Contains(t, r.RequestHeadersToRemove, xfccHeaderName, "%s must strip the forwarded-certificate header", name)
 		assert.Contains(t, r.RequestHeadersToRemove, "x-wso2-client-certificate", "%s must strip the relayed-certificate header", name)
 	}
+}
+
+// TestTranslator_FailoverAccessLogSink pins FR-030o: a failover route brings up the gRPC
+// access-log stream by itself, because Envoy's response flag is the only place the verdict
+// on a mid-stream truncation exists.
+//
+// The policy grades a target from its response headers. An attempt that sends `200` and then
+// dies mid-body therefore reads as a success, which is worse than recording nothing — the false
+// success resets the consecutive-failure counter and immunises a provider that truncates every
+// stream (FR-030n). Envoy finishes the exchange and stamps the access-log entry with a flag;
+// this sink is how that reaches the policy engine.
+//
+// Both collector inputs (analytics, traffic logging) default to off, so a sink gated on them
+// would leave the common deployment unable to detect that failure at all.
+func TestTranslator_FailoverAccessLogSink(t *testing.T) {
+	const grpcSink = "envoy.access_loggers.http_grpc"
+
+	newTranslator := func(t *testing.T, collectorOn, withFailover bool) *Translator {
+		t.Helper()
+		routerCfg := testRouterConfig()
+		routerCfg.AccessLogs.Enabled = false // stdout sink off, so only the gRPC sink is in play
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		cfg.Analytics.Enabled = collectorOn
+		cfg.Collector.Server = config.GRPCEventServerConfig{
+			Mode:                "tcp",
+			BufferFlushInterval: 1000,
+			BufferSizeBytes:     16384,
+			GRPCRequestTimeout:  5000,
+		}
+		translator, err := NewTranslator(createTestLogger(), routerCfg, nil, cfg)
+		require.NoError(t, err)
+		if withFailover {
+			// What route building populates; set directly so the test exercises the gate
+			// rather than a whole deployment.
+			translator.failoverPlugins = map[string]*route.ClusterSpecifierPlugin{
+				"failover_some_route": {},
+			}
+		}
+		return translator
+	}
+
+	t.Run("failover alone brings up the sink with no collector configured", func(t *testing.T) {
+		translator := newTranslator(t, false, true)
+
+		logs, err := translator.createAccessLogConfig()
+		require.NoError(t, err)
+		require.Len(t, logs, 1, "exactly one sink: the failover grading stream")
+		assert.Equal(t, grpcSink, logs[0].Name)
+
+		flagFilter := logs[0].GetFilter().GetResponseFlagFilter()
+		require.NotNil(t, flagFilter,
+			"the failover sink must be response-flag filtered — unfiltered, it would stream every "+
+				"request on a healthy gateway, which is the cost this design exists to avoid")
+		assert.Equal(t, failoverGradingResponseFlags, flagFilter.GetFlags())
+
+		// The sink is useless unless it reaches the HCM; the gate there is the other half.
+		lis, _, err := translator.createListener(nil, false, false)
+		require.NoError(t, err)
+		managerLogs := extractHCM(t, lis).GetAccessLog()
+		require.Len(t, managerLogs, 1)
+		assert.Equal(t, grpcSink, managerLogs[0].Name)
+	})
+
+	t.Run("collector on plus failover yields one sink, not two", func(t *testing.T) {
+		translator := newTranslator(t, true, true)
+
+		logs, err := translator.createAccessLogConfig()
+		require.NoError(t, err)
+		require.Len(t, logs, 1,
+			"the collector's unfiltered sink already carries every entry, flags included; a second "+
+				"filtered sink would deliver each failure to the engine twice")
+		assert.Nil(t, logs[0].GetFilter().GetResponseFlagFilter(),
+			"the collector's sink must stay unfiltered by response flag, or analytics loses every "+
+				"successful request")
+	})
+
+	t.Run("no failover and no collector leaves the stream off", func(t *testing.T) {
+		translator := newTranslator(t, false, false)
+
+		logs, err := translator.createAccessLogConfig()
+		require.NoError(t, err)
+		assert.Empty(t, logs, "nothing needs a sink, so nothing is emitted")
+	})
+}
+
+// TestFailoverResponseFlagFilter_AcceptedByEnvoy runs Envoy's own validator over the filter.
+// Envoy checks every flag string against a closed list at config load and rejects the whole
+// listener on a typo, so a mistake here would not degrade grading — it would stop the gateway
+// accepting any configuration at all.
+func TestFailoverResponseFlagFilter_AcceptedByEnvoy(t *testing.T) {
+	require.NoError(t, failoverResponseFlagFilter().ValidateAll())
+
+	// Downstream-side flags must stay out: `DC` means the *client* disconnected, which says
+	// nothing about the target and would suspend a healthy provider every time a user closed a
+	// tab mid-stream. `UH`/`NR` mean no attempt reached an upstream at all.
+	for _, forbidden := range []string{"DC", "UH", "NR", "DPE", "DI", "DT"} {
+		assert.NotContains(t, failoverGradingResponseFlags, forbidden,
+			"%s is not a verdict on the target", forbidden)
+	}
+	assert.Contains(t, failoverGradingResponseFlags, "UPE",
+		"the flag the probe observed on a reset after `200` (poc-results.md, T030k0)")
+}
+
+// TestTranslator_NeedsALSStream covers the predicate both the ALS cluster and the access-log
+// sink are gated on. They are emitted at two distant call sites and must agree: a sink pointing
+// at a cluster that was never emitted is a listener Envoy rejects.
+func TestTranslator_NeedsALSStream(t *testing.T) {
+	newTranslator := func(t *testing.T, collectorOn bool) *Translator {
+		t.Helper()
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		cfg.Analytics.Enabled = collectorOn
+		translator, err := NewTranslator(createTestLogger(), routerCfg, nil, cfg)
+		require.NoError(t, err)
+		return translator
+	}
+
+	withFailover := func(translator *Translator) *Translator {
+		translator.failoverPlugins = map[string]*route.ClusterSpecifierPlugin{"failover_some_route": {}}
+		return translator
+	}
+
+	require.False(t, testConfig().IsCollectorEnabled(),
+		"both collector inputs default off — the premise FR-030o rests on")
+
+	assert.False(t, newTranslator(t, false).needsALSStream(), "nothing wants the stream")
+	assert.True(t, newTranslator(t, true).needsALSStream(), "collector wants it")
+	assert.True(t, withFailover(newTranslator(t, false)).needsALSStream(),
+		"failover wants it on its own, with no collector configured")
+	assert.True(t, withFailover(newTranslator(t, true)).needsALSStream(), "both want it")
 }

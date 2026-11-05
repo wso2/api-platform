@@ -59,6 +59,14 @@ route_config:
 **`retriable-status-codes` must appear in `retry_on`** or `retriable_status_codes` is never
 evaluated.
 
+**`reset` is redundant but retained.** Envoy retries an upstream reset under `5xx` independently of
+`reset` (`retry_state_impl.cc`: *"Currently we count an upstream reset as a `5xx` (since it will
+result in one)"*), and `gateway-error` behaves the same. So a post-request reset — a provider that
+accepted the prompt, began work, then died — is retried, deliberately (T030l). Replacing `reset`
+with `reset-before-request` would change nothing while reading as though it had; genuinely
+narrowing it would mean dropping `5xx`/`gateway-error`, which would end failover for the most
+common real provider failure.
+
 **`rate_limited_retry_back_off` MUST NOT be set.** It honours the failing provider's `Retry-After`
 (default ceiling 300s) before attempting a *different* provider — backwards for failover. Keep
 `retry_back_off.base_interval` small and assert the absence in a test.
@@ -73,9 +81,12 @@ Written **once** by the downstream pass, before the first attempt:
 | Shape | `priority_groups`: ordered list of `{ name, clusters: [ { cluster_name, weight } ] }` |
 | Contents | The resolved chain, suspended targets already removed |
 
-Attempt N takes group N; once attempts exceed the list, Envoy **stays on the last group** rather than
-reaching for an unranked target. A group may hold several clusters with weights, which expresses
-load spreading *within* a rank — not possible under the rejected design.
+Attempt N takes group N. Attempts cannot exceed the list under the generated configuration:
+`num_retries` is the chain length minus one, so the sequence ends at the last published group and
+no surplus attempt is made — verified at runtime by `failover-core.feature` (2026-11-05), which
+supersedes POC probe B4's prediction that the last group would repeat. A group may hold several
+clusters with weights, which expresses load spreading *within* a rank — not possible under the
+rejected design.
 
 **Security**: gateway-internal. MUST NOT be derivable from client input, and any inbound header or
 metadata of the same name MUST be stripped at ingress.
@@ -104,6 +115,26 @@ re-invokes on a retry:
 The downstream chain does not re-run, so side-effecting policies are once-per-client-request by
 construction (FR-012d).
 
+## 6b. Access-log sink for grading
+
+A route attaching failover makes the listener emit the gRPC access-log cluster and sink even when
+analytics and traffic logging are both off (their default). This is the only channel carrying the
+outcome of an attempt that committed `200` and then failed mid-body; ext_proc has no completion
+or stream-reset notification, so the policy's response phase cannot distinguish that from a
+response served whole (FR-030n/o).
+
+| Property | Value |
+|---|---|
+| Gate | collector enabled **OR** a failover route is present — one predicate (`needsALSStream`) for both the cluster and the sink |
+| Filter, failover-only case | `response_flag_filter` over `common/collector.FailoverGradingResponseFlags` |
+| Filter, collector enabled | unchanged (health-path + ignore-prefix); the unfiltered sink already carries flags, so no second sink is emitted |
+| Flags admitted | `UPE`, `UC`, `UR`, `UT`, `UF`, `URX`, `UMSDR` — upstream only |
+| Flags deliberately excluded | `DC` (the *client* disconnected — not the target's fault), `UH`/`NR` (no attempt reached an upstream) |
+
+Healthy traffic matches no flag, so it is never serialized, buffered or sent: the stream costs
+nothing until a target actually fails. Envoy validates each flag string against its own closed
+list at load, so a typo fails the config push rather than silently matching nothing.
+
 ## 7. Invariants
 
 | Invariant | Source |
@@ -117,6 +148,8 @@ construction (FR-012d).
 | Exhaustion returns the feature's sterile error | FR-014 |
 | Config scoped to the attaching operation; shared provider clusters unmutated | FR-030c/d |
 | `NormalizePath` / `MergeSlashes` / `PathWithEscapedSlashesAction` retained | `go-control-plane-xds-security.md` d.6 |
+| Failover provisions its own access-log sink; grading never depends on analytics being enabled | FR-030o — §6b |
+| The flag set the sink admits is the same one the engine decodes | FR-030o — one definition in `common/collector` |
 
 ## 8. Rejected generation shapes
 

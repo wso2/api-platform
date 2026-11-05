@@ -1150,10 +1150,18 @@ func (t *Translator) TranslateConfigs(
 	policyEngineCluster := t.createPolicyEngineCluster()
 	clusters = append(clusters, policyEngineCluster)
 
-	// Add ALS cluster if the collector is active (it ships access logs over gRPC)
+	// Add ALS cluster if anything needs the gRPC access-log stream: the collector (analytics /
+	// traffic logging) or a failover route, which grades target health from the response flags
+	// Envoy stamps on an attempt that failed upstream (FR-030o). Failover must not depend on
+	// analytics being switched on — both collector inputs default to off, so gating the stream
+	// on them would leave the common deployment unable to detect a provider that truncates
+	// every stream. The sink the failover case installs is response-flag filtered, so this
+	// cluster carries nothing at all while targets are healthy.
 	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.Server))
-	if t.config.IsCollectorEnabled() {
-		log.Info("collector is enabled, creating ALS cluster")
+	if t.needsALSStream() {
+		log.Info("creating ALS cluster",
+			slog.Bool("collector_enabled", t.config.IsCollectorEnabled()),
+			slog.Bool("failover_routes_present", t.anyRouteHasFailover()))
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
 	}
@@ -1626,7 +1634,7 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 	// depends on. The collector's sink must not be gated on the stdout toggle —
 	// ALS is the only data source for traffic logging and analytics, so gating it
 	// there silently disables both. See createAccessLogConfig.
-	if t.routerConfig.AccessLogs.Enabled || t.config.IsCollectorEnabled() {
+	if t.routerConfig.AccessLogs.Enabled || t.needsALSStream() {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create access log config: %w", err)
@@ -3252,21 +3260,27 @@ func sanitizeUpstreamDefinitionName(name string) string {
 	return sanitized
 }
 
-// createAccessLogConfig builds the router's access log sinks. Two independent
-// consumers can each require a sink, so this is called whenever *either* is
+// createAccessLogConfig builds the router's access log sinks. Three independent
+// consumers can each require a sink, so this is called whenever *any* is
 // active (see the call site in createHTTPConnectionManager):
 //
 //   - router.access_logs.enabled — the operator-facing stdout log line
 //   - the collector (analytics / traffic logging) — the gRPC ALS stream, which is
 //     the only thing that feeds the policy-engine's analytics pipeline
+//   - a failover route — the same gRPC stream, filtered to upstream-failure response
+//     flags, which is the only way the model-failover policy learns that an attempt
+//     died after committing its response headers (FR-030n/o)
 //
-// The two must stay decoupled: turning off the stdout log line is a log-formatting
+// All three must stay decoupled: turning off the stdout log line is a log-formatting
 // choice and must not silently starve traffic logging and analytics of their only
-// data source.
+// data source, and neither of those is a prerequisite for failover grading its own
+// targets correctly.
 //
-// Both sinks suppress the reserved `/_gateway-health` prefix (see
-// buildReservedHealthPathAccessLogFilter), so kubernetes readiness/liveness probes
-// never reach either the operator's stdout log or the collector's analytics stream.
+// The stdout sink and the collector's sink suppress the reserved `/_gateway-health`
+// prefix (see buildReservedHealthPathAccessLogFilter), so kubernetes readiness and
+// liveness probes never reach either. The failover sink needs no such suppression:
+// the health path is answered locally and so can never carry an upstream-failure
+// flag, which is the only thing that sink admits.
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var accessLogs []*accesslog.AccessLog
 
@@ -3284,9 +3298,34 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	// nothing to traffic logging and analytics while both are enabled in config.
 	if t.config.IsCollectorEnabled() {
 		t.logger.Info("Creating gRPC access log configuration")
-		grpcAccessLog, err := t.createGRPCAccessLog()
+		grpcAccessLog, err := t.createGRPCAccessLog(buildAccessLogFilter(t.config.Collector.IgnorePathPrefixes))
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gRPC access log config: %w", err)
+		}
+		accessLogs = append(accessLogs, grpcAccessLog)
+	} else if t.anyRouteHasFailover() {
+		// Failover needs the same stream, for a different reason and on much narrower terms.
+		//
+		// The model-failover policy grades a target from its response headers, so an attempt
+		// that commits `200` and then dies mid-body is indistinguishable from one that served
+		// the whole answer (FR-030n). Envoy is the only component that sees how the exchange
+		// actually ended, and it reports that as a response flag on the access-log entry.
+		//
+		// This sink exists only to carry those verdicts, so it is filtered down to the upstream
+		// failure flags: a healthy request matches nothing and is never serialized or sent
+		// (FR-030o). That is what lets the stream be switched on by the presence of a failover
+		// route rather than by an operator enabling analytics — the cost on healthy traffic is
+		// zero, and a deployment that never enables the collector still suspends a provider
+		// that truncates every stream.
+		//
+		// This is the else branch, not a second sink: when the collector is on, its unfiltered
+		// sink already carries every entry, flags included, and adding a filtered duplicate
+		// would deliver each failure twice.
+		t.logger.Info("Creating gRPC access log configuration for failover health grading",
+			slog.Any("response_flags", failoverGradingResponseFlags))
+		grpcAccessLog, err := t.createGRPCAccessLog(failoverResponseFlagFilter())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create failover gRPC access log config: %w", err)
 		}
 		accessLogs = append(accessLogs, grpcAccessLog)
 	}
@@ -3362,7 +3401,11 @@ func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 }
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
-func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
+//
+// The filter is supplied by the caller rather than built here: the collector's sink must carry
+// every entry (its ignore-prefix filter aside), while the failover sink carries only attempts
+// that failed upstream. See createAccessLogConfig.
+func (t *Translator) createGRPCAccessLog(filter *accesslog.AccessLogFilter) (*accesslog.AccessLog, error) {
 	grpcConfig := t.config.Collector.Server
 	bufferSizeBytes, err := checkedUInt32FromPositiveInt("collector.server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
 	if err != nil {
@@ -3397,7 +3440,7 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 
 	return &accesslog.AccessLog{
 		Name:   "envoy.access_loggers.http_grpc",
-		Filter: buildAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
+		Filter: filter,
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},

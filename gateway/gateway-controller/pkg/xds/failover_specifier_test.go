@@ -782,3 +782,28 @@ func TestInertPerTryTimeouts_InertFailoverIsSilent(t *testing.T) {
 		t.Fatalf("inert = %v, want silence when the policy resolved no targets", inert)
 	}
 }
+
+// TestFailoverRetryPolicy_RetriesAResetAfterTheRequestWasSent pins the T030l decision
+// (2026-11-05): a provider that accepts the prompt, begins work, then dies without responding
+// MUST still fail over.
+//
+// This is the most common real provider failure the feature exists for, and the guard is easy to
+// lose by accident — `reset` reads like the token that controls it, so swapping it for the
+// narrower `reset-before-request` looks like a safe tightening. It is not: Envoy retries a reset
+// under `5xx` independently of `reset` ("Currently we count an upstream reset as a '5xx' (since
+// it will result in one)" — retry_state_impl.cc), so that swap changes nothing. What WOULD change
+// it is dropping `5xx`/`gateway-error`, which is why this test asserts on `5xx` rather than on
+// `reset`: the behaviour hangs off the token that does not look like it owns it.
+func TestFailoverRetryPolicy_RetriesAResetAfterTheRequestWasSent(t *testing.T) {
+	retry := buildFailoverRetryPolicy(threeTargetFailover())
+
+	if !strings.Contains(retry.RetryOn, "5xx") {
+		t.Errorf("retry_on must retain 5xx: it is what retries an upstream reset once the request "+
+			"has been sent, so dropping it silently ends failover for a provider that accepts a "+
+			"prompt and then dies. Got %q", retry.RetryOn)
+	}
+	if strings.Contains(retry.RetryOn, "reset-before-request") {
+		t.Errorf("reset-before-request retries only while no bytes have reached the upstream, which "+
+			"excludes the failure this feature is for. Got %q", retry.RetryOn)
+	}
+}

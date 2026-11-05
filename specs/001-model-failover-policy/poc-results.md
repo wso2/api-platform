@@ -2088,3 +2088,63 @@ chunk is literally a protocol error. A provider dying another way (clean FIN mid
 family. The filter must list the family rather than the single value this probe produced; deriving
 that list from Envoy's response-flag documentation is part of T030k1, not something this probe
 settled.
+
+## T030k1 / T030k2 — the access-log verdict reaches the engine with analytics off (2026-11-05)
+
+Verified at runtime against the IT stack started with `analytics.enabled = false`, which is the
+deployment shape FR-030o exists for — the suite's own `test-config.toml` enables analytics, so the
+default stack exercises the collector branch and never the failover-only one. Both containers were
+checked for the override rather than trusting the Compose volume merge.
+
+**Generated configuration** (Envoy `/config_dump`, collector disabled):
+
+- `apip_als_cluster` present — the cluster gate now follows `needsALSStream()`.
+- Both listeners (`listener_http_8080`, `listener_https_8443`) carry the `http_grpc` sink with
+  `response_flag_filter: [UPE, UC, UR, UT, UF, URX, UMSDR]`. Envoy accepted every flag string, which
+  is the check that matters: it validates against its own closed list and rejects the listener on a
+  typo.
+
+**Delivery**, truncating backend (`200` + chunked headers, one chunk, 1.5 s, then `RST`):
+
+```
+WARN failover attempt failed after its response was committed; the policy cannot see this from
+     response headers
+     request_id=8fc623dc-… upstream_cluster=upstream_LlmProxy_…_k1-trunc-provider
+     response_flags=[UPE] response_code=200
+```
+
+The client received `200` and 20 bytes — the exact shape the policy grades as a success today.
+
+**Controls, both clean:**
+
+| Case | Verdicts |
+|---|---|
+| Failover-rescued request (first target dead, second serves) | 0 |
+| Complete SSE response — same streaming shape and content-type, no reset | 0 |
+
+The second control is the load-bearing one: it shares every property with the truncation except the
+reset, so a filter that merely matched "streamed responses" would fire on it. It does not.
+
+### Finding for T030k3: one client request produces TWO flagged entries
+
+The truncation logged the same `request_id` twice, from two clusters:
+
+```
+upstream_cluster=upstream_main_host.docker.internal_9099
+upstream_cluster=upstream_LlmProxy_01a1ac87-…_k1-trunc-provider
+```
+
+An LLM proxy forwards through the provider's own route, so one client call is two Envoy hops and two
+access-log entries, each independently flagged. Attribution by `upstream_cluster` must therefore
+grade **only** the cluster belonging to a failover target: counting both would record two failures
+for one, and the loopback-hop cluster is not a failover target at all. Analytics already faces this
+and suppresses the loopback hop via a marker header (`PropInternalLoopbackProvider` in
+`internal/analytics/analytics.go`) — the verdict path needs its own answer, since it is deliberately
+not routed through analytics.
+
+### Finding: ALS entries are per downstream request, not per attempt
+
+A failure that failover successfully rescues leaves no flagged entry at all — the surviving attempt
+determines the entry's response code and flags. That is not a gap (the policy already grades
+pre-commitment failures correctly from response headers), but T030k3 must not be designed expecting
+one entry per attempt.
