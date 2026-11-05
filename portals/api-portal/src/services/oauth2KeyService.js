@@ -54,8 +54,9 @@
  * Keycloak does.
  *
  * The key↔application association lives in `oauth2_consumer_key_app_mappings`,
- * reached through `keyAppMappingDao`. A key belongs to at most one application;
- * an application may hold any number of keys.
+ * reached through `keyAppMappingDao`. A key belongs to at most one application,
+ * and an application holds at most one key per key type — see
+ * `associateOAuth2KeyApplication`, which is where that second rule is enforced.
  */
 
 const crypto = require('crypto');
@@ -1123,6 +1124,18 @@ const associateOAuth2KeyApplication = async (req, res) => {
         const appRow = await applicationDao.getId(orgId, actor, applicationId);
         if (!appRow || !appRow.uuid) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.APPLICATION_NOT_FOUND);
+        }
+
+        // One key per key type per application. The type is stamped on the key at
+        // creation from its key manager, so this is "this application already has a
+        // production key" regardless of which key manager issued either of them.
+        // Refused rather than swapped: the incumbent key is a live credential, and
+        // detaching one as a side effect of attaching another is not something to do
+        // without being asked. Dissociate first, then associate.
+        const keyType = record.keyType || constants.KEY_TYPE.PRODUCTION;
+        const conflictId = await keyAppMappingDao.findConflictingKeyId(appRow.uuid, keyType, keyId);
+        if (conflictId) {
+            return util.sendError(res, 409, constants.ERROR_MESSAGE.OAUTH2_KEY_ALREADY_ASSOCIATED);
         }
 
         await keyAppMappingDao.associate(keyId, appRow.uuid, actor);

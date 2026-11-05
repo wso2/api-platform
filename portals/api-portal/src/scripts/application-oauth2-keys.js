@@ -38,8 +38,9 @@
         if (typeof showAlert === 'function') { try { await showAlert(message, type); } catch (e) { /* noop */ } }
     }
 
-    // Keys the caller owns that are not already on this application. Rendered with
-    // the page by the controller, so the picker needs no round trip to open.
+    // Keys the caller owns that this application could actually take: not already
+    // on it, and not of a key type it already holds. Rendered with the page by the
+    // controller, so the picker needs no round trip to open.
     function availableKeys() {
         try {
             return JSON.parse(config.getAttribute('data-available-oauth2-keys') || '[]');
@@ -80,7 +81,10 @@
 
         document.getElementById('btn-submit-associate-oauth2-key').disabled = true;
         if (!keys.length) {
-            alertMsg('You have no OAuth2 keys to associate. Generate one from Keys → OAuth2 Keys first.', 'error');
+            // Two causes, one message: the caller has no keys at all, or every key
+            // they have is of a type this application already holds. The modal hint
+            // covers the rule itself, so this says only that there is nothing to pick.
+            alertMsg('No OAuth2 key is available to associate.', 'error');
             return;
         }
         show('associate-oauth2-key-modal');

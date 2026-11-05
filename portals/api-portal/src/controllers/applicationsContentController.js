@@ -309,8 +309,10 @@ function formatApiDisplayName(apiMetadata, fallbackId) {
  *
  * "Available" deliberately includes keys already on ANOTHER application: a key
  * belongs to at most one, so choosing one here moves it. Hiding those would make
- * a key the caller owns look like it had vanished. Only keys already on THIS
- * application are excluded, since associating one again is a no-op.
+ * a key the caller owns look like it had vanished. Two kinds are left out: keys
+ * already on THIS application, since associating one again is a no-op, and keys
+ * whose key type this application already holds, since the server refuses those
+ * with a 409. Offering a choice that cannot succeed is worse than a shorter list.
  */
 async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
     let associatedOAuth2Keys = [];
@@ -362,6 +364,12 @@ async function loadApplicationOAuth2KeysData(orgId, applicationId, userId) {
                 availableOAuth2Keys.push({ ...row, applicationName: on ? appNames.get(on) || '' : '' });
             }
         }
+
+        // Filtered after the loop rather than inside it: a key's type is only
+        // "taken" once every associated key has been seen, and the loop visits
+        // them in no particular order.
+        const takenTypes = new Set(associatedOAuth2Keys.map((k) => k.keyType));
+        availableOAuth2Keys = availableOAuth2Keys.filter((k) => !takenTypes.has(k.keyType));
     } catch (error) {
         logger.warn('Failed to load OAuth2 keys for the application OAuth2 keys section', {
             orgId, applicationId, error: error.message,

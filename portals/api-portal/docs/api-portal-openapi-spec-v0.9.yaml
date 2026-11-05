@@ -3289,7 +3289,9 @@ paths:
       summary: Associate an OAuth2 key with an application
       description: >-
         Associates, or re-associates, an existing OAuth2 key with an application in this organization. A key belongs
-        to at most one application; an application may hold any number of keys.
+        to at most one application, and an application holds at most one key per key type — one PRODUCTION and one
+        SANDBOX. Associating a key whose type the application already has is refused with 409; dissociate the
+        existing key first. Re-associating a key to the application it is already on succeeds unchanged.
       operationId: associateOAuth2KeyApplication
       requestBody:
         $ref: "#/components/requestBodies/OAuth2KeyAssociateBody"
@@ -3302,6 +3304,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "500":

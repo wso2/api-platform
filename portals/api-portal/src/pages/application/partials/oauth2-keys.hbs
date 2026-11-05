@@ -107,13 +107,14 @@
     <div class="ak-modal-body">
       {{!-- A key belongs to at most one application, so choosing one here moves it
             off whatever it was on. The picker says so rather than letting the move
-            be a surprise. --}}
+            be a surprise. It lists only key types this application does not already
+            hold, so there is nothing here that the server would refuse. --}}
       <div class="ak-form-group">
         <label for="associate-oauth2-key-select">Key</label>
         <select id="associate-oauth2-key-select" class="ak-form-input">
           <option value="">— Select a key —</option>
         </select>
-        <p class="ak-form-hint">Only your own keys are listed. A key already associated with another application will be moved to this one.</p>
+        <p class="ak-form-hint">Only your own keys are listed, and only for key types this application does not already have. An application holds one production key and one sandbox key. A key already associated with another application will be moved to this one.</p>
       </div>
     </div>
     <div class="ak-modal-footer">
