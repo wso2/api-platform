@@ -50,8 +50,7 @@ const local = (relative) => path.resolve(__dirname, relative);
 let keyRecord;
 let appRow;
 let conflictKeyId;
-let conflictArgs;
-let associateArgs;
+let exclusiveArgs;
 
 stub(local('../config/configLoader.js'), { config: { database: { driver: 'sqlite' } } });
 stub(local('../config/logger.js'), {
@@ -75,8 +74,10 @@ stub(local('../dao/applicationDao.js'), {
     get: async () => ({ handle: 'checkout-app', display_name: 'Checkout App' }),
 });
 stub(local('../dao/oauth2KeyAppMappingDao.js'), {
-    findConflictingKeyId: async (...args) => { conflictArgs = args; return conflictKeyId; },
-    associate: async (...args) => { associateArgs = args; },
+    // One call now, not a check followed by a write: the DAO runs both inside a
+    // row-locked transaction. It answers with the key already occupying the slot,
+    // or null when it made the association.
+    associateExclusive: async (...args) => { exclusiveArgs = args; return conflictKeyId; },
 });
 
 const constants = require('../utils/constants');
@@ -100,8 +101,7 @@ async function associate({ key, conflict }) {
     keyRecord = key;
     appRow = { uuid: 'app-uuid-1' };
     conflictKeyId = conflict;
-    conflictArgs = undefined;
-    associateArgs = undefined;
+    exclusiveArgs = undefined;
 
     const req = {
         orgId: 'org-1',
@@ -122,21 +122,21 @@ test('a second key of a type the application already holds is refused', async ()
 
     assert.equal(res.statusCode, 409);
     assert.match(res.body.message, /already associated with this application/);
-    // The incumbent is what the rule exists to protect: it must still be
-    // attached, and its id must not leak to a caller who cannot already read it.
-    assert.equal(associateArgs, undefined);
+    // The incumbent is what the rule exists to protect: its id must not leak to a
+    // caller who may not be entitled to know it exists.
     assert.ok(!JSON.stringify(res.body).includes('incumbent-key'));
 });
 
-test('the conflict is looked up for this application, type and key', async () => {
+test('the key, application, type and actor all reach the DAO', async () => {
     await associate({
         key: { keyId: 'key-being-added', keyType: constants.KEY_TYPE.PRODUCTION },
         conflict: 'incumbent-key',
     });
 
-    // Excluding the key being associated is what makes re-associating a key to
-    // the application it already sits on a no-op rather than a self-conflict.
-    assert.deepEqual(conflictArgs, ['app-uuid-1', constants.KEY_TYPE.PRODUCTION, 'key-being-added']);
+    assert.deepEqual(
+        exclusiveArgs,
+        ['key-being-added', 'app-uuid-1', constants.KEY_TYPE.PRODUCTION, 'alice']
+    );
 });
 
 test('a free slot associates and returns the application', async () => {
@@ -147,7 +147,8 @@ test('a free slot associates and returns the application', async () => {
 
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body, { application: { id: 'checkout-app', displayName: 'Checkout App' } });
-    assert.deepEqual(associateArgs, ['key-being-added', 'app-uuid-1', 'alice']);
+    assert.equal(exclusiveArgs[0], 'key-being-added');
+    assert.equal(exclusiveArgs[1], 'app-uuid-1');
 });
 
 test('the slot checked follows the key own type, not a fixed one', async () => {
@@ -156,7 +157,7 @@ test('the slot checked follows the key own type, not a fixed one', async () => {
         conflict: null,
     });
 
-    assert.equal(conflictArgs[1], constants.KEY_TYPE.SANDBOX);
+    assert.equal(exclusiveArgs[2], constants.KEY_TYPE.SANDBOX);
 });
 
 test('a key stored without a type is treated as production', async () => {
@@ -165,5 +166,5 @@ test('a key stored without a type is treated as production', async () => {
     // would let an unlimited number of them onto one application.
     await associate({ key: { keyId: 'key-being-added' }, conflict: null });
 
-    assert.equal(conflictArgs[1], constants.KEY_TYPE.PRODUCTION);
+    assert.equal(exclusiveArgs[2], constants.KEY_TYPE.PRODUCTION);
 });

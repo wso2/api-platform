@@ -119,13 +119,31 @@ test('a key whose type this application already holds is not offered', async () 
     assert.deepEqual(offered, ['spare-sandbox']);
 });
 
-test('a key on another application is still offered, since associating moves it', async () => {
+test('a key on another application is not offered', async () => {
+    // Taking it would detach it from an application the caller is not looking at —
+    // the same side effect the 409 refuses within one application. Moving a key is
+    // the OAuth2 Keys page's job, and the modal hint says so.
     const offered = await offeredKeyIds({
         keys: [{ keyId: 'elsewhere-sandbox', keyType: 'SANDBOX' }],
         mappings: { 'elsewhere-sandbox': OTHER_APP },
     });
 
-    assert.deepEqual(offered, ['elsewhere-sandbox']);
+    assert.deepEqual(offered, []);
+});
+
+test('a key on another application is not offered even when its type is free here', async () => {
+    // The type being free is what used to let it through: the slot filter had
+    // nothing to say about it, and the "available" split sent it on regardless of
+    // where it already was.
+    const offered = await offeredKeyIds({
+        keys: [
+            { keyId: 'elsewhere-prod', keyType: 'PRODUCTION' },
+            { keyId: 'unattached-prod', keyType: 'PRODUCTION' },
+        ],
+        mappings: { 'elsewhere-prod': OTHER_APP },
+    });
+
+    assert.deepEqual(offered, ['unattached-prod']);
 });
 
 test('both slots taken leaves nothing to offer', async () => {
@@ -142,7 +160,7 @@ test('both slots taken leaves nothing to offer', async () => {
     assert.deepEqual(offered, []);
 });
 
-test('with no key associated yet, every key of the caller is offered', async () => {
+test('with no key associated yet, every unattached key of the caller is offered', async () => {
     const offered = await offeredKeyIds({
         keys: [
             { keyId: 'spare-prod', keyType: 'PRODUCTION' },
@@ -152,4 +170,28 @@ test('with no key associated yet, every key of the caller is offered', async () 
     });
 
     assert.deepEqual(offered.sort(), ['spare-prod', 'spare-sandbox']);
+});
+
+test('keys parked on other applications are counted for the picker', async () => {
+    // Counted rather than listed: the picker needs to explain an empty list without
+    // this view loading applications it has no other reason to know about.
+    await offeredKeyIds({
+        keys: [
+            { keyId: 'elsewhere-a', keyType: 'PRODUCTION' },
+            { keyId: 'elsewhere-b', keyType: 'SANDBOX' },
+            { keyId: 'unattached', keyType: 'PRODUCTION' },
+        ],
+        mappings: { 'elsewhere-a': OTHER_APP, 'elsewhere-b': OTHER_APP },
+    });
+
+    assert.equal(captured.oauth2KeysElsewhere, 2);
+});
+
+test('a key on this application is not counted as elsewhere', async () => {
+    await offeredKeyIds({
+        keys: [{ keyId: 'mine', keyType: 'PRODUCTION' }],
+        mappings: { mine: THIS_APP },
+    });
+
+    assert.equal(captured.oauth2KeysElsewhere, 0);
 });

@@ -1132,13 +1132,17 @@ const associateOAuth2KeyApplication = async (req, res) => {
         // Refused rather than swapped: the incumbent key is a live credential, and
         // detaching one as a side effect of attaching another is not something to do
         // without being asked. Dissociate first, then associate.
+        //
+        // The check and the write are one call because they have to be one
+        // transaction — the DAO locks the application row before either, so two
+        // concurrent associates cannot both find the slot free. A conflicting key
+        // id comes back when the slot is taken; the id itself is not returned to
+        // the caller, who may not be entitled to know the incumbent exists.
         const keyType = record.keyType || constants.KEY_TYPE.PRODUCTION;
-        const conflictId = await keyAppMappingDao.findConflictingKeyId(appRow.uuid, keyType, keyId);
+        const conflictId = await keyAppMappingDao.associateExclusive(keyId, appRow.uuid, keyType, actor);
         if (conflictId) {
             return util.sendError(res, 409, constants.ERROR_MESSAGE.OAUTH2_KEY_ALREADY_ASSOCIATED);
         }
-
-        await keyAppMappingDao.associate(keyId, appRow.uuid, actor);
         logUserAction('OAUTH2_KEY_ASSOCIATED', req, {
             orgId, keyId, applicationId, resourceUuid: keyId, resourceType: 'oauth2_key',
         });

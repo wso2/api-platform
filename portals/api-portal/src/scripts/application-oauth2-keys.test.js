@@ -68,7 +68,7 @@ class FakeEl {
  * One page load. `keys` is what the controller rendered into the config
  * element's data attribute — already filtered to what this application can take.
  */
-function loadPage(keys) {
+function loadPage(keys, { hasAssociatedKeys = false, keysElsewhere = 0 } = {}) {
     const elements = new Map();
     const el = (id) => {
         if (!elements.has(id)) elements.set(id, new FakeEl('div'));
@@ -78,6 +78,8 @@ function loadPage(keys) {
     const config = el('application-oauth2-keys-config');
     config.attrs['data-app-id'] = 'checkout-app';
     config.attrs['data-available-oauth2-keys'] = JSON.stringify(keys);
+    config.attrs['data-has-associated-keys'] = hasAssociatedKeys ? 'true' : 'false';
+    config.attrs['data-keys-elsewhere'] = String(keysElsewhere);
 
     const alerts = [];
     global.showAlert = (message, type) => { alerts.push({ message, type }); };
@@ -107,8 +109,8 @@ function loadPage(keys) {
     };
 }
 
-test('with nothing left to offer the modal does not open', async () => {
-    const page = loadPage([]);
+test('with no keys at all the modal does not open', async () => {
+    const page = loadPage([], { hasAssociatedKeys: false });
 
     assert.equal(page.modalShown, false);
     assert.equal(page.alerts.length, 1);
@@ -116,13 +118,66 @@ test('with nothing left to offer the modal does not open', async () => {
     assert.equal(page.alerts[0].type, 'error');
 });
 
-test('the empty message does not claim the caller has no keys', async () => {
-    // The list can be empty because every key the caller owns is of a type this
-    // application already holds. Telling them to go and create one would send
-    // them to a page that will refuse the association for the same reason.
-    const page = loadPage([]);
+test('the empty message does not tell the caller to go and create a key', async () => {
+    // Even with nothing associated, the caller may own keys that are all on other
+    // applications. Sending them off to create another would be wrong.
+    const page = loadPage([], { hasAssociatedKeys: false });
 
-    assert.doesNotMatch(page.alerts[0].message, /no OAuth2 keys|Generate one|create/i);
+    assert.doesNotMatch(page.alerts[0].message, /Generate one|create one/i);
+});
+
+test('an application that already holds a key says so, not "none available"', async () => {
+    // The picker is empty because this application's slot is taken, not because
+    // the caller owns nothing. Reporting the latter sends someone who knows they
+    // own other keys looking for a bug that is not there.
+    const page = loadPage([], { hasAssociatedKeys: true });
+
+    assert.equal(page.modalShown, false);
+    assert.equal(page.alerts.length, 1);
+    assert.equal(
+        page.alerts[0].message,
+        'A key is already associated with this application. Remove it to associate another.'
+    );
+});
+
+test('keys parked on other applications are explained, not reported as none', async () => {
+    // They are not offered — taking one would detach it from an application this
+    // page is not about — but the caller does own them, so saying "none available"
+    // would be false from where they are sitting.
+    const page = loadPage([], { hasAssociatedKeys: false, keysElsewhere: 2 });
+
+    assert.equal(page.modalShown, false);
+    assert.match(page.alerts[0].message, /associated with other applications/);
+    assert.match(page.alerts[0].message, /OAuth2 Keys page/);
+});
+
+test('the three empty-picker reasons each get their own message', async () => {
+    const nothingOwned = loadPage([], { hasAssociatedKeys: false, keysElsewhere: 0 });
+    const slotTaken = loadPage([], { hasAssociatedKeys: true, keysElsewhere: 0 });
+    const parkedElsewhere = loadPage([], { hasAssociatedKeys: false, keysElsewhere: 1 });
+
+    const messages = [nothingOwned, slotTaken, parkedElsewhere].map((p) => p.alerts[0].message);
+    assert.equal(new Set(messages).size, 3);
+});
+
+test('a key already on this application outranks keys parked elsewhere', async () => {
+    // Both are true at once when the slot is taken here and other keys sit on other
+    // applications. The one the caller can act on from this page comes first.
+    const page = loadPage([], { hasAssociatedKeys: true, keysElsewhere: 3 });
+
+    assert.match(page.alerts[0].message, /already associated with this application/);
+});
+
+test('an application holding a key can still associate one of another type', async () => {
+    // A production key here does not block a sandbox key: the controller leaves
+    // the sandbox key in the list, so the modal opens as normal.
+    const page = loadPage(
+        [{ keyId: 'k9', name: 'Spare', consumerKey: 'xyz', keyType: 'SANDBOX' }],
+        { hasAssociatedKeys: true }
+    );
+
+    assert.equal(page.modalShown, true);
+    assert.equal(page.alerts.length, 0);
 });
 
 test('an offerable key opens the modal and is listed', async () => {
@@ -144,7 +199,10 @@ test('a sandbox key is marked, so the choice is legible before it is made', asyn
     assert.match(page.options[1], /· Sandbox$/);
 });
 
-test('a key sitting on another application says where it is', async () => {
+test('options carry no "(on X)" suffix, since nothing offered is attached', async () => {
+    // The controller no longer sends keys that sit on another application, so an
+    // option can never need to say where its key currently is. A stray
+    // applicationName must not reintroduce that label.
     const page = loadPage([
         {
             keyId: 'k3', name: 'Shared', consumerKey: 'ghi789',
@@ -152,5 +210,5 @@ test('a key sitting on another application says where it is', async () => {
         },
     ]);
 
-    assert.equal(page.options[1], 'Shared · ghi789  (on Billing)');
+    assert.equal(page.options[1], 'Shared · ghi789');
 });

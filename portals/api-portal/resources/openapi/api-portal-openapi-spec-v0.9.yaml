@@ -8818,7 +8818,7 @@ components:
       type: object
       description: >-
         The application an OAuth2 key is associated with. A key belongs to at most one application; an application
-        may hold any number of keys.
+        holds at most one key per key type — one PRODUCTION and one SANDBOX.
       properties:
         id:
           type: string

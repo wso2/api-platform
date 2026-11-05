@@ -27,6 +27,13 @@
     if (!config) return;
 
     var appId = config.getAttribute('data-app-id');
+    // Whether this application already holds a key. The only thing that tells the
+    // two empty-picker cases apart — see openAssociate below.
+    var hasAssociatedKeys = config.getAttribute('data-has-associated-keys') === 'true';
+    // Keys the caller owns that sit on other applications. They are not offered —
+    // taking one would detach it from an application this page is not about — but
+    // an empty picker has to say that rather than imply the caller owns nothing.
+    var keysElsewhere = parseInt(config.getAttribute('data-keys-elsewhere'), 10) || 0;
     var _submitting = false;
 
     function mutationHeaders() {
@@ -74,17 +81,35 @@
             // application, so it is the one place the distinction has to be legible
             // before the choice rather than after it.
             if (key.keyType === 'SANDBOX') label += ' · Sandbox';
-            // Say where it is now, so moving it is a decision rather than a surprise.
-            opt.textContent = key.applicationName ? label + '  (on ' + key.applicationName + ')' : label;
+            // No "(on X)" suffix: a key on another application is not offered here at
+            // all, so every option in this list is attached to nothing.
+            opt.textContent = label;
             sel.appendChild(opt);
         });
 
         document.getElementById('btn-submit-associate-oauth2-key').disabled = true;
         if (!keys.length) {
-            // Two causes, one message: the caller has no keys at all, or every key
-            // they have is of a type this application already holds. The modal hint
-            // covers the rule itself, so this says only that there is nothing to pick.
-            alertMsg('No OAuth2 key is available to associate.', 'error');
+            /*
+             * Three reasons the list can be empty, and they are not the same
+             * answer. A key already on this application means the slot is taken.
+             * Keys parked on other applications means they exist but are spoken
+             * for. Only with neither does the caller genuinely own nothing to
+             * pick. Collapsing these sends someone who knows they own keys looking
+             * for a bug that is not there.
+             *
+             * The second wording is the server's own: it mirrors
+             * constants.ERROR_MESSAGE.OAUTH2_KEY_ALREADY_ASSOCIATED, so the
+             * refusal reads the same whether the picker pre-empts it or the
+             * request reaches the 409.
+             */
+            var reason = 'No OAuth2 key is available to associate.';
+            if (hasAssociatedKeys) {
+                reason = 'A key is already associated with this application. Remove it to associate another.';
+            } else if (keysElsewhere) {
+                reason = 'Your OAuth2 keys are associated with other applications. '
+                    + 'Remove one of those associations, or move the key from the OAuth2 Keys page.';
+            }
+            alertMsg(reason, 'error');
             return;
         }
         show('associate-oauth2-key-modal');
