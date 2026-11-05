@@ -42,9 +42,10 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
-	"github.com/wso2/api-platform/tests/framework/suites/cloud/finalizer"
+	"github.com/wso2/api-platform/tests/framework/suites/cloud/setup/finalizer"
 )
 
 func TestBearerTokenReadsAndCachesEnvironmentToken(t *testing.T) {
@@ -1653,8 +1654,8 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/projects":                    {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
+		"/rest-apis?projectId=default": {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
 		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
 		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
@@ -2889,6 +2890,20 @@ func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) 
 			require.Equal(t, target, got)
 		}
 	})
+	t.Run("a local URL without a port goes to the configured data-plane port", func(t *testing.T) {
+		t.Setenv(cloudLocalDataPlaneEnv, "true")
+		t.Setenv(cloudLocalDataPlanePortEnv, "19080")
+		got, err := resolveCloudDataPlaneURL(context.Background(), "https://abc-gw-p1.gateway.openchoreoapis.localhost/api")
+		require.NoError(t, err)
+		require.Equal(t, "http://abc-gw-p1.gateway.openchoreoapis.localhost:19080/api", got)
+		got, err = resolveCloudDataPlaneURL(context.Background(), local[1])
+		require.NoError(t, err)
+		require.Equal(t, local[1], got, "a URL that names its port is left alone")
+		t.Setenv(cloudLocalDataPlanePortEnv, "not-a-port")
+		got, err = resolveCloudDataPlaneURL(context.Background(), local[2])
+		require.NoError(t, err)
+		require.Equal(t, local[2], got, "an invalid port is ignored")
+	})
 	t.Run("on widens nothing else", func(t *testing.T) {
 		t.Setenv(cloudLocalDataPlaneEnv, "true")
 		for _, target := range []string{
@@ -2903,4 +2918,350 @@ func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) 
 		_, err := resolveCloudDataPlaneURL(context.Background(), "https://synthetic-wso2cloud.gateway.wso2.com/api")
 		require.NoError(t, err, "the cloud hosts stay approved")
 	})
+}
+
+// starterPlatform is a fake organisation for the starter: a default project bound to a pipeline,
+// a list of managed gateways, and a record of the gateways it was asked to create.
+type starterPlatform struct {
+	mu        sync.Mutex
+	paths     []promotionPath
+	gateways  []map[string]any
+	created   []map[string]any
+	createAs  int
+	polls     int
+	activeAt  int
+	failsWith string
+	// absent makes a gateway lookup answer 404, as when a refused create left nothing behind.
+	absent bool
+}
+
+func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		require.Equal(t, "Bearer console-token", r.Header.Get("Authorization"))
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/default/deployment-pipeline":
+			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": "default"})
+		case r.Method == http.MethodGet && r.URL.Path == "/pipelines":
+			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
+				{"name": "other", "promotionPaths": []promotionPath{{SourceEnvironment: "elsewhere"}}},
+				{"name": "default", "promotionPaths": p.paths},
+			}})
+		case r.Method == http.MethodGet && r.URL.Path == "/managed-gateways":
+			if kind := r.URL.Query().Get("functionalityType"); kind != "" {
+				require.Equal(t, regularGatewayKind, kind)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"list": p.gateways})
+		case r.Method == http.MethodPost && r.URL.Path == "/managed-gateways":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			p.created = append(p.created, body)
+			if p.createAs != 0 {
+				w.WriteHeader(p.createAs)
+				_, _ = w.Write([]byte(`{"error":"conflict"}`))
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": expectedGatewayID(body["environment"].(string), body["displayName"].(string), ""), "status": "PROVISIONING"})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/managed-gateways/") && p.absent:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/managed-gateways/"):
+			p.polls++
+			status := "PROVISIONING"
+			if p.polls >= p.activeAt {
+				status = "ACTIVE"
+			}
+			answer := map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-gateways/"), "status": status}
+			if p.failsWith != "" {
+				answer["status"], answer["statusReason"] = "FAILED", p.failsWith
+			}
+			_ = json.NewEncoder(w).Encode(answer)
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis"}, r.URL.Path):
+			// What the finalizer reads: this organisation holds none of it.
+			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotImplemented)
+		}
+	}
+}
+
+func (p *starterPlatform) api(t *testing.T) organisationAPI {
+	server := httptest.NewServer(p.handler(t))
+	t.Cleanup(server.Close)
+	return organisationAPI{client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second}), base: server.URL, token: "console-token", pollInterval: retry.BaseInterval}
+}
+
+// testDefaultGateway is the display name a starter with the suffix "abcde234" gives its gateway.
+const testDefaultGateway = defaultGatewayDisplayName + "-abcde234"
+
+func ensureForTest(t *testing.T, platform *starterPlatform) (gatewayOutcome, error) {
+	return ensureDefaultGateway(context.Background(), platform.api(t), testDefaultGateway, slog.Default())
+}
+
+func developmentPipeline() []promotionPath {
+	return []promotionPath{{SourceEnvironment: "development", TargetEnvironments: []string{"production"}}}
+}
+
+func TestEnsureDefaultGatewayLeavesAnActiveGatewayAlone(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
+		{"id": "ai-gw", "functionalityType": "ai", "environment": "development", "status": "ACTIVE", "isActive": true},
+		{"id": "sgw", "displayName": "sgw-abcde234-1", "environment": "development", "status": "ACTIVE", "isActive": true},
+		{"id": "elsewhere-gw", "environment": "elsewhere", "status": "ACTIVE", "isActive": true},
+		{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true},
+	}}
+	outcome, err := ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, gatewayOutcome{ID: "development-default"}, outcome, "an existing gateway is used, not created")
+	require.Empty(t, platform.created)
+}
+
+func TestEnsureDefaultGatewayCreatesOneWhenNoneIsUsable(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 2, gateways: []map[string]any{
+		{"id": "sgw", "displayName": "sgw-abcde234-1", "environment": "development", "status": "ACTIVE", "isActive": true},
+		{"id": "stopped", "environment": "development", "status": "DISCONNECTED", "isActive": false},
+	}}
+	outcome, err := ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, gatewayOutcome{ID: "development-" + testDefaultGateway, Created: true}, outcome)
+	require.Len(t, platform.created, 1)
+	require.Equal(t, map[string]any{
+		"displayName": testDefaultGateway, "environment": "development", "functionalityType": regularGatewayKind,
+		"description": platform.created[0]["description"],
+	}, platform.created[0])
+	require.False(t, notSyntheticGatewayRejects(testDefaultGateway), "the scenarios must be able to choose the default gateway")
+	require.GreaterOrEqual(t, platform.polls, 2, "it waits for the gateway to become active")
+}
+
+func notSyntheticGatewayRejects(displayName string) bool {
+	return notSyntheticGateway(map[string]any{"displayName": displayName}) != ""
+}
+
+func TestEnsureDefaultGatewayWaitsForAGatewayThatIsBeingBuilt(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 2, gateways: []map[string]any{
+		{"id": "development-" + testDefaultGateway, "environment": "development", "status": "PROVISIONING"},
+	}}
+	_, err := ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Empty(t, platform.created, "a gateway that is being built is not asked for again")
+}
+
+func TestEnsureDefaultGatewayReportsAFailedGateway(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity"}
+	_, err := ensureForTest(t, platform)
+	require.ErrorContains(t, err, "no capacity")
+	require.ErrorContains(t, err, "development-"+testDefaultGateway)
+}
+
+func TestEnsureDefaultGatewayWaitsForTheGatewayAConflictNames(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), createAs: http.StatusConflict}
+	_, err := ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Len(t, platform.created, 1)
+}
+
+func TestEnsureDefaultGatewayRefusesOtherAnswers(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), createAs: http.StatusForbidden}
+	_, err := ensureForTest(t, platform)
+	require.ErrorContains(t, err, "creating the default gateway")
+}
+
+func TestEnsureDefaultGatewayNeverCreatesTheGatewayAPinNames(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "wanted")
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
+		{"id": "other", "environment": "development", "status": "ACTIVE", "isActive": true},
+	}}
+	_, err := ensureForTest(t, platform)
+	require.ErrorContains(t, err, cloudGatewayPinEnv)
+	require.Empty(t, platform.created)
+
+	platform.gateways = append(platform.gateways, map[string]any{"id": "wanted", "environment": "development", "status": "ACTIVE", "isActive": true})
+	outcome, err := ensureForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, gatewayOutcome{ID: "wanted"}, outcome)
+}
+
+func TestEnsureDefaultGatewayNeedsAPipeline(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{}
+	_, err := ensureForTest(t, platform)
+	require.ErrorContains(t, err, "no environment")
+}
+
+func TestDefaultGatewayEnvironmentPrefersDevelopmentThenTheFirstStage(t *testing.T) {
+	for name, tc := range map[string]struct {
+		paths []promotionPath
+		want  string
+		fails bool
+	}{
+		"development is reached": {developmentPipeline(), "development", false},
+		"development is a target": {[]promotionPath{{SourceEnvironment: "dev-a", TargetEnvironments: []string{"development"}}},
+			"development", false},
+		"the first stage in name order": {[]promotionPath{
+			{SourceEnvironment: "zeta", TargetEnvironments: []string{"prod"}},
+			{SourceEnvironment: "alpha", TargetEnvironments: []string{"prod"}},
+		}, "alpha", false},
+		"a stage that is a target of another is not first": {[]promotionPath{
+			{SourceEnvironment: "qa", TargetEnvironments: []string{"prod"}},
+			{SourceEnvironment: "build", TargetEnvironments: []string{"qa"}},
+		}, "build", false},
+		"no paths":       {nil, "", true},
+		"a blank source": {[]promotionPath{{TargetEnvironments: []string{"prod"}}}, "", true},
+		"a cycle":        {[]promotionPath{{SourceEnvironment: "a", TargetEnvironments: []string{"b"}}, {SourceEnvironment: "b", TargetEnvironments: []string{"a"}}}, "", true},
+	} {
+		got, err := defaultGatewayEnvironment(tc.paths)
+		if tc.fails {
+			require.Error(t, err, name)
+			continue
+		}
+		require.NoError(t, err, name)
+		require.Equal(t, tc.want, got, name)
+	}
+}
+
+func TestStarterStartNeedsTheConsoleToken(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "")
+	topo := cloudAPIStub(t, func(http.ResponseWriter, *http.Request) {})
+	starter, err := NewStarter(nil)
+	require.NoError(t, err)
+	require.ErrorContains(t, starter.Start(context.Background(), topo), cloudConsoleAccessTokenEnv)
+}
+
+func TestStarterStartPreparesTheOrganisationOnce(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
+		{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true},
+	}}
+	var lists int
+	handler := platform.handler(t)
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/managed-gateways" && r.Method == http.MethodGet {
+			lists++
+		}
+		handler(w, r)
+	})
+	starter, err := NewStarter(nil)
+	require.NoError(t, err)
+	require.NoError(t, starter.Start(context.Background(), topo))
+	require.NoError(t, starter.Start(context.Background(), topo))
+	require.Equal(t, 1, lists, "the second runner shares the first one's preparation")
+}
+
+func TestFinalizerRemovesTheStartersGatewayAfterTheRunnersGateways(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := newLeftoverStub()
+	stub.lists["/managed-gateways"] = []map[string]any{
+		{"id": "development-" + testDefaultGateway, "displayName": testDefaultGateway, "environment": "development"},
+		{"id": "development-syn-gw-abcde234-1", "environment": "development"},
+		{"id": "development-" + defaultGatewayDisplayName + "-zzzzz222", "displayName": defaultGatewayDisplayName + "-zzzzz222"},
+		{"id": "development-default", "environment": "development"},
+	}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	finalizer := NewFinalizer()
+	finalizer.Watch(base, "abcde234")
+
+	removed, err := finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	var gateways []string
+	for _, resource := range removed {
+		if strings.HasPrefix(resource, "/managed-gateways/") {
+			gateways = append(gateways, resource)
+		}
+	}
+	require.Equal(t, []string{
+		"/managed-gateways/development-syn-gw-abcde234-1",
+		"/managed-gateways/development-" + testDefaultGateway,
+	}, gateways, "the starter's gateway goes last, and another run's default gateway stays")
+}
+
+func TestStarterHandsTheFinalizerWhatItWillCreate(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1}
+	topo := cloudAPIStub(t, platform.handler(t))
+	finalizer := NewFinalizer()
+	starter, err := NewStarter(finalizer)
+	require.NoError(t, err)
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Len(t, platform.created, 1)
+	require.Equal(t, starter.gatewayDisplayName(), platform.created[0]["displayName"])
+	require.True(t, finalizer.finals.Tracked())
+	require.True(t, finalizer.finals.Owns([]string{"development-" + starter.gatewayDisplayName()}),
+		"the finalizer must recognise the gateway the starter created")
+	require.False(t, finalizer.finals.Owns([]string{"development-" + defaultGatewayDisplayName + "-zzzzz222"}))
+	finalizer.mu.Lock()
+	defer finalizer.mu.Unlock()
+	require.Len(t, finalizer.bases, 1, "the platform is known to the finalizer even if no scenario ran")
+}
+
+func TestStarterGatewayNameFitsTheHandleLimitOfTheDevelopmentEnvironment(t *testing.T) {
+	starter, err := NewStarter(nil)
+	require.NoError(t, err)
+	const developmentHandleLimit = 15 // the platform allows 37 minus twice the environment name's length
+	require.LessOrEqual(t, len(starter.gatewayDisplayName()), developmentHandleLimit)
+	require.True(t, isStarterGateway([]string{"development-" + starter.gatewayDisplayName(), starter.gatewayDisplayName()}))
+	require.False(t, isStarterGateway([]string{"development-default", "development-syn-gw-abcde234-1", "mydgw-abcde234"}))
+}
+
+func TestAGatewayTheOrganisationAlreadyHadIsUsedAndSurvivesTheFinalizer(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
+		{"id": "development-default", "displayName": "default", "environment": "development", "status": "ACTIVE", "isActive": true},
+	}}
+	var mu sync.Mutex
+	var deletes []string
+	handler := platform.handler(t)
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			mu.Lock()
+			deletes = append(deletes, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		handler(w, r)
+	})
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	finalizer := NewFinalizer()
+	starter, err := NewStarter(finalizer)
+	require.NoError(t, err)
+
+	require.NoError(t, starter.StartAt(context.Background(), base))
+	id, created := starter.Gateway()
+	require.Equal(t, "development-default", id)
+	require.False(t, created)
+	require.Empty(t, platform.created)
+
+	removed, err := finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, removed)
+	require.Empty(t, deletes, "nothing the run did not create is deleted")
+}
+
+func TestAGatewayTheStarterCreatesGetsAtLeastFiveMinutesToBecomeActive(t *testing.T) {
+	require.GreaterOrEqual(t, gatewayReadyTimeout, 5*time.Minute)
+	require.Less(t, gatewayPollInterval, gatewayReadyTimeout)
+}
+
+func TestEnsureDefaultGatewayDoesNotWaitForAGatewayAConflictLeftNowhere(t *testing.T) {
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), createAs: http.StatusConflict, absent: true}
+	_, err := ensureForTest(t, platform)
+	require.ErrorContains(t, err, "creating the default gateway")
+	require.ErrorContains(t, err, "409")
 }

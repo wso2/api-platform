@@ -67,7 +67,8 @@ Feature: APIP cloud project lifecycle
       | containing consecutive hyphens |
       | longer than 40 characters      |
 
-  @TC_APIP_PROJ_008 @ID_APIP_PROJECT_005
+  # need an organization with a less amount of quota to test this scenario
+  @TC_APIP_PROJ_008 @known-issue @ID_APIP_PROJECT_005
   Scenario: A project beyond the organisation's quota is refused with the quota error
     Given I obtain an APIP cloud console token
     When I create synthetic APIP projects until the organisation refuses one

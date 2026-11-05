@@ -303,6 +303,11 @@ var approvedCloudDataPlaneHost = regexp.MustCompile(
 // machine. It is off by default, and no other destination is widened.
 const cloudLocalDataPlaneEnv = "CLOUD_IT_LOCAL_DATA_PLANE"
 
+// cloudLocalDataPlanePortEnv names the port the local data plane serves plain http on. The platform
+// reports a gateway as https://<host> with no port, which on a developer's machine reaches nothing, so
+// an approved local URL that carries no port is called on this one over http instead.
+const cloudLocalDataPlanePortEnv = "CLOUD_IT_LOCAL_DATA_PLANE_PORT"
+
 var approvedLocalDataPlaneHost = regexp.MustCompile(
 	`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$`,
 )
@@ -322,6 +327,19 @@ func approvedLocalDataPlaneTarget(parsed *url.URL) bool {
 		return false
 	}
 	return approvedLocalDataPlaneHost.MatchString(strings.ToLower(parsed.Hostname()))
+}
+
+// localDataPlaneTarget sends an approved local URL that names no port to the local data plane's http
+// port, when CLOUD_IT_LOCAL_DATA_PLANE_PORT holds one. Any other URL is returned as it came.
+func localDataPlaneTarget(parsed *url.URL, target string) string {
+	port, err := strconv.Atoi(strings.TrimSpace(os.Getenv(cloudLocalDataPlanePortEnv)))
+	if err != nil || port < 1 || port > 65535 || parsed.Port() != "" {
+		return target
+	}
+	rewritten := *parsed
+	rewritten.Scheme = "http"
+	rewritten.Host = net.JoinHostPort(parsed.Hostname(), strconv.Itoa(port))
+	return rewritten.String()
 }
 
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
@@ -352,7 +370,7 @@ func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) 
 		return "", fmt.Errorf("invalid cloud data-plane URL %q: %w", target, err)
 	}
 	if localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed) {
-		return target, nil
+		return localDataPlaneTarget(parsed, target), nil
 	}
 	if parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 		return "", fmt.Errorf("cloud data-plane target must be an approved HTTPS URL, got %q", target)

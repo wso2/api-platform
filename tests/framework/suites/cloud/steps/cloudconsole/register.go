@@ -81,6 +81,12 @@ const (
 	resourceActor = "apip-console"
 )
 
+// environmentsCollection is the collection an environment is deleted from.
+const environmentsCollection = "/environments"
+
+// managedGatewaysCollection is the collection a managed gateway is listed in and deleted from.
+const managedGatewaysCollection = "/managed-gateways"
+
 var configureCloudExpansion sync.Once
 
 func expandCloudValue(ctx context.Context, value string) (string, error) {
@@ -259,11 +265,8 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection, false)); err != nil {
 		return err
 	}
-	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))
+	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, managedGatewaysCollection, false))
 }
-
-// environmentsCollection is the collection an environment is deleted from.
-const environmentsCollection = "/environments"
 
 // emptyEnvironment deletes the managed gateways of an environment, which the platform refuses
 // to delete the environment while it holds, including a gateway the platform created with it.

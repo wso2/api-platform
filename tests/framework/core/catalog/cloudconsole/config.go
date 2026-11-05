@@ -154,6 +154,10 @@ func validateDomain(domain string) error {
 	return nil
 }
 
+// ValidatePlatformAPIEndpoint reports whether endpoint may be used as a platform API endpoint: an
+// absolute HTTPS URL, or an HTTP URL on a .localhost host.
+func ValidatePlatformAPIEndpoint(endpoint string) error { return validatePlatformAPIEndpoint(endpoint) }
+
 // validatePlatformAPIEndpoint accepts an absolute HTTPS URL, or an HTTP URL only on a .localhost
 // host: the console token travels in the Authorization header, so it must never cross a network
 // in the clear.
