@@ -65,7 +65,7 @@ services:
       # SQLite — no external database required. Shared, DB-agnostic settings
       # (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
       APIP_AP_DATABASE_DRIVER: sqlite
-      APIP_AP_DATABASE_PATH: /tmp/api-portal-it.db
+      APIP_AP_DATABASE_PATH: /app/data/api-portal-it.db
       # Which authorization mode the ENTIRE suite runs against this time —
       # "scope" (default) or "role", selected by the Makefile's
       # test-rest-api-scope / test-rest-api-role targets. Both modes must pass
@@ -95,12 +95,17 @@ services:
       # (also in .certs, for platform-api) is never exposed to the portal.
       - ./.certs/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
       - ./configs/portal-roles-it.yaml:/etc/api-portal/portal-roles-it.yaml:ro
-      # Named volume at /tmp (not a new mount point) so Docker copies the image's
-      # existing /tmp ownership/permissions into it on first use — a fresh mount
-      # at a brand-new path would be root-owned and unwritable by the app user.
+      # Named volume at /app/data, a directory the image pre-creates owned by the
+      # app user (see ../Dockerfile), so Docker copies that ownership into the
+      # volume on first use — a mount at a brand-new path would be root-owned and
+      # unwritable. The directory is empty in the image, which matters: both
+      # portals mount this volume and start concurrently, and each copies the
+      # image's contents into it on first mount. When this was /tmp, the
+      # coverage build's /tmp/node-compile-cache made the two copies race and one
+      # container failed with "mkdir …/node-compile-cache: file exists".
       # Shared with rest-api-tests (read-only, different path there) so specs can
       # assert EVENTS/EVENT_DELIVERIES rows directly.
-      - sqlite-data:/tmp
+      - sqlite-data:/app/data
     networks:
       - it-api-portal-network
 
@@ -126,7 +131,7 @@ services:
         condition: service_healthy
     environment:
       APIP_AP_DATABASE_DRIVER: sqlite
-      APIP_AP_DATABASE_PATH: /tmp/api-portal-it-other-org.db
+      APIP_AP_DATABASE_PATH: /app/data/api-portal-it-other-org.db
       # The deliberate mismatch. platform-api's org is "default".
       APIP_AP_ORGANIZATION_HANDLE: other-org
       APIP_AP_ORGANIZATION_DISPLAY_NAME: Other Org
@@ -141,7 +146,7 @@ services:
     volumes:
       - ./test-config.toml:/app/configs/config.toml:ro
       - ./.certs/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
-      - sqlite-data:/tmp
+      - sqlite-data:/app/data
     networks:
       - it-api-portal-network
 

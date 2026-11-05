@@ -434,14 +434,26 @@ func TestToolContract(t *testing.T) {
 		assert.GreaterOrEqual(t, len(tool.Description), 20, tool.Name)
 		assert.LessOrEqual(t, len(tool.Description), 400, tool.Name)
 		require.NotNil(t, tool.Annotations, tool.Name)
-		assert.NotNil(t, tool.OutputSchema, tool.Name)
+		require.NotNil(t, tool.OutputSchema, tool.Name)
+
+		// Clients show a list result as a table and head a single result with its id,
+		// so a list has only items and paging, and no result calls the API apiId.
+		var out struct {
+			Properties map[string]any `json:"properties"`
+		}
+		b, _ := json.Marshal(tool.OutputSchema)
+		require.NoError(t, json.Unmarshal(b, &out))
+		if strings.HasPrefix(tool.Name, "list_") {
+			assert.Subset(t, []string{"items", "nextCursor", "total"}, keys(out.Properties), tool.Name)
+		}
+		assert.NotContains(t, out.Properties, "apiId", tool.Name)
 
 		var in struct {
 			Properties map[string]struct {
 				Title string `json:"title"`
 			} `json:"properties"`
 		}
-		b, _ := json.Marshal(tool.InputSchema)
+		b, _ = json.Marshal(tool.InputSchema)
 		require.NoError(t, json.Unmarshal(b, &in))
 		for name, p := range in.Properties {
 			assert.NotEqual(t, "id", name, tool.Name)

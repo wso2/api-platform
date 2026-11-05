@@ -818,7 +818,7 @@ func TestSigningKeysRejectWhatTheyCannotApply(t *testing.T) {
 }
 
 // TestSigningKeysComposeOverride verifies that the override copies each key to the path the
-// gateway-signing overlay configures, owned by the runtime user and unreadable by others.
+// gateway-core overlay configures, owned by the runtime user and unreadable by others.
 func TestSigningKeysComposeOverride(t *testing.T) {
 	doc := composeFileNamed(t, filepath.Base(signingKeysComposeFile))
 	services, ok := doc["services"].(map[string]any)
@@ -848,7 +848,7 @@ func TestSigningKeysComposeOverride(t *testing.T) {
 		envSigningKeyPrevious: "/secrets/gateway-runtime/signing/previous.pem",
 	}, targets)
 
-	raw, err := os.ReadFile(filepath.Join(unitRepoRoot(t), "tests/framework/core/catalog/overlays/gateway-signing.toml"))
+	raw, err := os.ReadFile(filepath.Join(unitRepoRoot(t), "tests/framework/core/catalog/overlays/gateway-core.toml"))
 	require.NoError(t, err)
 	overlay, err := koanftoml.Parser().Unmarshal(raw)
 	require.NoError(t, err)

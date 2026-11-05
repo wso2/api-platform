@@ -77,7 +77,7 @@ echo ""
 # ── dp:* scope list ───────────────────────────────────────────────────────────
 #
 # Must stay identical to the scopes declared under components.securitySchemes in
-# docs/api-portal-openapi-spec-v0.9.yaml — that document is what the portal enforces
+# resources/openapi/api-portal-openapi-spec-v0.9.yaml — that document is what the portal enforces
 # per operation, so a scope missing here cannot be granted in Asgardeo at all (this
 # list had drifted: the whole dp:mcp_server* family was absent), and a scope here
 # that the spec does not declare is registered for nothing.
@@ -85,7 +85,7 @@ echo ""
 # To check after changing the spec (run from portals/api-portal; no output = in sync):
 #   diff <(grep -oE 'dp:[a-z_]+:[a-z_]+' production/scripts/register_asgardeo_scopes.sh \
 #            | sort -u) \
-#        <(grep -oE '^ +dp:[a-z_]+:[a-z_]+:' docs/api-portal-openapi-spec-v0.9.yaml \
+#        <(grep -oE '^ +dp:[a-z_]+:[a-z_]+:' resources/openapi/api-portal-openapi-spec-v0.9.yaml \
 #            | tr -d ' ' | sed 's/:$//' | sort -u)
 
 SCOPES=(
