@@ -778,6 +778,34 @@ func TestLogTemplate_Bodies(t *testing.T) {
 	})
 }
 
+// max_payload_size cuts a body to the same length on the default line, in a property and in a
+// template.
+func TestLogTemplate_MaxPayloadSizeCutsBodiesLikeTheDefaultLine(t *testing.T) {
+	event := ordersEvent()
+	event.Properties[dto.PropKeyRequestPayload] = `{"order":1}`
+	collector := &config.CollectorConfig{RequestBody: true}
+	const cut = `{"ord`
+
+	defaultLog, defaultBuf := newTemplateLogWithCollector(t, config.TrafficLoggingConfig{
+		MaxPayloadSize: 5, RequestBody: true, Properties: map[string]string{"body": "$ctx:request.body"},
+	}, collector)
+	defaultLog.Publish(event)
+	var line struct {
+		RequestBody string            `json:"requestBody"`
+		Properties  map[string]string `json:"properties"`
+	}
+	require.NoError(t, json.Unmarshal(defaultBuf.Bytes(), &line))
+
+	templateLog, templateBuf := newTemplateLogWithCollector(t, config.TrafficLoggingConfig{
+		MaxPayloadSize: 5, Template: `{"body":"$ctx:request.body"}`,
+	}, collector)
+	templateLog.Publish(event)
+
+	assert.Equal(t, cut, line.RequestBody, "default line")
+	assert.Equal(t, cut, line.Properties["body"], "property")
+	assert.Equal(t, `{"body":`+strconv.Quote(cut)+`}`+"\n", templateBuf.String(), "template")
+}
+
 // A field with no value for a request is logged at DEBUG with the field and the reason, and only
 // when debug logging is on.
 func TestLogTemplate_NoValueIsLoggedAtDebug(t *testing.T) {
