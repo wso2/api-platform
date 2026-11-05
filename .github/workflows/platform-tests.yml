@@ -62,8 +62,10 @@ jobs:
       # skip rather than what to run means a new or unlisted folder still runs the
       # integration suite.
       # ui: the portals, the Platform API they call (and whose spec the Control Plane portal
-      # generates types from), and the UI suite. Not portals/cloud-plugins: the portals here
-      # only carry an empty slot for it (src/cloud), so the UI suite never runs that code.
+      # generates types from), the gateway and the framework code the UI suite starts and runs
+      # on, and the UI suite itself. A gateway change can break a page without the integration
+      # suite noticing. Not portals/cloud-plugins: the portals here only carry an empty slot for
+      # it (src/cloud), so the UI suite never runs that code. Not docs (*.md).
       # cloud: the cloud suite and the framework code it builds on. Its scenarios run against a
       # live cloud deployment from apim-saas, not here, so a cloud-suite-only change doesn't run
       # the integration suite.
@@ -86,12 +88,13 @@ jobs:
 
           backend_skip='^(portals/(ai-workspace|api-control-plane|cloud-plugins)/|tests/framework/suites/(ui|cloud)/|docs/)|\.md$'
           cloud_match='^(tests/framework/|\.github/workflows/platform-tests\.yml$)'
-          ui_match='^(portals/|platform-api/|tests/framework/suites/ui/|\.github/workflows/platform-tests\.yml$)'
+          ui_match='^(portals/|platform-api/|gateway/|tests/framework/|\.github/workflows/platform-tests\.yml$)'
 
           # Captured rather than piped into grep -q: under pipefail an early-exiting grep -q can
           # turn a match into a failed pipeline.
           backend_files="$(echo "$changed" | grep -vE "$backend_skip" || true)"
-          ui_files="$(echo "$changed" | grep -E "$ui_match" | grep -v '^portals/cloud-plugins/' || true)"
+          ui_files="$(echo "$changed" | grep -E "$ui_match" \
+            | grep -vE '^(portals/cloud-plugins/|tests/framework/suites/(it|cloud)/)|\.md$' || true)"
           cloud_files="$(echo "$changed" | grep -E "$cloud_match" | grep -vE '^tests/framework/suites/(it|ui)/' || true)"
 
           backend=false
@@ -138,6 +141,32 @@ jobs:
 
       - name: Platform-API unit tests
         run: cd platform-api && make test
+
+      - name: Gateway-builder unit tests
+        run: cd gateway/gateway-builder && make test
+
+      # Shared modules the gateway, Platform API and policies are built on. They have no make
+      # test target, so go test is run directly.
+      - name: Shared library unit tests (common, httpkit, gateway/common)
+        run: |
+          for m in common httpkit gateway/common; do
+            (cd "$m" && go test -count=1 ./...)
+          done
+
+      - name: System policy unit tests
+        run: |
+          for m in a2a analytics jwks; do
+            (cd "gateway/system-policies/$m" && go test -count=1 ./...)
+          done
+
+      - name: SDK unit tests
+        run: |
+          for m in core ai; do
+            (cd "sdk/$m" && go test -count=1 ./...)
+          done
+
+      - name: CLI unit tests
+        run: cd cli/src && make test
 
       - name: Upload gateway-controller unit coverage to Codecov
         if: always()
@@ -273,6 +302,10 @@ jobs:
       - name: API Control Plane typecheck
         working-directory: portals/api-control-plane
         run: npx tsc --noEmit
+
+      - name: API Control Plane BFF unit tests
+        working-directory: portals/api-control-plane/bff
+        run: go test -count=1 ./...
 
       - name: Upload AI Workspace BFF unit coverage to Codecov
         if: always()
