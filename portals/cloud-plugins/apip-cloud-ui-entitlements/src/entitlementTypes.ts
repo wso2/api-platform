@@ -23,6 +23,54 @@
  * lives in a different repo from that spec.
  */
 
+/**
+ * How much of a quota is gone, as billing resolved it — after any override,
+ * payment unlock and soft band. Fields that do not apply are **omitted**
+ * rather than sent as null or zero, so an absent one says "no such thing
+ * here", never "zero".
+ */
+export type QuotaStatus = {
+  /** Current level, or the period total for a usage meter. */
+  used: number;
+  /** Where overage starts, when `enforcement.mode` is `soft`. */
+  soft_limit?: number;
+  /**
+   * The block point: the quota in hard mode, the ceiling in soft mode.
+   * Absent when there is none — unlimited, or soft with no ceiling.
+   */
+  hard_limit?: number;
+  /** `hard_limit - used`, clamped at 0. Absent when there is no block point. */
+  remaining?: number;
+  /** Absent when unlimited, or when the quota is 0. */
+  utilization_pct?: number;
+  /** `max(used - quota, 0)`. Absent when 0. */
+  overage?: number;
+};
+
+/** A warning threshold and whether the current value has crossed it. */
+export type QuotaThreshold = {
+  /** The threshold, as a percentage of the quota. */
+  pct: number;
+  breached: boolean;
+};
+
+/** The enforcement policy in effect for one quota. */
+export type QuotaEnforcement = {
+  /**
+   * `hard` blocks at the quota, `soft` allows usage past it up to the ceiling
+   * in `quota.hard_limit`, `unlimited` enforces nothing. This is the only
+   * trustworthy statement of "unlimited" — an absent `hard_limit` alone could
+   * equally mean billing resolved no limit at all.
+   */
+  mode: 'hard' | 'soft' | 'unlimited';
+  /** Where the limit comes from. */
+  source?: 'plan' | 'override';
+  /** Ascending. Absent when the resource has none. */
+  thresholds?: QuotaThreshold[];
+  /** Only when `mode` is `soft`: usage past the quota accrues charges. */
+  overage_billable?: boolean;
+};
+
 /** One quota's current state. */
 export type Entitlement = {
   /**
@@ -35,17 +83,20 @@ export type Entitlement = {
   type?: 'feature' | 'quota';
   description?: string;
   enabled?: boolean;
-  /** `null` means unlimited. Absent when billing could not determine one. */
-  limit?: number | null;
   /**
-   * Current count. Billing reports this best-effort: on a metering read error
-   * it sends 0 rather than failing the whole summary, so a 0 here is not proof
-   * that nothing exists.
+   * Current count, the same value as `quota.used` whenever `quota` is present.
+   * Billing reports this best-effort: on a metering read error it sends 0
+   * rather than failing the whole summary, so a 0 here is not proof that
+   * nothing exists.
    */
   used?: number;
-  /** `null` means unlimited. */
-  remaining?: number | null;
   period?: string;
+  /**
+   * The limits. Absent when billing resolved none, which is **not** the same
+   * as unlimited — read `enforcement.mode` for that.
+   */
+  quota?: QuotaStatus;
+  enforcement?: QuotaEnforcement;
 };
 
 export type SubscriptionInfo = {

@@ -285,7 +285,12 @@ func (m *Moesif) Publish(event *dto.Event) {
 
 	// AI Metadata.
 	// Only include aiMetadata and aiTokenUsage for LlmProvider and LlmProxy events.
+	var aiContext *models.AiContextModel
 	if event.API.APIType == "LlmProvider" || event.API.APIType == "LlmProxy" {
+		// Published in addition to, not instead of, the aiMetadata and aiTokenUsage
+		// metadata keys below, which existing dashboards and queries read.
+		aiContext = aiContextBlock(event, apiResourceTemplate)
+
 		// Safely extract aiMetadata with nil check
 		if aiMetadataVal, exists := event.Properties["aiMetadata"]; exists && aiMetadataVal != nil {
 			if aiMetadata, ok := aiMetadataVal.(dto.AIMetadata); ok {
@@ -478,11 +483,12 @@ func (m *Moesif) Publish(event *dto.Event) {
 	}
 
 	eventModel := &models.EventModel{
-		Request:  req,
-		Response: rsp,
-		UserId:   &userID,
-		Metadata: metadataMap,
-		A2a:      a2aBlock,
+		Request:   req,
+		Response:  rsp,
+		UserId:    &userID,
+		Metadata:  metadataMap,
+		AiContext: aiContext,
+		A2a:       a2aBlock,
 	}
 
 	// Set company ID to the billing customer of a paid subscription, and remove the

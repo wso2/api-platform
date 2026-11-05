@@ -175,6 +175,7 @@ export default function ServiceProviderModelsTab() {
       anthropic: ['claude-3.5-sonnet', 'claude-3-opus'],
       'google-vertex': ['gemini-1.5-pro', 'gemini-1.5-flash'],
       'aws-bedrock': ['amazon.titan-text-premier', 'anthropic.claude-v2'],
+      typesafe: ['jev-latest', 'jev-preview', 'jev-1.13.0'],
     }),
     []
   );
@@ -194,6 +195,7 @@ export default function ServiceProviderModelsTab() {
         name: 'AWS Bedrock',
         description: 'Bedrock catalog',
       },
+      { id: 'typesafe', name: 'TypeSafe', description: 'Jev models' },
     ],
     []
   );

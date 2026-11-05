@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -602,6 +603,15 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties[constants.GuardrailNameMetadataKey] = guardrailName
 	}
 
+	// Only a POST invokes a model. Reading a stored result back (GET /responses/{id}) returns
+	// the original usage, which any policy may have reported, and which would otherwise be
+	// counted and priced as a second call. The provider and model stay on the event.
+	if method := request.GetRequestMethod(); method != corev3.RequestMethod_METHOD_UNSPECIFIED && method != corev3.RequestMethod_POST {
+		for _, key := range []string{PromptTokenCountMetadataKey, CompletionTokenCountMetadataKey, TotalTokenCountMetadataKey, constants.LLMCostMetadataKey} {
+			delete(keyValuePairsFromMetadata, key)
+		}
+	}
+
 	var parsedLLMCost interface{}
 
 	// Set LLM cost from metadata when available.
@@ -632,44 +642,22 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			event.Properties[constants.RequestModelPropertyKey] = requestModel
 		}
 
-		aiTokenUsage := dto.AITokenUsage{}
-		// Prompt tokens
-		if raw, ok := keyValuePairsFromMetadata[PromptTokenCountMetadataKey]; !ok {
-			slog.Debug(
-				"Prompt token count not found in response",
-				"metadataKey", PromptTokenCountMetadataKey,
-			)
-		} else if promptToken, err := strconv.Atoi(raw); err == nil {
-			aiTokenUsage.PromptToken = promptToken
-		} else {
-			slog.Error("Error converting PromptTokenCountMetadataKey to integer", "error", err)
+		aiUsage := dto.AIUsage{
+			PromptTokens:     parseTokenCount(keyValuePairsFromMetadata, PromptTokenCountMetadataKey),
+			CompletionTokens: parseTokenCount(keyValuePairsFromMetadata, CompletionTokenCountMetadataKey),
+			TotalTokens:      parseTokenCount(keyValuePairsFromMetadata, TotalTokenCountMetadataKey),
 		}
-		// Completion tokens
-		if raw, ok := keyValuePairsFromMetadata[CompletionTokenCountMetadataKey]; !ok {
-			slog.Debug(
-				"Completion token count not found in response",
-				"metadataKey", CompletionTokenCountMetadataKey,
-			)
-		} else if completionToken, err := strconv.Atoi(raw); err == nil {
-			aiTokenUsage.CompletionToken = completionToken
-		} else {
-			slog.Error("Error converting CompletionTokenCountMetadataKey to integer", "error", err)
-		}
-		// Total tokens
-		if raw, ok := keyValuePairsFromMetadata[TotalTokenCountMetadataKey]; !ok {
-			slog.Debug(
-				"Total token count not found in response",
-				"metadataKey", TotalTokenCountMetadataKey,
-			)
-		} else if totalToken, err := strconv.Atoi(raw); err == nil {
-			aiTokenUsage.TotalToken = totalToken
-		} else {
-			slog.Error("Error converting TotalTokenCountMetadataKey to integer", "error", err)
-		}
+		event.Properties[dto.PropKeyAIUsage] = aiUsage
 
+		// aiTokenUsage is published as metadata in its existing shape, where an
+		// unreported count has always been 0.
 		hour := time.Now().Hour()
-		aiTokenUsage.Hour = &hour
-		event.Properties["aiTokenUsage"] = aiTokenUsage
+		event.Properties["aiTokenUsage"] = dto.AITokenUsage{
+			PromptToken:     intOrZero(aiUsage.PromptTokens),
+			CompletionToken: intOrZero(aiUsage.CompletionTokens),
+			TotalToken:      intOrZero(aiUsage.TotalTokens),
+			Hour:            &hour,
+		}
 
 		if aiMetadata.VendorName != "" {
 			event.Properties["isEgress"] = true
@@ -850,6 +838,29 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	applyFaultDetails(event, keyValuePairsFromMetadata, typedValuePairsFromMetadata)
 
 	return event
+}
+
+// parseTokenCount reads one token count from the analytics metadata, or returns nil
+// when the provider did not report it or it is not an integer.
+func parseTokenCount(metadata map[string]string, key string) *int {
+	raw, ok := metadata[key]
+	if !ok {
+		slog.Debug("Token count not found in response", "metadataKey", key)
+		return nil
+	}
+	count, err := strconv.Atoi(raw)
+	if err != nil {
+		slog.Error("Error converting token count to integer", "metadataKey", key, "error", err)
+		return nil
+	}
+	return &count
+}
+
+func intOrZero(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // A2AAnalyticsProperty is the event property the A2A dimensions are assembled under,
