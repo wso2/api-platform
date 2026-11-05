@@ -36,17 +36,6 @@ import (
 const (
 	// configReadyTimeout bounds how long a new gateway's configuration may take to become readable.
 	configReadyTimeout = 3 * time.Minute
-	// configSaveTimeout bounds how long a setup write is retried while the platform reports a
-	// concurrent change to the gateway's configuration.
-	configSaveTimeout = 2 * time.Minute
-	// concurrentWriteTimeout bounds how long rounds of simultaneous writes are tried before one
-	// is rejected as a conflict.
-	concurrentWriteTimeout = 90 * time.Second
-	// concurrentWritePath is the setting the simultaneous writers each give a value of their own.
-	concurrentWritePath = "gateway.config.policy_configurations.ratelimit_v1.memory.max_entries"
-	// concurrentWriteBase is the lowest value a simultaneous writer sends; the setting accepts
-	// 1000 to 1000000.
-	concurrentWriteBase = 10000
 )
 
 // configPhases are the phases a configuration reports.

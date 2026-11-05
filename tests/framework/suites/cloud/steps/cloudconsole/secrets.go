@@ -88,6 +88,7 @@ func secretForm(fields [][2]string) ([]byte, string, error) {
 
 // doSecretForm sends a multipart secrets request and publishes the response.
 func (s *Steps) doSecretForm(ctx context.Context, method, path string, fields [][2]string) (*httpx.Response, error) {
+	httpx.ClearPublished(ctx)
 	token, err := bearerToken(ctx)
 	if err != nil {
 		return nil, err

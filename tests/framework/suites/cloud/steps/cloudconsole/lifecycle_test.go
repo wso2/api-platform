@@ -2782,6 +2782,15 @@ func TestStageLookups(t *testing.T) {
 	require.Empty(t, gateways)
 	_, err = stageOf(document.List, "missing")
 	require.Error(t, err)
+
+	for name, stage := range map[string]map[string]any{
+		"no gateways key":     {"environment": "dev"},
+		"gateways not a list": {"environment": "dev", "gateways": "none"},
+		"gateway not object":  {"environment": "dev", "gateways": []any{"gw-1"}},
+	} {
+		_, err = stageOf([]map[string]any{stage}, "dev")
+		require.Error(t, err, name)
+	}
 }
 
 func configurationBody() map[string]any {

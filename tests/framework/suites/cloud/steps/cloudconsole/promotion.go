@@ -300,12 +300,17 @@ func stageOf(stages []map[string]any, environment string) ([]map[string]any, err
 		if stage["environment"] != environment {
 			continue
 		}
-		gateways, _ := stage["gateways"].([]any)
+		gateways, ok := stage["gateways"].([]any)
+		if !ok {
+			return nil, fmt.Errorf("the deployment listing gives environment %q no gateways array: %v", environment, stage["gateways"])
+		}
 		out := make([]map[string]any, 0, len(gateways))
-		for _, raw := range gateways {
-			if gateway, ok := raw.(map[string]any); ok {
-				out = append(out, gateway)
+		for i, raw := range gateways {
+			gateway, ok := raw.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("gateway %d of environment %q in the deployment listing is not an object: %v", i, environment, raw)
 			}
+			out = append(out, gateway)
 		}
 		return out, nil
 	}
