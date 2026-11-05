@@ -409,6 +409,23 @@ const listDocNamesForApis = async (orgId, apiIds) => {
     return docNamesByApiId;
 };
 
+const listThumbnailNamesForApis = async (orgId, apiIds) => {
+    const thumbnailByApiId = {};
+    if (apiIds.length === 0) return thumbnailByApiId;
+
+    const placeholders = apiIds.map(() => '?').join(', ');
+    const rows = await db.query(
+        `SELECT c.file_name AS file_name, c.api_uuid AS api_uuid
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.api_uuid IN (${placeholders}) AND c.type = ? AND c.lookup_key = ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [...apiIds, constants.DOC_TYPES.IMAGES, constants.API_ICON, orgId, getPortalId()]
+    );
+    for (const row of rows) {
+        thumbnailByApiId[row.api_uuid] = row.file_name;
+    }
+    return thumbnailByApiId;
+};
+
 const deleteByFileName = async (fileName, orgId, apiId, t) => {
     const exec = t || db;
     // Scope to document rows only (type LIKE 'DOC_%'), matching listDocNames. Without this,
@@ -447,5 +464,6 @@ module.exports = {
     getDocLinks,
     listDocNames,
     listDocNamesForApis,
+    listThumbnailNamesForApis,
     deleteByFileName,
 };
