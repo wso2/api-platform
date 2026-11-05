@@ -797,6 +797,8 @@ func TestCreateDocument_RejectsInvalidRequests(t *testing.T) {
 		{"forbidden custom type name", map[string]string{"type": "Other", "otherTypeName": "HowTo", "displayName": "x", "inlineContent": "x"}},
 		{"reserved handle", map[string]string{"type": "HowTo", "displayName": "x", "id": constants.DocumentHandleThumbnail, "inlineContent": "x"}},
 		{"malformed handle", map[string]string{"type": "HowTo", "displayName": "x", "id": "Not A Handle", "inlineContent": "x"}},
+		{"fileName not Markdown", map[string]string{"type": "HowTo", "displayName": "x", "inlineContent": "x", "fileName": "notes.txt"}},
+		{"fileName extension in capitals", map[string]string{"type": "HowTo", "displayName": "x", "inlineContent": "x", "fileName": "notes.MD"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -974,6 +976,7 @@ func TestUpdateDocument_RejectsInvalidRequests(t *testing.T) {
 		{"forbidden custom type name", "/guide", map[string]string{"type": "Other", "otherTypeName": "Samples"}},
 		{"blank displayName", "/guide", map[string]string{"displayName": "   "}},
 		{"reserved handle", "/" + constants.DocumentHandleDefinition, map[string]string{"displayName": "x"}},
+		{"fileName not Markdown", "/guide", map[string]string{"inlineContent": "x", "fileName": "notes.txt"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

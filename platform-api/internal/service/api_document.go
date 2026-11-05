@@ -198,8 +198,8 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 	if len(req.DisplayName) > maxDocDisplayNameLen {
 		return "", apperror.ValidationFailed.New(fmt.Sprintf("displayName must be at most %d characters", maxDocDisplayNameLen))
 	}
-	if len(req.FileName) > maxDocFileNameLen {
-		return "", apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
+	if err := validateDocFileName(req.FileName); err != nil {
+		return "", err
 	}
 	if req.Handle != "" {
 		if err := utils.ValidateHandle(req.Handle); err != nil {
@@ -478,8 +478,8 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		updatedDocument.DisplayName = trimmed
 	}
 	if req.FileName != nil {
-		if len(*req.FileName) > maxDocFileNameLen {
-			return apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
+		if err := validateDocFileName(*req.FileName); err != nil {
+			return err
 		}
 		updatedDocument.FileName = *req.FileName
 	}
@@ -551,6 +551,18 @@ const (
 	maxDocFileNameLen    = 255
 	maxSpecFileNameLen   = 255
 )
+
+// validateDocFileName checks a document's file name; empty means the default <handle>.md. The
+// API Portal accepts only .md documents, so any other name would fail at publish.
+func validateDocFileName(name string) error {
+	if len(name) > maxDocFileNameLen {
+		return apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
+	}
+	if name != "" && !strings.HasSuffix(name, ".md") {
+		return apperror.ValidationFailed.New("fileName must end in .md")
+	}
+	return nil
+}
 
 // NormalizeSpecFileName strips the directory component from an uploaded filename
 // and caps the result to the DB column ceiling, preserving the extension and
