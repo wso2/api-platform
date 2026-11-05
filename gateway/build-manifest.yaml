@@ -39,6 +39,9 @@ policies:
     - name: dynamic-endpoint
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
+    - name: error-response-formatter
+      version: v1.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/error-response-formatter@v1
     - name: granite-guardian-prompt-injection
       version: v0.10.0
       pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/granite-guardian-prompt-injection/v0.10.0#subdirectory=policies/granite-guardian-prompt-injection
