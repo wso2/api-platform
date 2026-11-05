@@ -24,6 +24,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"strings"
 	"testing"
+	"time"
 
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
@@ -31,6 +32,7 @@ import (
 	upstreamsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -709,5 +711,74 @@ func TestDownstreamExtProc_AcceptsPublishedFailoverRanking(t *testing.T) {
 	forwarding := strings.Join(processor.GetMetadataOptions().GetForwardingNamespaces().GetUntyped(), ",")
 	if !strings.Contains(forwarding, FailoverOverrideMetadataNamespace) {
 		t.Fatalf("forwarding namespaces %q must include %q", forwarding, FailoverOverrideMetadataNamespace)
+	}
+}
+
+// The case T030p exists for: an operator raises the idle timeout past the route timeout and
+// gets no more time at all, because the route timeout is terminal and fires first.
+func TestInertPerTryTimeouts_IdleAboveRouteTimeoutIsReported(t *testing.T) {
+	cfg := &models.FailoverConfig{
+		Targets:                 []models.FailoverTarget{{Model: "a", Cluster: "c1"}, {Model: "b", Cluster: "c2"}},
+		PerAttemptIdleTimeoutMs: 90000,
+	}
+
+	inert := inertPerTryTimeouts(cfg, durationpb.New(60*time.Second))
+
+	if len(inert) != 1 {
+		t.Fatalf("inert = %v, want one finding for the idle timeout", inert)
+	}
+	if !strings.Contains(inert[0], "perTryIdleTimeout") {
+		t.Errorf("finding does not name the setting: %q", inert[0])
+	}
+}
+
+// Equality is inert too. Attempt 1 starts when the request does, so an equal per-try bound races
+// a clock that is already running, and every later attempt starts later still.
+func TestInertPerTryTimeouts_EqualToRouteTimeoutIsInert(t *testing.T) {
+	cfg := &models.FailoverConfig{
+		Targets:             []models.FailoverTarget{{Model: "a", Cluster: "c1"}, {Model: "b", Cluster: "c2"}},
+		PerAttemptTimeoutMs: 60000,
+	}
+
+	if inert := inertPerTryTimeouts(cfg, durationpb.New(60*time.Second)); len(inert) != 1 {
+		t.Fatalf("inert = %v, want the equal per-try timeout reported", inert)
+	}
+}
+
+// The shipped defaults must not warn, or the signal is noise from the first deployment:
+// perTryIdleTimeout defaults to 50s against a 60s route timeout, deliberately under it.
+func TestInertPerTryTimeouts_ShippedDefaultsAreSilent(t *testing.T) {
+	cfg := &models.FailoverConfig{
+		Targets:                 []models.FailoverTarget{{Model: "a", Cluster: "c1"}, {Model: "b", Cluster: "c2"}},
+		PerAttemptIdleTimeoutMs: 50000,
+		PerAttemptTimeoutMs:     0, // unset: the route timeout is the only bound, which is fine
+	}
+
+	if inert := inertPerTryTimeouts(cfg, durationpb.New(60*time.Second)); len(inert) != 0 {
+		t.Fatalf("inert = %v, want silence on the shipped defaults", inert)
+	}
+}
+
+// A zero route timeout disables it in Envoy, leaving the per-try bounds as the only limits —
+// so nothing is inert however large they are.
+func TestInertPerTryTimeouts_DisabledRouteTimeoutMakesNothingInert(t *testing.T) {
+	cfg := &models.FailoverConfig{
+		Targets:                 []models.FailoverTarget{{Model: "a", Cluster: "c1"}, {Model: "b", Cluster: "c2"}},
+		PerAttemptIdleTimeoutMs: 600000,
+		PerAttemptTimeoutMs:     600000,
+	}
+
+	if inert := inertPerTryTimeouts(cfg, durationpb.New(0)); len(inert) != 0 {
+		t.Fatalf("inert = %v, want none when the route timeout is disabled", inert)
+	}
+}
+
+// An inert route carries no retry policy at all, so there is nothing to report and a warning
+// would point at a policy that is not running.
+func TestInertPerTryTimeouts_InertFailoverIsSilent(t *testing.T) {
+	cfg := &models.FailoverConfig{PerAttemptIdleTimeoutMs: 600000}
+
+	if inert := inertPerTryTimeouts(cfg, durationpb.New(60*time.Second)); len(inert) != 0 {
+		t.Fatalf("inert = %v, want silence when the policy resolved no targets", inert)
 	}
 }

@@ -464,6 +464,15 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 			ClusterSpecifierPlugin: failoverPlugin.Extension.Name,
 		}
 		routeAction.Route.RetryPolicy = buildFailoverRetryPolicy(rdcRoute.Failover)
+		// A per-attempt bound at or above the route timeout cannot fire: the route timeout is
+		// terminal and produces a local 504 Envoy will not retry. Surfaced here because this is
+		// the only place the EFFECTIVE route timeout is known — the transform sees nil when
+		// neither the API nor the operation sets one, and the global default is applied above.
+		for _, inert := range inertPerTryTimeouts(rdcRoute.Failover, routeAction.Route.Timeout) {
+			t.logger.Warn("failover per-attempt timeout has no effect on this route",
+				slog.String("route", routeKey),
+				slog.String("reason", inert))
+		}
 		if t.failoverPlugins == nil {
 			t.failoverPlugins = make(map[string]*route.ClusterSpecifierPlugin)
 		}

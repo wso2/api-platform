@@ -372,6 +372,29 @@ though the routing policy keeps nominating it, and that load spreads across the 
   disableable.
 - **FR-005**: The publisher MUST be able to configure a per-attempt time limit that bounds how long a
   single target may be waited on.
+- **FR-005a** *(added 2026-11-05)*: Where a per-attempt bound cannot take effect because the
+  route's own timeout is **terminal and no longer than it is**, the system MUST surface that at
+  deployment time rather than leaving an operator to infer it from a request that died without
+  failing over.
+
+  The three timeouts do not compose the way their names suggest. The route timeout spans the whole
+  request including retries, and firing it produces a local `504` that Envoy does not retry — so
+  failover never engages. The per-attempt bounds are retriable and are the ones failover depends
+  on. Raising a per-attempt bound to or past the route timeout therefore buys no additional time at
+  all; the route timeout still ends the request first, and the only visible symptom is the absence
+  of a failover the operator believed they had configured.
+
+  Surfaced, **not rejected**: an ineffective-but-valid number is not a schema error (FR-006), and
+  rejecting it would let an API-level timeout change break the deployment of an unrelated
+  operation. Equality counts as ineffective, since attempt 1 begins when the request does and
+  every later attempt begins later still. A route timeout explicitly set to zero disables it, which
+  leaves the per-attempt bounds as the only limits and makes none of them ineffective.
+
+  **Open, and deliberately not settled here**: whether the 60s default route timeout is the right
+  ceiling for a long non-streaming completion is a product question that applies to every LLM route
+  whether or not failover is attached, so it is not decided by this feature. The shipped failover
+  defaults are consistent with it — `perTryIdleTimeout` is 50s, chosen to sit under 60s — so no
+  deployment warns until an operator raises one past the other.
 - **FR-006**: Configuration MUST be rejected at deployment time, with an actionable message, only for
   **schema-level** errors — a numeric setting outside its permitted range, or a structurally invalid
   parameter. These are malformed input, not an environment mismatch.

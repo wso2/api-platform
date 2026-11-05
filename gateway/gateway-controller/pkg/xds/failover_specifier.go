@@ -443,3 +443,48 @@ func (t *Translator) attachUpstreamChainTo(cluster *clusterv3.Cluster, rdc *mode
 		slog.Int("policies", policyCount))
 	return nil
 }
+
+// inertPerTryTimeouts reports per-attempt bounds that cannot fire, because the route's own
+// timeout is terminal and no longer than they are.
+//
+// The three timeouts on a failover route do not compose the way their names suggest. The route
+// timeout spans the WHOLE request, retries included, and firing it produces a local 504 — which
+// Envoy does not retry, so failover never engages. The per-try bounds are retriable and are the
+// ones failover depends on. Setting a per-try bound at or above the route timeout therefore does
+// not extend anything: the route timeout fires first and ends the request outright.
+//
+// That is invisible from the outside. The deployment is accepted, the value appears in the
+// configuration an operator reads back, and the only symptom is a request dying at the route
+// timeout with no failover when the operator believed they had allowed longer. Surfaced here
+// rather than rejected because an ineffective-but-valid value is not a schema error (FR-006);
+// rejecting it would also make an API-level timeout change able to break an unrelated
+// operation's deployment.
+//
+// Equality counts as inert, not merely exceeding it: attempt 1 starts when the request does, so
+// an equal per-try bound races a timeout that has already been running, and every later attempt
+// starts later still.
+//
+// A route timeout of zero disables it in Envoy, which leaves the per-try bounds as the only
+// limits and makes nothing inert.
+func inertPerTryTimeouts(failover *models.FailoverConfig, routeTimeout *durationpb.Duration) []string {
+	if failover == nil || failover.Inert() || routeTimeout == nil {
+		return nil
+	}
+	routeMs := routeTimeout.AsDuration().Milliseconds()
+	if routeMs <= 0 {
+		return nil
+	}
+
+	var inert []string
+	if ms := int64(failover.PerAttemptTimeoutMs); ms > 0 && ms >= routeMs {
+		inert = append(inert, fmt.Sprintf(
+			"perTryTimeout (%dms) is not below the route timeout (%dms), so the route timeout "+
+				"fires first and the request ends with no failover", ms, routeMs))
+	}
+	if ms := int64(failover.PerAttemptIdleTimeoutMs); ms > 0 && ms >= routeMs {
+		inert = append(inert, fmt.Sprintf(
+			"perTryIdleTimeout (%dms) is not below the route timeout (%dms), so the route timeout "+
+				"fires first and the request ends with no failover", ms, routeMs))
+	}
+	return inert
+}
