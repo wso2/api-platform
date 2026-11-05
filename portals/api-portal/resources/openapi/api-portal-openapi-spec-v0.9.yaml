@@ -4465,6 +4465,25 @@ components:
                   `definition.yml` or `definition.json`), read only from there. Its optional `web/` and `docs/`
                   content follows the same rules as the content ZIP of `/apis/{apiId}/assets`; any other entry
                   is rejected with `400`, listing each rejected path.
+              docs:
+                description: >-
+                  Document files to add. Repeat the part for several documents. Each is stored as a document of
+                  category Other; a file with the name of an existing document replaces it.
+                oneOf:
+                  - type: string
+                    format: binary
+                  - type: array
+                    items:
+                      type: string
+                      format: binary
+              thumbnail:
+                type: string
+                format: binary
+                description: >-
+                  The API's thumbnail, PNG or JPEG. The type is read from the file's content; the file name
+                  is not used, and the thumbnail is stored as `api-icon.png` or `api-icon.jpg`. It replaces the
+                  current thumbnail. At most one part; a part with no file name (an empty file input) is
+                  ignored. Cannot be sent with `removeThumbnail: true`.
               metadata:
                 type: string
                 description: >-
@@ -4477,7 +4496,10 @@ components:
                   `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes
                   the API's stored handle; when the API is created from a YAML artifact instead, the handle is
-                  always taken from `metadata.name`.
+                  always taken from `metadata.name`. On update it also accepts `docsToRemove` (array
+                  of document file names to delete) and, on create and update, `removeThumbnail` (boolean;
+                  `true` deletes the thumbnail on update and has no effect on create). Sending a `thumbnail` part
+                  together with `removeThumbnail: true` is a `400`.
                 example: >-
                   {"name":"Weather API","version":"v1","description":"Weather forecast
                   API","type":"REST","agentVisibility":"VISIBLE",
@@ -4512,6 +4534,25 @@ components:
                 description: >-
                   MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server
                   exposes. Required on create; when supplied on update it replaces the stored schema.
+              docs:
+                description: >-
+                  Document files to add. Repeat the part for several documents. Each is stored as a document of
+                  category Other; a file with the name of an existing document replaces it.
+                oneOf:
+                  - type: string
+                    format: binary
+                  - type: array
+                    items:
+                      type: string
+                      format: binary
+              thumbnail:
+                type: string
+                format: binary
+                description: >-
+                  The MCP server's thumbnail, PNG or JPEG. The type is read from the file's content; the file name
+                  is not used, and the thumbnail is stored as `api-icon.png` or `api-icon.jpg`. It replaces the
+                  current thumbnail. At most one part; a part with no file name (an empty file input) is
+                  ignored. Cannot be sent with `removeThumbnail: true`.
               metadata:
                 type: string
                 description: >-
@@ -4522,7 +4563,10 @@ components:
                   `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`,
                   `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL),
                   and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already
-                  exist in the organization). `id` becomes the MCP server's stored handle.
+                  exist in the organization). `id` becomes the MCP server's stored handle. On update it also accepts `docsToRemove` (array
+                  of document file names to delete) and, on create and update, `removeThumbnail` (boolean;
+                  `true` deletes the thumbnail on update and has no effect on create). Sending a `thumbnail` part
+                  together with `removeThumbnail: true` is a `400`.
                 example: >-
                   {"name":"Travel Assistant MCP","version":"v1","description":"MCP server for travel
                   planning tools","type":"MCP","agentVisibility":"VISIBLE","status":"PUBLISHED",

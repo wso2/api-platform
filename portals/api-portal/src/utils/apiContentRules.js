@@ -135,6 +135,46 @@ const describeItem = (item) =>
         ? `image slot ${item.key}`
         : `${item.fileName} (${item.type})`;
 
+const THUMBNAIL_TYPE_MESSAGE = 'Thumbnail must be a PNG or JPEG image.';
+const THUMBNAIL_SIGNATURES = [
+    { ext: 'png', bytes: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] },
+    { ext: 'jpg', bytes: [0xFF, 0xD8, 0xFF] },
+];
+
+const detectThumbnailType = (buffer) => {
+    if (!Buffer.isBuffer(buffer)) return null;
+    const match = THUMBNAIL_SIGNATURES.find(({ bytes }) =>
+        buffer.length >= bytes.length && bytes.every((byte, i) => buffer[i] === byte));
+    return match ? match.ext : null;
+};
+
+/**
+ * Reads the thumbnail fields of an API save: the `thumbnail` file part and `removeThumbnail`
+ * in the metadata. Returns { action: 'none' | 'replace' | 'remove' } (replace adds content and
+ * fileName) or throws ValidationError. A part with no file name is an empty file input.
+ */
+const readThumbnailChange = (files, metadata, isCreate) => {
+    const parts = (files?.thumbnail || []).filter((file) => file.originalname);
+    const removeThumbnail = metadata?.removeThumbnail;
+    if (removeThumbnail !== undefined && typeof removeThumbnail !== 'boolean') {
+        throw new ValidationError('removeThumbnail must be true or false.');
+    }
+    if (parts.length > 1) {
+        throw new ValidationError('Only one thumbnail can be uploaded.');
+    }
+    if (parts.length === 1) {
+        if (removeThumbnail) {
+            throw new ValidationError('Send either a thumbnail or removeThumbnail, not both.');
+        }
+        const ext = detectThumbnailType(parts[0].buffer);
+        if (!ext) {
+            throw new ValidationError(THUMBNAIL_TYPE_MESSAGE);
+        }
+        return { action: 'replace', content: parts[0].buffer, fileName: `${constants.API_ICON}.${ext}` };
+    }
+    return removeThumbnail && !isCreate ? { action: 'remove' } : { action: 'none' };
+};
+
 const ZIP_KIND = { CONTENT: 'content', ARTIFACT: 'artifact' };
 
 const ZIP_REJECTION = {
@@ -234,6 +274,9 @@ const classifyContentZip = (paths, kind) => {
 };
 
 module.exports = {
+    THUMBNAIL_TYPE_MESSAGE,
+    detectThumbnailType,
+    readThumbnailChange,
     isContentType,
     parseDocMetadata,
     parseImageMetadata,
