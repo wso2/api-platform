@@ -62,9 +62,11 @@ async function query(sql, params = []) {
     return stmt.all(...params).map(toPlainRow);
 }
 
-// node:sqlite returns null-prototype rows, BLOBs as Uint8Array and (with
-// setReadBigInts) integers as BigInt. Return plain objects with Buffer and
-// number values, as the portal's sqlite adapter does.
+/**
+ * node:sqlite returns null-prototype rows, BLOBs as Uint8Array and (with
+ * setReadBigInts) integers as BigInt. Returns a plain object with Buffer and
+ * number values, as the portal's sqlite adapter does.
+ */
 function toPlainRow(row) {
     const plain = {};
     for (const [key, value] of Object.entries(row)) {

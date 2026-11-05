@@ -51,6 +51,11 @@ const SQLITE_CODE_NAMES = {
     2579: 'SQLITE_CONSTRAINT_ROWID',
 };
 
+/**
+ * Replaces node:sqlite's generic error code with better-sqlite3's name for the
+ * numeric SQLite result code (e.g. SQLITE_CONSTRAINT_UNIQUE), so callers that
+ * check err.code keep working. Returns the same error object.
+ */
 function withSqliteCode(err) {
     if (err && err.code === 'ERR_SQLITE_ERROR' && typeof err.errcode === 'number') {
         err.code = SQLITE_CODE_NAMES[err.errcode] || SQLITE_CODE_NAMES[err.errcode & 0xff] || err.code;
@@ -58,6 +63,10 @@ function withSqliteCode(err) {
     return err;
 }
 
+/**
+ * Converts one column value to what better-sqlite3 returned: BigInt to Number,
+ * Uint8Array to Buffer. Other values pass through unchanged.
+ */
 function toPlainValue(value) {
     if (typeof value === 'bigint') return Number(value);
     if (value instanceof Uint8Array && !Buffer.isBuffer(value)) {
@@ -66,6 +75,10 @@ function toPlainValue(value) {
     return value;
 }
 
+/**
+ * Copies a node:sqlite row (a null-prototype object) into a plain object, with
+ * each value converted by toPlainValue.
+ */
 function toPlainRow(row) {
     const plain = {};
     for (const key of Object.keys(row)) plain[key] = toPlainValue(row[key]);
@@ -122,6 +135,10 @@ function createSqliteAdapter(config) {
     const lock = new AsyncLock();
     const LOCK_KEY = 'sqlite-conn';
 
+    /**
+     * Converts a bind parameter to a value node:sqlite accepts: undefined to NULL,
+     * booleans to 1/0, Dates to ISO strings, other objects to JSON.
+     */
     function coerceBindValue(value) {
         // paramTypes.binaryParam() only exists to give the mssql adapter an
         // explicit type for a nullable VARBINARY(MAX) bind — SQLite has no such
@@ -136,6 +153,10 @@ function createSqliteAdapter(config) {
         return value;
     }
 
+    /**
+     * Runs one statement. Statements that return columns give their rows;
+     * others give the changed-row count and last insert id.
+     */
     function runSync(sqlText, params) {
         try {
             const stmt = conn.prepare(sqlText);
@@ -152,6 +173,10 @@ function createSqliteAdapter(config) {
         }
     }
 
+    /**
+     * Runs SQL with no parameters or results (BEGIN, COMMIT, ROLLBACK), with
+     * errors carrying the better-sqlite3 code name.
+     */
     function execSync(sqlText) {
         try {
             conn.exec(sqlText);
