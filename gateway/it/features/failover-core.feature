@@ -297,21 +297,24 @@ Feature: Model Failover Core Behaviour
     Then the response status should be 201
     And I wait for 3 seconds
 
-    # Both targets were attempted. The status asserted here is the one Envoy
-    # produces today when the last attempt fails.
-    #
-    # FR-014 calls for a single sterile failover-exhausted error instead, carrying
-    # no upstream body, credential, or internal address. That is task T039 and is
-    # NOT implemented yet -- when it lands it changes what the client sees here,
-    # so this scenario must be updated in the same change rather than left
-    # asserting the pass-through status.
+    # Both targets were attempted and the chain is spent, so FR-014's single
+    # sterile error is what the client receives -- gateway-invented, deliberately,
+    # because the alternative is forwarding a body this gateway never wrote.
+    # Implemented by T039; this scenario previously asserted the pass-through
+    # status and carried a note to update it here when that landed.
     When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/fo-exhausted-proxy/chat/completions" with body:
       """
       {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
       """
     Then the response status code should be 503
-    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "failover_exhausted"
+
+    # x-envoy-attempt-count is deliberately NOT asserted here, and its absence is
+    # the point rather than an oversight: the exhaustion response REPLACES the
+    # upstream's, headers included, so Envoy's own header does not survive it. How
+    # many attempts were made is still recorded -- in the telemetry record and the
+    # gateway log -- it simply stops being something the client is told.
 
     # Cleanup
     When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/fo-exhausted-proxy"
@@ -387,15 +390,17 @@ Feature: Model Failover Core Behaviour
       """
     Then the response status code should be 200
     And the response body should contain "/inert-upstream"
-    # No route on this virtual host fails over, so the attempt-count header is not
-    # generated at all -- an inert policy is indistinguishable from an absent one.
+    # One attempt: the policy resolved nothing, so nothing failed over.
     #
-    # The flag is per VIRTUAL HOST, not per route: it is on as soon as ANY route on
-    # the vhost fails over. The earlier scenarios therefore delete their proxies in
-    # their own cleanup steps, and this scenario must stay last in the file. If it
-    # ever fails with the header present, suspect a failover-bearing API that was
-    # left deployed rather than a defect in this policy.
-    And the response header "x-envoy-attempt-count" should not exist
+    # Asserted as a COUNT rather than as the header's absence, which is not a
+    # property this operation controls. include_attempt_count_in_response is set
+    # per VIRTUAL HOST, so the header appears on every response in the vhost as
+    # soon as ANY route in it fails over -- demanding it be missing asserts which
+    # other APIs happen to be deployed, not anything about this one. It passed
+    # while this file ran alone and failed the moment the failover features ran
+    # together, with no defect in either. The vhost scoping itself is a known
+    # limitation against FR-030d/SC-012a, recorded in poc-results.md.
+    And the response should report one upstream attempt
 
     # Cleanup
     When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/fo-inert-proxy"

@@ -1821,3 +1821,74 @@ one-slow-request-condemns.
 is about. A target that never fails was outside the shape of every scenario written so far,
 which is also why T065 sat behind T029c as "needs a slow backend" rather than "needs the rule
 to work".
+
+## T093: walking the quickstart end to end (2026-11-05)
+
+Executed V0–V10 against a gateway built from this branch. Three suites, all green **after** the
+fixes below:
+
+| Suite | Result |
+|---|---|
+| `make test` — health, api_deploy and all five failover features | 43 scenarios, 43 passed |
+| `make test-faultflow` | 35 scenarios, 35 passed |
+| `make test-load` | 2 scenarios, 2 passed (10,000 requests driven) |
+
+The first run was **not** green — 3 of 43 failed — and that is the finding, not a footnote. Every
+one of the four problems below was reachable only by doing this, and none would have been caught by
+the runs performed while building the features.
+
+**1. T039 broke a scenario that had asked to be updated.** `failover-core.feature`'s exhaustion
+scenario carried a note addressed to whoever implemented T039: "when it lands it changes what the
+client sees here, so this scenario must be updated in the same change." T039 landed on 2026-11-04
+and the note was missed, because that work ran `model-failover.feature` and never
+`failover-core.feature`. The header assertion broke exactly as the note predicted: the exhaustion
+response REPLACES the upstream's, so `x-envoy-attempt-count` does not survive it.
+
+**2. Two scenarios were green only because nobody ran the files together.** Both proved the policy
+was inert by asserting `x-envoy-attempt-count` is ABSENT. That header is set per VIRTUAL HOST, so it
+appears on every response in the vhost as soon as ANY route in it fails over — the assertion was
+really about which other APIs happened to be deployed. One of the two passed in the
+model-failover-only runs all week and failed the moment the five failover features ran together,
+with no defect in either. `failover-core` had anticipated the mechanism ("this scenario must stay
+last in the file") but that only holds WITHIN a file; no single file controls suite-wide state.
+Both now assert one upstream attempt, via a step that reads an absent header as one — the invariant
+this operation actually controls. The vhost scoping itself remains a known limitation against
+FR-030d/SC-012a, recorded above.
+
+**3. V4 and T060 both described behaviour the spec was revised AWAY from.** Both said a suspension
+expiring returns the target to full rotation with no probe phase. FR-019 was revised on 2026-10-28
+to restore the half-open probe phase, and records why: backoff decides how long a target stays out,
+the probe phase decides how it gets back in. The implementation half-opens, correctly. Only the two
+documents drifted — which is the dangerous direction, because someone validating against V4 would
+have concluded the implementation was wrong when it was the only one of the three that was right.
+
+**4. V10 required a withdrawn requirement.** It asked that a routing policy's superseded suspension
+setting be reported at deployment, citing FR-026b — withdrawn 2026-10-29, along with its task T015,
+because with no override to apply there is nothing to report. Row removed. The `perAttemptTimeoutMs`
+row was also marked honestly: no such constraint exists, a value at or above `RouteTimeoutMs` is
+accepted and silently inert, and that is T030p, still open.
+
+**Prerequisites were wrong in two ways that would stop a reader before they started.** The section
+claimed `model-failover` is pinned in `build-manifest.yaml` — it is absent from the manifest
+entirely, and from the committed `build.yaml`; until T040 it builds only from an uncommitted
+`filePath:` entry. And it named the IT sample backend as the way to force a failure "via
+`?statusCode=NNN`", which does not work — that backend echoes the parameter and still answers 200,
+the T029c finding. Both corrected, pointing at `echo-backend-multi-arch` instead.
+
+**What V0–V10 does NOT cover, stated rather than stretched:**
+
+- **V0.1 negative half** — the generated config is asserted to carry `refresh_cluster_on_retry`
+  (`TestFailoverRetryPolicy_RefreshClusterOnRetryIsSet`), but no scenario deploys with it FALSE to
+  pin the failure mode. T027, open.
+- **V2 second bullet** — suspending one provider leaving the other's health untouched. T046, open.
+- **V3 first bullet** — a failover-only vendor taking zero traffic while in-house models are
+  healthy. T051, open.
+- **V7 last bullet** — a policy with no declared execution class behaving as once-per-request.
+  Execution classes were implemented and then reverted (T036, descoped), so there is nothing to
+  assert against; the bullet describes a mechanism that does not exist.
+- **V10 rows** for an out-of-range numeric setting and for "no targets and no ranking policy" have
+  no integration scenario; the first is ordinary schema validation, the second is covered only
+  indirectly by the inert-policy scenarios.
+
+Every one of these is an existing open task or an explicit descoping, not a new gap — the value of
+the walk was confirming which, rather than discovering unknowns.

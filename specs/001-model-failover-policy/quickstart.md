@@ -11,11 +11,21 @@ rules live in [data-model.md](./data-model.md).
 ## Prerequisites
 
 - Docker available (`make check-docker` from `gateway/it`)
-- Gateway images built: `make build` (or `make build-coverage` for coverage-instrumented images)
-- `model-failover` pinned in `gateway/build-manifest.yaml`, and the ranking-adopting versions of
-  `model-round-robin` / `model-weighted-round-robin` pinned alongside it
-- The IT sample backend, which fails on demand via `?statusCode=NNN` — the mechanism
-  `gateway/it/features/model-round-robin.feature` already uses
+- Gateway images built with **`make build-coverage`**, not `make build`: the IT stack runs the
+  `*-coverage:test` images, and `make test` only retags what `build-coverage` produced
+- **`model-failover` is NOT yet pinned in `gateway/build-manifest.yaml`** and is absent from the
+  committed `gateway/build.yaml`. Until T040 publishes the module, it is built from a working copy
+  through an uncommitted `filePath: ./dev-policies/model-failover` entry, populated by
+  `gateway/sync-dev-policies.sh`. A clean checkout therefore builds a gateway with no such policy —
+  which is also why nothing here guards anything in CI yet (T029b). The manifest already records
+  `model-round-robin version: v1.2.0`, a tag that does not exist either; that is the merge gate
+  described in T040, not a prerequisite anyone can satisfy today.
+- A backend that can fail on demand. **Not** the IT sample backend: `sample-service` is a pure echo
+  that reports `?statusCode=` back in its `query` field and still answers `200`, so it cannot force
+  a status (T029c). Use `echo-backend-multi-arch` (`mccutchen/go-httpbin`), already in the compose
+  file, which answers `/status/NNN` exactly, `/status/200:2,503:1` as a weighted random draw, and
+  `/delay/N` after N seconds. It matches the path exactly, so the status or delay goes in the
+  OPERATION path with `basePath` omitted, and chain members are differentiated by HOST.
 
 ## Running
 
@@ -24,6 +34,7 @@ cd gateway/it
 make test                       # default suite (load scenarios excluded)
 make test-verbose               # verbose
 make test-load                  # ONLY the load scenarios
+make test-faultflow             # failover features, with the fault flow handling failures
 
 # This feature only. The warm-up prefix is not optional: at cold start Envoy
 # answers the first requests with 503 no_healthy_upstream for several seconds
@@ -33,7 +44,7 @@ make test-load                  # ONLY the load scenarios
 IT_FEATURE_PATHS=features/health.feature,features/api_deploy.feature,features/model-failover.feature make test
 ```
 
-Tag selection is `IT_TAGS` (default `~@load`), NOT godog's `-godog.tags` flag — the suite builds
+Tag selection is `IT_TAGS` (default `~@load && ~@faultflow`), NOT godog's `-godog.tags` flag — the suite builds
 `godog.Options` directly and never calls `BindCommandLineFlags`, so that flag is undefined and
 `go test ... -godog.tags=@model-failover` exits 2 before any test runs. It is also worth knowing
 that `IT_TAGS` selects only WITHIN the features already loaded by `Paths`: setting a tag without
@@ -103,7 +114,13 @@ policy spreads load across in-house models.
 
 - Fail a target `consecutiveFailures` times ⇒ suspended; subsequent requests skip it with no attempt
 - Before `durationSeconds` elapses ⇒ no normal traffic reaches it
-- After it elapses ⇒ target returns to **full** rotation immediately, no probe phase
+- After it elapses ⇒ target enters a **half-open probe phase**, admitted one request at a time until
+  `recoverAfterSuccesses` consecutive probes succeed; any failed probe re-suspends it at once,
+  without waiting for `suspendAfterFailures`
+  <br>*(Corrected 2026-11-05 while executing T093. This bullet read "returns to full rotation
+  immediately, no probe phase", which is the behaviour FR-019 was revised AWAY from on 2026-10-28 —
+  the spec records that revision and why. The implementation half-opens; the quickstart and T060's
+  task text were never updated with it.)*
 - Fails again ⇒ suspended for **double** the previous duration
 - Keeps failing ⇒ duration stops growing at `maxDurationSeconds`
 - Stays healthy for `backoffResetSeconds` ⇒ next suspension starts from the base duration
@@ -171,8 +188,12 @@ Deploy a routing policy **without** failover, exactly as today.
 | No `targets` **and** no ranking-publishing routing policy | **Accepted**; policy inert |
 | Policy attached to a kind with no model concept | **Accepted**; policy inert |
 | Any inert case above | Behaves identically to the policy not being attached: same routing, same retries, same responses, **no telemetry about being inert** |
-| `perAttemptTimeoutMs` ≥ operation request timeout | **Rejected** — schema-level constraint |
-| Routing policy's own suspension setting superseded | Reported at deployment (FR-026b) |
+| `perAttemptTimeoutMs` ≥ operation request timeout | **Not implemented.** No such constraint exists: the schema bounds `perTryTimeout` only by `minimum: 0`, and nothing compares it to `RouteTimeoutMs` (60s, terminal when it fires). A value at or above it is accepted and silently inert — T030p, open. |
+
+*(Row removed 2026-11-05 while executing T093: "Routing policy's own suspension setting superseded ⇒
+reported at deployment (FR-026b)". FR-026b was **withdrawn** on 2026-10-29 — with no override to
+apply there is nothing to report — and its task T015 was withdrawn with it. The row required
+behaviour the spec no longer asks for.)*
 
 ---
 

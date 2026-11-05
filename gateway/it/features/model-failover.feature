@@ -1160,7 +1160,10 @@ Feature: Automatic fallback to a healthy model
     # direct observable for "no priority group exists" — and it is paired with the
     # positive assertion above so the absence cannot pass vacuously on a request
     # that never reached the gateway.
-    And the response header "x-envoy-attempt-count" should not exist
+    # A count, not an absence: the attempt-count header is virtual-host scoped, so
+    # requiring it to be missing asserts what else is deployed rather than that
+    # this policy stayed inert. See failover-core.feature and poc-results.md.
+    And the response should report one upstream attempt
 
     # The request is recorded in analytics exactly as an unpolicied one is: an
     # ordinary event, nothing added and nothing missing.

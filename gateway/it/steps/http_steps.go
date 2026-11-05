@@ -120,6 +120,7 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I drive (\d+) POST requests to \"([^\"]*)\" with body:$`, h.IDrivePOSTRequests)
 	ctx.Step(`^every response status should have been (\d+)$`, h.everyResponseStatusShouldHaveBeen)
 	ctx.Step(`^no response should have reported more than (\d+) attempts$`, h.noResponseShouldHaveReportedMoreThanAttempts)
+	ctx.Step(`^the response should report one upstream attempt$`, h.theResponseShouldReportOneUpstreamAttempt)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\"$`, h.ISendPOSTRequest)
 	ctx.Step(`^I send a POST request to \"([^\"]*)\" with body:$`, h.ISendPOSTRequestWithBody)
 	ctx.Step(`^I send a PUT request to \"([^\"]*)\" with body:$`, h.ISendPUTRequestWithBody)
@@ -892,6 +893,28 @@ func (h *HTTPSteps) everyResponseStatusShouldHaveBeen(status int) error {
 	if got := h.load.byStatus[status]; got != h.load.sent {
 		return fmt.Errorf("expected all %d responses to be %d, got %d of them; full distribution: %v",
 			h.load.sent, status, got, h.load.byStatus)
+	}
+	return nil
+}
+
+// theResponseShouldReportOneUpstreamAttempt asserts that the request reached its upstream once —
+// that no failover occurred — WITHOUT requiring x-envoy-attempt-count to be absent.
+//
+// Absence is not assertable, and that is a property of Envoy rather than of any policy.
+// include_attempt_count_in_response is set per VIRTUAL HOST, so the header appears on every
+// response in a vhost as soon as ANY route in it fails over. A scenario demanding the header be
+// missing is therefore asserting something about which OTHER APIs happen to be deployed at that
+// moment, not about the operation under test: it passes when its feature file runs alone and
+// fails the moment a sibling file deploys a failover-bearing API, with no defect in either.
+//
+// One attempt is the real invariant, and absent reads as one (see attemptsFromHeader).
+func (h *HTTPSteps) theResponseShouldReportOneUpstreamAttempt() error {
+	if h.lastResponse == nil {
+		return fmt.Errorf("no response available")
+	}
+	if n := attemptsFromHeader(h.lastResponse); n != 1 {
+		return fmt.Errorf("the request was attempted %d times, want exactly 1 — a failover occurred "+
+			"where the policy was expected to be inert", n)
 	}
 	return nil
 }
