@@ -50,9 +50,49 @@ export function slugifyOrgName(name?: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+export function isValidOrgHandle(handle?: string): boolean {
+  if (!handle) return false;
+  const h = handle.toLowerCase();
+  return (
+    h.length >= 3 &&
+    h.length <= 63 &&
+    !h.includes('--') &&
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(h)
+  );
+}
+
+export function stableFallbackHandle(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let hash = 2166136261;
+  for (let i = 0; i < bytes.length; i++) {
+    hash ^= bytes[i];
+    hash = Math.imul(hash, 16777619);
+  }
+  return `org-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+export function deriveValidOrgHandle(org?: { handle?: string; name?: string; id?: string } | null): string {
+  if (!org) return '';
+  if (isValidOrgHandle(org.handle)) {
+    return org.handle!.toLowerCase();
+  }
+  const slug = slugifyOrgName(org.name);
+  if (isValidOrgHandle(slug)) {
+    return slug;
+  }
+  if (isValidOrgHandle(org.id)) {
+    return org.id!.toLowerCase();
+  }
+  const fallbackSource = org.name || org.id || org.handle;
+  if (fallbackSource) {
+    return stableFallbackHandle(fallbackSource);
+  }
+  return '';
+}
+
 export function getOrgSlug(org?: OrgLike | null): string {
   if (!org) return '';
-  return org.handle || slugifyOrgName(org.name);
+  return deriveValidOrgHandle(org);
 }
 
 export function getProjectBasePath(project?: ProjectLike | null): string {
