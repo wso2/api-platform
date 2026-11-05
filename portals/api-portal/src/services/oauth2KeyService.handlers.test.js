@@ -51,7 +51,6 @@ const { spawnSync } = require('node:child_process');
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const SERVICE_MODULE = path.join(__dirname, 'oauth2KeyService.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = 'org-uuid-1';
 const OWNER = 'dev-1';
@@ -208,7 +207,7 @@ function results() {
     const seed = path.join(dir, 'seed.js');
     fs.writeFileSync(seed, `
         const fs = require('fs');
-        const Database = require(${JSON.stringify(SQLITE)});
+        const Database = require('node:sqlite').DatabaseSync;
         const db = new Database(${JSON.stringify(dbFile)});
         db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
         db.prepare(\`INSERT INTO organizations
