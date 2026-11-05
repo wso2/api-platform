@@ -16,127 +16,32 @@
  * under the License.
  */
 
-import { Box, Card, Stack, Typography } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { Box, RelativeTime, Stack, Typography, type Theme } from '@wso2/oxygen-ui';
+import { defineMessages, useIntl } from 'react-intl';
 
 import { thumbnailApiType, type ListableApi } from './apiListItem';
-import { openableProps } from '@/components/openable';
-import { focusRingSx } from '@/theme';
-import {
-  apiDescriptionSx,
-  ApiDeleteButton,
-  ApiKindChip,
-  UpdatedLabel,
-} from './components/RestApiChips';
+import { ListingCardTable, type ListingCardColumn } from '@/components/common/ListingCardTable';
+import { apiDescriptionSx, ApiDeleteLabelButton } from './components/RestApiChips';
+import { apiKindLabel } from '../utils/restApiDisplay';
 import { ApiThumbnailAvatar } from '../components/ApiThumbnailAvatar';
+import { relativeTime } from '@/utils/relativeTime';
 import { useCan } from '@/permissions/useCan';
 
 const AVATAR_SIZE = 40;
 
 const messages = defineMessages({
-  api: { id: 'apiListView.column.api', defaultMessage: 'API' },
+  api: { id: 'apiListView.column.api', defaultMessage: 'Name' },
   type: { id: 'apiListView.column.type', defaultMessage: 'Type' },
-  updated: { id: 'apiListView.column.updated', defaultMessage: 'Updated' },
-  version: { id: 'apiListView.column.version', defaultMessage: 'Version' },
+  updated: { id: 'apiListView.column.updated', defaultMessage: 'Last Updated' },
+  description: { id: 'apiListView.column.description', defaultMessage: 'Description' },
 });
 
-const rowGridSx = {
-  alignItems: 'center',
-  display: 'grid',
-  gap: 2,
-  gridTemplateColumns: {
-    xs: 'minmax(0, 1fr) auto',
-    md: 'minmax(0, 1fr) 120px 100px 180px',
-  },
-} as const;
-
-type ApiRowProps = {
-  api: ListableApi;
-  onOpen: (api: ListableApi) => void;
-  onDelete?: (api: ListableApi) => void;
-};
-
 /**
- * One API as a row.
+ * Where the Delete button replaces the time on row hover: wide enough for a
+ * pointer layout and a device that can hover. Elsewhere (phones, touch
+ * tablets) the time and the button sit side by side, both visible.
  */
-function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
-  const intl = useIntl();
-  const canDelete = useCan('DeleteRESTAPI');
-  const updated = api.updatedAt || api.createdAt;
-
-  return (
-    <Box
-      {...openableProps(intl, api.displayName, () => onOpen(api))}
-      sx={(theme) => ({
-        borderBottom: `${theme.border.width} ${theme.border.style}`,
-        borderColor: 'divider',
-        cursor: 'pointer',
-        px: 2.5,
-        py: 1.75,
-        transition: theme.transitions.create('background-color'),
-        ...rowGridSx,
-        ...focusRingSx(theme),
-        '&:focus-within .api-delete-action, &:hover .api-delete-action': {
-          opacity: 1,
-        },
-        '&:hover': { bgcolor: 'action.hover' },
-        '&:last-of-type': { borderBottom: 0 },
-      })}
-    >
-      {/* `minWidth: 0` lets long names truncate. */}
-      <Stack alignItems="center" direction="row" spacing={1.5} sx={{ minWidth: 0 }}>
-        <ApiThumbnailAvatar
-          apiId={api.id}
-          apiType={thumbnailApiType(api)}
-          displayName={api.displayName}
-          size={AVATAR_SIZE}
-        />
-        <Box sx={{ minWidth: 0 }}>
-          <Typography component="div" noWrap sx={{ fontWeight: 600 }} variant="subtitle2">
-            {api.displayName}
-          </Typography>
-          <Typography color="text.secondary" sx={apiDescriptionSx(1)} variant="caption">
-            {api.description || ''}
-          </Typography>
-        </Box>
-      </Stack>
-
-      <Box sx={{ display: { md: 'block', xs: 'none' } }}>
-        <Typography sx={{ fontFamily: 'monospace' }} variant="body2">
-          {api.version}
-        </Typography>
-      </Box>
-      <Box sx={{ display: { md: 'block', xs: 'none' } }}>
-        <ApiKindChip kind={api.kind} />
-      </Box>
-      <Stack
-        alignItems="center"
-        direction="row"
-        justifyContent="flex-end"
-        spacing={0.5}
-        sx={{ display: { md: 'flex', xs: 'none' } }}
-      >
-        <UpdatedLabel timestamp={updated} />
-        {onDelete && canDelete && (
-          <Box sx={{ mr: -1 }}>
-            <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
-          </Box>
-        )}
-      </Stack>
-      <Stack
-        alignItems="center"
-        direction="row"
-        spacing={0.5}
-        sx={{ display: { md: 'none', xs: 'flex' } }}
-      >
-        <UpdatedLabel timestamp={updated} />
-        {onDelete && canDelete && (
-          <ApiDeleteButton apiName={api.displayName} onDelete={() => onDelete(api)} />
-        )}
-      </Stack>
-    </Box>
-  );
-}
+const hoverMedia = (theme: Theme) => `${theme.breakpoints.up('md')} and (hover: hover)`;
 
 type ApiListViewProps = {
   apis: ListableApi[];
@@ -144,46 +49,127 @@ type ApiListViewProps = {
   onDelete?: (api: ListableApi) => void;
 };
 
-/** Compact row layout for APIs, the list-view counterpart of ApiCardGrid. */
+/** Card-row layout for APIs, the list-view counterpart of ApiCardGrid. */
 export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
+  const intl = useIntl();
+  const canDelete = useCan('DeleteRESTAPI');
+
+  const columns: ListingCardColumn<ListableApi>[] = [
+    {
+      id: 'name',
+      header: intl.formatMessage(messages.api),
+      render: (api) => (
+        // `minWidth: 0` lets long names truncate.
+        <Stack alignItems="center" direction="row" spacing={1.5} sx={{ minWidth: 0 }}>
+          <ApiThumbnailAvatar
+            apiId={api.id}
+            apiType={thumbnailApiType(api)}
+            displayName={api.displayName}
+            size={AVATAR_SIZE}
+          />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography component="div" noWrap sx={{ fontWeight: 600 }} variant="subtitle2">
+              {api.displayName}
+            </Typography>
+            <Typography
+              color="text.secondary"
+              sx={{ ...apiDescriptionSx(1), display: { xs: '-webkit-box', md: 'none' } }}
+              variant="caption"
+            >
+              {api.description || ''}
+            </Typography>
+          </Box>
+        </Stack>
+      ),
+    },
+    {
+      id: 'description',
+      header: intl.formatMessage(messages.description),
+      hideOnMobile: true,
+      render: (api) => (
+        <Typography color="text.secondary" sx={apiDescriptionSx(1)} variant="body2">
+          {api.description || ''}
+        </Typography>
+      ),
+    },
+    {
+      id: 'type',
+      header: intl.formatMessage(messages.type),
+      hideOnMobile: true,
+      width: 120,
+      render: (api) => (
+        <Typography color="text.secondary" noWrap variant="body2">
+          {apiKindLabel(api.kind)}
+        </Typography>
+      ),
+    },
+    {
+      id: 'updated',
+      header: intl.formatMessage(messages.updated),
+      // Hug the content: the column is as wide as its widest cell (the Delete
+      // button), so the button sits at the same edge at every screen width.
+      // A fixed width narrower than the button let it overflow to the left.
+      width: '1%',
+      render: (api) => {
+        const updated = api.updatedAt || api.createdAt;
+        return (
+          <Box
+            sx={{
+              alignItems: 'center',
+              display: 'flex',
+              gap: 1,
+              justifyContent: 'flex-start',
+              position: 'relative',
+            }}
+          >
+            {/* The time sizes the cell; from md up the Delete button is laid over it and
+                the time fades out on row hover. */}
+            <Box
+              sx={(theme) => ({
+                // Keep "7 hours ago" on one line; a squeezed column should shrink the
+                // description instead of wrapping the time.
+                whiteSpace: 'nowrap',
+                transition: 'opacity 150ms ease',
+                ...(onDelete && canDelete && {
+                  [hoverMedia(theme)]: {
+                    'tr:focus-within &, tr:hover &': { opacity: 0 },
+                  },
+                }),
+              })}
+            >
+              {updated && <RelativeTime time={relativeTime(updated)} dateTime={updated} />}
+            </Box>
+            {onDelete && canDelete && (
+              // Pinned to the cell's right edge, not placed by a grid track, so it
+              // lands in the same spot whatever the time's width or the screen size.
+              <Box
+                sx={(theme) => ({
+                  [hoverMedia(theme)]: {
+                    position: 'absolute',
+                    right: -8,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                  },
+                })}
+              >
+                <ApiDeleteLabelButton apiName={api.displayName} onDelete={() => onDelete(api)} />
+              </Box>
+            )}
+          </Box>
+        );
+      },
+    },
+  ];
+
   return (
-    <Card data-testid="api-list-view" variant="outlined">
-      <Box
-        sx={{
-          ...rowGridSx,
-          bgcolor: 'action.hover',
-          px: 2.5,
-          py: 1.25,
-        }}
-      >
-        <Typography color="text.secondary" sx={{ fontWeight: 700 }} variant="caption">
-          <FormattedMessage {...messages.api} />
-        </Typography>
-        <Typography
-          color="text.secondary"
-          sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700 }}
-          variant="caption"
-        >
-          <FormattedMessage {...messages.version} />
-        </Typography>
-        <Typography
-          color="text.secondary"
-          sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700 }}
-          variant="caption"
-        >
-          <FormattedMessage {...messages.type} />
-        </Typography>
-        <Typography
-          color="text.secondary"
-          sx={{ display: { md: 'block', xs: 'none' }, fontWeight: 700, textAlign: 'right' }}
-          variant="caption"
-        >
-          <FormattedMessage {...messages.updated} />
-        </Typography>
-      </Box>
-      {apis.map((api) => (
-        <ApiRow api={api} key={api.id} onDelete={onDelete} onOpen={onOpen} />
-      ))}
-    </Card>
+    <ListingCardTable
+      columns={columns}
+      data-testid="api-list-view"
+      getRowId={(api) => api.id ?? api.displayName}
+      getRowLabel={(api) => api.displayName}
+      onRowOpen={onOpen}
+      revealOnHoverClassName="api-delete-action"
+      rows={apis}
+    />
   );
 }

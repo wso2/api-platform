@@ -28,7 +28,7 @@ import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { BackendEndpointField } from './BackendEndpointField';
 import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
 import { DefineApproachLayout, type DefineApproach } from './DefineApproachLayout';
-import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
+import { ReadyToConnectIllustration } from '@/components/illustrations/ReadyToConnectIllustration';
 
 type ApproachKey = 'contract' | 'scratch';
 
@@ -196,7 +196,7 @@ export const DefineApiPanel = ({
               textAlign: 'center',
             }}
           >
-            <GatewayIllustration />
+            <ReadyToConnectIllustration />
             <Typography sx={{ fontWeight: 700, mt: 2 }} variant="body1">
               {intl.formatMessage(messages.endpointPreviewTitle)}
             </Typography>

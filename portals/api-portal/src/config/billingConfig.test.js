@@ -20,8 +20,9 @@
 /*
  * [api_portal.billing.stripe] webhook_signature_tolerance_sec and [api_portal.billing.moesif]
  * max_parallel_prices: their defaults, an override, and the refusal to start with a value that is not
- * a whole number of at least 1. Driven through a child process because the loader runs its startup
- * checks at module load.
+ * a whole number of at least 1. [api_portal.billing.moesif] collector_application_id and
+ * management_key: set together or not at all, and not in multi-organization mode. Driven through a
+ * child process because the loader runs its startup checks at module load.
  */
 
 const test = require('node:test');
@@ -64,6 +65,7 @@ function boot(overlay) {
         process.stdout.write(${JSON.stringify(SETTINGS)} + JSON.stringify({
             tolerance: config.billing.stripe.webhookSignatureToleranceSec,
             parallelPrices: config.billing.moesif.maxParallelPrices,
+            moesifKeys: [config.billing.moesif.collectorApplicationId, config.billing.moesif.managementKey],
         }) + '\\n');
     `);
     const env = { PATH: process.env.PATH, HOME: process.env.HOME };
@@ -85,7 +87,7 @@ test.after(() => {
 test('the defaults are a 300 second signature tolerance and 4 prices at a time', () => {
     const { status, settings } = boot();
     assert.equal(status, 0);
-    assert.deepEqual(settings, { tolerance: 300, parallelPrices: 4 });
+    assert.deepEqual(settings, { tolerance: 300, parallelPrices: 4, moesifKeys: ['', ''] });
 });
 
 test('each setting can be changed', () => {
@@ -97,7 +99,7 @@ webhook_signature_tolerance_sec = 600
 max_parallel_prices = 1
 `);
     assert.equal(status, 0);
-    assert.deepEqual(settings, { tolerance: 600, parallelPrices: 1 });
+    assert.deepEqual(settings, { tolerance: 600, parallelPrices: 1, moesifKeys: ['', ''] });
 });
 
 test('a value that is not a whole number of at least 1 stops the portal from starting', () => {
@@ -114,4 +116,88 @@ test('a value that is not a whole number of at least 1 stops the portal from sta
         assert.match(stderr, new RegExp(`\\[FATAL\\] billing\\.${section}\\.${key} must be a whole number of at least 1`),
             `${key} = ${value}`);
     }
+});
+
+const MOESIF_KEYS = `
+[api_portal.billing.moesif]
+collector_application_id = "  eyJhcHAiOiI2NDQ3OjEyMyJ9  "
+management_key = "moesif-key-0000"
+`;
+
+const MULTI_ORGANIZATION = `
+[api_portal.auth]
+mode = "idp"
+
+[api_portal.auth.idp]
+client_id = "portal-client"
+audience = "portal-client"
+authorization_url = "https://idp.example.com/oauth2/authorize"
+token_url = "https://idp.example.com/oauth2/token"
+callback_url = "https://portal.example.com/callback"
+jwks_url = "https://idp.example.com/oauth2/jwks"
+
+[api_portal.multi_organization]
+enabled = true
+`;
+
+test('the Moesif keys set in config are loaded, trimmed', () => {
+    const { status, settings } = boot(MOESIF_KEYS);
+    assert.equal(status, 0);
+    assert.deepEqual(settings.moesifKeys, ['eyJhcHAiOiI2NDQ3OjEyMyJ9', 'moesif-key-0000']);
+});
+
+test('only one Moesif key set stops the portal from starting', () => {
+    for (const key of ['collector_application_id', 'management_key']) {
+        const { status, stderr } = boot(`[api_portal.billing.moesif]\n${key} = "moesif-0000"\n`);
+        assert.equal(status, 1, key);
+        assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id and billing\.moesif\.management_key must be set together/);
+    }
+});
+
+test('a Moesif key that is not a string stops the portal from starting', () => {
+    const { status, stderr } = boot('[api_portal.billing.moesif]\nmanagement_key = 42\n');
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.management_key must be a string/);
+});
+
+// A management key shaped like Moesif's, naming its application in the `app` claim.
+const segment = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const managementKeyFor = (app) => `${segment({ alg: 'HS256' })}.${segment({ app })}.signature`;
+const keysFor = (collectorId, managementKey) =>
+    `[api_portal.billing.moesif]\ncollector_application_id = "${collectorId}"\nmanagement_key = "${managementKey}"\n`;
+
+test('a management key for the collector id\'s Moesif application is loaded', () => {
+    const { status } = boot(keysFor(segment({ app: '6447:123' }), managementKeyFor('6447:123')));
+    assert.equal(status, 0);
+});
+
+test('a management key for another Moesif application stops the portal from starting', () => {
+    const { status, stderr } = boot(keysFor(segment({ app: '6447:123' }), managementKeyFor('6447:999')));
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.management_key is for a different Moesif application than billing\.moesif\.collector_application_id/);
+});
+
+test('a value that is not a Collector Application Id stops the portal from starting', () => {
+    const { status, stderr } = boot(keysFor('moesif-0000', 'moesif-key-0000'));
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
+});
+
+test('a collector id whose application is not named as Moesif names one stops the portal from starting', () => {
+    // Otherwise the check that both keys are for one application would be skipped.
+    const { status, stderr } = boot(keysFor(segment({ app: 'not-an-application' }), managementKeyFor('6447:999')));
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id is not a Moesif Collector Application Id/);
+});
+
+test('Moesif keys in config stop a multi-organization portal from starting', () => {
+    const { status, stderr } = boot(MULTI_ORGANIZATION + MOESIF_KEYS);
+    assert.equal(status, 1);
+    assert.match(stderr, /\[FATAL\] billing\.moesif\.collector_application_id and billing\.moesif\.management_key are not allowed in multi-organization mode/);
+});
+
+test('a multi-organization portal without Moesif keys in config starts', () => {
+    const { status, settings } = boot(MULTI_ORGANIZATION);
+    assert.equal(status, 0);
+    assert.deepEqual(settings.moesifKeys, ['', '']);
 });

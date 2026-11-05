@@ -84,6 +84,7 @@ const mapGateway = (dto: ManagedGatewayDTO): Gateway => ({
   description: dto.description,
   type: normalizeType(dto.functionalityType),
   environmentId: dto.environment ?? '',
+  hosting: 'managed',
   url: dto.host ?? '',
   status: normalizeStatus(dto),
   statusReason: dto.statusReason,

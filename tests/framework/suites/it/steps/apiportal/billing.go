@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -69,15 +70,11 @@ func (s *Steps) setUpBilling(ctx context.Context) error {
 }
 
 // setUpBillingWithValues sets up billing as the administrator with the testbench keys, the
-// portal's address inside the test network for Stripe's events, and the table's values in place
-// of those; an empty value leaves the field out. Billing that is set up is removed when the
-// scenario ends.
+// address the shared testbench reaches this block's portal on for Stripe's events, and the
+// table's values in place of those; an empty value leaves the field out. Billing that is set up
+// is removed when the scenario ends.
 func (s *Steps) setUpBillingWithValues(ctx context.Context, table *godog.Table) error {
-	inst, err := s.topo.Component(portalService)
-	if err != nil {
-		return err
-	}
-	webhookBase, err := inst.InternalURL("https")
+	webhookBase, err := s.topo.CallbackURL(portalService, "https")
 	if err != nil {
 		return err
 	}
@@ -145,6 +142,10 @@ func (s *Steps) stripeControlURL(path string) (string, error) {
 // and waits for the portal to create the subscription the checkout buys. Every event Stripe sends
 // for the payment must be accepted. The subscription is stored, and ended at once when the
 // scenario ends.
+//
+// The portal confirms an open checkout with Stripe when it is read, so the subscription is
+// created even when an event is refused. It is registered for cleanup before the events are
+// checked: left active, it would keep billing from being removed for the scenarios after this one.
 func (s *Steps) payCheckout(ctx context.Context, checkoutRef, role, storeAs string) error {
 	checkout, err := stepscommon.Expand(ctx, checkoutRef)
 	if err != nil {
@@ -171,10 +172,12 @@ func (s *Steps) payCheckout(ctx context.Context, checkoutRef, role, storeAs stri
 	if err := json.Unmarshal(response.Body, &paid); err != nil {
 		return fmt.Errorf("decoding Stripe's payment of checkout %q: %w", checkout, err)
 	}
+	var refused error
 	for _, delivery := range paid.Deliveries {
 		if delivery.Status < 200 || delivery.Status >= 300 {
-			return fmt.Errorf("Stripe's event for checkout %q was not accepted by %s: status %d %s",
+			refused = fmt.Errorf("Stripe's event for checkout %q was not accepted by %s: status %d %s",
 				checkout, delivery.URL, delivery.Status, delivery.Error)
+			break
 		}
 	}
 
@@ -205,13 +208,17 @@ func (s *Steps) payCheckout(ctx context.Context, checkoutRef, role, storeAs stri
 			return state.SubscriptionID, nil
 		}, func(id string) bool { return id != "" })
 	if err != nil {
-		return fmt.Errorf("waiting for paid checkout %q to create its subscription: %w", checkout, err)
+		return errors.Join(refused,
+			fmt.Errorf("waiting for paid checkout %q to create its subscription: %w", checkout, err))
 	}
 	if err := s.registerPortalResource(ctx, paidSubscriptionKind(role), subscription, cleanup.ScenarioScope,
 		portalCleanupRequest{method: http.MethodDelete, role: role, target: func(id string) string {
 			return "/subscriptions/" + url.PathEscape(id) + "?immediate=true"
 		}}); err != nil {
-		return err
+		return errors.Join(refused, err)
+	}
+	if refused != nil {
+		return refused
 	}
 	return tcontext.Set(ctx, storeAs, subscription)
 }

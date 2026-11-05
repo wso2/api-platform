@@ -48,6 +48,11 @@ type Response struct {
 
 const maxResponseBodyBytes int64 = 10 << 20
 
+// idleConnTimeout drops an idle connection before a Node.js server, such as the API Portal,
+// closes it after its default 5 s keep-alive. A request sent on a connection the server is
+// closing fails with EOF, and a POST, PUT or DELETE is not retried on another one.
+const idleConnTimeout = 3 * time.Second
+
 // These IANA-assigned hybrid group IDs are not named by older crypto/tls packages.
 const (
 	secP256r1MLKEM768  tls.CurveID = 4587
@@ -162,6 +167,7 @@ func NewClient(opts Options) *Client {
 			MaxIdleConns:        200,
 			MaxIdleConnsPerHost: 50,
 			MaxConnsPerHost:     100,
+			IdleConnTimeout:     idleConnTimeout,
 		},
 	}
 	if !opts.FollowRedirects {

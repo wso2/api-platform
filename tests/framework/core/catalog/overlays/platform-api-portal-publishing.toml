@@ -6,3 +6,8 @@ root_ca_file = "/app/data/certs/api-portal-ca.pem"
 # with a few kilobytes of documents. The content of the other scenarios stays far below it.
 [platform_api]
 publication_archive_max_bytes = 4096
+
+# Enables the platform-api webhook receiver for API Portal integration tests.
+[platform_api.webhook]
+enabled = true
+secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'

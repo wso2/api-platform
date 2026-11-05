@@ -27,4 +27,8 @@ export type {
   ListApiPortalsQuery,
   ListApiPortalsResponse,
 } from './apiPortals.endpoints';
-export { useApiPortals, type ApiPortalListFilters } from './apiPortals.hooks';
+export {
+  useApiPortals,
+  useInvalidateApiPortals,
+  type ApiPortalListFilters,
+} from './apiPortals.hooks';

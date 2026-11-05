@@ -43,6 +43,21 @@
     </div>
     <p class="ep-note">Need access? Contact your organization admin.</p>
 
+    {{else if (eq errorType 'signin')}}
+    <div class="ep-circle" style="background:#fdeaea;border-color:#f3d2d2;color:#c62828;">
+      <i class="bi bi-person-x"></i>
+    </div>
+    <div class="ep-code" style="color:#c62828;">Sign-in failed</div>
+    <h1 class="ep-title">We couldn't sign you in</h1>
+    <p class="ep-desc">Your sign-in or sign-up didn't complete. Try again, or go back to the portal.</p>
+    <div class="ep-actions">
+      <a href="{{baseUrl}}/login" class="ep-btn ep-btn--primary"><i class="bi bi-box-arrow-in-right"></i> Sign in</a>
+      {{#if signUpEnabled}}
+      <a href="{{baseUrl}}/signup" class="ep-btn ep-btn--outline"><i class="bi bi-person-plus"></i> Sign up</a>
+      {{/if}}
+      <a href="{{baseUrl}}" class="ep-btn ep-btn--outline"><i class="bi bi-house"></i> Go to home</a>
+    </div>
+
     {{else}}
     <div class="ep-circle" style="background:#fff3e6;border-color:#f6dcc0;color:#e65100;">
       <i class="bi bi-exclamation-triangle"></i>

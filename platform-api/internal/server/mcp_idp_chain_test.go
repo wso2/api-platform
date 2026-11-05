@@ -135,7 +135,9 @@ func newIDPChain(t *testing.T, key *idpTestKey, idpAudience []string, readOnly c
 	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, skip...)
 
 	utils.InitSharedHTTPClient(&http.Client{Timeout: 5 * time.Second}, 0)
-	authenticator, err := buildAuthenticator(cfg, logger, nil)
+	keyMap, err := buildIssuerKeyMap(cfg, nil)
+	require.NoError(t, err)
+	authenticator, err := buildAuthenticator(cfg, logger, nil, keyMap)
 	require.NoError(t, err)
 
 	chain := []func(http.Handler) http.Handler{

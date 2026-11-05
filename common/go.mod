@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/common
 
-go 1.26.5
+go 1.26.10
 
 require (
 	github.com/MicahParks/jwkset v0.11.0

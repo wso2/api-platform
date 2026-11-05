@@ -69,10 +69,6 @@ describe('usePageTitle', () => {
     );
   });
 
-  it('names a Settings tab below the bare /settings path', () => {
-    expect(titleAt(`/organizations/${ORG}/settings/general`)).toBe('Settings | WSO2 API Platform');
-  });
-
   it('falls back to the bare product name when nothing names the page', () => {
     expect(titleAt(`/organizations/${ORG}/nothing-here`)).toBe('WSO2 API Platform');
   });

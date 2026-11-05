@@ -20,7 +20,7 @@
 /*
  * Spec-driven /portal router.
  *
- * Wires the OpenAPI spec at docs/api-portal-openapi-spec-v0.9.yaml into the
+ * Wires the OpenAPI spec at resources/openapi/api-portal-openapi-spec-v0.9.yaml into the
  * Express app. Pipeline per request:
  *
  *   1. authResolver        — populates req.auth (legacy auth-mode parity)
@@ -49,7 +49,7 @@ const { config } = require('../../config/configLoader');
 const logger = require('../../config/logger');
 const { authResolver, OAuth2Security, apiKeyAuth } = require('../../middlewares/authMiddleware');
 
-const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'api-portal-openapi-spec-v0.9.yaml');
+const SPEC_PATH = constants.OPENAPI_SPEC_PATH;
 const HANDLERS_DIR = path.join(__dirname, 'handlers');
 
 // Top-level path segments that belong to the portal API surface. The router

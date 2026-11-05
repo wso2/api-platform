@@ -293,6 +293,16 @@ func TestNewClientUsesPQCFirstTLSCurveDefaults(t *testing.T) {
 	require.True(t, insecureTransport.TLSClientConfig.InsecureSkipVerify)
 }
 
+func TestNewClientDropsIdleConnectionsBeforeANodeServerCloses(t *testing.T) {
+	for _, options := range []Options{{}, {TLSClientConfig: &tls.Config{ServerName: "api-portal"}}} {
+		transport, ok := NewClient(options).http.Transport.(*http.Transport)
+		require.True(t, ok)
+		require.Positive(t, transport.IdleConnTimeout)
+		// Node.js closes an idle keep-alive connection after 5 s by default.
+		require.Less(t, transport.IdleConnTimeout, 5*time.Second)
+	}
+}
+
 func TestNewClientClonesAndNormalizesSuppliedTLSConfig(t *testing.T) {
 	configured := &tls.Config{
 		ServerName:       "example.test",

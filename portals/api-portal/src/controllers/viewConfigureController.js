@@ -204,6 +204,8 @@ const loadSettingsPage = async (req, res) => {
         templateContent.billingEngines = billingConfigurationService.BILLING_ENGINES;
         templateContent.billingHasChoice = billingConfigurationService.BILLING_HAS_CHOICE;
         templateContent.billingPaymentProviders = billingConfigurationService.PAYMENT_PROVIDERS;
+        // Keys the deployment supplies are not asked for.
+        templateContent.billingKeysFromDeployment = billingConfigurationService.deploymentFields().length > 0;
 
         let orgMeters = [];
         try {

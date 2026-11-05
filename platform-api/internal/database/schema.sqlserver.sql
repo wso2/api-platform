@@ -262,9 +262,6 @@ CREATE TABLE dbo.api_publication_contents (
 );
 
 -- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
--- Positioned here, ahead of its original location further down this file, so
--- api_publication_doc_mappings below (which references it) doesn't create
--- before its FK target exists — SQL Server validates that at CREATE TABLE time.
 IF OBJECT_ID(N'dbo.api_documents', N'U') IS NULL
 CREATE TABLE dbo.api_documents (
     uuid              VARCHAR(40)    NOT NULL,
@@ -294,6 +291,10 @@ CREATE UNIQUE INDEX uq_api_documents_artifact_handle ON dbo.api_documents(artifa
 
 -- =====================================================================
 -- api_publication_doc_mappings: the documents selected for a publication row.
+-- doc_uuid is a pointer, not a foreign key, so deleting a document leaves the
+-- selection intact. doc_handle and display_name are copies taken at
+-- the last save or publish. A selection whose pointer matches no api_documents
+-- row is reported as deleted.
 --
 -- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
 -- organization still removes these rows via api_publications.
@@ -303,24 +304,22 @@ CREATE TABLE dbo.api_publication_doc_mappings (
     organization_uuid VARCHAR(40)  NOT NULL,
     publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
     doc_uuid          VARCHAR(40)  NOT NULL,
+    doc_handle        VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
     created_by        VARCHAR(200) NOT NULL,
     created_at        DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, publication_uuid, doc_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    -- api_documents has no UNIQUE(organization_uuid, uuid) — single-column FK,
-    -- org match checked in the service layer, same exception as subscription_plans.
-    -- CASCADE: documents are authored outside this feature. Deleting one there
-    -- withdraws it from the selection here rather than blocking the deletion.
-    FOREIGN KEY (doc_uuid) REFERENCES api_documents(uuid) ON DELETE CASCADE
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- =====================================================================
 -- api_publication_plan_mappings: the subscription plans selected for a
--- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
--- so the plan reference is single-column and the organization match is checked
--- in the service layer.
+-- publication row. subscription_plan_uuid is a pointer, not a foreign key, so
+-- deleting a plan leaves the selection intact. plan_handle and display_name are
+-- copies taken at the last save or publish. A selection whose pointer matches
+-- no subscription_plans row is reported as deleted.
 --
 -- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
 -- organization still removes these rows via api_publications.
@@ -330,14 +329,14 @@ CREATE TABLE dbo.api_publication_plan_mappings (
     organization_uuid      VARCHAR(40)  NOT NULL,
     publication_uuid       VARCHAR(40)  NOT NULL,   -- the api_publications row this belongs to, draft or live
     subscription_plan_uuid VARCHAR(40)  NOT NULL,
+    plan_handle            VARCHAR(40)  NOT NULL,
+    display_name           VARCHAR(255) NOT NULL,
     created_by             VARCHAR(200) NOT NULL,
     created_at             DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, publication_uuid, subscription_plan_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_uuid)
-        REFERENCES subscription_plans(uuid) ON DELETE NO ACTION
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- API Publication indexes
@@ -1081,3 +1080,56 @@ CREATE TABLE dbo.subscription_billing (
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_billing_org' AND object_id = OBJECT_ID(N'dbo.subscription_billing'))
 CREATE INDEX idx_subscription_billing_org ON dbo.subscription_billing(organization_uuid);
+
+-- Service accounts: non-human identities that exchange a client ID and secret
+-- for a short-lived platform JWT. client_id is globally unique because the
+-- token endpoint receives no organization. Roles are expanded at each exchange.
+IF OBJECT_ID(N'dbo.service_accounts', N'U') IS NULL
+CREATE TABLE dbo.service_accounts (
+    uuid                   VARCHAR(40)   NOT NULL PRIMARY KEY,
+    organization_uuid      VARCHAR(40)   NOT NULL,
+    handle                 VARCHAR(40)   NOT NULL,
+    name                   VARCHAR(255)  NOT NULL,
+    version                VARCHAR(30)   NOT NULL DEFAULT 'v1.0',
+    description            VARCHAR(1023) NOT NULL,
+    client_id              VARCHAR(255)  NOT NULL,
+    client_secret_hash     VARCHAR(255)  NOT NULL,
+    masked_secret          VARCHAR(8)    NOT NULL,
+    roles                  VARCHAR(1023) NOT NULL,
+    status                 VARCHAR(20)   NOT NULL DEFAULT 'active',
+    token_version          INTEGER       NOT NULL DEFAULT 1,
+    last_used_at           DATETIME2(7),
+    last_used_ip           VARCHAR(45),
+    secret_regenerated_at  DATETIME2(7),
+    secret_regenerated_by  VARCHAR(200),
+    data_version           VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by             VARCHAR(200),
+    created_at             DATETIME2(7)  DEFAULT SYSUTCDATETIME(),
+    updated_by             VARCHAR(200),
+    updated_at             DATETIME2(7)  DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT uq_service_accounts_org_handle UNIQUE (organization_uuid, handle),
+    CONSTRAINT uq_service_accounts_client_id UNIQUE (client_id),
+    CONSTRAINT fk_service_accounts_org FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_service_accounts_org' AND object_id = OBJECT_ID(N'dbo.service_accounts'))
+CREATE INDEX idx_service_accounts_org ON dbo.service_accounts(organization_uuid);
+
+-- Revocation watermarks for service-account tokens: one row per account, not
+-- per token. Every revoke bumps service_accounts.token_version, and a token
+-- carrying a version below min_token_version is rejected.
+-- DELIBERATE: no FOREIGN KEY to service_accounts or organizations. The row must
+-- outlive a hard delete of either, or a token minted just before the delete
+-- would pass on any replica that loaded its cache afterwards. Pruned by expires_at.
+IF OBJECT_ID(N'dbo.service_account_revocations', N'U') IS NULL
+CREATE TABLE dbo.service_account_revocations (
+    account_uuid       VARCHAR(40)   NOT NULL PRIMARY KEY,
+    organization_uuid  VARCHAR(40)   NOT NULL,
+    min_token_version  INTEGER       NOT NULL,
+    expires_at         DATETIME2(7)  NOT NULL,
+    revoked_by         VARCHAR(200),
+    revoked_at         DATETIME2(7)  DEFAULT SYSUTCDATETIME()
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_service_account_revocations_expires_at' AND object_id = OBJECT_ID(N'dbo.service_account_revocations'))
+CREATE INDEX idx_service_account_revocations_expires_at ON dbo.service_account_revocations(expires_at);

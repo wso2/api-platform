@@ -72,8 +72,8 @@ type apiSummary struct {
 	ReadOnly    bool   `json:"readOnly,omitempty"`
 }
 
+// listAPIsOut is a plain list: items and paging only, so clients show it as a table.
 type listAPIsOut struct {
-	APIType    string       `json:"apiType"`
 	Items      []apiSummary `json:"items"`
 	NextCursor string       `json:"nextCursor,omitempty"`
 	Total      int          `json:"total"`
@@ -92,7 +92,7 @@ func (s *Server) listAPIs(ctx context.Context, c caller, in listAPIsIn) (listAPI
 	if err != nil {
 		return listAPIsOut{}, err
 	}
-	out := listAPIsOut{APIType: t.name, Items: make([]apiSummary, 0, len(items)), Total: total, NextCursor: p.next(len(items), total)}
+	out := listAPIsOut{Items: make([]apiSummary, 0, len(items)), Total: total, NextCursor: p.next(len(items), total)}
 	for _, o := range items {
 		out.Items = append(out.Items, apiSummary{
 			ID:          str(o, "id"),
@@ -279,8 +279,10 @@ type deployIn struct {
 	GatewayID string `json:"gatewayId" jsonschema:"The gateway's exact id, from list_gateways. If the user gave a name and no gateway matches it exactly, ask; never substitute the closest match."`
 }
 
+// deployOut and undeployOut name the API by id, like every other result about
+// one object, so clients can head the result with it.
 type deployOut struct {
-	APIID       string       `json:"apiId"`
+	ID          string       `json:"id"`
 	Deployments []deployment `json:"deployments"`
 }
 
@@ -294,13 +296,13 @@ func (s *Server) deployAPI(ctx context.Context, c caller, in deployIn) (deployOu
 	if err != nil {
 		return deployOut{}, err
 	}
-	return deployOut{APIID: in.APIID, Deployments: []deployment{newDeployment(*d)}}, nil
+	return deployOut{ID: in.APIID, Deployments: []deployment{newDeployment(*d)}}, nil
 }
 
 // undeploy_api
 
 type undeployOut struct {
-	APIID      string       `json:"apiId"`
+	ID         string       `json:"id"`
 	Undeployed []deployment `json:"undeployed"`
 	Message    string       `json:"message,omitempty"`
 }
@@ -321,7 +323,7 @@ func (s *Server) undeployAPI(ctx context.Context, c caller, in deployIn) (undepl
 		}
 		live = append(live, found...)
 	}
-	out := undeployOut{APIID: in.APIID, Undeployed: []deployment{}}
+	out := undeployOut{ID: in.APIID, Undeployed: []deployment{}}
 	if len(live) == 0 {
 		// A success, so a repeat is safe; the message keeps it from looking like work done.
 		out.Message = fmt.Sprintf("Nothing to undeploy: %s has no running deployment on gateway %s. "+

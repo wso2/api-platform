@@ -26,12 +26,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const path = require('node:path');
 const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
 const { formatValidationErrors } = require('../../utils/validationErrors');
 
-const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'api-portal-openapi-spec-v0.9.yaml');
+const { OPENAPI_SPEC_PATH: SPEC_PATH } = require('../../utils/constants');
 const BASE = '/api-portal/api/v0.9';
 
 let server;

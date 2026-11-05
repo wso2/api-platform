@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -767,11 +768,7 @@ func (c *ComposeStack) RefreshPorts(ctx context.Context) error {
 
 	mapped := make(map[int]int, len(c.def.Endpoints))
 	for _, e := range c.def.Endpoints {
-		service := c.def.Compose.PrimaryService
-		if e.Service != "" {
-			service = e.Service
-		}
-		service += c.suffix
+		service := c.endpointService(e)
 		container, err := c.stack.ServiceContainer(ctx, service)
 		if err != nil {
 			return fmt.Errorf("runtime: locating service %q while refreshing ports: %w", service, err)
@@ -786,6 +783,32 @@ func (c *ComposeStack) RefreshPorts(ctx context.Context) error {
 
 	c.Instance.RefreshPorts(mapped)
 	return nil
+}
+
+// endpointService is the service, with this stack's instance suffix, that serves an endpoint: the
+// endpoint's own service, or the primary one. It is also the service's name on the block network.
+func (c *ComposeStack) endpointService(e components.Endpoint) string {
+	service := c.def.Compose.PrimaryService
+	if e.Service != "" {
+		service = e.Service
+	}
+	return service + c.suffix
+}
+
+// runsService reports whether this stack runs a service named name on the block network.
+func (c *ComposeStack) runsService(name string) bool {
+	if c == nil || c.def == nil || c.def.Compose == nil {
+		return false
+	}
+	if c.PrimaryService() == name || slices.Contains(c.Services(), name) {
+		return true
+	}
+	for _, e := range c.def.Endpoints {
+		if c.endpointService(e) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ComposeStack) serviceContainer(ctx context.Context, service string) (testcontainers.Container, error) {

@@ -336,13 +336,19 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"subscription.yaml":          "Subscription",
 	}
 	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
-	controlPlaneProtocols := map[string]string{
-		"agent-proxy.yaml": "a2a",
+	// Each names the payload block that identifies the resource.
+	controlPlaneBlocks := map[string]string{
+		"agent-proxy.yaml":     "a2a",
+		"llm-provider-cp.yaml": "upstream",
+	}
+	// Control-plane payloads without a protocol block name the fields every request carries.
+	controlPlaneFields := map[string][]string{
+		"service-account.yaml": {"displayName", "roles"},
 	}
 
 	paths, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	require.NoError(t, err)
-	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneProtocols))
+	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneBlocks)+len(controlPlaneFields))
 	for _, path := range paths {
 		name := filepath.Base(path)
 		content, err := os.ReadFile(path)
@@ -350,13 +356,26 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		var document map[string]any
 		require.NoError(t, yaml.Unmarshal(content, &document))
 
-		if protocol, isControlPlane := controlPlaneProtocols[name]; isControlPlane {
-			require.Equal(t, protocol, document["protocol"], "template %q", name)
+		if fields, isControlPlane := controlPlaneFields[name]; isControlPlane {
 			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
 				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
 			}
-			block, ok := document[protocol].(map[string]any)
-			require.True(t, ok, "template %q must define its %q protocol block", name, protocol)
+			require.Len(t, document, len(fields), "template %q", name)
+			for _, field := range fields {
+				require.Contains(t, document, field, "template %q", name)
+			}
+			continue
+		}
+
+		if blockName, isControlPlane := controlPlaneBlocks[name]; isControlPlane {
+			if name == "agent-proxy.yaml" {
+				require.Equal(t, "a2a", document["protocol"], "template %q", name)
+			}
+			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
+			}
+			block, ok := document[blockName].(map[string]any)
+			require.True(t, ok, "template %q must define its %q block", name, blockName)
 			require.NotEmpty(t, block, "template %q", name)
 			continue
 		}

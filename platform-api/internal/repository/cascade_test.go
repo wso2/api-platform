@@ -19,6 +19,7 @@ package repository
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -325,7 +326,9 @@ func seedPublications(t *testing.T, tdb *schemaDB, g graph) {
 			AgentVisibility:  "VISIBLE",
 		}
 	}
-	first, err := repo.SaveDraftDetails(draft("1.0.0"), []string{g.plan}, []string{g.apiDoc}, "actor")
+	plans := []model.PublicationSelection{{UUID: g.plan, Handle: "plan", DisplayName: "Plan"}}
+	docs := []model.PublicationSelection{{UUID: g.apiDoc, Handle: "doc", DisplayName: "Doc"}}
+	first, err := repo.SaveDraftDetails(draft("1.0.0"), plans, docs, "actor")
 	if err != nil {
 		t.Fatalf("saving first draft: %v", err)
 	}
@@ -344,10 +347,10 @@ func seedPublications(t *testing.T, tdb *schemaDB, g graph) {
 	if err != nil || saved == nil {
 		t.Fatalf("reading saved draft: %v", err)
 	}
-	if _, _, err := repo.PromoteDraftToPublication(g.apiArtifact, g.apiPortal, g.org, "actor", saved.UpdatedAt); err != nil {
+	if _, _, err := repo.PromoteDraftToPublication(g.apiArtifact, g.apiPortal, g.org, "actor", saved.UpdatedAt, time.Now().UTC(), plans, docs); err != nil {
 		t.Fatalf("promoting draft: %v", err)
 	}
-	if _, err := repo.SaveDraftDetails(draft("1.0.1"), []string{g.plan}, []string{g.apiDoc}, "actor"); err != nil {
+	if _, err := repo.SaveDraftDetails(draft("1.0.1"), plans, docs, "actor"); err != nil {
 		t.Fatalf("saving second draft: %v", err)
 	}
 	if got := tdb.count(t, "api_publications", "artifact_uuid", g.apiArtifact); got != 2 {

@@ -26,12 +26,10 @@
  */
 
 const fs = require('node:fs');
-const path = require('node:path');
 const yaml = require('./yaml');
 const logger = require('../config/logger');
 const { authResolver, OAuth2Security } = require('../middlewares/authMiddleware');
-
-const SPEC_PATH = path.join(__dirname, '..', '..', 'docs', 'api-portal-openapi-spec-v0.9.yaml');
+const { OPENAPI_SPEC_PATH: SPEC_PATH } = require('./constants');
 
 // The page actions, each with the REST operation it calls.
 const ACTIONS = {

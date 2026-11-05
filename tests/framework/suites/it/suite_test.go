@@ -77,7 +77,7 @@ func TestGatewayDatabaseCompatibilityExcludesSQLServerForGatewayV110(t *testing.
 		}
 	}
 	for _, skipped := range selected.SkippedBlocks {
-		require.Contains(t, skipped.Block, "/sqlserver")
+		require.Contains(t, skipped.Reason, "sqlserver")
 		require.Contains(t, skipped.Reason, "Gateway version 1.1.0")
 	}
 
@@ -124,33 +124,39 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 		if _, single := singleEngineBlocks[source]; single {
 			continue
 		}
-		sort.Slice(got, func(i, j int) bool { return got[i] < got[j] })
-		require.Equal(t, coverageEngines, got, "block %q database coverage", source)
+		distinct := make(map[components.DBType]bool, len(got))
+		for _, engine := range got {
+			distinct[engine] = true
+		}
+		unique := make([]components.DBType, 0, len(distinct))
+		for engine := range distinct {
+			unique = append(unique, engine)
+		}
+		sort.Slice(unique, func(i, j int) bool { return unique[i] < unique[j] })
+		require.Equal(t, coverageEngines, unique, "block %q database coverage", source)
 	}
 }
 
 // singleEngineBlocks are the gateway blocks that run one engine by design, with that engine.
-// The webhook block follows its control plane's PostgreSQL store, the publishing block follows
-// the API Portal's PostgreSQL store, the multigateway block
-// runs two gateway stacks rather than an engine matrix, the AI Workspace CLI block runs one
-// SQLite stack, and the two-controller block needs
+// The publishing block (also hosting the merged devportal webhook runners) follows the API
+// Portal's PostgreSQL store, the multigateway block
+// runs two gateway stacks rather than an engine matrix, and the two-controller block needs
 // a database server both controllers share. The hostname blocks that set their own
 // downstream_tls settings run one engine: the settings do not depend on the database, and the
-// default block of the feature repeats on every engine. So do the trust-any, observability and
-// default identity blocks, whose subjects are the data plane's behaviour, not the store.
+// default (no flag set) case now lives in gateway-core instead, which sweeps every engine. So
+// does the trust-any block and the observability block, whose subjects (and its merged
+// default-identity-on scenario) are the data plane's behaviour, not the store. The AI Workspace
+// CLI runner moved into platform-api-core and now sweeps every engine with it.
 var singleEngineBlocks = map[string]components.DBType{
-	"devportal-webhook":                               components.Postgres,
 	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
-	"ai-workspace-cli":                                components.SQLite,
+	"tenant-isolation":                                components.SQLite,
 	"gateway-mtls-ha":                                 components.Postgres,
 	"gateway-mtls-hostnames-required":                 components.SQLite,
 	"gateway-mtls-hostnames-all-connections":          components.SQLite,
 	"gateway-mtls-hostnames-all-connections-required": components.SQLite,
 	"gateway-mtls-trust-any":                          components.SQLite,
-	"gateway-mtls-observability":                      components.SQLite,
-	"gateway-mtls-default-identity-off":               components.SQLite,
-	"gateway-mtls-default-identity-on":                components.SQLite,
+	"gateway-mtls-observability-default-identity":     components.SQLite,
 }
 
 const coverageSubject = "platform-gateway"

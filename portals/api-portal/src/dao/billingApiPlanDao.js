@@ -22,8 +22,9 @@
  * price, each naming what the billing provider created for it. A row is written once by
  * billingCatalogService and never changes; billingCatalogService.retire takes it off sale.
  *
- * Items are stored as JSON ({ priceUuid, planRef, priceRef, meterRef }) and read as
- * { price_uuid, plan_ref, price_ref, meter_ref }.
+ * Items are stored as JSON ({ priceUuid, planRef, priceRef, meterRef, application }) and read as
+ * { price_uuid, plan_ref, price_ref, meter_ref, application }. `application` is the Moesif
+ * application they were made in.
  */
 
 const db = require('../db/driver');
@@ -41,6 +42,7 @@ function readItems(value) {
             plan_ref: item.planRef || null,
             price_ref: item.priceRef,
             meter_ref: item.meterRef || null,
+            application: item.application || null,
         }));
     } catch (_err) {
         return [];
@@ -76,8 +78,8 @@ const listPaidPairs = async (orgId, { planUuid } = {}, t) => {
 /** Writes an API plan: `apiPlan` is { orgId, apiUuid, planUuid, items }. */
 const insertApiPlan = async (apiPlan, t) => {
     const exec = t || db;
-    const items = apiPlan.items.map(({ priceUuid, planRef, priceRef, meterRef }) => ({
-        priceUuid, planRef, priceRef, meterRef: meterRef || null,
+    const items = apiPlan.items.map(({ priceUuid, planRef, priceRef, meterRef, application }) => ({
+        priceUuid, planRef, priceRef, meterRef: meterRef || null, application: application || null,
     }));
     await exec.execute(
         `INSERT INTO ${API_PLANS} (org_uuid, portal_id, api_uuid, plan_uuid, items, created_at)

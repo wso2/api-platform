@@ -39,6 +39,20 @@ export type ApiFetch = <T = unknown>(
   body?: unknown
 ) => Promise<T | undefined>;
 
+/**
+ * One gateway release, keyed by `type`; the first entry of a type is its latest.
+ * Hand-mirrors the host's `GatewayVersionEntry` (`config/runtime.ts`).
+ */
+export type GatewayVersionEntry = {
+  type: 'ai' | 'regular' | 'event';
+  version: string;
+  /** Release tag, e.g. `v1.2.0`. Defaults to `v${version}` when omitted. */
+  latestVersion?: string;
+  /** Zip/folder version when it differs from `version`. */
+  distVersion?: string;
+  channel: 'STS' | 'LTS';
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -47,4 +61,8 @@ export type CloudHostPort = {
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /** Gateway releases from the host's config; the first `regular` entry is the latest. */
+  gatewayVersions?: GatewayVersionEntry[];
+  /** `host:port` a self-hosted gateway's controller dials; falls back to this page's own host. */
+  gatewayControlPlaneHost?: string;
 };

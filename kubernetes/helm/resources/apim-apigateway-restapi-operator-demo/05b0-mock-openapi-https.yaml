@@ -1,15 +1,11 @@
 # --------------------------------------------------------------------
-# OpenAI-compatible HTTP mock + HTTPS terminator (composition matches
-# gateway/it/docker-compose.test.yaml: prism `mock-openapi` + nginx
-# `mock-openapi-https`). Prism serves /health and /openai/v1/chat/completions on
-# :4010 using a bundled spec aligned with gateway/it/mock-api/paths/openai/chat.yaml.
+# OpenAI-compatible HTTP mock + HTTPS terminator: Stoplight Prism `mock-openapi` + nginx
+# `mock-openapi-https`. Prism serves /health and /openai/v1/chat/completions on :4010 using a
+# bundled spec aligned with
+# apigateway-restapi-operator-demo/llm-mock-openapi-it/mock-api/paths/openai/chat.yaml.
 # Nginx listens on 8443; Service exposes port 9449 (avoids clashes with Rancher on 9443).
 # LlmProvider URL:
 #   https://mock-openapi-https:9449/openai/v1
-#
-# Integration tests compose file: gateway/it/docker-compose.test.yaml — services
-# `mock-openapi` (Stoplight Prism on :4010 + ./mock-api) and `mock-openapi-https`
-# (nginx:1.25 TLS; IT compose publishes host 9443→8443 — this demo uses Service 9449→8443).
 #
 # This manifest is Kubernetes-native Prism + nginx with a bundled OpenAPI and a
 # small demo TLS Secret (SANs include both demo namespaces).
@@ -93,7 +89,7 @@ data:
   openapi.yaml: |
     openapi: 3.0.3
     info:
-      title: Demo LLM Mock (gateway/it/mock-api parity — OpenAI chat)
+      title: Demo LLM Mock (llm-mock-openapi-it/mock-api parity — OpenAI chat)
       version: 1.0.0
     paths:
       /health:

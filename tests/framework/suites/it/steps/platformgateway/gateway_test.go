@@ -63,6 +63,26 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 )
 
+func TestArtifactColumnQuery(t *testing.T) {
+	for engine, want := range map[components.DBType]string{
+		components.SQLite:    "SELECT cp_sync_status FROM artifacts WHERE kind = ? AND handle = ?",
+		components.Postgres:  "SELECT cp_sync_status FROM artifacts WHERE kind = $1 AND handle = $2",
+		components.SQLServer: "SELECT cp_sync_status FROM artifacts WHERE kind = @p1 AND handle = @p2",
+	} {
+		got, err := artifactColumnQuery(engine, cpSyncStatusColumn)
+		require.NoError(t, err)
+		require.Equal(t, want, got, engine)
+	}
+	got, err := artifactColumnQuery(components.SQLite, cpArtifactIDColumn)
+	require.NoError(t, err)
+	require.Equal(t, "SELECT cp_artifact_id FROM artifacts WHERE kind = ? AND handle = ?", got)
+
+	for _, column := range []string{"", "configuration", "cp_sync_status; DROP TABLE artifacts"} {
+		_, err := artifactColumnQuery(components.SQLite, column)
+		require.ErrorContains(t, err, "unsupported artifacts column", column)
+	}
+}
+
 func TestAwaitMappedTestbenchServiceProbesMappedEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/testbench/health", r.URL.Path)
@@ -3607,6 +3627,40 @@ func TestAnalyticsA2AFieldValidatesTheValueClause(t *testing.T) {
 	ctx := agentTestContext()
 	require.ErrorContains(t, g.analyticsA2AField(ctx, "/p", "have", "operation", ""), "requires a value")
 	require.ErrorContains(t, g.analyticsA2AField(ctx, "/p", "not have", "operation", "x"), "takes no value")
+}
+
+func TestAIContextAssertions(t *testing.T) {
+	block := map[string]any{
+		"provider":   "openai",
+		"model_type": "chat",
+		"usage":      map[string]any{"prompt_tokens": float64(19), "total_tokens": float64(29)},
+	}
+	require.NoError(t, aiContextAssert(block, "have", "provider", "openai"))
+	require.NoError(t, aiContextAssert(block, "have", "usage.prompt_tokens", "19"))
+	require.ErrorContains(t, aiContextAssert(block, "have", "provider", "anthropic"), `to be "anthropic"`)
+	require.ErrorContains(t, aiContextAssert(block, "have", "usage.completion_tokens", "10"), "not found")
+	require.ErrorContains(t, aiContextAssert(block, "have", "cost_metrics.total_cost", "1"), "not found")
+	require.NoError(t, aiContextAssert(block, "not have", "usage.completion_tokens", ""))
+	require.NoError(t, aiContextAssert(block, "not have", "cost_metrics", ""))
+	require.ErrorContains(t, aiContextAssert(block, "not have", "usage", ""), "present with value")
+	require.ErrorContains(t, aiContextAssert(block, "count", "provider", ""), "unsupported")
+	require.ErrorContains(t, aiContextAssert(nil, "have", "provider", "openai"), "no ai_context block")
+	require.ErrorContains(t, aiContextAssert(nil, "not have", "cost_metrics", ""), "no ai_context block")
+
+	// Values are compared by their published type: a count sent as a string, or a name sent as a
+	// number, fails even when its text matches.
+	stringly := map[string]any{"provider": float64(1), "usage": map[string]any{"prompt_tokens": "19"}}
+	require.ErrorContains(t, aiContextAssert(stringly, "have", "usage.prompt_tokens", "19"), "to be a number")
+	require.ErrorContains(t, aiContextAssert(stringly, "have", "provider", "1"), "to be a string")
+	require.ErrorContains(t, aiContextAssert(block, "have", "usage.prompt_tokens", "nineteen"), "is not a number")
+	require.ErrorContains(t, aiContextAssert(block, "have", "usage.prompt_tokens", "20"), "to be 20")
+}
+
+func TestAnalyticsAIContextFieldValidatesTheValueClause(t *testing.T) {
+	g := &Gateway{}
+	ctx := agentTestContext()
+	require.ErrorContains(t, g.analyticsAIContextField(ctx, "/p", "have", "provider", ""), "requires a value")
+	require.ErrorContains(t, g.analyticsAIContextField(ctx, "/p", "not have", "provider", "x"), "takes no value")
 }
 
 func TestA2ACredentialsCarryOnlyCredentialHeaders(t *testing.T) {

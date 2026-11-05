@@ -55,6 +55,36 @@ const (
 	defaultTotalTokens      = 16
 )
 
+// KeyedPathPrefix is an OpenAI-dialect upstream that, like the real service, refuses any
+// credential but ValidAPIKey, sent in either the api-key header (Azure OpenAI) or as an
+// Authorization bearer token (OpenAI). Its refusal never repeats the presented key.
+const KeyedPathPrefix = "/openai-keyed/v1"
+
+// ValidAPIKey is the only credential the keyed upstream accepts.
+const ValidAPIKey = "sk-testbench-valid-key"
+
+// keyedRefusal mirrors OpenAI's 401 body for a wrong key, minus the masked key it quotes.
+var keyedRefusal = map[string]any{
+	"error": map[string]any{
+		"message": "Incorrect API key provided.",
+		"type":    "invalid_request_error",
+		"code":    "invalid_api_key",
+	},
+}
+
+// presentedKey returns the credential a request carries, whichever header it uses.
+func presentedKey(r *http.Request) string {
+	if key := r.Header.Get("api-key"); key != "" {
+		return key
+	}
+	// A bare Authorization value is not a bearer credential, so it presents no key.
+	key, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !bearer {
+		return ""
+	}
+	return key
+}
+
 // Handler returns the HTTP handler for the service.
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -77,6 +107,16 @@ func (s *Service) route(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.URL.Path
+	if keyed, ok := strings.CutPrefix(path, KeyedPathPrefix); ok {
+		if presentedKey(r) != ValidAPIKey {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			payload, _ := json.Marshal(keyedRefusal)
+			_, _ = w.Write(payload)
+			return
+		}
+		path = "/openai/v1" + keyed
+	}
 	// The echo paths stream the request's own text, so they answer before the generic stream.
 	if path == ChatEchoPath || path == ChatEchoProviderPath {
 		s.openAIChatEcho(w, body)
