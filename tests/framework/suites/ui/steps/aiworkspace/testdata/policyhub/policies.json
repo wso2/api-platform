@@ -1,0 +1,34 @@
+{
+  "count": 2,
+  "data": [
+    {
+      "name": "regex-guardrail",
+      "version": "1.0",
+      "displayName": "Regex Guardrail",
+      "description": "Validates request or response body content against a regular expression pattern.\nSupports JSONPath extraction to validate specific fields within JSON payloads.\nCan be configured to match or invert the regex pattern.\nSupports separate configuration for request and response phases.\nSupports SSE streaming response validation with cross-chunk pattern matching.",
+      "provider": "WSO2",
+      "categories": [
+        "Guardrails",
+        "AI"
+      ],
+      "isLatest": true
+    },
+    {
+      "name": "word-count-guardrail",
+      "version": "1.0",
+      "displayName": "Word Count Guardrail",
+      "description": "Validates the word count of request or response body content.\nSupports JSONPath extraction to validate specific fields within JSON payloads.\nCan be configured with min/max word count constraints and inverted logic.\nSupports separate configuration for request and response phases.\nSupports SSE streaming responses with configurable streaming JSONPath extraction.",
+      "provider": "WSO2",
+      "categories": [
+        "Guardrails",
+        "AI"
+      ],
+      "isLatest": true
+    }
+  ],
+  "pagination": {
+    "offset": 0,
+    "limit": 60,
+    "total": 2
+  }
+}

@@ -127,6 +127,52 @@ func TestNonStreamingRequestsAreUnchanged(t *testing.T) {
 	require.Equal(t, "chat.completion", reply["object"])
 }
 
+func TestKeyedUpstreamRefusesAWrongKeyWithoutRepeatingIt(t *testing.T) {
+	request := func(header, value, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
+			KeyedPathPrefix+"/chat/completions", strings.NewReader(body))
+		if header != "" {
+			req.Header.Set(header, value)
+		}
+		rec := httptest.NewRecorder()
+		New().Handler().ServeHTTP(rec, req)
+		return rec
+	}
+
+	for name, rec := range map[string]*httptest.ResponseRecorder{
+		"wrong api-key":            request("api-key", "sk-wrong-key", `{"model":"gpt-4o"}`),
+		"wrong bearer":             request("Authorization", "Bearer sk-wrong-key", `{"model":"gpt-4o"}`),
+		"no key":                   request("", "", `{"model":"gpt-4o"}`),
+		"empty api-key":            request("api-key", "", `{"model":"gpt-4o"}`),
+		"key without bearer":       request("Authorization", "sk-testbench-valid-keyX", `{"model":"gpt-4o"}`),
+		"valid key without bearer": request("Authorization", ValidAPIKey, `{"model":"gpt-4o"}`),
+	} {
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s: status %d, want 401", name, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "invalid_api_key") {
+			t.Errorf("%s: body %q does not name invalid_api_key", name, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "sk-wrong-key") {
+			t.Errorf("%s: the refusal repeats the presented key: %s", name, rec.Body.String())
+		}
+	}
+
+	for name, rec := range map[string]*httptest.ResponseRecorder{
+		"api-key": request("api-key", ValidAPIKey, `{"model":"gpt-4o"}`),
+		"bearer":  request("Authorization", "Bearer "+ValidAPIKey, `{"model":"gpt-4o"}`),
+	} {
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "How can I assist you today?") {
+			t.Errorf("%s: want the OpenAI chat reply, got %d %s", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	stream := request("api-key", ValidAPIKey, `{"model":"gpt-4o","stream":true}`)
+	if stream.Code != http.StatusOK || !strings.Contains(stream.Body.String(), "data: [DONE]") {
+		t.Errorf("a keyed stream should end in [DONE], got %d %s", stream.Code, stream.Body.String())
+	}
+}
+
 func chatContent(t *testing.T, rec *httptest.ResponseRecorder) (model, content string) {
 	t.Helper()
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())

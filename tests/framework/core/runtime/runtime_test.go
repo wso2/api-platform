@@ -40,6 +40,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -271,6 +272,49 @@ func writeReportLikeGodog(dst io.Writer, runner string, scenarios int) {
 	fmt.Fprintf(dst, " [%s]\n", runner)
 }
 
+// shortWriter accepts at most limit bytes and then fails, the way a write to a full
+// non-blocking pipe does.
+type shortWriter struct {
+	limit int
+	got   bytes.Buffer
+}
+
+func (w *shortWriter) Write(p []byte) (int, error) {
+	room := w.limit - w.got.Len()
+	if room <= 0 {
+		return 0, errors.New("resource temporarily unavailable")
+	}
+	if len(p) > room {
+		w.got.Write(p[:room])
+		return room, errors.New("resource temporarily unavailable")
+	}
+	return w.got.Write(p)
+}
+
+func TestFlushRunnerOutputReportsAShortWrite(t *testing.T) {
+	report := bytes.NewBufferString(strings.Repeat("x", 1000))
+	err := flushRunnerOutput(&shortWriter{limit: 100}, "block/runner", report)
+	require.ErrorContains(t, err, "block/runner")
+
+	require.ErrorContains(t, flushRunnerOutput(&shortWriter{limit: 0}, "block/runner", &bytes.Buffer{}), "block/runner")
+
+	full := &shortWriter{limit: 1 << 20}
+	require.NoError(t, flushRunnerOutput(full, "block/runner", bytes.NewBufferString("report")))
+	require.Equal(t, "\n=== block/runner ===\nreport", full.got.String())
+}
+
+func TestFlushRunnerOutputWritesALargeReportToAFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.log")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	defer f.Close()
+	report := strings.Repeat("0123456789abcdef", 1<<14) // 256 KiB, well past a pipe's capacity
+	require.NoError(t, flushRunnerOutput(f, "block/runner", bytes.NewBufferString(report)))
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "\n=== block/runner ===\n"+report, string(got))
+}
+
 func TestRunnerOutputIsNotInterleaved(t *testing.T) {
 	const runners, scenariosEach = 12, 7
 
@@ -283,7 +327,7 @@ func TestRunnerOutputIsNotInterleaved(t *testing.T) {
 			defer wg.Done()
 			var own bytes.Buffer
 			writeReportLikeGodog(&own, fmt.Sprintf("runner-%02d", i), scenariosEach)
-			flushRunnerOutput(shared, fmt.Sprintf("block/runner-%02d", i), &own)
+			require.NoError(t, flushRunnerOutput(shared, fmt.Sprintf("block/runner-%02d", i), &own))
 		}(i)
 	}
 	wg.Wait()
@@ -1440,4 +1484,27 @@ func TestContainerLifecycleControlsRequireAContainer(t *testing.T) {
 		require.EqualError(t, c.Pause(ctx), "runtime: no container to pause")
 		require.EqualError(t, c.Unpause(ctx), "runtime: no container to unpause")
 	}
+}
+
+func pipeNonblock(t *testing.T, f *os.File) bool {
+	t.Helper()
+	raw, err := f.SyscallConn()
+	require.NoError(t, err)
+	var flags uintptr
+	var errno syscall.Errno
+	require.NoError(t, raw.Control(func(fd uintptr) {
+		flags, _, errno = syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFL, 0)
+	}))
+	require.Zero(t, errno)
+	return flags&syscall.O_NONBLOCK != 0
+}
+
+func TestFlushRunnerOutputRestoresABlockingPipe(t *testing.T) {
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	defer r.Close()
+	defer w.Close()
+	require.True(t, pipeNonblock(t, w), "precondition: the os.Pipe write end is non-blocking")
+	require.NoError(t, flushRunnerOutput(w, "block/runner", bytes.NewBufferString("report")))
+	require.False(t, pipeNonblock(t, w), "flushRunnerOutput must restore blocking mode")
 }

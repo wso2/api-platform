@@ -641,6 +641,13 @@ func resolveBlock(
 				name, c.Name, replicas)
 			continue
 		}
+		// Wiring that names replicas is checked against the replicas this block runs.
+		if bounded, ok := wiring.(interface{ ValidateReplicas(int) error }); ok {
+			if err := bounded.ValidateReplicas(replicas); err != nil {
+				errs.addf("block %q: component %q wiring: %v", name, c.Name, err)
+				continue
+			}
+		}
 
 		_, dbVariant, _ := componentVariant(c, v, defaults)
 		rb.Components = append(rb.Components, ResolvedComponent{
