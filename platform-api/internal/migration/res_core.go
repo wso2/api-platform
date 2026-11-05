@@ -423,6 +423,21 @@ type planRow struct {
 	createdAt, updatedAt    time.Time
 }
 
+var planConditionColumns = []string{"uuid", "subscription_plan_uuid", "organization_uuid", "condition_id", "condition_type", "params", "sort_order"}
+
+// planConditionValues is the subscription_plan_conditions row for a v1 plan's throttle limit, as a
+// request-count condition, or nil when the plan has no limit (§ plans §6).
+func planConditionValues(r planRow, createdAt time.Time) []any {
+	if !r.throttleCount.Valid {
+		return nil
+	}
+	condition := model.NewRequestCountCondition([]model.ConditionWindow{{
+		Count: int(r.throttleCount.Int64), TimeAmount: 1, TimeUnit: mapThrottleUnit(r.throttleUnit),
+	}}, boolToSmallint(r.stopOnQuota) != 0)
+	conditionUUID := detUUID("spcondition|"+r.uuid+"|"+condition.ID, createdAt)
+	return []any{conditionUUID, r.uuid, r.orgUUID, condition.ID, condition.Type, []byte(condition.Params), 0}
+}
+
 func (m *subscriptionPlansMigrator) Migrate(ctx context.Context, rc *RunContext) (*ResourceReport, error) {
 	rep := newReport(m.name)
 	if rc.Direction == DirectionReverse {
@@ -470,15 +485,8 @@ func (m *subscriptionPlansMigrator) Migrate(ctx context.Context, rc *RunContext)
 			conflictUUIDNothing); err != nil {
 			return err
 		}
-		// The v1 throttle limit becomes a request-count condition, only when v1 has one (§ plans §6).
-		if r.throttleCount.Valid {
-			condition := model.NewRequestCountCondition([]model.ConditionWindow{{
-				Count: int(r.throttleCount.Int64), TimeAmount: 1, TimeUnit: mapThrottleUnit(r.throttleUnit),
-			}}, boolToSmallint(r.stopOnQuota) != 0)
-			conditionUUID := detUUID("spcondition|"+r.uuid+"|"+condition.ID, createdAt)
-			return insertRow(ctx, q, "subscription_plan_conditions",
-				[]string{"uuid", "subscription_plan_uuid", "organization_uuid", "condition_id", "condition_type", "params", "sort_order"},
-				[]any{conditionUUID, r.uuid, r.orgUUID, condition.ID, condition.Type, []byte(condition.Params), 0},
+		if values := planConditionValues(r, createdAt); values != nil {
+			return insertRow(ctx, q, "subscription_plan_conditions", planConditionColumns, values,
 				conflictCols("subscription_plan_uuid", "condition_id"))
 		}
 		return nil

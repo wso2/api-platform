@@ -344,8 +344,11 @@ func TestRequestWindows_KeepsEverySupportedRequestLimit(t *testing.T) {
 		{LimitType: "request_count", LimitCount: 50, TimeUnit: "minute"},
 		{LimitType: "REQUEST_COUNT", LimitCount: 3000, TimeUnit: "MINUTE", TimeAmount: 120},
 		{LimitType: "BANDWIDTH", LimitCount: 10, TimeUnit: "DAY"},
+		{LimitType: "REQUEST_COUNT", LimitCount: 9000, TimeUnit: "MONTH"},
+		{LimitType: "REQUEST_COUNT", LimitCount: 300, TimeUnit: "DAY", TimeAmount: 1},
 	})
-	want := []model.ConditionWindow{{Count: 2000, TimeAmount: 2, TimeUnit: "HOUR"}, {Count: 50, TimeAmount: 1, TimeUnit: "MINUTE"}}
+	want := []model.ConditionWindow{{Count: 2000, TimeAmount: 2, TimeUnit: "HOUR"}, {Count: 50, TimeAmount: 1, TimeUnit: "MINUTE"},
+		{Count: 9000, TimeAmount: 1, TimeUnit: "MONTH"}, {Count: 300, TimeAmount: 1, TimeUnit: "DAY"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("windows = %+v, want %+v", got, want)
 	}

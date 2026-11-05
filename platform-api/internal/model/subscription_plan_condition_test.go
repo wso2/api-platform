@@ -59,3 +59,52 @@ func TestSetLegacyLimit_UnreadableParams(t *testing.T) {
 		t.Fatalf("legacy limit = %v %q %v, want none", p.ThrottleLimitCount, p.ThrottleLimitUnit, p.StopOnQuotaReach)
 	}
 }
+
+// Older gateways get the first request window that is one unit long, or else the first window applied
+// per unit; a plan with no request-count condition is unlimited for them.
+func TestSetLegacyLimit(t *testing.T) {
+	request := func(params string) []SubscriptionPlanCondition {
+		return []SubscriptionPlanCondition{{ID: ConditionIDRequests, Type: ConditionTypeRequestCount, Params: []byte(params)}}
+	}
+	tests := []struct {
+		name       string
+		conditions []SubscriptionPlanCondition
+		count      int // 0: no limit
+		unit       string
+		stop       bool
+	}{
+		{"no conditions", nil, 0, "", true},
+		{"first one-unit window", request(`{"limits":[{"count":9,"timeAmount":2,"timeUnit":"HOUR"},{"count":100,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"allow"}`),
+			100, "DAY", false},
+		{"no one-unit window: the first applied per unit", request(`{"limits":[{"count":9,"timeAmount":2,"timeUnit":"HOUR"},{"count":50,"timeAmount":3,"timeUnit":"DAY"}],"onExceed":"reject"}`),
+			9, "HOUR", true},
+		{"a unit older gateways don't know is skipped", request(`{"limits":[{"count":1,"timeAmount":1,"timeUnit":"WEEK"},{"count":40,"timeAmount":1,"timeUnit":"MONTH"}],"onExceed":"reject"}`),
+			40, "MONTH", true},
+		{"only other conditions", []SubscriptionPlanCondition{{ID: "tool-calls", Type: ConditionTypeToolCallCount,
+			Params: []byte(`{"limits":[{"count":9,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"reject"}`)}}, 0, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &SubscriptionPlan{Conditions: tt.conditions}
+			p.SetLegacyLimit()
+			got := 0
+			if p.ThrottleLimitCount != nil {
+				got = *p.ThrottleLimitCount
+			}
+			if got != tt.count || p.ThrottleLimitUnit != tt.unit || p.StopOnQuotaReach != tt.stop {
+				t.Fatalf("legacy limit = %d %q %v, want %d %q %v", got, p.ThrottleLimitUnit, p.StopOnQuotaReach, tt.count, tt.unit, tt.stop)
+			}
+		})
+	}
+}
+
+func TestSubscriptionPlanUsage_InUse(t *testing.T) {
+	if (&SubscriptionPlanUsage{}).InUse() {
+		t.Error("an unused plan reports in use")
+	}
+	for _, u := range []SubscriptionPlanUsage{{RESTAPIs: 1}, {Drafts: 1}, {Publications: 1}, {Subscriptions: 1}} {
+		if !u.InUse() {
+			t.Errorf("%+v reports not in use", u)
+		}
+	}
+}

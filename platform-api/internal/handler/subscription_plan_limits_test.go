@@ -20,6 +20,8 @@ package handler
 import (
 	"strings"
 	"testing"
+
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 // Request limits sent the way clients before conditions send them: only the first is checked, as
@@ -46,5 +48,27 @@ func TestLimitsToRequestCondition_AsEarlierReleases(t *testing.T) {
 	}
 	if c, errMsg := limitsToRequestCondition(nil); c != nil || errMsg != "" {
 		t.Fatalf("no limits: %v, %q", c, errMsg)
+	}
+}
+
+func TestWindowKey(t *testing.T) {
+	if windowKey(60, "MINUTE") != windowKey(1, "HOUR") || windowKey(24, "HOUR") != windowKey(1, "DAY") {
+		t.Error("windows of the same length should match")
+	}
+	if windowKey(1, "MONTH") == windowKey(30, "DAY") || windowKey(1, "MONTH") != "M1" {
+		t.Errorf("months should match only months, got %q", windowKey(1, "MONTH"))
+	}
+}
+
+// A plan with no request-count condition, or one that can't be read, has no old-style limits.
+func TestRequestLimits_NoReadableRequestCondition(t *testing.T) {
+	for name, plan := range map[string]*model.SubscriptionPlan{
+		"no conditions": {},
+		"unreadable": {Conditions: []model.SubscriptionPlanCondition{{ID: "requests", Type: model.ConditionTypeRequestCount,
+			Params: []byte(`not json`)}}},
+	} {
+		if limits := requestLimits(plan); limits == nil || len(limits) != 0 {
+			t.Errorf("%s: limits = %v, want an empty list", name, limits)
+		}
 	}
 }

@@ -364,6 +364,14 @@ func TestUpsertPlanFromWebhook_RefusesInvalidConditions(t *testing.T) {
 	if repo.creates != 0 {
 		t.Fatalf("creates = %d, want none", repo.creates)
 	}
+
+	repo.plans["gold"] = &model.SubscriptionPlan{UUID: "u1", Handle: "gold", Name: "Gold"}
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", &conditions, nil, nil, planEventT0); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("existing plan: err = %v, want a validation error", err)
+	}
+	if repo.updates != 0 {
+		t.Fatalf("updates = %d, want none", repo.updates)
+	}
 }
 
 // A changed description alone is applied; the same description and conditions again write nothing.

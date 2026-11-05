@@ -139,40 +139,6 @@ func TestPortalConditions_LimitsOnlyChangeTheRequestCondition(t *testing.T) {
 	}
 }
 
-// v1 gateways get the first request window that is one unit long, or else the first window applied
-// per unit; a plan with no request-count condition is unlimited for them.
-func TestSetLegacyLimit(t *testing.T) {
-	tests := []struct {
-		name       string
-		conditions []model.SubscriptionPlanCondition
-		count      *int
-		unit       string
-		stop       bool
-	}{
-		{"no conditions", nil, nil, "", true},
-		{"first one-unit window", []model.SubscriptionPlanCondition{
-			condition("requests", "request-count", `{"limits":[{"count":9,"timeAmount":2,"timeUnit":"HOUR"},{"count":100,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"allow"}`)},
-			intPtr(100), "DAY", false},
-		{"no one-unit window: the first applied per unit", []model.SubscriptionPlanCondition{
-			condition("requests", "request-count", `{"limits":[{"count":9,"timeAmount":2,"timeUnit":"HOUR"},{"count":50,"timeAmount":3,"timeUnit":"DAY"}],"onExceed":"reject"}`)},
-			intPtr(9), "HOUR", true},
-		{"only other conditions", []model.SubscriptionPlanCondition{
-			condition("tool-calls", "tool-call-count", `{"limits":[{"count":9,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"reject"}`)},
-			nil, "", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			plan := &model.SubscriptionPlan{Conditions: tt.conditions}
-			plan.SetLegacyLimit()
-			if (plan.ThrottleLimitCount == nil) != (tt.count == nil) || (tt.count != nil && *plan.ThrottleLimitCount != *tt.count) ||
-				plan.ThrottleLimitUnit != tt.unit || plan.StopOnQuotaReach != tt.stop {
-				t.Fatalf("legacy limit = %v %q %v, want %v %q %v", plan.ThrottleLimitCount, plan.ThrottleLimitUnit, plan.StopOnQuotaReach,
-					tt.count, tt.unit, tt.stop)
-			}
-		})
-	}
-}
-
 // A portal copy gets every window of the plan's request-count condition, with its time amount.
 func TestPortalLimits_EveryRequestWindow(t *testing.T) {
 	plan := &model.SubscriptionPlan{Conditions: []model.SubscriptionPlanCondition{

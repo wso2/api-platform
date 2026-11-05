@@ -176,9 +176,14 @@ func TestPlanHandler_UpdateConditions(t *testing.T) {
 		t.Fatalf("conditions [] left %v", got["conditions"])
 	}
 
-	rec := planRequest(t, h, http.MethodPut, planITPath+"/gold", `{"id":"gold","displayName":"Gold","conditions":null}`)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("conditions null: status %d, want 400", rec.Code)
+	for name, body := range map[string]string{
+		"conditions null":            `{"id":"gold","displayName":"Gold","conditions":null}`,
+		"conditions and limits":      `{"id":"gold","displayName":"Gold","conditions":[],"limits":[{"limitCount":1,"timeUnit":"MINUTE"}]}`,
+		"invalid first legacy limit": `{"id":"gold","displayName":"Gold","limits":[{"limitCount":1,"timeUnit":"WEEK"}]}`,
+	} {
+		if rec := planRequest(t, h, http.MethodPut, planITPath+"/gold", body); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d, want 400", name, rec.Code)
+		}
 	}
 }
 
