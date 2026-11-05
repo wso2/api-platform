@@ -42,7 +42,6 @@ import {
   isSidebarExtension,
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
-  PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneExtension,
   type ApiControlPlaneExtensionChild,
@@ -607,9 +606,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           {scopedRoutes(
             apiScopedPaths(routes.apiObservabilityLogs),
             <FeatureGate features={['observability', 'logs']}>
-              <OverridablePage slot={PAGE_API_OBSERVABILITY_LOGS_SLOT}>
-                <RuntimeLogsPage />
-              </OverridablePage>
+              <RuntimeLogsPage />
             </FeatureGate>,
           )}
           {scopedRoutes(apiScopedPaths(routes.apiPortals), <PortalsPage />)}

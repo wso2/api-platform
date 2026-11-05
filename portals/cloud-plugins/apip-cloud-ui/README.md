@@ -23,7 +23,7 @@ portal's native extension contract.
 - The feature packages are siblings under `portals/cloud-plugins`, each a
   `file:` dependency of this package: `apip-cloud-ui-deploy`,
   `apip-cloud-ui-entitlements`, `apip-cloud-ui-environments-new`,
-  `apip-cloud-ui-gateways`, `apip-cloud-ui-insights`, `apip-cloud-ui-logs`,
+  `apip-cloud-ui-gateways`, `apip-cloud-ui-insights`,
   `apip-cloud-ui-managed-portals`, `apip-cloud-ui-pipelines` and
   `apip-cloud-ui-trial-status`.
 
@@ -82,7 +82,7 @@ with:
   `ScopeEnforcer` admits a call (one held scope matching one accepted entry), so
   no feature reasons about scope inheritance itself. The tables are
   `ENVIRONMENT_OPERATIONS`, `GATEWAY_OPERATIONS`, `PIPELINE_OPERATIONS`,
-  `LOG_OPERATIONS`, `PORTAL_OPERATIONS`, and in the deploy package
+  `PORTAL_OPERATIONS`, and in the deploy package
   `API_DEPLOYMENT_OPERATIONS`, `PROVIDER_DEPLOYMENT_OPERATIONS` and
   `PROVIDER_BUILD_OPERATIONS`. The deploy package also gates on two Platform API
   scopes from `platform-api/resources/openapi.yaml`: `ARTIFACT_READ_OPERATIONS`
