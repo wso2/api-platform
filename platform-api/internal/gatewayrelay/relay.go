@@ -79,6 +79,8 @@ func NewRelay(opts RelayOptions) (*Relay, error) {
 
 	cfg := httpclient.DefaultConfig()
 	cfg.Timeouts.Overall = opts.RequestTimeout
+	// A slow gateway is bounded by the request timeout, not httpkit's shorter header default.
+	cfg.Timeouts.ResponseHeader = opts.RequestTimeout
 	// Do truncates a long response itself; httpkit's limit is a backstop above it.
 	cfg.Timeouts.MaxResponseBytes = opts.MaxResponseBytes * 2
 	// The egress policy's dialer runs netguard's checks itself and also logs the
