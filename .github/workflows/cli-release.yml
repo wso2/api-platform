@@ -41,8 +41,10 @@ jobs:
             echo "Error: next_dev_version input is required"
             exit 1
           fi
-          if [[ "${NEXT_DEV_VERSION}" != ?*-SNAPSHOT ]]; then
-            echo "Error: next_dev_version must be a version followed by -SNAPSHOT (e.g. 0.10.0-SNAPSHOT)"
+          # X.Y.Z, an optional qualifier (e.g. -rc), then -SNAPSHOT. version-set writes the value
+          # through a shell command, so nothing outside this format may reach it.
+          if [[ ! "${NEXT_DEV_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?-SNAPSHOT$ ]]; then
+            echo "Error: next_dev_version must be X.Y.Z-SNAPSHOT, optionally with a qualifier (e.g. 0.10.0-SNAPSHOT, 1.2.0-rc-SNAPSHOT)"
             exit 1
           fi
           if [ "${NEXT_DEV_VERSION}" = "${RELEASE_VERSION}-SNAPSHOT" ]; then
