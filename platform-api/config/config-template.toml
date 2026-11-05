@@ -631,11 +631,9 @@ tls_skip_verify    = false     # development only; exclusive with ca_file
 #
 #   allow_hosts = ["https://*.gw.svc.cluster.local:9443", "https://gw.api.example.com"]
 #
-# Or from the environment, comma-separated:
-#
-#   allow_hosts = '{{ env "APIP_CP_GATEWAY_RELAY_ALLOW_HOSTS" "https://localhost:8443" }}'
+# Read below from APIP_CP_GATEWAY_RELAY_ALLOW_HOSTS, comma-separated.
 [platform_api.gateway_relay.egress]
-allow_hosts = ["https://localhost:8443"]
+allow_hosts = '{{ env "APIP_CP_GATEWAY_RELAY_ALLOW_HOSTS" "https://localhost:8443" }}'
 
 # ---------------------------------------------------------------------------
 # EventHub — multi-replica HA event delivery
