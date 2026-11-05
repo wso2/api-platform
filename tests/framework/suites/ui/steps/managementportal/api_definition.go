@@ -132,15 +132,15 @@ func (s *Steps) resourceShowsPolicy(ctx context.Context, policy, method, path st
 	return nil
 }
 
-// resourceShowsNoPolicy expands a resource on the Policies page and expects no attached policy.
-// The drop hint shows whether or not policies are attached, so it only marks the region as
-// loaded; each attached policy has its own "Remove policy" button.
+// resourceShowsNoPolicy expands a resource on the Policies page and expects no attached policy:
+// the drop hint a resource shows only while it has none, and no "Remove policy" button.
 func (s *Steps) resourceShowsNoPolicy(ctx context.Context, method, path string) error {
 	body, err := s.resourceBody(ctx, method, path)
 	if err != nil {
 		return err
 	}
-	if err := s.expect.Locator(body.GetByText("Drag and drop policies here, or use Add Policy.")).ToBeVisible(); err != nil {
+	hint := body.GetByText("Drag and drop policies here", playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)})
+	if err := s.expect.Locator(hint).ToBeVisible(); err != nil {
 		return fmt.Errorf("resource %s %s never showed its policies: %w", method, path, err)
 	}
 	removes := body.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Remove policy", Exact: playwright.Bool(true)})
