@@ -131,8 +131,9 @@ port = 5432                   # PostgreSQL / MSSQL only (Change to 1433 for MSSQ
 name = "api_portal"            # PostgreSQL / MSSQL only
 user = ""                     # PostgreSQL / MSSQL only - REQUIRED for those drivers (no default; startup fails if empty)
 password = ""                 # PostgreSQL / MSSQL only
-ssl_mode = "disable"          # PostgreSQL / MSSQL only: disable | verify-full
-ssl_root_cert = "./resources/security/ca.pem"   # CA cert - used by verify-full
+ssl_mode = "disable"          # PostgreSQL: disable | require | verify-ca | verify-full
+                              # MSSQL:      disable | verify-full
+ssl_root_cert = "./resources/security/ca.pem"   # CA cert - used by verify-ca / verify-full
 max_open_conns = 50           # PostgreSQL / MSSQL only (matches platform-api's max_open_conns)
 min_open_conns = 2            # PostgreSQL / MSSQL only
 pool_idle_timeout_ms = 10000            # PostgreSQL / MSSQL only

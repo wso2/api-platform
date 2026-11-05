@@ -23,13 +23,16 @@ const path = require('path');
 const { config } = require('../config/configLoader');
 
 // The ssl_mode values the API Portal supports.
-const SUPPORTED_SSL_MODES = ['disable', 'verify-full'];
+const SUPPORTED_SSL_MODES = ['disable', 'require', 'verify-ca', 'verify-full'];
 
 /**
  * Builds the node-postgres `ssl` option from config.database.sslMode. Shared by
  * sequelizeConfig.js and dbPool.js so both connect the same way:
  *
  *   disable      → no TLS (returns undefined)
+ *   require      → encrypt the connection but do not verify the server certificate
+ *   verify-ca    → encrypt AND verify the cert chain (against ssl_root_cert),
+ *                  but skip hostname verification
  *   verify-full  → encrypt AND verify the cert chain (against ssl_root_cert)
  *                  plus the hostname
  *
@@ -49,7 +52,12 @@ function buildDbSsl() {
 
     if (mode === 'disable') return undefined;
 
-    // verify-full
+    // require: encrypt only — no certificate verification
+    if (mode === 'require') {
+        return { rejectUnauthorized: false };
+    }
+
+    // verify-ca / verify-full: encrypt AND verify the server's certificate chain
     const ssl = { require: true, rejectUnauthorized: true };
     if (db.sslRootCert) {
         if (db.sslRootCert.includes('\0') || path.normalize(db.sslRootCert).includes('..')) {
@@ -57,6 +65,12 @@ function buildDbSsl() {
         }
         ssl.ca = fs.readFileSync(path.resolve(process.cwd(), db.sslRootCert)).toString();
     }
+
+    // verify-ca skips hostname verification; verify-full keeps Node's default (chain + hostname)
+    if (mode === 'verify-ca') {
+        ssl.checkServerIdentity = () => undefined;
+    }
+
     return ssl;
 }
 
