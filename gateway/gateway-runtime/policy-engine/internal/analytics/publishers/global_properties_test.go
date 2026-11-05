@@ -340,7 +340,7 @@ func TestGlobalPropertyEvaluator_NoHeaderReference_HeadersNeverParsed(t *testing
 	assert.Equal(t, "test-api", resolved["apiName"])
 	assert.Equal(t, float64(200), resolved["status"])
 
-	ctx := buildGlobalPropertyEvalCtx(event, e.referencedVars, nil)
+	ctx := buildGlobalPropertyEvalCtx(event, e.referencedVars, nil, nil, nil)
 	_, hasReqHeader := ctx["request.header"]
 	_, hasRespHeader := ctx["response.header"]
 	assert.False(t, hasReqHeader, "request.header key must be absent from the eval context, not just unused")
@@ -360,7 +360,7 @@ func TestGlobalPropertyEvaluator_HeaderReference_MarksReferencedAndParses(t *tes
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"X-Tenant-Id":"acme","Authorization":"Bearer secret"}`
 
-	ctx := buildGlobalPropertyEvalCtx(event, e.referencedVars, map[string]bool{"authorization": true})
+	ctx := buildGlobalPropertyEvalCtx(event, e.referencedVars, map[string]bool{"authorization": true}, nil, nil)
 	headers, ok := ctx["request.header"].(map[string]string)
 	if assert.True(t, ok, "request.header must be a map[string]string in the eval context") {
 		assert.Equal(t, "acme", headers["x-tenant-id"], "keys must be lower-cased")
@@ -386,4 +386,99 @@ func TestGlobalPropertyEvaluator_ReferencedVariableWithNilEventField_ResolvesToZ
 	assert.Equal(t, float64(0), resolved["targetStatus"])
 	assert.Equal(t, "", resolved["targetDest"])
 	assert.Equal(t, "", resolved["appId"])
+}
+
+// Variables for the default line's timestamp, client, latencies and error fields.
+func TestGlobalPropertyEvaluator_ResolvesDefaultLineFields(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"ts":        "$ctx:request.timestamp",
+		"ip":        "$ctx:client.ip",
+		"ua":        "$ctx:client.userAgent",
+		"durUs":     "$ctx:latencies.durationUs",
+		"reqMedUs":  "$ctx:latencies.requestMediationLatencyUs",
+		"respMedUs": "$ctx:latencies.responseMediationLatencyUs",
+		"backendUs": "$ctx:latencies.backendLatencyUs",
+		"errType":   "$ctx:errorType",
+		"code":      "$ctx:error.errorCode",
+		"message":   "$ctx:error.errorMessage",
+		"policy":    "$ctx:error.policy",
+		"phase":     "$ctx:error.policyPhase",
+		"source":    "$ctx:error.source",
+	}, nil)
+	event := createBaseEvent()
+	event.ErrorType = "AUTH"
+	event.Error = &dto.Error{
+		ErrorCode:    401,
+		ErrorMessage: "AUTHENTICATION_FAILURE",
+		Policy:       "api-key-auth",
+		PolicyPhase:  "request_headers",
+		Source:       "gateway",
+	}
+
+	resolved := e.resolve(event)
+
+	assert.Equal(t, event.RequestTimestamp.UTC().Format(trafficLogTimestampFormat), resolved["ts"])
+	assert.Equal(t, "192.168.1.1", resolved["ip"])
+	assert.Equal(t, "test-agent", resolved["ua"])
+	assert.Equal(t, float64(250000), resolved["durUs"])
+	assert.Equal(t, float64(50000), resolved["reqMedUs"])
+	assert.Equal(t, float64(30000), resolved["respMedUs"])
+	assert.Equal(t, float64(40000), resolved["backendUs"])
+	assert.Equal(t, "AUTH", resolved["errType"])
+	assert.Equal(t, float64(401), resolved["code"])
+	assert.Equal(t, "AUTHENTICATION_FAILURE", resolved["message"])
+	assert.Equal(t, "api-key-auth", resolved["policy"])
+	assert.Equal(t, "request_headers", resolved["phase"])
+	assert.Equal(t, "gateway", resolved["source"])
+}
+
+// A request with no error or latencies resolves these variables to zero values.
+func TestGlobalPropertyEvaluator_DefaultLineFieldsZeroWhenAbsent(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"durUs":  "$ctx:latencies.durationUs",
+		"policy": "$ctx:error.policy",
+	}, nil)
+	event := createBaseEvent()
+	event.TrafficLogLatencies = nil
+
+	resolved := e.resolve(event)
+
+	assert.Equal(t, float64(0), resolved["durUs"])
+	assert.Equal(t, "", resolved["policy"])
+}
+
+// request.body is declared only for json_fields, so a properties expression using it
+// fails to compile and the property is left out.
+func TestGlobalPropertyEvaluator_BodiesNotAvailableToProperties(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{"body": "$ctx:request.body"}, nil)
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyRequestPayload] = "secret"
+
+	assert.NotContains(t, e.resolve(event), "body")
+}
+
+func TestGlobalPropertyEvaluator_ResolvesLatenciesInMilliseconds(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"durMs":     "$ctx:latencies.durationMs",
+		"reqMedMs":  "$ctx:latencies.requestMediationLatencyMs",
+		"respMedMs": "$ctx:latencies.responseMediationLatencyMs",
+		"backendMs": "$ctx:latencies.backendLatencyMs",
+	}, nil)
+	event := createBaseEvent()
+	event.TrafficLogLatencies = &dto.TrafficLogLatencies{
+		DurationUs:                 18342,
+		RequestMediationLatencyUs:  412,
+		ResponseMediationLatencyUs: 298,
+		BackendLatencyUs:           17102,
+	}
+
+	resolved := e.resolve(event)
+
+	assert.Equal(t, 18.342, resolved["durMs"])
+	assert.Equal(t, 0.412, resolved["reqMedMs"])
+	assert.Equal(t, 0.298, resolved["respMedMs"])
+	assert.Equal(t, 17.102, resolved["backendMs"])
+
+	event.TrafficLogLatencies = nil
+	assert.Equal(t, 0.0, e.resolve(event)["durMs"], "no backend call: zero, like the Us variables")
 }

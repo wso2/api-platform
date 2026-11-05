@@ -617,6 +617,13 @@ data:
     {{ $key }} = {{ $value | quote }}
     {{- end }}
     {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.json_fields }}
+
+    [traffic_logging.json_fields]
+    {{- range $key, $value := .Values.gateway.config.traffic_logging.json_fields }}
+    {{ $key | quote }} = {{ $value | quote }}
+    {{- end }}
+    {{- end }}
     {{- with .Values.gateway.config.traffic_logging.file }}
 
     [traffic_logging.file]

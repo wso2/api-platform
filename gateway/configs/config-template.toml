@@ -1067,6 +1067,15 @@ exclude_fields = []
 # map wholesale (e.g. `claims = "$ctx:auth.property"`, whose keys vary per token)
 # instead of one flattened property per claim — reach into it to drop just one:
 # exclude_fields = ["properties.claims.internal_debug"]
+# An entry starting with "$ctx:" names data instead of a field, and applies only to
+# json_fields below: "$ctx:<variable>" drops every json_fields entry that uses that
+# variable (logged once at startup), and "$ctx:auth.property.<key>" or
+# "$ctx:metadata.<key>" removes just that key from the map. Properties are excluded
+# by name instead, e.g. "properties.<key>".
+# Headers are the exception: "$ctx:request.header.<name>" is the same entry as
+# "requestHeaders.<name>" (and "$ctx:response.header.<name>" as
+# "responseHeaders.<name>"), so either spelling hides the header everywhere.
+# exclude_fields = ["$ctx:error.policy", "$ctx:auth.property.email"]
 
 # -----------------------------------------------------------------------------
 # "file" sink — read only when outputs contains "file".
@@ -1258,11 +1267,20 @@ insecure_skip_verify = false
 # request.header['<name>'] (lower-case keys), response.status,
 # response.header['<name>'], api.id, api.name, api.version, api.context,
 # api.kind, project.id, target.statusCode, target.destination,
+# request.timestamp, client.ip, client.userAgent, latencies.durationUs/
+# requestMediationLatencyUs/responseMediationLatencyUs/backendLatencyUs (microseconds;
+# use the ...Ms names, e.g. latencies.durationMs, for decimal milliseconds), errorType,
+# error.errorCode/errorMessage/wso2ErrorCode/type/direction/summary/policy/
+# policyPhase/source/originalStatus/jsonRpcCode (named after the default line's fields),
 # application.id/name/owner/keyType (populated only when an auth policy that
 # stamps application identity, e.g. api-key-auth, actually ran).
+# For other latency units, use arithmetic: latencies.durationUs * 1000 (nanoseconds, at
+# microsecond precision) or latencies.durationMs / 1000.0 (seconds). Write 1000.0, not
+# 1000: CEL won't mix decimal and whole numbers.
 # request.header/response.header are masked with the same masked_headers list
-# above, so a property expression cannot re-expose a header (e.g.
-# request.header['authorization']) that masked_headers already redacts.
+# above, and headers removed by exclude_fields ("requestHeaders.<name>") are
+# missing from them, so a property expression cannot re-expose a header (e.g.
+# request.header['authorization']) that masked_headers or exclude_fields hides.
 #
 # auth.* is also available — subject, type, issuer, credential_id, token_id,
 # audience (list), scopes (list), property['<claim>'] (map), authenticated,
@@ -1294,6 +1312,22 @@ insecure_skip_verify = false
 # subject = "$ctx:auth.subject != '' ? auth.subject : 'anonymous'"
 # tenant = "$ctx:'tenant' in auth.property ? auth.property['tenant'] : ''"
 # appId = "$ctx:'applicationId' in metadata ? metadata['applicationId'] : ''"
+
+# Optional: define the whole log line yourself, like [router.access_logs.json_fields].
+# Each key becomes a top-level field; each value is a literal or a "$ctx:" expression
+# using the same variables (and header masking) as properties above. When set, only
+# these fields are written, and properties is ignored (with a warning at startup).
+# Of exclude_fields, only header entries ("requestHeaders.<name>") and "$ctx:" entries
+# apply. json_fields can also use request.body and response.body: they need [collector]
+# capture, are cut to max_payload_size, and don't need the request_body/response_body
+# toggles above.
+[traffic_logging.json_fields]
+# meth   = "$ctx:request.method"
+# respCd = "$ctx:response.status"
+# api    = "$ctx:api.name + '/' + api.version"
+# durMs  = "$ctx:latencies.durationMs"
+# body   = "$ctx:request.body"
+# env    = "prod"
 
 
 # =============================================================================
