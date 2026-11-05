@@ -247,11 +247,7 @@ func ShouldFormat(r *Registry, in Input) Decision {
 	if !in.PolicyDescribed && shape != ShapeOpenAI {
 		// Checked after authorship only so the log keeps naming an authored body as the
 		// reason when both apply; the outcome is the same either way.
-		//
-		// OpenAI is exempt: it is reached only while llm_errors.enable_openai_format is on,
-		// which is the decision that LLM clients get the envelope rather than the bodies
-		// sent before it, and an OpenAI SDK cannot read anything but its envelope — a router
-		// error or the engine's own 500 included.
+		// OpenAI is exempt: an OpenAI SDK can read nothing but its envelope.
 		return Decision{Reason: "no policy described the failure"}
 	}
 

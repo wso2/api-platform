@@ -265,6 +265,8 @@ Feature: OpenAI-compatible error responses for LLM APIs
       this request body has far more than five words in it
       """
     Then the response status code should be 422
+    And the JSON response field "type" should be "WORD_COUNT_GUARDRAIL"
+    And the JSON response field "message.interveningGuardrail" should be "word-count-guardrail"
     And the response body should not contain "invalid_request_error"
     And the JSON response field "error.type" should not exist
 

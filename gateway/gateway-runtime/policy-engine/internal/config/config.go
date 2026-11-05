@@ -654,23 +654,12 @@ type FaultPoliciesConfig struct {
 	HandleUpstreamFaults bool `koanf:"handle_upstream_faults"`
 }
 
-// LLMErrorsConfig is how gateway-produced errors on an LlmProvider or LlmProxy route reach the
-// client ([policy_engine.llm_errors]). By default they are rendered in the OpenAI error envelope,
-// {"error":{"message","type","param","code"}}, so an OpenAI SDK can parse them.
-//
-// Its own section rather than a key under fault_policies: that section decides which failures
-// reach an operator's fault policies, this one what the client receives, and it applies whether
-// or not an API declares any fault policies.
+// LLMErrorsConfig is [policy_engine.llm_errors]: how gateway-produced errors on LlmProvider and
+// LlmProxy routes reach the client. Separate from fault_policies, which decides what reaches the
+// fault policies rather than what the client receives.
 type LLMErrorsConfig struct {
 	// EnableOpenAIFormat renders gateway-produced errors on LLM APIs in the OpenAI envelope.
-	//
-	// True by default (see defaultConfig): an LLM client is an OpenAI SDK far more often than
-	// not, and it cannot read the bodies the policy catalogue writes for REST APIs. While it is
-	// on, a body a policy wrote in its own shape is reshaped (its message is kept). An operator's
-	// fault policy body and a backend's own error document are passed through unchanged, and the
-	// status code is never altered. Setting it false sends errors as they were produced: the
-	// bodies the policies write themselves, and the router's own replies. Fault policies run
-	// either way.
+	// True by default (see defaultConfig); false sends errors as produced.
 	EnableOpenAIFormat bool `koanf:"enable_openai_format"`
 }
 

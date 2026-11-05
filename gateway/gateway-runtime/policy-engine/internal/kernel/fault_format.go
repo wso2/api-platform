@@ -68,7 +68,13 @@ func (ec *PolicyExecutionContext) formatFaultResponse(
 	if immResp.Headers == nil {
 		immResp.Headers = make(map[string]string, 1)
 	}
-	// Overwrite rather than add: the existing value describes the body being replaced.
+	// Overwrite rather than add: the existing value describes the body being replaced. Remove
+	// every casing, since Envoy lowercases header names and would receive two.
+	for name := range immResp.Headers {
+		if strings.EqualFold(name, contentTypeHeader) {
+			delete(immResp.Headers, name)
+		}
+	}
 	immResp.Headers[contentTypeHeader] = decision.ContentType
 	return immResp
 }
@@ -105,6 +111,17 @@ func (ec *PolicyExecutionContext) faultFormatInput(
 		Accept:           ec.requestHeader(headerAccept),
 		RequestMethod:    ec.requestMethod(),
 	}
+}
+
+// encodedBody reports whether headers declare a content encoding other than identity.
+func encodedBody(headers map[string]string) bool {
+	for name, value := range headers {
+		if strings.EqualFold(name, "content-encoding") {
+			v := strings.TrimSpace(value)
+			return v != "" && !strings.EqualFold(v, "identity")
+		}
+	}
+	return false
 }
 
 // actionBody returns the body a response action carries, or nil.
@@ -223,23 +240,11 @@ const (
 
 // ─── Error bodies on routes with no response-body policy ─────────────────────
 
-// needsErrorBodyForFormatting reports whether this response's body must be buffered for the
-// formatter although no policy on the route reads response bodies. False whenever
-// needsResponseBody already buffers it, so the two paths never claim the same response.
-//
-// Without it an LLM route whose policies stop at headers — the common case for a provider with
-// only auth and rate limiting — never sees its body phase, so a router 503 reaches an OpenAI
-// SDK as Envoy's plain text. Decided per RESPONSE, not per chain: forcing RequiresResponseBody
-// would buffer every successful completion to serve the rare failure.
-//
-// Narrowed to the OpenAI option. The same gap exists for every formatted kind, but closing it
-// for Agent would change shipped behaviour, which is a decision for that feature to make.
-// An encoded body is left alone: rewriting it would mean also dropping Content-Encoding, and
-// the bodies this exists for (router replies) are never encoded.
-//
-// Only an error the router itself produced is buffered. A backend's own error passes through
-// whether or not it has a body, so reading it would cost a buffer for nothing — and so does one
-// whose provenance Envoy did not report, which may well be the provider's.
+// needsErrorBodyForFormatting reports whether to buffer this response's body for the formatter
+// on an LLM route whose policies do not read it, so a router error such as a 503 can be
+// replaced. Decided per response, so successful responses are never buffered. Only unencoded,
+// router-produced errors qualify; backend errors pass through anyway. False whenever
+// needsResponseBody already buffers the response.
 func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
 	if !ec.llmOpenAIErrors() || ec.policyChain == nil || ec.needsResponseBody() {
 		return false
@@ -258,16 +263,13 @@ func (ec *PolicyExecutionContext) needsErrorBodyForFormatting() bool {
 	}
 }
 
-// llmOpenAIErrors reports whether this route's errors render in the OpenAI envelope: the
-// operator left llm_errors.enable_openai_format on, and the route serves an LLM API kind.
+// llmOpenAIErrors reports whether the option is on and the route serves an LLM API kind.
 func (ec *PolicyExecutionContext) llmOpenAIErrors() bool {
 	return ec.server != nil && ec.server.llmOpenAIErrors &&
 		slices.Contains(faultformat.OpenAIErrorKinds(), ec.apiKind())
 }
 
-// openAIPolicyBodyFault returns the description of a failure whose producing policy wrote a
-// body without describing it, and true when that body is to be replaced by the OpenAI envelope
-// rather than kept. Always false off an OpenAI route. See faultformat.OpenAIPolicyBodyFault.
+// openAIPolicyBodyFault is faultformat.OpenAIPolicyBodyFault, always false off an OpenAI route.
 func (ec *PolicyExecutionContext) openAIPolicyBodyFault(body []byte) (policy.FaultDetails, bool) {
 	if !ec.llmOpenAIErrors() {
 		return policy.FaultDetails{}, false

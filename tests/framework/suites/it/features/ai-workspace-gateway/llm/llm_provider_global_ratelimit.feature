@@ -64,7 +64,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     # KEY ASSERTION: a separate resource must ALSO be limited - it shares the same bucket
     When I send a "GET" request to "${CTX:providerContext}/embeddings"
     Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
+    And the JSON response field "error.type" should be "rate_limit_error"
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -152,7 +152,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     # Exhaust the shared global bucket via /embeddings (global limit: 20; at least 5 already consumed)
     When I send 25 "GET" requests to "${CTX:providerContext}/embeddings"
     Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
+    And the JSON response field "error.type" should be "rate_limit_error"
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -233,7 +233,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     # KEY ASSERTION: /embeddings shares the same apiname-keyed bucket - must also be limited
     When I send a "GET" request to "${CTX:providerContext}/embeddings"
     Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
+    And the JSON response field "error.type" should be "rate_limit_error"
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -328,7 +328,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     # KEY ASSERTION: /embeddings shares the same apiname-keyed bucket - must also be limited
     When I send a "GET" request to "${CTX:proxyContext}/embeddings"
     Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
+    And the JSON response field "error.type" should be "rate_limit_error"
 
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful
@@ -434,7 +434,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     # already exhausted by /chat/completions traffic
     When I send a "GET" request to "${CTX:providerContext}/embeddings"
     Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
+    And the JSON response field "error.type" should be "rate_limit_error"
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response should be successful
@@ -489,7 +489,7 @@ Feature: Provider-wide rate limiting for LLM providers and proxies
     # already exhausted by /chat/completions traffic
     When I send a "GET" request to "${CTX:proxyContext}/embeddings"
     Then the response status code should be 429
-    And the response body should contain "Rate limit exceeded"
+    And the JSON response field "error.type" should be "rate_limit_error"
 
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful

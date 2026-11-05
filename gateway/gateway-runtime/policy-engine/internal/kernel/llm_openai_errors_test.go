@@ -21,6 +21,7 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -507,11 +508,13 @@ func TestWithFallbackDetails(t *testing.T) {
 	assert.Equal(t, declared, withFallbackDetails(declared, fallback), "nothing declared is replaced")
 }
 
-// A fault entry is handed what the gateway read out of the producer's body, so one that only
-// adds a code keeps the guardrail block and message.
-func TestLLMOpenAIErrors_FaultEntrySeesTheDescriptionLiftedFromARejectionBody(t *testing.T) {
-	seen := &policy.FaultDetails{}
-	ec := llmCtx(t, []policy.Policy{&faultObserverPolicy{seen: seen, code: "999004"}}, specs(1))
+// A fault entry is handed what it was before the OpenAI format existed: a producer that wrote a
+// body without describing the failure declared nothing. The body is reshaped only when the
+// error is formatted, so an entry that only adds a code still yields the guardrail's message and
+// block, with its code.
+func TestLLMOpenAIErrors_FaultEntryIsNotHandedTheReshapedRejectionBody(t *testing.T) {
+	observer := &faultObserverPolicy{code: "999004"}
+	ec := llmCtx(t, []policy.Policy{observer}, specs(1))
 
 	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
 		StatusCode: 422,
@@ -519,20 +522,41 @@ func TestLLMOpenAIErrors_FaultEntrySeesTheDescriptionLiftedFromARejectionBody(t 
 		Body:       legacyGuardrailBody("REQUEST"),
 	})
 
-	require.NotNil(t, seen.Guardrail, "the entry saw the lifted description")
-	assert.Equal(t, "word-count-guardrail", seen.Guardrail.InterveningGuardrail)
+	require.True(t, observer.ran, "the fault entry ran")
+	assert.Nil(t, observer.seen, "the entry is handed no description, as before the OpenAI format")
 
 	inner := openAIErrorOf(t, out.Body)
-	assert.Equal(t, "999004", inner["code"])
+	assert.Equal(t, "999004", inner["code"], "the entry's code is kept")
 	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
+	assert.Equal(t, "invalid_request_error", inner["type"])
 	g, ok := inner["guardrail"].(map[string]any)
-	require.True(t, ok, "the guardrail block survives the re-description: %s", out.Body)
+	require.True(t, ok, "the guardrail block is filled in from the body: %s", out.Body)
 	assert.Equal(t, "word-count-guardrail", g["interveningGuardrail"])
+	assert.Equal(t, "REQUEST", g["direction"])
 }
 
-// faultObserverPolicy records the description it was handed and re-describes it with a code,
-// keeping everything else — what an operator's "add our code" fault policy does.
+// The same rejection with the OpenAI format off: the entry is handed the same (no description),
+// and the guardrail's own body is sent as written.
+func TestLLMOpenAIErrors_FaultEntryIsHandedTheSameWithTheFormatOff(t *testing.T) {
+	observer := &faultObserverPolicy{code: "999004"}
+	ec := faultExecCtx(t, []policy.Policy{observer}, specs(1))
+	ec.sharedCtx.APIKind = policy.APIKindLlmProxy
+
+	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+		StatusCode: 422,
+		Headers:    map[string]string{contentTypeHeader: "application/json"},
+		Body:       legacyGuardrailBody("REQUEST"),
+	})
+
+	require.True(t, observer.ran)
+	assert.Nil(t, observer.seen)
+	assert.Equal(t, legacyGuardrailBody("REQUEST"), out.Body)
+}
+
+// faultObserverPolicy records the description it was handed, if any, and re-describes the
+// failure with a code — what an operator's "add our code" fault policy does.
 type faultObserverPolicy struct {
+	ran  bool
 	seen *policy.FaultDetails
 	code string
 }
@@ -540,11 +564,106 @@ type faultObserverPolicy struct {
 func (p *faultObserverPolicy) Mode() policy.ProcessingMode { return policy.ProcessingMode{} }
 
 func (p *faultObserverPolicy) OnFault(_ context.Context, fc *policy.FaultContext, _ map[string]interface{}) *policy.FaultResponse {
-	if fc.Fault == nil {
-		return nil
+	p.ran = true
+	redescribed := policy.FaultDetails{}
+	if fc.Fault != nil {
+		seen := *fc.Fault
+		p.seen = &seen
+		redescribed = seen
 	}
-	*p.seen = *fc.Fault
-	redescribed := *fc.Fault
 	redescribed.Code = p.code
 	return &policy.FaultResponse{Fault: &redescribed}
+}
+
+// A policy that set "Content-Type" in its own casing still leaves exactly one content-type:
+// Envoy lowercases header names, so the two would otherwise reach it as duplicates.
+func TestLLMOpenAIErrors_OneContentTypeWhateverThePolicysCasing(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+
+	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+		StatusCode: 403,
+		Headers:    map[string]string{"Content-Type": "text/plain", "X-Kept": "yes"},
+		Body:       []byte("Caller is not allowed to use this model"),
+	})
+
+	var contentTypes []string
+	for name, value := range out.Headers {
+		if strings.EqualFold(name, contentTypeHeader) {
+			contentTypes = append(contentTypes, name+"="+value)
+		}
+	}
+	assert.Equal(t, []string{contentTypeHeader + "=application/json"}, contentTypes)
+	assert.Equal(t, "yes", out.Headers["X-Kept"], "other headers are left alone")
+	assert.Equal(t, "Caller is not allowed to use this model", openAIErrorOf(t, out.Body)["message"])
+}
+
+// An encoded rejection body is kept as written: replacing it would leave its Content-Encoding
+// describing bytes that are gone. Identity is not an encoding.
+func TestLLMOpenAIErrors_EncodedPolicyBodyIsKept(t *testing.T) {
+	gzipped := []byte{0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff}
+	for _, name := range []string{"content-encoding", "Content-Encoding"} {
+		ec := llmCtx(t, nil, nil)
+		out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+			StatusCode: 403,
+			Headers:    map[string]string{name: "gzip", contentTypeHeader: "application/json"},
+			Body:       gzipped,
+		})
+		assert.Equal(t, gzipped, out.Body, "%s: gzip body kept", name)
+		assert.Equal(t, "gzip", out.Headers[name], "%s: header kept with its body", name)
+	}
+
+	ec := llmCtx(t, nil, nil)
+	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+		StatusCode: 403,
+		Headers:    map[string]string{"Content-Encoding": "identity"},
+		Body:       []byte(`{"error":"Forbidden","message":"Caller is not allowed to use this model"}`),
+	})
+	assert.Equal(t, "permission_error", openAIErrorOf(t, out.Body)["type"], "identity is reshaped like no encoding")
+}
+
+func TestEncodedBody(t *testing.T) {
+	assert.False(t, encodedBody(nil))
+	assert.False(t, encodedBody(map[string]string{"content-type": "application/json"}))
+	assert.False(t, encodedBody(map[string]string{"Content-Encoding": "identity"}))
+	assert.False(t, encodedBody(map[string]string{"content-encoding": " "}))
+	assert.True(t, encodedBody(map[string]string{"content-encoding": "gzip"}))
+	assert.True(t, encodedBody(map[string]string{"CONTENT-ENCODING": "br"}))
+}
+
+// When two response policies write a body, the client receives the last one, so that is the
+// one the envelope describes.
+func TestLLMOpenAIErrors_LastPolicyBodyDescribesTheFailure(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+	withRejectedBody(ec, 422)
+
+	execResult := bodyRejection(422)
+	first := execResult.Results[0]
+	first.Action = policy.DownstreamResponseModifications{
+		StatusCode: first.Action.(policy.DownstreamResponseModifications).StatusCode,
+		Body:       []byte(`{"error":"Earlier","message":"an earlier policy's body"}`),
+	}
+	last := first
+	last.PolicyName = "word-count-guardrail-2"
+	last.Action = policy.DownstreamResponseModifications{
+		StatusCode: first.Action.(policy.DownstreamResponseModifications).StatusCode,
+		Body:       legacyGuardrailBody("RESPONSE"),
+	}
+	execResult.Results = []executor.ResponsePolicyResult{first, last}
+	require.True(t, ec.runFaultPoliciesOnResponse(context.Background(), execResult, originGateway))
+
+	inner := openAIErrorOf(t, formattedResult(execResult))
+	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
+	g, ok := inner["guardrail"].(map[string]any)
+	require.True(t, ok, "the last body's guardrail block is carried")
+	assert.Equal(t, "word-count-guardrail", g["interveningGuardrail"])
+}
+
+// A router error with no body still gets the envelope on a route that reads response bodies:
+// the body phase runs inline there. (On a route that reads none, Envoy gives the engine no
+// body phase for it, which is a known limitation.)
+func TestLLMOpenAIErrors_BodylessRouterErrorIsRenderedOnABodyReadingRoute(t *testing.T) {
+	common := llmRouteBodylessResponse(t, true, "503", codeDetailsNoHealthyUpstream)
+	require.NotNil(t, common.GetBodyMutation(), "a bodyless router error is rendered")
+	inner := openAIErrorOf(t, common.GetBodyMutation().GetBody())
+	assert.Equal(t, "server_error", inner["type"])
 }

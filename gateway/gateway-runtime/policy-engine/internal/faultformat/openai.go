@@ -28,26 +28,20 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
-// OpenAIErrorKinds returns the API kinds whose errors render in the OpenAI shape.
-//
-// Unlike supportedKinds these are not built into the formatter: they follow
-// policy_engine.llm_errors.enable_openai_format, which is true by default and which an operator
-// sets to false to keep the bodies policies write themselves. The kernel adds these to its
-// KindSet while the option is on.
+// OpenAIErrorKinds returns the API kinds whose errors render in the OpenAI shape. Unlike
+// supportedKinds they follow policy_engine.llm_errors.enable_openai_format.
 func OpenAIErrorKinds() []policy.APIKind {
 	return []policy.APIKind{policy.APIKindLlmProvider, policy.APIKindLlmProxy}
 }
 
 // ─── OpenAI ──────────────────────────────────────────────────────────────────
 
-// openAIRenderer emits the error envelope the OpenAI API returns and its SDKs parse:
+// openAIRenderer emits the OpenAI error envelope:
 //
 //	{"error":{"message":"…","type":"…","param":null,"code":"…"|null}}
 //
-// `param` and `code` are always present, null when unknown, because the reference API always
-// sends them and some clients index them unconditionally. Gateway extras (error_id, guardrail)
-// go INSIDE `error`: the SDKs keep the whole object, so they stay reachable, and the top level
-// stays exactly what a client expects.
+// `param` and `code` are always present, as in the reference API. Gateway extras (error_id,
+// guardrail) go inside `error`, so the top level stays what SDKs expect.
 type openAIRenderer struct{}
 
 func (openAIRenderer) ContentType() string { return "application/json" }
@@ -61,9 +55,7 @@ type openAIErrorObject struct {
 	Guardrail *openAIGuardrailErrorBlock `json:"guardrail,omitempty"`
 }
 
-// openAIGuardrailErrorBlock preserves the shipped guardrail response contract. Direction
-// lives on FaultDetails rather than GuardrailDetails because it applies to every failure, so
-// the shared guardrailBlock cannot carry it by itself.
+// openAIGuardrailErrorBlock is guardrailBlock plus the direction, which lives on FaultDetails.
 type openAIGuardrailErrorBlock struct {
 	guardrailBlock
 	Direction string `json:"direction,omitempty"`
@@ -99,8 +91,7 @@ func (openAIRenderer) Render(in RenderInput) []byte {
 	}
 	body, err := json.Marshal(openAIErrorBody{Error: obj})
 	if err != nil && obj.Guardrail != nil {
-		// Only an assessment map the guardrail filled with something unmarshalable gets here.
-		// Drop the block and keep the rest, so the client still gets the right type and message.
+		// Only unencodable guardrail assessments get here: drop the block, keep the rest.
 		obj.Guardrail = nil
 		body, err = json.Marshal(openAIErrorBody{Error: obj})
 	}
@@ -111,9 +102,7 @@ func (openAIRenderer) Render(in RenderInput) []byte {
 	return body
 }
 
-// openAIMessage is fallbackMessage with one difference: a status text such as "Too Many
-// Requests" says more to an SDK user than the generic sentence, and the OpenAI shape always
-// has a status to read it from.
+// openAIMessage is fallbackMessage, but prefers the status text to the generic sentence.
 func openAIMessage(e policy.FaultDetails, status int) string {
 	if e.Message != "" {
 		return e.Message
@@ -124,9 +113,7 @@ func openAIMessage(e policy.FaultDetails, status int) string {
 	return fallbackMessage(e)
 }
 
-// OpenAI error `type` values. The SDKs choose their exception class from the status, not from
-// this, so it is informational — but clients log and branch on it, so the spellings are the
-// reference API's.
+// OpenAI error `type` values, spelled as the reference API does.
 const (
 	openAITypeInvalidRequest = "invalid_request_error"
 	openAITypeAuthentication = "authentication_error"
@@ -136,8 +123,7 @@ const (
 	openAITypeServer         = "server_error"
 )
 
-// openAITypeFor maps the gateway's failure class onto an OpenAI type, falling back to the
-// status when the class is absent or not one with a clear counterpart.
+// openAITypeFor maps the fault type onto an OpenAI type, falling back to the status.
 func openAITypeFor(faultType string, status int) string {
 	switch faultType {
 	case policy.FaultTypeAuthentication:
@@ -172,21 +158,11 @@ func openAITypeFor(faultType string, status int) string {
 
 // ─── Reshaping a body a policy wrote ─────────────────────────────────────────
 
-// OpenAIPolicyBodyFault reshapes a body the PRODUCING policy wrote without describing the
-// failure: it returns the description to render instead, and true when the body is to be
-// replaced by the OpenAI envelope rather than kept.
-//
-// Every other shape treats such a body as the policy's decision, because their clients can
-// read a plain JSON body. An OpenAI SDK cannot: it reads `error.message`, and a
-// `{"error":"Unauthorized"}` from a policy written for REST APIs surfaces as an error with no
-// message. Leaving llm_errors.enable_openai_format on is the decision that every LLM
-// error is to be readable by those SDKs, and the policy catalogue has not all moved into
-// FaultDetails yet — so the caller describes the failure from the body and the formatter
-// renders that. Usually that is only the body's message; a guardrail's body carries the whole
-// intervention, and all of it is kept (see legacyGuardrailFault). A body already in the OpenAI
-// envelope is kept: reshaping it could only lose what its author put in `param` or `code`. So
-// is an explicitly empty body: that is the policy's decision that the client gets nothing, the
-// same as a provider's bodyless error.
+// OpenAIPolicyBodyFault describes a failure from a body the producing policy wrote without a
+// FaultDetails, and reports whether the body is to be replaced by the envelope. Other shapes
+// keep such a body, but an OpenAI SDK reads only `error.message`. A guardrail's body keeps its
+// whole intervention (see legacyGuardrailFault). An OpenAI-shaped or explicitly empty body is
+// kept as written.
 func OpenAIPolicyBodyFault(body []byte) (policy.FaultDetails, bool) {
 	if len(body) == 0 || isOpenAIBody(body) {
 		return policy.FaultDetails{}, false
@@ -198,18 +174,14 @@ func OpenAIPolicyBodyFault(body []byte) (policy.FaultDetails, bool) {
 }
 
 // legacyGuardrailFault describes a guardrail's intervention from the body the shipped
-// guardrails write, which they all share:
+// guardrails write:
 //
 //	{"type":"WORD_COUNT_GUARDRAIL","message":{"action":"GUARDRAIL_INTERVENED",
 //	  "interveningGuardrail":"word-count-guardrail","direction":"REQUEST",
 //	  "actionReason":"…","assessments":…}}
 //
-// interveningGuardrail is what marks the shape; without it the body is an ordinary one.
-//
-// assessments is present only when the operator set the guardrail's showAssessment, so
-// carrying it keeps that opt-in rather than widening it. The guardrails write it as a string,
-// an array or an object, while GuardrailDetails.Assessments is an object: an object is carried
-// as it is, and anything else is carried under "details".
+// interveningGuardrail marks the shape. assessments is present only with showAssessment; an
+// object is carried as is, anything else under "details".
 func legacyGuardrailFault(body []byte) (policy.FaultDetails, bool) {
 	var envelope struct {
 		Message *struct {
@@ -240,8 +212,7 @@ func legacyGuardrailFault(body []byte) (policy.FaultDetails, bool) {
 	}, true
 }
 
-// legacyGuardrailDirection maps the guardrails' "REQUEST"/"RESPONSE" onto the SDK's spelling,
-// and leaves anything else unset rather than guessing.
+// legacyGuardrailDirection maps "REQUEST"/"RESPONSE" onto the SDK's spelling; anything else is "".
 func legacyGuardrailDirection(d string) string {
 	switch strings.ToUpper(strings.TrimSpace(d)) {
 	case "REQUEST":
@@ -253,8 +224,7 @@ func legacyGuardrailDirection(d string) string {
 	}
 }
 
-// legacyAssessments fits a guardrail's assessments into GuardrailDetails.Assessments. Absent or
-// null is nil, so the block omits the field.
+// legacyAssessments fits assessments into GuardrailDetails.Assessments; absent or null is nil.
 func legacyAssessments(raw json.RawMessage) map[string]any {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
@@ -270,8 +240,7 @@ func legacyAssessments(raw json.RawMessage) map[string]any {
 	return map[string]any{"details": value}
 }
 
-// isOpenAIBody reports whether a body already is the OpenAI envelope, so reshaping it could
-// only lose what its author put in `param` or `code`.
+// isOpenAIBody reports whether a body is already the OpenAI envelope.
 func isOpenAIBody(body []byte) bool {
 	var envelope struct {
 		Error *struct {
@@ -284,18 +253,12 @@ func isOpenAIBody(body []byte) bool {
 	return envelope.Error != nil && envelope.Error.Message != nil
 }
 
-// maxLegacyMessageBytes caps a message lifted from a plain-text body. A policy's plain-text
-// error is a sentence; anything longer is a document, and carrying it whole into a message
-// field helps no one.
+// maxLegacyMessageBytes caps a message lifted from a plain-text body.
 const maxLegacyMessageBytes = 512
 
-// legacyMessage lifts a human-readable message out of a body a policy wrote in its own shape,
-// returning "" when there is nothing usable — the renderer then falls back to the status text.
-//
-// Field order is most-specific first: `message` is the human summary in the catalogue's most
-// common shape ({"error":"Unauthorized","message":"…"}), where `error` is only a short name.
-// A field whose value is not a string is skipped rather than stringified: the guardrails put
-// an assessment object under `message`, and that is not a sentence.
+// legacyMessage lifts a message out of a policy's own body, or returns "". Fields are tried
+// most specific first (`message` before `error`, which is usually a short name); non-string
+// values are skipped.
 func legacyMessage(body []byte) string {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 || !utf8.Valid(trimmed) {

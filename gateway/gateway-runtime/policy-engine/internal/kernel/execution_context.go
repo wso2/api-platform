@@ -1688,10 +1688,8 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		return TranslateResponseBodyActions(execResult, ec)
 	}
 
-	// A response buffered only so the formatter can see it (needsErrorBodyForFormatting). No
-	// policy runs — none asked for the body — but the failure goes through handleFault like any
-	// other, so provenance, the backend-body rule and the formatter apply exactly as they do on
-	// a route that does buffer.
+	// Buffered only for the formatter (needsErrorBodyForFormatting): no policy runs, but the
+	// failure goes through handleFault like any other.
 	if ec.needsErrorBodyForFormatting() {
 		ec.responseBodyCtx.ResponseBody = &policy.Body{
 			Content:     body.Body,
