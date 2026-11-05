@@ -563,6 +563,7 @@ type faultObserverPolicy struct {
 
 func (p *faultObserverPolicy) Mode() policy.ProcessingMode { return policy.ProcessingMode{} }
 
+// OnFault records the description it was handed and re-describes the failure with p.code.
 func (p *faultObserverPolicy) OnFault(_ context.Context, fc *policy.FaultContext, _ map[string]interface{}) *policy.FaultResponse {
 	p.ran = true
 	redescribed := policy.FaultDetails{}
@@ -666,4 +667,56 @@ func TestLLMOpenAIErrors_BodylessRouterErrorIsRenderedOnABodyReadingRoute(t *tes
 	require.NotNil(t, common.GetBodyMutation(), "a bodyless router error is rendered")
 	inner := openAIErrorOf(t, common.GetBodyMutation().GetBody())
 	assert.Equal(t, "server_error", inner["type"])
+}
+
+// A response policy that encoded the body it wrote keeps it: reshaping it would leave its
+// Content-Encoding describing bytes that are gone. Covers a set and an appended header.
+func TestLLMOpenAIErrors_EncodedResponsePolicyBodyIsKept(t *testing.T) {
+	gzipped := []byte{0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff}
+	for name, mods := range map[string]policy.DownstreamResponseModifications{
+		"set":      {HeadersToSet: map[string]string{"Content-Encoding": "gzip"}},
+		"appended": {HeadersToAppend: map[string][]string{"content-encoding": {"br"}}},
+	} {
+		ec := llmCtx(t, nil, nil)
+		withRejectedBody(ec, 422)
+
+		execResult := bodyRejection(422)
+		mods.StatusCode = execResult.Results[0].Action.(policy.DownstreamResponseModifications).StatusCode
+		mods.Body = gzipped
+		execResult.Results[0].Action = mods
+		assert.False(t, ec.runFaultPoliciesOnResponse(context.Background(), execResult, originGateway),
+			"%s: nothing is formatted", name)
+		assert.Nil(t, formattedResult(execResult), "%s: no envelope replaces the encoded body", name)
+		assert.Equal(t, gzipped, execResult.Results[0].Action.(policy.DownstreamResponseModifications).Body,
+			"%s: the policy's body is untouched", name)
+	}
+}
+
+func TestActionEncoded(t *testing.T) {
+	assert.False(t, actionEncoded(nil))
+	assert.False(t, actionEncoded(policy.ImmediateResponse{Headers: map[string]string{"content-type": "application/json"}}))
+	assert.True(t, actionEncoded(policy.ImmediateResponse{Headers: map[string]string{"Content-Encoding": "gzip"}}))
+	assert.False(t, actionEncoded(policy.DownstreamResponseModifications{HeadersToSet: map[string]string{"content-encoding": "identity"}}))
+	assert.True(t, actionEncoded(policy.DownstreamResponseModifications{HeadersToSet: map[string]string{"content-encoding": "gzip"}}))
+	assert.True(t, actionEncoded(policy.DownstreamResponseModifications{HeadersToAppend: map[string][]string{"Content-Encoding": {"identity", "br"}}}))
+	assert.False(t, actionEncoded(policy.DownstreamResponseModifications{HeadersToAppend: map[string][]string{"x-other": {"gzip"}}}))
+}
+
+// When the route declares fault policies but none can run, the rejection is still formatted:
+// formatting is a default, not a chain step.
+func TestLLMOpenAIErrors_RejectionIsFormattedWhenTheFaultChainCannotRun(t *testing.T) {
+	ec := llmCtx(t, nil, nil)
+	ec.policyChain.HasFaultPolicies = true
+	ec.policyChain.FaultPolicies = nil
+
+	out := ec.runFaultPoliciesOnRejection(context.Background(), policy.ImmediateResponse{
+		StatusCode: 422,
+		Headers:    map[string]string{contentTypeHeader: "application/json"},
+		Body:       legacyGuardrailBody("REQUEST"),
+	})
+
+	inner := openAIErrorOf(t, out.Body)
+	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
+	_, ok := inner["guardrail"].(map[string]any)
+	assert.True(t, ok, "the guardrail block is carried: %s", out.Body)
 }

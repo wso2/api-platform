@@ -157,7 +157,7 @@ Feature: LLM policy path and method specificity
       {"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}
       """
     Then the response status code should be 429
-    And the JSON response field "error.type" should be "rate_limit_error"
+    And the response should be a rate-limit rejection
 
     # ----- every OTHER path is governed by the 1/hour wildcard quota (intended) -----
 
@@ -173,7 +173,7 @@ Feature: LLM policy path and method specificity
       {"model":"text-embedding-3-small","input":"Hello"}
       """
     Then the response status code should be 429
-    And the JSON response field "error.type" should be "rate_limit_error"
+    And the response should be a rate-limit rejection
 
     When I delete the LLM provider "${CTX:providerName}"
     Then the response status code should be 200

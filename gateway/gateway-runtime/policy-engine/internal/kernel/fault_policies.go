@@ -294,9 +294,9 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 	if authored == nil {
 		return
 	}
-	// On an OpenAI route the body is reshaped instead. The fault entries have already run, so
-	// it only fills gaps in any re-description of theirs.
-	if fault, ok := ec.openAIPolicyBodyFault(actionBody(authored)); ok {
+	// On an OpenAI route the body is reshaped instead, unless it is encoded. The fault entries
+	// have already run, so it only fills gaps in any re-description of theirs.
+	if fault, ok := ec.openAIPolicyBodyFault(actionBody(authored)); ok && !actionEncoded(authored) {
 		ec.faultDeclared = withFallbackDetails(ec.faultDeclared, fault)
 	} else {
 		ec.faultBodyAuthored = true

@@ -124,6 +124,26 @@ func encodedBody(headers map[string]string) bool {
 	return false
 }
 
+// actionEncoded reports whether a response action declares a content encoding for its body.
+func actionEncoded(action policy.ResponseAction) bool {
+	switch a := action.(type) {
+	case policy.ImmediateResponse:
+		return encodedBody(a.Headers)
+	case policy.DownstreamResponseModifications:
+		if encodedBody(a.HeadersToSet) {
+			return true
+		}
+		for name, values := range a.HeadersToAppend {
+			for _, v := range values {
+				if encodedBody(map[string]string{name: v}) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // actionBody returns the body a response action carries, or nil.
 func actionBody(action policy.ResponseAction) []byte {
 	switch a := action.(type) {

@@ -47,6 +47,7 @@ func decodeOpenAI(t *testing.T, body []byte) map[string]any {
 	return inner
 }
 
+// LLM kinds negotiate the OpenAI shape whatever the request's Accept or Content-Type.
 func TestNegotiate_LLMKindsAreOpenAI(t *testing.T) {
 	for _, kind := range []policy.APIKind{policy.APIKindLlmProvider, policy.APIKindLlmProxy} {
 		for _, req := range []Request{
@@ -128,6 +129,7 @@ func TestRender_OpenAI_UnnamedStatusFallsBackToTheGenericMessage(t *testing.T) {
 	assert.Equal(t, "An unexpected error occurred.", decodeOpenAI(t, body)["message"])
 }
 
+// The type follows the fault type when there is one, and the status otherwise.
 func TestRender_OpenAI_TypeFollowsTheFaultClassThenTheStatus(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -393,6 +395,7 @@ func TestShouldFormat_OpenAIOffMeansNothingChanges(t *testing.T) {
 	assert.False(t, ShouldFormat(NewRegistry(), in).Format)
 }
 
+// A message is lifted from the fields a policy body commonly uses, most specific first.
 func TestLegacyMessage(t *testing.T) {
 	cases := []struct {
 		name string
@@ -418,6 +421,7 @@ func TestLegacyMessage(t *testing.T) {
 	}
 }
 
+// A plain-text body longer than the cap is cut to it.
 func TestLegacyMessage_PlainTextIsCapped(t *testing.T) {
 	long := make([]byte, 4096)
 	for i := range long {

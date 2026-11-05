@@ -61,6 +61,7 @@ type openAIGuardrailErrorBlock struct {
 	Direction string `json:"direction,omitempty"`
 }
 
+// openAIGuardrailFor returns the guardrail block for e, or nil when e describes no guardrail.
 func openAIGuardrailFor(e policy.FaultDetails) *openAIGuardrailErrorBlock {
 	g := guardrailFor(e)
 	if g == nil {
@@ -76,6 +77,8 @@ type openAIErrorBody struct {
 	Error openAIErrorObject `json:"error"`
 }
 
+// Render returns the envelope for in: the fault's message, type and code, plus the error_id and
+// the guardrail block when present.
 func (openAIRenderer) Render(in RenderInput) []byte {
 	e := in.Err
 	var code *string
@@ -90,14 +93,11 @@ func (openAIRenderer) Render(in RenderInput) []byte {
 		Guardrail: openAIGuardrailFor(e),
 	}
 	body, err := json.Marshal(openAIErrorBody{Error: obj})
-	if err != nil && obj.Guardrail != nil {
-		// Only unencodable guardrail assessments get here: drop the block, keep the rest.
-		obj.Guardrail = nil
-		body, err = json.Marshal(openAIErrorBody{Error: obj})
-	}
 	if err != nil {
-		// A terse valid envelope beats an empty body to a client that parses JSON.
-		return []byte(`{"error":{"message":"An unexpected error occurred.","type":"server_error","param":null,"code":null}}`)
+		// Only the guardrail's assessments can fail to encode. Drop the block and keep the
+		// rest, which is plain strings and cannot fail.
+		obj.Guardrail = nil
+		body, _ = json.Marshal(openAIErrorBody{Error: obj})
 	}
 	return body
 }
