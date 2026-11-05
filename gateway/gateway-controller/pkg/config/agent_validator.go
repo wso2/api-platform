@@ -249,6 +249,9 @@ func (v *AgentValidator) validateSpec(spec *api.AgentConfigData) []ValidationErr
 
 	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
 	errors = append(errors, validateAgentUpstream(&spec.Upstream, spec.UpstreamDefinitions)...)
+	if auth := spec.Upstream.Auth; auth != nil {
+		errors = append(errors, validateUpstreamAuthHeader("spec.upstream.auth", auth.Header, auth.Value)...)
+	}
 
 	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 

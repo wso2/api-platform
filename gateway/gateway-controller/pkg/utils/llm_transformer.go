@@ -549,7 +549,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 					if auth.Value == nil || *auth.Value == "" {
 						return nil, fmt.Errorf("upstream.auth.value is required")
 					}
-					return GetUpstreamAuthApikeyPolicyParams(*auth.Header, *auth.Value)
+					return SetHeadersParams(*auth.Header, *auth.Value), nil
 				},
 				t.resolvePolicyVersionOverride,
 			)
@@ -908,21 +908,6 @@ func applyResilienceToTrafficRoutes(ops []api.Operation, resilience *api.Resilie
 	}
 }
 
-// GetUpstreamAuthApikeyPolicyParams builds the set-headers policy params for the given
-// header and value.
-func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"request": map[string]interface{}{
-			"headers": []interface{}{
-				map[string]interface{}{
-					"name":  header,
-					"value": value,
-				},
-			},
-		},
-	}, nil
-}
-
 // apiKeyAuthValuePrefix returns the valuePrefix configured on a provider's downstream
 // api-key-auth global policy (empty when absent). A proxy loops back into the provider's
 // own context, so the credential it injects on that hop must carry the same prefix the
@@ -967,7 +952,7 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 				if valuePrefix != "" {
 					value = valuePrefix + " " + value
 				}
-				return GetUpstreamAuthApikeyPolicyParams(*auth.Header, value)
+				return SetHeadersParams(*auth.Header, value), nil
 			},
 			t.resolvePolicyVersionOverride,
 		)
@@ -1029,10 +1014,7 @@ func withRequestBodyPhase(pol api.Policy) api.Policy {
 // from Moesif. It carries no ExecutionCondition, so it applies for the primary and every
 // additional provider; set-headers overwrites any client-supplied value.
 func (t *LLMProviderTransformer) proxyInternalLoopbackMarkerPolicy() (*api.Policy, error) {
-	params, err := GetUpstreamAuthApikeyPolicyParams(constants.InternalLoopbackHeader, "1")
-	if err != nil {
-		return nil, fmt.Errorf("failed to build internal loopback marker params: %w", err)
-	}
+	params := SetHeadersParams(constants.InternalLoopbackHeader, "1")
 	policyVersion, err := t.resolvePolicyVersion(constants.SET_HEADERS_POLICY_NAME)
 	if err != nil {
 		return nil, err

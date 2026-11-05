@@ -293,6 +293,7 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 					Message: "Bearer token value must start with 'Bearer ' or 'bearer '",
 				})
 			}
+			errors = append(errors, validateUpstreamAuthHeader(fieldPrefix+".auth", auth.Header, auth.Value)...)
 			return errors
 		}
 

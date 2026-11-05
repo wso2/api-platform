@@ -22,91 +22,33 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
-func TestGetParamsOfPolicy(t *testing.T) {
+// SetHeadersParams must carry the header name and value through unchanged.
+// The values below used to be pasted into a single-quoted YAML template, which
+// doubled every '%', failed on a quote, folded newlines and let a crafted value
+// add headers of its own (#3791).
+func TestSetHeadersParams(t *testing.T) {
 	tests := []struct {
-		name      string
-		policyDef string
-		params    []string
-		expected  map[string]any
-		wantErr   bool
+		name  string
+		value string
 	}{
-		{
-			name: "Valid YAML with parameters",
-			policyDef: `
-key: %s
-value: %s
-`,
-			params: []string{"testKey", "testValue"},
-			expected: map[string]any{
-				"key":   "testKey",
-				"value": "testValue",
-			},
-			wantErr: false,
-		},
-		{
-			name: "Valid YAML without parameters",
-			policyDef: `
-key: staticValue
-`,
-			params: []string{},
-			expected: map[string]any{
-				"key": "staticValue",
-			},
-			wantErr: false,
-		},
-		{
-			name: "Invalid YAML",
-			policyDef: `
-key: : value
-`,
-			params:   []string{},
-			expected: map[string]any{},
-			wantErr:  true,
-		},
-		{
-			name: "Valid YAML with nested structure",
-			policyDef: `
-parent:
-  child: %s
-`,
-			params: []string{"childValue"},
-			expected: map[string]any{
-				"parent": map[string]any{
-					"child": "childValue",
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name:      "Valid SET_HEADERS_POLICY_PARAMS",
-			policyDef: constants.SET_HEADERS_POLICY_PARAMS,
-			params:    []string{"Authorization", "Bearer token"},
-			expected: map[string]any{
-				"request": map[string]any{
-					"headers": []any{
-						map[string]any{
-							"name":  "Authorization",
-							"value": "Bearer token",
-						},
-					},
-				},
-			},
-			wantErr: false,
-		},
+		{"plain", "Bearer token"},
+		{"percent", "abc%2F"},
+		{"single quote", "Bearer it's"},
+		{"yaml injection", "y'\n    - name: 'X-Injected'\n      value: 'z"},
+		{"yaml syntax", "{a: [b]} # c: d"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GetParamsOfPolicy(tt.policyDef, tt.params...)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, got)
-			}
+			got := SetHeadersParams("Authorization", tt.value)
+			assert.Equal(t, map[string]any{
+				"request": map[string]any{
+					"headers": []any{
+						map[string]any{"name": "Authorization", "value": tt.value},
+					},
+				},
+			}, got)
 		})
 	}
 }

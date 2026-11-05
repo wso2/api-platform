@@ -234,21 +234,6 @@ func hasInternalLoopbackMarkerPolicy(policies []api.Policy) bool {
 	return false
 }
 
-func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
-	t.Run("Valid parameters", func(t *testing.T) {
-		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearer token123")
-		assert.NoError(t, err)
-		assert.NotNil(t, params)
-		assert.Contains(t, params, "request")
-	})
-
-	t.Run("Empty header name", func(t *testing.T) {
-		params, err := GetUpstreamAuthApikeyPolicyParams("", "value")
-		assert.NoError(t, err)
-		assert.NotNil(t, params)
-	})
-}
-
 func TestGetHostAdditionPolicyParams(t *testing.T) {
 	t.Run("Valid host value", func(t *testing.T) {
 		params, err := GetHostAdditionPolicyParams("api.example.com")
@@ -2127,7 +2112,7 @@ func TestTransformProvider_ApiKeyWithPolicyParams(t *testing.T) {
 		require.NotNil(t, found, "operation %s %s should include the set-headers policy", op.EffectiveMethod(), op.EffectivePath())
 		require.NotNil(t, found.Params)
 		// The configured policyParams must reach set-headers unchanged - not the
-		// GetUpstreamAuthApikeyPolicyParams-rendered shape header/value would produce.
+		// SetHeadersParams shape header/value would produce.
 		request, ok := (*found.Params)["request"].(map[string]interface{})
 		require.True(t, ok, "expected policyParams.request to survive verbatim, got %+v", *found.Params)
 		headers, ok := request["headers"].([]interface{})

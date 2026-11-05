@@ -763,8 +763,7 @@ func TestHydrateStoredMCPConfig_NormalizesLegacyHeaderAuthType(t *testing.T) {
 	require.NotNil(t, restAPI.Spec.Policies)
 	require.Len(t, *restAPI.Spec.Policies, 1)
 	assert.Equal(t, constants.SET_HEADERS_POLICY_NAME, (*restAPI.Spec.Policies)[0].Name)
-	expectedParams, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, header, value)
-	require.NoError(t, err)
+	expectedParams := SetHeadersParams(header, value)
 	require.NotNil(t, (*restAPI.Spec.Policies)[0].Params)
 	assert.Equal(t, expectedParams, *(*restAPI.Spec.Policies)[0].Params)
 }

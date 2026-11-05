@@ -19,6 +19,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -1290,6 +1291,49 @@ func TestTemplateMatchesPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.template+" vs "+tt.literal, func(t *testing.T) {
 			assert.Equal(t, tt.want, templateMatchesPath(tt.template, tt.literal))
+		})
+	}
+}
+
+// withAPIKeyAuth sets the Agent's deprecated header/value upstream auth. The
+// auth field is an anonymous struct, so it is decoded rather than spelled out.
+func withAPIKeyAuth(t *testing.T, cfg *api.AgentConfiguration, header, value string) {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{"type": "api-key", "header": header, "value": value})
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &cfg.Spec.Upstream.Auth))
+}
+
+// The upstream credential becomes an HTTP header after any secret template in
+// it has been resolved, so a name or value HTTP cannot carry must be rejected
+// here rather than discovered when the route is built or the request is sent
+// (#3791). The message must not echo the value: it may be a resolved secret.
+func TestAgentValidator_UpstreamAuthHeader(t *testing.T) {
+	tests := []struct {
+		name      string
+		header    string
+		value     string
+		wantField string
+	}{
+		{name: "percent and quote are accepted", header: "X-Up-Auth", value: "it's abc%2F"},
+		{name: "line break in value", header: "X-Up-Auth", value: "y\r\nX-Injected: z", wantField: "spec.upstream.auth.value"},
+		{name: "NUL in value", header: "X-Up-Auth", value: "a\x00b", wantField: "spec.upstream.auth.value"},
+		{name: "space in header", header: "X Up Auth", value: "token", wantField: "spec.upstream.auth.header"},
+		{name: "colon in header", header: "X-Up-Auth:", value: "token", wantField: "spec.upstream.auth.header"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validAgent()
+			withAPIKeyAuth(t, &cfg, tt.header, tt.value)
+			errs := validateAgent(&cfg)
+			if tt.wantField == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			assert.Contains(t, fieldsOf(errs), tt.wantField)
+			for _, e := range errs {
+				assert.NotContains(t, e.Message, tt.value)
+			}
 		})
 	}
 }

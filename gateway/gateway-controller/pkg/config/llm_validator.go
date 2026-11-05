@@ -627,6 +627,7 @@ func validateUpstreamAuthFields(fieldPrefix string, f upstreamAuthFields) []Vali
 			Message: "Auth value is required when api-key auth type is set and policyParams is omitted",
 		})
 	}
+	errors = append(errors, validateUpstreamAuthHeader(fieldPrefix, f.header, f.value)...)
 
 	return errors
 }

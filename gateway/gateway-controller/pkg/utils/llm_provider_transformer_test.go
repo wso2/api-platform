@@ -1787,59 +1787,6 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 }
 
 // ============================================================================
-// GetUpstreamAuthApikeyPolicyParams Tests
-// ============================================================================
-
-func TestGetUpstreamAuthApikeyPolicyParams(t *testing.T) {
-	tests := []struct {
-		name   string
-		header string
-		value  string
-	}{
-		{
-			name:   "standard Authorization header",
-			header: "Authorization",
-			value:  "Bearer sk-test123",
-		},
-		{
-			name:   "custom API key header",
-			header: "X-API-Key",
-			value:  "secret-key-123",
-		},
-		{
-			name:   "special characters in value",
-			header: "X-Auth",
-			value:  "key@with#special$chars",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			params, err := GetUpstreamAuthApikeyPolicyParams(tt.header, tt.value)
-
-			require.NoError(t, err, "Should successfully generate params")
-			require.NotNil(t, params)
-
-			// Verify structure
-			assert.Contains(t, params, "request")
-
-			requestConfig, ok := params["request"].(map[string]interface{})
-			require.True(t, ok, "request should be a map")
-
-			requestHeaders, ok := requestConfig["headers"].([]interface{})
-			require.True(t, ok, "request.headers should be an array")
-			require.Len(t, requestHeaders, 1)
-
-			headerMap, ok := requestHeaders[0].(map[string]interface{})
-			require.True(t, ok, "Header should be a map")
-
-			assert.Equal(t, tt.header, headerMap["name"])
-			assert.Equal(t, tt.value, headerMap["value"])
-		})
-	}
-}
-
-// ============================================================================
 // Edge Case and Bug Detection Tests
 // ============================================================================
 
