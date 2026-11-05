@@ -712,6 +712,12 @@ func (s *APIService) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) 
 		if target.Context == "" && apiModel.Configuration.Context != nil {
 			target.Context = *apiModel.Configuration.Context
 		}
+		// The gateway serves the context with $version replaced by the deployed version.
+		version := artifact.Spec.Version
+		if version == "" {
+			version = apiModel.Version
+		}
+		target.Context = strings.ReplaceAll(target.Context, "$version", version)
 		if v := artifact.Spec.Vhosts; v != nil && v.Main != nil && *v.Main != constants.VhostGatewayDefault {
 			target.Vhost = *v.Main
 		}

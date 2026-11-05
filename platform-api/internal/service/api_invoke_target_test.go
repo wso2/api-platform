@@ -140,6 +140,18 @@ func TestGetAPIInvokeTargetUsesTheDeployedContext(t *testing.T) {
 	assert.Equal(t, "/pizza/v0", target.Context)
 }
 
+// The gateway resolves $version in the context, so the relay must call the resolved path.
+func TestGetAPIInvokeTargetResolvesTheVersionInTheContext(t *testing.T) {
+	svc := newInvokeTargetServiceWith(map[string]string{"gw-prod": deployedArtifact("/pizza/$version", "")},
+		&model.APIGatewayWithDetails{ID: "gw-prod", Handle: "prod-gw", Endpoints: []string{"https://prod.example.com"}, IsDeployed: true},
+	)
+
+	target, err := svc.GetAPIInvokeTarget("pizza-api", "prod-gw", invokeTargetOrg)
+
+	require.NoError(t, err)
+	assert.Equal(t, "/pizza/v1", target.Context)
+}
+
 func TestGetAPIInvokeTargetReturnsTheDeployedMainVhost(t *testing.T) {
 	for name, tc := range map[string]struct{ vhost, want string }{
 		"a vhost of its own":         {"pizza.example.com", "pizza.example.com"},
