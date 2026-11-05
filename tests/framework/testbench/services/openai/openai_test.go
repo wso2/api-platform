@@ -345,6 +345,28 @@ func TestScriptedEventsAreSentInOrder(t *testing.T) {
 		"data: [DONE]\n\n", rec.Body.String())
 }
 
+// flushRecorder records how much of the body was written at each flush, so a test can see that a
+// handler flushed after every event rather than once at the end.
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+	flushedAt []int
+}
+
+func (f *flushRecorder) Flush() {
+	f.flushedAt = append(f.flushedAt, f.Body.Len())
+	f.ResponseRecorder.Flush()
+}
+
+func TestScriptedEventsAreFlushedOneByOne(t *testing.T) {
+	first, second := `data: {"a":1}`+"\n\n", "data: [DONE]\n\n"
+	rec := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	New().Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost,
+		"/scripted/chat/completions", strings.NewReader(`{"x_testbench_reply":{"events":[{"a":1},"data: [DONE]"]}}`)))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, first+second, rec.Body.String())
+	require.Equal(t, []int{len(first), len(first) + len(second)}, rec.flushedAt)
+}
+
 func TestScriptedEmptyEventListIsAnEmptyStream(t *testing.T) {
 	rec := send(t, "/scripted/chat/completions", `{"x_testbench_reply":{"events":[]}}`)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -353,22 +375,24 @@ func TestScriptedEmptyEventListIsAnEmptyStream(t *testing.T) {
 }
 
 func TestScriptedRequestsThatScriptNothingAreRejected(t *testing.T) {
-	cases := map[string]string{
-		"not json":       `not json`,
-		"not an object":  `["x_testbench_reply"]`,
-		"missing field":  `{"model":"d1"}`,
-		"field not obj":  `{"x_testbench_reply":"body"}`,
-		"no form":        `{"x_testbench_reply":{}}`,
-		"null body":      `{"x_testbench_reply":{"body":null}}`,
-		"two forms":      `{"x_testbench_reply":{"body":{},"raw":""}}`,
-		"events not arr": `{"x_testbench_reply":{"events":{"a":1}}}`,
-		"empty body":     ``,
+	cases := map[string]struct{ payload, reason string }{
+		"not json":       {`not json`, "needs a JSON object body"},
+		"not an object":  {`["x_testbench_reply"]`, "needs a JSON object body"},
+		"missing field":  {`{"model":"d1"}`, `needs the "x_testbench_reply" field`},
+		"field not obj":  {`{"x_testbench_reply":"body"}`, `"x_testbench_reply" must be an object`},
+		"no form":        {`{"x_testbench_reply":{}}`, "must name exactly one of body, raw or events"},
+		"null body":      {`{"x_testbench_reply":{"body":null}}`, "must name exactly one of body, raw or events"},
+		"two forms":      {`{"x_testbench_reply":{"body":{},"raw":""}}`, "must name exactly one of body, raw or events"},
+		"events not arr": {`{"x_testbench_reply":{"events":{"a":1}}}`, "cannot unmarshal object"},
+		"null event":     {`{"x_testbench_reply":{"events":[{"a":1},null]}}`, "scripted event 1 is null"},
+		"empty body":     {``, "needs a JSON object body"},
 	}
-	for name, payload := range cases {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			rec := send(t, "/scripted/chat/completions", payload)
+			rec := send(t, "/scripted/chat/completions", tc.payload)
 			require.Equal(t, http.StatusBadRequest, rec.Code)
 			require.Empty(t, rec.Header().Get(ScriptedHeader))
+			require.Contains(t, rec.Body.String(), tc.reason)
 		})
 	}
 }

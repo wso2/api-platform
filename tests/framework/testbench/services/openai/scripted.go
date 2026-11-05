@@ -35,7 +35,8 @@ const ScriptedPathPrefix = "/scripted/"
 // ScriptedReplyField is the request body field that scripts the reply. Its value is an object
 // with exactly one of:
 //
-//	"body":   any JSON value, written as an application/json body
+//	"body":   any JSON value except null, written as an application/json body (script a
+//	          literal null with "raw": "null")
 //	"raw":    a string written verbatim, for malformed or empty bodies
 //	"events": a server-sent event stream, one element per event: a JSON object or array is
 //	          sent as "data: <compact JSON>", and a string is sent as the event's raw lines,
@@ -101,11 +102,18 @@ func (s *Service) scripted(w http.ResponseWriter, body []byte) {
 		http.Error(w, "openai: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.Header().Set(ScriptedHeader, "true")
+	// The header marks a reply the script produced, so it is set only once the script is valid.
 	switch {
 	case reply.Events != nil:
-		writeScriptedEvents(w, reply)
+		events, err := renderScriptedEvents(reply.Events)
+		if err != nil {
+			http.Error(w, "openai: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set(ScriptedHeader, "true")
+		writeScriptedEvents(w, events, reply.ContentType)
 	case reply.Raw != nil:
+		w.Header().Set(ScriptedHeader, "true")
 		w.Header().Set("Content-Type", orElse(reply.ContentType, "application/json"))
 		_, _ = w.Write([]byte(*reply.Raw))
 	default:
@@ -114,6 +122,7 @@ func (s *Service) scripted(w http.ResponseWriter, body []byte) {
 			http.Error(w, "openai: scripted body is not valid JSON", http.StatusBadRequest)
 			return
 		}
+		w.Header().Set(ScriptedHeader, "true")
 		w.Header().Set("Content-Type", orElse(reply.ContentType, "application/json"))
 		_, _ = w.Write(compact.Bytes())
 	}
@@ -122,28 +131,37 @@ func (s *Service) scripted(w http.ResponseWriter, body []byte) {
 // scriptedEvent renders one element of a scripted stream as its SSE lines, ending with the
 // blank line that closes an event.
 func scriptedEvent(element json.RawMessage) (string, error) {
+	// A JSON null decodes into an empty string without error, which would send a blank event.
+	if string(bytes.TrimSpace(element)) == "null" {
+		return "", fmt.Errorf("is null")
+	}
 	var raw string
 	if json.Unmarshal(element, &raw) == nil {
 		return raw + "\n\n", nil
 	}
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, element); err != nil {
-		return "", err
+		return "", fmt.Errorf("is not valid JSON: %w", err)
 	}
 	return "data: " + compact.String() + "\n\n", nil
 }
 
-func writeScriptedEvents(w http.ResponseWriter, reply scriptedReply) {
-	rendered := make([]string, 0, len(reply.Events))
-	for i, element := range reply.Events {
+// renderScriptedEvents renders every element of a scripted stream, or reports the first one that
+// cannot be sent.
+func renderScriptedEvents(elements []json.RawMessage) ([]string, error) {
+	rendered := make([]string, 0, len(elements))
+	for i, element := range elements {
 		event, err := scriptedEvent(element)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("openai: scripted event %d is not valid JSON", i), http.StatusBadRequest)
-			return
+			return nil, fmt.Errorf("scripted event %d %w", i, err)
 		}
 		rendered = append(rendered, event)
 	}
-	w.Header().Set("Content-Type", orElse(reply.ContentType, "text/event-stream"))
+	return rendered, nil
+}
+
+func writeScriptedEvents(w http.ResponseWriter, rendered []string, contentType string) {
+	w.Header().Set("Content-Type", orElse(contentType, "text/event-stream"))
 	w.Header().Set("Cache-Control", "no-cache")
 	flusher, _ := w.(http.Flusher)
 	for _, event := range rendered {
