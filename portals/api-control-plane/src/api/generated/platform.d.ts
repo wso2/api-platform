@@ -5215,7 +5215,7 @@ export interface components {
             /** @description Inline UTF-8 Markdown content. */
             inlineContent?: string;
             /**
-             * @description File name to associate with the content. Defaults to `{handle}.md`.
+             * @description File name to associate with the content. Must end in `.md`. Defaults to `{handle}.md`.
              * @example payment-webhook.md
              */
             fileName?: string;

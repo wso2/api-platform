@@ -2559,7 +2559,7 @@ type APIDocumentMetadata struct {
 type APIDocumentRequest struct {
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// FileName File name to associate with the content. Defaults to `{handle}.md`.
+	// FileName File name to associate with the content. Must end in `.md`. Defaults to `{handle}.md`.
 	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
 
 	// Id URL-safe document handle. On create: optional, server-generated from
