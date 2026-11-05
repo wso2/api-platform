@@ -25,12 +25,15 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common/types"
+	"cel.dev/cel-go/common/types/ref"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -368,7 +371,7 @@ func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[s
 	case literalNode:
 		buf.Write(node.literal)
 	case expressionNode:
-		value, emptied, err := node.evaluate(evalCtx)
+		value, emptied, err := node.evaluate(buf.AvailableBuffer(), evalCtx)
 		if emptied {
 			return false
 		}
@@ -410,7 +413,9 @@ func (t *logTemplate) writeFilteredObject(buf *bytes.Buffer, node *templateNode,
 
 // evaluate returns the JSON of an expression node's result for one request, after removing the
 // keys exclude_fields names inside it. emptied is true when that removal left nothing to write.
-func (n *templateNode) evaluate(evalCtx map[string]interface{}) (value []byte, emptied bool, err error) {
+// A single value is appended to dst, so it needs no new memory; any other result is returned in
+// a new slice.
+func (n *templateNode) evaluate(dst []byte, evalCtx map[string]interface{}) (value []byte, emptied bool, err error) {
 	if n.headerVariable != "" {
 		// The masked header map in evalCtx is shared, so it is filtered into a copy.
 		headers, _ := evalCtx[n.headerVariable].(map[string]string)
@@ -429,6 +434,10 @@ func (n *templateNode) evaluate(evalCtx map[string]interface{}) (value []byte, e
 	if err != nil {
 		return nil, false, err
 	}
+	// exclude_fields only reaches into maps, so a single value is written as it is.
+	if value, ok := appendScalarJSON(dst, out); ok {
+		return value, false, nil
+	}
 	result, err := globalPropertyCELToGoValue(out)
 	if err != nil {
 		return nil, false, err
@@ -441,6 +450,77 @@ func (n *templateNode) evaluate(evalCtx map[string]interface{}) (value []byte, e
 	}
 	value, err = json.Marshal(result)
 	return value, false, err
+}
+
+// maxJSONSafeInt is the largest integer cel-go writes as a JSON number; larger ones are written
+// as decimal strings.
+const maxJSONSafeInt = 1<<53 - 1
+
+// appendScalarJSON appends the JSON of a string, int, uint, double, bool or null CEL result to
+// dst, byte for byte as globalPropertyCELToGoValue and json.Marshal write it. It reports false,
+// leaving the value to that route, for any other result, for a string that is not plain ASCII,
+// and for a double that is NaN or infinite.
+func appendScalarJSON(dst []byte, val ref.Val) ([]byte, bool) {
+	switch v := val.(type) {
+	case types.String:
+		if !isPlainJSONString(string(v)) {
+			return dst, false
+		}
+		dst = append(dst, '"')
+		dst = append(dst, v...)
+		return append(dst, '"'), true
+	case types.Int:
+		if v >= -maxJSONSafeInt && v <= maxJSONSafeInt {
+			return strconv.AppendInt(dst, int64(v), 10), true
+		}
+		dst = append(dst, '"')
+		return append(strconv.AppendInt(dst, int64(v), 10), '"'), true
+	case types.Uint:
+		if v <= maxJSONSafeInt {
+			return strconv.AppendUint(dst, uint64(v), 10), true
+		}
+		dst = append(dst, '"')
+		return append(strconv.AppendUint(dst, uint64(v), 10), '"'), true
+	case types.Double:
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+			return dst, false // json.Marshal rejects these, so they keep its error
+		}
+		return appendJSONFloat(dst, float64(v)), true
+	case types.Bool:
+		return strconv.AppendBool(dst, bool(v)), true
+	case types.Null:
+		return append(dst, nullJSON...), true
+	}
+	return dst, false
+}
+
+// isPlainJSONString reports whether json.Marshal writes s unchanged between quotes: s is printable
+// ASCII without the characters it escapes (" \ < > &).
+func isPlainJSONString(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x20 || c > 0x7e || c == '"' || c == '\\' || c == '<' || c == '>' || c == '&' {
+			return false
+		}
+	}
+	return true
+}
+
+// appendJSONFloat appends a finite f as json.Marshal writes a float64: in decimal form, or with
+// an exponent below 1e-6 and from 1e21.
+func appendJSONFloat(dst []byte, f float64) []byte {
+	format := byte('f')
+	if abs := math.Abs(f); abs != 0 && (abs < 1e-6 || abs >= 1e21) {
+		format = 'e'
+	}
+	dst = strconv.AppendFloat(dst, f, format, -1, 64)
+	if format == 'e' {
+		// json.Marshal shortens an exponent such as e-07 to e-7.
+		if n := len(dst); n >= 4 && dst[n-4] == 'e' && dst[n-3] == '-' && dst[n-2] == '0' {
+			dst[n-2] = dst[n-1]
+			dst = dst[:n-1]
+		}
+	}
+	return dst
 }
 
 // removeValuePath removes the key at path inside value, matching keys exactly and using the

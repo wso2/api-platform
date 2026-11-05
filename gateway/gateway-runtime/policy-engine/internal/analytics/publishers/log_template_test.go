@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,7 +30,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common/types"
+	"cel.dev/cel-go/common/types/ref"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/configinterpolate"
@@ -473,6 +478,7 @@ func TestLogTemplate_ExcludeFields(t *testing.T) {
 		{"a masked header can be removed", []string{"hdrs.authorization"}, line(service, http, route, client, authProp, `"hdrs":{"x-foo":"bar","x-user":"alice"}`, tags)},
 		{"arrays are not reached", []string{"tags.0"}, full},
 		{"fixed values are not reached", []string{"service.name"}, full},
+		{"single values are not reached", []string{"http.method.name"}, full},
 		{"header values are not reached", []string{"hdrs.x-foo.bar"}, full},
 		{"no such field", []string{"nosuch"}, full},
 		{"every top-level field", []string{"service", "http", "http.route", "client", "auth_prop", "hdrs", "tags"}, `{}`},
@@ -867,4 +873,132 @@ func TestLogTemplate_ConcurrentPublish(t *testing.T) {
 		delete(want, line)
 	}
 	assert.Empty(t, want, "every request has its own line")
+}
+
+// newValueNode returns an expression node whose value is the variable v.
+func newValueNode(tb testing.TB) *templateNode {
+	tb.Helper()
+	env, err := cel.NewEnv(cel.Variable("v", cel.DynType))
+	require.NoError(tb, err)
+	_, program, err := compileExpression(env, "v")
+	require.NoError(tb, err)
+	return &templateNode{kind: expressionNode, path: "v", expression: "v", program: program}
+}
+
+// valueJSONViaGoValue returns the JSON of v through globalPropertyCELToGoValue and json.Marshal,
+// the route evaluate takes for maps, lists and every other value that is not a single value.
+func valueJSONViaGoValue(v ref.Val) ([]byte, error) {
+	result, err := globalPropertyCELToGoValue(v)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(result)
+}
+
+// assertSameValueJSON checks that evaluate writes v with the same bytes, or the same error, as
+// valueJSONViaGoValue.
+func assertSameValueJSON(t *testing.T, node *templateNode, v ref.Val) {
+	t.Helper()
+	got, emptied, gotErr := node.evaluate(nil, map[string]interface{}{"v": v})
+	want, wantErr := valueJSONViaGoValue(v)
+	require.False(t, emptied)
+	if wantErr != nil {
+		require.EqualError(t, gotErr, wantErr.Error(), "value %#v", v)
+		return
+	}
+	require.NoError(t, gotErr, "value %#v", v)
+	require.Equal(t, string(want), string(got), "value %#v", v)
+}
+
+func TestLogTemplate_SingleValuesWriteTheSameJSON(t *testing.T) {
+	node := newValueNode(t)
+	tests := []struct {
+		name  string
+		value ref.Val
+		// fast is whether appendScalarJSON writes the value itself.
+		fast bool
+	}{
+		{"empty string", types.String(""), true},
+		{"plain string", types.String("GET /orders/{id}?page=2"), true},
+		{"quotes", types.String(`say "hi"`), false},
+		{"backslash", types.String(`C:\temp`), false},
+		{"HTML characters", types.String("<a href='x'>&</a>"), false},
+		{"emoji", types.String("ok 😀"), false},
+		{"invalid UTF-8", types.String("bad \xff\xfe"), false},
+		{"control characters", types.String("tab\tnew\nnul\x00us\x1f"), false},
+		{"DEL", types.String("del\x7f"), false},
+		{"line separator", types.String("a\u2028b\u2029c"), false},
+		{"int 0", types.Int(0), true},
+		{"int -1", types.Int(-1), true},
+		{"int 200", types.Int(200), true},
+		{"int 2^53-1", types.Int(1<<53 - 1), true},
+		{"int -(2^53-1)", types.Int(-(1<<53 - 1)), true},
+		{"int 2^53", types.Int(1 << 53), true},
+		{"int -2^53", types.Int(-(1 << 53)), true},
+		{"max int64", types.Int(math.MaxInt64), true},
+		{"min int64", types.Int(math.MinInt64), true},
+		{"uint 0", types.Uint(0), true},
+		{"uint 2^53-1", types.Uint(1<<53 - 1), true},
+		{"uint 2^53", types.Uint(1 << 53), true},
+		{"max uint64", types.Uint(math.MaxUint64), true},
+		{"double 0", types.Double(0), true},
+		{"double -0", types.Double(math.Copysign(0, -1)), true},
+		{"double 0.1", types.Double(0.1), true},
+		{"double 1225.109", types.Double(1225.109), true},
+		{"double 1e-6", types.Double(1e-6), true},
+		{"double 1e-7", types.Double(1e-7), true},
+		{"double -1e-7", types.Double(-1e-7), true},
+		{"double 1e20", types.Double(1e20), true},
+		{"double 1e21", types.Double(1e21), true},
+		{"double 5e-324", types.Double(5e-324), true},
+		{"max double", types.Double(math.MaxFloat64), true},
+		{"NaN", types.Double(math.NaN()), false},
+		{"+Inf", types.Double(math.Inf(1)), false},
+		{"-Inf", types.Double(math.Inf(-1)), false},
+		{"true", types.True, true},
+		{"false", types.False, true},
+		{"null", types.NullValue, true},
+		{"list", types.DefaultTypeAdapter.NativeToValue([]string{"a", "b"}), false},
+		{"map", types.DefaultTypeAdapter.NativeToValue(map[string]string{"a": "b"}), false},
+		{"timestamp", types.Timestamp{Time: time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, fast := appendScalarJSON(nil, tt.value)
+			assert.Equal(t, tt.fast, fast, "written by appendScalarJSON")
+			assertSameValueJSON(t, node, tt.value)
+		})
+	}
+}
+
+func FuzzTemplateStringValue(f *testing.F) {
+	for _, s := range []string{"", "plain", `"`, `\`, "<>&", "\xff", "\x00", "\x7f", "\u2028", "é"} {
+		f.Add(s)
+	}
+	node := newValueNode(f)
+	f.Fuzz(func(t *testing.T, s string) { assertSameValueJSON(t, node, types.String(s)) })
+}
+
+func FuzzTemplateIntValue(f *testing.F) {
+	for _, i := range []int64{0, -1, 200, 1<<53 - 1, -(1<<53 - 1), 1 << 53, -(1 << 53), math.MaxInt64, math.MinInt64} {
+		f.Add(i)
+	}
+	node := newValueNode(f)
+	f.Fuzz(func(t *testing.T, i int64) { assertSameValueJSON(t, node, types.Int(i)) })
+}
+
+func FuzzTemplateUintValue(f *testing.F) {
+	for _, u := range []uint64{0, 1<<53 - 1, 1 << 53, math.MaxUint64} {
+		f.Add(u)
+	}
+	node := newValueNode(f)
+	f.Fuzz(func(t *testing.T, u uint64) { assertSameValueJSON(t, node, types.Uint(u)) })
+}
+
+func FuzzTemplateDoubleValue(f *testing.F) {
+	for _, d := range []float64{0, math.Copysign(0, -1), 0.1, 1225.109, 1e-6, 1e-7, 1e20, 1e21, 5e-324, math.MaxFloat64, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		f.Add(d)
+	}
+	node := newValueNode(f)
+	f.Fuzz(func(t *testing.T, d float64) { assertSameValueJSON(t, node, types.Double(d)) })
 }
