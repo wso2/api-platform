@@ -215,10 +215,10 @@ func (s *Server) verifySession(w http.ResponseWriter, r *http.Request) (string, 
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDocsAssistantResponseBytes))
 	_ = resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusOK:
+	switch resp.StatusCode {
+	case http.StatusOK:
 		return upstream, true
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+	case http.StatusUnauthorized, http.StatusForbidden:
 		writeErrorJSON(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired credentials.")
 		return "", false
 	default:
