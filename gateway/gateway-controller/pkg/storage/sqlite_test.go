@@ -888,6 +888,53 @@ func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
 	assert.DeepEqual(t, savedRelay.Match.DNSSANs, relayCert.Match.DNSSANs)
 }
 
+// A version 5 database that cannot be migrated fails startup, naming the step
+// that broke.
+func TestSQLite_UpgradeFromV5FailsOnABrokenStep(t *testing.T) {
+	const certificates = `CREATE TABLE certificates (
+		uuid TEXT NOT NULL,
+		gateway_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		certificate BLOB NOT NULL,
+		subject TEXT NOT NULL,
+		issuer TEXT NOT NULL,
+		not_before TIMESTAMP NOT NULL,
+		not_after TIMESTAMP NOT NULL,
+		cert_count INTEGER NOT NULL DEFAULT 1,%s
+		PRIMARY KEY (gateway_id, uuid)
+	)`
+	for _, tc := range []struct {
+		name    string
+		ddl     string
+		wantErr string
+	}{
+		{"usage column exists", fmt.Sprintf(certificates, " usage TEXT,"), "failed to add certificates.usage column"},
+		{"role column exists", fmt.Sprintf(certificates, " role TEXT,"), "failed to add certificates.role column"},
+		{"match_json column exists", fmt.Sprintf(certificates, " match_json TEXT,"), "failed to add certificates.match_json column"},
+		{"private_key_ciphertext column exists", fmt.Sprintf(certificates, " private_key_ciphertext TEXT,"), "failed to add certificates.private_key_ciphertext column"},
+		{"key_algorithm column exists", fmt.Sprintf(certificates, " key_algorithm TEXT,"), "failed to add certificates.key_algorithm column"},
+		// An index in the schema names a column this artifacts table lacks.
+		{"schema cannot be applied", fmt.Sprintf(certificates, "") + "; CREATE TABLE artifacts (gateway_id TEXT)",
+			"failed to create the tables and indexes added since version 5"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "v5.db")
+			rawDB, err := sql.Open("sqlite3", dbPath)
+			assert.NilError(t, err)
+			_, err = rawDB.Exec(tc.ddl)
+			assert.NilError(t, err)
+			_, err = rawDB.Exec(fmt.Sprintf("PRAGMA user_version = %d", v5SchemaVersion))
+			assert.NilError(t, err)
+			assert.NilError(t, rawDB.Close())
+
+			_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath, GatewayID: "platform-gateway-id"},
+				slog.New(slog.NewTextHandler(os.Stdout, nil)))
+
+			assert.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
 // TestSQLite_UpgradeFromReleasedV5SchemaMatchesFreshSchema migrates the
 // version 5 schema that gateway 2026.09.24 shipped, loads every stored
 // configuration as the controller does at startup, and checks the migrated

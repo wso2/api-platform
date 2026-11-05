@@ -31,7 +31,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -437,4 +440,53 @@ func TestDeleteSubscriptionPlan_Errors(t *testing.T) {
 		require.Equal(t, http.StatusInternalServerError, code)
 		assert.Equal(t, "Failed to delete subscription plan", errorMessage(t, body))
 	})
+}
+
+// --- audit ---
+
+type planAuditRows struct {
+	rows [][]string
+}
+
+func (r *planAuditRows) SaveAudit(_ string, _ time.Time, action, _, resourceName, resourceType, outcome, performedBy, _ string) error {
+	r.rows = append(r.rows, []string{action, resourceName, resourceType, outcome, performedBy})
+	return nil
+}
+
+// The handlers record the authenticated user through the audit service that
+// SetAuditService wires into every service.
+func TestSubscriptionPlanHandlersRecordTheAuthenticatedUser(t *testing.T) {
+	server, _ := newPlanTestServer(t)
+	rows := &planAuditRows{}
+	auditService, err := audit.NewAuditService(rows, "test-gateway", config.AuditConfig{Enabled: true}, server.logger)
+	require.NoError(t, err)
+	server.SetAuditService(auditService)
+	asAlice := func(r *http.Request) *http.Request {
+		return withAuthContext(r, commonmodels.AuthContext{UserID: "alice", Roles: []string{"admin"}})
+	}
+
+	w, r := createTestContextWithHeader("POST", "/subscription-plans", []byte(`{"planName":"Gold"}`),
+		map[string]string{"Content-Type": "application/json"})
+	server.CreateSubscriptionPlan(w, asAlice(r))
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	w, r = createTestContext("DELETE", "/subscription-plans/"+created.ID, nil)
+	server.DeleteSubscriptionPlan(w, asAlice(r), created.ID)
+	require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
+
+	// A request without an authenticated user is recorded with an empty actor.
+	w, r = createTestContextWithHeader("POST", "/subscription-plans", []byte(`{"planName":"Silver"}`),
+		map[string]string{"Content-Type": "application/json"})
+	server.CreateSubscriptionPlan(w, r)
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+
+	assert.Equal(t, [][]string{
+		{"CREATE", "Gold", "subscription_plan", audit.OutcomeSucceeded, "alice"},
+		{"DELETE", "", "subscription_plan", audit.OutcomeSucceeded, "alice"},
+		{"CREATE", "Silver", "subscription_plan", audit.OutcomeSucceeded, ""},
+	}, rows.rows)
 }

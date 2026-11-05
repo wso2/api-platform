@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -1583,4 +1584,208 @@ spec:
 	assert.Equal(t, "v2.0", v2.GetVersion())
 	assert.NotEqual(t, v1.GetVersion(), v2.GetVersion())
 	assert.Equal(t, "organization", v1.GetManagedBy())
+}
+
+// llmWriteFailingDB fails the writes named in fail and passes everything else
+// to the mock, so a test can seed data first and then break one write.
+type llmWriteFailingDB struct {
+	*testMockDB
+	fail map[string]error
+}
+
+func (m *llmWriteFailingDB) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	if err := m.fail["UpsertConfig"]; err != nil {
+		return false, err
+	}
+	return m.testMockDB.UpsertConfig(cfg)
+}
+
+func (m *llmWriteFailingDB) DeleteConfig(id string) error {
+	if err := m.fail["DeleteConfig"]; err != nil {
+		return err
+	}
+	return m.testMockDB.DeleteConfig(id)
+}
+
+func (m *llmWriteFailingDB) RemoveAPIKeysAPI(apiID string) error {
+	if err := m.fail["RemoveAPIKeysAPI"]; err != nil {
+		return err
+	}
+	return m.testMockDB.RemoveAPIKeysAPI(apiID)
+}
+
+func (m *llmWriteFailingDB) SaveLLMProviderTemplate(t *models.StoredLLMProviderTemplate) error {
+	if err := m.fail["SaveLLMProviderTemplate"]; err != nil {
+		return err
+	}
+	return m.testMockDB.SaveLLMProviderTemplate(t)
+}
+
+func (m *llmWriteFailingDB) UpdateLLMProviderTemplate(t *models.StoredLLMProviderTemplate) error {
+	if err := m.fail["UpdateLLMProviderTemplate"]; err != nil {
+		return err
+	}
+	return m.testMockDB.UpdateLLMProviderTemplate(t)
+}
+
+func (m *llmWriteFailingDB) DeleteLLMProviderTemplate(id string) error {
+	if err := m.fail["DeleteLLMProviderTemplate"]; err != nil {
+		return err
+	}
+	return m.testMockDB.DeleteLLMProviderTemplate(id)
+}
+
+// newAuditedLLMDeploymentService seeds the openai template, the hotel-provider
+// provider and the hotel-proxy proxy, then records audit rows from there on.
+func newAuditedLLMDeploymentService(t *testing.T) (*LLMDeploymentService, *llmWriteFailingDB, *auditRowRecorder) {
+	t.Helper()
+	db := &llmWriteFailingDB{testMockDB: newTestMockDB(), fail: map[string]error{}}
+	require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-openai-id", "openai", "OpenAI Template")))
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, &mockLLMEventHub{}, "test-gateway")
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, newTestPolicyVersionResolver(), nil)
+
+	_, err := service.DeployLLMProviderConfiguration(llmAuditParams(testLLMProviderYAML(t, "hotel-provider", "Hotel Provider", "openai")))
+	require.NoError(t, err)
+	_, err = service.DeployLLMProxyConfiguration(llmAuditParams(testLLMProxyYAML(t, "hotel-proxy", "Hotel Proxy", "hotel-provider")))
+	require.NoError(t, err)
+
+	auditService, rows := newRecordingAuditService(t)
+	service.SetAuditService(auditService)
+	return service, db, rows
+}
+
+func llmAuditParams(data []byte) LLMDeploymentParams {
+	return LLMDeploymentParams{
+		Data:          data,
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-1",
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Origin:        models.OriginGatewayAPI,
+		Actor:         "alice",
+	}
+}
+
+func llmTemplateAuditParams(handle string) LLMTemplateParams {
+	return LLMTemplateParams{
+		Spec:          testLLMTemplateYAML(handle, "Template "+handle),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-1",
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Actor:         "alice",
+	}
+}
+
+// assertLLMAudited checks the only audit row: its action, name, type and
+// outcome, the actor and the correlation ID.
+func assertLLMAudited(t *testing.T, rows *auditRowRecorder, action, name, resourceType, outcome string) {
+	t.Helper()
+	require.Len(t, rows.rows, 1)
+	got := rows.rows[0]
+	assert.NotEmpty(t, got[1], "resource id")
+	assert.Equal(t, []string{action, name, resourceType, outcome, "alice", "corr-1"}, []string{got[0], got[2], got[3], got[4], got[5], got[6]})
+}
+
+func TestLLMDeploymentService_RecordsAuditForSuccessfulWrites(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	for _, tc := range []struct {
+		name                     string
+		call                     func(*LLMDeploymentService) error
+		action, recName, recType string
+	}{
+		{"deploy provider", func(s *LLMDeploymentService) error {
+			_, err := s.DeployLLMProviderConfiguration(llmAuditParams(testLLMProviderYAML(t, "flight-provider", "Flight Provider", "openai")))
+			return err
+		}, "CREATE", "flight-provider", "llm_provider"},
+		{"update provider", func(s *LLMDeploymentService) error {
+			existing, err := s.GetLLMProviderByHandle("hotel-provider")
+			if err != nil {
+				return err
+			}
+			params := llmAuditParams(testLLMProviderYAML(t, "hotel-provider", "Hotel Provider", "openai"))
+			params.ID = existing.UUID
+			params.IsUpdate = true
+			_, err = s.DeployLLMProviderConfiguration(params)
+			return err
+		}, "UPDATE", "hotel-provider", "llm_provider"},
+		{"deploy proxy", func(s *LLMDeploymentService) error {
+			_, err := s.DeployLLMProxyConfiguration(llmAuditParams(testLLMProxyYAML(t, "flight-proxy", "Flight Proxy", "hotel-provider")))
+			return err
+		}, "CREATE", "flight-proxy", "llm_proxy"},
+		{"delete provider", func(s *LLMDeploymentService) error {
+			_, err := s.DeleteLLMProvider("hotel-provider", "corr-1", "alice", logger)
+			return err
+		}, "DELETE", "hotel-provider", "llm_provider"},
+		{"delete proxy", func(s *LLMDeploymentService) error {
+			_, err := s.DeleteLLMProxy("hotel-proxy", "corr-1", "alice", logger)
+			return err
+		}, "DELETE", "hotel-proxy", "llm_proxy"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, _, rows := newAuditedLLMDeploymentService(t)
+
+			require.NoError(t, tc.call(service))
+
+			assertLLMAudited(t, rows, tc.action, tc.recName, tc.recType, audit.OutcomeSucceeded)
+		})
+	}
+}
+
+func TestLLMDeploymentService_RecordsAuditForFailedWrites(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	diskErr := errors.New("disk I/O error")
+	deleteTemplate := func(s *LLMDeploymentService) error {
+		_, err := s.DeleteLLMProviderTemplate("openai", "corr-1", "alice", logger)
+		return err
+	}
+	deleteProvider := func(s *LLMDeploymentService) error {
+		_, err := s.DeleteLLMProvider("hotel-provider", "corr-1", "alice", logger)
+		return err
+	}
+	deleteProxy := func(s *LLMDeploymentService) error {
+		_, err := s.DeleteLLMProxy("hotel-proxy", "corr-1", "alice", logger)
+		return err
+	}
+	for _, tc := range []struct {
+		name    string
+		failing string
+		err     error
+		call    func(*LLMDeploymentService) error
+		want    []string // action, name and type; nil means nothing is recorded
+	}{
+		{"create template", "SaveLLMProviderTemplate", diskErr, func(s *LLMDeploymentService) error {
+			_, err := s.CreateLLMProviderTemplate(llmTemplateAuditParams("azure"))
+			return err
+		}, []string{"CREATE", "azure", "llm_provider_template"}},
+		{"update template", "UpdateLLMProviderTemplate", diskErr, func(s *LLMDeploymentService) error {
+			_, err := s.UpdateLLMProviderTemplate("openai", llmTemplateAuditParams("openai"))
+			return err
+		}, []string{"UPDATE", "openai", "llm_provider_template"}},
+		{"delete template", "DeleteLLMProviderTemplate", diskErr, deleteTemplate, []string{"DELETE", "openai", "llm_provider_template"}},
+		{"delete template already gone", "DeleteLLMProviderTemplate", storage.ErrNotFound, deleteTemplate, nil},
+		{"deploy proxy", "UpsertConfig", diskErr, func(s *LLMDeploymentService) error {
+			_, err := s.DeployLLMProxyConfiguration(llmAuditParams(testLLMProxyYAML(t, "flight-proxy", "Flight Proxy", "hotel-provider")))
+			return err
+		}, []string{"CREATE", "flight-proxy", "llm_proxy"}},
+		{"provider keys not removed", "RemoveAPIKeysAPI", diskErr, deleteProvider, []string{"DELETE", "hotel-provider", "llm_provider"}},
+		{"provider not deleted", "DeleteConfig", diskErr, deleteProvider, []string{"DELETE", "hotel-provider", "llm_provider"}},
+		{"provider already gone", "DeleteConfig", storage.ErrNotFound, deleteProvider, nil},
+		{"proxy keys not removed", "RemoveAPIKeysAPI", diskErr, deleteProxy, []string{"DELETE", "hotel-proxy", "llm_proxy"}},
+		{"proxy not deleted", "DeleteConfig", diskErr, deleteProxy, []string{"DELETE", "hotel-proxy", "llm_proxy"}},
+		{"proxy already gone", "DeleteConfig", storage.ErrNotFound, deleteProxy, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, db, rows := newAuditedLLMDeploymentService(t)
+			db.fail[tc.failing] = tc.err
+
+			require.Error(t, tc.call(service))
+
+			if tc.want == nil {
+				assert.Empty(t, rows.rows)
+				return
+			}
+			assertLLMAudited(t, rows, tc.want[0], tc.want[1], tc.want[2], audit.OutcomeFailed)
+		})
+	}
 }
