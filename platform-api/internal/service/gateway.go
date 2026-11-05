@@ -494,18 +494,19 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 }
 
 // resolveCustomPolicyIdentity replaces the internal platform UUIDs held in a
-// custom policy's CreatedBy/UpdatedBy with the raw external identity, so a
-// response never exposes an internal UUID — the same unwrapping every other
-// resource does via IdentityService before returning a detail response.
+// custom policy's CreatedBy/UpdatedBy with the user's display name (else the
+// raw identity), so a response never exposes an internal UUID — the same
+// unwrapping every other resource does via IdentityService before returning a
+// detail response.
 func (s *GatewayService) resolveCustomPolicyIdentity(policy *model.CustomPolicy) error {
 	if policy == nil {
 		return nil
 	}
-	createdBy, err := s.identity.SubForUUID(policy.CreatedBy)
+	createdBy, err := s.identity.DisplayNameForUUID(policy.CreatedBy)
 	if err != nil {
 		return err
 	}
-	updatedBy, err := s.identity.SubForUUID(policy.UpdatedBy)
+	updatedBy, err := s.identity.DisplayNameForUUID(policy.UpdatedBy)
 	if err != nil {
 		return err
 	}
@@ -525,7 +526,7 @@ func (s *GatewayService) resolveCustomPolicyIdentities(policies []*model.CustomP
 		}
 		uuids = append(uuids, p.CreatedBy, p.UpdatedBy)
 	}
-	resolved, err := s.identity.SubsForUUIDs(uuids)
+	resolved, err := s.identity.DisplayNamesForUUIDs(uuids)
 	if err != nil {
 		return err
 	}
@@ -533,7 +534,7 @@ func (s *GatewayService) resolveCustomPolicyIdentities(policies []*model.CustomP
 		if p == nil {
 			continue
 		}
-		// An empty UUID is absent from the map; SubForUUID's contract maps it
+		// An empty UUID is absent from the map; DisplayNameForUUID's contract maps it
 		// to the deleted-user placeholder, so mirror that here.
 		p.CreatedBy = resolvedIdentityOrDeleted(resolved, p.CreatedBy)
 		p.UpdatedBy = resolvedIdentityOrDeleted(resolved, p.UpdatedBy)

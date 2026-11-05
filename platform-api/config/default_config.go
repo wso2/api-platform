@@ -103,6 +103,7 @@ func defaultConfig() *Server {
 				Username:     "username",
 				Email:        "email",
 				Scope:        "scope",
+				DisplayName:  "name",
 				// Default to the flat "roles" claim — what Asgardeo and Entra ID
 				// emit, and what the file-mode login endpoint signs — so switching
 				// auth.authorization.mode to "role" needs no extra claim wiring.

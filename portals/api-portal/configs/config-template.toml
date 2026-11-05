@@ -240,6 +240,10 @@ mode = "local"          # local | idp
 organization = "org_name"   # claim carrying the org ID
 roles = "roles"             # claim carrying the user's roles
 groups = "groups"
+# Claim carrying the user's human-readable name, stored beside the user's IdP id;
+# responses show it as createdBy/updatedBy. Optional: a token without it still
+# works, and responses show the IdP id.
+display_name = "name"
 # Optional: the claim carrying the organization's name, used to name organizations
 # provisioned in multi-organization mode. Unset, they are named from the org claim.
 # org_name = "org_name"

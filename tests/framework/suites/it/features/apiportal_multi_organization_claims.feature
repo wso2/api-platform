@@ -183,7 +183,7 @@ Feature: API Portal multi-organization organization claims
       | org_handle | ${CTX:forged}                                        |
       | iss        | https://testbench:3015/o/${CTX:signer}/oauth2/token  |
       | roles      | ["ap_admin"]                                         |
-    And I replace the issuer of API Portal token "token" with "https://testbench:3015/o/${CTX:forged}/oauth2/token"
+    And I replace claim "iss" of API Portal token "token" with "https://testbench:3015/o/${CTX:forged}/oauth2/token"
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 401
     And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:forged}"

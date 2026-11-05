@@ -214,6 +214,9 @@ blocks:
       - name: portals
         features:
           - features/apiportal_multi_organization_portals.feature
+      - name: display-names
+        features:
+          - features/apiportal_multi_organization_display_names.feature
 
   - name: api-portal-foreign-org
     parallel: 1
