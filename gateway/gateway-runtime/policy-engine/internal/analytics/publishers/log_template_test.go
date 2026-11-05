@@ -778,6 +778,34 @@ func TestLogTemplate_Bodies(t *testing.T) {
 	})
 }
 
+// A field with no value for a request is logged at DEBUG with the field and the reason, and only
+// when debug logging is on.
+func TestLogTemplate_NoValueIsLoggedAtDebug(t *testing.T) {
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: `{"a":"$ctx:metadata['absent']"}`})
+
+	t.Run("debug on", func(t *testing.T) {
+		buf.Reset()
+		logs := captureLogs(t)
+		l.Publish(ordersEvent())
+
+		assert.Equal(t, `{"a":null}`+"\n", buf.String())
+		assert.Contains(t, logs.String(), `level=DEBUG msg="Traffic log template field has no value for this request; writing null" `+
+			`source=traffic_logging.template field=a error="no such key: absent"`)
+	})
+
+	t.Run("debug off", func(t *testing.T) {
+		buf.Reset()
+		var logs bytes.Buffer
+		prev := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+		l.Publish(ordersEvent())
+
+		assert.Equal(t, `{"a":null}`+"\n", buf.String())
+		assert.Empty(t, logs.String())
+	})
+}
+
 // A template read from a file writes the same lines as the same template given inline.
 func TestLogTemplate_TemplateFileWritesTheSameLinesAsInline(t *testing.T) {
 	const template = `{

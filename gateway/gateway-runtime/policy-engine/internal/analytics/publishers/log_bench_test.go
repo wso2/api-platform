@@ -20,6 +20,7 @@ package publishers
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -153,6 +154,34 @@ func BenchmarkLog_Publish_Template(b *testing.B) {
 		Template:      benchmarkTemplate,
 		ExcludeFields: []string{"auth_prop.tenant"},
 	}, &config.CollectorConfig{RequestHeaders: true})
+	if err != nil {
+		b.Fatalf("NewLog: %v", err)
+	}
+	useWriterSink(l, io.Discard)
+	event := benchmarkTrafficLogEvent()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		l.Publish(event)
+	}
+}
+
+// BenchmarkLog_Publish_TemplateMissingValues measures a template with fields that have no value:
+// one reads the request body while the collector does not capture it, and one reads a header the
+// request did not send.
+func BenchmarkLog_Publish_TemplateMissingValues(b *testing.B) {
+	// The startup WARNING about the body field would break up the benchmark's result line.
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.DiscardHandler))
+	l, err := NewLog(&config.TrafficLoggingConfig{
+		Enabled:       true,
+		Outputs:       []string{config.TrafficLogSinkStdout},
+		MaskedHeaders: []string{"authorization", "x-api-key", "x-jwt-assertion"},
+		Template: `{"service":"orders","method":"$ctx:request.method","status":"$ctx:response.status",` +
+			`"api":"$ctx:api.name","body":"$ctx:request.body","trace":"$ctx:request.header['x-trace-id']"}`,
+	}, &config.CollectorConfig{RequestHeaders: true})
+	slog.SetDefault(prev)
 	if err != nil {
 		b.Fatalf("NewLog: %v", err)
 	}

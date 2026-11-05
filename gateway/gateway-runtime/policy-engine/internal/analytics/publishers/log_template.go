@@ -19,6 +19,7 @@ package publishers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -376,8 +377,10 @@ func (t *logTemplate) write(buf *bytes.Buffer, node *templateNode, evalCtx map[s
 			return false
 		}
 		if err != nil {
-			slog.Debug("Traffic log template field has no value for this request; writing null",
-				"source", t.source, "field", node.path, "error", err)
+			if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+				slog.Debug("Traffic log template field has no value for this request; writing null",
+					"source", t.source, "field", node.path, "error", err)
+			}
 			value = nullJSON
 		}
 		buf.Write(value)
