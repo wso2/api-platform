@@ -402,9 +402,6 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if err := validateMCPSpecVersions(req); err != nil {
 		return nil, err
 	}
-	if err := validateSubscriptionPlanHandles(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
-		return nil, err
-	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, apperror.ValidationFailed.New("The upstream main url field is required.")
@@ -417,6 +414,12 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	}
 	if existing == nil {
 		return nil, apperror.MCPProxyNotFound.New()
+	}
+	// A gateway-originated proxy keeps its stored plans (see below), so the sent ones aren't checked.
+	if existing.Origin != constants.OriginDP {
+		if err := validateSubscriptionPlanHandles(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Validate {{ secret "..." }} placeholders anywhere in the request — the

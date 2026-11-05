@@ -358,8 +358,7 @@ var (
 	// SubscriptionPlanInUse refuses deleting a plan, or changing its name or conditions, while
 	// something here offers or uses it. %s is the message, which names the plan and counts what uses it.
 	SubscriptionPlanInUse = def(CodeSubscriptionPlanInUse, http.StatusConflict, "%s")
-	// SubscriptionPlanConditionsUnsupported refuses conditions other than a request limit until the
-	// database upgrade for plan conditions has run.
-	SubscriptionPlanConditionsUnsupported = def(CodeSubscriptionPlanConditionsUnsupported, http.StatusConflict,
-		"Only request limits can be saved until the database is upgraded for subscription plan conditions.")
+	// SubscriptionPlanConditionsUnsupported refuses what the database can't store until the upgrade for
+	// plan conditions has run: conditions other than a request limit, or a description. %s is the message.
+	SubscriptionPlanConditionsUnsupported = def(CodeSubscriptionPlanConditionsUnsupported, http.StatusConflict, "%s")
 )

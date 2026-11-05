@@ -849,12 +849,15 @@ func validateSubscriptionPlanHandles(planRepo repository.SubscriptionPlanReposit
 	if planRepo == nil {
 		return fmt.Errorf("cannot validate subscription plans: subscription plan repository unavailable")
 	}
-	for i := range *planHandles {
-		(*planHandles)[i] = strings.TrimSpace((*planHandles)[i])
-		handle := (*planHandles)[i]
-		if handle == "" {
-			continue
+	// Blank handles are left out, as they were always skipped, rather than stored.
+	handles := make([]string, 0, len(*planHandles))
+	for _, h := range *planHandles {
+		if h = strings.TrimSpace(h); h != "" {
+			handles = append(handles, h)
 		}
+	}
+	*planHandles = handles
+	for _, handle := range handles {
 		plan, err := planRepo.GetByHandleAndOrg(handle, orgUUID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

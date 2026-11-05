@@ -42,7 +42,7 @@ func TestNormalizeConditions_StoredForm(t *testing.T) {
 		condition("", "request-count", `{"limits":[{"count":100,"timeUnit":"minute"},{"count":10000,"timeAmount":1,"timeUnit":"DAY"}]}`),
 		condition("tokens", " token-count ", `{"limits":[{"count":5000,"timeUnit":"HOUR"}],"onExceed":"allow"}`),
 		condition("ip-ranges", "custom", `{ "zone": "eu", "cidr": "10.0.0.0/8", "limit": 50 }`),
-		condition("promo", "custom", ``),
+		condition("promo", "custom", `{}`),
 	})
 	if err != nil {
 		t.Fatalf("normalizeConditions: %v", err)
@@ -86,6 +86,8 @@ func TestNormalizeConditions_Refusals(t *testing.T) {
 		{"custom id pattern", []model.SubscriptionPlanCondition{condition("IP_Ranges", "custom", `{}`)}, "needs an id"},
 		{"custom with a built-in id", []model.SubscriptionPlanCondition{condition("tool-calls", "custom", `{}`)}, "id of a built-in condition"},
 		{"two custom with one id", []model.SubscriptionPlanCondition{condition("promo", "custom", `{}`), condition("promo", "custom", `{}`)}, "already has a condition promo"},
+		{"custom without params", []model.SubscriptionPlanCondition{condition("promo", "custom", ``)}, "params is required"},
+		{"custom params null", []model.SubscriptionPlanCondition{condition("promo", "custom", `null`)}, "params is required"},
 		{"custom params not an object", []model.SubscriptionPlanCondition{condition("promo", "custom", `["a"]`)}, "JSON object"},
 		{"custom params too large", []model.SubscriptionPlanCondition{condition("promo", "custom", `{"v":"`+strings.Repeat("x", 5000)+`"}`)}, "at most 4096 bytes"},
 	}

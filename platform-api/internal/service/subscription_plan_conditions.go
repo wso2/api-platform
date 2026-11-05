@@ -175,7 +175,7 @@ func normalizeLimitParams(field, conditionType string, raw json.RawMessage) (jso
 func normalizeCustomParams(field string, raw json.RawMessage) (json.RawMessage, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || string(trimmed) == "null" {
-		return json.RawMessage(`{}`), nil
+		return nil, apperror.ValidationFailed.New(fmt.Sprintf("%s: params is required; send {} for a custom condition with no values", field))
 	}
 	var params map[string]any
 	dec := json.NewDecoder(bytes.NewReader(trimmed))

@@ -74,7 +74,8 @@ func requestWindows(limits []subscriptionPlanLimit) []model.ConditionWindow {
 			amount = 1
 		}
 		key := windowKey(amount, unit)
-		if seen[key] {
+		// A plan holds at most ten windows; older portals sent more, so the rest are left out.
+		if seen[key] || len(windows) == 10 {
 			continue
 		}
 		seen[key] = true

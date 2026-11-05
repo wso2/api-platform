@@ -207,6 +207,8 @@ func seedPlanUsers(t *testing.T, db *database.DB, gold, silver *model.Subscripti
 		`INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, project_uuid, configuration) VALUES
 			('api-1', 'org-1', 'shop-api', 'Shop API', 'v1', 'proj-1', '{"name":"Shop","subscriptionPlans":["gold","silver"]}'),
 			('api-2', 'org-1', 'other-api', 'Other API', 'v1', 'proj-1', '{"name":"Other","subscriptionPlans":["silver"]}')`,
+		`INSERT INTO mcp_proxies (uuid, organization_uuid, handle, display_name, project_uuid, configuration) VALUES
+			('mcp-1', 'org-1', 'weather-mcp', 'Weather MCP', 'proj-1', '{"name":"Weather","subscriptionPlans":["gold"]}')`,
 		`INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, internal_auth_key) VALUES
 			('portal-1', 'org-1', 'east', 'East', X'00')`,
 		`INSERT INTO api_publications (uuid, organization_uuid, artifact_uuid, api_portal_uuid, is_draft, status, display_name,
@@ -268,7 +270,7 @@ func TestSubscriptionPlanRepo_UsageAndDeleteWithReferences(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUsage: %v", err)
 	}
-	want := &model.SubscriptionPlanUsage{RESTAPIs: 1, Drafts: 1, Publications: 1, Subscriptions: 2}
+	want := &model.SubscriptionPlanUsage{RESTAPIs: 1, MCPProxies: 1, Drafts: 1, Publications: 1, Subscriptions: 2}
 	if !reflect.DeepEqual(usage, want) {
 		t.Fatalf("usage = %+v, want %+v", usage, want)
 	}
@@ -311,6 +313,13 @@ func TestSubscriptionPlanRepo_UsageAndDeleteWithReferences(t *testing.T) {
 		if string(configuration) != wantConfig {
 			t.Errorf("%s configuration = %s, want %s", handle, configuration, wantConfig)
 		}
+	}
+
+	// It leaves the MCP proxy's configuration too.
+	var mcpConfiguration []byte
+	if err := db.QueryRow(`SELECT configuration FROM mcp_proxies WHERE handle = 'weather-mcp'`).Scan(&mcpConfiguration); err != nil ||
+		string(mcpConfiguration) != `{"name":"Weather"}` {
+		t.Errorf("weather-mcp configuration = %s, %v; want the plan removed", mcpConfiguration, err)
 	}
 
 	if deleted, err := repo.DeleteWithReferences(gold.UUID, gold.Handle, "org-1"); err != nil || deleted {
@@ -564,6 +573,11 @@ func TestSubscriptionPlanRepo_DatabaseNotUpgraded(t *testing.T) {
 
 	silver := &model.SubscriptionPlan{Handle: "silver", Name: "Silver", Description: "not stored", OrganizationUUID: "org-1",
 		Status: model.SubscriptionPlanStatusActive, Conditions: []model.SubscriptionPlanCondition{requestCount(20, "MINUTE")}}
+	if err := repo.Create(silver); !errors.Is(err, ErrPlanDescriptionColumnMissing) {
+		t.Fatalf("Create with a description = %v, want ErrPlanDescriptionColumnMissing", err)
+	}
+	// A plan from an API Portal is saved without its description instead.
+	silver.DescriptionOptional = true
 	if err := repo.Create(silver); err != nil {
 		t.Fatalf("Create: %v", err)
 	}

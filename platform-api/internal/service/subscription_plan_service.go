@@ -360,8 +360,13 @@ func gatewayThrottleUnit(unit string) string {
 
 // planStorageError reports a database not yet upgraded for conditions with a clear message.
 func planStorageError(err error) error {
-	if errors.Is(err, repository.ErrPlanConditionsTableMissing) {
-		return apperror.SubscriptionPlanConditionsUnsupported.Wrap(err).WithLogMessage(err.Error())
+	switch {
+	case errors.Is(err, repository.ErrPlanConditionsTableMissing):
+		return apperror.SubscriptionPlanConditionsUnsupported.Wrap(err,
+			"Only request limits can be saved until the database is upgraded for subscription plan conditions.").WithLogMessage(err.Error())
+	case errors.Is(err, repository.ErrPlanDescriptionColumnMissing):
+		return apperror.SubscriptionPlanConditionsUnsupported.Wrap(err,
+			"A plan description can be saved only after the database is upgraded for subscription plan conditions.").WithLogMessage(err.Error())
 	}
 	return err
 }
@@ -456,11 +461,12 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, d
 			return nil, err
 		}
 		plan := &model.SubscriptionPlan{
-			Handle:      handle,
-			Name:        name,
-			Description: description,
-			Conditions:  planConditions,
-			CreatedAt:   occurredAt.UTC(),
+			Handle:              handle,
+			Name:                name,
+			Description:         description,
+			DescriptionOptional: true,
+			Conditions:          planConditions,
+			CreatedAt:           occurredAt.UTC(),
 		}
 		created, err := s.createPlan(orgUUID, "", plan, pricing)
 		if err == nil || !apperror.SubscriptionPlanExists.Is(err) {
@@ -501,6 +507,7 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, d
 	}
 	// The change comes from the portal itself, so UpdatePlan's rule that a plan in use keeps its
 	// name and conditions does not apply.
+	existing.DescriptionOptional = true
 	return s.applyPlanUpdate(existing, orgUUID, "", update, planConditions)
 }
 

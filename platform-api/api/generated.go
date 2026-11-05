@@ -6207,6 +6207,9 @@ type SubscriptionPlanUsage struct {
 	// InUse Whether anything counted below offers or uses the plan.
 	InUse bool `json:"inUse" yaml:"inUse"`
 
+	// McpProxies How many MCP proxies list the plan in their configuration.
+	McpProxies *int `json:"mcpProxies,omitempty" yaml:"mcpProxies,omitempty"`
+
 	// Publications How many APIs offer the plan in a publication (each API once).
 	Publications int `json:"publications" yaml:"publications"`
 

@@ -76,8 +76,10 @@ func TestSetLegacyLimit(t *testing.T) {
 		{"no conditions", nil, 0, "", true},
 		{"first one-unit window", request(`{"limits":[{"count":9,"timeAmount":2,"timeUnit":"HOUR"},{"count":100,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"allow"}`),
 			100, "DAY", false},
-		{"no one-unit window: the first applied per unit", request(`{"limits":[{"count":9,"timeAmount":2,"timeUnit":"HOUR"},{"count":50,"timeAmount":3,"timeUnit":"DAY"}],"onExceed":"reject"}`),
-			9, "HOUR", true},
+		{"no one-unit window: the first spread over each unit", request(`{"limits":[{"count":9,"timeAmount":2,"timeUnit":"HOUR"},{"count":50,"timeAmount":3,"timeUnit":"DAY"}],"onExceed":"reject"}`),
+			4, "HOUR", true},
+		{"fewer requests than units: 1 per unit", request(`{"limits":[{"count":1,"timeAmount":2,"timeUnit":"HOUR"}],"onExceed":"reject"}`),
+			1, "HOUR", true},
 		{"a unit older gateways don't know is skipped", request(`{"limits":[{"count":1,"timeAmount":1,"timeUnit":"WEEK"},{"count":40,"timeAmount":1,"timeUnit":"MONTH"}],"onExceed":"reject"}`),
 			40, "MONTH", true},
 		{"only other conditions", []SubscriptionPlanCondition{{ID: "tool-calls", Type: ConditionTypeToolCallCount,
@@ -102,7 +104,7 @@ func TestSubscriptionPlanUsage_InUse(t *testing.T) {
 	if (&SubscriptionPlanUsage{}).InUse() {
 		t.Error("an unused plan reports in use")
 	}
-	for _, u := range []SubscriptionPlanUsage{{RESTAPIs: 1}, {Drafts: 1}, {Publications: 1}, {Subscriptions: 1}} {
+	for _, u := range []SubscriptionPlanUsage{{RESTAPIs: 1}, {MCPProxies: 1}, {Drafts: 1}, {Publications: 1}, {Subscriptions: 1}} {
 		if !u.InUse() {
 			t.Errorf("%+v reports not in use", u)
 		}

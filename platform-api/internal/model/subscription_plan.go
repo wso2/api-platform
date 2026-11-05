@@ -68,21 +68,25 @@ type SubscriptionPlan struct {
 	Description string                      `json:"description,omitempty" db:"description"`
 	Conditions  []SubscriptionPlanCondition `json:"conditions"`
 	// LegacyLimits is true when Conditions came from subscription_plan_limits.
-	LegacyLimits       bool                   `json:"-"`
-	StopOnQuotaReach   bool                   `json:"stopOnQuotaReach"`
-	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
-	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`
-	ExpiryTime         *time.Time             `json:"expiryTime,omitempty" db:"expiry_time"`
-	OrganizationUUID   string                 `json:"organizationId" db:"organization_uuid"`
-	Status             SubscriptionPlanStatus `json:"status" db:"status"`
-	CreatedBy          string                 `json:"createdBy,omitempty" db:"created_by"`
-	UpdatedBy          string                 `json:"updatedBy,omitempty" db:"updated_by"`
-	CreatedAt          time.Time              `json:"createdAt" db:"created_at"`
-	UpdatedAt          time.Time              `json:"updatedAt" db:"updated_at"`
+	LegacyLimits bool `json:"-"`
+	// DescriptionOptional lets a database not yet upgraded save the plan without its description,
+	// instead of refusing it. Set for plans synced from an API Portal.
+	DescriptionOptional bool                   `json:"-"`
+	StopOnQuotaReach    bool                   `json:"stopOnQuotaReach"`
+	ThrottleLimitCount  *int                   `json:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit   string                 `json:"throttleLimitUnit,omitempty"`
+	ExpiryTime          *time.Time             `json:"expiryTime,omitempty" db:"expiry_time"`
+	OrganizationUUID    string                 `json:"organizationId" db:"organization_uuid"`
+	Status              SubscriptionPlanStatus `json:"status" db:"status"`
+	CreatedBy           string                 `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy           string                 `json:"updatedBy,omitempty" db:"updated_by"`
+	CreatedAt           time.Time              `json:"createdAt" db:"created_at"`
+	UpdatedAt           time.Time              `json:"updatedAt" db:"updated_at"`
 }
 
 // SubscriptionPlanUsage counts what offers or uses a subscription plan here:
 //   - RESTAPIs: the REST APIs whose configuration lists the plan;
+//   - MCPProxies: the MCP proxies whose configuration lists the plan;
 //   - Drafts: the APIs whose publication draft for an API Portal offers it;
 //   - Publications: the APIs whose live publication on an API Portal offers it;
 //   - Subscriptions: the subscriptions on the plan.
@@ -91,6 +95,7 @@ type SubscriptionPlan struct {
 // names, since a plan may be offered by more APIs than a message can list.
 type SubscriptionPlanUsage struct {
 	RESTAPIs      int
+	MCPProxies    int
 	Drafts        int
 	Publications  int
 	Subscriptions int
@@ -98,5 +103,5 @@ type SubscriptionPlanUsage struct {
 
 // InUse reports whether anything offers or uses the plan.
 func (u *SubscriptionPlanUsage) InUse() bool {
-	return u.RESTAPIs > 0 || u.Drafts > 0 || u.Publications > 0 || u.Subscriptions > 0
+	return u.RESTAPIs > 0 || u.MCPProxies > 0 || u.Drafts > 0 || u.Publications > 0 || u.Subscriptions > 0
 }

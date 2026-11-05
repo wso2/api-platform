@@ -384,7 +384,7 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 	}
 	// What offers or uses the plan, so a client can show a delete, or a change of name or conditions, as
 	// refused before it is tried. Only a single plan's read carries it: working it out reads every
-	// REST API of the organization.
+	// REST API and MCP proxy of the organization.
 	usage, err := h.planService.GetUsage(plan)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
@@ -393,6 +393,7 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 	resp["usage"] = map[string]any{
 		"inUse":         usage.InUse(),
 		"restApis":      usage.RESTAPIs,
+		"mcpProxies":    usage.MCPProxies,
 		"drafts":        usage.Drafts,
 		"publications":  usage.Publications,
 		"subscriptions": usage.Subscriptions,

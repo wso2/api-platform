@@ -354,6 +354,17 @@ func TestRequestWindows_KeepsEverySupportedRequestLimit(t *testing.T) {
 	}
 }
 
+// A plan holds at most ten windows: an older portal's later limits are left out.
+func TestRequestWindows_AtMostTen(t *testing.T) {
+	var limits []subscriptionPlanLimit
+	for i := 1; i <= 12; i++ {
+		limits = append(limits, subscriptionPlanLimit{LimitType: "REQUEST_COUNT", LimitCount: i, TimeUnit: "MINUTE", TimeAmount: i})
+	}
+	if got := requestWindows(limits); len(got) != 10 || got[9].Count != 10 {
+		t.Fatalf("windows = %+v, want the first ten", got)
+	}
+}
+
 // A portal that sends conditions has them passed on as they are, with the plan's description.
 func TestSubscriptionPlanCreated_PassesConditionsAndDescription(t *testing.T) {
 	r, plans, cfg := newPlanTestReceiver(t)

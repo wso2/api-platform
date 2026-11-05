@@ -12406,6 +12406,9 @@ components:
         restApis:
           type: integer
           description: How many REST APIs list the plan in their configuration.
+        mcpProxies:
+          type: integer
+          description: How many MCP proxies list the plan in their configuration.
         drafts:
           type: integer
           description: How many APIs offer the plan in a publication draft (each API once).

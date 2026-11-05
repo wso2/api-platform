@@ -172,6 +172,12 @@ func TestPlanService_StorageErrors(t *testing.T) {
 		t.Errorf("update: err = %v", err)
 	}
 
+	repo.saveErr = fmt.Errorf("save: %w", repository.ErrPlanDescriptionColumnMissing)
+	if _, err := svc.UpdatePlan("gold", "org-1", "", &model.SubscriptionPlanUpdate{Description: &description}); !apperror.SubscriptionPlanConditionsUnsupported.Is(err) ||
+		!strings.Contains(err.Error(), "description can be saved only after") {
+		t.Errorf("update with a description: err = %v", err)
+	}
+
 	repo.saveErr = nil
 	repo.usageErr = errors.New("usage unavailable")
 	name := "Gold Plus"
@@ -193,5 +199,28 @@ func TestUpdatePlan_KeepsAStoredConditionThatNoLongerValidates(t *testing.T) {
 	}
 	if len(got.Conditions) != 1 || got.Conditions[0].ID != "Legacy_Promo" || got.Description != "Updated" {
 		t.Fatalf("plan = %+v", got)
+	}
+}
+
+// Plans from an API Portal may be saved without their description on a database not yet upgraded;
+// plans made through the REST API may not.
+func TestPlanService_PortalPlansMayDropTheDescription(t *testing.T) {
+	svc, repo := newPlanTestService()
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", "From the portal", nil, nil, nil, planEventT0); err != nil {
+		t.Fatal(err)
+	}
+	if !repo.plans["silver"].DescriptionOptional {
+		t.Error("a created portal plan should allow dropping its description")
+	}
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "Now described", nil, win(100, "MINUTE"), nil, planEventT0); err != nil {
+		t.Fatal(err)
+	}
+	if !repo.plans["gold"].DescriptionOptional {
+		t.Error("an updated portal plan should allow dropping its description")
+	}
+
+	created, err := svc.CreatePlan("org-1", "", &model.SubscriptionPlan{Handle: "bronze", Name: "Bronze", Description: "Made here"}, nil)
+	if err != nil || created.DescriptionOptional {
+		t.Fatalf("a REST plan: %+v, %v; want its description required", created, err)
 	}
 }

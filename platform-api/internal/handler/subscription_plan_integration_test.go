@@ -311,7 +311,7 @@ func TestPlanHandler_UpdateLocksNameAndConditionsWhileInUse(t *testing.T) {
 
 	// A single plan's read says whether it is in use, and by what.
 	usage := decodePlan(t, planRequest(t, h, http.MethodGet, planITPath+"/gold", ""))["usage"]
-	if want := map[string]any{"inUse": false, "restApis": float64(0), "drafts": float64(0), "publications": float64(0),
+	if want := map[string]any{"inUse": false, "restApis": float64(0), "mcpProxies": float64(0), "drafts": float64(0), "publications": float64(0),
 		"subscriptions": float64(0)}; !reflect.DeepEqual(usage, want) {
 		t.Fatalf("unused plan usage = %v, want %v", usage, want)
 	}

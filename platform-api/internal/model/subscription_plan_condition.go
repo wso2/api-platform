@@ -98,9 +98,11 @@ func FindCondition(conditions []SubscriptionPlanCondition, conditionType string)
 	return nil
 }
 
-// SetLegacyLimit fills the single request limit that older gateways and subscription-validation v1 read.
-// They get the first one-unit window, or else the first window per unit (1000 per 2 HOUR becomes
-// 1000 per HOUR, which is stricter). Without a request-count condition the plan is unlimited for them.
+// SetLegacyLimit fills the single request limit that older gateways and subscription-validation v1 read:
+// a count per one MINUTE, HOUR, DAY or MONTH. They get the first one-unit window as it is. A plan with
+// only longer windows gets its first one spread evenly over each unit, rounded down (1000 per 2 HOUR
+// becomes 500 per HOUR); a window with fewer requests than units gets 1 per unit, which admits more
+// than the window allows. Without a request-count condition the plan is unlimited for them.
 func (p *SubscriptionPlan) SetLegacyLimit() {
 	p.ThrottleLimitCount = nil
 	p.ThrottleLimitUnit = ""
@@ -114,22 +116,30 @@ func (p *SubscriptionPlan) SetLegacyLimit() {
 		return
 	}
 	p.StopOnQuotaReach = limits.OnExceed != ConditionOnExceedAllow
-	var perUnit *ConditionWindow
+	var picked *ConditionWindow
 	for i, w := range limits.Limits {
 		if !legacyLimitUnits[w.TimeUnit] {
 			continue
 		}
 		if w.TimeAmount <= 1 {
-			perUnit = &limits.Limits[i]
+			picked = &limits.Limits[i]
 			break
 		}
-		if perUnit == nil {
-			perUnit = &limits.Limits[i]
+		if picked == nil {
+			picked = &limits.Limits[i]
 		}
 	}
-	if perUnit != nil {
-		count := perUnit.Count
+	if picked != nil {
+		count := legacyCountPerUnit(picked.Count, picked.TimeAmount)
 		p.ThrottleLimitCount = &count
-		p.ThrottleLimitUnit = perUnit.TimeUnit
+		p.ThrottleLimitUnit = picked.TimeUnit
 	}
+}
+
+// legacyCountPerUnit spreads count over amount units, rounded down, and at least 1.
+func legacyCountPerUnit(count, amount int) int {
+	if amount <= 1 {
+		return count
+	}
+	return max(count/amount, 1)
 }

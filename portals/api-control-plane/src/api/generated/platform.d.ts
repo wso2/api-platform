@@ -5750,6 +5750,8 @@ export interface components {
             inUse: boolean;
             /** @description How many REST APIs list the plan in their configuration. */
             restApis: number;
+            /** @description How many MCP proxies list the plan in their configuration. */
+            mcpProxies?: number;
             /** @description How many APIs offer the plan in a publication draft (each API once). */
             drafts: number;
             /** @description How many APIs offer the plan in a publication (each API once). */

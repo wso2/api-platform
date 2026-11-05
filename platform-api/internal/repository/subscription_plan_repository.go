@@ -37,7 +37,7 @@ import (
 
 // planSchema records which plan tables and columns exist. Server databases are set up by the operator,
 // so the new table or column may be missing until the upgrade script runs, and new installs have no
-// subscription_plan_limits. Checked once, on first use.
+// subscription_plan_limits. Checked again on each use until the table and column are both found.
 type planSchema struct {
 	conditions   bool // subscription_plan_conditions
 	legacyLimits bool // subscription_plan_limits
@@ -49,12 +49,17 @@ type planSchema struct {
 var ErrPlanConditionsTableMissing = errors.New("the database has no subscription_plan_conditions table; " +
 	"run this release's database upgrade to store this plan's conditions")
 
+// ErrPlanDescriptionColumnMissing: the database has no subscription_plans.description column yet.
+var ErrPlanDescriptionColumnMissing = errors.New("the database has no subscription_plans.description column; " +
+	"run this release's database upgrade to store plan descriptions")
+
 // SubscriptionPlanRepo implements SubscriptionPlanRepository
 type SubscriptionPlanRepo struct {
 	db *database.DB
 
-	schemaOnce sync.Once
-	planSchema planSchema
+	schemaMu      sync.Mutex
+	planSchema    planSchema
+	schemaUpdated bool
 }
 
 // NewSubscriptionPlanRepo creates a new subscription plan repository
@@ -62,15 +67,31 @@ func NewSubscriptionPlanRepo(db *database.DB) SubscriptionPlanRepository {
 	return &SubscriptionPlanRepo{db: db}
 }
 
+// schema returns which plan tables and columns exist. Once the conditions table and the description
+// column are found, the result is kept; until then it is checked again, so a failed check or an
+// upgrade made while running is picked up without a restart.
 func (r *SubscriptionPlanRepo) schema() planSchema {
-	r.schemaOnce.Do(func() {
-		r.planSchema = planSchema{
-			conditions:   r.db.HasTable("subscription_plan_conditions"),
-			legacyLimits: r.db.HasTable("subscription_plan_limits"),
-			description:  r.db.HasColumn("subscription_plans", "description"),
-		}
-	})
+	r.schemaMu.Lock()
+	defer r.schemaMu.Unlock()
+	if r.schemaUpdated {
+		return r.planSchema
+	}
+	r.planSchema = planSchema{
+		conditions:   r.db.HasTable("subscription_plan_conditions"),
+		legacyLimits: r.db.HasTable("subscription_plan_limits"),
+		description:  r.db.HasColumn("subscription_plans", "description"),
+	}
+	r.schemaUpdated = r.planSchema.conditions && r.planSchema.description
 	return r.planSchema
+}
+
+// checkDescription refuses a description the database can't store yet, unless the plan allows
+// dropping it (plans synced from an API Portal).
+func checkDescription(schema planSchema, plan *model.SubscriptionPlan) error {
+	if !schema.description && plan.Description != "" && !plan.DescriptionOptional {
+		return ErrPlanDescriptionColumnMissing
+	}
+	return nil
 }
 
 // planSelectColumns reads a plan's own columns; loadConditions reads its conditions. The description
@@ -107,6 +128,9 @@ func (r *SubscriptionPlanRepo) CreateWithPricing(plan *model.SubscriptionPlan, p
 	plan.UpdatedAt = now
 	// Read before the transaction: on SQLite, with one connection, the check would wait for it.
 	schema := r.schema()
+	if err := checkDescription(schema, plan); err != nil {
+		return err
+	}
 
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -127,7 +151,7 @@ func (r *SubscriptionPlanRepo) CreateWithPricing(plan *model.SubscriptionPlan, p
 		return fmt.Errorf("failed to insert subscription plan: %w", err)
 	}
 
-	if err := r.saveConditionsTx(tx, plan); err != nil {
+	if err := r.saveConditionsTx(tx, plan, schema); err != nil {
 		return err
 	}
 
@@ -152,10 +176,9 @@ func (r *SubscriptionPlanRepo) CreateWithPricing(plan *model.SubscriptionPlan, p
 // saveConditionsTx replaces the plan's condition rows. It also deletes the plan's old
 // subscription_plan_limits row, so a plan saved without conditions isn't read as the old limit again.
 // Without the conditions table, it falls back to saveLegacyLimitTx.
-func (r *SubscriptionPlanRepo) saveConditionsTx(tx *sql.Tx, plan *model.SubscriptionPlan) error {
-	schema := r.schema()
+func (r *SubscriptionPlanRepo) saveConditionsTx(tx *sql.Tx, plan *model.SubscriptionPlan, schema planSchema) error {
 	if !schema.conditions {
-		return r.saveLegacyLimitTx(tx, plan)
+		return r.saveLegacyLimitTx(tx, plan, schema)
 	}
 	if _, err := tx.Exec(r.db.Rebind(`
 		DELETE FROM subscription_plan_conditions WHERE subscription_plan_uuid = ?
@@ -186,17 +209,17 @@ func (r *SubscriptionPlanRepo) saveConditionsTx(tx *sql.Tx, plan *model.Subscrip
 
 // saveLegacyLimitTx stores the request-count condition in subscription_plan_limits, one row per window.
 // Other conditions return ErrPlanConditionsTableMissing.
-func (r *SubscriptionPlanRepo) saveLegacyLimitTx(tx *sql.Tx, plan *model.SubscriptionPlan) error {
+func (r *SubscriptionPlanRepo) saveLegacyLimitTx(tx *sql.Tx, plan *model.SubscriptionPlan, schema planSchema) error {
 	var limits model.ConditionLimits
 	for _, c := range plan.Conditions {
-		if c.Type != model.ConditionTypeRequestCount || !r.schema().legacyLimits {
+		if c.Type != model.ConditionTypeRequestCount || !schema.legacyLimits {
 			return ErrPlanConditionsTableMissing
 		}
 		if err := json.Unmarshal(c.Params, &limits); err != nil {
 			return fmt.Errorf("failed to read the %s condition: %w", c.ID, err)
 		}
 	}
-	if !r.schema().legacyLimits {
+	if !schema.legacyLimits {
 		return nil
 	}
 	if _, err := tx.Exec(r.db.Rebind(`
@@ -577,6 +600,9 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 	plan.UpdatedAt = time.Now().UTC()
 	// Read before the transaction: on SQLite, with one connection, the check would wait for it.
 	schema := r.schema()
+	if err := checkDescription(schema, plan); err != nil {
+		return err
+	}
 
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -603,7 +629,7 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 		return fmt.Errorf("subscription plan not found: %s", plan.UUID)
 	}
 
-	if err := r.saveConditionsTx(tx, plan); err != nil {
+	if err := r.saveConditionsTx(tx, plan, schema); err != nil {
 		return err
 	}
 
@@ -649,7 +675,7 @@ func (r *SubscriptionPlanRepo) ExistsByHandleAndOrg(handle, orgUUID string) (boo
 	return exists == 1, nil
 }
 
-// restAPIPlanHandles returns the subscription plan handles a REST API's stored configuration lists;
+// restAPIPlanHandles returns the subscription plan handles a REST API's or MCP proxy's stored configuration lists;
 // an empty configuration lists none.
 func restAPIPlanHandles(configuration []byte) ([]string, error) {
 	if len(bytes.TrimSpace(configuration)) == 0 {
@@ -671,27 +697,12 @@ func (r *SubscriptionPlanRepo) GetUsage(planUUID, handle, orgUUID string) (*mode
 	usage := &model.SubscriptionPlanUsage{}
 	drafts, publications := map[string]bool{}, map[string]bool{}
 
-	rows, err := r.db.Query(r.db.Rebind(`SELECT handle, configuration FROM rest_apis WHERE organization_uuid = ?`), orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list REST APIs: %w", err)
+	var err error
+	if usage.RESTAPIs, err = r.countPlanListers(planListerRESTAPIs, handle, orgUUID); err != nil {
+		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var apiHandle string
-		var configuration []byte
-		if err := rows.Scan(&apiHandle, &configuration); err != nil {
-			return nil, fmt.Errorf("failed to scan REST API: %w", err)
-		}
-		plans, err := restAPIPlanHandles(configuration)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode the configuration of REST API %s: %w", apiHandle, err)
-		}
-		if slices.Contains(plans, handle) {
-			usage.RESTAPIs++
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to list REST APIs: %w", err)
+	if usage.MCPProxies, err = r.countPlanListers(planListerMCPProxies, handle, orgUUID); err != nil {
+		return nil, err
 	}
 
 	// Each API is counted once, by name, however many portals it is on: a REST API by its handle,
@@ -752,8 +763,10 @@ func (r *SubscriptionPlanRepo) DeleteWithReferences(planUUID, handle, orgUUID st
 	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM artifact_subscription_plans WHERE subscription_plan_uuid = ?`), planUUID); err != nil {
 		return false, fmt.Errorf("failed to remove the plan from artifacts: %w", err)
 	}
-	if err := r.removePlanFromRESTAPIsTx(tx, handle, orgUUID, now); err != nil {
-		return false, err
+	for _, lister := range []planLister{planListerRESTAPIs, planListerMCPProxies} {
+		if err := r.removePlanFromListersTx(tx, lister, handle, orgUUID, now); err != nil {
+			return false, err
+		}
 	}
 	if _, err := tx.Exec(r.db.Rebind(`UPDATE subscriptions SET subscription_plan_uuid = NULL, updated_at = ?
 		WHERE organization_uuid = ? AND subscription_plan_uuid = ?`), now, orgUUID, planUUID); err != nil {
@@ -769,44 +782,80 @@ func (r *SubscriptionPlanRepo) DeleteWithReferences(planUUID, handle, orgUUID st
 	return true, tx.Commit()
 }
 
-// removePlanFromRESTAPIsTx removes the plan handle from the subscriptionPlans of every REST API of
-// the organization that lists it, leaving the rest of each configuration as it is.
-func (r *SubscriptionPlanRepo) removePlanFromRESTAPIsTx(tx *sql.Tx, handle, orgUUID string, now time.Time) error {
-	rows, err := tx.Query(r.db.Rebind(`SELECT uuid, configuration FROM rest_apis WHERE organization_uuid = ?`), orgUUID)
+// planLister is a table of artifacts whose configuration lists plan handles in subscriptionPlans.
+type planLister struct{ table, kind, kinds string }
+
+var (
+	planListerRESTAPIs   = planLister{"rest_apis", "REST API", "REST APIs"}
+	planListerMCPProxies = planLister{"mcp_proxies", "MCP proxy", "MCP proxies"}
+)
+
+// countPlanListers counts the artifacts of the table whose configuration lists the plan's handle.
+func (r *SubscriptionPlanRepo) countPlanListers(l planLister, handle, orgUUID string) (int, error) {
+	rows, err := r.db.Query(r.db.Rebind(`SELECT handle, configuration FROM `+l.table+` WHERE organization_uuid = ?`), orgUUID)
 	if err != nil {
-		return fmt.Errorf("failed to list REST APIs: %w", err)
+		return 0, fmt.Errorf("failed to list %s: %w", l.kinds, err)
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var artifactHandle string
+		var configuration []byte
+		if err := rows.Scan(&artifactHandle, &configuration); err != nil {
+			return 0, fmt.Errorf("failed to scan %s: %w", l.kind, err)
+		}
+		plans, err := restAPIPlanHandles(configuration)
+		if err != nil {
+			return 0, fmt.Errorf("failed to decode the configuration of %s %s: %w", l.kind, artifactHandle, err)
+		}
+		if slices.Contains(plans, handle) {
+			n++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("failed to list %s: %w", l.kinds, err)
+	}
+	return n, nil
+}
+
+// removePlanFromListersTx removes the plan's handle from the subscriptionPlans of every artifact of
+// the table that lists it.
+func (r *SubscriptionPlanRepo) removePlanFromListersTx(tx *sql.Tx, l planLister, handle, orgUUID string, now time.Time) error {
+	rows, err := tx.Query(r.db.Rebind(`SELECT uuid, configuration FROM `+l.table+` WHERE organization_uuid = ?`), orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to list %s: %w", l.kinds, err)
 	}
 	updated := map[string][]byte{}
 	for rows.Next() {
-		var apiUUID string
+		var artifactUUID string
 		var configuration []byte
-		if err := rows.Scan(&apiUUID, &configuration); err != nil {
+		if err := rows.Scan(&artifactUUID, &configuration); err != nil {
 			rows.Close()
-			return fmt.Errorf("failed to scan REST API: %w", err)
+			return fmt.Errorf("failed to scan %s: %w", l.kind, err)
 		}
 		changed, err := withoutPlanHandle(configuration, handle)
 		if err != nil {
 			rows.Close()
-			return fmt.Errorf("failed to remove the plan from REST API %s: %w", apiUUID, err)
+			return fmt.Errorf("failed to remove the plan from %s %s: %w", l.kind, artifactUUID, err)
 		}
 		if changed != nil {
-			updated[apiUUID] = changed
+			updated[artifactUUID] = changed
 		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("failed to list REST APIs: %w", err)
+		return fmt.Errorf("failed to list %s: %w", l.kinds, err)
 	}
-	for apiUUID, configuration := range updated {
-		if _, err := tx.Exec(r.db.Rebind(`UPDATE rest_apis SET configuration = ?, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`),
-			configuration, now, apiUUID, orgUUID); err != nil {
-			return fmt.Errorf("failed to remove the plan from REST API %s: %w", apiUUID, err)
+	for artifactUUID, configuration := range updated {
+		if _, err := tx.Exec(r.db.Rebind(`UPDATE `+l.table+` SET configuration = ?, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`),
+			configuration, now, artifactUUID, orgUUID); err != nil {
+			return fmt.Errorf("failed to remove the plan from %s %s: %w", l.kind, artifactUUID, err)
 		}
 	}
 	return nil
 }
 
-// withoutPlanHandle returns the REST API configuration with handle removed from its
+// withoutPlanHandle returns the stored configuration with handle removed from its
 // subscriptionPlans, or nil when it does not list it. The other fields are kept as stored.
 func withoutPlanHandle(configuration []byte, handle string) ([]byte, error) {
 	plans, err := restAPIPlanHandles(configuration)

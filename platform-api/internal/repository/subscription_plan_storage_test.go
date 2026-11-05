@@ -126,3 +126,77 @@ func TestSubscriptionPlanRepo_StorageFailures(t *testing.T) {
 	_, err = repo.ListByOrganization("org-1", ListOptions{Limit: 10}, "")
 	wantErrContaining(t, "list", err, "failed to read subscription plan conditions")
 }
+
+// A database upgraded while the server runs is picked up: the schema is checked again until the
+// conditions table and description column are found.
+func TestSubscriptionPlanRepo_SchemaCheckedUntilUpgraded(t *testing.T) {
+	db := newPlanTestDB(t)
+	asLegacyDatabase(t, db, false)
+	repo := NewSubscriptionPlanRepo(db)
+
+	plan := newPlan("gold")
+	plan.Description = "For partners"
+	if err := repo.Create(plan); !errors.Is(err, ErrPlanDescriptionColumnMissing) {
+		t.Fatalf("before the upgrade: err = %v, want ErrPlanDescriptionColumnMissing", err)
+	}
+
+	for _, stmt := range []string{
+		`ALTER TABLE subscription_plans ADD COLUMN description VARCHAR(1023)`,
+		`CREATE TABLE subscription_plan_conditions (uuid VARCHAR(40) PRIMARY KEY, subscription_plan_uuid VARCHAR(40) NOT NULL,
+			organization_uuid VARCHAR(40) NOT NULL, condition_id VARCHAR(64) NOT NULL, condition_type VARCHAR(32) NOT NULL,
+			params TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0, UNIQUE(subscription_plan_uuid, condition_id))`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	plan.Conditions = []model.SubscriptionPlanCondition{{ID: "tool-calls", Type: model.ConditionTypeToolCallCount,
+		Params: []byte(`{"limits":[{"count":10,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`)}}
+	if err := repo.Create(plan); err != nil {
+		t.Fatalf("after the upgrade: %v", err)
+	}
+	got, err := repo.GetByHandleAndOrg("gold", "org-1")
+	if err != nil || got.Description != "For partners" || len(got.Conditions) != 1 {
+		t.Fatalf("gold = %+v, %v", got, err)
+	}
+}
+
+// An update refuses a description the database can't store yet, and a configuration that can't be
+// read or a missing table fails the usage read and the delete.
+func TestSubscriptionPlanRepo_UsageAndUpdateFailures(t *testing.T) {
+	db := newPlanTestDB(t)
+	repo := NewSubscriptionPlanRepo(db)
+	plan := newPlan("gold")
+	if err := repo.Create(plan); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO projects (uuid, handle, display_name, organization_uuid) VALUES ('proj-1', 'default', 'Default', 'org-1')`,
+		`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('mcp-1', 'Mcp', 'org-1')`,
+		`INSERT INTO mcp_proxies (uuid, organization_uuid, handle, display_name, project_uuid, configuration) VALUES
+			('mcp-1', 'org-1', 'weather-mcp', 'Weather MCP', 'proj-1', '{')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	_, err := repo.GetUsage(plan.UUID, plan.Handle, "org-1")
+	wantErrContaining(t, "unreadable MCP proxy configuration", err, "failed to decode the configuration of MCP proxy weather-mcp")
+	_, err = repo.DeleteWithReferences(plan.UUID, plan.Handle, "org-1")
+	wantErrContaining(t, "delete with an unreadable MCP proxy configuration", err, "failed to remove the plan from MCP proxy mcp-1")
+
+	dropTable(t, db, "mcp_proxies")
+	_, err = repo.GetUsage(plan.UUID, plan.Handle, "org-1")
+	wantErrContaining(t, "usage without the MCP proxy table", err, "failed to list MCP proxies")
+	_, err = repo.DeleteWithReferences(plan.UUID, plan.Handle, "org-1")
+	wantErrContaining(t, "delete without the MCP proxy table", err, "failed to list MCP proxies")
+
+	if _, err := db.Exec(`ALTER TABLE subscription_plans DROP COLUMN description`); err != nil {
+		t.Fatal(err)
+	}
+	stale := NewSubscriptionPlanRepo(db)
+	plan.Description = "For partners"
+	if err := stale.Update(plan); !errors.Is(err, ErrPlanDescriptionColumnMissing) {
+		t.Errorf("update with a description = %v, want ErrPlanDescriptionColumnMissing", err)
+	}
+}
