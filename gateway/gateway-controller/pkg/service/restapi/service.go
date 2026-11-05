@@ -204,6 +204,14 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 				s.waitForDeploymentAndPush(cfgID, params.CorrelationID, deployedAt, log)
 			})
 		}
+
+		// A new artifact has no local API keys: a previous artifact with the same UUID
+		// took its keys with it when it was deleted. Pull the control plane's keys so a
+		// re-created artifact (e.g. a resumed agent) accepts them again.
+		if !result.IsUpdate && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
+			storedConfig := result.StoredConfig
+			go s.controlPlaneClient.SyncAPIKeysForArtifact(storedConfig)
+		}
 	}
 
 	return &CreateResult{
