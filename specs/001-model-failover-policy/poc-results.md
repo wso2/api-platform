@@ -2040,3 +2040,51 @@ attempt a pristine request, or make each chain responsible for clearing what pre
 
 Not shipped: the policy is unpublished (T040 deferred), so there is no customer exposure. It must be
 fixed before publishing.
+
+---
+
+## T030k0: Envoy DOES flag a mid-stream reset on a 200 (2026-11-05)
+
+The filtered-access-log design for T030k rests on one assumption: that Envoy sets a response flag
+when the upstream resets **after** a `200` has already gone to the client. Probed rather than
+assumed, because an unflagged entry would mean the sink has to carry every request.
+
+Probe backend (`/tmp/truncbackend`): sends `200` + `Transfer-Encoding: chunked`, one chunk, flushes,
+**waits 1.5s**, then closes with `SetLinger(0)` — an RST mid-stream. A `/whole` endpoint returning a
+complete SSE response is the control. Plain `RestApi` in front of it, no failover involved.
+
+### Result
+
+```
+/whole     (control)          200 -    via_upstream
+/truncate  (early reset)      502 UPE  upstream_reset_after_response_started{protocol_error}
+/truncate  (mid-stream reset) 200 UPE  upstream_reset_after_response_started{protocol_error}
+```
+
+The client on the third line received `200 OK`, `content-type: text/event-stream`, 20 bytes, and
+curl exit **18** (`CURLE_PARTIAL_FILE`) — a success with a truncated body, which is exactly the
+request the policy currently banks as healthy.
+
+**A flag is set (`UPE`), and the control carries none (`-`).** `response_flag_filter` can therefore
+select these entries, so the gRPC sink can be scoped to failures and healthy traffic costs nothing.
+That was the open question and it is answered.
+
+### The delay is load-bearing, and the first attempt without it was wrong
+
+The first version of the probe closed immediately after the chunk and produced a **502**, not a
+truncated 200 — line 2 above. Envoy had not yet committed the response downstream, so it converted
+the reset into a clean error.
+
+That is a finding, not just a probe artefact: **a reset that arrives before the response is committed
+becomes a 502 the policy already grades correctly today.** The defect is confined to resets that
+happen after the client has the `200`. The bug is narrower than T030k's original wording implies,
+and a scenario that does not stream first would "pass" while testing nothing.
+
+### One thing NOT established
+
+`UPE` is the flag for *this* failure mode — a chunked stream cut without its terminating zero-length
+chunk is literally a protocol error. A provider dying another way (clean FIN mid-SSE, HTTP/2
+`RST_STREAM`, idle-timeout at a load balancer) may produce `UC`, `UR` or another member of the
+family. The filter must list the family rather than the single value this probe produced; deriving
+that list from Envoy's response-flag documentation is part of T030k1, not something this probe
+settled.

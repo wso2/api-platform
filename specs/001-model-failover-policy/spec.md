@@ -712,6 +712,40 @@ though the routing policy keeps nominating it, and that load spreads across the 
 
 **Observability**
 
+- **FR-030n** *(added 2026-11-05)*: Health grading MUST account for an attempt that **fails after its
+  response headers**. A response that opens `200` and is then cut mid-body is currently recorded as a
+  **success**, because grading runs in the response-headers phase and the headers were fine.
+
+  That is worse than recording nothing. The false success resets the consecutive-failure counter and
+  adds a healthy sample to the error-rate window, so a provider that truncates everything is not
+  merely undetected — it is **immunised**: real failures it also produces are diluted below the rate
+  threshold and their counter is reset before it can trip. Measured against the shipped rules, a
+  target failing 30% outright and truncating the other 70% is never suspended, while the same target
+  with the truncations simply not recorded is suspended on both criteria.
+
+  Mid-stream *retry* stays out of scope (FR-013): once bytes reach the client the attempt sequence is
+  over, and Envoy closed that as won't-fix. This requirement is about the **verdict**, not the retry.
+- **FR-030o** *(added 2026-11-05)*: The mechanism carrying that verdict MUST NOT depend on analytics
+  or traffic logging being enabled. Envoy publishes the outcome only through its access log
+  (`response_code_details: upstream_reset_after_response_started{...}`), and the gRPC access-log
+  sink and its cluster are generated today only when `IsCollectorEnabled()` — analytics or traffic
+  logging — **both of which default to off**. Failover is a second consumer of that sink and MUST
+  provision it for itself, so that a deployment with analytics disabled grades correctly and an
+  operator disabling analytics later cannot silently regress failover's health.
+
+  The sink MUST be filtered so healthy traffic costs nothing: `AccessLog.filter` applies to the gRPC
+  sink as it does to any other, and a `response_flag_filter` restricts entries to failing responses.
+  The ext_proc stream is NOT an alternative — the filter defines six processing steps and has no
+  stream-reset, termination or completion notification, so the engine cannot distinguish a response
+  that finished from one that was cut on that channel.
+- **FR-030p** *(added 2026-11-05)*: Where the outcome of an attempt cannot be verified, the system
+  MUST record **nothing** rather than a success. Verified-only accounting is what removes the
+  immunity described in FR-030n, and it holds whether or not FR-030o's signal is available.
+
+  Probe accounting is carved out deliberately: a half-open probe returning clean response headers
+  MUST still count toward `recoverAfterSuccesses`. Without that carve-out a target whose responses
+  are all streamed could never satisfy the recovery rule and would stay suspended permanently —
+  trading a false-success bug for a false-suspension one.
 - **FR-031**: The system MUST record, per request, each target attempted, the reason each attempt was
   treated as a failure, and the target that ultimately served the request. Where a distribution
   policy selected the first target, the record MUST make clear which target it selected.
