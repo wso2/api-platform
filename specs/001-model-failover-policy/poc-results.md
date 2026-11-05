@@ -1971,3 +1971,72 @@ Two further notes for anyone asserting on this log:
 - **The exhaustion response replaces upstream headers**, so `x-envoy-attempt-count` is not available
   on an exhausted chain and the log is the only observable. Prefer the header wherever the chain
   succeeds.
+
+---
+
+## DEFECT: a failed attempt's credential is forwarded to the next vendor (2026-11-05)
+
+Found by T024j on its first run. **One provider's API key is delivered to a different provider.**
+
+### What was observed
+
+A proxy with a dead, credentialed primary (`x-dead-key`) failing over to a healthy vendor B
+(`x-api-key`) with its own credential and transformer. The echo backend reports what B received:
+
+```json
+"path": "/perattempt-b-upstream/v1/messages",
+"headers": {
+  "X-Api-Key":  ["mf-perattempt-b-credential"],      // correct — B's own chain ran
+  "X-Dead-Key": ["mf-perattempt-dead-credential"]    // LEAK — attempt 1's credential
+}
+```
+
+The client sent neither header. `x-dead-key` is the dead vendor's configured auth header, applied
+by its per-attempt chain before its dial failed, and it was still on the request when attempt 2 was
+sent to a different vendor.
+
+### Mechanism (inferred, consistent with the code)
+
+Each attempt's chain emits only its OWN mutations. `upstreamHeadersResponse`
+(`policy-engine/internal/kernel/upstream_dispatch.go:263`) builds a `HeaderMutation` from that
+attempt's policy results and nothing else — there is no reset of what a previous attempt set, and
+`RemoveHeaders` carries only what a policy explicitly asked to remove. Header mutations applied at
+the upstream position persist on the request across retries, so attempt 2 inherits attempt 1's
+credential and then adds its own.
+
+Credential injection is appended last in a provider's chain, so this affects **every** cross-provider
+failover where the first target has an auth header the second does not overwrite. Same-header
+providers are masked by overwrite (`OVERWRITE_IF_EXISTS_OR_ADD`); different header names accumulate.
+
+### Why it was not caught earlier
+
+The existing cross-vendor scenario asserts only the positive half — that B's credential and format
+arrived. A chain leaking every previous attempt's headers satisfies that assertion perfectly. The
+defect is invisible from the client: the request succeeds, the transformer reports success, and the
+only trace is a key sitting in a body a third party received.
+
+### This also corrects a conclusion drawn earlier the same day
+
+T024h was closed hours before with the credential clause marked "structural — the upstream position
+is REQUEST ONLY, so a credential injected there cannot reach a response." That sentence is true and
+irrelevant: FR-042's exposure is the **request** path to the wrong vendor, not the response path.
+The reasoning answered a narrower question than the requirement asks. T024h's original third clause
+was live after all, and its second clause — "strip the internal provider-selection header" — was
+dismissed as stale on the grounds that no such header exists, when the hygiene principle behind it
+is exactly what is missing here.
+
+### The fix is a design decision, not a patch
+
+It belongs to **T021b** (the per-attempt re-entrancy contract), which asks precisely this: hand each
+attempt a pristine request, or make each chain responsible for clearing what preceded it.
+
+- **Reset per attempt.** "Pristine" must mean *post-downstream-chain*, never *as the client sent
+  it* — resetting to the client's bytes would discard PII redaction and guardrail output, breaking
+  FR-012a and the guarantee T084 exists to protect. That interaction is what makes this a decision
+  rather than a one-line change.
+- **Remove siblings' headers.** The controller knows every provider's auth header name on the
+  operation and could have each chain remove the others'. Narrower, but needs those names plumbed
+  to the per-attempt chain, and it only covers headers the control plane knows about.
+
+Not shipped: the policy is unpublished (T040 deferred), so there is no customer exposure. It must be
+fixed before publishing.

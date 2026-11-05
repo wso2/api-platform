@@ -722,6 +722,184 @@ Feature: Automatic fallback to a healthy model
     Then the response status code should be 200
 
   # ====================================================================
+  # FR-041/FR-042 — a per-attempt chain runs ONLY on its own target's attempt
+  # ====================================================================
+  #
+  # The scenario above proves the positive half: the attempt routed to vendor Y
+  # carried Y's transformer and Y's credential. That alone does not establish
+  # isolation -- a chain that ran on EVERY attempt would satisfy it just as well.
+  # This scenario asserts the negative half in both directions, which is where
+  # the security property actually lives:
+  #
+  #   1. a credential belonging to the attempt that FAILED must not travel to the
+  #      attempt that succeeds (FR-042), and
+  #   2. a provider configured on the proxy but not selected must not have its
+  #      chain run on somebody else's attempt (FR-041).
+  #
+  # Both failures are silent. The client gets its 200 either way, the transformer
+  # reports success either way, and the only trace is a credential sitting in a
+  # request body that a different vendor received -- which is to say, a key handed
+  # to a third party.
+  #
+  # Two chains on one proxy so both directions are reachable from one deployment:
+  # the first ends on vendor B after a dead first attempt, the second lands on the
+  # main provider and never touches B at all. The upstreams are echo backends, so
+  # what the response reports IS what that vendor received.
+
+  Scenario: A provider's credential and transformer reach only the attempt routed to it
+    # Dead on purpose, and credentialed on purpose: its chain RUNS (the credential
+    # is injected before the dial is attempted) and only then does the dial fail.
+    # That is exactly the state from which a leak into attempt 2 could happen.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-perattempt-dead-provider
+      spec:
+        displayName: MF Per-Attempt Dead
+        version: v1.0
+        template: openai
+        context: /mf-perattempt-dead-ctx
+        upstream:
+          url: http://mf-perattempt-nonexistent:9080/perattempt-dead
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-perattempt-b-provider
+      spec:
+        displayName: MF Per-Attempt Vendor B
+        version: v1.0
+        template: openai
+        context: /mf-perattempt-b-ctx
+        upstream:
+          url: http://sample-backend:9080/perattempt-b-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-perattempt-c-provider
+      spec:
+        displayName: MF Per-Attempt Vendor C
+        version: v1.0
+        template: openai
+        context: /mf-perattempt-c-ctx
+        upstream:
+          url: http://sample-backend:9080/perattempt-c-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Vendor C is the proxy's main provider and carries NO transformer and no
+    # credential of its own, so anything vendor-specific appearing in what C
+    # received came from a chain that had no business running.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-perattempt-proxy
+      spec:
+        displayName: MF Per-Attempt Isolation Proxy
+        version: v1.0
+        context: /mf-perattempt-proxy
+        provider:
+          id: mf-perattempt-c-provider
+        additionalProviders:
+          - id: mf-perattempt-dead-provider
+            as: dead-vendor
+            auth:
+              type: api-key
+              header: x-dead-key
+              value: mf-perattempt-dead-credential
+          - id: mf-perattempt-b-provider
+            as: vendor-b
+            auth:
+              type: api-key
+              header: x-api-key
+              value: mf-perattempt-b-credential
+            transformer:
+              type: openai-to-anthropic-transformer
+              version: v0
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      provider: dead-vendor
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: vendor-b
+                    - model: gpt-4o-mini
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # --- Direction 1: the failed attempt's credential must not travel forward ---
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-perattempt-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    # Anchors: vendor B's own chain did run on the attempt routed to B. Without
+    # these the absence assertion below could pass on an empty or unreported body.
+    And the response body should contain "/perattempt-b-upstream/v1/messages"
+    And the response body should contain "mf-perattempt-b-credential"
+    # The claim. Attempt 1 had the dead vendor's key injected before its dial
+    # failed; attempt 2 must be built from the downstream request, not from what
+    # attempt 1 left behind. A failure here is one vendor's API key delivered to
+    # another vendor.
+    And the response body should not contain "mf-perattempt-dead-credential"
+
+    # --- Direction 2: an unselected provider's chain must not run at all ---
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-perattempt-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # One attempt: this chain has no fallbacks, so the request ends on vendor C.
+    And the response should report one upstream attempt
+    # Anchor: C received the request, and in the client's original shape.
+    And the response body should contain "/perattempt-c-upstream/chat/completions"
+    # The claim. Vendor B is configured on this same proxy with a credential and a
+    # transformer, and neither may touch an attempt routed to C. The path assertion
+    # above already fails if B's transformer ran; these name the two artefacts
+    # directly so the reason is unambiguous.
+    And the response body should not contain "mf-perattempt-b-credential"
+    And the response body should not contain "/v1/messages"
+    And the response body should not contain "mf-perattempt-dead-credential"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-perattempt-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-perattempt-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-perattempt-b-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-perattempt-c-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
   # FR-030d — attaching failover to one API changes nothing for another
   # ====================================================================
 
