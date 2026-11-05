@@ -2240,15 +2240,28 @@ paths:
       tags:
         - MCP Server Content
       summary: Get an MCP server content file
-      description: Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
+      description: |
+        Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
+
+        Image files (`type=IMAGE`) are publicly readable so that an MCP server's icon renders on the public
+        listing and landing pages without a session. `orgId` says which organization's image is read.
+        All other content types require a session: an anonymous request for a non-image type is rejected.
       operationId: getMcpServerContentFile
-      security:
-        - OAuth2Security:
-            - dp:mcp_server_content:read
-            - dp:mcp_server_content:manage
+      security: []
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
         - $ref: "#/components/parameters/contentFileNameQuery"
+        - name: orgId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Organization uuid of the image to read. Used only for `type=IMAGE`. In multi-organization
+            mode, an `orgId` that names an existing organization selects it, even when the session
+            belongs to another organization. An unknown `orgId` falls back to the session's
+            organization, then to this instance's configured one. In single-organization mode it is
+            ignored: the session's organization is used, or the configured one when there is no session.
       responses:
         "200":
           $ref: "#/components/responses/ContentAssetResponse"

@@ -1358,17 +1358,22 @@ function validateTemplateExpressions(strContent) {
     }
 }
 
+/**
+ * URL of an API's or MCP server's image. MCP servers are read from /mcp-servers, as /apis does
+ * not resolve them. orgId lets the (public) image read resolve the organisation for visitors
+ * with no session — mirrors getOrgAsset.
+ */
+function apiImageUrl(orgId, api, fileName) {
+    const base = api.type === constants.API_TYPE.MCP ? '/mcp-servers/' : constants.ROUTE.API_FILE_PATH;
+    return `${constants.API_PORTAL_API.orgPath(orgId)}${base}${api.id}${constants.API_TEMPLATE_FILE_NAME}${fileName}${constants.ORG_ID_PARAM}${orgId}`;
+}
+
 function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
         const images = element.apiImageMetadata;
-        let apiImageUrl;
         for (const key in images) {
-            apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            // orgId is appended so the (public) image endpoint can resolve the view for
-            // anonymous visitors with no session — mirrors getOrgAsset.
-            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
-            element.apiImageMetadata[key] = modifiedApiImageURL;
+            element.apiImageMetadata[key] = apiImageUrl(orgId, element, images[key]);
         }
     });
 }
@@ -1598,6 +1603,7 @@ module.exports = {
     readFilesInDirectory,
     validateTemplateExpressions,
     appendAPIImageURL,
+    apiImageUrl,
     appendSubscriptionPlanDetails,
     listFiles,
     readDocFiles,
