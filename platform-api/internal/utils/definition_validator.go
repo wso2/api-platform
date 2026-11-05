@@ -18,14 +18,57 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/pb33f/libopenapi"
 	openapivalidator "github.com/pb33f/libopenapi-validator"
 	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
+	"github.com/wso2/api-platform/httpkit/httputil"
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
+
+// SpecValidationError wraps spec validation errors so handlers can render them
+// as a structured JSON response matching the validate-openapi {message, path} shape.
+type SpecValidationError struct {
+	Errors []api.OpenAPIValidationError
+}
+
+func (e *SpecValidationError) Error() string {
+	msgs := make([]string, 0, len(e.Errors))
+	for _, err := range e.Errors {
+		msgs = append(msgs, err.Message)
+	}
+	return strings.Join(msgs, "; ")
+}
+
+func HandleSpecValidationError(w http.ResponseWriter, err error) error {
+	var specErr *SpecValidationError
+	if errors.As(err, &specErr) {
+		return WriteSpecValidationErrors(w, specErr.Errors)
+	}
+	return err
+}
+
+func WriteSpecValidationErrors(w http.ResponseWriter, errs []api.OpenAPIValidationError) error {
+	type specErrorResponse struct {
+		Status  string                       `json:"status"`
+		Code    string                       `json:"code"`
+		Message string                       `json:"message"`
+		Errors  []api.OpenAPIValidationError `json:"errors,omitempty"`
+	}
+	httputil.WriteJSON(w, http.StatusBadRequest, specErrorResponse{
+		Status:  "error",
+		Code:    apperror.CodeCommonValidationFailed,
+		Message: "OpenAPI specification is not valid",
+		Errors:  errs,
+	})
+	return nil
+}
 
 // TruncateAtRuneBoundary returns s truncated so it never exceeds maxBytes AND
 // never splits a multi-byte UTF-8 rune
