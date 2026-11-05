@@ -76,35 +76,47 @@ type Steps struct {
 	dataPlaneURLResolver func(context.Context, string) (string, error)
 }
 
+// stepDefinition pairs a Gherkin step pattern with its handler.
+type stepDefinition struct {
+	pattern string
+	handler any
+}
+
 // Register binds APIP cloud-specific Gherkin steps.
 func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel *httpx.Funnel) {
 	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client()}
-	sc.Step(`^I obtain an APIP cloud console token$`, s.obtainToken)
-	sc.Step(`^I find the default APIP project$`, s.findDefaultProject)
-	sc.Step(`^I find an active APIP gateway$`, s.findActiveGateway)
-	sc.Step(`^I create a synthetic REST API in the default project$`, s.createAPI)
-	sc.Step(`^I deploy the synthetic REST API to the active gateway$`, s.deployAPI)
-	sc.Step(`^the synthetic REST API deployment should become DEPLOYED$`, s.waitDeployment)
-	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, s.sendUntilStatus)
-	sc.Step(`^the synthetic REST API data-plane response should contain post 1$`, s.assertAPIResponse)
-	sc.Step(`^I delete the synthetic REST API$`, s.deleteAPI)
-	sc.Step(`^the synthetic REST API should eventually be absent$`, s.verifyAPIDeleted)
+	for _, step := range s.stepDefinitions() {
+		sc.Step(step.pattern, step.handler)
+	}
+}
 
-	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
-	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
-	sc.Step(`^I delete the synthetic APIP project$`, s.deleteProject)
-	sc.Step(`^the synthetic APIP project should eventually be absent$`, s.verifyProjectDeleted)
-
-	sc.Step(`^I create a synthetic non-production APIP environment$`, s.createEnvironment)
-	sc.Step(`^creating the same APIP environment again should return conflict$`, s.duplicateEnvironment)
-	sc.Step(`^I delete the synthetic APIP environment$`, s.deleteEnvironment)
-	sc.Step(`^deleting the synthetic APIP environment should eventually return not found$`, s.verifyEnvironmentDeleted)
-
-	sc.Step(`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment)
-	sc.Step(`^I create a synthetic managed APIP gateway$`, s.createManagedGateway)
-	sc.Step(`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway)
-	sc.Step(`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway)
-	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
+func (s *Steps) stepDefinitions() []stepDefinition {
+	steps := []stepDefinition{
+		{`^I obtain an APIP cloud console token$`, s.obtainToken},
+		{`^I find the default APIP project$`, s.findDefaultProject},
+		{`^I find an active APIP gateway$`, s.findActiveGateway},
+		{`^I create a synthetic REST API in the default project$`, s.createAPI},
+		{`^I deploy the synthetic REST API to the active gateway$`, s.deployAPI},
+		{`^the synthetic REST API deployment should become DEPLOYED$`, s.waitDeployment},
+		{`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, s.sendUntilStatus},
+		{`^the synthetic REST API data-plane response should contain post 1$`, s.assertAPIResponse},
+		{`^I delete the synthetic REST API$`, s.deleteAPI},
+		{`^the synthetic REST API should eventually be absent$`, s.verifyAPIDeleted},
+		{`^I create a synthetic APIP project$`, s.createProject},
+		{`^the synthetic APIP project should be retrievable by handle$`, s.getProject},
+		{`^I delete the synthetic APIP project$`, s.deleteProject},
+		{`^the synthetic APIP project should eventually be absent$`, s.verifyProjectDeleted},
+		{`^I create a synthetic non-production APIP environment$`, s.createEnvironment},
+		{`^creating the same APIP environment again should return conflict$`, s.duplicateEnvironment},
+		{`^I delete the synthetic APIP environment$`, s.deleteEnvironment},
+		{`^deleting the synthetic APIP environment should eventually return not found$`, s.verifyEnvironmentDeleted},
+		{`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment},
+		{`^I create a synthetic managed APIP gateway$`, s.createManagedGateway},
+		{`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway},
+		{`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway},
+		{`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted},
+	}
+	return append(steps, s.publicationStepDefinitions()...)
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
@@ -128,7 +140,53 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(cleanup.KindEnvironment, cloudDeleter(topo, client, "/environments", true)); err != nil {
 		return err
 	}
+	if err := reg.RegisterDeleter(cleanup.KindGraphQLAPI, cloudDeleter(topo, client, "/graphql-apis", false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cleanup.KindSubscriptionPlan, cloudDeleter(topo, client, "/subscription-plans", false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cloudPublicationKind, cloudRequestDeleter(topo, client, unpublishRequest)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cloudDocumentKind, cloudRequestDeleter(topo, client, deleteDocumentRequest)); err != nil {
+		return err
+	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))
+}
+
+// cloudRequestDeleter sends the request toRequest builds from a resource id, and accepts the
+// answers settled reports as leaving nothing behind.
+func cloudRequestDeleter(
+	topo *frameworkruntime.Topology, client *httpx.Client,
+	toRequest func(id string) (method, path string, settled func(*httpx.Response) bool, err error),
+) cleanup.Deleter {
+	return func(ctx context.Context, resource cleanup.Resource) error {
+		method, path, settled, err := toRequest(resource.ID)
+		if err != nil {
+			return err
+		}
+		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+		if err != nil {
+			return err
+		}
+		bearer, err := bearerToken(ctx)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(ctx, httpx.Request{
+			Method:  method,
+			URL:     cloudAPIURL(base, path),
+			Headers: map[string]string{"Authorization": "Bearer " + bearer},
+		}, 0, 0)
+		if err != nil {
+			return err
+		}
+		if !settled(resp) {
+			return responseError(resp)
+		}
+		return nil
+	}
 }
 
 func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collection string, waitForNotFound bool) cleanup.Deleter {

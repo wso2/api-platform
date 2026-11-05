@@ -24,3 +24,9 @@ blocks:
       - name: apip-gateway
         features:
           - features/apip_gateway.feature
+      - name: apip-publication
+        features:
+          - features/apip_publication.feature
+      - name: apip-publication-validation
+        features:
+          - features/apip_publication_validation.feature
