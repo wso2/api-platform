@@ -46,7 +46,6 @@ test('PostgreSQL connection, authentication and shutdown states are counted', ()
 test('node-postgres connection messages are counted', () => {
     assert.equal(isConnectionFailure(new Error('Connection terminated unexpectedly')), true);
     assert.equal(isConnectionFailure(new Error('Connection terminated due to connection timeout')), true);
-    assert.equal(isConnectionFailure(new Error('timeout exceeded when trying to connect')), true);
 });
 
 test('SQL Server connection failures are counted', () => {
@@ -89,8 +88,14 @@ test('statement errors and everything else are not counted', () => {
 test('failureKind tells timeouts apart from other failures', () => {
     assert.equal(failureKind(error({ code: 'ETIMEDOUT' })), 'timeout');
     assert.equal(failureKind(error({ code: 'ETIMEOUT' })), 'timeout');
-    assert.equal(failureKind(new Error('timeout exceeded when trying to connect')), 'timeout');
     assert.equal(failureKind(new Error('Connection terminated due to connection timeout')), 'timeout');
     assert.equal(failureKind(error({ code: 'ECONNREFUSED' })), 'unreachable');
     assert.equal(failureKind(undefined), 'unreachable');
+});
+
+test('a caller timing out in the pool queue is a busy pool, not an unreachable database', () => {
+    // pg-pool raises this only for a checkout that waited too long for a free connection.
+    const queued = new Error('timeout exceeded when trying to connect');
+    assert.equal(isConnectionFailure(queued), false);
+    assert.equal(isConnectionFailure(new AggregateError([queued])), false);
 });

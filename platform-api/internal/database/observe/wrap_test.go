@@ -196,7 +196,7 @@ func TestWrapHealthPingIsNotActivity(t *testing.T) {
 	require.NoError(t, db.PingContext(WithHealthPing(context.Background())))
 
 	s := snapshot(w, clk)
-	assert.Equal(t, 2, s.Attempts, "connect and ping")
+	assert.Zero(t, s.Attempts, "the health ping's connect and ping are not attempts")
 	assert.Equal(t, clk.Now(), s.LastPing)
 	assert.True(t, s.LastActivity.IsZero())
 

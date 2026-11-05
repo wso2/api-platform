@@ -80,7 +80,8 @@ type Window struct {
 
 // Snapshot is the state of a window at one instant.
 type Snapshot struct {
-	// Attempts is the number of operations recorded within the window.
+	// Attempts is the number of application operations recorded within the window;
+	// health pings are not counted.
 	Attempts int
 	// Failures is how many of those operations were connection failures.
 	Failures int
@@ -128,10 +129,14 @@ func (w *Window) record(ctx context.Context, err error, failed bool, kind Failur
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if isHealthPing(ctx) {
+		// The health check's own ping only marks when it ran. It is not an attempt: the
+		// failure ratio judges application traffic alone, so failed pings (a startup
+		// wait retrying a down database, say) cannot keep the database reported down
+		// after it is back. The next ping decides that.
 		w.lastPing = now
-	} else {
-		w.lastActivity = now
+		return
 	}
+	w.lastActivity = now
 	if errors.Is(err, context.Canceled) {
 		return
 	}

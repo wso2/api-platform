@@ -337,8 +337,8 @@ func TestDatabaseCheckPoolRuleKeepsConnectionReason(t *testing.T) {
 	assert.Equal(t, errDatabaseUnreachable, f.evaluate())
 }
 
-// With a real pool, the check's own ping is recorded in the shared window without
-// looking like application traffic.
+// With a real pool, the check's own ping marks the shared window's last ping time
+// without looking like application traffic or counting as an attempt.
 func TestDatabaseCheckOwnPingIsNotTraffic(t *testing.T) {
 	clk := newTestClock()
 	settings := databaseSettings(2 * time.Second)
@@ -354,13 +354,13 @@ func TestDatabaseCheckOwnPingIsNotTraffic(t *testing.T) {
 	require.NoError(t, check(context.Background()))
 	after := window.Snapshot(clk.Now())
 
-	assert.Greater(t, after.Attempts, before.Attempts)
+	assert.Equal(t, before.Attempts, after.Attempts)
 	assert.Equal(t, before.LastActivity, after.LastActivity)
 	assert.Equal(t, clk.Now(), after.LastPing)
 
 	clk.Advance(3 * time.Second)
 	require.NoError(t, check(context.Background()))
-	assert.Equal(t, after.Attempts, window.Snapshot(clk.Now()).Attempts, "no second ping within the idle period")
+	assert.Equal(t, after.LastPing, window.Snapshot(clk.Now()).LastPing, "no second ping within the idle period")
 }
 
 // netTimeout is a network error that reports a timeout.

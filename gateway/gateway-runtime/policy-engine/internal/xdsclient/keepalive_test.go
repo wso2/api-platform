@@ -34,8 +34,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
-// silentADSServer accepts configuration streams and holds them open without sending
-// anything, like a controller with nothing to push. It counts streams that end.
+// silentADSServer accepts configuration streams, sends one empty route configuration
+// (the client counts as connected only once a response arrives) and then holds the
+// stream open without sending anything more, like a controller with nothing to push.
+// It counts streams that end.
 type silentADSServer struct {
 	discoveryv3.UnimplementedAggregatedDiscoveryServiceServer
 	closed atomic.Int32
@@ -43,6 +45,9 @@ type silentADSServer struct {
 
 func (s *silentADSServer) StreamAggregatedResources(stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
 	defer s.closed.Add(1)
+	if err := stream.Send(&discoveryv3.DiscoveryResponse{TypeUrl: RouteConfigTypeURL, VersionInfo: "v1", Nonce: "n1"}); err != nil {
+		return nil
+	}
 	for {
 		if _, err := stream.Recv(); err != nil {
 			return nil

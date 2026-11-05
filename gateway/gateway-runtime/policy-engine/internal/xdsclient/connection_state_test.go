@@ -19,8 +19,11 @@
 package xdsclient
 
 import (
+	"errors"
 	"io"
+	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +33,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
@@ -215,7 +221,7 @@ func runStream(t *testing.T, client *Client, responses ...*discoveryv3.Discovery
 	client.mu.Lock()
 	client.stream = stream
 	client.mu.Unlock()
-	assert.Equal(t, io.EOF, client.processStream(stream))
+	assert.Equal(t, io.EOF, client.processStream(stream, nil))
 }
 
 func TestConnectionStatus_ConfigReceivedOnAnyAcceptedResponse(t *testing.T) {
@@ -238,4 +244,69 @@ func TestConnectionStatus_ConfigReceivedOnAnyAcceptedResponse(t *testing.T) {
 	client.setState(StateConnected)
 	client.setState(StateReconnecting)
 	assert.True(t, client.ConnectionStatus().ConfigReceived)
+}
+
+func TestProcessStream_ConnectedOnlyOnceAResponseArrives(t *testing.T) {
+	client := newTestClient(t)
+	calls := 0
+	onFirst := func() { calls++ }
+
+	// A stream the controller rejects before sending anything never counts.
+	rejected := &mockADSStream{recvError: errors.New("rpc error: code = PermissionDenied")}
+	assert.Error(t, client.processStream(rejected, onFirst))
+	assert.Equal(t, 0, calls)
+
+	// The first response marks the stream accepted, once.
+	stream := &mockADSStream{recvResponses: []*discoveryv3.DiscoveryResponse{
+		{TypeUrl: RouteConfigTypeURL, VersionInfo: "v1", Nonce: "n1"},
+		{TypeUrl: RouteConfigTypeURL, VersionInfo: "v2", Nonce: "n2"},
+	}}
+	client.mu.Lock()
+	client.stream = stream
+	client.mu.Unlock()
+	assert.Equal(t, io.EOF, client.processStream(stream, onFirst))
+	assert.Equal(t, 1, calls)
+}
+
+// rejectingADSServer refuses every configuration stream, like a controller that no
+// longer accepts this runtime's client certificate.
+type rejectingADSServer struct {
+	discoveryv3.UnimplementedAggregatedDiscoveryServiceServer
+	streams atomic.Int32
+}
+
+func (s *rejectingADSServer) StreamAggregatedResources(discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesServer) error {
+	s.streams.Add(1)
+	return status.Error(codes.PermissionDenied, "node identity not authorized")
+}
+
+func TestConnectionStatus_StreamsRejectedEveryCycleKeepTheOutage(t *testing.T) {
+	recordConnectionMetrics(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	ads := &rejectingADSServer{}
+	server := grpc.NewServer()
+	discoveryv3.RegisterAggregatedDiscoveryServiceServer(server, ads)
+	go func() { _ = server.Serve(ln) }()
+	t.Cleanup(server.Stop)
+
+	cfg := createValidTestConfig()
+	cfg.ServerAddress = ln.Addr().String()
+	cfg.ConnectTimeout = 2 * time.Second
+	cfg.InitialReconnectDelay = 20 * time.Millisecond
+	cfg.MaxReconnectDelay = 5 * time.Second
+	k, reg := createTestKernelAndRegistry(t)
+	client, err := NewClient(cfg, k, reg, resolver.DefaultRegistry())
+	require.NoError(t, err)
+	since := client.ConnectionStatus().DisconnectedSince
+	require.NoError(t, client.Start())
+	t.Cleanup(client.Stop)
+
+	require.Eventually(t, func() bool { return ads.streams.Load() >= 4 },
+		5*time.Second, 10*time.Millisecond, "the client keeps retrying")
+	status := client.ConnectionStatus()
+	assert.False(t, status.Connected, "a rejected stream is not a connection")
+	assert.Equal(t, since, status.DisconnectedSince, "the outage started before the first attempt and is still running")
+	assert.Greater(t, client.reconnectManager.GetCurrentDelay(), cfg.InitialReconnectDelay,
+		"the backoff grows instead of resetting on every rejected stream")
 }

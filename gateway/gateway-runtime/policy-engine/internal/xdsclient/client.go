@@ -318,14 +318,12 @@ func (c *Client) connectAndRun() error {
 	c.stream = stream
 	c.mu.Unlock()
 
-	c.setState(StateConnected)
-	c.reconnectManager.Reset()
-
-	// Record successful connection metrics
-	metrics.XDSUpdatesTotal.WithLabelValues("success", "xds").Inc()
-	metrics.ContextBuildDurationSeconds.WithLabelValues("xds_connection").Observe(time.Since(startTime).Seconds())
-
-	slog.InfoContext(c.ctx, "Connected to xDS server", "server", c.config.ServerAddress)
+	// Opening the stream does not mean the controller accepted it: a controller that
+	// rejects every stream still lets it open. The client counts as connected, and the
+	// reconnect backoff is reset, only once the first response arrives (see
+	// processStream), so a stream that is rejected every cycle neither restarts the
+	// outage clock nor redials at the minimum backoff.
+	slog.InfoContext(c.ctx, "Opened xDS stream", "server", c.config.ServerAddress)
 
 	// Send initial subscription request
 	if err := c.sendDiscoveryRequest("", ""); err != nil {
@@ -333,7 +331,16 @@ func (c *Client) connectAndRun() error {
 	}
 
 	// Process responses
-	return c.processStream(stream)
+	return c.processStream(stream, func() {
+		c.setState(StateConnected)
+		c.reconnectManager.Reset()
+
+		// Record successful connection metrics
+		metrics.XDSUpdatesTotal.WithLabelValues("success", "xds").Inc()
+		metrics.ContextBuildDurationSeconds.WithLabelValues("xds_connection").Observe(time.Since(startTime).Seconds())
+
+		slog.InfoContext(c.ctx, "Connected to xDS server", "server", c.config.ServerAddress)
+	})
 }
 
 // dial establishes a gRPC connection to the xDS server
@@ -550,7 +557,10 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 }
 
 // processStream processes incoming DiscoveryResponse messages
-func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient) error {
+// processStream reads responses until the stream ends. onFirstResponse, when not nil,
+// runs once, when the first response arrives: that is when the controller has
+// accepted the stream.
+func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient, onFirstResponse func()) error {
 	for {
 		// Receive response
 		resp, err := stream.Recv()
@@ -560,6 +570,10 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 		}
 		if err != nil {
 			return fmt.Errorf("error receiving from stream: %w", err)
+		}
+		if onFirstResponse != nil {
+			onFirstResponse()
+			onFirstResponse = nil
 		}
 
 		// Process response

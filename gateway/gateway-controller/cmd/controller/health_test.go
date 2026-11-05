@@ -37,6 +37,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -267,11 +268,17 @@ func TestDatabaseWaitRefreshSeesRecoveryAtTheNextRetry(t *testing.T) {
 	clk := newTestClock()
 	settings := databaseSettings(200 * time.Millisecond)
 	window := observe.NewWindow(settings.FailureWindow, clk.Now)
-	dbCheck := buildDatabaseCheck(pingFunc(func(context.Context) error {
-		if pings.Add(1) == 1 {
-			return errors.New("connection refused")
+	// The ping records into the window under the health-ping context, as the real
+	// pool does. Five failed attempts reach min_attempts, so if pings counted toward
+	// the failure ratio the stale failures would keep the check down after recovery.
+	const failedAttempts = 5
+	dbCheck := buildDatabaseCheck(pingFunc(func(ctx context.Context) error {
+		var err error
+		if pings.Add(1) <= failedAttempts {
+			err = &net.OpError{Op: "dial", Err: errors.New("connection refused")}
 		}
-		return nil
+		window.Record(observe.WithHealthPing(ctx), err)
+		return err
 	}), window, settings, clk.Now)
 	checker.Register("database", dbCheck.check, health.WithTimeout(settings.CheckTimeout))
 	w := newDatabaseWait(checker.Evaluate, time.Hour, nil, discardLogger())
@@ -289,8 +296,10 @@ func TestDatabaseWaitRefreshSeesRecoveryAtTheNextRetry(t *testing.T) {
 
 	require.NoError(t, w.run())
 
-	assert.Equal(t, startupRetryInitial, clk.Elapsed(), "recovery seen at the first retry")
-	assert.Equal(t, int32(2), pings.Load())
+	// Retries after 1s, 2s, 4s, 8s and then the 10s cap: recovery is seen at the first
+	// retry after the database is back, not once the failed pings age out.
+	assert.Equal(t, 25*time.Second, clk.Elapsed(), "recovery seen at the next retry")
+	assert.Equal(t, int32(failedAttempts+1), pings.Load())
 	assert.Equal(t, health.StatusUp, checker.Evaluate().Checks["database"].Status,
 		"health after the wait reports the fresh decision, not the failed first one")
 }
@@ -597,4 +606,63 @@ func TestServeHealthWhileWaitingGivesUp(t *testing.T) {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Controller.AdminServer.Port))
 	require.NoError(t, err, "the admin server port must be released")
 	ln.Close()
+}
+
+// The wait logs the driver's cause at WARN when it starts and again only when the cause
+// changes, and at ERROR with the cause when the wait expires, so an operator sees why
+// without debug logging.
+func TestDatabaseWaitLogsTheCause(t *testing.T) {
+	f := &fakeWait{}
+	w := f.newWait(10*time.Second, nil)
+	refused := fmt.Errorf("%w: dial tcp 10.0.0.5:5432: connect: connection refused", errDatabaseUnreachable)
+	causes := []error{refused, refused, context.DeadlineExceeded, context.DeadlineExceeded}
+	w.cause = func() error {
+		if i := f.calls - 1; i < len(causes) {
+			return causes[i]
+		}
+		return causes[len(causes)-1]
+	}
+
+	assert.ErrorIs(t, w.run(), errStartupWaitExpired)
+	logs := f.logs.String()
+	assert.Contains(t, logs, `level=WARN msg="waiting for the database before completing startup" startup_wait=10s cause="database unreachable: dial tcp 10.0.0.5:5432: connect: connection refused"`)
+	assert.Equal(t, 1, strings.Count(logs, "connection refused\"\n"), "the same cause is logged once:\n%s", logs)
+	assert.Equal(t, 1, strings.Count(logs, `level=WARN msg="database still not reachable" cause="database ping timed out"`), logs)
+	assert.Contains(t, logs, `level=ERROR msg="database not reachable within the startup wait" startup_wait=10s cause="database ping timed out"`)
+}
+
+// A cause retrying cannot fix ends the wait at once, with the cause at ERROR.
+func TestDatabaseWaitFailsFastWhenTheDatabaseRejectsTheConnection(t *testing.T) {
+	authFailed := &pgconn.PgError{Severity: "FATAL", Code: "28P01",
+		Message: `password authentication failed for user "gateway"`}
+	for name, firstFatal := range map[string]int{"at once": 0, "after a retry": 1} {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeWait{}
+			w := f.newWait(time.Minute, nil)
+			w.cause = func() error {
+				if f.calls-1 < firstFatal {
+					return fmt.Errorf("%w: connection refused", errDatabaseUnreachable)
+				}
+				return fmt.Errorf("%w: %w", errDatabaseUnreachable, authFailed)
+			}
+
+			assert.ErrorIs(t, w.run(), errStartupDatabaseRejected)
+			assert.Equal(t, firstFatal+1, f.calls, "no retry after the rejection")
+			assert.Contains(t, f.logs.String(), `level=ERROR msg="database rejected the connection; check the database settings"`)
+			assert.Contains(t, f.logs.String(), `password authentication failed for user`)
+		})
+	}
+}
+
+func TestRedactDatabaseCause(t *testing.T) {
+	for in, want := range map[string]string{
+		`cannot parse "host=db password=s3cret user=gw"`:          `cannot parse "host=db password=xxxxx user=gw"`,
+		`cannot parse "server=db;user id=sa;Password='a b';"`:     `cannot parse "server=db;user id=sa;Password=xxxxx;"`,
+		`dial postgres://gw:s3cret@db:5432/gw failed`:             `dial postgres://gw:xxxxx@db:5432/gw failed`,
+		`sqlserver://sa:p%40ss@db:1433?database=gw: login failed`: `sqlserver://sa:xxxxx@db:1433?database=gw: login failed`,
+		`password authentication failed for user "gw" (28P01)`:    `password authentication failed for user "gw" (28P01)`,
+		`dial tcp 10.0.0.5:5432: connect: connection refused`:     `dial tcp 10.0.0.5:5432: connect: connection refused`,
+	} {
+		assert.Equal(t, want, redactDatabaseCause(in), in)
+	}
 }

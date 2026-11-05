@@ -497,10 +497,10 @@ func TestDatabaseCheckThinTrafficStillPingsEachIdlePeriod(t *testing.T) {
 	if err := f.evaluate(); !errors.Is(err, errDatabaseUnreachable) {
 		t.Fatalf("outage under thin traffic = %v, want unreachable", err)
 	}
-	// The failed pings count toward the window here, so rule 1 may decide before a third
-	// ping is due; either way there is at most one ping per idle period.
-	if n := f.pool.pings.Load(); n < 2 || n > 4 {
-		t.Fatalf("pings = %d over 32s, want 2 to 4: at most one per idle period", n)
+	// Pings at 0s, 16s and 32s: one per idle period, and the failed ones never push the
+	// window to min_attempts.
+	if n := f.pool.pings.Load(); n != 3 {
+		t.Fatalf("pings = %d over 32s, want 3: one per idle period", n)
 	}
 
 	// It recovers; one successful query every 8 s still lets a ping see it.
@@ -741,8 +741,9 @@ func TestSaturationThreshold(t *testing.T) {
 }
 
 // With refresh wired as at startup, each retry checks the database afresh: a database
-// back one second after the failed first check is seen at the first retry, not after
-// the cache TTL and the idle period have run out.
+// that comes back after five failed checks is seen at the next retry, not after the
+// cache TTL and the idle period have run out, and not once the failed pings age out of
+// the window (they reach min_attempts, but pings never count toward the ratio).
 func TestDatabaseWaitRefreshSeesRecoveryAtTheNextRetry(t *testing.T) {
 	clk := newFakeClock()
 	window := observe.NewWindow(30*time.Second, clk.Now)
@@ -758,9 +759,13 @@ func TestDatabaseWaitRefreshSeesRecoveryAtTheNextRetry(t *testing.T) {
 	}
 	start := clk.Now()
 	w.now = clk.Now
+	const failedAttempts = 5
+	waits := 0
 	w.after = func(d time.Duration) <-chan time.Time {
 		clk.Advance(d)
-		pool.setPingErr(nil)
+		if waits++; waits == failedAttempts {
+			pool.setPingErr(nil)
+		}
 		ch := make(chan time.Time, 1)
 		ch <- clk.Now()
 		return ch
@@ -769,8 +774,12 @@ func TestDatabaseWaitRefreshSeesRecoveryAtTheNextRetry(t *testing.T) {
 	if err := w.run(); err != nil {
 		t.Fatalf("startup wait = %v, want nil", err)
 	}
-	if got := clk.Now().Sub(start); got != startupRetryInitial {
-		t.Fatalf("recovery seen after %s, want at the first retry (%s)", got, startupRetryInitial)
+	// Retries after 1s, 2s, 4s, 8s and then the 10s cap.
+	if got := clk.Now().Sub(start); got != 25*time.Second {
+		t.Fatalf("recovery seen after %s, want at the retry after the database is back (25s)", got)
+	}
+	if got := pool.pings.Load(); got != failedAttempts+1 {
+		t.Fatalf("pings = %d, want %d: one per attempt", got, failedAttempts+1)
 	}
 	if got := c.Evaluate().Checks["database"].Status; got != health.StatusUp {
 		t.Fatalf("health after the wait = %s, want the fresh decision (up)", got)

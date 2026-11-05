@@ -19,6 +19,8 @@ package observe
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
@@ -129,4 +131,29 @@ func TestFailureKind(t *testing.T) {
 	assert.Equal(t, FailureTimeout, failureKind(timeoutError{}))
 	assert.Equal(t, FailureUnreachable, failureKind(errRefused))
 	assert.Equal(t, FailureUnreachable, failureKind(&net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}))
+}
+
+func TestIsMisconfiguration(t *testing.T) {
+	wrap := func(err error) error { return fmt.Errorf("failed to connect: %w", err) }
+	for name, tt := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"postgres wrong password":      {wrap(&pgconn.PgError{Code: "28P01"}), true},
+		"postgres no pg_hba entry":     {wrap(&pgconn.PgError{Code: "28000"}), true},
+		"postgres unknown database":    {wrap(&pgconn.PgError{Code: "3D000"}), true},
+		"postgres starting up":         {wrap(&pgconn.PgError{Code: "57P03"}), false},
+		"sqlserver login failed":       {wrap(mssql.Error{Number: 18456}), true},
+		"sqlserver unknown database":   {wrap(mssql.Error{Number: 4060}), true},
+		"sqlserver shutting down":      {wrap(mssql.Error{Number: 6005}), false},
+		"untrusted certificate":        {wrap(x509.UnknownAuthorityError{}), true},
+		"certificate for another host": {wrap(x509.HostnameError{Host: "db"}), true},
+		"tls verification":             {wrap(&tls.CertificateVerificationError{Err: errors.New("expired")}), true},
+		"connection refused":           {wrap(syscall.ECONNREFUSED), false},
+		"unknown host":                 {wrap(&net.DNSError{Err: "no such host", Name: "db", IsNotFound: true}), false},
+		"timeout":                      {wrap(context.DeadlineExceeded), false},
+		"nil":                          {nil, false},
+	} {
+		assert.Equal(t, tt.want, IsMisconfiguration(tt.err), name)
+	}
 }

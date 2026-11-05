@@ -138,7 +138,8 @@ type HealthDatabase struct {
 	// own ping.
 	CheckTimeout time.Duration `koanf:"check_timeout"`
 	// StartupWait is how long startup waits for the database to become reachable
-	// before giving up and exiting.
+	// before giving up and exiting. A failure retrying cannot fix, such as rejected
+	// credentials, ends startup at once.
 	StartupWait time.Duration `koanf:"startup_wait"`
 	// FailureWindow is how far back database operation outcomes are counted.
 	FailureWindow time.Duration `koanf:"failure_window"`

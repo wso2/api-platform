@@ -56,13 +56,14 @@ test('recordError counts only connection failures, but every error is an attempt
     assert.equal(snap.lastFailureKind, 'timeout');
 });
 
-test('a ping is an attempt but not application activity', () => {
+test('a ping is neither an attempt nor application activity', () => {
     const { win, clock } = setup();
     win.recordSuccess({ ping: true });
     win.recordError(Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }), { ping: true });
     const snap = win.snapshot();
-    assert.equal(snap.attempts, 2);
-    assert.equal(snap.failures, 1);
+    assert.equal(snap.attempts, 0);
+    assert.equal(snap.failures, 0);
+    assert.equal(snap.lastFailureKind, null);
     assert.equal(snap.lastPing, clock.now);
     assert.equal(snap.lastActivity, null);
 });

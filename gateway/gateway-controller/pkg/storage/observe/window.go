@@ -53,8 +53,10 @@ const (
 type healthPingKey struct{}
 
 // WithHealthPing marks ctx as belonging to the health check's own ping. Operations run
-// under it are counted in the window and update the last ping time, but are not
-// application activity.
+// under it only update the last ping time: they are neither application activity nor
+// counted as attempts or failures. The failure ratio therefore judges application
+// traffic alone, and failed pings (a startup wait retrying a down database, say) cannot
+// keep the database reported down after it is back: the next ping decides that.
 func WithHealthPing(ctx context.Context) context.Context {
 	return context.WithValue(ctx, healthPingKey{}, true)
 }
@@ -72,7 +74,8 @@ type bucket struct {
 
 // Snapshot is the state of a Window at one point in time.
 type Snapshot struct {
-	// Attempts is the number of operations recorded within the window.
+	// Attempts is the number of application operations recorded within the window;
+	// health pings are not counted.
 	Attempts int
 	// Failures is the number of those operations that failed with a connection failure.
 	Failures int
@@ -80,7 +83,7 @@ type Snapshot struct {
 	LastActivity time.Time
 	// LastPing is when the last health ping operation was recorded. Zero if none.
 	LastPing time.Time
-	// LastFailure is the kind of the most recent counted failure, at any time.
+	// LastFailure is the kind of the most recent counted application failure, at any time.
 	LastFailure FailureKind
 }
 
@@ -130,16 +133,16 @@ func (w *Window) add(ctx context.Context, failed bool, kind FailureKind) {
 	now := w.now()
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if isHealthPing(ctx) {
+		w.lastPing = now
+		return
+	}
+	w.lastActivity = now
 	b := w.bucketAt(now)
 	b.attempts++
 	if failed {
 		b.failures++
 		w.lastFailure = kind
-	}
-	if isHealthPing(ctx) {
-		w.lastPing = now
-	} else {
-		w.lastActivity = now
 	}
 }
 

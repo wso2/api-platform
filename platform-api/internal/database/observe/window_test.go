@@ -112,8 +112,9 @@ func TestWindowHealthPingUpdatesLastPingOnly(t *testing.T) {
 	w.recordConnection(WithHealthPing(context.Background()), errRefused)
 
 	s := w.Snapshot(clk.Now())
-	assert.Equal(t, 1, s.Attempts)
-	assert.Equal(t, 1, s.Failures)
+	assert.Zero(t, s.Attempts, "a health ping is not an attempt")
+	assert.Zero(t, s.Failures, "a failed health ping does not count against the ratio")
+	assert.Equal(t, FailureNone, s.LastFailureKind)
 	assert.Equal(t, clk.Now(), s.LastPing)
 	assert.True(t, s.LastActivity.IsZero(), "a health ping is not activity")
 }
@@ -221,8 +222,9 @@ func TestWindowConcurrentRecording(t *testing.T) {
 	wg.Wait()
 
 	s := w.Snapshot(clk.Now())
-	require.Equal(t, workers*perWorker, s.Attempts)
-	assert.Equal(t, workers*perWorker/5, s.Failures)
+	// Only the application workers (odd i) are counted; health pings are not attempts.
+	require.Equal(t, workers*perWorker/2, s.Attempts)
+	assert.Equal(t, workers*perWorker/10, s.Failures)
 	assert.False(t, s.LastActivity.IsZero())
 	assert.False(t, s.LastPing.IsZero())
 }

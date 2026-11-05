@@ -37,6 +37,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/health"
 )
@@ -757,5 +759,86 @@ func TestWaitForStop(t *testing.T) {
 	s.listeners.errs <- failure
 	if err := s.waitForStop(); !errors.Is(err, failure) {
 		t.Errorf("on a listener failure: err = %v, want %v", err, failure)
+	}
+}
+
+// The wait logs the driver's cause at WARN when it starts and again only when the cause
+// changes, and at ERROR with the cause when the wait expires, so an operator sees why
+// without debug logging.
+func TestDatabaseWaitLogsTheCause(t *testing.T) {
+	f := &fakeWait{}
+	w := f.newWait(10*time.Second, nil)
+	refused := fmt.Errorf("%w: dial tcp 10.0.0.5:5432: connect: connection refused", errDatabaseUnreachable)
+	causes := []error{refused, refused, context.DeadlineExceeded, context.DeadlineExceeded}
+	w.cause = func() error {
+		if i := f.calls - 1; i < len(causes) {
+			return causes[i]
+		}
+		return causes[len(causes)-1]
+	}
+
+	if err := w.run(); !errors.Is(err, errStartupWaitExpired) {
+		t.Fatalf("run = %v, want errStartupWaitExpired", err)
+	}
+	logs := f.logs.String()
+	for _, want := range []string{
+		`level=WARN msg="waiting for the database before completing startup" startup_wait=10s cause="database unreachable: dial tcp 10.0.0.5:5432: connect: connection refused"`,
+		`level=WARN msg="database still not reachable" cause="database ping timed out"`,
+		`level=ERROR msg="database not reachable within the startup wait" startup_wait=10s cause="database ping timed out"`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("logs lack %s:\n%s", want, logs)
+		}
+	}
+	if n := strings.Count(logs, "connection refused\"\n"); n != 1 {
+		t.Errorf("the same cause logged %d times, want once:\n%s", n, logs)
+	}
+	if n := strings.Count(logs, `msg="database still not reachable"`); n != 1 {
+		t.Errorf("cause changes logged %d times, want once:\n%s", n, logs)
+	}
+}
+
+// A cause retrying cannot fix ends the wait at once, with the cause at ERROR.
+func TestDatabaseWaitFailsFastWhenTheDatabaseRejectsTheConnection(t *testing.T) {
+	authFailed := &pgconn.PgError{Severity: "FATAL", Code: "28P01",
+		Message: `password authentication failed for user "platform"`}
+	for name, firstFatal := range map[string]int{"at once": 0, "after a retry": 1} {
+		t.Run(name, func(t *testing.T) {
+			f := &fakeWait{}
+			w := f.newWait(time.Minute, nil)
+			w.cause = func() error {
+				if f.calls-1 < firstFatal {
+					return fmt.Errorf("%w: connection refused", errDatabaseUnreachable)
+				}
+				return fmt.Errorf("%w: %w", errDatabaseUnreachable, authFailed)
+			}
+
+			if err := w.run(); !errors.Is(err, errStartupDatabaseRejected) {
+				t.Fatalf("run = %v, want errStartupDatabaseRejected", err)
+			}
+			if f.calls != firstFatal+1 {
+				t.Errorf("checks = %d, want %d: no retry after the rejection", f.calls, firstFatal+1)
+			}
+			logs := f.logs.String()
+			if !strings.Contains(logs, `level=ERROR msg="database rejected the connection; check the database settings"`) ||
+				!strings.Contains(logs, "password authentication failed for user") {
+				t.Errorf("logs lack the rejection and its cause:\n%s", logs)
+			}
+		})
+	}
+}
+
+func TestRedactDatabaseCause(t *testing.T) {
+	for in, want := range map[string]string{
+		`cannot parse "host=db password=s3cret user=gw"`:          `cannot parse "host=db password=xxxxx user=gw"`,
+		`cannot parse "server=db;user id=sa;Password='a b';"`:     `cannot parse "server=db;user id=sa;Password=xxxxx;"`,
+		`dial postgres://gw:s3cret@db:5432/gw failed`:             `dial postgres://gw:xxxxx@db:5432/gw failed`,
+		`sqlserver://sa:p%40ss@db:1433?database=gw: login failed`: `sqlserver://sa:xxxxx@db:1433?database=gw: login failed`,
+		`password authentication failed for user "gw" (28P01)`:    `password authentication failed for user "gw" (28P01)`,
+		`dial tcp 10.0.0.5:5432: connect: connection refused`:     `dial tcp 10.0.0.5:5432: connect: connection refused`,
+	} {
+		if got := redactDatabaseCause(in); got != want {
+			t.Errorf("redactDatabaseCause(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

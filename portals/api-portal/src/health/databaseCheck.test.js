@@ -33,7 +33,7 @@ const SETTINGS = {
 };
 
 const refused = () => Object.assign(new Error('connect ECONNREFUSED 10.0.0.5:5432'), { code: 'ECONNREFUSED' });
-const timedOut = () => Object.assign(new Error('timeout exceeded when trying to connect'), {});
+const timedOut = () => Object.assign(new Error('Connection terminated due to connection timeout'), {});
 
 /**
  * A check over a real outcome window and a fake clock. `pingResult` decides what the

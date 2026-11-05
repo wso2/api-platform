@@ -20,6 +20,8 @@ package observe
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"database/sql/driver"
 	"errors"
@@ -412,7 +414,7 @@ func TestHealthPingIsNotApplicationActivity(t *testing.T) {
 	snap := w.Snapshot(clk.Now())
 	assert.True(t, snap.LastActivity.IsZero(), "the health ping must not look like traffic")
 	assert.Equal(t, pingedAt.Add(time.Second), snap.LastPing)
-	assert.Positive(t, snap.Attempts)
+	assert.Zero(t, snap.Attempts, "the health ping is not an attempt")
 
 	clk.Advance(time.Second)
 	_, err := db.Exec("UPDATE t SET v = 1")
@@ -422,7 +424,9 @@ func TestHealthPingIsNotApplicationActivity(t *testing.T) {
 	assert.Equal(t, pingedAt.Add(time.Second), snap.LastPing)
 }
 
-func TestHealthPingFailureIsCounted(t *testing.T) {
+// A failed health ping only marks when it ran: the failure ratio judges application
+// traffic, so failed pings cannot outlast the outage they saw.
+func TestHealthPingFailureIsNotCounted(t *testing.T) {
 	s := newScript()
 	s.fail("Connect", &net.OpError{Op: "dial", Err: timeoutError{}})
 	w, clk := newTestWindow()
@@ -431,8 +435,9 @@ func TestHealthPingFailureIsCounted(t *testing.T) {
 	require.Error(t, db.PingContext(WithHealthPing(context.Background())))
 
 	snap := w.Snapshot(clk.Now())
-	assert.Positive(t, snap.Failures)
-	assert.Equal(t, Timeout, snap.LastFailure)
+	assert.Zero(t, snap.Attempts)
+	assert.Zero(t, snap.Failures)
+	assert.Equal(t, NoFailure, snap.LastFailure)
 	assert.True(t, snap.LastActivity.IsZero())
 	assert.Equal(t, clk.Now(), snap.LastPing)
 }
@@ -779,7 +784,8 @@ func TestWindowConcurrentUse(t *testing.T) {
 	}
 	wg.Wait()
 	snap := w.Snapshot(time.Now())
-	assert.Equal(t, workers*perWorker*3/4, snap.Attempts)
+	// Pings are not counted: only the two failing application operations are.
+	assert.Equal(t, workers*perWorker/2, snap.Attempts)
 	assert.Equal(t, workers*perWorker/2, snap.Failures)
 }
 
@@ -800,4 +806,29 @@ func TestConcurrentDatabaseUse(t *testing.T) {
 	}
 	wg.Wait()
 	assert.GreaterOrEqual(t, w.Snapshot(time.Now()).Attempts, 800)
+}
+
+func TestIsMisconfiguration(t *testing.T) {
+	wrap := func(err error) error { return fmt.Errorf("failed to connect: %w", err) }
+	for name, tt := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"postgres wrong password":      {wrap(&pgconn.PgError{Code: "28P01"}), true},
+		"postgres no pg_hba entry":     {wrap(&pgconn.PgError{Code: "28000"}), true},
+		"postgres unknown database":    {wrap(&pgconn.PgError{Code: "3D000"}), true},
+		"postgres starting up":         {wrap(&pgconn.PgError{Code: "57P03"}), false},
+		"sqlserver login failed":       {wrap(mssql.Error{Number: 18456}), true},
+		"sqlserver unknown database":   {wrap(mssql.Error{Number: 4060}), true},
+		"sqlserver shutting down":      {wrap(mssql.Error{Number: 6005}), false},
+		"untrusted certificate":        {wrap(x509.UnknownAuthorityError{}), true},
+		"certificate for another host": {wrap(x509.HostnameError{Host: "db"}), true},
+		"tls verification":             {wrap(&tls.CertificateVerificationError{Err: errors.New("expired")}), true},
+		"connection refused":           {wrap(syscall.ECONNREFUSED), false},
+		"unknown host":                 {wrap(&net.DNSError{Err: "no such host", Name: "db", IsNotFound: true}), false},
+		"timeout":                      {wrap(context.DeadlineExceeded), false},
+		"nil":                          {nil, false},
+	} {
+		assert.Equal(t, tt.want, IsMisconfiguration(tt.err), name)
+	}
 }

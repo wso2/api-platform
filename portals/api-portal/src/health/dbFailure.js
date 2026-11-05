@@ -32,8 +32,14 @@ const NETWORK_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE
 const PG_SHUTDOWN_CODES = new Set(['57P01', '57P02', '57P03']);
 const PG_CONNECTION_CLASSES = ['08', '28'];
 
-// node-postgres reports a dropped or unobtainable connection with these messages only.
-const PG_CONNECTION_MESSAGES = [/^Connection terminated/, /timeout exceeded when trying to connect/];
+// node-postgres reports a dropped connection, or a connect attempt that timed out
+// ("Connection terminated due to connection timeout"), with these messages only.
+// pg-pool's "timeout exceeded when trying to connect" is deliberately not here: the
+// pool raises it only when a caller waited too long in its queue for a free
+// connection, which is a busy pool, not an unreachable database. The pool-saturation
+// rule reports a pool that stays full (see databaseCheck.js), including one held full
+// by a hung database.
+const PG_CONNECTION_MESSAGES = [/^Connection terminated/];
 
 // SQL Server driver codes for a broken socket, a connect timeout and a failed login.
 const MSSQL_CODES = new Set(['ESOCKET', 'ETIMEOUT', 'ELOGIN']);
@@ -43,9 +49,8 @@ const SQLITE_CODES = new Set(['SQLITE_CANTOPEN', 'SQLITE_NOTADB']);
 const SQLITE_CODE_PREFIXES = ['SQLITE_IOERR', 'SQLITE_CORRUPT'];
 
 const TIMEOUT_CODES = new Set(['ETIMEDOUT', 'ETIMEOUT']);
-// node-postgres: "timeout exceeded when trying to connect" (pool) and "Connection
-// terminated due to connection timeout" (client).
-const TIMEOUT_MESSAGE = /timeout exceeded when trying to connect|due to connection timeout/;
+// node-postgres: "Connection terminated due to connection timeout" (client).
+const TIMEOUT_MESSAGE = /due to connection timeout/;
 
 function isPgSqlState(code) {
     return typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code);

@@ -214,8 +214,8 @@ function observeTransaction(fn) {
 /**
  * The health check's own round trip: SELECT 1 straight through the adapter, outside
  * any ambient transaction, recorded as a ping so it never counts as application
- * activity. When it outlasts `timeoutMs` it is recorded as a timed-out attempt and
- * rejected with `timedOut` set; its late outcome, if any, is then ignored.
+ * activity or as an attempt (only its time is kept). When it outlasts `timeoutMs` it
+ * is rejected with `timedOut` set; its late outcome, if any, is then ignored.
  */
 function healthPing({ timeoutMs } = {}) {
     return new Promise((resolve, reject) => {

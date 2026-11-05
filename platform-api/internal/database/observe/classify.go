@@ -19,6 +19,8 @@ package observe
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql/driver"
 	"errors"
 	"io"
@@ -37,7 +39,36 @@ const (
 	mssqlLoginFailed       = 18456
 	mssqlShutdownInProcess = 6005
 	mssqlShutdownByRequest = 6006
+	// mssqlCannotOpenDatabase is a login that cannot open the database it asked for.
+	mssqlCannotOpenDatabase = 4060
 )
+
+// IsMisconfiguration reports whether err, from connecting to the database, is one that
+// retrying cannot fix because the connection settings are wrong: the server rejected
+// the credentials (PostgreSQL class 28, SQL Server 18456), the database does not exist
+// (PostgreSQL 3D000, SQL Server 4060), or the server's TLS certificate failed
+// verification. An unreachable host, a refused connection or a timeout is not: the
+// database may simply not be up yet.
+func IsMisconfiguration(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return strings.HasPrefix(pgErr.Code, "28") || pgErr.Code == "3D000"
+	}
+	var msErr mssql.Error
+	if errors.As(err, &msErr) {
+		n := msErr.SQLErrorNumber()
+		return n == mssqlLoginFailed || n == mssqlCannotOpenDatabase
+	}
+	var verifyErr *tls.CertificateVerificationError
+	var unknownAuthority x509.UnknownAuthorityError
+	var hostnameErr x509.HostnameError
+	var invalidCert x509.CertificateInvalidError
+	return errors.As(err, &verifyErr) || errors.As(err, &unknownAuthority) ||
+		errors.As(err, &hostnameErr) || errors.As(err, &invalidCert)
+}
 
 // IsConnectionFailure reports whether err, returned by a database operation, means the
 // database could not be reached or used, and if so of which kind. Only such failures

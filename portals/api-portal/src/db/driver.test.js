@@ -176,12 +176,19 @@ test('an error thrown by the transaction callback is rethrown and not counted tw
     assert.deepStrictEqual(counts(db), { attempts: 1, failures: 1 });
 });
 
-test('a connection that cannot be checked out is counted as a failure', async () => {
+test('a connection that cannot be opened is counted as a failure', async () => {
     const { db, adapter } = loadDriver();
-    adapter.failBegin = Object.assign(new Error('timeout exceeded when trying to connect'), {});
+    adapter.failBegin = Object.assign(new Error('Connection terminated due to connection timeout'), {});
     await assert.rejects(db.withTransaction(async () => 'never'), (err) => err === adapter.failBegin);
     const snap = db.outcomeWindow.snapshot();
     assert.deepStrictEqual([snap.attempts, snap.failures, snap.lastFailureKind], [1, 1, 'timeout']);
+});
+
+test('a checkout that times out in the pool queue is not counted as a failure', async () => {
+    const { db, adapter } = loadDriver();
+    adapter.failBegin = Object.assign(new Error('timeout exceeded when trying to connect'), {});
+    await assert.rejects(db.withTransaction(async () => 'never'), (err) => err === adapter.failBegin);
+    assert.deepStrictEqual(counts(db), { attempts: 1, failures: 0 });
 });
 
 test('a failed commit is counted even though the callback succeeded', async () => {
@@ -211,22 +218,24 @@ test('the health ping runs SELECT 1 outside any transaction and is not activity'
     await fresh.db.healthPing();
     const freshSnap = fresh.db.outcomeWindow.snapshot();
     assert.equal(freshSnap.lastActivity, null);
-    assert.equal(freshSnap.attempts, 1);
+    assert.ok(freshSnap.lastPing);
+    assert.equal(freshSnap.attempts, 0, 'the health ping is not an attempt');
 });
 
-test('a failed health ping is rejected with the driver error and counted', async () => {
+test('a failed health ping is rejected with the driver error and not counted', async () => {
     const { db, adapter } = loadDriver();
     const netErr = refused();
     adapter.next.push(netErr);
     await assert.rejects(db.healthPing({ timeoutMs: 1000 }), (err) => err === netErr);
-    assert.deepStrictEqual(counts(db), { attempts: 1, failures: 1 });
+    assert.deepStrictEqual(counts(db), { attempts: 0, failures: 0 });
 
     adapter.query = () => { throw netErr; };
     await assert.rejects(db.healthPing(), (err) => err === netErr);
-    assert.deepStrictEqual(counts(db), { attempts: 2, failures: 2 });
+    assert.deepStrictEqual(counts(db), { attempts: 0, failures: 0 });
+    assert.ok(db.outcomeWindow.snapshot().lastPing);
 });
 
-test('a health ping that outlasts its timeout is rejected as timed out and counted once', async () => {
+test('a health ping that outlasts its timeout is rejected as timed out, and its late outcome is ignored', async () => {
     const adapter = fakeAdapter();
     let finish;
     adapter.query = () => new Promise((resolve) => { finish = resolve; });
@@ -235,8 +244,8 @@ test('a health ping that outlasts its timeout is rejected as timed out and count
     finish([]);
     await new Promise((resolve) => setImmediate(resolve));
     const snap = db.outcomeWindow.snapshot();
-    assert.deepStrictEqual([snap.attempts, snap.failures, snap.lastFailureKind], [1, 1, 'timeout']);
-    assert.equal(snap.lastActivity, null);
+    assert.deepStrictEqual([snap.attempts, snap.failures, snap.lastActivity], [0, 0, null]);
+    assert.ok(snap.lastPing);
 });
 
 test('pool errors reported by the adapter count as failures but not as activity', () => {

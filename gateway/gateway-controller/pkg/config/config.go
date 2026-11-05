@@ -894,7 +894,7 @@ type HealthConfig struct {
 // itself only when there has been no database activity for IdlePeriod.
 type HealthDatabaseConfig struct {
 	CheckTimeout   time.Duration `koanf:"check_timeout"`   // Deadline for the check's own ping
-	StartupWait    time.Duration `koanf:"startup_wait"`    // How long startup waits for the database before exiting
+	StartupWait    time.Duration `koanf:"startup_wait"`    // How long startup waits for the database before exiting; rejected credentials end it at once
 	FailureWindow  time.Duration `koanf:"failure_window"`  // Sliding window of operation outcomes the check decides from
 	FailureRatio   float64       `koanf:"failure_ratio"`   // Share of failed operations in the window that marks the database down
 	MinAttempts    int           `koanf:"min_attempts"`    // Operations the window needs before the ratio decides

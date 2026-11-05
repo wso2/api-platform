@@ -28,6 +28,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -55,6 +56,10 @@ var (
 	// errStartupWaitExpired is returned when the database is still unreachable at the
 	// end of the startup wait.
 	errStartupWaitExpired = errors.New("database not reachable within the startup wait")
+	// errStartupDatabaseRejected is returned when the database answers during the
+	// startup wait but rejects the connection in a way retrying cannot fix, such as
+	// wrong credentials or a database that does not exist.
+	errStartupDatabaseRejected = errors.New("database rejected the connection; check the database settings")
 	// errStartupInterrupted is returned when a shutdown signal arrives while startup is
 	// still waiting for the database.
 	errStartupInterrupted = errors.New("shutdown signal received during startup")
@@ -138,6 +143,9 @@ type databaseCheck struct {
 	hasDecided bool
 	// lastPing is when the check last started a ping of its own.
 	lastPing time.Time
+	// lastPingErr is the error of the check's latest own ping, nil when it succeeded.
+	// The health answer never carries it; the startup wait logs it.
+	lastPingErr error
 	// saturatedSince is when the pool became saturated; zero while it is not.
 	saturatedSince time.Time
 	// waitCount is the pool's WaitCount at the previous evaluation, the baseline for
@@ -214,8 +222,17 @@ func (c *databaseCheck) decide(ctx context.Context) error {
 	err := c.ping(ctx)
 	c.mu.Lock()
 	c.decided, c.hasDecided = err, true
+	c.lastPingErr = err
 	c.mu.Unlock()
 	return err
+}
+
+// lastPingError returns the error of the check's latest own ping, nil when it
+// succeeded or none has run.
+func (c *databaseCheck) lastPingError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastPingErr
 }
 
 // failureReason returns the reason for a database found down from its traffic.
@@ -325,6 +342,15 @@ type databaseWait struct {
 	// refresh, when set, runs before each retry so the retry checks the database
 	// afresh instead of reading a cached or still-standing earlier decision.
 	refresh func()
+	// cause, when set, returns the driver error behind the latest failed check. It is
+	// logged, redacted, so an operator sees why the database is not reachable, and it
+	// decides whether retrying can help at all.
+	cause func() error
+	// fatal reports whether a cause is one retrying cannot fix.
+	fatal func(error) bool
+	// loggedCause is the last cause text logged, so a retry failing the same way adds
+	// no log line.
+	loggedCause string
 }
 
 func newDatabaseWait(evaluate func() health.Result, wait time.Duration, stop <-chan os.Signal,
@@ -336,25 +362,34 @@ func newDatabaseWait(evaluate func() health.Result, wait time.Duration, stop <-c
 		log:      log,
 		now:      time.Now,
 		after:    time.After,
+		fatal:    observe.IsMisconfiguration,
 	}
 }
 
 // run returns nil once the database is reachable, errStartupWaitExpired when it is
-// still unreachable after the wait, and errStartupInterrupted on a shutdown signal.
-// The health checker logs the database check once when it fails and once when it
-// recovers, so the retries here add no log lines of their own.
+// still unreachable after the wait, errStartupDatabaseRejected as soon as the database
+// rejects the connection in a way retrying cannot fix, and errStartupInterrupted on a
+// shutdown signal. The health checker logs the database check once when it fails and
+// once when it recovers; the wait itself logs the driver's cause, redacted, when it
+// starts waiting and whenever the cause changes, so the reason the database is not
+// reachable is visible without debug logging.
 func (w *databaseWait) run() error {
 	if w.databaseUp() {
 		return nil
 	}
-	w.log.Info("waiting for the database before completing startup", slog.Duration("startup_wait", w.wait))
+	if err := w.rejected(); err != nil {
+		return err
+	}
+	w.log.Warn("waiting for the database before completing startup",
+		slog.Duration("startup_wait", w.wait), slog.String("cause", w.noteCause()))
 
 	deadline := w.now().Add(w.wait)
 	interval := startupRetryInitial
 	for {
 		remaining := deadline.Sub(w.now())
 		if remaining <= 0 {
-			w.log.Error(errStartupWaitExpired.Error(), slog.Duration("startup_wait", w.wait))
+			w.log.Error(errStartupWaitExpired.Error(), slog.Duration("startup_wait", w.wait),
+				slog.String("cause", w.causeText()))
 			return errStartupWaitExpired
 		}
 		select {
@@ -368,8 +403,62 @@ func (w *databaseWait) run() error {
 		if w.databaseUp() {
 			return nil
 		}
+		if err := w.rejected(); err != nil {
+			return err
+		}
+		if text := w.causeText(); text != w.loggedCause {
+			w.log.Warn("database still not reachable", slog.String("cause", w.noteCause()))
+		}
 		interval = min(2*interval, startupRetryMax)
 	}
+}
+
+// rejected returns errStartupDatabaseRejected, after logging the cause, when the latest
+// failure is one retrying cannot fix.
+func (w *databaseWait) rejected() error {
+	if w.cause == nil || w.fatal == nil {
+		return nil
+	}
+	if err := w.cause(); err != nil && w.fatal(err) {
+		w.log.Error(errStartupDatabaseRejected.Error(), slog.String("cause", w.causeText()))
+		return errStartupDatabaseRejected
+	}
+	return nil
+}
+
+// causeText returns the redacted text of the latest failure's cause, or "unknown".
+func (w *databaseWait) causeText() string {
+	if w.cause == nil {
+		return "unknown"
+	}
+	err := w.cause()
+	if err == nil {
+		return "unknown"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "database ping timed out"
+	}
+	return redactDatabaseCause(err.Error())
+}
+
+// noteCause returns causeText and remembers it as logged.
+func (w *databaseWait) noteCause() string {
+	w.loggedCause = w.causeText()
+	return w.loggedCause
+}
+
+var (
+	// passwordSetting matches a password key-value in a connection string.
+	passwordSetting = regexp.MustCompile(`(?i)(password|pwd)(\s*=\s*)('[^']*'|"[^"]*"|[^\s;]+)`)
+	// urlUserinfoPassword matches the password in a URL's userinfo.
+	urlUserinfoPassword = regexp.MustCompile(`(://[^:/@\s]*:)[^@\s]*@`)
+)
+
+// redactDatabaseCause removes passwords from a driver error, which can echo the
+// connection string it failed to use.
+func redactDatabaseCause(msg string) string {
+	msg = passwordSetting.ReplaceAllString(msg, "${1}${2}xxxxx")
+	return urlUserinfoPassword.ReplaceAllString(msg, "${1}xxxxx@")
 }
 
 // databaseUp evaluates health and reports whether the database check passed.
@@ -399,6 +488,7 @@ func serveHealthWhileWaiting(cfg *config.Config, log *slog.Logger, checker *heal
 		dbCheck.forget()
 		checker.Invalidate()
 	}
+	wait.cause = dbCheck.lastPingError
 	if err := wait.run(); err != nil {
 		return nil, endStartupWithoutDatabase(err, admin, cfg.Controller.Server.ShutdownTimeout, log, db), false
 	}
@@ -445,7 +535,8 @@ func startAdminServer(cfg *config.Config, healthHandler http.Handler,
 
 // endStartupWithoutDatabase releases what startup acquired before the database wait
 // ended without the database, and returns the process exit code: 0 when a shutdown
-// signal ended the wait, 1 when the wait expired.
+// signal ended the wait, 1 when the wait expired or the database rejected the
+// connection.
 func endStartupWithoutDatabase(waitErr error, admin *adminserver.Server, shutdownTimeout time.Duration,
 	log *slog.Logger, closers ...io.Closer) int {
 	interrupted := errors.Is(waitErr, errStartupInterrupted)

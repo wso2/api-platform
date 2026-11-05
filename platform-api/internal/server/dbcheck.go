@@ -78,6 +78,9 @@ type databaseCheck struct {
 	// connection has recorded nothing in the window yet, so this, not only the window's
 	// last ping time, keeps pings to one per idle period.
 	pingStarted time.Time
+	// lastPingErr is the error of the check's latest own ping, nil when it succeeded.
+	// The health answer never carries it; the startup wait logs it.
+	lastPingErr error
 	// saturatedSince is when the pool became saturated; zero while it is not.
 	saturatedSince time.Time
 	// waitCount is the pool's WaitCount at the previous evaluation, the baseline for
@@ -181,8 +184,19 @@ func (c *databaseCheck) ping(ctx context.Context) error {
 	c.pingStarted = c.now()
 	c.mu.Unlock()
 	err := c.pingOnce(ctx)
+	c.mu.Lock()
+	c.lastPingErr = err
+	c.mu.Unlock()
 	c.decide(err)
 	return err
+}
+
+// lastPingError returns the error of the check's latest own ping, nil when it
+// succeeded or none has run.
+func (c *databaseCheck) lastPingError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastPingErr
 }
 
 func (c *databaseCheck) pingOnce(ctx context.Context) error {

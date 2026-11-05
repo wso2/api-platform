@@ -26,8 +26,10 @@ const BUCKET_MS = 1000;
  * one-second buckets so recording is O(1) and old outcomes expire without a sweep.
  *
  * Alongside the counts it remembers when the application last used the database and
- * when the health check last pinged it. A ping counts as an attempt but never as
- * application activity, so health probes cannot make an idle instance look busy.
+ * when the health check last pinged it. A ping only marks when it ran: it is neither
+ * application activity, so health probes cannot make an idle instance look busy, nor an
+ * attempt, so the failure ratio judges application traffic alone and failed pings
+ * cannot keep the database reported down after it is back.
  */
 class OutcomeWindow {
     constructor({ windowMs, now = Date.now } = {}) {
@@ -58,13 +60,16 @@ class OutcomeWindow {
      */
     record({ failure = null, ping = false, activity = !ping } = {}) {
         const nowMs = this.now();
+        if (ping) {
+            this.lastPing = nowMs;
+            return;
+        }
         const bucket = this.bucketFor(nowMs);
         bucket.attempts += 1;
         if (failure) {
             bucket.failures += 1;
             this.lastFailureKind = failure;
         }
-        if (ping) this.lastPing = nowMs;
         if (activity) this.lastActivity = nowMs;
     }
 
