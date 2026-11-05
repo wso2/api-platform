@@ -95,11 +95,35 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 		// First attempt: it IS the baseline, and every later attempt resets to it.
 		baseline = requestBaseline{Path: incoming.Path, Method: incoming.Method, Authority: incoming.Authority}
 		s.baselines.Remember(requestID, baseline)
+
+		// A retry with no baseline is a silent correctness failure, not a normal path: this
+		// attempt becomes its own baseline, so the previous attempt's rewrites compound and
+		// its headers are never undone -- while the client still receives a 200. The entry
+		// expired mid-request, or the request carries no id to key it on. Logged rather than
+		// failed because failing closed here would turn a degraded retry into a lost request
+		// (FR-038a's TTL is the safety net, this is how anyone finds out it was needed).
+		if attempt > 1 {
+			slog.WarnContext(ctx, "per-attempt baseline missing on a retry; "+
+				"this attempt cannot be reset to the post-downstream request",
+				"attempt", attempt, "cluster", cluster, "has_request_id", requestID != "")
+		}
 	}
 	reqCtx := incoming
 	reqCtx.Path = baseline.Path
 	reqCtx.Method = baseline.Method
 	reqCtx.Authority = baseline.Authority
+
+	// Undo what EARLIER attempts' chains did to the headers, before this attempt's chain runs
+	// and before a policy can read a leftover (FR-038, FR-038b). Envoy hands each retry the
+	// request as the previous attempt left it, so without this the prior provider's credential
+	// travels to the next provider -- a key handed to a third party, invisible to the client
+	// because the request still succeeds (FR-042).
+	//
+	// Applied to the in-memory map AND emitted to Envoy: the first is what the chain reads,
+	// the second is what the provider receives.
+	headerValues := reqCtx.Headers.UnsafeInternalValues()
+	restores := headerRestoresFor(baseline.Headers, headerValues)
+	applyHeaderRestores(headerValues, restores)
 
 	// Re-point the attempt at its provider's own context BEFORE the chain runs, so a policy
 	// sees the path the provider will actually receive.
@@ -125,8 +149,9 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 	state.metadata = reqCtx.SharedContext.Metadata
 
 	if chain == nil || len(chain.Policies) == 0 {
-		// No per-attempt policies, but the re-point still has to be applied.
-		return upstreamPathOnlyResponse(repointed), nil
+		// No per-attempt policies, but the re-point and the undo still have to be applied: a
+		// provider with no chain of its own must not inherit the previous provider's headers.
+		return upstreamPathOnlyResponse(repointed, restores), nil
 	}
 
 	// Ask for the body only if something in this chain rewrites it.
@@ -134,6 +159,11 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 
 	slog.DebugContext(ctx, "running per-attempt policy chain",
 		"cluster", cluster, "attempt", attempt, "policies", len(chain.Policies))
+
+	// What the headers held before this chain ran. Captured here because the executor writes a
+	// policy's HeadersToSet straight into the map, so after execution the prior value is gone --
+	// and the prior value is exactly what a later attempt has to be restored to.
+	preChain := cloneHeaderValues(headerValues)
 
 	result, err := s.executor.ExecuteRequestHeaderPolicies(
 		ctx, chain.Policies, reqCtx, chain.PolicySpecs,
@@ -145,10 +175,15 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 		return nil, err
 	}
 
+	// Record what THIS chain touched so the next attempt can undo it (FR-038b). First-touch
+	// wins inside the store, so an attempt re-setting a header another attempt already recorded
+	// does not overwrite the post-downstream value with a leftover.
+	s.baselines.RememberTouchedHeaders(requestID, captureHeaderBaselines(preChain, touchedHeaderNames(result)))
+
 	// Post-chain, so the body phase starts from what this attempt will actually send.
 	state.headers = cloneHeaderValues(reqCtx.Headers.UnsafeInternalValues())
 
-	resp := upstreamHeadersResponse(result, repointed)
+	resp := upstreamHeadersResponse(result, repointed, restores)
 	resp.ModeOverride = modeOverride
 	return resp, nil
 }
@@ -178,6 +213,15 @@ type requestBaseline struct {
 	Path      string
 	Method    string
 	Authority string
+
+	// Headers a per-attempt chain changed, keyed by lower-case name, each holding the value
+	// the header had BEFORE the first chain to touch it ran (FR-038b).
+	//
+	// Only touched headers are recorded, never the whole map. That keeps the client's headers,
+	// the downstream chain's headers and Envoy's own (x-request-id, x-envoy-*, tracing) outside
+	// this mechanism entirely, and avoids holding every request's credentials in process memory
+	// for data that would almost never be restored.
+	Headers map[string]headerBaseline
 }
 
 // upstreamRequestContext builds the context a per-attempt policy sees.
@@ -260,8 +304,14 @@ func upstreamMetadata(req *extprocv3.ProcessingRequest) map[string]interface{} {
 // Deliberately narrower than the downstream translator: there is no short-circuit handling, no
 // analytics emission and no body mutation. A per-attempt policy re-points and re-signs a request
 // — it does not decide whether the request happens, which was settled once, downstream.
-func upstreamHeadersResponse(result *executor.RequestHeaderExecutionResult, repointed *string) *extprocv3.ProcessingResponse {
+func upstreamHeadersResponse(result *executor.RequestHeaderExecutionResult, repointed *string,
+	restores []headerRestore) *extprocv3.ProcessingResponse {
+
 	mutation := &extprocv3.HeaderMutation{}
+
+	// Undo earlier attempts FIRST, so this chain's own mutations overwrite the restored values
+	// rather than being overwritten by them.
+	applyRestoresToMutation(mutation, restores)
 
 	// The provider re-point is applied first so a policy returning its own Path still wins.
 	if repointed != nil {
@@ -323,20 +373,45 @@ func appendHeader(key, value string) *corev3.HeaderValueOption {
 	}
 }
 
-// upstreamPathOnlyResponse carries just the provider re-point, for an attempt whose cluster has
-// no per-attempt policies.
-func upstreamPathOnlyResponse(repointed *string) *extprocv3.ProcessingResponse {
-	if repointed == nil {
+// applyRestoresToMutation emits the undo operations Envoy must apply to this attempt.
+//
+// A removal and a set are both expressed here rather than only in the in-memory map, because the
+// map is what the policies read while this is what the provider actually receives.
+func applyRestoresToMutation(mutation *extprocv3.HeaderMutation, restores []headerRestore) {
+	for _, r := range restores {
+		if r.Remove {
+			mutation.RemoveHeaders = append(mutation.RemoveHeaders, r.Name)
+			continue
+		}
+		for i, v := range r.Values {
+			// The first write overwrites whatever the previous attempt left; the rest append,
+			// so a multi-valued header is restored with all of its values rather than the last.
+			if i == 0 {
+				mutation.SetHeaders = append(mutation.SetHeaders, setHeader(r.Name, v))
+				continue
+			}
+			mutation.SetHeaders = append(mutation.SetHeaders, appendHeader(r.Name, v))
+		}
+	}
+}
+
+// upstreamPathOnlyResponse carries the provider re-point and any undo of earlier attempts, for an
+// attempt whose cluster has no per-attempt policies of its own.
+func upstreamPathOnlyResponse(repointed *string, restores []headerRestore) *extprocv3.ProcessingResponse {
+	if repointed == nil && len(restores) == 0 {
 		return passthroughRequestHeaders()
+	}
+	mutation := &extprocv3.HeaderMutation{}
+	applyRestoresToMutation(mutation, restores)
+	// Guarded: an attempt can need the undo without needing a re-point, when its provider is
+	// the one the route already points at.
+	if repointed != nil {
+		mutation.SetHeaders = append(mutation.SetHeaders, setHeader(pseudoPath, *repointed))
 	}
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation: &extprocv3.HeaderMutation{
-						SetHeaders: []*corev3.HeaderValueOption{setHeader(pseudoPath, *repointed)},
-					},
-				},
+				Response: &extprocv3.CommonResponse{HeaderMutation: mutation},
 			},
 		},
 	}

@@ -86,7 +86,7 @@ func TestUpstreamHeadersResponse_EmitsPathRewrite(t *testing.T) {
 		}},
 	}
 
-	resp := upstreamHeadersResponse(result, nil)
+	resp := upstreamHeadersResponse(result, nil, nil)
 	mutation := resp.GetRequestHeaders().GetResponse().GetHeaderMutation()
 
 	var sawPath, sawKey bool
@@ -119,7 +119,7 @@ func TestUpstreamHeadersResponse_IgnoresSkippedPolicies(t *testing.T) {
 			{Action: nil},
 		},
 	}
-	mutation := upstreamHeadersResponse(result, nil).GetRequestHeaders().GetResponse().GetHeaderMutation()
+	mutation := upstreamHeadersResponse(result, nil, nil).GetRequestHeaders().GetResponse().GetHeaderMutation()
 	if len(mutation.GetSetHeaders()) != 0 {
 		t.Fatalf("expected no mutations, got %v", mutation.GetSetHeaders())
 	}
@@ -215,12 +215,12 @@ func TestRepointToProvider_BaselinePreventsCompounding(t *testing.T) {
 
 // An attempt whose provider cannot be resolved is left alone rather than re-pointed at a guess.
 func TestUpstreamPathOnlyResponse_NoRepointMeansPassthrough(t *testing.T) {
-	if mutation := upstreamPathOnlyResponse(nil).GetRequestHeaders().GetResponse().GetHeaderMutation(); mutation != nil {
+	if mutation := upstreamPathOnlyResponse(nil, nil).GetRequestHeaders().GetResponse().GetHeaderMutation(); mutation != nil {
 		t.Fatalf("expected a pure passthrough, got %v", mutation)
 	}
 
 	repointed := "/anthropic-ctx/v1/chat"
-	mutation := upstreamPathOnlyResponse(&repointed).GetRequestHeaders().GetResponse().GetHeaderMutation()
+	mutation := upstreamPathOnlyResponse(&repointed, nil).GetRequestHeaders().GetResponse().GetHeaderMutation()
 	if len(mutation.GetSetHeaders()) != 1 {
 		t.Fatalf("expected exactly the :path mutation, got %v", mutation.GetSetHeaders())
 	}

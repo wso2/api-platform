@@ -88,6 +88,41 @@ func (s *attemptBaselineStore) Remember(requestID string, baseline requestBaseli
 	s.entries[requestID] = baselineEntry{baseline: baseline, expires: s.now().Add(baselineTTL)}
 }
 
+// RememberTouchedHeaders merges the headers a per-attempt chain changed into this request's
+// baseline, keeping the FIRST value recorded for each name.
+//
+// Separate from Remember because the two are written at different moments: the request line is
+// known before the chain runs, the touched headers only after it has run. First-touch-wins for
+// the same reason Remember is first-write-wins — the earliest attempt to touch a header is the
+// one holding its post-downstream value, and a later attempt would record its own predecessor's
+// leftover instead.
+//
+// A no-op when the request has no entry: the entry is written by the same attempt that would
+// call this, so its absence means the request ID is empty or the entry expired mid-request, and
+// inventing one here would record a polluted value as if it were the baseline.
+func (s *attemptBaselineStore) RememberTouchedHeaders(requestID string, touched map[string]headerBaseline) {
+	if requestID == "" || len(touched) == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.entries[requestID]
+	if !ok || !entry.expires.After(s.now()) {
+		return
+	}
+	if entry.baseline.Headers == nil {
+		entry.baseline.Headers = make(map[string]headerBaseline, len(touched))
+	}
+	for name, base := range touched {
+		if _, seen := entry.baseline.Headers[name]; seen {
+			continue
+		}
+		entry.baseline.Headers[name] = base
+	}
+	s.entries[requestID] = entry
+}
+
 // Lookup returns the baseline recorded by this request's first attempt. ok=false means this IS
 // the first attempt (or the entry has expired, which is treated the same way: the attempt
 // becomes its own baseline rather than failing).

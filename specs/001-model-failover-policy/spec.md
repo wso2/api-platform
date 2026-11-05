@@ -923,6 +923,27 @@ platform capability; model failover is its first consumer, not its only one.
   that rewrites a path rewrites an already-rewritten one — Probes D and E both observed exactly
   that accumulation in raw Envoy (`/ctx-attempt-2/ctx-attempt-1/...`), so it MUST be handled by
   the engine rather than left to each policy author to remember.
+- **FR-038b** *(added 2026-11-05, after the implementation was found to cover only half of
+  FR-038)*: The reset MUST cover **request headers**, not only the request line. The first
+  implementation snapshotted path, method and authority alone, so a previous attempt's headers —
+  including its credential — survived onto the next attempt and were delivered to a different
+  provider (T024k). FR-038 already required discarding them; this requirement states the scope the
+  snapshot must have so the gap cannot reopen.
+
+  The snapshot MUST record, for each header a per-attempt chain **sets, appends or removes**, the
+  value that header held *before* that chain touched it, and the engine MUST restore those values
+  before the next attempt's chain runs. Three properties follow, and each is a correctness
+  requirement rather than an optimisation:
+  - **Restore, never merely remove.** A chain that overwrote an existing header must have the
+    prior value put back, not the header deleted — deleting it would discard a downstream
+    decision (FR-012a) in the name of undoing an upstream one.
+  - **Only headers a per-attempt chain touched.** Headers the client sent, headers the downstream
+    chain set, and headers Envoy manages itself (`x-request-id`, `x-envoy-*`, trace propagation)
+    MUST be outside the mechanism's reach entirely. Scoping it this way is what makes an
+    exemption list unnecessary.
+  - **Not a whole-request snapshot.** Retaining every header of every request would hold
+    credentials in process memory far longer than the request that carried them, for data almost
+    none of which is ever restored.
 - **FR-039**: For a given upstream, the controller MUST compose the per-attempt chain in this order:
   the author's policies for that upstream, then that upstream's transformer, then that upstream's
   authentication. Authentication is last so that no author-written policy ever observes the
@@ -932,10 +953,17 @@ platform capability; model failover is its first consumer, not its only one.
   controller, never authored into a provider list.
 - **FR-041**: An attempt MUST run only the selected upstream's policy list. Running another
   upstream's list would apply the wrong transformation and the wrong credential to that attempt.
-- **FR-042**: The upstream position MUST fail closed: if the per-attempt chain cannot run, the
-  attempt MUST NOT proceed to the upstream unauthenticated or untransformed. No upstream credential
-  may reach the downstream response path, and any internal provider-selection header MUST be removed
-  before the response reaches the client.
+- **FR-042** *(second clause corrected 2026-11-05)*: The upstream position MUST fail closed: if the
+  per-attempt chain cannot run, the attempt MUST NOT proceed to the upstream unauthenticated or
+  untransformed.
+
+  A credential injected for one target MUST NOT reach any other party — neither the downstream
+  response path nor, and this is the exposure that actually occurred, **a different provider on a
+  later attempt** (T024k, enforced by FR-038b). The original wording named only the response path
+  and additionally required removing "any internal provider-selection header"; attempt identity
+  travels in the reserved `wso2.attempt` shared-context namespace and never as a header, so there
+  is no such header to remove. Reading the requirement as satisfied because the upstream position
+  has no response phase answers a narrower question than it asks.
 - **FR-043**: Splitting policies across two chains costs a second ext_proc round trip per attempt.
   When an API has no per-attempt work to do, the system MUST NOT pay that cost: the upstream chain
   is generated only where it is needed.
