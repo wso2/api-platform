@@ -678,7 +678,9 @@ blocks:
       - name: testbench
     runners:
       - name: request-body-size
-        tags: "gateway-version>1.2.0"
+        # Excludes the @known-issue over-limit scenario, which flakes between 413 and 500
+        # (https://github.com/wso2/api-platform/issues/4061).
+        tags: "gateway-version>1.2.0;~@known-issue"
         features:
           - features/gateway/core/request_body_size.feature
 
