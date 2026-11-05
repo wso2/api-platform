@@ -207,7 +207,7 @@ check_timeout = "2s"            # bound on the check's own SELECT 1 round trip
 failure_window = "30s"          # how far back query outcomes count; >= cache_ttl
 failure_ratio = 0.5             # down when failures / attempts reaches this (0 < r <= 1)
 min_attempts = 5                # attempts in the window needed before the ratio decides
-idle_period = "10s"             # with no queries for this long, the check runs its own
+idle_period = "10s"             # with too few queries to decide, the check runs its own
                                 # SELECT 1 (at most one per idle_period); <= failure_window
 pool_saturation = 0.9           # PostgreSQL / MSSQL: share of the pool in use, with callers
                                 # waiting, that counts as saturated (0 < r <= 1)

@@ -272,9 +272,10 @@ every key below with `platform-api.`.
   `[platform_api.health.database]`: `checkTimeout` (2s), `startupWait` (5m),
   `failureWindow` (30s), `failureRatio` (0.5), `minAttempts` (5), `idlePeriod` (10s),
   `poolSaturation` (0.9), `poolWaitLimit` (5s). The check decides from the outcomes of the
-  server's own database operations within `failureWindow`, pings the database only after
-  `idlePeriod` without operations, and also reports the database down when the connection
-  pool stays saturated longer than `poolWaitLimit`. The server fails at startup on
+  server's own database operations within `failureWindow`, pings the database at most once
+  per `idlePeriod` when there are fewer than `minAttempts` of them, and also reports the
+  database down when the connection pool stays saturated, with callers waiting for a
+  connection, longer than `poolWaitLimit`. The server fails at startup on
   `check_timeout` or `startup_wait` set directly under `[platform_api.health]` (they moved to
   the database table) and on any unknown key in `[platform_api.health.database]`.
 - `hpa.*` / `podDisruptionBudget.*` — autoscaling and the PDB. The HPA requires `postgres`

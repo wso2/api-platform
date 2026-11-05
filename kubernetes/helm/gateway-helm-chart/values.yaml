@@ -351,7 +351,8 @@ gateway:
         allowed_clients:
           - "*"
         # Database check. It decides from the outcomes of the controller's own database
-        # operations and pings the database only after idle_period without activity.
+        # operations; when they are too few to decide from, it pings the database at most
+        # once per idle_period.
         # Unknown keys in this table fail startup.
         database:
           check_timeout: 2s     # deadline for the check's own ping
@@ -361,8 +362,8 @@ gateway:
           failure_window: 30s   # sliding window of operation outcomes the check decides from
           failure_ratio: 0.5    # share of failed operations in the window that marks the database down
           min_attempts: 5       # operations the window needs before the ratio decides
-          idle_period: 10s      # inactivity after which the check pings the database itself
-          pool_saturation: 0.9  # share of the connection pool in use that counts as saturated
+          idle_period: 10s      # with too few operations to decide, the check pings once per period
+          pool_saturation: 0.9  # share of the pool in use, with callers waiting, that counts as saturated
           pool_wait_limit: 5s   # how long the pool may stay saturated before the check fails
 
     # Router (Envoy) configuration

@@ -348,11 +348,12 @@ allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # cache_ttl     = '{{ env "APIP_GW_CONTROLLER_HEALTH_CACHE_TTL" "3s" }}'    # how long an evaluated health result is reused
 
 # The database check decides from the outcomes of the controller's own database
-# operations, so it adds no database calls while traffic flows. It pings the database
-# itself only after idle_period without database activity, at most once per idle_period.
-# It fails when at least failure_ratio of the operations in the last failure_window lost
-# their connection (once min_attempts were made), or when at least pool_saturation of the
-# connection pool has stayed in use for pool_wait_limit. Every key is optional; the
+# operations, so it adds no database calls while traffic flows. When there are fewer than
+# min_attempts operations in the window, it pings the database itself, at most once per
+# idle_period. It fails when at least failure_ratio of the operations in the last
+# failure_window lost their connection (once min_attempts were made), or when at least
+# pool_saturation of the connection pool has stayed in use, with callers waiting for a
+# connection, for pool_wait_limit. Every key is optional; the
 # values shown are the defaults.
 # [controller.health.database]
 # check_timeout   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for the check's own ping
@@ -360,7 +361,7 @@ allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # failure_window  = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # sliding window of operation outcomes
 # failure_ratio   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that fails the check
 # min_attempts    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
-# idle_period     = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # inactivity after which the check pings the database
+# idle_period     = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # with too few operations to decide, the check pings once per period
 # pool_saturation = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_SATURATION" "0.9" }}'  # share of the connection pool in use that counts as saturated
 # pool_wait_limit = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated
 

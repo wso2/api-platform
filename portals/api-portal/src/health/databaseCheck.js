@@ -49,14 +49,15 @@ function isSaturated(stats, ratio) {
  *
  *   1. With at least `minAttempts` attempts in the window, it is down when the share
  *      of connection failures reaches `failureRatio`, and up otherwise.
- *   2. When neither the application nor the check itself has touched the database for
- *      `idlePeriod`, it runs one SELECT 1 of its own, bounded by `checkTimeout`, and
- *      that result decides.
- *   3. Otherwise the last decided state stands; with none yet, rule 2 applies.
+ *   2. With fewer attempts than that, it runs one SELECT 1 of its own per `idlePeriod`,
+ *      bounded by `checkTimeout`, and that result decides. It does so even while the
+ *      portal uses the database, since traffic too thin for rule 1 cannot show an outage
+ *      or a recovery, and a decision left standing would never expire.
+ *   3. Between those pings the last decided state stands; with none yet, rule 2 applies.
  *   4. An up result is turned down once the pool has stayed saturated for
  *      `poolWaitLimit`.
  *
- * So a busy instance never adds health queries, and an idle one adds at most one per
+ * So a busy instance never adds health queries, and any other adds at most one per
  * `idlePeriod`. The check resolves to null when up, or to a fixed reason when down;
  * driver text never appears in it.
  *
@@ -83,7 +84,7 @@ function createDatabaseCheck({ window, ping, poolStats, settings, now = Date.now
             return { up: !down, reason: down ? reasonFor(snap.lastFailureKind) : null };
         }
         const quiet = (last) => last === null || nowMs - last >= settings.idlePeriodMs;
-        if (decided && !(quiet(snap.lastActivity) && quiet(snap.lastPing))) {
+        if (decided && !quiet(snap.lastPing)) {
             return decided;
         }
         try {

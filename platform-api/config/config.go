@@ -101,9 +101,33 @@ type Health struct {
 	CacheTTL time.Duration `koanf:"cache_ttl"`
 	// AllowedClients lists the IP addresses and CIDR ranges allowed to call the health
 	// endpoints. Empty, or "*" as the only entry, allows every client.
-	AllowedClients []string `koanf:"allowed_clients"`
+	AllowedClients ClientList `koanf:"allowed_clients"`
 	// Database configures the database check.
 	Database HealthDatabase `koanf:"database"`
+}
+
+// ClientList is a list of client addresses. In configuration it is a TOML array, or a
+// single comma-separated string so that one environment variable can set the whole list.
+type ClientList []string
+
+// clientListType is the reflected type of ClientList, used by the decode hook.
+var clientListType = reflect.TypeOf(ClientList(nil))
+
+// stringToClientListHook decodes a comma-separated string into a ClientList, trimming
+// each entry and dropping empty ones, so a trailing comma in the environment variable
+// is harmless and an empty string decodes to an empty list. It applies only when the
+// target is a ClientList; every other key decodes as before.
+func stringToClientListHook(from, to reflect.Type, data any) (any, error) {
+	if to != clientListType || from.Kind() != reflect.String {
+		return data, nil
+	}
+	list := ClientList{}
+	for _, entry := range strings.Split(reflect.ValueOf(data).String(), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			list = append(list, entry)
+		}
+	}
+	return list, nil
 }
 
 // HealthDatabase configures the database health check. The check decides from the
@@ -928,6 +952,7 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 			WeaklyTypedInput: true,
 			Result:           cfg,
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				stringToClientListHook,
 				mapstructure.StringToSliceHookFunc(","),
 				mapstructure.StringToTimeDurationHookFunc(),
 				fileBasedUsersDecodeHook(),

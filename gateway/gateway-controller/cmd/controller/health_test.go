@@ -254,6 +254,47 @@ func TestDatabaseWaitLogsOneFailureAndOneRecovery(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(logs.String(), "health check recovered"), logs.String())
 }
 
+// With refresh wired as at startup, each retry checks the database afresh: a database
+// back one second after the failed first check is seen at the first retry, not after
+// the cache TTL and the idle period have run out.
+func TestDatabaseWaitRefreshSeesRecoveryAtTheNextRetry(t *testing.T) {
+	checker := health.NewChecker(health.Options{
+		HealthyStatus: "healthy",
+		CacheTTL:      time.Hour,
+		Logger:        discardLogger(),
+	})
+	var pings atomic.Int32
+	clk := newTestClock()
+	settings := databaseSettings(200 * time.Millisecond)
+	window := observe.NewWindow(settings.FailureWindow, clk.Now)
+	dbCheck := buildDatabaseCheck(pingFunc(func(context.Context) error {
+		if pings.Add(1) == 1 {
+			return errors.New("connection refused")
+		}
+		return nil
+	}), window, settings, clk.Now)
+	checker.Register("database", dbCheck.check, health.WithTimeout(settings.CheckTimeout))
+	w := newDatabaseWait(checker.Evaluate, time.Hour, nil, discardLogger())
+	w.refresh = func() {
+		dbCheck.forget()
+		checker.Invalidate()
+	}
+	w.now = clk.Now
+	w.after = func(d time.Duration) <-chan time.Time {
+		clk.Advance(d)
+		ch := make(chan time.Time, 1)
+		ch <- clk.Now()
+		return ch
+	}
+
+	require.NoError(t, w.run())
+
+	assert.Equal(t, startupRetryInitial, clk.Elapsed(), "recovery seen at the first retry")
+	assert.Equal(t, int32(2), pings.Load())
+	assert.Equal(t, health.StatusUp, checker.Evaluate().Checks["database"].Status,
+		"health after the wait reports the fresh decision, not the failed first one")
+}
+
 func TestDatabaseCheckDoesNotStackPingsOnHungDatabase(t *testing.T) {
 	release := make(chan struct{})
 	var pings atomic.Int32

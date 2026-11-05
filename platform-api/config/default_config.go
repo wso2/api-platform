@@ -33,7 +33,7 @@ func defaultConfig() *Server {
 		},
 		Health: Health{
 			CacheTTL:       3 * time.Second,
-			AllowedClients: []string{},
+			AllowedClients: ClientList{},
 			Database: HealthDatabase{
 				CheckTimeout:   2 * time.Second,
 				StartupWait:    5 * time.Minute,

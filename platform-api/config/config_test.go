@@ -850,7 +850,7 @@ pool_wait_limit = "8s"
 `)
 	require.NoError(t, err)
 	assert.Equal(t, 7*time.Second, cfg.Health.CacheTTL)
-	assert.Equal(t, []string{"127.0.0.1", "::1", "10.0.0.0/8"}, cfg.Health.AllowedClients)
+	assert.Equal(t, ClientList{"127.0.0.1", "::1", "10.0.0.0/8"}, cfg.Health.AllowedClients)
 	assert.Equal(t, HealthDatabase{
 		CheckTimeout:   time.Second,
 		StartupWait:    90 * time.Second,
@@ -882,7 +882,26 @@ func TestLoadConfig_Health_AllowedClientsFromEnvironment(t *testing.T) {
 allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
 `)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"127.0.0.1", "10.0.0.0/8", "fc00::/7"}, cfg.Health.AllowedClients)
+	assert.Equal(t, ClientList{"127.0.0.1", "10.0.0.0/8", "fc00::/7"}, cfg.Health.AllowedClients)
+}
+
+// A trailing comma or blank entries in the environment variable are dropped, as in the
+// gateway controller and the API Portal, instead of stopping platform-api from starting.
+func TestLoadConfig_Health_AllowedClientsFromEnvironmentDropsBlankEntries(t *testing.T) {
+	t.Setenv("APIP_CP_HEALTH_ALLOWED_CLIENTS", "10.0.0.0/8, 127.0.0.1, ,")
+	cfg, err := loadWithKeys(t, `
+[platform_api.health]
+allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+`)
+	require.NoError(t, err)
+	assert.Equal(t, ClientList{"10.0.0.0/8", "127.0.0.1"}, cfg.Health.AllowedClients)
+}
+
+// A blank entry written in a TOML array is still a configuration error.
+func TestLoadConfig_Health_BlankAllowedClientInArrayFails(t *testing.T) {
+	_, err := loadWithKeys(t, "\n[platform_api.health]\nallowed_clients = [\"127.0.0.1\", \"\"]\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "platform_api.health.allowed_clients[1] is not a valid IP address or CIDR range")
 }
 
 func TestLoadConfig_Health_InvalidAllowedClientsFail(t *testing.T) {
@@ -1146,17 +1165,17 @@ func TestLoadConfig_ShippedHealthExampleIsValid(t *testing.T) {
 
 	cfg, err := loadWithKeys(t, section)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"*"}, cfg.Health.AllowedClients)
+	assert.Equal(t, ClientList{"*"}, cfg.Health.AllowedClients)
 
 	t.Setenv("APIP_CP_HEALTH_ALLOWED_CLIENTS", "127.0.0.1,::1,10.0.0.0/8,fc00::/7")
 	cfg, err = loadWithKeys(t, section)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"127.0.0.1", "::1", "10.0.0.0/8", "fc00::/7"}, cfg.Health.AllowedClients)
+	assert.Equal(t, ClientList{"127.0.0.1", "::1", "10.0.0.0/8", "fc00::/7"}, cfg.Health.AllowedClients)
 
 	t.Setenv("APIP_CP_HEALTH_ALLOWED_CLIENTS", "*")
 	cfg, err = loadWithKeys(t, section)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"*"}, cfg.Health.AllowedClients)
+	assert.Equal(t, ClientList{"*"}, cfg.Health.AllowedClients)
 
 	cfg, err = loadWithKeys(t, shippedHealthSection(t, "config.toml", true))
 	require.NoError(t, err)
@@ -1181,5 +1200,5 @@ func TestLoadConfig_TemplateHealthExampleIsValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, defaultConfig().Health.Database, cfg.Health.Database)
 	assert.Equal(t, 3*time.Second, cfg.Health.CacheTTL)
-	assert.Equal(t, []string{"*"}, cfg.Health.AllowedClients)
+	assert.Equal(t, ClientList{"*"}, cfg.Health.AllowedClients)
 }

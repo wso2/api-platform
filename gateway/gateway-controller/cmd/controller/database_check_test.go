@@ -98,7 +98,14 @@ func (p *fakePool) setPingErr(err error) {
 func (p *fakePool) setUsage(inUse, maxOpen int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.stats = sql.DBStats{InUse: inUse, MaxOpenConnections: maxOpen}
+	p.stats.InUse, p.stats.MaxOpenConnections = inUse, maxOpen
+}
+
+// wait records n more callers having waited for a connection.
+func (p *fakePool) wait(n int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stats.WaitCount += n
 }
 
 // checkFixture is a database check over a fake pool and a window driven by a test clock.
@@ -206,39 +213,103 @@ func TestDatabaseCheckIdlePingsOncePerIdlePeriod(t *testing.T) {
 	assert.Equal(t, int32(2), f.pool.pings.Load())
 }
 
-func TestDatabaseCheckRecentTrafficKeepsLastDecision(t *testing.T) {
+// Traffic too thin to decide from does not keep a decision standing: the check still
+// pings once per idle period, so it sees both an outage and a recovery.
+func TestDatabaseCheckThinTrafficStillPingsEachIdlePeriod(t *testing.T) {
 	f := newCheckFixture()
-	f.traffic(5, driver.ErrBadConn)
-	require.Error(t, f.evaluate())
+	require.NoError(t, f.evaluate(), "the first ping decides up")
+	require.Equal(t, int32(1), f.pool.pings.Load())
 
-	// The failures age out, but a little traffic, too little to decide from, keeps the
-	// instance from being idle.
+	// The database dies; one failing query every 8 s never reaches min_attempts.
+	f.pool.setPingErr(driver.ErrBadConn)
 	for i := 0; i < 4; i++ {
 		f.clk.Advance(8 * time.Second)
-		f.traffic(1, nil)
+		f.traffic(1, driver.ErrBadConn)
+		f.evaluate()
 	}
 	assert.ErrorIs(t, f.evaluate(), errDatabaseUnreachable)
+	pings := f.pool.pings.Load()
+	assert.Equal(t, int32(3), pings, "one ping per idle period, not one per evaluation")
+
+	// It recovers; one successful query every 8 s still lets a ping see it.
+	f.pool.setPingErr(nil)
+	for i := 0; i < 2; i++ {
+		f.clk.Advance(8 * time.Second)
+		f.traffic(1, nil)
+		f.evaluate()
+	}
+	assert.NoError(t, f.evaluate())
+}
+
+// With enough traffic to decide from, the check adds no pings.
+func TestDatabaseCheckBusyTrafficAddsNoPings(t *testing.T) {
+	f := newCheckFixture()
+	for i := 0; i < 4; i++ {
+		f.traffic(5, nil)
+		require.NoError(t, f.evaluate())
+		f.clk.Advance(11 * time.Second)
+	}
 	assert.Zero(t, f.pool.pings.Load())
 }
 
 func TestDatabaseCheckPoolExhaustion(t *testing.T) {
 	f := newCheckFixture()
 	f.traffic(10, nil)
+	require.NoError(t, f.evaluate(), "sets the wait baseline")
 	f.pool.setUsage(9, 10)
+	f.pool.wait(1)
 
 	assert.NoError(t, f.evaluate(), "saturation has only just started")
 	f.clk.Advance(4 * time.Second)
 	f.traffic(10, nil)
+	f.pool.wait(1)
 	assert.NoError(t, f.evaluate(), "a burst shorter than the wait limit")
 	f.clk.Advance(time.Second)
+	f.pool.wait(1)
 	assert.Equal(t, errPoolExhausted, f.evaluate())
+	f.pool.wait(1)
 	assert.EqualError(t, f.evaluate(), "database connection pool exhausted")
 
 	f.pool.setUsage(8, 10)
+	f.pool.wait(1)
 	assert.NoError(t, f.evaluate(), "recovered once usage drops below the threshold")
 	f.pool.setUsage(10, 10)
+	f.pool.wait(1)
+	require.NoError(t, f.evaluate())
 	f.clk.Advance(4 * time.Second)
+	f.pool.wait(1)
 	assert.NoError(t, f.evaluate(), "a new saturation starts a new wait")
+}
+
+// A busy pool that still serves every caller at once is not exhausted, however long it
+// stays busy; once callers stop waiting, the wait starts over.
+func TestDatabaseCheckPoolSaturationNeedsWaiters(t *testing.T) {
+	f := newCheckFixture()
+	f.traffic(10, nil)
+	f.pool.setUsage(10, 10)
+	f.pool.wait(7) // waits from before the first evaluation are only the baseline
+	require.NoError(t, f.evaluate())
+	for i := 0; i < 3; i++ {
+		f.clk.Advance(3 * time.Second)
+		f.traffic(10, nil)
+		assert.NoError(t, f.evaluate(), "no caller is waiting")
+	}
+
+	f.pool.wait(1)
+	require.NoError(t, f.evaluate())
+	f.clk.Advance(3 * time.Second)
+	f.pool.wait(1)
+	require.NoError(t, f.evaluate())
+	f.clk.Advance(3 * time.Second)
+	assert.NoError(t, f.evaluate(), "no new waiters, so the saturation timer resets")
+	f.pool.wait(1)
+	assert.NoError(t, f.evaluate(), "a new saturation starts a new wait")
+}
+
+func TestSaturationThresholdToleratesFloatError(t *testing.T) {
+	assert.Equal(t, 7, saturationThreshold(0.7, 10))
+	assert.Equal(t, 8, saturationThreshold(0.71, 10))
+	assert.Equal(t, 23, saturationThreshold(0.9, 25))
 }
 
 func TestDatabaseCheckPoolRuleSkippedForSingleAndUnlimitedPools(t *testing.T) {
@@ -257,7 +328,10 @@ func TestDatabaseCheckPoolRuleKeepsConnectionReason(t *testing.T) {
 	f := newCheckFixture()
 	f.pool.setUsage(10, 10)
 	require.NoError(t, f.evaluate())
+	f.pool.wait(1)
+	require.NoError(t, f.evaluate())
 	f.clk.Advance(6 * time.Second)
+	f.pool.wait(1)
 	f.traffic(10, driver.ErrBadConn)
 
 	assert.Equal(t, errDatabaseUnreachable, f.evaluate())

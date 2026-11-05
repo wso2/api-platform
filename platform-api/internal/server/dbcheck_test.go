@@ -267,6 +267,9 @@ type fakePool struct {
 	mu      sync.Mutex
 	pingErr error
 	stats   sql.DBStats
+	// waiting makes every Stats call report one more caller that waited for a
+	// connection, as a pool with callers queued for it would.
+	waiting bool
 }
 
 func (p *fakePool) PingContext(ctx context.Context) error {
@@ -283,6 +286,9 @@ func (p *fakePool) PingContext(ctx context.Context) error {
 func (p *fakePool) Stats() sql.DBStats {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.waiting {
+		p.stats.WaitCount++
+	}
 	return p.stats
 }
 
@@ -292,10 +298,16 @@ func (p *fakePool) setPingErr(err error) {
 	p.pingErr = err
 }
 
+// setStats sets the pool's usage, with callers waiting for a connection.
 func (p *fakePool) setStats(maxOpen, inUse int) {
+	p.setUsage(maxOpen, inUse, true)
+}
+
+func (p *fakePool) setUsage(maxOpen, inUse int, waiting bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.stats = sql.DBStats{MaxOpenConnections: maxOpen, InUse: inUse}
+	p.stats.MaxOpenConnections, p.stats.InUse = maxOpen, inUse
+	p.waiting = waiting
 }
 
 // trafficFixture is a database check fed by a window of observed traffic on a fake
@@ -467,26 +479,39 @@ func TestDatabaseCheckIdlePingDetectsOutage(t *testing.T) {
 	}
 }
 
-// Recent traffic, even below min_attempts, means no ping: the last decided state holds.
-func TestDatabaseCheckRecentActivityKeepsDecidedState(t *testing.T) {
+// Traffic too thin to decide from does not keep a decision standing: the check still
+// pings once per idle period, so it sees both an outage and a recovery.
+func TestDatabaseCheckThinTrafficStillPingsEachIdlePeriod(t *testing.T) {
 	f := newTrafficFixture(testDatabaseSettings())
-	f.pool.setPingErr(errors.New("connection refused"))
-	if err := f.evaluate(); err == nil {
-		t.Fatal("first evaluation = up, want down from the failed ping")
-	}
-	f.pool.setPingErr(nil)
-
-	f.clk.Advance(11 * time.Second)
-	f.traffic(1, nil)
-	if err := f.evaluate(); err == nil {
-		t.Fatal("recent activity below min_attempts = up, want the decided down state kept")
-	}
-	f.clk.Advance(11 * time.Second)
 	if err := f.evaluate(); err != nil {
-		t.Fatalf("idle again = %v, want up from a new ping", err)
+		t.Fatalf("first evaluation = %v, want up from the ping", err)
 	}
-	if n := f.pool.pings.Load(); n != 2 {
-		t.Fatalf("pings = %d, want 2", n)
+
+	// The database dies; one failing query every 8 s never reaches min_attempts.
+	f.pool.setPingErr(errors.New("connection refused"))
+	for range 4 {
+		f.clk.Advance(8 * time.Second)
+		f.traffic(1, driver.ErrBadConn)
+		f.evaluate()
+	}
+	if err := f.evaluate(); !errors.Is(err, errDatabaseUnreachable) {
+		t.Fatalf("outage under thin traffic = %v, want unreachable", err)
+	}
+	// The failed pings count toward the window here, so rule 1 may decide before a third
+	// ping is due; either way there is at most one ping per idle period.
+	if n := f.pool.pings.Load(); n < 2 || n > 4 {
+		t.Fatalf("pings = %d over 32s, want 2 to 4: at most one per idle period", n)
+	}
+
+	// It recovers; one successful query every 8 s still lets a ping see it.
+	f.pool.setPingErr(nil)
+	for range 2 {
+		f.clk.Advance(8 * time.Second)
+		f.traffic(1, nil)
+		f.evaluate()
+	}
+	if err := f.evaluate(); err != nil {
+		t.Fatalf("recovery under thin traffic = %v, want up", err)
 	}
 }
 
@@ -581,6 +606,9 @@ func TestDatabaseCheckPoolExhaustion(t *testing.T) {
 	settings := testDatabaseSettings()
 	f := newTrafficFixture(settings)
 	f.traffic(10, nil)
+	if err := f.evaluate(); err != nil {
+		t.Fatalf("baseline evaluation = %v, want up", err)
+	}
 	f.pool.setStats(10, 9) // ceil(0.9 × 10) = 9: saturated
 
 	if err := f.evaluate(); err != nil {
@@ -633,6 +661,38 @@ func TestDatabaseCheckPoolBurstResets(t *testing.T) {
 	}
 }
 
+// A busy pool that still serves every caller at once is not exhausted, however long it
+// stays busy; once callers stop waiting, the wait starts over.
+func TestDatabaseCheckPoolSaturationNeedsWaiters(t *testing.T) {
+	f := newTrafficFixture(testDatabaseSettings())
+	f.pool.setUsage(10, 10, false)
+	for i := range 4 {
+		f.traffic(10, nil)
+		if err := f.evaluate(); err != nil {
+			t.Fatalf("evaluation %d with no caller waiting = %v, want up", i, err)
+		}
+		f.clk.Advance(3 * time.Second)
+	}
+
+	f.pool.setUsage(10, 10, true)
+	f.traffic(10, nil)
+	f.evaluate()
+	f.clk.Advance(3 * time.Second)
+	f.traffic(10, nil)
+	f.evaluate()
+	f.pool.setUsage(10, 10, false)
+	f.clk.Advance(3 * time.Second)
+	f.traffic(10, nil)
+	if err := f.evaluate(); err != nil {
+		t.Fatalf("waiters gone = %v, want up and the saturation timer reset", err)
+	}
+	f.pool.setUsage(10, 10, true)
+	f.traffic(10, nil)
+	if err := f.evaluate(); err != nil {
+		t.Fatalf("new saturation = %v, want up until it lasts pool_wait_limit", err)
+	}
+}
+
 // Single-connection (SQLite) and unlimited pools skip the pool rule.
 func TestDatabaseCheckPoolRuleSkipped(t *testing.T) {
 	for _, maxOpen := range []int{0, 1} {
@@ -677,5 +737,42 @@ func TestSaturationThreshold(t *testing.T) {
 		if got := saturationThreshold(tt.ratio, tt.maxOpen); got != tt.want {
 			t.Errorf("saturationThreshold(%v, %d) = %d, want %d", tt.ratio, tt.maxOpen, got, tt.want)
 		}
+	}
+}
+
+// With refresh wired as at startup, each retry checks the database afresh: a database
+// back one second after the failed first check is seen at the first retry, not after
+// the cache TTL and the idle period have run out.
+func TestDatabaseWaitRefreshSeesRecoveryAtTheNextRetry(t *testing.T) {
+	clk := newFakeClock()
+	window := observe.NewWindow(30*time.Second, clk.Now)
+	pool := &fakePool{window: window}
+	pool.setPingErr(errors.New("connection refused"))
+	dbCheck := buildDatabaseCheck(pool, window, testDatabaseSettings(), clk.Now)
+	c := health.NewChecker(health.Options{HealthyStatus: "ok", CacheTTL: time.Hour})
+	c.Register("database", dbCheck.check, health.WithTimeout(time.Second))
+	w := newDatabaseWait(c.Evaluate, time.Hour, nil, discardLogger())
+	w.refresh = func() {
+		dbCheck.forget()
+		c.Invalidate()
+	}
+	start := clk.Now()
+	w.now = clk.Now
+	w.after = func(d time.Duration) <-chan time.Time {
+		clk.Advance(d)
+		pool.setPingErr(nil)
+		ch := make(chan time.Time, 1)
+		ch <- clk.Now()
+		return ch
+	}
+
+	if err := w.run(); err != nil {
+		t.Fatalf("startup wait = %v, want nil", err)
+	}
+	if got := clk.Now().Sub(start); got != startupRetryInitial {
+		t.Fatalf("recovery seen after %s, want at the first retry (%s)", got, startupRetryInitial)
+	}
+	if got := c.Evaluate().Checks["database"].Status; got != health.StatusUp {
+		t.Fatalf("health after the wait = %s, want the fresh decision (up)", got)
 	}
 }

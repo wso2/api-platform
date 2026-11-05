@@ -51,13 +51,16 @@ type databasePool interface {
 //
 //  1. With at least min_attempts outcomes in the window, the database is down when the
 //     share of connection failures reaches failure_ratio.
-//  2. When the platform has neither used the database nor pinged it within
-//     idle_period, one ping decides.
-//  3. Otherwise the last decided state stands; before anything is decided, a ping
-//     decides.
+//  2. With fewer outcomes than that, the check pings the database once per
+//     idle_period and the ping decides. It pings even while the platform uses the
+//     database, since traffic too thin for rule 1 cannot show an outage or a recovery,
+//     and a decision left standing would never expire.
+//  3. Between those pings the last decided state stands; before anything is decided, a
+//     ping decides.
 //
-// Whatever these decide, a pool that has stayed saturated for pool_wait_limit reports
-// the database down. Without a window, every evaluation pings.
+// Whatever these decide, a pool that has stayed saturated, with callers waiting for a
+// connection, for pool_wait_limit reports the database down. Without a window, every
+// evaluation pings.
 type databaseCheck struct {
 	pool     databasePool
 	window   *observe.Window
@@ -77,14 +80,32 @@ type databaseCheck struct {
 	pingStarted time.Time
 	// saturatedSince is when the pool became saturated; zero while it is not.
 	saturatedSince time.Time
+	// waitCount is the pool's WaitCount at the previous evaluation, the baseline for
+	// telling whether callers have waited since; hasWaitCount is false until it is set.
+	waitCount    int64
+	hasWaitCount bool
 }
 
 // newDatabaseCheck returns the health check for the database pool. now is the clock it
 // judges idleness and saturation by.
 func newDatabaseCheck(pool databasePool, window *observe.Window, settings config.HealthDatabase,
 	now func() time.Time) health.CheckFunc {
-	c := &databaseCheck{pool: pool, window: window, settings: settings, now: now}
-	return c.check
+	return buildDatabaseCheck(pool, window, settings, now).check
+}
+
+// buildDatabaseCheck returns the database check itself, for callers that also need to
+// make it decide afresh.
+func buildDatabaseCheck(pool databasePool, window *observe.Window, settings config.HealthDatabase,
+	now func() time.Time) *databaseCheck {
+	return &databaseCheck{pool: pool, window: window, settings: settings, now: now}
+}
+
+// forget drops the last decided state, so the next evaluation pings the database
+// instead of repeating it.
+func (c *databaseCheck) forget() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.decided, c.hasDecided = nil, false
 }
 
 func (c *databaseCheck) check(ctx context.Context) error {
@@ -113,11 +134,11 @@ func (c *databaseCheck) reachability(ctx context.Context) error {
 	if c.pingStarted.After(lastPing) {
 		lastPing = c.pingStarted
 	}
-	idle := c.olderThanIdlePeriod(snap.LastActivity, now) && c.olderThanIdlePeriod(lastPing, now)
+	pingDue := c.olderThanIdlePeriod(lastPing, now)
 	decided, hasDecided := c.decided, c.hasDecided
 	c.mu.Unlock()
 
-	if hasDecided && !idle {
+	if hasDecided && !pingDue {
 		return decided
 	}
 	return c.ping(ctx)
@@ -192,14 +213,19 @@ func (c *databaseCheck) pingOnce(ctx context.Context) error {
 	}
 }
 
-// poolPressure reports the pool as exhausted once at least pool_saturation of its
-// connections have been in use for pool_wait_limit. It is skipped for an unlimited or
-// single-connection pool, where saturation says nothing about the database.
+// poolPressure reports the pool as exhausted once it has stayed saturated for
+// pool_wait_limit. The pool is saturated when at least pool_saturation of its
+// connections are in use and callers have waited for a connection since the previous
+// evaluation; a busy pool that still serves every caller at once is not. It is skipped
+// for an unlimited or single-connection pool, where saturation says nothing about the
+// database.
 func (c *databaseCheck) poolPressure(now time.Time) error {
 	stats := c.pool.Stats()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if stats.MaxOpenConnections <= 1 || stats.InUse < saturationThreshold(c.settings.PoolSaturation, stats.MaxOpenConnections) {
+	waited := c.hasWaitCount && stats.WaitCount > c.waitCount
+	c.waitCount, c.hasWaitCount = stats.WaitCount, true
+	if stats.MaxOpenConnections <= 1 || stats.InUse < saturationThreshold(c.settings.PoolSaturation, stats.MaxOpenConnections) || !waited {
 		c.saturatedSince = time.Time{}
 		return nil
 	}

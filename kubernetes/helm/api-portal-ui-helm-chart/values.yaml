@@ -79,13 +79,14 @@ config:
     allowedClients:
       - "*"
     # The database check judges the database by the outcomes of the portal's own
-    # queries, and runs its own SELECT 1 only after idlePeriod without any.
+    # queries; when they are too few to decide from, it runs its own SELECT 1 at most
+    # once per idlePeriod.
     database:
       checkTimeout: 2s           # bound on the check's own SELECT 1
       failureWindow: 30s         # how far back query outcomes count (>= cacheTtl)
       failureRatio: 0.5          # down when connection failures / attempts reach this
       minAttempts: 5             # attempts in the window needed before the ratio decides
-      idlePeriod: 10s            # quiet time before the check's own SELECT 1 (<= failureWindow)
+      idlePeriod: 10s            # at most one own SELECT 1 per period (<= failureWindow)
       poolSaturation: 0.9        # postgres/mssql: share of the pool in use, callers waiting
       poolWaitLimit: 5s          # saturation lasting this long reports the database down
 

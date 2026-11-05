@@ -111,12 +111,14 @@ var errPoolExhausted = health.Reason("database connection pool exhausted")
 //
 //  1. With at least min_attempts operations in the window, the database is down when
 //     the share of connection failures reaches failure_ratio.
-//  2. With no application activity and no own ping within idle_period, the check pings
-//     the database once, bounded by check_timeout, and the ping decides.
-//  3. Otherwise the last decided state stands; with none yet, the check pings.
+//  2. With fewer operations than that, the check pings the database once per
+//     idle_period, bounded by check_timeout, and the ping decides. It pings even while
+//     the controller uses the database, since traffic too thin for rule 1 cannot show
+//     an outage or a recovery, and a decision left standing would never expire.
+//  3. Between those pings the last decided state stands; with none yet, the check pings.
 //
-// A database that is up is still reported down once the main pool has stayed saturated
-// for pool_wait_limit.
+// A database that is up is still reported down once the main pool has stayed saturated,
+// with callers waiting for a connection, for pool_wait_limit.
 type databaseCheck struct {
 	pool     databasePool
 	window   *observe.Window
@@ -138,12 +140,23 @@ type databaseCheck struct {
 	lastPing time.Time
 	// saturatedSince is when the pool became saturated; zero while it is not.
 	saturatedSince time.Time
+	// waitCount is the pool's WaitCount at the previous evaluation, the baseline for
+	// telling whether callers have waited since; hasWaitCount is false until it is set.
+	waitCount    int64
+	hasWaitCount bool
 }
 
 // newDatabaseCheck returns the database health check for pool, deciding from window
 // with settings. now supplies the current time.
 func newDatabaseCheck(pool databasePool, window *observe.Window, settings config.HealthDatabaseConfig,
 	now func() time.Time) health.CheckFunc {
+	return buildDatabaseCheck(pool, window, settings, now).check
+}
+
+// buildDatabaseCheck returns the database check itself, for callers that also need to
+// make it decide afresh.
+func buildDatabaseCheck(pool databasePool, window *observe.Window, settings config.HealthDatabaseConfig,
+	now func() time.Time) *databaseCheck {
 	c := &databaseCheck{
 		pool:          pool,
 		window:        window,
@@ -151,7 +164,15 @@ func newDatabaseCheck(pool databasePool, window *observe.Window, settings config
 		now:           now,
 		timeoutReason: health.Reason(fmt.Sprintf("timed out after %s", settings.CheckTimeout)),
 	}
-	return c.check
+	return c
+}
+
+// forget drops the last decided state, so the next evaluation pings the database
+// instead of repeating it.
+func (c *databaseCheck) forget() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.decided, c.hasDecided = nil, false
 }
 
 func (c *databaseCheck) check(ctx context.Context) error {
@@ -182,8 +203,7 @@ func (c *databaseCheck) decide(ctx context.Context) error {
 	if c.lastPing.After(lastPing) {
 		lastPing = c.lastPing
 	}
-	idle := !recent(snap.LastActivity, now, s.IdlePeriod) && !recent(lastPing, now, s.IdlePeriod)
-	if !idle && c.hasDecided {
+	if recent(lastPing, now, s.IdlePeriod) && c.hasDecided {
 		err := c.decided
 		c.mu.Unlock()
 		return err
@@ -245,15 +265,18 @@ func (c *databaseCheck) ping(ctx context.Context) error {
 
 // poolExhausted reports whether the pool has stayed saturated for at least
 // pool_wait_limit. The pool is saturated when at least pool_saturation of its maximum
-// connections are in use; pools limited to one connection, or not limited at all, are
-// never considered saturated.
+// connections are in use and callers have waited for a connection since the previous
+// evaluation; a busy pool that still serves every caller at once is not. Pools limited
+// to one connection, or not limited at all, are never considered saturated.
 func (c *databaseCheck) poolExhausted() bool {
 	stats := c.pool.Stats()
 	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	waited := c.hasWaitCount && stats.WaitCount > c.waitCount
+	c.waitCount, c.hasWaitCount = stats.WaitCount, true
 	limit := stats.MaxOpenConnections
-	if limit <= 1 || stats.InUse < int(math.Ceil(c.settings.PoolSaturation*float64(limit))) {
+	if limit <= 1 || stats.InUse < saturationThreshold(c.settings.PoolSaturation, limit) || !waited {
 		c.saturatedSince = time.Time{}
 		return false
 	}
@@ -261,6 +284,13 @@ func (c *databaseCheck) poolExhausted() bool {
 		c.saturatedSince = now
 	}
 	return now.Sub(c.saturatedSince) >= c.settings.PoolWaitLimit
+}
+
+// saturationThreshold is the number of connections in use, out of maxOpen, at which the
+// pool counts as saturated: ratio of maxOpen, rounded up. A tiny tolerance keeps float
+// error such as 0.7 × 10 = 7.000000000000001 from rounding up a whole connection.
+func saturationThreshold(ratio float64, maxOpen int) int {
+	return int(math.Ceil(ratio*float64(maxOpen) - 1e-9))
 }
 
 // newHealthChecker builds the checker behind the admin health endpoints. It reports check
@@ -292,6 +322,9 @@ type databaseWait struct {
 	log   *slog.Logger
 	now   func() time.Time
 	after func(time.Duration) <-chan time.Time
+	// refresh, when set, runs before each retry so the retry checks the database
+	// afresh instead of reading a cached or still-standing earlier decision.
+	refresh func()
 }
 
 func newDatabaseWait(evaluate func() health.Result, wait time.Duration, stop <-chan os.Signal,
@@ -329,6 +362,9 @@ func (w *databaseWait) run() error {
 			return errStartupInterrupted
 		case <-w.after(min(interval, remaining)):
 		}
+		if w.refresh != nil {
+			w.refresh()
+		}
 		if w.databaseUp() {
 			return nil
 		}
@@ -351,14 +387,19 @@ func serveHealthWhileWaiting(cfg *config.Config, log *slog.Logger, checker *heal
 	db storage.Storage, window *observe.Window, gate *startupGate, authMiddleware func(http.Handler) http.Handler,
 	quit <-chan os.Signal) (*adminserver.Server, int, bool) {
 	settings := cfg.Controller.Health.Database
-	checker.Register("database", newDatabaseCheck(db.GetDB(), window, settings, time.Now),
-		health.WithTimeout(settings.CheckTimeout))
+	dbCheck := buildDatabaseCheck(db.GetDB(), window, settings, time.Now)
+	checker.Register("database", dbCheck.check, health.WithTimeout(settings.CheckTimeout))
 	checker.RegisterUnlogged("startup", gate.check)
 	gate.invalidate = checker.Invalidate
 	// Serve health before waiting, so probes get a real answer (503) during the wait
 	// instead of a refused connection.
 	admin := startAdminServer(cfg, checker.Handler(), authMiddleware, log)
-	if err := newDatabaseWait(checker.Evaluate, settings.StartupWait, quit, log).run(); err != nil {
+	wait := newDatabaseWait(checker.Evaluate, settings.StartupWait, quit, log)
+	wait.refresh = func() {
+		dbCheck.forget()
+		checker.Invalidate()
+	}
+	if err := wait.run(); err != nil {
 		return nil, endStartupWithoutDatabase(err, admin, cfg.Controller.Server.ShutdownTimeout, log, db), false
 	}
 	return admin, 0, true

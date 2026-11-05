@@ -97,8 +97,8 @@ config:
       failureWindow: 30s         # how far back operation outcomes are counted
       failureRatio: 0.5          # share of failed operations at or above which the database is down
       minAttempts: 5             # operations the window must hold before the ratio decides
-      idlePeriod: 10s            # with no operations for this long, the check pings (at most once per period)
-      poolSaturation: 0.9        # share of the connection pool in use that counts as saturated
+      idlePeriod: 10s            # with too few operations to decide, the check pings once per period
+      poolSaturation: 0.9        # share of the pool in use, with callers waiting, that counts as saturated
       poolWaitLimit: 5s          # how long the pool may stay saturated before the database is down
 
   security:

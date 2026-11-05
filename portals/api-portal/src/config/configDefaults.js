@@ -136,7 +136,7 @@ const DEFAULTS = {
             failureWindow: '30s', // how far back outcomes of real queries count
             failureRatio: 0.5,    // failed share of attempts that means "down"
             minAttempts: 5,       // attempts needed before the ratio decides
-            idlePeriod: '10s',    // quiet time after which the check pings itself
+            idlePeriod: '10s',    // with too few queries to decide, the check pings once per period
             poolSaturation: 0.9,  // share of the pool in use, with callers waiting
             poolWaitLimit: '5s',  // how long saturation may last before "down"
         },

@@ -3824,7 +3824,6 @@ func (t *Translator) createLuaFilter() (*hcm.HttpFilter, error) {
 	}, nil
 }
 
-// createExtProcFilter creates an Envoy ext_proc filter for policy engine integration
 // createRBACFilter returns the RBAC HTTP filter with no rules. It enforces nothing on its
 // own; a route that needs access control enables it with per-route config.
 func createRBACFilter() (*hcm.HttpFilter, error) {
@@ -3838,6 +3837,7 @@ func createRBACFilter() (*hcm.HttpFilter, error) {
 	}, nil
 }
 
+// createExtProcFilter creates an Envoy ext_proc filter for policy engine integration
 func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 	policyEngine := t.routerConfig.PolicyEngine
 

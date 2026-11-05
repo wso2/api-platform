@@ -105,8 +105,8 @@ func (s *Server) startServing(cfg *config.Server) (*serving, error) {
 		return nil, err
 	}
 	sv.db = db
-	sv.health.Register("database", newDatabaseCheck(db, db.Window(), cfg.Health.Database, time.Now),
-		health.WithTimeout(cfg.Health.Database.CheckTimeout))
+	dbCheck := buildDatabaseCheck(db, db.Window(), cfg.Health.Database, time.Now)
+	sv.health.Register("database", dbCheck.check, health.WithTimeout(cfg.Health.Database.CheckTimeout))
 
 	tlsConfig, err := s.preflightListeners(cfg.Listeners)
 	if err != nil {
@@ -119,7 +119,12 @@ func (s *Server) startServing(cfg *config.Server) (*serving, error) {
 		return nil, err
 	}
 
-	if err := newDatabaseWait(sv.health.Evaluate, cfg.Health.Database.StartupWait, sv.quit, s.logger).run(); err != nil {
+	wait := newDatabaseWait(sv.health.Evaluate, cfg.Health.Database.StartupWait, sv.quit, s.logger)
+	wait.refresh = func() {
+		dbCheck.forget()
+		sv.health.Invalidate()
+	}
+	if err := wait.run(); err != nil {
 		if errors.Is(err, ErrStartupInterrupted) {
 			s.logger.Info("Received shutdown signal during startup")
 		}
@@ -374,6 +379,9 @@ type databaseWait struct {
 	logger *slog.Logger
 	now    func() time.Time
 	after  func(time.Duration) <-chan time.Time
+	// refresh, when set, runs before each retry so the retry checks the database
+	// afresh instead of reading a cached or still-standing earlier decision.
+	refresh func()
 }
 
 func newDatabaseWait(evaluate func() health.Result, wait time.Duration, stop <-chan os.Signal,
@@ -410,6 +418,9 @@ func (w *databaseWait) run() error {
 		case <-w.stop:
 			return ErrStartupInterrupted
 		case <-w.after(min(interval, remaining)):
+		}
+		if w.refresh != nil {
+			w.refresh()
 		}
 		if w.databaseUp() {
 			return nil

@@ -131,21 +131,46 @@ test('statement errors never take the check down', async () => {
     assert.equal(await check(), null);
 });
 
-test('with too few attempts, the last decided state stands until the instance goes idle', async () => {
+test('with too few attempts, the last decided state stands only until the next ping is due', async () => {
     const { check, traffic, clock, state } = setup();
     traffic(0, 5);
     assert.equal(await check(), 'database unreachable');
 
-    // The window drains; a trickle of traffic keeps the instance active.
+    // The window drains; a trickle of traffic is too thin to decide from, so the
+    // standing decision holds only until one own ping decides again.
     clock.now += 31000;
     traffic(1);
-    assert.equal(await check(), 'database unreachable');
-    assert.equal(state.pings, 0);
-
-    // Quiet for the idle period: one own ping decides again.
-    clock.now += 10000;
     assert.equal(await check(), null);
     assert.equal(state.pings, 1);
+    clock.now += 3000;
+    traffic(1);
+    assert.equal(await check(), null, 'between pings the decision stands');
+    assert.equal(state.pings, 1);
+});
+
+test('thin traffic does not freeze the decision: an outage and a recovery are both seen', async () => {
+    const { check, traffic, clock, state } = setup();
+    assert.equal(await check(), null, 'the first ping decides up');
+
+    // The database dies; one failing query every 8 s never reaches minAttempts.
+    state.pingResult = refused();
+    for (let i = 0; i < 4; i++) {
+        clock.now += 8000;
+        traffic(0, 1);
+        await check();
+    }
+    assert.equal(await check(), 'database unreachable');
+    assert.ok(state.pings <= 1 + Math.floor(32000 / SETTINGS.idlePeriodMs) + 1,
+        `at most one ping per idle period, got ${state.pings}`);
+
+    // It recovers; one successful query every 8 s still lets a ping see it.
+    state.pingResult = null;
+    for (let i = 0; i < 2; i++) {
+        clock.now += 8000;
+        traffic(1);
+        await check();
+    }
+    assert.equal(await check(), null);
 });
 
 test('the window recovers once successes outweigh failures', async () => {

@@ -218,8 +218,8 @@ every key below with `api-portal-ui.`.
   node ranges (kubelet probes come from node addresses), and add external load balancers, or clients whose address is preserved
   (`externalTrafficPolicy: Local`), that call the health endpoints.
   `config.health.database.*` tunes the database check, which judges the database by the
-  outcomes of the portal's own queries and runs its own `SELECT 1` only after `idlePeriod`
-  without any: `checkTimeout`, `failureWindow`, `failureRatio`, `minAttempts`, `idlePeriod`,
+  outcomes of the portal's own queries and, when they are too few to decide from, runs its
+  own `SELECT 1` at most once per `idlePeriod`: `checkTimeout`, `failureWindow`, `failureRatio`, `minAttempts`, `idlePeriod`,
   and the pool-exhaustion rule (`poolSaturation`, `poolWaitLimit`). Health events go to
   stdout: one line when a check starts failing and one when it recovers.
 - `config.platformApi.baseUrl` / `insecure` — the Platform API endpoint (derived under the
