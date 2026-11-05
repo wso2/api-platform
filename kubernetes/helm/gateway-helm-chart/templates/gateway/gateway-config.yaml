@@ -605,12 +605,7 @@ data:
     exclude_fields = [{{- range $i, $f := .Values.gateway.config.traffic_logging.exclude_fields }}{{- if gt $i 0 }}, {{ end }}{{ $f | quote }}{{- end }}]
     {{- end }}
     {{- if .Values.gateway.config.traffic_logging.template }}
-    {{- /* toJson escapes what a TOML string cannot hold, except DEL and the C1 controls (U+007F to U+009F). */}}
-    {{- $template := .Values.gateway.config.traffic_logging.template | toString | toJson }}
-    {{- range $c := untilStep 127 160 1 }}
-    {{- $template = replace (printf "%c" $c) (printf "\\u%04x" $c) $template }}
-    {{- end }}
-    template = {{ $template }}
+    template = {{ .Values.gateway.config.traffic_logging.template | quote }}
     {{- end }}
     {{- if .Values.gateway.config.traffic_logging.template_file }}
     template_file = {{ .Values.gateway.config.traffic_logging.template_file | quote }}
