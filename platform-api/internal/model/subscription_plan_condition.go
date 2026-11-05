@@ -100,9 +100,10 @@ func FindCondition(conditions []SubscriptionPlanCondition, conditionType string)
 
 // SetLegacyLimit fills the single request limit that older gateways and subscription-validation v1 read:
 // a count per one MINUTE, HOUR, DAY or MONTH. They get the first one-unit window as it is. A plan with
-// only longer windows gets its first one spread evenly over each unit, rounded down (1000 per 2 HOUR
-// becomes 500 per HOUR); a window with fewer requests than units gets 1 per unit, which admits more
-// than the window allows. Without a request-count condition the plan is unlimited for them.
+// only longer windows gets its first one with the same count per one unit, as releases before
+// conditions did: 1000 per 2 HOUR is enforced as 1000 per HOUR, which can admit up to twice the
+// window's count but never blocks a subscriber within it. Without a request-count condition the plan
+// is unlimited for them.
 func (p *SubscriptionPlan) SetLegacyLimit() {
 	p.ThrottleLimitCount = nil
 	p.ThrottleLimitUnit = ""
@@ -130,16 +131,8 @@ func (p *SubscriptionPlan) SetLegacyLimit() {
 		}
 	}
 	if picked != nil {
-		count := legacyCountPerUnit(picked.Count, picked.TimeAmount)
+		count := picked.Count
 		p.ThrottleLimitCount = &count
 		p.ThrottleLimitUnit = picked.TimeUnit
 	}
-}
-
-// legacyCountPerUnit spreads count over amount units, rounded down, and at least 1.
-func legacyCountPerUnit(count, amount int) int {
-	if amount <= 1 {
-		return count
-	}
-	return max(count/amount, 1)
 }
