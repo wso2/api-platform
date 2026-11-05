@@ -32,16 +32,21 @@ const (
 // here.
 const MaxSubscriptionPlanHandleChars = 40
 
+// MaxSubscriptionPlanDescriptionChars is the width of subscription_plans.description, as in the API
+// Portal.
+const MaxSubscriptionPlanDescriptionChars = 1023
+
 // SubscriptionPlanUpdate holds fields for partial updates.
 // All pointer fields are only applied when non-nil (patch semantics).
 type SubscriptionPlanUpdate struct {
-	Handle             *string
-	Name               *string
-	StopOnQuotaReach   *bool
-	ThrottleLimitCount *int
-	ThrottleLimitUnit  *string
-	// ClearLimit removes the plan's throttling limit entirely. Set when the caller
-	// submits an explicit empty "limits" array. Ignored if ThrottleLimitCount is set.
+	Handle      *string
+	Name        *string
+	Description *string
+	// Conditions replaces all conditions; an empty list removes them.
+	Conditions *[]SubscriptionPlanCondition
+	// RequestLimit replaces only the request-count condition, for clients that send "limits".
+	RequestLimit *SubscriptionPlanCondition
+	// ClearLimit removes the request-count condition (an empty "limits" was sent).
 	ClearLimit bool
 	ExpiryTime *time.Time
 	// ClearExpiryTime removes the plan's expiry. Set when the caller submits an
@@ -51,17 +56,19 @@ type SubscriptionPlanUpdate struct {
 	Status          *SubscriptionPlanStatus
 }
 
-// SubscriptionPlan represents an organization-scoped subscription plan
+// SubscriptionPlan represents an organization-scoped subscription plan.
 //
-// NOTE: throttling limits are stored in the subscription_plan_limits table, which
-// is modelled to hold MULTIPLE limits per plan. For now the platform-api only
-// surfaces a SINGLE REQUEST_COUNT limit, mapped onto the StopOnQuotaReach /
-// ThrottleLimitCount / ThrottleLimitUnit fields below (these no longer have
-// columns on subscription_plans). This must be improved to expose all limits.
+// A plan saved before conditions has no condition rows; its request limit is read from
+// subscription_plan_limits instead (LegacyLimits). StopOnQuotaReach, ThrottleLimitCount and
+// ThrottleLimitUnit are the single request limit older gateways read (see SetLegacyLimit).
 type SubscriptionPlan struct {
-	UUID               string                 `json:"id" db:"uuid"`
-	Handle             string                 `json:"handle" db:"handle"`
-	Name               string                 `json:"name" db:"name"`
+	UUID        string                      `json:"id" db:"uuid"`
+	Handle      string                      `json:"handle" db:"handle"`
+	Name        string                      `json:"name" db:"name"`
+	Description string                      `json:"description,omitempty" db:"description"`
+	Conditions  []SubscriptionPlanCondition `json:"conditions"`
+	// LegacyLimits is true when Conditions came from subscription_plan_limits.
+	LegacyLimits       bool                   `json:"-"`
 	StopOnQuotaReach   bool                   `json:"stopOnQuotaReach"`
 	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`

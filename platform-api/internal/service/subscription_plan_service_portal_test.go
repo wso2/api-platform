@@ -31,11 +31,11 @@ import (
 
 // newPlanTestService has the plan gold.
 func newPlanTestService() (*SubscriptionPlanService, *webhookPlanRepo) {
-	limit := 100
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
-		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", ThrottleLimitCount: &limit, ThrottleLimitUnit: "MINUTE",
-			StopOnQuotaReach: true, Status: model.SubscriptionPlanStatusActive},
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{*requestLimit(100, "MINUTE")},
+			Status: model.SubscriptionPlanStatusActive},
 	}}
+	repo.plans["gold"].SetLegacyLimit()
 	return NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil), repo
 }
 

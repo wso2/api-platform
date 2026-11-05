@@ -46,12 +46,13 @@ func (planTestOrgs) GetOrganizationByHandle(handle string) (*model.Organization,
 }
 
 // upsertCall is one plan the receiver passed on, with its pricing (nil for a free plan).
+// conditions is nil when the event carried none; windows are its request limits.
 type upsertCall struct {
-	orgUUID, handle, name string
-	limitCount            *int
-	limitUnit             string
-	occurredAt            time.Time
-	pricing               *model.SubscriptionPlanPricing
+	orgUUID, handle, name, description string
+	conditions                         *[]model.SubscriptionPlanCondition
+	windows                            []model.ConditionWindow
+	occurredAt                         time.Time
+	pricing                            *model.SubscriptionPlanPricing
 }
 
 type fakePlanService struct {
@@ -61,8 +62,8 @@ type fakePlanService struct {
 	deleteErr        error
 }
 
-func (f *fakePlanService) UpsertPlanFromWebhook(orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
-	f.upserts = append(f.upserts, upsertCall{orgUUID, handle, name, limitCount, limitUnit, occurredAt, pricing})
+func (f *fakePlanService) UpsertPlanFromWebhook(orgUUID, handle, name, description string, conditions *[]model.SubscriptionPlanCondition, windows []model.ConditionWindow, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
+	f.upserts = append(f.upserts, upsertCall{orgUUID, handle, name, description, conditions, windows, occurredAt, pricing})
 	return &model.SubscriptionPlan{Handle: handle, Name: name}, nil
 }
 
@@ -113,8 +114,8 @@ func TestSubscriptionPlanCreated_CreatesAFreePlanWithRequestLimit(t *testing.T) 
 	if got.orgUUID != planTestOrgUUID || got.handle != "gold" || got.name != "Gold" || got.pricing != nil {
 		t.Errorf("upsert = %+v, want the free plan gold", got)
 	}
-	if got.limitCount == nil || *got.limitCount != 5000 || got.limitUnit != "MINUTE" {
-		t.Errorf("limit = %v %q, want 5000 MINUTE", got.limitCount, got.limitUnit)
+	if got.conditions != nil || len(got.windows) != 1 || got.windows[0] != (model.ConditionWindow{Count: 5000, TimeAmount: 1, TimeUnit: "MINUTE"}) {
+		t.Errorf("conditions = %v, windows = %+v, want only the request window 5000 per MINUTE", got.conditions, got.windows)
 	}
 	if want := time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC); !got.occurredAt.Equal(want) {
 		t.Errorf("occurredAt = %v, want %v", got.occurredAt, want)
@@ -129,8 +130,8 @@ func TestSubscriptionPlanUpdated_UnlimitedAndOtherLimitTypesMapToNoLimit(t *test
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if got := plans.upserts[0]; got.limitCount != nil || got.limitUnit != "" {
-		t.Errorf("limit = %v %q, want none", got.limitCount, got.limitUnit)
+	if got := plans.upserts[0]; len(got.windows) != 0 {
+		t.Errorf("windows = %+v, want none", got.windows)
 	}
 }
 
@@ -334,12 +335,50 @@ func TestSubscriptionPlanDeleted_DeletesByHandle(t *testing.T) {
 	}
 }
 
-func TestRequestLimit_UsesFirstSupportedRequestLimit(t *testing.T) {
-	count, unit := requestLimit([]subscriptionPlanLimit{
+// Every finite request limit with a supported unit is a window, with its time amount; a second
+// limit over the same length of time is left out.
+func TestRequestWindows_KeepsEverySupportedRequestLimit(t *testing.T) {
+	got := requestWindows([]subscriptionPlanLimit{
 		{LimitType: "REQUEST_COUNT", LimitCount: 100, TimeUnit: "SECOND"},
 		{LimitType: "REQUEST_COUNT", LimitCount: 2000, TimeUnit: "HOUR", TimeAmount: 2},
+		{LimitType: "request_count", LimitCount: 50, TimeUnit: "minute"},
+		{LimitType: "REQUEST_COUNT", LimitCount: 3000, TimeUnit: "MINUTE", TimeAmount: 120},
+		{LimitType: "BANDWIDTH", LimitCount: 10, TimeUnit: "DAY"},
 	})
-	if count == nil || *count != 2000 || unit != "HOUR" {
-		t.Fatalf("got %v %q, want 2000 HOUR (unsupported units are skipped)", count, unit)
+	want := []model.ConditionWindow{{Count: 2000, TimeAmount: 2, TimeUnit: "HOUR"}, {Count: 50, TimeAmount: 1, TimeUnit: "MINUTE"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("windows = %+v, want %+v", got, want)
+	}
+}
+
+// A portal that sends conditions has them passed on as they are, with the plan's description.
+func TestSubscriptionPlanCreated_PassesConditionsAndDescription(t *testing.T) {
+	r, plans, cfg := newPlanTestReceiver(t)
+
+	_, err := postPlanEvent(t, r, cfg, EventSubscriptionPlanCreated, `{"handle":"agents","display_name":"Agents",
+		"description":"For AI agents","limits":[],
+		"conditions":[{"type":"tool-call-count","params":{"limits":[{"count":10,"timeUnit":"MINUTE"}]}},
+			{"id":"ip-ranges","type":"custom","params":{"cidr":"10.0.0.0/8"}}],"pricing":null}`)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	got := plans.upserts[0]
+	if got.description != "For AI agents" || got.conditions == nil || len(*got.conditions) != 2 ||
+		(*got.conditions)[0].Type != model.ConditionTypeToolCallCount || (*got.conditions)[1].ID != "ip-ranges" {
+		t.Fatalf("upsert = %+v, want the description and both conditions", got)
+	}
+}
+
+// "conditions": null is the same as no conditions: the limits give the request windows.
+func TestSubscriptionPlanCreated_NullConditionsUseTheLimits(t *testing.T) {
+	r, plans, cfg := newPlanTestReceiver(t)
+
+	_, err := postPlanEvent(t, r, cfg, EventSubscriptionPlanCreated, `{"handle":"gold","display_name":"Gold","conditions":null,
+		"limits":[{"limit_type":"REQUEST_COUNT","limit_count":10,"time_unit":"DAY","time_amount":1}],"pricing":null}`)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if got := plans.upserts[0]; got.conditions != nil || len(got.windows) != 1 || got.windows[0].TimeUnit != "DAY" {
+		t.Fatalf("upsert = %+v, want only the request window", got)
 	}
 }

@@ -83,7 +83,7 @@ func (s *schemaDB) exec(t *testing.T, query string, args ...any) {
 // graph holds the identifiers seeded into a single organization.
 type graph struct {
 	org, project, apiArtifact string
-	plan, planLimit           string
+	plan, planCondition       string
 	apiPortal, apiDoc         string
 }
 
@@ -96,7 +96,7 @@ func seedOrgGraph(t *testing.T, tdb *schemaDB) graph {
 	t.Helper()
 	g := graph{
 		org: id(), project: id(), apiArtifact: id(),
-		plan: id(), planLimit: id(),
+		plan: id(), planCondition: id(),
 		apiPortal: id(), apiDoc: id(),
 	}
 
@@ -113,8 +113,8 @@ func seedOrgGraph(t *testing.T, tdb *schemaDB) graph {
 
 	tdb.exec(t, `INSERT INTO subscription_plans (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		g.plan, "plan-"+g.plan[:8], "Plan "+g.plan[:8], g.org)
-	tdb.exec(t, `INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, limit_type, limit_count, time_unit) VALUES (?, ?, ?, ?, ?)`,
-		g.planLimit, g.plan, "REQUEST_COUNT", 100, "MINUTE")
+	tdb.exec(t, `INSERT INTO subscription_plan_conditions (uuid, subscription_plan_uuid, organization_uuid, condition_id, condition_type, params) VALUES (?, ?, ?, ?, ?, ?)`,
+		g.planCondition, g.plan, g.org, "requests", "request-count", []byte(`{"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`))
 
 	tdb.exec(t, `INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, status, internal_auth_key, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		g.apiPortal, g.org, "portal-"+g.apiPortal[:8], "portal", "active", []byte("dummy-key"), []byte("{}"))

@@ -251,3 +251,46 @@ func TestFetchServerInfoSuppliedURLWithStoredCredential(t *testing.T) {
 		assert.Equal(t, "stored-secret", h, "the proxy's stored credential must still be sent")
 	}
 }
+
+// An MCP proxy can offer only plans that exist in the organization and are active.
+func TestMCPProxyServiceRejectsUnknownOrInactivePlans(t *testing.T) {
+	plans := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold":    {Handle: "gold", Status: model.SubscriptionPlanStatusActive},
+		"retired": {Handle: "retired", Status: model.SubscriptionPlanStatusInactive},
+	}}
+	for _, handles := range [][]string{{"gold", "missing"}, {"retired"}} {
+		create := NewMCPProxyService(&mockMCPProxyRepository{}, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+		create.WithSubscriptionPlanRepository(plans)
+		request := validMCPProxyRequest()
+		request.SubscriptionPlans = &handles
+		if _, err := create.Create("org-1", "alice", request); !apperror.ValidationFailed.Is(err) {
+			t.Errorf("create with %v: err = %v, want a validation error", handles, err)
+		}
+
+		repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: "mcp-proxy-1"}}
+		update := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+		update.WithSubscriptionPlanRepository(plans)
+		if _, err := update.Update("org-1", "mcp-proxy-1", "alice", request); !apperror.ValidationFailed.Is(err) {
+			t.Errorf("update with %v: err = %v, want a validation error", handles, err)
+		}
+	}
+}
+
+// Plan handles are checked only when some are sent, so a service without a plan repository still
+// saves proxies that offer no plans.
+func TestValidateSubscriptionPlanHandles(t *testing.T) {
+	if err := validateSubscriptionPlanHandles(nil, nil, "org-1"); err != nil {
+		t.Fatalf("no plans: %v", err)
+	}
+	if err := validateSubscriptionPlanHandles(nil, &[]string{}, "org-1"); err != nil {
+		t.Fatalf("empty plans: %v", err)
+	}
+	if err := validateSubscriptionPlanHandles(nil, &[]string{"gold"}, "org-1"); err == nil {
+		t.Fatal("plans without a plan repository: want an error")
+	}
+	plans := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{"gold": {Handle: "gold", Status: model.SubscriptionPlanStatusActive}}}
+	handles := []string{" gold "}
+	if err := validateSubscriptionPlanHandles(plans, &handles, "org-1"); err != nil || handles[0] != "gold" {
+		t.Fatalf("err = %v, handles = %q; want the handle trimmed and accepted", err, handles)
+	}
+}

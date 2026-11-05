@@ -172,3 +172,35 @@ func TestSplitSQLStatements_RealSchemas(t *testing.T) {
 		}
 	}
 }
+
+// An SQLite database created by a release before subscription_plans.description gets the column
+// when this release starts on it; starting again leaves it as it is.
+func TestInitSchema_SQLiteAddsMissingColumns(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := NewConnection(&config.Database{Driver: DriverSQLite, Path: filepath.Join(t.TempDir(), "test.db"), MaxOpenConns: 1, MaxIdleConns: 1}, slogger)
+	if err != nil {
+		t.Fatalf("NewConnection() error = %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.InitSchema("schema.sqlite.sql", slogger); err != nil {
+		t.Fatalf("InitSchema() error = %v", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE subscription_plans DROP COLUMN description`); err != nil {
+		t.Fatalf("drop the column, as an earlier release had the table: %v", err)
+	}
+	if db.HasColumn("subscription_plans", "description") {
+		t.Fatal("HasColumn reports a dropped column")
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := db.InitSchema("schema.sqlite.sql", slogger); err != nil {
+			t.Fatalf("InitSchema() run %d error = %v", i+1, err)
+		}
+		if !db.HasColumn("subscription_plans", "description") {
+			t.Fatalf("run %d: subscription_plans has no description column", i+1)
+		}
+	}
+	if !db.HasTable("subscription_plan_conditions") || db.HasTable("subscription_plan_limits") {
+		t.Fatal("this release creates subscription_plan_conditions and no longer subscription_plan_limits")
+	}
+}

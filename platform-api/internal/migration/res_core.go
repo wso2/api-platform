@@ -22,6 +22,8 @@ import (
 	"database/sql"
 	"strings"
 	"time"
+
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 func init() {
@@ -406,7 +408,7 @@ func (m *applicationsMigrator) Verify(ctx context.Context, rc *RunContext) (*Res
 }
 
 // ---------------------------------------------------------------------------
-// subscription_plans (+ subscription_plan_limits 0..1 child)
+// subscription_plans (+ subscription_plan_conditions 0..1 request-count child)
 // ---------------------------------------------------------------------------
 
 type subscriptionPlansMigrator struct{ baseMigrator }
@@ -468,13 +470,16 @@ func (m *subscriptionPlansMigrator) Migrate(ctx context.Context, rc *RunContext)
 			conflictUUIDNothing); err != nil {
 			return err
 		}
-		// Child limit row — emit ONLY when v1 has a throttle count (§ plans §6).
+		// The v1 throttle limit becomes a request-count condition, only when v1 has one (§ plans §6).
 		if r.throttleCount.Valid {
-			limitUUID := detUUID("splimit|"+r.uuid+"|REQUEST_COUNT", createdAt)
-			return insertRow(ctx, q, "subscription_plan_limits",
-				[]string{"uuid", "subscription_plan_uuid", "limit_type", "time_unit", "time_amount", "limit_count", "stop_on_quota_reach"},
-				[]any{limitUUID, r.uuid, "REQUEST_COUNT", mapThrottleUnit(r.throttleUnit), 1, r.throttleCount.Int64, boolToSmallint(r.stopOnQuota)},
-				conflictCols("subscription_plan_uuid", "limit_type", "time_amount", "time_unit"))
+			condition := model.NewRequestCountCondition([]model.ConditionWindow{{
+				Count: int(r.throttleCount.Int64), TimeAmount: 1, TimeUnit: mapThrottleUnit(r.throttleUnit),
+			}}, boolToSmallint(r.stopOnQuota) != 0)
+			conditionUUID := detUUID("spcondition|"+r.uuid+"|"+condition.ID, createdAt)
+			return insertRow(ctx, q, "subscription_plan_conditions",
+				[]string{"uuid", "subscription_plan_uuid", "organization_uuid", "condition_id", "condition_type", "params", "sort_order"},
+				[]any{conditionUUID, r.uuid, r.orgUUID, condition.ID, condition.Type, []byte(condition.Params), 0},
+				conflictCols("subscription_plan_uuid", "condition_id"))
 		}
 		return nil
 	})

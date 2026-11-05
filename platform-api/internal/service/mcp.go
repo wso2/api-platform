@@ -51,6 +51,7 @@ type MCPProxyService struct {
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	secretService        *SecretService
+	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
@@ -138,6 +139,11 @@ func (s *MCPProxyService) WithSecretService(ss *SecretService) {
 	s.secretService = ss
 }
 
+// WithSubscriptionPlanRepository injects the repository used to validate subscriptionPlans.
+func (s *MCPProxyService) WithSubscriptionPlanRepository(repo repository.SubscriptionPlanRepository) {
+	s.subscriptionPlanRepo = repo
+}
+
 // Create creates a new MCP proxy
 func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (*api.MCPProxy, error) {
 	if req == nil {
@@ -150,6 +156,9 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		return nil, err
 	}
 	if err := validateMCPSpecVersions(req); err != nil {
+		return nil, err
+	}
+	if err := validateSubscriptionPlanHandles(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
 		return nil, err
 	}
 
@@ -240,6 +249,7 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 			Policies:             mapMCPPoliciesAPIToModel(req.Policies),
 			Capabilities:         mapMcpCapabilitiesAPIToModel(req.Capabilities),
 			UpstreamSpecVersions: upstreamSpecVersionsFromRequest(req),
+			SubscriptionPlans:    subscriptionPlansFromRequest(req),
 		},
 		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
@@ -392,6 +402,9 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if err := validateMCPSpecVersions(req); err != nil {
 		return nil, err
 	}
+	if err := validateSubscriptionPlanHandles(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
+		return nil, err
+	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, apperror.ValidationFailed.New("The upstream main url field is required.")
@@ -444,6 +457,7 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		Policies:             mapMCPPoliciesAPIToModel(req.Policies),
 		Capabilities:         mapMcpCapabilitiesAPIToModel(req.Capabilities),
 		UpstreamSpecVersions: upstreamSpecVersionsFromRequest(req),
+		SubscriptionPlans:    subscriptionPlansFromRequest(req),
 	}
 
 	// Preserve existing upstream auth credential if not provided in update request
@@ -688,6 +702,15 @@ func mcpSpecVersionsFromRequest(req *api.MCPProxy) []string {
 // upstreamSpecVersionsFromRequest takes the revisions the caller says the upstream reported,
 // stored as given: narrowing them to what this platform serves would make the record a claim
 // about us rather than about the server.
+// subscriptionPlansFromRequest returns the plan handles to store, already trimmed by
+// validateSubscriptionPlanHandles.
+func subscriptionPlansFromRequest(req *api.MCPProxy) []string {
+	if req.SubscriptionPlans == nil {
+		return nil
+	}
+	return *req.SubscriptionPlans
+}
+
 func upstreamSpecVersionsFromRequest(req *api.MCPProxy) []string {
 	if req.UpstreamMcpSpecVersions == nil {
 		return nil
@@ -730,6 +753,7 @@ func mapMCPProxyModelToAPI(m *model.MCPProxy) *api.MCPProxy {
 		Upstream:                mapMCPUpstreamModelToAPI(&m.Configuration.Upstream),
 		Policies:                mapMCPPoliciesModelToAPI(m.Configuration.Policies),
 		Capabilities:            mapMcpCapabilitiesModelToAPI(m.Configuration.Capabilities),
+		SubscriptionPlans:       utils.StringSlicePtr(m.Configuration.SubscriptionPlans),
 		ReadOnly:                utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedAt:               utils.TimePtr(m.CreatedAt),
 		UpdatedAt:               utils.TimePtr(m.UpdatedAt),

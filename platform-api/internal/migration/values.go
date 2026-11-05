@@ -87,8 +87,8 @@ func tstzPtrArg(nt sql.NullTime, zone *time.Location) any {
 	return nil
 }
 
-// mapThrottleUnit maps a v1 throttle_limit_unit to a v2 subscription_plan_limits
-// time_unit (§ plans §6: Min→MINUTE, Hour→HOUR, Day→DAY, Month→MONTH). Unknown
+// mapThrottleUnit maps a v1 throttle_limit_unit to the time unit of a v2 request-count
+// condition window (§ plans §6: Min→MINUTE, Hour→HOUR, Day→DAY, Month→MONTH). Unknown
 // values pass through upper-cased.
 func mapThrottleUnit(ns sql.NullString) string {
 	if !ns.Valid {

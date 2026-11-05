@@ -355,7 +355,11 @@ var (
 	// or an API Portal plan event that would change it: pricing is set once and never changes.
 	SubscriptionPlanPricingLocked = def(CodeSubscriptionPlanPricingLocked, http.StatusConflict,
 		"Pricing can't be updated once a plan is created. Create a new plan with the new pricing.")
-	// SubscriptionPlanInUse refuses deleting a plan, or changing its name or limit, while something
-	// here offers or uses it. %s is the message, which names the plan and counts what uses it.
+	// SubscriptionPlanInUse refuses deleting a plan, or changing its name or conditions, while
+	// something here offers or uses it. %s is the message, which names the plan and counts what uses it.
 	SubscriptionPlanInUse = def(CodeSubscriptionPlanInUse, http.StatusConflict, "%s")
+	// SubscriptionPlanConditionsUnsupported refuses conditions other than a request limit until the
+	// database upgrade for plan conditions has run.
+	SubscriptionPlanConditionsUnsupported = def(CodeSubscriptionPlanConditionsUnsupported, http.StatusConflict,
+		"Only request limits can be saved until the database is upgraded for subscription plan conditions.")
 )
