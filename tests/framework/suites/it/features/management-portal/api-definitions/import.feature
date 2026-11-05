@@ -228,18 +228,12 @@ Feature: A REST API is created from an OpenAPI definition, by file or by URL
       | upstream    | {"main": {"url": "http://testbench:3000"}} |
       | file        | @spec:<fixture>                            |
     Then the response status code should be 400
-    And the JSON response field "message" should contain "<reason>"
+    And the JSON response field "errors" should contain "<reason>"
     When I send a "GET" request to the control plane at "/rest-apis/${CTX:api}"
     Then the response status code should be 404
 
     Examples:
-      | fixture          | reason                 |
-      | empty-paths.yaml | at least one operation |
-
-    # Import refuses these without naming the reason, which validate-openapi does name:
-    # https://github.com/wso2/api-platform/issues/4024
-    @known-issue
-    Examples:
-      | fixture       | reason    |
-      | invalid.yaml  | invalid   |
-      | swagger2.yaml | Swagger 2 |
+      | fixture          | reason                     |
+      | empty-paths.yaml | at least one operation     |
+      | invalid.yaml     | get.responses              |
+      | swagger2.yaml    | Swagger 2.x is not allowed |

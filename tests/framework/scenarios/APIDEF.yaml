@@ -115,8 +115,7 @@ scenarios:
         - feature: suites/ui/features/management_portal/api_definition.feature
           scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
     it:
-      status: known-issue
-      issue: https://github.com/wso2/api-platform/issues/4024
+      status: automated
       refs:
         - feature: suites/it/features/management-portal/api-definitions/import.feature
           scenario: "Importing a file that is not a usable OpenAPI 3.x definition is refused with its reason and creates nothing"
