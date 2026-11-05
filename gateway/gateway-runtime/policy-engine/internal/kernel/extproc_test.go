@@ -30,6 +30,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -327,6 +330,152 @@ func TestTraceContextCarrier(t *testing.T) {
 		}
 
 		assert.Empty(t, traceContextCarrier(req).Keys())
+	})
+}
+
+func TestGrpcMetadataCarrier(t *testing.T) {
+	const traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	const tracestate1 = "vendor1=value1"
+	const tracestate2 = "vendor2=value2"
+
+	t.Run("extracts traceparent and tracestate from incoming context metadata", func(t *testing.T) {
+		md := metadata.MD{
+			"traceparent": []string{traceparent},
+			"tracestate":  []string{tracestate1, tracestate2},
+			":authority":  []string{"example.com"},
+		}
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		carrier := grpcMetadataCarrier(ctx)
+		assert.Equal(t, traceparent, carrier.Get("traceparent"))
+		assert.Equal(t, "vendor1=value1,vendor2=value2", carrier.Get("tracestate"))
+		assert.Empty(t, carrier.Get(":authority"))
+	})
+
+	t.Run("handles mixed-case keys", func(t *testing.T) {
+		md := metadata.MD{
+			"TraceParent": []string{traceparent},
+		}
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		carrier := grpcMetadataCarrier(ctx)
+		assert.Equal(t, traceparent, carrier.Get("traceparent"))
+	})
+
+	t.Run("returns empty carrier when context has no metadata", func(t *testing.T) {
+		carrier := grpcMetadataCarrier(context.Background())
+		assert.Empty(t, carrier.Keys())
+	})
+
+	t.Run("returns empty carrier when metadata has no trace headers", func(t *testing.T) {
+		md := metadata.MD{
+			"authorization": []string{"Bearer token"},
+		}
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		carrier := grpcMetadataCarrier(ctx)
+		assert.Empty(t, carrier.Keys())
+	})
+}
+
+func TestStartRootSpan_ParentingHierarchy(t *testing.T) {
+	const grpcTraceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	const grpcSpanID = "00f067aa0ba902b7"
+	const grpcTraceparent = "00-" + grpcTraceID + "-" + grpcSpanID + "-01"
+
+	const httpTraceID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const httpSpanID = "bbbbbbbbbbbbbbbb"
+	const httpTraceparent = "00-" + httpTraceID + "-" + httpSpanID + "-01"
+
+	setupTestPropagator := func() {
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		))
+	}
+	setupTestPropagator()
+
+	newTestServer := func() (*ExternalProcessorServer, *tracetest.SpanRecorder) {
+		sr := tracetest.NewSpanRecorder()
+		tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
+		server := &ExternalProcessorServer{
+			tracer:         tp.Tracer("test"),
+			tracingEnabled: true,
+		}
+		return server, sr
+	}
+
+	makeHTTPReq := func(traceparent string) *extprocv3.ProcessingRequest {
+		return &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{
+					Headers: &corev3.HeaderMap{
+						Headers: []*corev3.HeaderValue{
+							{Key: "traceparent", RawValue: []byte(traceparent)},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("parents on gRPC metadata when both gRPC metadata and HTTP headers are present", func(t *testing.T) {
+		server, _ := newTestServer()
+		md := metadata.MD{"traceparent": []string{grpcTraceparent}}
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+		req := makeHTTPReq(httpTraceparent)
+
+		_, span := server.startRootSpan(ctx, req)
+		defer span.End()
+
+		sc := span.SpanContext()
+		assert.Equal(t, grpcTraceID, sc.TraceID().String(), "trace ID must come from gRPC stream metadata")
+		roSpan, ok := span.(sdktrace.ReadOnlySpan)
+		require.True(t, ok)
+		assert.Equal(t, grpcSpanID, roSpan.Parent().SpanID().String(), "parent span ID must match Envoy ext_proc span")
+	})
+
+	t.Run("falls back to HTTP headers when gRPC metadata has no traceparent", func(t *testing.T) {
+		server, _ := newTestServer()
+		ctx := context.Background() // no gRPC metadata
+		req := makeHTTPReq(httpTraceparent)
+
+		_, span := server.startRootSpan(ctx, req)
+		defer span.End()
+
+		sc := span.SpanContext()
+		assert.Equal(t, httpTraceID, sc.TraceID().String(), "trace ID must come from HTTP request headers")
+		roSpan, ok := span.(sdktrace.ReadOnlySpan)
+		require.True(t, ok)
+		assert.Equal(t, httpSpanID, roSpan.Parent().SpanID().String(), "parent span ID must match client span")
+	})
+
+	t.Run("parents on gRPC metadata even on pre-first-message error path (req == nil)", func(t *testing.T) {
+		server, _ := newTestServer()
+		md := metadata.MD{"traceparent": []string{grpcTraceparent}}
+		ctx := metadata.NewIncomingContext(context.Background(), md)
+
+		_, span := server.startRootSpan(ctx, nil)
+		defer span.End()
+
+		sc := span.SpanContext()
+		assert.Equal(t, grpcTraceID, sc.TraceID().String(), "pre-first-message error path must still parent on gRPC metadata")
+		roSpan, ok := span.(sdktrace.ReadOnlySpan)
+		require.True(t, ok)
+		assert.Equal(t, grpcSpanID, roSpan.Parent().SpanID().String())
+	})
+
+	t.Run("starts new root when neither gRPC metadata nor HTTP headers carry traceparent", func(t *testing.T) {
+		server, _ := newTestServer()
+		ctx := context.Background()
+		req := &extprocv3.ProcessingRequest{}
+
+		_, span := server.startRootSpan(ctx, req)
+		defer span.End()
+
+		roSpan, ok := span.(sdktrace.ReadOnlySpan)
+		require.True(t, ok)
+		assert.False(t, roSpan.Parent().IsValid(), "should start fresh root span with no parent")
 	})
 }
 

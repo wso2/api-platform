@@ -518,7 +518,7 @@ graph TB
 
 - **Metrics**: All three processes expose Prometheus metrics. The policy engine emits per-request, per-policy, and per-chain metrics — request count, latency histograms, action counts, chain length, xDS connection state, snapshot version, body mode distribution.
 
-- **Tracing**: OpenTelemetry tracing in both Envoy and the Policy Engine. The default exporter points at an `otel-collector` sidecar that fans out to Jaeger or any OTLP backend. The Policy Engine creates a child span per policy execution and links across the ext_proc boundary using a propagated request ID.
+- **Tracing**: OpenTelemetry tracing in both Envoy and the Policy Engine. The default exporter points at an `otel-collector` sidecar that fans out to Jaeger or any OTLP backend. The Policy Engine creates child spans under Envoy's ext_proc filter span via W3C Trace Context propagated in gRPC stream metadata (falling back to downstream HTTP request headers when Envoy tracing is disabled), and records spans per policy execution.
 
 - **Logging**: Structured logs from both Go and Python processes, with consistent per-process prefixes so a single `docker logs` stream stays readable.
 

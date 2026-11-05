@@ -73,10 +73,8 @@ func TestA2A_TraceContextAndResolutionAttributesEndToEnd(t *testing.T) {
 	const routeKey = "POST|/weather/1.0.0|example.com"
 	registerA2AJSONRPCRoute(t, k, routeKey, "SendMessage")
 
-	// A caller-supplied traceparent, arriving the way Envoy forwards it: as a request
-	// header inside the RequestHeaders message. Not on the ext_proc gRPC stream's
-	// metadata — that is set once when the long-lived stream is established, so it
-	// never carries a per-request trace context.
+	// A caller-supplied traceparent arriving in RequestHeaders (fallback path when
+	// ext_proc gRPC stream metadata carries no traceparent, e.g. Envoy tracing disabled).
 	stream := newMockStream([]*extprocv3.ProcessingRequest{
 		withTraceparent(
 			requestHeadersWithBodyToFollow(routeKey, "POST", "/weather/1.0.0"),
@@ -255,9 +253,7 @@ func withA2AVersion(req *extprocv3.ProcessingRequest, version string) *extprocv3
 }
 
 // withTraceparent appends the W3C traceparent request header, in the lowercase form
-// Envoy delivers header names in. This is where a caller's trace context actually
-// arrives — inside the RequestHeaders message — which is why traceContextCarrier reads
-// it from there rather than from the ext_proc stream's gRPC metadata.
+// Envoy delivers header names in.
 func withTraceparent(req *extprocv3.ProcessingRequest, traceparent string) *extprocv3.ProcessingRequest {
 	headers := req.GetRequestHeaders().GetHeaders()
 	headers.Headers = append(headers.Headers, &corev3.HeaderValue{
