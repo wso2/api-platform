@@ -403,4 +403,51 @@ describe('MCP servers', () => {
             expect((await get(mcp.id, 'SCHEMA_DEFINITION', 'definition.yaml')).status).toBe(200);
         });
     });
+
+    describe('thumbnail in the save request', () => {
+        const PNG_BYTES = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+        const JPEG_BYTES = Buffer.from('ffd8ffe000104a464946', 'hex');
+        const mcpMetadata = (mcp, extra = {}) => JSON.stringify({
+            name: mcp.name, version: mcp.version, type: 'MCP', endPoints: mcp.endPoints, ...extra,
+        });
+        const getImage = (id, fileName) => client.as('publisher')
+            .get(`/mcp-servers/${id}/assets?type=IMAGE&fileName=${fileName}`)
+            .responseType('blob');
+
+        it('creates, replaces and removes the thumbnail', async () => {
+            const id = uniqueHandle('mcp-server');
+            const created = await client.as('publisher').postMultipart('/mcp-servers')
+                .field('metadata', JSON.stringify({
+                    id, name: `Thumbnail MCP ${id}`, version: 'v1.0', type: 'MCP',
+                    endPoints: { productionURL: `https://backend.example.invalid/${id}` },
+                }))
+                .attach('definition', Buffer.from(MCP_TOOLS_SCHEMA), 'definition.yaml')
+                .attach('thumbnail', PNG_BYTES, 'logo.png');
+            expect(created.status).toBe(201);
+            const png = await getImage(id, 'api-icon.png');
+            expect(png.status).toBe(200);
+            expect(Buffer.compare(png.body, PNG_BYTES)).toBe(0);
+
+            const replaced = await client.as('publisher').putMultipart(`/mcp-servers/${id}`)
+                .field('metadata', mcpMetadata(created.body))
+                .attach('thumbnail', JPEG_BYTES, 'logo.jpg');
+            expect(replaced.status).toBe(200);
+            expect((await getImage(id, 'api-icon.jpg')).status).toBe(200);
+            expect((await getImage(id, 'api-icon.png')).status).toBe(404);
+
+            const removed = await client.as('publisher').putMultipart(`/mcp-servers/${id}`)
+                .field('metadata', mcpMetadata(created.body, { removeThumbnail: true }));
+            expect(removed.status).toBe(200);
+            expect((await getImage(id, 'api-icon.jpg')).status).toBe(404);
+        });
+
+        it('rejects a thumbnail that is not PNG or JPEG', async () => {
+            const mcp = await createMcpServer();
+            const res = await client.as('publisher').putMultipart(`/mcp-servers/${mcp.id}`)
+                .field('metadata', mcpMetadata(mcp))
+                .attach('thumbnail', Buffer.from('<svg/>'), 'logo.png');
+            expect(res.status).toBe(400);
+            expect(res.body.errors[0].message).toBe('Thumbnail must be a PNG or JPEG image.');
+        });
+    });
 });

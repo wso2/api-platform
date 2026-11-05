@@ -54,6 +54,17 @@ const { CustomError, ValidationError, NotFoundError, ConflictError } = require("
 const apiContentRules = require('../utils/apiContentRules');
 const LabelDTO = require("../dto/labelDto");
 
+// The thumbnail slot holds one image keyed 'api-icon'. A replace also frees its target name,
+// which an image from a content ZIP may already use.
+const applyThumbnailChange = async (change, apiId, orgId, userId, t) => {
+    if (change.action === 'none') return;
+    await apiFileDao.deleteByKey(constants.API_ICON, apiId, t);
+    if (change.action === 'replace') {
+        await apiFileDao.delete(change.fileName, constants.DOC_TYPES.IMAGES, orgId, apiId, t);
+        await apiFileDao.store(change.content, change.fileName, apiId, constants.DOC_TYPES.IMAGES, userId, t, constants.API_ICON);
+    }
+};
+
 const createAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
     const userId = util.resolveActor(req);
@@ -124,6 +135,8 @@ const createAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
+        const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, true);
+        delete apiMetadata.removeThumbnail;
         const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
             throw new ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
@@ -252,6 +265,7 @@ const createAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.storeMany(artifactApiContent, apiId, userId, t);
             }
+            await applyThumbnailChange(thumbnailChange, apiId, orgId, userId, t);
             apiMetadata.id = apiMetadata.handle;
             delete apiMetadata.handle;
         }).catch(async (err) => {
@@ -538,6 +552,8 @@ const updateAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
+        const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, false);
+        delete apiMetadata.removeThumbnail;
         const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
             throw new ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
@@ -749,6 +765,7 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
+            await applyThumbnailChange(thumbnailChange, apiId, orgId, userId, t);
             const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0]);
             updated = new APIDTO(updatedAPI[0], audit);
         }).catch(async (err) => {

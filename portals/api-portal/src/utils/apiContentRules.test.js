@@ -27,6 +27,9 @@ const {
     assignImageSlots,
     findDuplicateItems,
     describeItem,
+    detectThumbnailType,
+    readThumbnailChange,
+    THUMBNAIL_TYPE_MESSAGE,
     classifyContentZip,
     isMarkdownDocName,
 } = require('./apiContentRules');
@@ -173,6 +176,77 @@ describe('describeItem', () => {
     test('names a file with its type, and an image by its slot', () => {
         assert.strictEqual(describeItem({ type: 'DOC_HowTo', fileName: 'A.md' }), 'A.md (DOC_HowTo)');
         assert.strictEqual(describeItem({ type: 'IMAGE', fileName: 'api-icon.png', key: 'api-icon' }), 'image slot api-icon');
+    });
+});
+
+const PNG = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00]);
+const JPEG = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00]);
+const part = (buffer, originalname = 'logo.png') => ({ buffer, originalname });
+
+describe('detectThumbnailType', () => {
+    test('recognises PNG and JPEG by their leading bytes', () => {
+        assert.strictEqual(detectThumbnailType(PNG), 'png');
+        assert.strictEqual(detectThumbnailType(JPEG), 'jpg');
+    });
+
+    test('rejects empty, text, SVG and GIF content', () => {
+        for (const buffer of [Buffer.alloc(0), Buffer.from('not an image'), Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+            Buffer.from('GIF89a'), PNG.subarray(0, 4), undefined]) {
+            assert.strictEqual(detectThumbnailType(buffer), null);
+        }
+    });
+});
+
+describe('readThumbnailChange', () => {
+    const rejects = (files, metadata, isCreate, message) =>
+        assert.throws(() => readThumbnailChange(files, metadata, isCreate), (err) =>
+            err instanceof ValidationError && (!message || err.message === message));
+
+    test('case 1: a thumbnail with removeThumbnail true is rejected on create and update', () => {
+        rejects({ thumbnail: [part(PNG)] }, { removeThumbnail: true }, true);
+        rejects({ thumbnail: [part(PNG)] }, { removeThumbnail: true }, false);
+    });
+
+    test('case 2: a thumbnail replaces, named from the detected type, never the client name', () => {
+        for (const isCreate of [true, false]) {
+            assert.deepStrictEqual(readThumbnailChange({ thumbnail: [part(PNG, 'x.jpg')] }, {}, isCreate),
+                { action: 'replace', content: PNG, fileName: 'api-icon.png' });
+            assert.deepStrictEqual(readThumbnailChange({ thumbnail: [part(JPEG, '../evil.png')] }, { removeThumbnail: false }, isCreate),
+                { action: 'replace', content: JPEG, fileName: 'api-icon.jpg' });
+        }
+    });
+
+    test('case 3: removeThumbnail true removes on update and does nothing on create', () => {
+        assert.deepStrictEqual(readThumbnailChange({}, { removeThumbnail: true }, false), { action: 'remove' });
+        assert.deepStrictEqual(readThumbnailChange({}, { removeThumbnail: true }, true), { action: 'none' });
+    });
+
+    test('case 4: neither field changes nothing', () => {
+        for (const isCreate of [true, false]) {
+            assert.deepStrictEqual(readThumbnailChange(undefined, {}, isCreate), { action: 'none' });
+            assert.deepStrictEqual(readThumbnailChange({ docs: [part(PNG)] }, { removeThumbnail: false }, isCreate), { action: 'none' });
+        }
+    });
+
+    test('a part with no file name is treated as not sent', () => {
+        assert.deepStrictEqual(readThumbnailChange({ thumbnail: [part(Buffer.alloc(0), '')] }, {}, false), { action: 'none' });
+    });
+
+    test('rejects content that is not PNG or JPEG, including a named empty file', () => {
+        for (const buffer of [Buffer.alloc(0), Buffer.from('plain text'), Buffer.from('<svg/>'), Buffer.from('GIF89a')]) {
+            rejects({ thumbnail: [part(buffer)] }, {}, false, THUMBNAIL_TYPE_MESSAGE);
+        }
+        assert.strictEqual(THUMBNAIL_TYPE_MESSAGE, 'Thumbnail must be a PNG or JPEG image.');
+    });
+
+    test('rejects more than one thumbnail part', () => {
+        rejects({ thumbnail: [part(PNG), part(JPEG)] }, {}, false);
+    });
+
+    test('rejects a removeThumbnail that is not a boolean', () => {
+        for (const value of ['true', 1, null, {}]) {
+            rejects({}, { removeThumbnail: value }, false);
+        }
     });
 });
 

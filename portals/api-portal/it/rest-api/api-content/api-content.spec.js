@@ -623,6 +623,30 @@ describe('API content assets', () => {
         });
     });
 
+    describe('thumbnail sent with the API save', () => {
+        const JPEG_BYTES = Buffer.from('ffd8ffe000104a46494600010100000100010000ffd9', 'hex');
+
+        it('replaces an image from the content ZIP that has the same name', async () => {
+            const api = await createApi();
+            const zip = createZip([
+                { name: 'web/api-icon.png', content: PNG_BYTES },
+                { name: 'web/api-icon.jpg', content: Buffer.from('ffd8ffdb', 'hex') },
+            ]);
+            // api-icon.png fills the thumbnail slot, so api-icon.jpg is stored with no slot.
+            const seeded = await uploadContent('publisher', api.id, zip, { imageMetadata: { 'api-icon': 'api-icon.png' } });
+            expect(seeded.status).toBe(201);
+
+            const res = await client.as('publisher').putMultipart(`/apis/${api.id}`)
+                .field('metadata', JSON.stringify({ name: api.name, version: api.version, type: 'REST', endPoints: api.endPoints }))
+                .attach('thumbnail', JPEG_BYTES, 'logo.jpg');
+            expect(res.status).toBe(200);
+
+            const img = await client.as('publisher').get(`/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.jpg`).responseType('blob');
+            expect(img.status).toBe(200);
+            expect(Buffer.compare(img.body, JPEG_BYTES)).toBe(0);
+        });
+    });
+
     describe('serving headers', () => {
         const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
 
