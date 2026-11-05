@@ -332,8 +332,8 @@ export interface paths {
          *     Redirects are not followed, and the caller's own credentials never reach the gateway.
          *
          *     Any answer from the gateway is a `200` carrying its status, headers and body; an error
-         *     status means the request was not relayed. Access needs the same scopes as reading the
-         *     REST API's gateways, since a test sends no more than the caller could send directly.
+         *     status means the request was not relayed. A test can change data behind the REST API
+         *     and reaches gateways the caller may not reach directly, so it needs a manage scope.
          */
         post: operations["InvokeRESTAPIOnGateway"];
         delete?: never;
