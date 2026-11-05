@@ -22,6 +22,7 @@ package utils
 import (
 	"fmt"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 
@@ -98,8 +99,11 @@ func (u *AgentProxyUtils) BuildAgentProxyDeploymentYAML(proxy *model.AgentProxy)
 		},
 	}
 	if proxy.ProjectUUID != "" {
+		deployment.Metadata.Annotations = map[string]string{
+			commonconstants.AnnotationProjectID: proxy.ProjectUUID,
+		}
 		deployment.Metadata.Labels = map[string]string{
-			"projectId": proxy.ProjectUUID,
+			commonconstants.DeprecatedLabelProjectID: proxy.ProjectUUID,
 		}
 	}
 

@@ -1749,14 +1749,20 @@ func getValueFromSourceConfig(sourceConfig any, key string) (any, error) {
 // to the deprecated bare label, logging a warning if only the label is present.
 func extractProjectIDFromConfig(cfg *models.StoredConfig) string {
 	if annotations := cfg.GetAnnotations(); annotations != nil {
-		if pid, exists := (*annotations)[commonconstants.AnnotationProjectID]; exists {
+		if pid, exists := (*annotations)[commonconstants.AnnotationProjectID]; exists && pid != "" {
 			return pid
 		}
 	}
 	if labels := cfg.GetLabels(); labels != nil {
-		if pid, exists := (*labels)[commonconstants.DeprecatedLabelProjectID]; exists {
+		if pid, exists := (*labels)[commonconstants.DeprecatedLabelProjectID]; exists && pid != "" {
 			// Use a debug log here since this log will be emitted for any change (delete other config)
 			slog.Debug("deprecated project-id label detected; migrate to annotation",
+				"annotation", commonconstants.AnnotationProjectID,
+				"api", cfg.Handle)
+			return pid
+		}
+		if pid, exists := (*labels)["projectId"]; exists && pid != "" {
+			slog.Debug("deprecated projectId label detected; migrate to annotation",
 				"annotation", commonconstants.AnnotationProjectID,
 				"api", cfg.Handle)
 			return pid

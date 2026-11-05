@@ -31,6 +31,31 @@
     },
     "id": "openai-provider"
   },
+  "providers": [
+    {
+      "auth": {
+        "header": "Authorization",
+        "type": "api-key"
+      },
+      "id": "openai-provider",
+      "isPrimary": true
+    },
+    {
+      "id": "anthropic-provider",
+      "isPrimary": false,
+      "transformer": {
+        "params": {
+          "model": "claude-sonnet-4-5"
+        },
+        "type": "openai-to-anthropic",
+        "version": "v0"
+      }
+    },
+    {
+      "id": "gemini-provider",
+      "isPrimary": false
+    }
+  ],
   "readOnly": false,
   "updatedAt": "0001-01-01T00:00:00Z",
   "updatedBy": "compat-user",

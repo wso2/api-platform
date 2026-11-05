@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"gopkg.in/yaml.v3"
 )
@@ -1233,3 +1234,30 @@ func TestGenerateLLMProxyDeploymentYAML_LegacyRowEmitsCanonically(t *testing.T) 
 		t.Fatalf("a legacy row produced a different artifact:\nlegacy:\n%s\ncanonical:\n%s", legacyYAML, canonicalYAML)
 	}
 }
+
+func TestGenerateLLMProxyDeploymentYAML_ProjectID(t *testing.T) {
+	proxy := &model.LLMProxy{
+		ID:          "weather-llm-proxy",
+		Name:        "Weather LLM Proxy",
+		Version:     "v1.0",
+		ProjectUUID: "project-uuid-1234",
+		Configuration: model.LLMProxyConfig{
+			Providers: []model.LLMProxyAttachment{
+				{ID: "openai-provider", IsPrimary: true},
+			},
+		},
+	}
+
+	artifact, err := generateLLMProxyDeploymentYAML(proxy, "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if artifact.Metadata.Annotations == nil || artifact.Metadata.Annotations[commonconstants.AnnotationProjectID] != "project-uuid-1234" {
+		t.Fatalf("expected annotation %q = %q, got %+v", commonconstants.AnnotationProjectID, "project-uuid-1234", artifact.Metadata.Annotations)
+	}
+	if artifact.Metadata.Labels == nil || artifact.Metadata.Labels[commonconstants.DeprecatedLabelProjectID] != "project-uuid-1234" {
+		t.Fatalf("expected label %q = %q, got %+v", commonconstants.DeprecatedLabelProjectID, "project-uuid-1234", artifact.Metadata.Labels)
+	}
+}
+

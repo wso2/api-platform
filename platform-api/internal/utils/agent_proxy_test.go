@@ -33,6 +33,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -370,7 +371,8 @@ func TestBuildAgentProxyDeploymentYAML_GatewayEnvelope(t *testing.T) {
 	assert.Equal(t, "Agent", tree["kind"], "the gateway artifact kind is Agent, never the CP kind")
 	metadata := mapAt(t, tree, "metadata")
 	assert.Equal(t, "weather-agent", metadata["name"])
-	assert.Equal(t, map[string]any{"projectId": agentProxyTestProjectUUID}, metadata["labels"])
+	assert.Equal(t, map[string]any{commonconstants.AnnotationProjectID: agentProxyTestProjectUUID}, metadata["annotations"])
+	assert.Equal(t, map[string]any{commonconstants.DeprecatedLabelProjectID: agentProxyTestProjectUUID}, metadata["labels"])
 
 	spec := mapAt(t, tree, "spec")
 	assert.Equal(t, "Weather Agent", spec["displayName"])

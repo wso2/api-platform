@@ -1179,6 +1179,9 @@ func hasProjectMetadata(cfg map[string]interface{}) bool {
 		if v, _ := labels[commonconstants.DeprecatedLabelProjectID].(string); v != "" {
 			return true
 		}
+		if v, _ := labels["projectId"].(string); v != "" {
+			return true
+		}
 	}
 	return false
 }

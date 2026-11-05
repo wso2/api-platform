@@ -157,6 +157,9 @@ func ResolveImportProject(md dto.ArtifactImportMetadata) string {
 	if projectHandle == "" {
 		projectHandle = md.Labels[commonconstants.DeprecatedLabelProjectID]
 	}
+	if projectHandle == "" {
+		projectHandle = md.Labels["projectId"]
+	}
 	return projectHandle
 }
 
