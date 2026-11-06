@@ -402,6 +402,11 @@ const GatewaysList: FC<GatewaysListProps> = ({
     if (!canDelete) setDeleteTarget(null);
   }, [canDelete]);
   const [settingsGateway, setSettingsGateway] = useState<Gateway | null>(null);
+  // Likewise the configuration drawer: left open without read access it keeps
+  // polling a configuration the server now refuses, and shows the last one it got.
+  useEffect(() => {
+    if (!canReadConfiguration) setSettingsGateway(null);
+  }, [canReadConfiguration]);
 
   // Environments are keyed by name, so a gateway that points at an environment
   // missing from the list (deleted, or not yet loaded) still shows its raw

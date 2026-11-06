@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import GatewaysList from './GatewaysList';
@@ -64,8 +64,7 @@ const all = (held: boolean): Can => ({
   writeConfiguration: held,
 });
 
-const renderWith = (can: Can) =>
-  render(
+const listWith = (can: Can) => (
     <GatewaysList
       gateways={[gateway]}
       environments={[{ id: 'dev', name: 'dev' }]}
@@ -80,7 +79,9 @@ const renderWith = (can: Can) =>
       onViewClick={() => {}}
       onDelete={() => {}}
     />
-  );
+);
+
+const renderWith = (can: Can) => render(listWith(can));
 
 describe('GatewaysList permissions', () => {
   it('disables every action for a user holding none of the scopes', () => {
@@ -110,5 +111,17 @@ describe('GatewaysList permissions', () => {
     expect(isDisabled(screen.getByRole('button', { name: 'Edit Dev edge' }))).toBe(false);
     expect(isDisabled(screen.getByRole('button', { name: 'Configure Dev edge' }))).toBe(false);
     expect(isDisabled(screen.getByRole('button', { name: 'Delete Dev edge' }))).toBe(true);
+  });
+
+  // A token refresh can drop the read scope while the drawer is open; left open
+  // it would keep polling a configuration the server now refuses.
+  it('closes the configuration drawer when configuration-read access is lost', async () => {
+    const { rerender } = renderWith(all(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Dev edge' }));
+    expect(await screen.findByText('Gateway Configuration')).toBeTruthy();
+
+    rerender(listWith({ ...all(true), readConfiguration: false }));
+
+    await waitFor(() => expect(screen.queryByText('Gateway Configuration')).toBeNull());
   });
 });

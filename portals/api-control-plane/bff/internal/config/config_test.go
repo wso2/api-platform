@@ -340,6 +340,25 @@ scope = "openid offline_access ap:project:read"
 	}
 }
 
+// A scope override replaces the default, so one that names only a plugin's
+// scopes, or drops offline_access, is reported at startup.
+func TestOIDCScopeOverrideWarnings(t *testing.T) {
+	if w := oidcScopeOverrideWarnings(defaultOIDCScopes); len(w) != 0 {
+		t.Errorf("default list: got warnings %q, want none", w)
+	}
+	if w := oidcScopeOverrideWarnings(defaultOIDCScopes + " ap:environment:read ap:pipeline:read"); len(w) != 0 {
+		t.Errorf("default plus plugin scopes: got warnings %q, want none", w)
+	}
+	w := oidcScopeOverrideWarnings("openid offline_access ap:environment:read ap:pipeline:read")
+	if len(w) != 1 || !strings.Contains(w[0], "replaces the built-in default") {
+		t.Errorf("plugin scopes only: got %q, want one missing-default-scopes warning", w)
+	}
+	w = oidcScopeOverrideWarnings(strings.Replace(defaultOIDCScopes, " offline_access", "", 1))
+	if len(w) != 1 || !strings.Contains(w[0], "offline_access") {
+		t.Errorf("no offline_access: got %q, want one offline_access warning", w)
+	}
+}
+
 // The default scope list is the Platform API spec's, so it has to name the
 // resources added since the list was first written, and nothing the spec lacks.
 func TestDefaultOIDCScopes_FollowTheSpec(t *testing.T) {

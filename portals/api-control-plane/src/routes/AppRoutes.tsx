@@ -38,6 +38,7 @@ import {
   childRoutePath,
   extensionScopedPaths,
   hasRender,
+  isExtensionPermitted,
   isSidebarExtension,
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
@@ -51,6 +52,7 @@ import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
 import { Hideable, useSlot } from '@/slots';
 import { ProtectedRoute } from './ProtectedRoute';
+import { usePermissions } from '@/permissions/PermissionContext';
 import { apiScopedPaths, projectScopedPaths, routes } from './paths';
 
 // Code-split the authenticated feature pages so they are not pulled into the
@@ -294,17 +296,22 @@ const withoutSplat = (routePath: string) => routePath.replace(/\/\*$/, '');
  * own: sends the reader to the first child visible in the current scope, so the
  * URL always names the page shown and the sidebar highlights it. The parent's
  * own path is recovered from the current URL (splat stripped, as in
- * `GatewaysRoute`), which keeps the scope-less aliases working.
+ * `GatewaysRoute`), which keeps the scope-less aliases working. A child whose
+ * `requiredScopes` the user lacks is skipped, as the sidebar skips it, so a
+ * direct visit never opens a page the sidebar hides.
  */
 function ExtensionParentRedirect({ pages }: { pages: readonly ApiControlPlaneExtensionChild[] }) {
   const scope = useConsoleScope();
+  const { hasScope } = usePermissions();
   const { hash, pathname, search } = useLocation();
   const splat = useParams()['*'] ?? '';
   const base = (splat ? pathname.slice(0, pathname.length - splat.length) : pathname).replace(
     /\/+$/,
     '',
   );
-  const first = pages.find((child) => child.isVisible?.(scope) ?? true);
+  const first = pages.find(
+    (child) => (child.isVisible?.(scope) ?? true) && isExtensionPermitted(child, hasScope),
+  );
   if (!first) return null;
   return (
     <Navigate replace to={{ hash, pathname: `${base}/${withoutSplat(first.routePath)}`, search }} />

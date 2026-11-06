@@ -96,6 +96,14 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const [viewingGatewayId, setViewingGatewayId] = useState<string | null>(null);
   // The token minted with a just-registered gateway, handed to its setup view; null otherwise.
   const [setupToken, setSetupToken] = useState<string | null>(null);
+  // A create or edit form opened before its scope was lost (a token refresh can
+  // drop one mid-session) goes back to the list rather than staying submittable.
+  const formPermitted = view === 'edit' ? canUpdate : view === 'create' ? canCreate : true;
+  useEffect(() => {
+    if (formPermitted) return;
+    setView('list');
+    setEditingGatewayId(null);
+  }, [formPermitted]);
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -364,6 +372,9 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
           setEditingGatewayId(null);
         }}
         onSubmit={async (input) => {
+          // Rechecked here, not only when the form opened: the scope can be lost
+          // while it is open, before the effect above has closed it.
+          if (!formPermitted) return;
           const saved = await submitGateway(input, view === 'edit' ? editingGatewayId ?? undefined : undefined);
           if (saved) {
             setView('list');
@@ -371,6 +382,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
           }
         }}
         onSubmitSelfHosted={async (input) => {
+          if (!formPermitted) return;
           const saved = await submitSelfHostedGateway(
             input,
             view === 'edit' ? editingGatewayId ?? undefined : undefined

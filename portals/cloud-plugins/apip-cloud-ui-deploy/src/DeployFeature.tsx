@@ -147,17 +147,26 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const settlingRef = useRef(false);
   settlingRef.current = isSettling(environments);
 
+  // Numbers each load, so only the newest may write state: a load restarts when
+  // `canView` changes on the same artifact, and `apiFetch` cannot be cancelled,
+  // so an earlier read resolving last would otherwise put back what it saw.
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(
     async (options: { quiet?: boolean } = {}) => {
+      const seq = ++loadSeqRef.current;
       if (!client || !canView) {
-        if (!options.quiet) setLoading(false);
+        // Also ends the spinner of a superseded foreground read, which no longer
+        // clears it itself.
+        setLoading(false);
         return;
       }
       // `DeployFeature` stays mounted when the route moves to another artifact, so a read
       // that was started for the last one can resolve after the next is showing. It must
-      // not write its pipeline, builds or error over the new artifact's.
+      // not write its pipeline, builds or error over the new artifact's, nor may any
+      // read that a newer one has superseded.
       const scope = scopeRef.current;
-      const isStale = () => scopeRef.current !== scope;
+      const isStale = () => scopeRef.current !== scope || seq !== loadSeqRef.current;
       if (!options.quiet) setLoading(true);
       try {
         // The two reads are independent: the environments (and the gateways in them) are
@@ -174,7 +183,9 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         if (isStale()) return;
         setError(errorMessage(loadError, 'Unable to load the deployment pipeline.'));
       } finally {
-        if (!options.quiet && !isStale()) setLoading(false);
+        // The newest read clears the spinner even when it is quiet: a foreground
+        // read it superseded set it and, being stale, no longer clears it.
+        if (!isStale()) setLoading(false);
       }
     },
     [canView, client]

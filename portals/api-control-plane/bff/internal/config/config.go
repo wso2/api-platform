@@ -614,6 +614,44 @@ func (c *Config) normalize() {
 	c.Auth.OIDC.Resource = strings.TrimSpace(c.Auth.OIDC.Resource)
 }
 
+// oidcScopeOverrideWarnings reports what a [auth.oidc] scope override
+// (APIP_ACP_AUTH_OIDC_SCOPE) drops from the built-in default. An override
+// REPLACES defaultOIDCScopes rather than adding to it, so an operator who sets
+// only a plugin's own scopes (the cloud extension's ap:environment:* and the like)
+// silently stops requesting every base ap:* scope, and the console then hides the
+// features that need them. Not an error: an IdP that cannot grant the full list
+// is a legitimate reason to narrow it. Empty for the default itself.
+func oidcScopeOverrideWarnings(scopes string) []string {
+	if scopes == defaultOIDCScopes {
+		return nil
+	}
+	requested := make(map[string]bool)
+	for _, s := range strings.Fields(scopes) {
+		requested[s] = true
+	}
+	var warnings []string
+	if !requested["offline_access"] {
+		warnings = append(warnings, "[auth.oidc] scope override omits offline_access: most IdPs then issue no "+
+			"refresh token, so users are signed out when the access token expires.")
+	}
+	missing, total := 0, 0
+	for _, s := range strings.Fields(defaultOIDCScopes) {
+		if !strings.HasPrefix(s, "ap:") {
+			continue
+		}
+		total++
+		if !requested[s] {
+			missing++
+		}
+	}
+	if missing > 0 {
+		warnings = append(warnings, fmt.Sprintf("[auth.oidc] scope override replaces the built-in default and "+
+			"omits %d of its %d ap:* scopes; features gated on them are hidden. To add a plugin's scopes, "+
+			"set the full default list plus the plugin's (see defaultOIDCScopes).", missing, total))
+	}
+	return warnings
+}
+
 // validate fails startup on any value that would otherwise surface as a
 // confusing runtime error (a bad port, an empty upstream URL, an incomplete OIDC
 // set) and warns on security-relevant downgrades.
@@ -661,6 +699,11 @@ func (c *Config) validate() error {
 	}
 	if c.Session.Cookie.SameSite == "none" && !c.Session.Cookie.Secure {
 		return fmt.Errorf("[session.cookie] same_site = \"none\" requires secure = true (browsers reject SameSite=None cookies without Secure)")
+	}
+	if c.Auth.OIDC.Enabled {
+		for _, w := range oidcScopeOverrideWarnings(c.Auth.OIDC.Scopes) {
+			slog.Warn(w)
+		}
 	}
 	if !c.Session.Cookie.Secure {
 		slog.Warn("[session.cookie] secure = false — the session cookie will be sent over plain HTTP. " +
