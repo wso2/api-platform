@@ -663,7 +663,7 @@ export const OPERATION_SCOPES = {
   deprecateMcpProxyOnApiPortal: ['ap:api_portal:mcp_proxy:manage'],
   deprecateRestApiOnApiPortal: ['ap:api_portal:rest_api:manage'],
   fetchAgentCard: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
-  fetchMCPProxyServerInfo: ['ap:mcp_proxy:manage', 'ap:mcp_proxy:read'],
+  fetchMCPProxyServerInfo: ['ap:mcp_proxy:manage'],
   getAgentProxy: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   getAgentProxyBuild: [
     'ap:agent_proxy:build:manage',
@@ -812,6 +812,7 @@ export const OPERATION_SCOPES = {
   ],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
+  InvokeRESTAPIOnGateway: ['ap:rest_api:gateway:manage', 'ap:rest_api:manage'],
   issueServiceAccountToken: [],
   listAgentProxies: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   listAgentProxyAPIKeys: [

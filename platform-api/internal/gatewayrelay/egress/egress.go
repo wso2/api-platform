@@ -14,50 +14,17 @@
  * under the License.
  */
 
-// Package egress decides where the Gateway relay's relay may connect.
+// Package egress decides where the gateway relay may connect.
 //
-// # The model
+// Nothing is reachable unless an allow_hosts entry matches, so an empty list
+// reaches nothing. Beneath the list, link-local (the cloud metadata endpoint),
+// unspecified, multicast and broadcast addresses, and the IPv6 ranges that
+// route onward to IPv4, are refused whatever it says. Private and loopback
+// addresses stay dialable when listed, because that is where gateways live.
 //
-// One rule: nothing is reachable unless an allow_hosts entry matches it.
-//
-// An empty list therefore reaches nothing, which is the point — a deployment
-// that configures no policy gets a console that refuses every target, not one
-// that dials anywhere Platform API happened to name. An earlier version read
-// an empty list as "unconstrained", so the safe-looking configuration was the
-// open one.
-//
-// # Beneath the list
-//
-// A small set of addresses is refused however allow_hosts reads: link-local
-// (where the cloud metadata endpoint lives), the unspecified address,
-// multicast and broadcast, and the IPv6 prefixes that embed an IPv4 address
-// and route onward to it. None is ever a legitimate gateway, and none is
-// configurable — allow_hosts matches names, and a name an operator trusts can
-// still resolve to one of these, deliberately or otherwise.
-//
-// # What is NOT refused by category
-//
-// Private, loopback and carrier-grade-NAT addresses are all dialable, and an
-// IP literal is matched like any other host. That is deliberate: a gateway
-// legitimately lives on a ClusterIP, and on loopback during development, so
-// refusing those by category would break the ordinary case while allow_hosts
-// already decides the question.
-//
-// It does mean a wide entry is a wide grant — "*" reaches anything the floor
-// above does not refuse, the BFF's own host included. An operator listing
-// localhost has chosen to reach localhost; the policy does not second-guess
-// it, so the narrower the list, the better.
-//
-// # Why the checks live in two places
-//
-// Scheme, host and port are properties of the URL and do not depend on DNS,
-// so they are knowable the moment the target is resolved. Checking them there
-// buys a specific, loggable rejection instead of a generic dial failure.
-//
-// The address check cannot move there. A name that resolves to an approved
-// address during a pre-check can resolve to a different one by the time the
-// connection is made, so it belongs inside the dial — which is also where the
-// connection is pinned to the address that was actually validated.
+// Scheme, host and port are checked against the URL (CheckTarget); addresses
+// are checked at dial time, on every resolved address, so DNS rebinding cannot
+// slip past a pre-check.
 package egress
 
 import (
@@ -74,8 +41,8 @@ import (
 	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
-// Rejections from CheckTarget. The caller always receives one generic
-// response; these exist so the server-side log names the actual reason.
+// Rejections from CheckTarget. The caller gets one generic response; these name
+// the reason in the log.
 var (
 	ErrTargetNotAllowed = errors.New("gateway target does not match any allow_hosts entry")
 	ErrNoTargetHost     = errors.New("resolved target has no host")
@@ -85,23 +52,22 @@ var (
 type Spec struct {
 	// AllowHosts lists the relay's permitted targets. Empty permits none.
 	AllowHosts []string
+	// Logger receives the refusals, with the address and reason the caller is
+	// never told. Nil uses slog.Default().
+	Logger *slog.Logger
 }
 
 // Policy is a parsed, validated Spec.
 type Policy struct {
-	// netguardPolicy carries the always-refused categories. Its widening
-	// AllowCIDRs field is deliberately never set: an operator entry must not
-	// be able to re-open a refused range.
+	// netguardPolicy carries the always-refused ranges. AllowCIDRs is never set,
+	// so no entry can re-open one.
 	netguardPolicy netguard.Policy
 	allow          []targetPattern
+	logger         *slog.Logger
 }
 
-// targetPattern is one allow_hosts entry: a host glob, with an optional
-// scheme and an optional port that must match exactly when present.
-//
-// Omitting a part leaves it unconstrained, so "gw.example.com" accepts both
-// schemes on any port, while "https://gw.example.com:8443" accepts only that
-// one combination.
+// targetPattern is one allow_hosts entry: a host glob, and a scheme and port that
+// constrain only when the entry names them.
 type targetPattern struct {
 	scheme string // "" when the entry named none
 	host   string // glob; "*" matches everything
@@ -109,19 +75,14 @@ type targetPattern struct {
 	raw    string // as written, for Describe and error messages
 }
 
-// matchesHost reports whether host satisfies the pattern's glob.
-//
-// "*" matches any run of characters, dots included, so "*.example.com"
-// accepts "a.b.example.com" as well as "a.example.com". It does not accept
-// "example.com" itself: the separating dot is part of what must match, which
-// is what keeps the entry from also admitting "evilexample.com".
+// matchesHost reports whether host satisfies the glob. "*" crosses dots, but
+// "*.example.com" still needs the dot, so it never admits "evilexample.com".
 func (t targetPattern) matchesHost(host string) bool {
 	return globMatch(t.host, host)
 }
 
-// globMatch is a linear, backtracking glob over '*' only. Written out rather
-// than taken from path.Match because that treats '/' as a separator '*' will
-// not cross, which is not how a hostname reads.
+// globMatch is a backtracking glob over '*' only; path.Match would treat '/' as
+// a separator, which a hostname has no use for.
 func globMatch(pattern, s string) bool {
 	var pIdx, sIdx, starIdx, matchIdx int
 	starIdx = -1
@@ -149,21 +110,17 @@ func globMatch(pattern, s string) bool {
 	return pIdx == len(pattern)
 }
 
-// Parse validates a Spec and builds the Policy that enforces it.
-//
-// The base policy refuses the ranges that are never a legitimate gateway and
-// are never configurable. Everything the operator writes only ever decides
-// which names may be dialed at all; nothing widens that base.
+// Parse validates a Spec and builds its Policy. Entries only decide which names
+// may be dialed; nothing widens the always-refused ranges.
 func Parse(spec Spec) (*Policy, error) {
-	policy := &Policy{netguardPolicy: netguard.PermitPrivateBlockMetadata()}
-	// Both schemes are ordinary serving modes for a gateway; netguard
-	// defaults to https alone, which would refuse a plain-http one.
+	policy := &Policy{netguardPolicy: netguard.PermitPrivateBlockMetadata(), logger: spec.Logger}
+	if policy.logger == nil {
+		policy.logger = slog.Default()
+	}
+	// netguard allows https alone by default; a gateway may serve plain http.
 	policy.netguardPolicy.AllowedSchemes = []string{"http", "https"}
-	// The preset refuses link-local, unspecified and multicast. It has no
-	// category for the IPv6 ranges that embed an IPv4 address and route to
-	// it, and an IPv4 denylist entry does not match them — 2002:a9fe:a9fe::
-	// reaches 169.254.169.254 while being neither link-local nor IPv4 — so
-	// they go in as ordinary denied ranges.
+	// The preset has no category for IPv6 ranges that route onward to IPv4
+	// (2002:a9fe:a9fe:: reaches 169.254.169.254), so they are denied explicitly.
 	policy.netguardPolicy.DenyCIDRs = append(policy.netguardPolicy.DenyCIDRs, translatedIPv4Ranges()...)
 
 	allow, err := parseAllowHosts(spec.AllowHosts)
@@ -174,18 +131,9 @@ func Parse(spec Spec) (*Policy, error) {
 	return policy, nil
 }
 
-// NetguardPolicy returns the address policy the dialer applies. Exported for
-// tests that assert on what the operator's settings produced.
-func (p *Policy) NetguardPolicy() netguard.Policy { return p.netguardPolicy }
-
-// translatedIPv4Ranges are the IPv6 prefixes that embed an IPv4 address and
-// are routed onward to it: 6to4 (RFC 3056) and the NAT64 well-known prefix
-// (RFC 6052). Neither is matched by an IPv4 denylist entry naming the address
-// it reaches, and neither is ever a legitimate gateway here.
-//
-// IPv4-mapped addresses (::ffff:a.b.c.d) are deliberately absent: Go
-// normalises those, so net.IP's predicates and net.IPNet.Contains already see
-// them as the IPv4 address they carry.
+// translatedIPv4Ranges are 6to4 (RFC 3056) and the NAT64 prefix (RFC 6052),
+// which reach an IPv4 address without matching an IPv4 denylist entry. Mapped
+// addresses (::ffff:a.b.c.d) need no entry: Go already treats them as IPv4.
 func translatedIPv4Ranges() []*net.IPNet {
 	return []*net.IPNet{mustCIDR("2002::/16"), mustCIDR("64:ff9b::/96")}
 }
@@ -198,11 +146,9 @@ func mustCIDR(s string) *net.IPNet {
 	return n
 }
 
-// DialContext returns the relay HTTP client's dial function.
-//
-// Resolution happens here so each address can be checked against the
-// always-refused ranges, and so the connection is made to an address that was
-// actually validated rather than to whatever a second lookup would return.
+// DialContext returns the relay client's dial function. It resolves the host
+// itself and connects only to an address it checked, so a second lookup cannot
+// return a different one.
 func (p *Policy) DialContext(timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
@@ -212,13 +158,13 @@ func (p *Policy) DialContext(timeout time.Duration) func(context.Context, string
 
 		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 		if err != nil || len(ips) == 0 {
-			slog.Warn("gateway relay egress: host did not resolve", "host", host)
+			p.logger.Warn("gateway relay egress: host did not resolve", "host", host)
 			return nil, errDialRefused
 		}
 
 		for _, ip := range ips {
 			if err := netguard.Validate(ctx, p.netguardPolicy, ip.IP.String()); err != nil {
-				slog.Warn("gateway relay egress refused",
+				p.logger.Warn("gateway relay egress refused",
 					"host", host, "addr", ip.IP.String(), "reason", classify(ip.IP))
 				return nil, ErrAddressNotAllowed
 			}
@@ -233,7 +179,7 @@ func (p *Policy) DialContext(timeout time.Duration) func(context.Context, string
 			}
 			lastErr = dialErr
 		}
-		slog.Warn("gateway relay egress: no resolved address accepted a connection",
+		p.logger.Warn("gateway relay egress: no resolved address accepted a connection",
 			"host", host, "err", lastErr)
 		return nil, errDialRefused
 	}
@@ -245,12 +191,8 @@ var ErrAddressNotAllowed = errors.New("resolved address is not allowed by the eg
 // errDialRefused indicates an unresolved or unreachable destination.
 var errDialRefused = errors.New("destination could not be reached")
 
-// classify names the category an address fell into, for the log line only.
-//
-// It is not the security decision — netguard.Validate already made that. A
-// mismatch between this and netguard would mislabel a log entry and nothing
-// else, which is why restating the categories is acceptable here and would
-// not be in the dial path.
+// classify names a refused address's category for the log. netguard.Validate
+// makes the decision; this only labels it.
 func classify(ip net.IP) string {
 	switch {
 	case ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast():
@@ -264,11 +206,8 @@ func classify(ip net.IP) string {
 	}
 }
 
-// CheckTarget applies allow_hosts to a resolved invoke URL.
-//
-// Called once per request, before the relay dials, so a refusal is reported
-// as a target that is not allowed rather than as a gateway that could not be
-// reached — the two are different problems for whoever reads the log.
+// CheckTarget applies allow_hosts to an invoke URL, before dialing, so a refusal
+// reads as "not allowed" rather than "unreachable".
 func (p *Policy) CheckTarget(u *url.URL) error {
 	if u == nil || u.Hostname() == "" {
 		return ErrNoTargetHost
@@ -292,15 +231,13 @@ func (p *Policy) CheckTarget(u *url.URL) error {
 			return nil
 		}
 	}
-	// Includes the empty-list case, which is the deny-all default.
 	return fmt.Errorf("%w: %s://%s:%d", ErrTargetNotAllowed, scheme, host, port)
 }
 
-// Describe renders the effective policy for the startup log, so an operator
-// can confirm what is in force without re-reading config.toml.
+// Describe renders the policy for the startup log.
 func (p *Policy) Describe() string {
 	if len(p.allow) == 0 {
-		return "allow_hosts=[] (nothing is reachable — set allow_hosts to use the gateway relay)"
+		return "allow_hosts=[] (nothing is reachable: set gateway_relay.egress.allow_hosts to use the gateway relay)"
 	}
 	entries := make([]string, 0, len(p.allow))
 	for _, pattern := range p.allow {
@@ -309,9 +246,8 @@ func (p *Policy) Describe() string {
 	return "allow_hosts=[" + strings.Join(entries, " ") + "]"
 }
 
-// targetPort returns the port the URL dials, filling in the scheme default
-// when it carries none — "https://gw.example.com" dials 443, and an entry
-// that pinned 443 should match it.
+// targetPort returns the port the URL dials, the scheme's default when it names
+// none, so an entry pinning 443 matches "https://gw.example.com".
 func targetPort(u *url.URL) (int, error) {
 	if explicit := u.Port(); explicit != "" {
 		port, err := strconv.Atoi(explicit)
@@ -330,11 +266,8 @@ func targetPort(u *url.URL) (int, error) {
 	}
 }
 
-// parseAllowHosts validates allow_hosts entries.
-//
-// An entry is "[scheme://]host[:port]", where host may carry "*" anywhere.
-// Scheme and port constrain only when written, so the shortest useful entry
-// is a bare hostname and the broadest is "*".
+// parseAllowHosts validates allow_hosts entries, each "[scheme://]host[:port]"
+// with "*" allowed anywhere in host.
 func parseAllowHosts(in []string) ([]targetPattern, error) {
 	if len(in) == 0 {
 		return nil, nil
@@ -367,16 +300,13 @@ func parseAllowHost(raw string) (targetPattern, error) {
 		entry = rest
 	}
 
-	// A path would silently widen the entry, since nothing below matches on
-	// one — refuse it rather than accept something that does not do what it
-	// reads as doing.
+	// Nothing matches on a path, so one would silently widen the entry.
 	if idx := strings.IndexAny(entry, "/?#"); idx >= 0 {
 		return targetPattern{}, fmt.Errorf(
 			"allow_hosts entry %q carries a path or query; entries match scheme, host and port only", raw)
 	}
 
-	// Split a trailing ":port", taking care not to mistake an IPv6 literal's
-	// own colons for one.
+	// Split a trailing ":port", minding an IPv6 literal's own colons.
 	host := entry
 	if !strings.HasPrefix(entry, "[") {
 		if h, p, found := strings.Cut(entry, ":"); found {

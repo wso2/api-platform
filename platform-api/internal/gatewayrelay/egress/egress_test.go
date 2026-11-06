@@ -40,9 +40,7 @@ func check(t *testing.T, p *Policy, rawURL string) error {
 }
 
 func TestEmptyAllowHostsReachesNothing(t *testing.T) {
-	// The whole point of the model: a deployment that configures no policy
-	// refuses every target, rather than dialing wherever a gateway record
-	// happens to point.
+	// A deployment that configures nothing dials nowhere.
 	p := policyFor(t)
 
 	for _, target := range []string{
@@ -85,8 +83,7 @@ func TestPortConstrainsOnlyWhenWritten(t *testing.T) {
 }
 
 func TestPortDefaultsToTheSchemeDefault(t *testing.T) {
-	// "https://gw.example.com" dials 443, so an entry pinning 443 must match
-	// it even though the URL names no port.
+	// "https://gw.example.com" dials 443, so an entry pinning 443 matches it.
 	https := policyFor(t, "gw.example.com:443")
 	assert.NoError(t, check(t, https, "https://gw.example.com/x"))
 	assert.ErrorIs(t, check(t, https, "http://gw.example.com/x"), ErrTargetNotAllowed)
@@ -145,11 +142,13 @@ func TestIPLiteralEntries(t *testing.T) {
 	assert.NoError(t, check(t, v4, "http://10.1.2.3:8080/x"))
 	assert.ErrorIs(t, check(t, v4, "http://10.1.2.4:8080/x"), ErrTargetNotAllowed)
 
-	// An IPv6 literal is bracketed in both the entry and the URL, so the
-	// address's own colons are not read as a port separator.
+	// Bracketed, so the address's own colons are not read as a port.
 	v6 := policyFor(t, "[fd00::1]:8443")
 	assert.NoError(t, check(t, v6, "https://[fd00::1]:8443/x"))
 	assert.ErrorIs(t, check(t, v6, "https://[fd00::2]:8443/x"), ErrTargetNotAllowed)
+
+	// "*" admits literals too, which is why a narrow list matters.
+	assert.NoError(t, check(t, policyFor(t, "*"), "http://127.0.0.1:9780/x"))
 }
 
 func TestCheckTargetRejectsAURLWithNoHost(t *testing.T) {
@@ -185,11 +184,9 @@ func TestParseRejectsEntriesThatWouldNotDoWhatTheyRead(t *testing.T) {
 }
 
 func TestAlwaysRefusedRangesAreNotConfigurable(t *testing.T) {
-	// allow_hosts matches names. A name an operator trusts can still resolve
-	// to the metadata endpoint, so the floor is checked against the resolved
-	// address and no entry can re-open it.
+	// A trusted name can still resolve to the metadata endpoint; no entry re-opens these.
 	p := policyFor(t, "*")
-	ng := p.NetguardPolicy()
+	ng := p.netguardPolicy
 
 	assert.True(t, ng.BlockLinkLocal, "link-local carries the cloud metadata endpoint")
 	assert.True(t, ng.BlockUnspecified)
@@ -210,47 +207,13 @@ func TestAlwaysRefusedRangesAreNotConfigurable(t *testing.T) {
 }
 
 func TestPrivateAndLoopbackAreDialable(t *testing.T) {
-	// Gateways live on ClusterIPs and, in local development, on loopback, so
-	// neither is refused by category. allow_hosts is the whole of the
-	// decision — an operator who lists localhost has chosen to reach it.
-	ng := policyFor(t, "*").NetguardPolicy()
+	// Gateways live on ClusterIPs, and on loopback in development; allow_hosts decides.
+	ng := policyFor(t, "*").netguardPolicy
 
 	assert.False(t, ng.BlockPrivate)
 	assert.False(t, ng.BlockLoopback)
 	assert.False(t, ng.BlockCGNAT)
 	assert.ElementsMatch(t, []string{"http", "https"}, ng.AllowedSchemes)
-}
-
-func TestIPLiteralTargetsAreMatchedLikeAnyOtherHost(t *testing.T) {
-	// No special rule for literals: they match allow_hosts or they do not.
-	p := policyFor(t, "10.1.2.3:8080")
-	assert.NoError(t, check(t, p, "http://10.1.2.3:8080/x"))
-	assert.ErrorIs(t, check(t, p, "http://10.1.2.4:8080/x"), ErrTargetNotAllowed)
-
-	// And "*" admits them, which is what makes a narrow list matter.
-	assert.NoError(t, check(t, policyFor(t, "*"), "http://127.0.0.1:9780/x"))
-}
-
-func TestTheAlwaysRefusedFloorIsNotConfigurable(t *testing.T) {
-	// The one thing allow_hosts cannot re-open, whatever it lists.
-	ng := policyFor(t, "*").NetguardPolicy()
-
-	assert.True(t, ng.BlockLinkLocal, "link-local carries the cloud metadata endpoint")
-	assert.True(t, ng.BlockUnspecified)
-	assert.True(t, ng.BlockMulticastBroadcast)
-	assert.Empty(t, ng.AllowCIDRs, "a widening list would let an entry re-open a refused range")
-
-	var has6to4, hasNAT64 bool
-	for _, cidr := range ng.DenyCIDRs {
-		switch cidr.String() {
-		case "2002::/16":
-			has6to4 = true
-		case "64:ff9b::/96":
-			hasNAT64 = true
-		}
-	}
-	assert.True(t, has6to4, "2002:a9fe:a9fe:: reaches 169.254.169.254 without being link-local")
-	assert.True(t, hasNAT64)
 }
 
 func TestDescribeNamesTheEffectivePolicy(t *testing.T) {
@@ -288,8 +251,7 @@ func TestGlobMatch(t *testing.T) {
 }
 
 func TestRefusalDoesNotNameTheCheckThatFired(t *testing.T) {
-	// The handler answers generically; this is only about what the error
-	// carries for the log. It should name the target, not the policy.
+	// The error is for the log: it names the target, not the allow list.
 	err := check(t, policyFor(t, "gw.example.com"), "https://other.example.com/x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "other.example.com")
