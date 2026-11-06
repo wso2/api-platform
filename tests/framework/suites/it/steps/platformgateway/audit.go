@@ -35,16 +35,17 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 )
 
-// Where a feature reads audit records: gateway-controller's audit table, the audit lines on its
-// stdout, and the testbench webhook service its http output posts each record to.
 const (
 	auditPlaceTable    = "gateway audit table"
 	auditPlaceLog      = "gateway-controller log"
-	auditPlaceReceiver = "audit receiver"
+	auditPlaceFile     = "gateway audit file"
+	auditPlaceReceiver = "gateway audit receiver"
+
+	// auditFilePath is the file output's path in the gateway-audit overlays.
+	auditFilePath = "/app/data/audit/audit.log"
 )
 
-// auditFields are the record fields a feature can compare, named as in the audit line, with the
-// audit table column that holds each.
+// auditFields maps each record field to the audit table column that holds it.
 var auditFields = []struct{ field, column string }{
 	{"gatewayId", "gateway_id"},
 	{"correlationId", "correlation_id"},
@@ -57,13 +58,12 @@ var auditFields = []struct{ field, column string }{
 }
 
 func (g *Gateway) registerAuditSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^the (gateway audit table|gateway-controller log|audit receiver) should have exactly these audit records for "([^"]*)":$`,
+	sc.Step(`^the (gateway audit table|gateway-controller log|gateway audit file|gateway audit receiver) should have exactly these audit records for "([^"]*)":$`,
 		g.auditRecordsAre)
 }
 
-// auditRecordsAre waits until the records for a resource, matched by its name or its id, are
-// exactly the table's rows. Only the table's columns are compared, and order is ignored, so a
-// change the gateway should not record fails the step by never letting the records match.
+// auditRecordsAre waits until the records for a resource, matched by its name or id, are
+// exactly the table's rows. Only the table's columns are compared, in any order.
 func (g *Gateway) auditRecordsAre(ctx context.Context, place, resource string, table *godog.Table) error {
 	key, err := stepscommon.Expand(ctx, resource)
 	if err != nil {
@@ -91,7 +91,6 @@ func (g *Gateway) auditRecordsAre(ctx context.Context, place, resource string, t
 	return nil
 }
 
-// auditRecords reads the records for key from one place.
 func (g *Gateway) auditRecords(ctx context.Context, place, key string) ([]map[string]string, error) {
 	var records []map[string]string
 	switch place {
@@ -103,6 +102,16 @@ func (g *Gateway) auditRecords(ctx context.Context, place, key string) ([]map[st
 			return nil, err
 		}
 		records = auditLogRecords(stack.Logs(ctx))
+	case auditPlaceFile:
+		stack, service, err := g.topo.ServiceControl("gateway-controller")
+		if err != nil {
+			return nil, err
+		}
+		data, err := stack.CopyFileFromContainer(ctx, service, auditFilePath)
+		if err != nil {
+			return nil, err
+		}
+		records = auditLogRecords(string(data))
 	case auditPlaceReceiver:
 		url, err := g.serviceURL(ctx, "webhook", "/test/deliveries")
 		if err != nil {
@@ -134,9 +143,8 @@ func (g *Gateway) auditRecords(ctx context.Context, place, key string) ([]map[st
 	}), nil
 }
 
-// auditTableRecords reads the audit rows whose resource name or id is key, opening a fresh
-// connection per call because the store may be a point-in-time snapshot (see
-// Topology.OpenComponentDB). A NULL column reads as "".
+// auditTableRecords opens a fresh connection per call because an SQLite store is a
+// point-in-time snapshot (see Topology.OpenComponentDB).
 func (g *Gateway) auditTableRecords(ctx context.Context, key string) ([]map[string]string, error) {
 	store, ok := g.topo.Storage.Plan.StoreFor("platform-gateway", 0)
 	if !ok {
@@ -180,7 +188,6 @@ func (g *Gateway) auditTableRecords(ctx context.Context, key string) ([]map[stri
 	return records, rows.Err()
 }
 
-// auditLogRecords returns the audit records among the JSON lines of a log.
 func auditLogRecords(logs string) []map[string]string {
 	var records []map[string]string
 	for _, line := range strings.Split(logs, "\n") {
@@ -195,8 +202,6 @@ func auditLogRecords(logs string) []map[string]string {
 	return records
 }
 
-// decodeAuditRecord reads one audit line. Anything that is not a JSON object tagged
-// "logType":"audit" is not a record.
 func decodeAuditRecord(raw []byte) (map[string]string, bool) {
 	var fields map[string]any
 	if json.Unmarshal(raw, &fields) != nil || fields["logType"] != "audit" {
@@ -249,7 +254,6 @@ func auditExpectations(ctx context.Context, table *godog.Table) (auditExpectatio
 	return want, nil
 }
 
-// match reports how records differ from the expected rows, comparing only the expected columns.
 func (want auditExpectation) match(records []map[string]string) error {
 	got := make([]string, len(records))
 	for i, record := range records {

@@ -1655,9 +1655,8 @@ var serviceEndpoints = map[string]struct {
 	"policy-engine":                {component: "platform-gateway", endpoint: "policy-admin"},
 	"analytics":                    {component: "testbench", endpoint: "analytics", partitioned: true},
 	"capture":                      {component: "testbench", endpoint: "capture", partitioned: true},
-	// The receiver the controller's audit http output posts each record to.
-	"webhook": {component: "testbench", endpoint: "webhook", partitioned: true},
-	"oauth2":  {component: "testbench", endpoint: "oauth2", partitioned: true},
+	"webhook":                      {component: "testbench", endpoint: "webhook", partitioned: true},
+	"oauth2":                       {component: "testbench", endpoint: "oauth2", partitioned: true},
 	// The TypeSafe Jev API. Not block-partitioned here: a scenario addresses its own partition
 	// as the first path segment, so request counts are scoped to the scenario.
 	"jev":     {component: "testbench", endpoint: "jev"},

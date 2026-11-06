@@ -1,9 +1,9 @@
-# Audit records of management API changes, written to the controller's stdout and posted one
-# record per request to the block's testbench webhook service, which accepts a single JSON
-# document per request.
 [controller.audit]
 enabled = true
-outputs = ["stdout", "http"]
+outputs = ["stdout", "file", "http"]
+
+[controller.audit.file]
+path = "/app/data/audit/audit.log"
 
 [controller.audit.http]
 endpoint = "http://testbench:3012/${BLOCK}/webhook"

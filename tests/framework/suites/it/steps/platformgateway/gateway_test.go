@@ -4189,7 +4189,6 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
 }
 
-// auditRecordsTable builds a step table from a header row and value rows.
 func auditRecordsTable(t *testing.T, rows ...[]string) *godog.Table {
 	t.Helper()
 	type cell struct {

@@ -31,7 +31,7 @@ Feature: Audit records with mask_sensitive_fields
     And I generate a unique value from "audit-correlation" and store it as "correlationId"
     And I set header "X-Correlation-ID" to "${CTX:correlationId}"
 
-  Scenario: mask_sensitive_fields hides the user in the outputs but not in the table
+  Scenario: The outputs show the user masked while the audit table keeps it
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}           |
       | name                   | ${CTX:apiName}                      |
@@ -51,7 +51,11 @@ Feature: Audit records with mask_sensitive_fields
       | action | performedBy |
       | CREATE | ****        |
       | DELETE | ****        |
-    And the audit receiver should have exactly these audit records for "${CTX:apiName}":
+    And the gateway audit file should have exactly these audit records for "${CTX:apiName}":
+      | action | performedBy |
+      | CREATE | ****        |
+      | DELETE | ****        |
+    And the gateway audit receiver should have exactly these audit records for "${CTX:apiName}":
       | action | performedBy |
       | CREATE | ****        |
       | DELETE | ****        |
