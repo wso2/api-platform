@@ -711,6 +711,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
     const maxEntries = config.uploads?.maxZipEntries || 500;        // entry-count guard
     let totalExtractedSize = 0; // Total extracted data size (measured from bytes actually read)
     let entryCount = 0;
+    let entriesRead = 0;
 
     // Streams each entry to disk, capping on bytes actually read rather than the
     // declared header size. Rejects the outer promise on the first violation.
@@ -742,6 +743,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
         fs.createReadStream(zipPath)
             .pipe(unzipper.Parse())
             .on('entry', entry => {
+                entriesRead += 1;
                 try {
                     const entryPath = entry.path;
                     const entrySize = entry.size;
@@ -803,6 +805,12 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
             .on('close', async () => {
                 try {
                     await Promise.all(streams); // Wait for all files to finish writing
+                    // An archive whose central directory (read by unzipper, ZIP64 included) lists entries the
+                    // stream never read is damaged, not empty.
+                    const listed = await unzipper.Open.file(zipPath).then((directory) => directory.files.length, () => null);
+                    if (listed !== entriesRead) {
+                        return reject(new CustomError(400, 'Error unzipping directory', 'The archive is damaged.'));
+                    }
                     extractedFiles.length > 0 || allowEmpty ? resolve(extractedFiles) : reject(new Error('No files were extracted'));
                 } catch (err) {
                     reject(new Error(`Unzip failed: ${err.message}`));
