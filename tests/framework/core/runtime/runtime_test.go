@@ -1124,7 +1124,7 @@ func TestIsNotFoundMatchesDockerNotFoundErrors(t *testing.T) {
 
 // TestIsNotFoundMatchesADaemonNotFoundResponse asks the Docker client for a file through a
 // daemon that answers 404, as the archive endpoint does for a WAL sidecar that has been
-// checkpointed away. The client marks that error for errors.Is, not with a NotFound method.
+// checkpointed away. The client gives that error no NotFound method, only the daemon's message.
 func TestIsNotFoundMatchesADaemonNotFoundResponse(t *testing.T) {
 	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/_ping") {
@@ -1154,6 +1154,7 @@ func TestIsNotFoundRejectsCopyFailures(t *testing.T) {
 	require.False(t, isNotFound(errors.New("runtime: copying \"/app/data/x.db-wal\": connection refused")))
 	require.False(t, isNotFound(fmt.Errorf("file exceeds the %d-byte limit", 1024)))
 	require.False(t, isNotFound(fmt.Errorf("wrapped: %w", errors.New("permission denied"))))
+	require.False(t, isNotFound(errors.New("No such container: c")))
 }
 
 func TestContainedSourceAcceptsFilesInsideTheRepository(t *testing.T) {
