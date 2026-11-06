@@ -2147,8 +2147,8 @@ function prepareApiDefinitionForStorage(fileName, fileBuffer) {
 function validateSchemaDefinitionFileName(fileName) {
     const sanitizedFileName = path.basename(String(fileName || ''));
     const extension = path.extname(sanitizedFileName).toLowerCase();
-    if (extension !== '.json' && extension !== '.yaml') {
-        throw new ValidationError("Invalid schema definition file type. Expected '.json' or '.yaml'");
+    if (extension !== '.json' && extension !== '.yaml' && extension !== '.yml') {
+        throw new ValidationError("Invalid schema definition file type. Expected '.json', '.yaml' or '.yml'");
     }
     return sanitizedFileName;
 }

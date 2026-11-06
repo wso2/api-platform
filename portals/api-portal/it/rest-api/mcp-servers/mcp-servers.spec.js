@@ -206,7 +206,7 @@ describe('MCP servers', () => {
     // from that definition alone, matching how sampleSeeder deploys samples/mcps (api.yaml +
     // definition.yaml) and how the admin UI wizard now uploads it.
     describe('tools schema (definition)', () => {
-        function createWithSchema(schema, idPrefix) {
+        function createWithSchema(schema, idPrefix, fileName = 'definition.yaml') {
             const id = uniqueHandle(idPrefix || 'mcp-schema');
             return client
                 .as('publisher')
@@ -219,7 +219,7 @@ describe('MCP servers', () => {
                     status: 'PUBLISHED',
                     endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
                 }))
-                .attach('definition', Buffer.from(schema), 'definition.yaml')
+                .attach('definition', Buffer.from(schema), fileName)
                 .then((res) => ({ id, res }));
         }
 
@@ -232,6 +232,19 @@ describe('MCP servers', () => {
                 .get(`/mcp-servers/${id}/assets?type=SCHEMA_DEFINITION&fileName=definition.yaml`);
             expect(asset.status).toBe(200);
             expect(String(asset.text || asset.body)).toContain('name: ping');
+        });
+
+        it('accepts a .yml definition and rejects other file types', async () => {
+            const yml = await createWithSchema(MCP_TOOLS_SCHEMA, 'mcp-schema-yml', 'definition.yml');
+            expect(yml.res.status).toBe(201);
+            const asset = await client.as('publisher')
+                .get(`/mcp-servers/${yml.id}/assets?type=SCHEMA_DEFINITION&fileName=definition.yml`);
+            expect(asset.status).toBe(200);
+
+            const txt = await createWithSchema(MCP_TOOLS_SCHEMA, 'mcp-schema-txt', 'definition.txt');
+            expect(txt.res.status).toBe(400);
+            expect(txt.res.body.errors[0].message)
+                .toBe("Invalid schema definition file type. Expected '.json', '.yaml' or '.yml'");
         });
 
         it('rejects creating an MCP server without a definition', async () => {
