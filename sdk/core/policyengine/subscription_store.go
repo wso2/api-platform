@@ -39,6 +39,10 @@ type SubscriptionEntry struct {
 	PlanName              string
 	BillingCustomerID     *string
 	BillingSubscriptionID *string
+	SubscriptionID        string
+	PlanID                string
+	// Conditions are the plan's conditions (see SubscriptionData.Conditions).
+	Conditions []SubscriptionCondition
 }
 
 // SubscriptionStore stores subscription state in memory for fast lookups by policies.
@@ -92,6 +96,9 @@ func (s *SubscriptionStore) ReplaceAll(subs []SubscriptionData) {
 			PlanName:              sub.PlanName,
 			BillingCustomerID:     sub.BillingCustomerId,
 			BillingSubscriptionID: sub.BillingSubscriptionId,
+			SubscriptionID:        sub.SubscriptionId,
+			PlanID:                sub.PlanId,
+			Conditions:            sub.Conditions,
 		}
 
 		// Build token-based index
