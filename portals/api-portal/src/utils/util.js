@@ -864,30 +864,6 @@ const retrieveContentType = (fileName, fileType) => {
     return constants.MIME_TYPES.TEXT;
 };
 
-const getAPIFileContent = (directory) => {
-    let files = [];
-    const filenames = fs.readdirSync(directory);
-    filenames.forEach((filename) => {
-        if (!(filename === '.DS_Store')) {
-            let fileContent = fs.readFileSync(path.join(directory, filename), 'utf8');
-            files.push({ fileName: filename, content: fileContent, type: constants.DOC_TYPES.API_LANDING });
-        }
-    });
-    return files;
-};
-
-const getAPIImages = async (directory) => {
-    let files = [];
-    const filenames = await fs.promises.readdir(directory, { withFileTypes: true });
-    for (const filename of filenames) {
-        if (!(filename === '.DS_Store')) {
-            let fileContent = await fs.promises.readFile(path.join(directory, filename.name));
-            files.push({ fileName: filename.name, content: fileContent, type: constants.DOC_TYPES.IMAGES });
-        }
-    }
-    return files;
-};
-
 const getAPIDocLinks = (documentMetadata) => {
 
     let files = [];
@@ -1586,8 +1562,6 @@ module.exports = {
     resolveApiIdInView,
     sendError,
     retrieveContentType,
-    getAPIFileContent,
-    getAPIImages,
     getAPIDocLinks,
     isTextFile,
     validateIDP,
