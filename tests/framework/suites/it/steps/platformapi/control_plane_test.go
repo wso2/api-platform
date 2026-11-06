@@ -1787,6 +1787,78 @@ func TestSignedInControlPlaneRequests(t *testing.T) {
 	})
 }
 
+func TestAuditExpectationsReadTheTable(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.NoError(t, tcontext.Set(ctx, "token", "token-1"))
+
+	want, err := auditExpectations(ctx, valuesTable(
+		[]string{"action", " resourceId ", "performedBy"},
+		[]string{"CREATE", "${CTX:token}", "admin"},
+	))
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"action", "resourceId", "performedBy"}, want.columns)
+	require.Equal(t, [][]string{{"CREATE", "token-1", "admin"}}, want.rows)
+	none, err := auditExpectations(ctx, valuesTable([]string{"action"}))
+	require.NoError(t, err)
+	require.Empty(t, none.rows)
+}
+
+func TestAuditExpectationsRejectABadTable(t *testing.T) {
+	ctx := context.Background()
+	for name, tc := range map[string]struct {
+		table   *godog.Table
+		wantErr string
+	}{
+		"no table":           {nil, "needs a table"},
+		"unknown field":      {valuesTable([]string{"action", "resourceName"}), `unknown audit record field "resourceName"`},
+		"repeated field":     {valuesTable([]string{"action", "action"}), `"action" appears twice`},
+		"gateway-only field": {valuesTable([]string{"action", "outcome"}), `unknown audit record field "outcome"`},
+		"row length":         {valuesTable([]string{"action", "resourceType"}, []string{"CREATE"}), "has 1 cells, want 2"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := auditExpectations(ctx, tc.table)
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestAuditExpectationMatchComparesTheListedFieldsInAnyOrder(t *testing.T) {
+	want := auditExpectation{
+		columns: []string{"action", "performedBy"},
+		rows:    [][]string{{"CREATE", "admin"}, {"REVOKE", "admin"}},
+	}
+	created := map[string]string{"action": "CREATE", "performedBy": "admin", "resourceId": "token-1"}
+	revoked := map[string]string{"action": "REVOKE", "performedBy": "admin", "resourceId": "token-1"}
+
+	require.NoError(t, want.match([]map[string]string{revoked, created}))
+	require.ErrorContains(t, want.match([]map[string]string{created}), "want [CREATE | admin; REVOKE | admin]")
+	require.Error(t, want.match([]map[string]string{created, revoked, revoked}))
+	require.Error(t, want.match([]map[string]string{created, {"action": "REVOKE", "performedBy": "****"}}))
+	require.NoError(t, auditExpectation{columns: []string{"action"}}.match(nil))
+}
+
+func TestAuditLogRecordsKeepOnlyAuditLines(t *testing.T) {
+	logs := "───── platform-api ─────\n" +
+		`{"time":"t","level":"INFO","msg":"Platform API started"}` + "\n" +
+		`platform-api-1  | {"time":"t","logType":"audit","action":"CREATE","resourceType":"gateway_token","resourceId":"token-1","organizationId":"org-1","performedBy":"admin"}` + "\n" +
+		`{"logType":"audit","action":` + "\n"
+
+	records := auditLogRecords(logs)
+
+	require.Len(t, records, 1)
+	require.Equal(t, map[string]string{
+		"action": "CREATE", "resourceType": "gateway_token", "resourceId": "token-1",
+		"organizationId": "org-1", "performedBy": "admin",
+	}, records[0])
+}
+
+func TestAuditPlaceholderFollowsTheEngine(t *testing.T) {
+	require.Equal(t, "?", auditPlaceholder(components.SQLite))
+	require.Equal(t, "$1", auditPlaceholder(components.Postgres))
+	require.Equal(t, "@p1", auditPlaceholder(components.SQLServer))
+}
+
 // loginToken signs claims as the control plane's file-mode login would.
 func loginToken(t *testing.T, claims jwt.MapClaims) string {
 	t.Helper()

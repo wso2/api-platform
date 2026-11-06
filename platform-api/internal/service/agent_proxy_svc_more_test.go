@@ -219,7 +219,7 @@ func apsTSecretService(handles map[string]string) (*SecretService, *mockSecretRe
 			Handle: handle, Status: model.SecretStatusActive, Ciphertext: []byte("enc:" + value),
 		}
 	}
-	return NewSecretService(secretRepo, &mockVault{}, newTestIdentityService()), secretRepo
+	return NewSecretService(secretRepo, &mockVault{}, newTestIdentityService(), nil), secretRepo
 }
 
 func apsTPtr[T any](v T) *T { return &v }

@@ -79,7 +79,7 @@ func setupLLMSecretTestEnv(t *testing.T, orgID string) (*SecretService, func()) 
 	}
 
 	secretRepo := repository.NewSecretRepo(db)
-	secretSvc := NewSecretService(secretRepo, v, NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
+	secretSvc := NewSecretService(secretRepo, v, NewIdentityService(repository.NewUserIdentityMappingRepo(db)), nil)
 
 	cleanup := func() { sqlDB.Close() }
 	return secretSvc, cleanup

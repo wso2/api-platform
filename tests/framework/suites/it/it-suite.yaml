@@ -815,6 +815,30 @@ blocks:
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
 
+  - name: platform-api-audit
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-audit.toml
+      - name: testbench
+    runners:
+      - name: platform-api-audit
+        features:
+          - features/management-portal/resources/audit.feature
+
+  - name: platform-api-audit-masked
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-audit-masked.toml
+      - name: testbench
+    runners:
+      - name: platform-api-audit-masked
+        features:
+          - features/management-portal/resources/audit_masked.feature
+
   - name: platform-api-core
     parallel: 2
     components:

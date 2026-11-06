@@ -44,13 +44,14 @@ func (e *SecretInUseError) Error() string {
 }
 
 type SecretService struct {
-	repo     repository.SecretRepository
-	vault    vault.SecretVault
-	identity *IdentityService
+	repo         repository.SecretRepository
+	vault        vault.SecretVault
+	identity     *IdentityService
+	auditService *AuditService
 }
 
-func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService) *SecretService {
-	return &SecretService{repo: repo, vault: v, identity: identity}
+func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService, auditService *AuditService) *SecretService {
+	return &SecretService{repo: repo, vault: v, identity: identity, auditService: auditService}
 }
 
 // toSecretResponse converts secret via secretToResponse and resolves its
@@ -130,6 +131,10 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		return nil, fmt.Errorf("failed to persist secret: %w", err)
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("CREATE", secret.UUID, "secret", orgID, createdBy)
+	}
+
 	return s.toSecretResponse(secret)
 }
 
@@ -197,6 +202,10 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 
 	if err := s.repo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update secret: %w", err)
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("UPDATE", existing.UUID, "secret", orgID, updatedBy)
 	}
 
 	return s.toSecretResponse(existing)

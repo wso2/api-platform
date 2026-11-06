@@ -237,6 +237,133 @@ data:
     max_body_size = {{ $cfg.webhook.maxBodySize | int }}
     signature_header = {{ $cfg.webhook.signatureHeader | quote }}
     {{- end }}
+    {{- with $cfg.audit }}
+
+    [platform_api.audit]
+    enabled = {{ and (kindIs "bool" .enabled) .enabled }}
+    {{- if kindIs "bool" .maskSensitiveFields }}
+    mask_sensitive_fields = {{ .maskSensitiveFields }}
+    {{- end }}
+    {{- if .outputs }}
+    outputs = [{{- range $i, $o := .outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]
+    {{- end }}
+    {{- with .file }}
+
+    [platform_api.audit.file]
+    {{- if .path }}
+    path = {{ .path | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .maxSizeMb) }}
+    max_size_mb = {{ .maxSizeMb | int64 }}
+    {{- end }}
+    {{- end }}
+    {{- with .http }}
+
+    [platform_api.audit.http]
+    {{- if .endpoint }}
+    endpoint = {{ .endpoint | quote }}
+    {{- end }}
+    {{- if .contentType }}
+    content_type = {{ .contentType | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .allowInsecureTransport }}
+    allow_insecure_transport = {{ .allowInsecureTransport }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .batchMaxEvents) }}
+    batch_max_events = {{ .batchMaxEvents | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .batchMaxBytes) }}
+    batch_max_bytes = {{ .batchMaxBytes | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .flushInterval) }}
+    flush_interval = {{ .flushInterval | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .queueCapacity) }}
+    queue_capacity = {{ .queueCapacity | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .requestTimeout) }}
+    request_timeout = {{ .requestTimeout | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .maxRetries) }}
+    max_retries = {{ .maxRetries | int64 }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .retryBackoff) }}
+    retry_backoff = {{ .retryBackoff | quote }}
+    {{- end }}
+    {{- with .auth }}
+    {{- /*
+      Secret values never land in this ConfigMap: a credential must be an
+      {{ env }} or {{ file }} token that the Platform API resolves at startup.
+      Only a real true for allowPlaintextCredentials opts out; a quoted "false"
+      is truthy in a template, so it is compared as a string.
+    */ -}}
+    {{- $allowPlain := false -}}
+    {{- if hasKey . "allowPlaintextCredentials" -}}
+      {{- $allowPlain = eq (toString .allowPlaintextCredentials) "true" -}}
+    {{- end -}}
+    {{- if not $allowPlain -}}
+      {{- $whole := "^\\{\\{-? *(env|file) [^{}]*\\}\\}$" -}}
+      {{- $suffixed := "^[^{}]*\\{\\{-? *(env|file) [^{}]*\\}\\}$" -}}
+      {{- $sensitive := dict -}}
+      {{- with .bearer }}{{- if .token }}{{- $sensitive = set $sensitive "auth.bearer.token" (dict "v" .token "re" $whole) }}{{- end }}{{- end -}}
+      {{- with .basic }}{{- if .password }}{{- $sensitive = set $sensitive "auth.basic.password" (dict "v" .password "re" $whole) }}{{- end }}{{- end -}}
+      {{- with .header }}{{- if .value }}{{- $sensitive = set $sensitive "auth.header.value" (dict "v" .value "re" $suffixed) }}{{- end }}{{- end -}}
+      {{- range $field, $spec := $sensitive -}}
+        {{- $val := toString $spec.v -}}
+        {{- if not (regexMatch $spec.re (trim $val)) -}}
+          {{- fail (printf "platform-api: config.audit.http.%s holds a literal value, which would be written in plaintext into the ConfigMap. Supply it as an interpolation token resolved at runtime instead, e.g. '{{ env \"APIP_CP_AUDIT_HTTP_TOKEN\" }}' (injected from a Secret via deployment.extraEnv) or '{{ file \"/secrets/platform-api/audit-token\" }}' (allowed source dirs: /etc/platform-api, /secrets/platform-api). Set config.audit.http.auth.allowPlaintextCredentials=true only for local development." $field) -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end }}
+
+    [platform_api.audit.http.auth]
+    type = {{ .type | default "none" | quote }}
+    {{- with .bearer }}
+
+    [platform_api.audit.http.auth.bearer]
+    {{- if .token }}
+    token = {{ .token | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .basic }}
+
+    [platform_api.audit.http.auth.basic]
+    {{- if .username }}
+    username = {{ .username | quote }}
+    {{- end }}
+    {{- if .password }}
+    password = {{ .password | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .header }}
+
+    [platform_api.audit.http.auth.header]
+    {{- if .name }}
+    name = {{ .name | quote }}
+    {{- end }}
+    {{- if .value }}
+    value = {{ .value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .tls }}
+
+    [platform_api.audit.http.tls]
+    {{- if .caFile }}
+    ca_file = {{ .caFile | quote }}
+    {{- end }}
+    {{- if .certFile }}
+    cert_file = {{ .certFile | quote }}
+    {{- end }}
+    {{- if .keyFile }}
+    key_file = {{ .keyFile | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .insecureSkipVerify }}
+    insecure_skip_verify = {{ .insecureSkipVerify }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
     {{- with $pa.configToml }}
 
     {{ . | nindent 4 | trim }}

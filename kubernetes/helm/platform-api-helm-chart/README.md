@@ -244,6 +244,11 @@ every key below with `platform-api.`.
   - `config.gateway.*`, `config.deployments.*`, `config.eventHub.*`, `config.webhook.*` —
     gateway registration checks, deployment limits/timeouts, EventHub polling, and the signed
     webhook receiver for API Portal events.
+  - `config.audit.*` — audit records of changes (off by default) and their `stdout`/`file`/
+    `http` outputs. The `file` output gets its own emptyDir (`auditLogVolume.*`) and its `path`
+    must sit under that mount. An `http` auth credential must be an `{{ env }}` or `{{ file }}`
+    token (add the key to the Secret and inject it through `deployment.extraEnv`), or the
+    render fails.
 - `configToml` — raw TOML appended to the generated config, for keys not modeled above. It's
   a ConfigMap, so use `{{ env "NAME" }}` tokens plus `deployment.extraEnv` for secret values.
 - `secrets.existingSecret` / `secrets.keys.*` — the required Secret and the key names inside

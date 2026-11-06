@@ -101,7 +101,11 @@ func setupSATestEnv(t *testing.T) *saTestEnv {
 	saRepo := repository.NewServiceAccountRepo(db)
 	identity := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
 	roles := map[string][]string{"ap_sa_reader": {"ap:rest_api:read", "ap:gateway:read"}, "ap_sa_writer": {"ap:rest_api:manage"}}
-	svc := service.NewServiceAccountService(saRepo, repository.NewOrganizationRepo(db), repository.NewAuditRepo(db), identity,
+	auditSvc, err := service.NewAuditService(repository.NewAuditRepo(db), nil, config.Audit{Enabled: true}, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := service.NewServiceAccountService(saRepo, repository.NewOrganizationRepo(db), auditSvc, identity,
 		roles, service.NewSATokenSigner(keys, cfg), 15*time.Minute, config.AuthzModeScope, logger)
 	revocations := service.NewRevocationCache(saRepo, logger)
 	if err := revocations.Load(); err != nil {

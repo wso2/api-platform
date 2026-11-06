@@ -1,0 +1,16 @@
+[platform_api.audit]
+enabled = true
+outputs = ["stdout", "file", "http"]
+
+[platform_api.audit.file]
+path = "/app/data/audit/audit.log"
+
+[platform_api.audit.http]
+endpoint = "http://testbench:3012/${BLOCK}/webhook"
+allow_insecure_transport = true
+content_type = "application/json"
+batch_max_events = 1
+flush_interval = "200ms"
+
+[platform_api.auth.file.organization]
+uuid = "8f3c2a1e-6d4b-4e7a-9c1f-2b5d7e9a0c31"

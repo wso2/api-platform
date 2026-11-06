@@ -728,7 +728,7 @@ func TestAPIServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 	secretRepo := newMockRepo()
 	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
 	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
-	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService(), nil)
 
 	service := &APIService{
 		apiRepo:       apiRepo,
@@ -787,7 +787,7 @@ func createStatusPtr(s string) *api.CreateRESTAPIRequestLifeCycleStatus {
 
 func TestAPIServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 	apiRepo := &mockAPIRepository{}
-	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService(), nil)
 	service := &APIService{
 		apiRepo:       apiRepo,
 		secretService: secretService,
@@ -829,7 +829,7 @@ func TestAPIServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
 			}, nil
 		},
 	}
-	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService(), nil)
 	service := &APIService{
 		apiRepo:       apiRepo,
 		secretService: secretService,

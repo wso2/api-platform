@@ -71,6 +71,7 @@ type Server struct {
 	timeoutService *service.DeploymentTimeoutService
 	dispatcher     *service.EventDispatcher
 	eventHub       eventhub.EventHub
+	auditService   *service.AuditService
 	logger         *slog.Logger
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 	revocations    *service.RevocationCache
@@ -273,6 +274,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Initialize services
 	identityService := service.NewIdentityService(userIdentityMappingRepo)
+	auditService, err := service.NewAuditService(auditRepo, identityService, cfg.Audit, slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize audit outputs: %w", err)
+	}
 	orgService := service.NewOrganizationService(
 		orgRepo,
 		projectRepo,
@@ -283,28 +288,28 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		llmProxyRepo,
 		mcpProxyRepo,
 		llmTemplateSeeder,
-		auditRepo,
+		auditService,
 		userOrgMappingRepo,
 		identityService,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditService, identityService, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
-	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
+	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditService, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
-		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, apiUtil, slogger, auditRepo, identityService)
-	apiDocumentService := service.NewAPIDocumentService(documentRepo, artifactRepo, auditRepo, slogger)
-	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditRepo, identityService)
-	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, apiUtil, slogger, auditService, identityService)
+	apiDocumentService := service.NewAPIDocumentService(documentRepo, artifactRepo, auditService, slogger)
+	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger, cfg.Gateway.EnableVersionVerification, cfg.Gateway.EnableFunctionalityTypeVerification, auditService, identityService)
+	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditService, slogger)
 	subscriptionBillingRepo := repository.NewSubscriptionBillingRepo(db)
 	subscriptionService.SetBillingRepository(subscriptionBillingRepo)
-	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
+	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditService, slogger)
 	subscriptionPlanService.SetPricingRepositories(meterRepo, subscriptionPlanPricingRepo)
 	monetizationService := service.NewMonetizationService(meterRepo, subscriptionPlanPricingRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, graphqlAPIRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	internalGatewayService.SetBillingRepository(subscriptionBillingRepo)
-	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
+	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditService, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	// One definition per artifact kind, indexed by the kind the artifact row
 	// carries. Builds and deployments are shared across kinds; rendering is the
 	// one thing that is not, so this is where each kind supplies its own.
@@ -316,14 +321,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		service.NewAgentProxyDefinition(agentProxyRepo, &utils.AgentProxyUtils{}),
 		service.NewGraphQLAPIDefinition(graphqlAPIRepo, projectRepo),
 	)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, artifactDefinitions, identityService, cfg, slogger)
-	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
-	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditService, apiUtil, artifactDefinitions, identityService, cfg, slogger)
+	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditService, identityService)
+	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditService, cfg, identityService)
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
-	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
-	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
-	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
-	graphqlAPIService := service.NewGraphQLAPIService(graphqlAPIRepo, projectRepo, auditRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, identityService, slogger)
+	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditService, cfg, identityService)
+	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditService, cfg, identityService)
+	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditService, cfg, identityService)
+	graphqlAPIService := service.NewGraphQLAPIService(graphqlAPIRepo, projectRepo, auditService, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, identityService, slogger)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
@@ -396,6 +401,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		identityService,
 		cfg,
 		slogger,
+		auditService,
 	)
 	// One place that knows which service serves which artifact kind, so plugins and
 	// the per-kind paths reach the same code.
@@ -434,9 +440,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if vaultErr != nil {
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
-	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
+	secretService := service.NewSecretService(secretRepo, secretVault, identityService, auditService)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
-	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditService, secretVault, apiPortalAuthRegistry, identityService, slogger)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, &cfg.APIPortalPublication, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
@@ -591,12 +597,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		ArtifactRepo:          artifactRepo,
 		DeploymentRepo:        deploymentRepo,
 		APIKeyRepo:            apiKeyRepo,
-		AuditRepo:             auditRepo,
+		AuditRepo:             auditService,
 		SecretRepo:            secretRepo,
 		APIRepo:               apiRepo,
 		GatewayEventsService:  gatewayEventsService,
 		APIKeyService:         apiKeyService,
 		IdentityService:       identityService,
+		AuditService:          auditService,
 		DBEncryptionKey:       dbEncryptionKey,
 	}
 
@@ -688,7 +695,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			saSigner = service.NewSATokenSigner(saKeys, cfg)
 			saPublicKeys = saKeys.Keys
 		}
-		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
+		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditService, identityService,
 			roleScopeMap, saSigner, saCfg.TokenTTL, cfg.Auth.Authorization.Mode, slogger)
 		serviceAccountService.SetRevocationCache(revocations)
 		handler.NewServiceAccountHandler(serviceAccountService, identityService, saPublicKeys,
@@ -935,6 +942,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		timeoutService: timeoutService,
 		dispatcher:     dispatcher,
 		eventHub:       eventHub,
+		auditService:   auditService,
 		logger:         slogger,
 		plugins:        plugins,
 		revocations:    revocations,
@@ -1320,6 +1328,13 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 		s.dispatcher.Shutdown()
 		if err := s.eventHub.Close(); err != nil {
 			s.logger.Error("EventHub close error", "error", err)
+		}
+		// Last, so records from requests and plugins that just finished are
+		// flushed. Its own bound: the servers may have used the whole budget above.
+		auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer auditCancel()
+		if err := s.auditService.Close(auditCtx); err != nil {
+			s.logger.Error("Audit output close error", "error", err)
 		}
 	}
 
