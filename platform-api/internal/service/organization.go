@@ -159,28 +159,30 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		}
 	}
 
+	// Create the default project before converting the response, so a failed conversion
+	// cannot leave the organization without it.
+	var projectErr error
+	if createDefaultProject {
+		defaultProject := &model.Project{
+			ID:             projectID,
+			Handle:         "default",
+			Name:           "default",
+			OrganizationID: id,
+			Description:    "Default project",
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+		projectErr = s.projectRepo.CreateProject(defaultProject)
+	}
+
 	orgResponse, convErr := s.modelToAPI(orgModel)
 	if convErr != nil {
 		return nil, convErr
 	}
-	if !createDefaultProject {
-		return orgResponse, nil
-	}
-
-	// Create default project for the organization
-	defaultProject := &model.Project{
-		ID:             projectID,
-		Handle:         "default",
-		Name:           "default",
-		OrganizationID: id,
-		Description:    "Default project",
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
-	if err := s.projectRepo.CreateProject(defaultProject); err != nil {
+	if projectErr != nil {
 		// If project creation fails, return the organization anyway
 		// (we don't rollback organization creation)
-		return orgResponse, err
+		return orgResponse, projectErr
 	}
 
 	return orgResponse, nil
