@@ -393,6 +393,27 @@ func TestStartupGate(t *testing.T) {
 	assert.NoError(t, gate.check(context.Background()))
 }
 
+// Once shutdown begins, the startup check fails again and the cached result is dropped,
+// so readiness goes down at once while the servers stop.
+func TestStartupGateStopping(t *testing.T) {
+	invalidated := 0
+	gate := &startupGate{invalidate: func() { invalidated++ }}
+	gate.markStarted()
+	gate.markStopping()
+
+	assert.ErrorIs(t, gate.check(context.Background()), errStopping)
+	assert.Equal(t, 2, invalidated)
+}
+
+func TestListenOrExitBindsBeforeServing(t *testing.T) {
+	ln := listenOrExit("127.0.0.1:0", "test server", discardLogger())
+	defer ln.Close()
+
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	require.NoError(t, err, "the address accepts connections as soon as listenOrExit returns")
+	conn.Close()
+}
+
 func TestDatabaseWaitHealthyAtOnce(t *testing.T) {
 	f := &fakeWait{healthy: []bool{true}}
 
@@ -428,6 +449,21 @@ func TestDatabaseWaitStopsOnSignal(t *testing.T) {
 	stop <- os.Interrupt
 	w := f.newWait(time.Minute, stop)
 	w.after = func(time.Duration) <-chan time.Time { return nil } // never fires
+
+	assert.ErrorIs(t, w.run(), errStartupInterrupted)
+}
+
+// A shutdown signal that arrives while a successful check runs stops startup, instead of
+// waiting until the whole controller has started.
+func TestDatabaseWaitStopsOnSignalDuringASuccessfulCheck(t *testing.T) {
+	stop := make(chan os.Signal, 1)
+	f := &fakeWait{healthy: []bool{true}}
+	w := f.newWait(time.Minute, stop)
+	evaluate := w.evaluate
+	w.evaluate = func() health.Result {
+		stop <- os.Interrupt
+		return evaluate()
+	}
 
 	assert.ErrorIs(t, w.run(), errStartupInterrupted)
 }
@@ -660,6 +696,10 @@ func TestRedactDatabaseCause(t *testing.T) {
 		`cannot parse "server=db;user id=sa;Password='a b';"`:     `cannot parse "server=db;user id=sa;Password=xxxxx;"`,
 		`dial postgres://gw:s3cret@db:5432/gw failed`:             `dial postgres://gw:xxxxx@db:5432/gw failed`,
 		`sqlserver://sa:p%40ss@db:1433?database=gw: login failed`: `sqlserver://sa:xxxxx@db:1433?database=gw: login failed`,
+		`password = 'ab\'secret' connect_timeout=invalid`:         `password = xxxxx connect_timeout=invalid`,
+		`host=db password="ab\"secret" user=gw`:                   `host=db password=xxxxx user=gw`,
+		`server=db;Password='a''secret';user id=sa`:               `server=db;Password=xxxxx;user id=sa`,
+		`server=db;Password={a;b}}secret};user id=sa`:             `server=db;Password=xxxxx;user id=sa`,
 		`password authentication failed for user "gw" (28P01)`:    `password authentication failed for user "gw" (28P01)`,
 		`dial tcp 10.0.0.5:5432: connect: connection refused`:     `dial tcp 10.0.0.5:5432: connect: connection refused`,
 	} {

@@ -24,11 +24,13 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/health"
 )
 
 func TestFixedHealthHandlerAnswersHealthy(t *testing.T) {
 	rec := httptest.NewRecorder()
-	newFixedHealthHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/v1/health", nil))
+	newFixedHealthHandler(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/admin/v1/health", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -45,5 +47,25 @@ func TestFixedHealthHandlerAnswersHealthy(t *testing.T) {
 	}
 	if _, err := time.Parse(time.RFC3339, body["timestamp"]); err != nil {
 		t.Fatalf("timestamp %q is not RFC 3339: %v", body["timestamp"], err)
+	}
+}
+
+// A client outside controller.health.allowed_clients gets 403; an allowed one the fixed
+// healthy answer.
+func TestFixedHealthHandlerHonoursAllowedClients(t *testing.T) {
+	allowed, err := health.ParseAllowedClients("controller.health", []string{"10.0.0.0/8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newFixedHealthHandler(allowed)
+
+	for addr, want := range map[string]int{"10.1.2.3:4000": http.StatusOK, "192.168.1.5:4000": http.StatusForbidden} {
+		req := httptest.NewRequest(http.MethodGet, "/api/admin/v1/ready", nil)
+		req.RemoteAddr = addr
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("client %s: status = %d, want %d", addr, rec.Code, want)
+		}
 	}
 }

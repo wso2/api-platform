@@ -26,6 +26,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -73,10 +74,15 @@ var errDatabaseUnreachable = health.Reason("database unreachable")
 // errStarting is the startup check's reason until every server has started.
 var errStarting = health.Reason("starting")
 
+// errStopping is the startup check's reason once shutdown has begun.
+var errStopping = health.Reason("stopping")
+
 // startupGate keeps health down until the controller has started every server, so a
-// probe never sees it healthy while its APIs cannot yet be reached.
+// probe never sees it healthy while its APIs cannot yet be reached, and again once
+// shutdown has begun, so load balancers stop sending it requests while it stops.
 type startupGate struct {
-	started atomic.Bool
+	started  atomic.Bool
+	stopping atomic.Bool
 	// invalidate drops the health checker's cached result. A result cached during the
 	// startup phase reports startup as down, and would otherwise outlive it by up to the
 	// cache TTL.
@@ -86,6 +92,9 @@ type startupGate struct {
 // check is the startup health check. It is registered unlogged: it fails on every
 // start, so its failure is not news.
 func (g *startupGate) check(context.Context) error {
+	if g.stopping.Load() {
+		return errStopping
+	}
 	if g.started.Load() {
 		return nil
 	}
@@ -95,6 +104,15 @@ func (g *startupGate) check(context.Context) error {
 // markStarted ends the startup phase; health then depends on the other checks alone.
 func (g *startupGate) markStarted() {
 	g.started.Store(true)
+	if g.invalidate != nil {
+		g.invalidate()
+	}
+}
+
+// markStopping reports the controller down from now on, without waiting out the
+// health checker's cached result.
+func (g *startupGate) markStopping() {
+	g.stopping.Store(true)
 	if g.invalidate != nil {
 		g.invalidate()
 	}
@@ -375,7 +393,7 @@ func newDatabaseWait(evaluate func() health.Result, wait time.Duration, stop <-c
 // reachable is visible without debug logging.
 func (w *databaseWait) run() error {
 	if w.databaseUp() {
-		return nil
+		return w.interrupted()
 	}
 	if err := w.rejected(); err != nil {
 		return err
@@ -401,7 +419,7 @@ func (w *databaseWait) run() error {
 			w.refresh()
 		}
 		if w.databaseUp() {
-			return nil
+			return w.interrupted()
 		}
 		if err := w.rejected(); err != nil {
 			return err
@@ -410,6 +428,18 @@ func (w *databaseWait) run() error {
 			w.log.Warn("database still not reachable", slog.String("cause", w.noteCause()))
 		}
 		interval = min(2*interval, startupRetryMax)
+	}
+}
+
+// interrupted returns errStartupInterrupted when a shutdown signal arrived while the database
+// was being checked, so a signal that comes during a successful check stops startup
+// instead of waiting until the whole server has started; otherwise nil.
+func (w *databaseWait) interrupted() error {
+	select {
+	case <-w.stop:
+		return errStartupInterrupted
+	default:
+		return nil
 	}
 }
 
@@ -448,8 +478,11 @@ func (w *databaseWait) noteCause() string {
 }
 
 var (
-	// passwordSetting matches a password key-value in a connection string.
-	passwordSetting = regexp.MustCompile(`(?i)(password|pwd)(\s*=\s*)('[^']*'|"[^"]*"|[^\s;]+)`)
+	// passwordSetting matches a password key-value in a connection string. A quoted
+	// value may contain backslash-escaped quotes (libpq) or doubled quotes (SQL Server),
+	// and SQL Server also accepts a {braced} value with doubled closing braces; each is
+	// matched to its real end so no part of the password is left behind.
+	passwordSetting = regexp.MustCompile(`(?i)(password|pwd)(\s*=\s*)('(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.|"")*"|\{(?:[^}]|\}\})*\}|[^\s;]+)`)
 	// urlUserinfoPassword matches the password in a URL's userinfo.
 	urlUserinfoPassword = regexp.MustCompile(`(://[^:/@\s]*:)[^@\s]*@`)
 )
@@ -557,4 +590,15 @@ func endStartupWithoutDatabase(waitErr error, admin *adminserver.Server, shutdow
 		return 0
 	}
 	return 1
+}
+
+// listenOrExit binds addr for the named server, exiting the controller when the address
+// cannot be bound, the same way a failed ListenAndServe does.
+func listenOrExit(addr, name string, log *slog.Logger) net.Listener {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Error("Failed to start "+name, slog.String("addr", addr), slog.Any("error", err))
+		os.Exit(1)
+	}
+	return ln
 }

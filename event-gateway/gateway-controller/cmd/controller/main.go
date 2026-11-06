@@ -56,6 +56,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	coreeventlistener "github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/health"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
@@ -724,7 +725,12 @@ func main() {
 		adminProtect := func(next http.Handler) http.Handler {
 			return authMiddleWare(adminAuthz(next))
 		}
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, newFixedHealthHandler(), adminProtect, log)
+		healthClients, err := health.ParseAllowedClients("controller.health", cfg.Controller.Health.AllowedClients)
+		if err != nil {
+			log.Error("Invalid health configuration", slog.Any("error", err))
+			os.Exit(1)
+		}
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, newFixedHealthHandler(healthClients), adminProtect, log)
 		controllerAdminServer.SetAPIServer(apiServer)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {

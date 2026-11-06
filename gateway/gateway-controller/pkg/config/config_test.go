@@ -2496,6 +2496,32 @@ func TestLoadConfig_HealthKeyLayout(t *testing.T) {
 			wantErr: `controller.health.database: unknown key "pool"`,
 		},
 		{
+			name:    "misspelled allowed_clients in the controller health table",
+			toml:    "[controller.health]\nallowed_client = \"10.0.0.0/8\"\n",
+			wantErr: `controller.health: unknown key "allowed_client"`,
+		},
+		{
+			name:    "misspelled allowed_clients in the router health table",
+			toml:    "[router.health]\nallowed_client = \"10.0.0.0/8\"\n",
+			wantErr: `router.health: unknown key "allowed_client"`,
+		},
+		{
+			name:    "router health set to a value",
+			toml:    "[router]\nhealth = \"on\"\n",
+			wantErr: "router.health must be a table",
+		},
+		{
+			name: "every known key in the controller and router health tables",
+			toml: `
+[controller.health]
+cache_ttl = "3s"
+allowed_clients = "10.0.0.0/8"
+
+[router.health]
+allowed_clients = "10.0.0.0/8"
+`,
+		},
+		{
 			name:    "database set to a value",
 			toml:    "[controller.health]\ndatabase = \"postgres\"\n",
 			wantErr: "controller.health.database must be a table",

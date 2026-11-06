@@ -69,8 +69,27 @@ func IsMisconfiguration(err error) bool {
 	var unknownAuthority x509.UnknownAuthorityError
 	var hostnameErr x509.HostnameError
 	var invalidCert x509.CertificateInvalidError
-	return errors.As(err, &verifyErr) || errors.As(err, &unknownAuthority) ||
-		errors.As(err, &hostnameErr) || errors.As(err, &invalidCert)
+	if errors.As(err, &verifyErr) || errors.As(err, &unknownAuthority) ||
+		errors.As(err, &hostnameErr) || errors.As(err, &invalidCert) {
+		return true
+	}
+	return isMSSQLCertificateRejected(err)
+}
+
+// The SQL Server driver formats the TLS handshake error of an encrypted (non-strict)
+// login with %v, which drops the certificate error's type, so its text is matched
+// instead: the driver's prefix followed by Go's certificate verification failure.
+const (
+	mssqlTLSHandshakeFailed = "TLS Handshake failed: "
+	tlsCertificateRejected  = "tls: failed to verify certificate"
+)
+
+// isMSSQLCertificateRejected reports whether err is the SQL Server driver's TLS
+// handshake failure caused by the server's certificate failing verification.
+func isMSSQLCertificateRejected(err error) bool {
+	msg := err.Error()
+	i := strings.Index(msg, mssqlTLSHandshakeFailed)
+	return i >= 0 && strings.Contains(msg[i:], tlsCertificateRejected)
 }
 
 // mssqlReports reports whether SQL Server returned error number n in the same response

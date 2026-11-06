@@ -1173,26 +1173,48 @@ func LoadConfig(configPaths ...string) (*Config, error) {
 // controller.health.database table.
 var movedHealthKeys = []string{"check_timeout", "startup_wait"}
 
+// removedHealthKeys are controller.health keys from the original health proposal (a
+// rotating health log and backoff between repeated failure lines). They no longer have
+// any effect and are accepted, so a config that still carries them keeps starting.
+var removedHealthKeys = []string{"log_file", "log_max_size_mb", "log_max_files", "backoff_initial", "backoff_max"}
+
 // checkHealthKeys rejects health keys the controller would otherwise silently ignore: a
-// key that moved into the database table, and an unknown (for example misspelled) key
-// inside that table. Only the controller's own health subtree is inspected, because the
-// gateway configuration file is shared with other components.
+// key that moved into the database table, and an unknown (for example misspelled) key in
+// the controller.health, controller.health.database and router.health tables. A
+// misspelled allowed_clients would otherwise leave the health endpoints open to every
+// client. Only the controller's own health tables are inspected, because the gateway
+// configuration file is shared with other components.
 func checkHealthKeys(k *koanf.Koanf) error {
 	for _, key := range movedHealthKeys {
 		if k.Exists("controller.health." + key) {
 			return fmt.Errorf("controller.health.%s has moved to controller.health.database.%s", key, key)
 		}
 	}
+	for _, table := range []struct {
+		path  string
+		known map[string]bool
+	}{
+		{"controller.health", withKeys(koanfKeys(reflect.TypeOf(HealthConfig{})), removedHealthKeys)},
+		{"controller.health.database", koanfKeys(reflect.TypeOf(HealthDatabaseConfig{}))},
+		{"router.health", koanfKeys(reflect.TypeOf(RouterHealthConfig{}))},
+	} {
+		if err := checkTableKeys(k, table.path, table.known); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-	const tablePath = "controller.health.database"
-	if !k.Exists(tablePath) {
+// checkTableKeys rejects a key in the table at path that is not one of known. A missing
+// table is fine; a value set where the table belongs is not.
+func checkTableKeys(k *koanf.Koanf, path string, known map[string]bool) error {
+	if !k.Exists(path) {
 		return nil
 	}
-	table, ok := k.Get(tablePath).(map[string]interface{})
+	table, ok := k.Get(path).(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("%s must be a table", tablePath)
+		return fmt.Errorf("%s must be a table", path)
 	}
-	known := koanfKeys(reflect.TypeOf(HealthDatabaseConfig{}))
 	keys := make([]string, 0, len(table))
 	for key := range table {
 		keys = append(keys, key)
@@ -1200,10 +1222,18 @@ func checkHealthKeys(k *koanf.Koanf) error {
 	sort.Strings(keys)
 	for _, key := range keys {
 		if !known[key] {
-			return fmt.Errorf("%s: unknown key %q", tablePath, key)
+			return fmt.Errorf("%s: unknown key %q", path, key)
 		}
 	}
 	return nil
+}
+
+// withKeys adds extra to the key set known and returns it.
+func withKeys(known map[string]bool, extra []string) map[string]bool {
+	for _, key := range extra {
+		known[key] = true
+	}
+	return known
 }
 
 // koanfKeys returns the koanf key names of a struct type's fields.

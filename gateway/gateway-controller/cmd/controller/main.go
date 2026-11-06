@@ -911,9 +911,12 @@ func main() {
 			MaxHeaderBytes:    cfg.Controller.Server.MaxHeaderBytes,
 			TLSConfig:         tlsConfig,
 		}
+		// Bound before startup is marked complete, so readiness never reports the
+		// controller ready before the REST API accepts connections.
+		ln := listenOrExit(tlsSrv.Addr, "REST API TLS server", log)
 		go func() {
 			log.Info("Starting REST API TLS server", slog.Int("port", cfg.Controller.Server.TLS.Port))
-			if err := tlsSrv.ListenAndServeTLS(cfg.Controller.Server.TLS.CertPath, cfg.Controller.Server.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
+			if err := tlsSrv.ServeTLS(ln, cfg.Controller.Server.TLS.CertPath, cfg.Controller.Server.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
 				log.Error("REST API TLS server error", slog.Any("error", err))
 				os.Exit(1)
 			}
@@ -929,8 +932,11 @@ func main() {
 			IdleTimeout:       cfg.Controller.Server.IdleTimeout,
 			MaxHeaderBytes:    cfg.Controller.Server.MaxHeaderBytes,
 		}
+		// Bound before startup is marked complete, so readiness never reports the
+		// controller ready before the REST API accepts connections.
+		ln := listenOrExit(srv.Addr, "REST API server", log)
 		go func() {
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 				log.Error("Failed to start REST API server", slog.Any("error", err))
 				os.Exit(1)
 			}
@@ -962,6 +968,9 @@ func main() {
 	// Wait for interrupt signal
 	<-quit
 
+	// Readiness goes down first, so load balancers stop routing to this controller while
+	// its servers drain and stop.
+	startup.markStopping()
 	log.Info("Shutting down Gateway-Controller")
 
 	certSweepCancel()
