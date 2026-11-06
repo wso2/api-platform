@@ -195,12 +195,14 @@
                   <p id="wz-handle-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group" id="wz-type-group">
-                  <label for="wz-type">API type</label>
+                  <label for="wz-type">API type <span class="required">*</span></label>
                   <select id="wz-type" class="cfg-form-input">
+                    <option value="" disabled>Select a type</option>
                     <option value="RestApi">REST</option>
                     <option value="WS">WebSocket</option>
                     <option value="GRAPHQL">GraphQL</option>
                   </select>
+                  <p id="wz-type-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group">
                   <label>Agent visibility</label>
@@ -234,7 +236,7 @@
               </div>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group">
-                  <label for="wz-prod">Production URL <span class="required" id="wz-prod-required" style="display:none;">*</span></label>
+                  <label for="wz-prod">Production URL</label>
                   <input type="text" id="wz-prod" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.example.com/booking" />
                   <p id="wz-prod-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
