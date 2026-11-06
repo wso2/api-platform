@@ -28,6 +28,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/cors@v1
   - name: dynamic-endpoint
     gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
+  - name: error-response-formatter
+    gomodule: github.com/wso2/gateway-controllers/policies/error-response-formatter@v1
   - name: granite-guardian-prompt-injection
     pipPackage: github.com/wso2/gateway-controllers/policies/granite-guardian-prompt-injection@v0
   - name: host-rewrite
