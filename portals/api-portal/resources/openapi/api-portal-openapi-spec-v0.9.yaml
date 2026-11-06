@@ -1205,16 +1205,15 @@ paths:
     post:
       tags:
         - API Content
-      summary: Upload API content
+      summary: Add API content
       description: |
-        Uploads the static content package for an API.
+        Adds new content to an API. Existing content is never changed or removed.
 
-        The `content` ZIP must contain at least one of these root directories:
-        - `web/` for API landing-page assets such as markdown, HTML, CSS, JavaScript, and images.
-        - `docs/` for downloadable API documents.
+        If any uploaded file, image slot or link already exists, the whole request is rejected with `409`,
+        and the response lists every clash. Nothing is stored. To change an existing file, delete it and add
+        it again, or replace all content with `PUT`.
 
-        Use `docMetadata` to add external document links that are stored alongside uploaded documents.
-        Use `imageMetadata` to map uploaded images to API image roles such as the API icon.
+        An upload with no content is rejected with `400`. The upload format is described in the request body.
       operationId: createApiContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
@@ -1223,8 +1222,10 @@ paths:
           $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          $ref: "#/components/responses/ContentConflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1236,21 +1237,26 @@ paths:
         - API Content
       summary: Replace API content
       description: |
-        Replaces or adds static content files for an existing API.
+        Replaces all content of an API with the upload, in one step: documents, links, landing-page files
+        and images (including the thumbnail). Anything not in the upload is removed. The API definition and
+        schema are never changed.
 
-        The upload format is the same as `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
-        Existing files with the same stored `type` and `fileName` are updated; new files are created.
-        Image metadata is updated only when image metadata can be resolved from the upload or request body.
+        An empty ZIP (or one holding only an empty wrapper folder) with no `docMetadata` links removes all
+        content. The upload format is the same as for `POST`.
+
+        Returns `201` when the API had no content and the upload adds some, and `200` otherwise.
       operationId: replaceApiContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/MessageResponse"
+        "200":
+          $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2195,9 +2201,10 @@ paths:
     post:
       tags:
         - MCP Server Content
-      summary: Upload MCP server content
+      summary: Add MCP server content
       description: >-
-        Uploads the static content package for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
+        Adds new content to an MCP server; existing content is never changed or removed, and any clash
+        rejects the whole request with `409`. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: createMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
@@ -2206,8 +2213,10 @@ paths:
           $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          $ref: "#/components/responses/ContentConflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2219,17 +2228,21 @@ paths:
         - MCP Server Content
       summary: Replace MCP server content
       description: >-
-        Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
+        Replaces all content of an MCP server with the upload; anything not in it is removed, and an empty ZIP
+        with no `docMetadata` links removes all content. The tools schema is never changed. Returns `201` when the server had no content and
+        the upload adds some, and `200` otherwise. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: replaceMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/MessageResponse"
+        "200":
+          $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -4509,10 +4522,15 @@ components:
         API content ZIP upload.
 
         Expected ZIP structure:
-        - `web/`: optional API landing-page files and images.
-        - `docs/`: optional downloadable documents.
+        - `web/`: landing-page files (`.md`, `.hbs`, `.html`, `.json`, `.yaml`) and images. Every image fills the
+          slot named by its file name without the extension; `api-icon.png` or `api-icon.jpg` is the thumbnail.
+        - `docs/`: documents. Files directly in `docs/` are stored as `DOC_Other`; files in `docs/<Category>/` as
+          `DOC_<Category>`.
 
-        At least one of `web/` or `docs/` must exist at the ZIP root.
+        Only `web/` and `docs/` are read, optionally inside one wrapper folder (a lone `web/` or `docs/` is never
+        treated as a wrapper). An upload with no content is accepted by `PUT` (it removes all content) and
+        rejected by `POST`. Links in `docMetadata` count as content.
+
         `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
       content:
         multipart/form-data:
@@ -4836,6 +4854,19 @@ components:
             status: error
             code: CONFLICT
             message: Conflict
+    ContentConflict:
+      description: Some of the uploaded content already exists. Nothing was stored; every clash is listed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            code: CONFLICT
+            message: Conflict
+            errors:
+              - message: "Content already exists: A.md (DOC_HowTo)"
+              - message: "Content already exists: image slot api-icon"
     SubscriptionPlanPutConflict:
       description: >-
         The request conflicts with an existing plan. Code `PLAN_PRICING_LOCKED` when `pricing` is sent for a plan
@@ -5787,11 +5818,10 @@ components:
           description: Human-readable error message.
         errors:
           type: array
-          description: Optional per-field validation errors.
+          description: Optional details, one per problem. `field` names the request field when the problem is about one.
           items:
             type: object
             required:
-              - field
               - message
             properties:
               field:

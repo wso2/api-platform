@@ -59,8 +59,22 @@ class ValidationError extends Error {
     }
 }
 
+/**
+ * A request that clashes with existing data. `errors` lists each clash as `{ message }`
+ * so the response can name every one of them.
+ */
+class ConflictError extends Error {
+    constructor(errors) {
+        super('Conflict');
+        this.name = 'ConflictError';
+        this.errors = errors;
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+
 module.exports = {
     CustomError,
     NotFoundError,
     ValidationError,
+    ConflictError,
 };

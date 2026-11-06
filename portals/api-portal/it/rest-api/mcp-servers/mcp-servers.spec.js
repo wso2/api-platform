@@ -24,6 +24,7 @@
 
 const client = require('../support/client');
 const { uniqueHandle, createApi } = require('../support/fixtures');
+const { createZip } = require('../support/zipBuilder');
 
 // An MCP server's contract is its tools schema (definition) — not an OpenAPI-style API contract.
 const MCP_TOOLS_SCHEMA = [
@@ -347,6 +348,39 @@ describe('MCP servers', () => {
             const api = await createApi();
             const res = await client.as('publisher').get(`/mcp-servers/${api.id}/api-keys`);
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('content (assets)', () => {
+        const upload = (id, zip, method = 'post') => {
+            const req = method === 'put'
+                ? client.as('publisher').putMultipart(`/mcp-servers/${id}/assets`)
+                : client.as('publisher').postMultipart(`/mcp-servers/${id}/assets`);
+            return req.attach('content', zip, 'content.zip');
+        };
+        const docs = (...names) => createZip(names.map((name) => ({ name: `docs/${name}`, content: `# ${name}` })));
+        const get = (id, type, fileName) => client.as('publisher').get(`/mcp-servers/${id}/assets?type=${type}&fileName=${fileName}`);
+
+        it('replaces all content with PUT and keeps the tools schema', async () => {
+            const mcp = await createMcpServer();
+            expect((await upload(mcp.id, docs('A.md', 'B.md'), 'put')).status).toBe(201);
+
+            const res = await upload(mcp.id, docs('A.md'), 'put');
+            expect(res.status).toBe(200);
+            expect((await get(mcp.id, 'DOC_Other', 'B.md')).status).toBe(404);
+            expect((await get(mcp.id, 'DOC_Other', 'A.md')).status).toBe(200);
+
+            expect((await upload(mcp.id, createZip([]), 'put')).status).toBe(200);
+            expect((await get(mcp.id, 'DOC_Other', 'A.md')).status).toBe(404);
+            expect((await get(mcp.id, 'SCHEMA_DEFINITION', 'definition.yaml')).status).toBe(200);
+        });
+
+        it('rejects an add that clashes with existing content', async () => {
+            const mcp = await createMcpServer();
+            expect((await upload(mcp.id, docs('A.md'))).status).toBe(201);
+            const res = await upload(mcp.id, docs('A.md'));
+            expect(res.status).toBe(409);
+            expect(res.body.errors.map((e) => e.message)).toEqual(['Content already exists: A.md (DOC_Other)']);
         });
     });
 });

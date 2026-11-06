@@ -22,9 +22,22 @@ my-api-content.zip
         └── guide.md
 ```
 
-At least one of `web/` or `docs/` must be present in the ZIP.
+`web/` and `docs/` can sit inside one wrapper folder (for example `my-api/web/…`), but a lone `web/` or `docs/` is never treated as a wrapper.
 
-## Upload API Content
+Every image in `web/` fills the slot named by its file name without the extension: `api-icon.png` (or `.jpg`) is the thumbnail, and `banner.png` is `apiImageMetadata.banner` in a landing-page template.
+
+## Add or Replace API Content
+
+| Method | What it does | Success |
+|---|---|---|
+| `PUT /apis/{apiId}/assets` | Replaces **all** content with the ZIP: documents, links, landing page and images. Anything not in the ZIP is removed. An empty ZIP with no `docMetadata` links removes all content. The API definition is never changed. | `201` if the API had no content and the upload adds some, otherwise `200` (including an empty upload) |
+| `POST /apis/{apiId}/assets` | Adds new content only. Nothing existing is changed or removed. If any file, image slot or link already exists, the whole request is rejected with `409` listing every clash, and nothing is stored. An empty ZIP is rejected with `400`. | `201` |
+
+MCP servers use the same operations under `/mcp-servers/{mcpServerId}/assets`.
+
+To change a single existing file, delete it and add the new version, or replace all content with `PUT`.
+
+The **Upload content** button in the settings wizard uses `PUT`, so it also replaces all of the API's content.
 
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
@@ -40,7 +53,7 @@ curl -k -X POST \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
 
-To update existing content, use `PUT`:
+To replace all existing content, use `PUT`:
 
 ```bash
 curl -k -X PUT \

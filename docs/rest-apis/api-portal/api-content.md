@@ -1,6 +1,6 @@
 <h1 id="wso2-api-portal-and-mcp-hub-api-content">API Content</h1>
 
-## Upload API content
+## Add API content
 
 <a id="opIdcreateApiContent"></a>
 
@@ -20,14 +20,13 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets \
 
 ```
 
-Uploads the static content package for an API.
+Adds new content to an API. Existing content is never changed or removed.
 
-The `content` ZIP must contain at least one of these root directories:
-- `web/` for API landing-page assets such as markdown, HTML, CSS, JavaScript, and images.
-- `docs/` for downloadable API documents.
+If any uploaded file, image slot or link already exists, the whole request is rejected with `409`,
+and the response lists every clash. Nothing is stored. To change an existing file, delete it and add
+it again, or replace all content with `PUT`.
 
-Use `docMetadata` to add external document links that are stored alongside uploaded documents.
-Use `imageMetadata` to map uploaded images to API image roles such as the API icon.
+An upload with no content is rejected with `400`. The upload format is described in the request body.
 
 ### Authentication
 
@@ -38,7 +37,7 @@ Required scopes (the token must carry at least one of): `dp:api_content:create`,
 
 </aside>
 
-<h3 id="upload-api-content-parameters">Parameters</h3>
+<h3 id="add-api-content-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -53,10 +52,15 @@ Required scopes (the token must carry at least one of): `dp:api_content:create`,
 **body**: API content ZIP upload.
 
 Expected ZIP structure:
-- `web/`: optional API landing-page files and images.
-- `docs/`: optional downloadable documents.
+- `web/`: landing-page files (`.md`, `.hbs`, `.html`, `.json`, `.yaml`) and images. Every image fills the
+  slot named by its file name without the extension; `api-icon.png` or `api-icon.jpg` is the thumbnail.
+- `docs/`: documents. Files directly in `docs/` are stored as `DOC_Other`; files in `docs/<Category>/` as
+  `DOC_<Category>`.
 
-At least one of `web/` or `docs/` must exist at the ZIP root.
+Only `web/` and `docs/` are read, optionally inside one wrapper folder (a lone `web/` or `docs/` is never
+treated as a wrapper). An upload with no content is accepted by `PUT` (it removes all content) and
+rejected by `POST`. Links in `docMetadata` count as content.
+
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
@@ -85,13 +89,31 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
 > 409 Response
 
 ```json
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "Conflict"
+  "message": "Conflict",
+  "errors": [
+    {
+      "message": "Content already exists: A.md (DOC_HowTo)"
+    },
+    {
+      "message": "Content already exists: image slot api-icon"
+    }
+  ]
 }
 ```
 
@@ -105,16 +127,17 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-<h3 id="upload-api-content-responses">Responses</h3>
+<h3 id="add-api-content-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Some of the uploaded content already exists. Nothing was stored; every clash is listed.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="upload-api-content-responseschema">Response Schema</h3>
+<h3 id="add-api-content-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -142,11 +165,14 @@ curl -X PUT https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets \
 
 ```
 
-Replaces or adds static content files for an existing API.
+Replaces all content of an API with the upload, in one step: documents, links, landing-page files
+and images (including the thumbnail). Anything not in the upload is removed. The API definition and
+schema are never changed.
 
-The upload format is the same as `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
-Existing files with the same stored `type` and `fileName` are updated; new files are created.
-Image metadata is updated only when image metadata can be resolved from the upload or request body.
+An empty ZIP (or one holding only an empty wrapper folder) with no `docMetadata` links removes all
+content. The upload format is the same as for `POST`.
+
+Returns `201` when the API had no content and the upload adds some, and `200` otherwise.
 
 ### Authentication
 
@@ -172,15 +198,20 @@ Required scopes (the token must carry at least one of): `dp:api_content:update`,
 **body**: API content ZIP upload.
 
 Expected ZIP structure:
-- `web/`: optional API landing-page files and images.
-- `docs/`: optional downloadable documents.
+- `web/`: landing-page files (`.md`, `.hbs`, `.html`, `.json`, `.yaml`) and images. Every image fills the
+  slot named by its file name without the extension; `api-icon.png` or `api-icon.jpg` is the thumbnail.
+- `docs/`: documents. Files directly in `docs/` are stored as `DOC_Other`; files in `docs/<Category>/` as
+  `DOC_<Category>`.
 
-At least one of `web/` or `docs/` must exist at the ZIP root.
+Only `web/` and `docs/` are read, optionally inside one wrapper folder (a lone `web/` or `docs/` is never
+treated as a wrapper). An upload with no content is accepted by `PUT` (it removes all content) and
+rejected by `POST`. Links in `docMetadata` count as content.
+
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
 >
-> 201 Response
+> 200 Response
 
 ```json
 {
@@ -204,13 +235,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-> 409 Response
+> 404 Response
 
 ```json
 {
   "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -228,9 +259,10 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="replace-api-content-responseschema">Response Schema</h3>
