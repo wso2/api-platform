@@ -20,7 +20,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { DIALECTS, DRIVER_ALIASES, normalizeDriver } = require('./rebind');
+const { DIALECTS, DRIVER_ALIASES, normalizeDriver, isDuplicateKeyError } = require('./rebind');
 
 test('normalizeDriver accepts every platform-api driver spelling', () => {
     // The point of the alias table: one database.driver value configured once in
@@ -94,4 +94,21 @@ test('every canonical dialect is itself an accepted alias', () => {
     for (const dialect of Object.values(DIALECTS)) {
         assert.equal(normalizeDriver(dialect), dialect);
     }
+});
+
+test('isDuplicateKeyError recognises SQLite unique and primary-key violations', () => {
+    // Names set by the sqlite adapter (and by better-sqlite3 before it).
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, { code: 'SQLITE_CONSTRAINT_UNIQUE' }), true);
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, { code: 'SQLITE_CONSTRAINT_PRIMARYKEY' }), true);
+    // node:sqlite's own shape, for an error that never passed through the adapter:
+    // code ERR_SQLITE_ERROR plus the numeric extended result code.
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, { code: 'ERR_SQLITE_ERROR', errcode: 2067 }), true);
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, { code: 'ERR_SQLITE_ERROR', errcode: 1555 }), true);
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, { message: 'UNIQUE constraint failed: t.id' }), true);
+});
+
+test('isDuplicateKeyError rejects other SQLite constraint errors', () => {
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, { code: 'ERR_SQLITE_ERROR', errcode: 787 }), false); // FOREIGN KEY
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, { code: 'SQLITE_CONSTRAINT_NOTNULL', errcode: 1299 }), false);
+    assert.equal(isDuplicateKeyError(DIALECTS.SQLITE, null), false);
 });

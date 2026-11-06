@@ -20,6 +20,7 @@ package openai
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -296,4 +297,137 @@ func TestChatEchoStreamsAnEmptyReply(t *testing.T) {
 	rec := send(t, ChatEchoPath, `{"stream":true,"messages":[]}`)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, 3, strings.Count(rec.Body.String(), "data: "), "role chunk, stop chunk, [DONE]")
+}
+
+func TestScriptedBodyIsReturnedAsCompactJSON(t *testing.T) {
+	rec := send(t, "/scripted/openai/deployments/d1/chat/completions?api-version=2024-10-21",
+		`{"model":"d1","x_testbench_reply":{"body":{"model":"gpt-4o-mini", "usage":{"prompt_tokens":10}}}}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	require.Equal(t, "true", rec.Header().Get(ScriptedHeader))
+	require.Equal(t, `{"model":"gpt-4o-mini","usage":{"prompt_tokens":10}}`, rec.Body.String())
+}
+
+func TestScriptedRawIsWrittenVerbatim(t *testing.T) {
+	for name, raw := range map[string]string{"malformed": "{not json", "empty": "", "text": "plain words"} {
+		t.Run(name, func(t *testing.T) {
+			payload, err := json.Marshal(map[string]any{ScriptedReplyField: map[string]any{"raw": raw}})
+			require.NoError(t, err)
+			rec := send(t, "/scripted/chat/completions", string(payload))
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+			require.Equal(t, raw, rec.Body.String())
+		})
+	}
+}
+
+func TestScriptedContentTypeOverridesTheDefault(t *testing.T) {
+	rec := send(t, "/scripted/chat/completions", `{"x_testbench_reply":{"raw":"hi","contentType":"text/plain"}}`)
+	require.Equal(t, "text/plain", rec.Header().Get("Content-Type"))
+	rec = send(t, "/scripted/chat/completions", `{"x_testbench_reply":{"events":[{"a":1}],"contentType":"application/x-ndjson"}}`)
+	require.Equal(t, "application/x-ndjson", rec.Header().Get("Content-Type"))
+}
+
+func TestScriptedEventsAreSentInOrder(t *testing.T) {
+	rec := send(t, "/scripted/openai/v1/chat/completions", `{"stream":true,"x_testbench_reply":{"events":[
+		{"model":"","choices":[]},
+		"event: message_start\ndata: {\"type\":\"message_start\"}",
+		"data: not json",
+		{"model":"gpt-4o", "usage":null},
+		"data: [DONE]"]}}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Equal(t, "true", rec.Header().Get(ScriptedHeader))
+	require.Equal(t, `data: {"model":"","choices":[]}`+"\n\n"+
+		"event: message_start\ndata: {\"type\":\"message_start\"}\n\n"+
+		"data: not json\n\n"+
+		`data: {"model":"gpt-4o","usage":null}`+"\n\n"+
+		"data: [DONE]\n\n", rec.Body.String())
+}
+
+// flushRecorder records how much of the body was written at each flush, so a test can see that a
+// handler flushed after every event rather than once at the end.
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+	flushedAt []int
+}
+
+func (f *flushRecorder) Flush() {
+	f.flushedAt = append(f.flushedAt, f.Body.Len())
+	f.ResponseRecorder.Flush()
+}
+
+func TestScriptedEventsAreFlushedOneByOne(t *testing.T) {
+	first, second := `data: {"a":1}`+"\n\n", "data: [DONE]\n\n"
+	rec := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	New().Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost,
+		"/scripted/chat/completions", strings.NewReader(`{"x_testbench_reply":{"events":[{"a":1},"data: [DONE]"]}}`)))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, first+second, rec.Body.String())
+	require.Equal(t, []int{len(first), len(first) + len(second)}, rec.flushedAt)
+}
+
+func TestScriptedEmptyEventListIsAnEmptyStream(t *testing.T) {
+	rec := send(t, "/scripted/chat/completions", `{"x_testbench_reply":{"events":[]}}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Empty(t, rec.Body.String())
+}
+
+func TestScriptedRequestsThatScriptNothingAreRejected(t *testing.T) {
+	cases := map[string]struct{ payload, reason string }{
+		"not json":       {`not json`, "needs a JSON object body"},
+		"not an object":  {`["x_testbench_reply"]`, "needs a JSON object body"},
+		"missing field":  {`{"model":"d1"}`, `needs the "x_testbench_reply" field`},
+		"field not obj":  {`{"x_testbench_reply":"body"}`, `"x_testbench_reply" must be an object`},
+		"no form":        {`{"x_testbench_reply":{}}`, "must name exactly one of body, raw or events"},
+		"null body":      {`{"x_testbench_reply":{"body":null}}`, "must name exactly one of body, raw or events"},
+		"two forms":      {`{"x_testbench_reply":{"body":{},"raw":""}}`, "must name exactly one of body, raw or events"},
+		"events not arr": {`{"x_testbench_reply":{"events":{"a":1}}}`, "cannot unmarshal object"},
+		"null event":     {`{"x_testbench_reply":{"events":[{"a":1},null]}}`, "scripted event 1 is null"},
+		"empty body":     {``, "needs a JSON object body"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			rec := send(t, "/scripted/chat/completions", tc.payload)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Empty(t, rec.Header().Get(ScriptedHeader))
+			require.Contains(t, rec.Body.String(), tc.reason)
+		})
+	}
+}
+
+func TestScriptedReplyIsIgnoredOutsideThePrefix(t *testing.T) {
+	payload := `{"model":"gpt-4o","x_testbench_reply":{"body":{"model":"scripted"}}}`
+	for _, path := range []string{"/openai/v1/chat/completions", "/scripted", "/scriptedx/chat", "/v1/scripted/chat"} {
+		t.Run(path, func(t *testing.T) {
+			rec := send(t, path, payload)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Empty(t, rec.Header().Get(ScriptedHeader))
+			require.NotContains(t, rec.Body.String(), `"scripted"`)
+		})
+	}
+}
+
+func TestScriptedRepliesAreIndependentUnderConcurrentUse(t *testing.T) {
+	handler := New().Handler()
+	const requests = 32
+	errs := make(chan error, requests)
+	for i := 0; i < requests; i++ {
+		go func(i int) {
+			want := fmt.Sprintf(`{"model":"m-%d"}`, i)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/scripted/chat/completions",
+				strings.NewReader(`{"x_testbench_reply":{"body":`+want+`}}`))
+			handler.ServeHTTP(rec, req)
+			if rec.Body.String() != want {
+				errs <- fmt.Errorf("request %d got %q, want %q", i, rec.Body.String(), want)
+				return
+			}
+			errs <- nil
+		}(i)
+	}
+	for i := 0; i < requests; i++ {
+		require.NoError(t, <-errs)
+	}
 }

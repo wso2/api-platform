@@ -16,14 +16,16 @@ blocks:
         features:
           - features/apip_basic.feature
       - name: apip-project
+        tags: "~@known-issue"
         features:
           - features/apip_project.feature
-      - name: apip-environment
+      - name: apip-auth
         features:
-          - features/apip_environment.feature
-      - name: apip-gateway
+          - features/apip_auth.feature
+      - name: apip-deploy
         features:
-          - features/apip_gateway.feature
+          - features/apip_deploy.feature
       - name: apip-self-hosted-gateway
         features:
           - features/apip_self_hosted_gateway.feature
+

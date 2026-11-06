@@ -117,6 +117,11 @@ func (s *Service) route(w http.ResponseWriter, r *http.Request) {
 		}
 		path = "/openai/v1" + keyed
 	}
+	// A scripted request may carry "stream": true, so it answers before the generic stream.
+	if isScriptedPath(path) {
+		s.scripted(w, body)
+		return
+	}
 	// The echo paths stream the request's own text, so they answer before the generic stream.
 	if path == ChatEchoPath || path == ChatEchoProviderPath {
 		s.openAIChatEcho(w, body)

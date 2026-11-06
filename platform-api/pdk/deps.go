@@ -131,9 +131,9 @@ type Identity interface {
 	// authenticated user.
 	InternalUserID(r *http.Request) (string, error)
 	// DisplayIdentity returns what the platform's own responses show for an
-	// internal user id read back from a created_by / updated_by column, so a
-	// plugin returning platform records reports the same user. An empty id is
-	// returned as is.
+	// internal user id read back from a created_by / updated_by column — the
+	// user's display name, else their IdP id — so a plugin returning platform
+	// records reports the same user. An empty id is returned as is.
 	DisplayIdentity(internalUserID string) (string, error)
 }
 

@@ -49,7 +49,7 @@ const DIALECTS = Object.freeze({
  * portal's — a difference with no meaning behind it.
  *
  * Canonical names stay this component's own (`sqlite`, not `sqlite3`;
- * `mssql`, not `sqlserver`): they are what `mssql`/`better-sqlite3` call
+ * `mssql`, not `sqlserver`): they are what `mssql`/`node:sqlite` call
  * themselves, and every DAO dialect branch already compares against them.
  * Normalization happens once at startup (config/configLoader.js), so nothing
  * downstream of that ever sees an alias.
@@ -91,7 +91,7 @@ function normalizeDriver(rawDriver) {
  *
  *   postgres -> $1, $2, $3, ...
  *   mssql    -> @p1, @p2, @p3, ...
- *   sqlite   -> left as `?` (better-sqlite3 accepts positional `?` natively)
+ *   sqlite   -> left as `?` (node:sqlite accepts positional `?` natively)
  *
  * Placeholders inside string literals are not distinguished from real ones —
  * as with platform-api's Rebind, callers must not embed literal `?` characters
@@ -184,7 +184,7 @@ function buildMssqlMerge(table, insertCols, conflictCols, updateCols) {
  * passed through the normal query()/execute() path like every other query here.
  *
  * This is the one bit of "prepared statement templating" Sequelize used to do
- * for us via its `replacements` option — `pg`/`better-sqlite3`/`mssql` have no
+ * for us via its `replacements` option — `pg`/`node:sqlite`/`mssql` have no
  * named-parameter support of their own, so it has to happen at this layer.
  *
  * A named token is only recognized when its leading `:` is not itself preceded
@@ -267,6 +267,12 @@ function isDuplicateKeyError(dialect, err) {
     }
     if (dialect === DIALECTS.SQLITE) {
         if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
+            return true;
+        }
+        // node:sqlite's numeric extended result code: 2067 UNIQUE, 1555 PRIMARYKEY.
+        // The sqlite adapter already maps these to the names above; this covers
+        // an error that reaches here without passing through it.
+        if (err.errcode === 2067 || err.errcode === 1555) {
             return true;
         }
         return typeof err.message === 'string' && err.message.includes('UNIQUE constraint failed');
