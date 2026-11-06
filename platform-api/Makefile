@@ -84,31 +84,69 @@ test: ## Run tests with coverage report
 	@echo "Running tests..."
 	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
 
-build: ## Build Docker image
+build: binary ## Build Docker image (from the binary zip, for this machine's CPU)
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
-	docker buildx build -f Dockerfile \
-		--build-context common=../common \
-		--build-context httpkit=../httpkit \
-		--build-arg VERSION=$(VERSION) \
+	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
+	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
+	docker buildx build \
 		--build-arg PORT=$(PORT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--load \
+		target/.binary-ctx/platform-api
+	@rm -rf target/.binary-ctx
+
+# Binary zip: the Platform API binaries for linux/amd64 and linux/arm64, the files
+# they read at runtime, and the image Dockerfile, which builds the image from them.
+# Customers download it to build their own image, for example on a different base
+# image. The images built by `build` and `build-and-push-multiarch` come from this
+# zip itself (unzipped into target/.binary-ctx, since Docker can't build from a
+# .zip), so a published image and the zip of the same version hold the same
+# binaries.
+#
+# The binaries are compiled by Dockerfile.build and exported with its `binary` stage
+# (at linux-<arch>/platform-api). Its builder stage runs on the build machine's own
+# platform and cross-compiles, so no emulation is needed.
+BINARY_NAME      := wso2apip-platform-api-binary-$(VERSION)
+BINARY_PLATFORMS := linux/amd64,linux/arm64
+
+.PHONY: binary
+binary: ## Build target/$(BINARY_NAME).zip
+	@rm -rf target/.binary-out target/.binary-stage target/$(BINARY_NAME).zip
+	docker buildx build -f Dockerfile.build \
+		--platform $(BINARY_PLATFORMS) \
+		--target binary \
+		--build-context common=../common \
+		--build-context httpkit=../httpkit \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--output type=local,dest=target/.binary-out \
 		.
+	@mkdir -p target/.binary-stage/platform-api/bin target/.binary-stage/platform-api/internal/database target/.binary-stage/platform-api/resources
+	@for p in $$(echo "$(BINARY_PLATFORMS)" | tr ',' ' '); do \
+		src="target/.binary-out/$$(echo $$p | tr '/' '_')/$$(echo $$p | tr '/' '-')/platform-api"; \
+		dst="target/.binary-stage/platform-api/bin/$$(echo $$p | tr '/' '-')"; \
+		test -f "$$src" || { echo "Error: no binary exported for $$p ($$src)" >&2; exit 1; }; \
+		mkdir -p "$$dst" && cp "$$src" "$$dst/platform-api"; \
+	done
+	@cp Dockerfile binary/README.md target/.binary-stage/platform-api/
+	@cp internal/database/schema.sql internal/database/schema.postgres.sql \
+		internal/database/schema.sqlserver.sql internal/database/schema.sqlite.sql \
+		target/.binary-stage/platform-api/internal/database/
+	@cp -R resources/default-llm-provider-templates resources/openapi.yaml target/.binary-stage/platform-api/resources/
+	@cd target/.binary-stage && zip -rq ../$(BINARY_NAME).zip platform-api
+	@rm -rf target/.binary-out target/.binary-stage
+	@echo "✓ Built target/$(BINARY_NAME).zip"
 
 cloud-build: VERSION := $(CLOUD_IMAGE_TAG)
 cloud-build: ## Build cloud Docker image with the event-gateway plugin (EXPERIMENTAL=true), tagged <branch>-<commit> (override with VERSION=x)
 	@echo "Building cloud Docker image ($(CLOUD_IMAGE_NAME):$(VERSION)) with event-gateway plugin..."
-	docker buildx build -f Dockerfile \
-		--build-context common=../common \
-		--build-context httpkit=../httpkit \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg PORT=$(PORT) \
-		--build-arg EXPERIMENTAL=true \
-		-t $(CLOUD_IMAGE_NAME):$(VERSION) \
-		-t $(CLOUD_IMAGE_NAME):latest \
+	VERSION=$(VERSION) GIT_COMMIT=$(GIT_COMMIT) PORT=$(PORT) EXPERIMENTAL=true \
+	docker buildx bake -f docker-bake.hcl --allow=fs.read=.. \
+		--set image.tags=$(CLOUD_IMAGE_NAME):$(VERSION) \
+		--set image.tags=$(CLOUD_IMAGE_NAME):latest \
 		--load \
-		.
+		image
 
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Generating API models from the Platform API OpenAPI spec..."
@@ -132,33 +170,28 @@ push: ## Push Docker image to registry
 	docker push $(IMAGE_NAME):$(VERSION)
 	docker push $(IMAGE_NAME):latest
 
-build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
+build-and-push-multiarch: binary ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64) from the binary zip
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
-	docker buildx build -f Dockerfile \
-		--platform linux/amd64,linux/arm64 \
-		--build-context common=../common \
-		--build-context httpkit=../httpkit \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
+	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
+	docker buildx build \
+		--platform $(BINARY_PLATFORMS) \
 		--build-arg PORT=$(PORT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \
-		.
+		target/.binary-ctx/platform-api
+	@rm -rf target/.binary-ctx
 
 cloud-build-and-push-multiarch: VERSION := $(CLOUD_IMAGE_TAG)
 cloud-build-and-push-multiarch: ## Build and push multi-arch cloud image with the event-gateway plugin (linux/amd64, linux/arm64), tagged <branch>-<commit> (override with VERSION=x)
 	@echo "Building and pushing multi-arch cloud image: $(CLOUD_IMAGE_NAME):$(VERSION) with event-gateway plugin"
-	docker buildx build -f Dockerfile \
-		--platform linux/amd64,linux/arm64 \
-		--build-context common=../common \
-		--build-context httpkit=../httpkit \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
-		--build-arg PORT=$(PORT) \
-		--build-arg EXPERIMENTAL=true \
-		-t $(CLOUD_IMAGE_NAME):$(VERSION) \
+	VERSION=$(VERSION) GIT_COMMIT=$(GIT_COMMIT) PORT=$(PORT) EXPERIMENTAL=true \
+	docker buildx bake -f docker-bake.hcl --allow=fs.read=.. \
+		--set compile.platform=linux/amd64,linux/arm64 \
+		--set image.platform=linux/amd64,linux/arm64 \
+		--set image.tags=$(CLOUD_IMAGE_NAME):$(VERSION) \
 		--push \
-		.
+		image
 
 # Version Management Targets
 version-set: ## Set platform-api version and update artifacts
