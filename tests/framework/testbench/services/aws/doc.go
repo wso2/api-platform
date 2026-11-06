@@ -39,7 +39,9 @@
 //
 // Verification follows SigV4 as the AWS SDKs implement it for services other than Amazon S3: the
 // path is URI-encoded twice in the canonical request, and the signature, credential scope, session
-// token and expiry are checked. X-Amz-Date is accepted within five minutes of the service's clock.
+// token and expiry are checked. Every x-amz-* header of a request must be signed, as SigV4 requires,
+// except X-Amz-Security-Token, which AWS's test suite also accepts unsigned. A request with an unsigned
+// one gets 403 AccessDenied. X-Amz-Date is accepted within five minutes of the service's clock.
 // The tests check the verifier against the official AWS SigV4 test suite and the AWS SDK for Go v2
 // signer. The error codes are representative AWS codes, not those of one particular service. IAM
 // policy evaluation is reduced to a per-credential list of permitted resources, and S3-specific
