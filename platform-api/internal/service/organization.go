@@ -112,10 +112,14 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		name = handle // Default name to handle if not provided
 	}
 
-	// Generate default project ID upfront before persisting any data
-	projectID, err := utils.GenerateUUID()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate default project ID: %w", err)
+	// Generate the default project ID before persisting any data, so a failure leaves nothing behind.
+	createDefaultProject := s.config == nil || s.config.Organizations.CreateDefaultProject
+	var projectID string
+	if createDefaultProject {
+		projectID, err = utils.GenerateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate default project ID: %w", err)
+		}
 	}
 
 	// Create organization in platform-api database first
@@ -155,6 +159,14 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		}
 	}
 
+	orgResponse, convErr := s.modelToAPI(orgModel)
+	if convErr != nil {
+		return nil, convErr
+	}
+	if !createDefaultProject {
+		return orgResponse, nil
+	}
+
 	// Create default project for the organization
 	defaultProject := &model.Project{
 		ID:             projectID,
@@ -165,13 +177,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-
-	err = s.projectRepo.CreateProject(defaultProject)
-	orgResponse, convErr := s.modelToAPI(orgModel)
-	if convErr != nil {
-		return nil, convErr
-	}
-	if err != nil {
+	if err := s.projectRepo.CreateProject(defaultProject); err != nil {
 		// If project creation fails, return the organization anyway
 		// (we don't rollback organization creation)
 		return orgResponse, err

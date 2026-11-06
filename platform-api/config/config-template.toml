@@ -468,6 +468,13 @@ timeout_interval = 20   # seconds between timeout check sweeps
 timeout_duration = 60   # seconds before a stuck deployment is timed out
 
 # ---------------------------------------------------------------------------
+# Organizations — how a new organization is set up
+# ---------------------------------------------------------------------------
+[platform_api.organizations]
+create_default_project = true   # create a "default" project with every new organization; turn off
+                                # where the organization's projects are provisioned elsewhere
+
+# ---------------------------------------------------------------------------
 # API Portal publication — limits on the calls made to an API Portal
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "5s". Network errors and 5xx are retried, 4xx are not.

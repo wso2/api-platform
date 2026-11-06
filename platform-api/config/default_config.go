@@ -263,5 +263,8 @@ func defaultConfig() *Server {
 			Enabled:         false,
 			MaxRequestBytes: 1 << 20,
 		},
+		Organizations: Organizations{
+			CreateDefaultProject: true,
+		},
 	}
 }

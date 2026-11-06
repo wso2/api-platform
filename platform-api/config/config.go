@@ -139,6 +139,7 @@ type Server struct {
 	GatewayRelay         GatewayRelay         `koanf:"gateway_relay"`
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 	MCPServer            MCPServer            `koanf:"mcp_server"`
+	Organizations        Organizations        `koanf:"organizations"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -760,6 +761,13 @@ type Deployments struct {
 	TimeoutEnabled  bool `koanf:"timeout_enabled"`
 	TimeoutInterval int  `koanf:"timeout_interval"`
 	TimeoutDuration int  `koanf:"timeout_duration"`
+}
+
+// Organizations configures how new organizations are set up.
+type Organizations struct {
+	// CreateDefaultProject creates a project named "default" with every new organization. A
+	// deployment that provisions an organization's projects itself turns it off.
+	CreateDefaultProject bool `koanf:"create_default_project"`
 }
 
 // APIKey holds API key-specific configuration.
