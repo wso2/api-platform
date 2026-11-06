@@ -1360,3 +1360,69 @@ func TestTranslateRequestBodyActions_CarriesMetadataAndClearsTheRouteCache(t *te
 	assert.NotNil(t, response.DynamicMetadata,
 		"dynamic metadata must ride the same response as the route-cache clear")
 }
+
+// TestRequestTranslators_EveryPathClearsTheRouteCache closes a gap a review question surfaced.
+//
+// Three translate functions can produce the request-phase response, and all three set
+// ClearRouteCache — but only TranslateRequestBodyActions was asserted. That is the path an
+// ordinary failover request takes (processRequestBody), so the behaviour was covered where it
+// matters today; the siblings were not, and a regression in one of them would be silent.
+//
+// Silent is the operative word. Losing the route-cache clear does not fail a request: attempt 1
+// simply uses the route as it stood before the policy published its priority groups, so the
+// per-request ordering is ignored exactly once per request and the gateway still answers 200.
+// POC probe B2 measured that; nothing else would reveal it.
+func TestRequestTranslators_EveryPathClearsTheRouteCache(t *testing.T) {
+	newCtx := func() *PolicyExecutionContext {
+		kernel := NewKernel()
+		chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+		server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "",
+			testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
+		execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+		execCtx.sharedCtx = &policy.SharedContext{}
+		execCtx.requestBodyCtx = &policy.RequestContext{
+			Path:          "/api/test",
+			SharedContext: execCtx.sharedCtx,
+		}
+		return execCtx
+	}
+
+	// CommonResponse lives under a different oneof per phase, so read whichever is present.
+	clearedBy := func(t *testing.T, resp *extprocv3.ProcessingResponse) bool {
+		t.Helper()
+		if body := resp.GetRequestBody(); body != nil && body.Response != nil {
+			return body.Response.ClearRouteCache
+		}
+		if headers := resp.GetRequestHeaders(); headers != nil && headers.Response != nil {
+			return headers.Response.ClearRouteCache
+		}
+		t.Fatal("response carried neither a RequestBody nor a RequestHeaders section")
+		return false
+	}
+
+	t.Run("body phase with header merge", func(t *testing.T) {
+		// Reached via the resolution path, where a chain binds only after the request is
+		// resolved (bindPendingChainAndProcess).
+		resp, err := TranslateRequestBodyActionsWithHeaderMerge(
+			&executor.RequestHeaderExecutionResult{},
+			&executor.RequestExecutionResult{Results: []executor.RequestPolicyResult{}},
+			newCtx())
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.True(t, clearedBy(t, resp),
+			"the resolution path must clear the route cache too, or a chain bound after "+
+				"resolution publishes an ordering attempt 1 never sees")
+	})
+
+	t.Run("header phase with body merge", func(t *testing.T) {
+		// Reached when the request carries no body (processRequestBodyForEmptyRequest).
+		resp, err := TranslateRequestHeaderActionsWithBodyMerge(
+			&executor.RequestHeaderExecutionResult{},
+			&executor.RequestExecutionResult{Results: []executor.RequestPolicyResult{}},
+			newCtx())
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.True(t, clearedBy(t, resp),
+			"the empty-body path must clear the route cache too")
+	})
+}
