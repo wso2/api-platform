@@ -131,6 +131,9 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
+      - name: webhook-secret-hash
+        features:
+          - features/apiportal/webhooks/webhook_secret_hash.feature
       - name: monetization-events
         features:
           - features/apiportal/monetization/events.feature
@@ -851,6 +854,22 @@ blocks:
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
 
+  # The deny-by-default posture of platform-api-core's shared-secret fallback (its overlay sets
+  # legacy_shared_secret = true, see the webhook-secret-* runners there): a platform-api with the
+  # webhook receiver enabled but legacy_shared_secret left at its default must still refuse a
+  # hash-less delivery outright, so this gets its own instance rather than reusing that block
+  # (which turns the fallback on). A single engine is enough — the setting is HTTP-layer config,
+  # not storage-engine-specific.
+  - name: platform-api-webhook-legacy-disabled
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-webhook-legacy-disabled.toml
+    runners:
+      - name: webhook-legacy-disabled
+        features:
+          - features/management-portal/webhook-secrets/webhook_secret_legacy_disabled.feature
+
   - name: platform-api-core
     parallel: 2
     components:
@@ -916,6 +935,22 @@ blocks:
       - name: platform-api-publication-drafts
         features:
           - features/management-portal/resources/publication_drafts.feature
+      # Webhook secrets: issuing, rotating and removing an organization's portal secrets, and the
+      # receiver finding a portal's secret from the organization and the hash its events carry.
+      # Only platform-api is involved; this block's overlay already enables the webhook receiver
+      # with legacy_shared_secret = true, which is everything these runners need.
+      - name: webhook-secret-lifecycle
+        features:
+          - features/management-portal/webhook-secrets/webhook_secret_lifecycle.feature
+      - name: webhook-secret-authorization
+        features:
+          - features/management-portal/webhook-secrets/webhook_secret_authorization.feature
+      - name: webhook-secret-validation
+        features:
+          - features/management-portal/webhook-secrets/webhook_secret_validation.feature
+      - name: webhook-secret-portal-events
+        features:
+          - features/management-portal/webhook-secrets/webhook_secret_portal_events.feature
       - name: platform-api-service-accounts
         features:
           - features/management-portal/resources/service_accounts.feature

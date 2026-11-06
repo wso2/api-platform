@@ -65,6 +65,7 @@ var portalEventResources = map[string]struct {
 // RegisterPortalEvents binds the step that plays the API Portal: it sends platform-api a signed
 // event, as the portal's webhook delivery does, and publishes platform-api's answer.
 func RegisterPortalEvents(sc *godog.ScenarioContext, s *Steps) {
+	RegisterWebhookSecretEvents(sc, s)
 	sc.Step(`^the API Portal sends the "([^"]*)" event(?: dated "([^"]*)")? to the control plane with data:$`,
 		s.sendPortalEvent)
 	sc.Step(`^the control plane (meter|subscription_plan) "([^"]*)" is registered for cleanup$`,
@@ -89,13 +90,30 @@ func (s *Steps) registerPortalMadeResource(ctx context.Context, aggregate, handl
 // and posts it. dated sets occurred_at, which platform-api compares to tell a stale event from
 // a newer one; it is now when omitted.
 func (s *Steps) sendPortalEvent(ctx context.Context, eventType, dated string, data *godog.DocString) error {
-	eventType = strings.TrimSpace(eventType)
+	return s.postPortalEvent(ctx, portalEventSpec{
+		eventType: eventType, dated: dated, data: data.Content, secret: controlplane.WebhookSecret(),
+	})
+}
+
+// portalEventSpec describes one event the API Portal sends. secret signs it; secretHash, when
+// set, is carried as the envelope's secret_hash; tamper changes the body after it is signed.
+type portalEventSpec struct {
+	eventType  string
+	dated      string
+	data       string
+	secret     string
+	secretHash string
+	tamper     bool
+}
+
+func (s *Steps) postPortalEvent(ctx context.Context, spec portalEventSpec) error {
+	eventType := strings.TrimSpace(spec.eventType)
 	if eventType == "" {
 		return fmt.Errorf("an API Portal event needs a type")
 	}
 	occurredAt := time.Now().UTC().Format(time.RFC3339Nano)
-	if strings.TrimSpace(dated) != "" {
-		expanded, err := stepscommon.Expand(ctx, dated)
+	if strings.TrimSpace(spec.dated) != "" {
+		expanded, err := stepscommon.Expand(ctx, spec.dated)
 		if err != nil {
 			return err
 		}
@@ -104,7 +122,7 @@ func (s *Steps) sendPortalEvent(ctx context.Context, eventType, dated string, da
 		}
 		occurredAt = expanded
 	}
-	content, err := stepscommon.Expand(ctx, data.Content)
+	content, err := stepscommon.Expand(ctx, spec.data)
 	if err != nil {
 		return err
 	}
@@ -115,13 +133,17 @@ func (s *Steps) sendPortalEvent(ctx context.Context, eventType, dated string, da
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(map[string]any{
+	envelope := map[string]any{
 		"event_id":    eventID,
 		"event_type":  eventType,
 		"occurred_at": occurredAt,
 		"org":         map[string]string{"ref_id": portalEventOrganization},
 		"data":        json.RawMessage(content),
-	})
+	}
+	if spec.secretHash != "" {
+		envelope["secret_hash"] = spec.secretHash
+	}
+	body, err := json.Marshal(envelope)
 	if err != nil {
 		return err
 	}
@@ -129,12 +151,16 @@ func (s *Steps) sendPortalEvent(ctx context.Context, eventType, dated string, da
 	if err != nil {
 		return err
 	}
+	signature := signPortalEvent(spec.secret, body, time.Now())
+	if spec.tamper {
+		body = append(body, ' ')
+	}
 	resp, err := s.funnel.Send(ctx, httpx.Request{
 		Method: http.MethodPost,
 		URL:    base + portalEventsPath,
 		Headers: map[string]string{
 			"Content-Type":             "application/json",
-			portalEventSignatureHeader: signPortalEvent(controlplane.WebhookSecret(), body, time.Now()),
+			portalEventSignatureHeader: signature,
 		},
 		Body: body,
 	})
