@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -12,6 +13,23 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"gopkg.in/yaml.v3"
 )
+
+// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 
 type LLMProviderTransformer struct {
 	store                 *storage.ConfigStore
@@ -140,6 +158,9 @@ func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.Sto
 	return t.db.GetLLMProviderTemplateByHandle(handle)
 }
 
+// ErrProviderNotFound reports that an LLM proxy references a provider (spec.provider.id or a spec.additionalProviders entry) that does not exist in the configuration store. It is deliberately distinct from storage.ErrNotFound: the storage sentinel means the resource this request addresses is missing and maps to HTTP 404 for the proxy, while a dangling provider reference is a client-side configuration error that must map to HTTP 400 (wso2/api-platform#3268).
+var ErrProviderNotFound = errors.New("LLM provider does not exist")
+
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
 	output *api.RestAPI) (*api.RestAPI, error) {
 
@@ -155,13 +176,16 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// Step 1: Retrieve and validate provider reference
 	provider, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), primary.Id)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, fmt.Errorf("%w: spec.provider.id '%s'", ErrProviderNotFound, primary.Id)
+		}
 		return nil, fmt.Errorf("failed to look up provider '%s': %w", primary.Id, err)
 	}
 	if provider == nil {
-		return nil, fmt.Errorf("failed to retrieve provider by id '%s'", primary.Id)
+		return nil, fmt.Errorf("%w: spec.provider.id '%s'", ErrProviderNotFound, primary.Id)
 	}
 
-	// Step 1.5: Get provider's template and extract template params
+	// Step 1.5: get provider's template and extract template params
 	providerConfig, ok := provider.SourceConfiguration.(api.LLMProviderConfiguration)
 	if !ok {
 		return nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
@@ -247,12 +271,15 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 			addCfg, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), ap.Id)
 			if err != nil {
+				if errors.Is(err, storage.ErrNotFound) {
+					return nil, fmt.Errorf("%w: spec.additionalProviders id '%s'", ErrProviderNotFound, ap.Id)
+				}
 				return nil, fmt.Errorf("failed to look up additional provider '%s': %w", ap.Id, err)
 			}
 			if addCfg == nil {
-				return nil, fmt.Errorf("additional provider '%s' not found", ap.Id)
-			}
-			addCtx, err := addCfg.GetContext()
+			return nil, fmt.Errorf("%w: spec.additionalProviders id '%s'", ErrProviderNotFound, ap.Id)
+		}
+		addCtx, err := addCfg.GetContext()
 			if err != nil {
 				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
 			}
