@@ -21,7 +21,7 @@ const fs = require('fs');
 const marked = require('marked');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
-const { CustomError, NotFoundError, ValidationError } = require('../utils/errors/customErrors');
+const { CustomError, NotFoundError, ValidationError, ConflictError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
@@ -503,6 +503,8 @@ function handleError(res, error) {
             message: 'Conflict',
             errors: [{ message: 'A record with these values already exists.' }],
         });
+    } else if (error instanceof ConflictError) {
+        return sendError(res, 409, 'Conflict', { code: 'CONFLICT', errors: error.errors });
     } else if (error instanceof ValidationError) {
         return res.status(400).json({
             status: 'error',
@@ -697,7 +699,7 @@ function readDirTree(rootDir, baseDir = '') {
     return out;
 }
 
-const unzipDirectory = async (zipPath, extractPath) => {
+const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {}) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
     }
@@ -801,7 +803,7 @@ const unzipDirectory = async (zipPath, extractPath) => {
             .on('close', async () => {
                 try {
                     await Promise.all(streams); // Wait for all files to finish writing
-                    extractedFiles.length > 0 ? resolve() : reject(new Error('No files were extracted'));
+                    extractedFiles.length > 0 || allowEmpty ? resolve() : reject(new Error('No files were extracted'));
                 } catch (err) {
                     reject(new Error(`Unzip failed: ${err.message}`));
                 }

@@ -248,17 +248,35 @@ const deleteAll = async (type, orgId, apiId, t) => {
 };
 
 /**
- * Delete every content row of an exact type for an API (e.g. clear all images
- * before re-storing a freshly uploaded set). Exact match on type, scoped to
- * api_uuid, and participates in the caller's transaction.
+ * Delete all content of an API — every row except its definition and schema — so a
+ * replace also clears rows saved under types that are no longer accepted.
  */
-const deleteAllByType = async (type, apiId, t) => {
+const deleteAllContent = async (apiId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND portal_id = ?`,
-        [apiId, type, getPortalId()]
+        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND portal_id = ? AND type NOT IN (?, ?)`,
+        [apiId, getPortalId(), constants.DOC_TYPES.API_DEFINITION, constants.DOC_TYPES.SCHEMA_DEFINITION]
     );
     return rowCount;
+};
+
+/**
+ * Return the items that already exist for the API: same type and file name, or, for a
+ * keyed image, the same slot. These are the two unique indexes the insert would hit.
+ */
+const findExisting = async (items, apiId, t) => {
+    const exec = t || db;
+    const existing = [];
+    for (const item of items) {
+        const found = await exec.queryOne(
+            `SELECT uuid FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND (file_name = ? OR lookup_key = ?) AND portal_id = ?`,
+            [apiId, item.type, item.fileName, item.key ?? null, getPortalId()]
+        );
+        if (found) {
+            existing.push(item);
+        }
+    }
+    return existing;
 };
 
 const getDoc = async (type, orgId, apiId, t) => {
@@ -437,7 +455,8 @@ module.exports = {
     update,
     delete: deleteFile,
     deleteAll,
-    deleteAllByType,
+    deleteAllContent,
+    findExisting,
     getDoc,
     getDocByName,
     getDocTypes,

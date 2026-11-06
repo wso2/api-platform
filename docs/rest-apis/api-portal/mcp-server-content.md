@@ -1,6 +1,6 @@
 <h1 id="wso2-api-portal-and-mcp-hub-mcp-server-content">MCP Server Content</h1>
 
-## Upload MCP server content
+## Add MCP server content
 
 <a id="opIdcreateMcpServerContent"></a>
 
@@ -20,7 +20,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
 
 ```
 
-Uploads the static content package for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
+Adds new content to an MCP server; existing content is never changed or removed, and any clash rejects the whole request with `409`. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -31,7 +31,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:c
 
 </aside>
 
-<h3 id="upload-mcp-server-content-parameters">Parameters</h3>
+<h3 id="add-mcp-server-content-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -46,10 +46,15 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:c
 **body**: API content ZIP upload.
 
 Expected ZIP structure:
-- `web/`: optional API landing-page files and images.
-- `docs/`: optional downloadable documents.
+- `web/`: landing-page files (`.md`, `.hbs`, `.html`, `.json`, `.yaml`) and images. Every image fills the
+  slot named by its file name without the extension; `api-icon.png` or `api-icon.jpg` is the thumbnail.
+- `docs/`: documents. Files directly in `docs/` are stored as `DOC_Other`; files in `docs/<Category>/` as
+  `DOC_<Category>`.
 
-At least one of `web/` or `docs/` must exist at the ZIP root.
+Only `web/` and `docs/` are read, optionally inside one wrapper folder (a lone `web/` or `docs/` is never
+treated as a wrapper). An upload with no content is accepted by `PUT` (it removes all content) and
+rejected by `POST`. Links in `docMetadata` count as content.
+
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
@@ -78,13 +83,31 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
 > 409 Response
 
 ```json
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "Conflict"
+  "message": "Conflict",
+  "errors": [
+    {
+      "message": "Content already exists: A.md (DOC_HowTo)"
+    },
+    {
+      "message": "Content already exists: image slot api-icon"
+    }
+  ]
 }
 ```
 
@@ -98,16 +121,17 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-<h3 id="upload-mcp-server-content-responses">Responses</h3>
+<h3 id="add-mcp-server-content-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Some of the uploaded content already exists. Nothing was stored; every clash is listed.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="upload-mcp-server-content-responseschema">Response Schema</h3>
+<h3 id="add-mcp-server-content-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -135,7 +159,7 @@ curl -X PUT https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}
 
 ```
 
-Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
+Replaces all content of an MCP server with the upload; anything not in it is removed, and an empty ZIP with no `docMetadata` links removes all content. The tools schema is never changed. Returns `201` when the server had no content and the upload adds some, and `200` otherwise. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -161,15 +185,20 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:u
 **body**: API content ZIP upload.
 
 Expected ZIP structure:
-- `web/`: optional API landing-page files and images.
-- `docs/`: optional downloadable documents.
+- `web/`: landing-page files (`.md`, `.hbs`, `.html`, `.json`, `.yaml`) and images. Every image fills the
+  slot named by its file name without the extension; `api-icon.png` or `api-icon.jpg` is the thumbnail.
+- `docs/`: documents. Files directly in `docs/` are stored as `DOC_Other`; files in `docs/<Category>/` as
+  `DOC_<Category>`.
 
-At least one of `web/` or `docs/` must exist at the ZIP root.
+Only `web/` and `docs/` are read, optionally inside one wrapper folder (a lone `web/` or `docs/` is never
+treated as a wrapper). An upload with no content is accepted by `PUT` (it removes all content) and
+rejected by `POST`. Links in `docMetadata` count as content.
+
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
 >
-> 201 Response
+> 200 Response
 
 ```json
 {
@@ -193,13 +222,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-> 409 Response
+> 404 Response
 
 ```json
 {
   "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -217,9 +246,10 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="replace-mcp-server-content-responseschema">Response Schema</h3>
