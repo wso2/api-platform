@@ -4188,3 +4188,95 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	defer cancel()
 	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
 }
+
+// auditRecordsTable builds a step table from a header row and value rows.
+func auditRecordsTable(t *testing.T, rows ...[]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	payload := struct {
+		Rows []row `json:"rows"`
+	}{}
+	for _, values := range rows {
+		var r row
+		for _, v := range values {
+			r.Cells = append(r.Cells, cell{Value: v})
+		}
+		payload.Rows = append(payload.Rows, r)
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	var table godog.Table
+	require.NoError(t, json.Unmarshal(raw, &table))
+	return &table
+}
+
+func TestAuditExpectationsReadTheTable(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.NoError(t, tcontext.Set(ctx, "corr", "corr-1"))
+
+	want, err := auditExpectations(ctx, auditRecordsTable(t,
+		[]string{"action", " performedBy ", "correlationId"},
+		[]string{"CREATE", "admin", "${CTX:corr}"},
+		[]string{"DELETE", "admin", ""},
+	))
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"action", "performedBy", "correlationId"}, want.columns)
+	require.Equal(t, [][]string{{"CREATE", "admin", "corr-1"}, {"DELETE", "admin", ""}}, want.rows)
+}
+
+func TestAuditExpectationsRejectABadTable(t *testing.T) {
+	ctx := context.Background()
+	for name, tc := range map[string]struct {
+		table   *godog.Table
+		wantErr string
+	}{
+		"no table":        {nil, "needs a table"},
+		"unknown field":   {auditRecordsTable(t, []string{"action", "user"}), `unknown audit record field "user"`},
+		"repeated field":  {auditRecordsTable(t, []string{"action", "action"}), `"action" appears twice`},
+		"short value row": {auditRecordsTable(t, []string{"action", "outcome"}, []string{"CREATE"}), "has 1 cells, want 2"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := auditExpectations(ctx, tc.table)
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestAuditExpectationMatchComparesTheListedFieldsInAnyOrder(t *testing.T) {
+	want := auditExpectation{
+		columns: []string{"action", "performedBy"},
+		rows:    [][]string{{"CREATE", "admin"}, {"DELETE", "admin"}},
+	}
+	created := map[string]string{"action": "CREATE", "performedBy": "admin", "id": "1"}
+	deleted := map[string]string{"action": "DELETE", "performedBy": "admin", "id": "2"}
+
+	require.NoError(t, want.match([]map[string]string{deleted, created}))
+	require.ErrorContains(t, want.match([]map[string]string{created}), "want [CREATE | admin; DELETE | admin]")
+	require.Error(t, want.match([]map[string]string{created, deleted, created}))
+	require.Error(t, want.match([]map[string]string{created, {"action": "DELETE", "performedBy": "****"}}))
+	require.NoError(t, auditExpectation{columns: []string{"action"}}.match(nil))
+}
+
+func TestAuditLogRecordsKeepOnlyAuditLines(t *testing.T) {
+	logs := "───── gateway-controller ─────\n" +
+		`time=2026-11-06 level=INFO msg="Audit HTTP output ready"` + "\n" +
+		`{"time":"t","level":"INFO","msg":"Loaded configurations"}` + "\n" +
+		`gateway-controller-1  | {"time":"t","logType":"audit","action":"CREATE","resourceName":"api-1","performedBy":"admin"}` + "\n" +
+		`{"logType":"audit","action":` + "\n" +
+		`{"time":"t","logType":"audit","action":"DELETE","resourceId":"id-1","resourceName":""}` + "\n"
+
+	records := auditLogRecords(logs)
+
+	require.Len(t, records, 2)
+	require.Equal(t, "CREATE", records[0]["action"])
+	require.Equal(t, "admin", records[0]["performedBy"])
+	require.Equal(t, "id-1", records[1]["resourceId"])
+	_, ok := decodeAuditRecord([]byte(`{"logType":"access"}`))
+	require.False(t, ok)
+}

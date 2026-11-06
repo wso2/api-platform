@@ -677,6 +677,32 @@ blocks:
         features:
           - features/gateway/observability/metrics.feature
 
+  - name: gateway-audit
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-audit.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: audit
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/audit.feature
+
+  - name: gateway-audit-masked
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-audit-masked.toml
+      - name: testbench
+    runners:
+      - name: audit-masked
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/audit_masked.feature
+
   - name: gateway-request-id-disabled
     parallel: 1
     components:
