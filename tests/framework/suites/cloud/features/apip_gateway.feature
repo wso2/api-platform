@@ -72,7 +72,6 @@ Feature: APIP cloud managed gateway lifecycle
     Then the cloud API response status code should be 404
     And the cloud API error code should be "not_found"
 
-  # The gateways are requested with a name and an environment only, so nothing optional is sent.
   @TC_APIP_GW_003 @TC_APIP_GW_004 @TC_APIP_GW_008 @TC_APIP_GW_011 @TC_APIP_GW_014 @TC_APIP_GW_015 @TC_APIP_GW_016 @TC_APIP_GW_017 @TC_APIP_PROV_001 @TC_APIP_PROV_003 @TC_APIP_PROV_011 @ID_APIP_GATEWAY_006
   Scenario: A gateway requested with only a name and an environment is built, connects and reports its version, and the name can be used in another environment
     Given I obtain an APIP cloud console token
@@ -162,8 +161,6 @@ Feature: APIP cloud managed gateway lifecycle
     And the cloud API error code should be "gateway_set_incomplete"
     And the cloud API response body should contain "${CTX:cloudSyntheticManagedGateway1}"
 
-  # The default of the environment is handed to the gateway the runner built, so the refusal is
-  # asked of a gateway that can be given up, and handed back afterwards.
   @TC_APIP_GW_012 @ID_APIP_GATEWAY_011
   Scenario: The default gateway of an environment cannot be deleted while others exist
     Given I obtain an APIP cloud console token
@@ -195,7 +192,6 @@ Feature: APIP cloud managed gateway lifecycle
     Then the managed APIP gateway should eventually be absent
     And the active APIP gateway should still be active
 
-  # The platform holds a deleted gateway's name until its infrastructure is removed, so the request is repeated until the name is free.
   @TC_APIP_PROV_004 @ID_APIP_GATEWAY_013
   Scenario: A deleted gateway's name is free again in its environment
     Given I obtain an APIP cloud console token

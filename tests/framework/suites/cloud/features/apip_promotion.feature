@@ -20,10 +20,6 @@ Feature: APIP cloud promotion along a deployment pipeline
   I want an API to reach a later environment only by promotion, carrying the build the earlier one runs
   So that no environment runs a build that skipped the one before it
 
-  # A gateway takes minutes to build and the organisation allows few of them, so the runner builds two
-  # environments, each with an active gateway, the first time a scenario needs them. Every scenario
-  # then promotes between "development" and those environments over a pipeline and project of its own.
-
   @TC_APIP_PROM_001 @ID_APIP_PROMOTION_001
   Scenario: An API promoted along a pipeline is served by the gateway of the target environment
     Given I obtain an APIP cloud console token
@@ -241,7 +237,6 @@ Feature: APIP cloud promotion along a deployment pipeline
     And the cloud API response body should contain "is a promotion target"
     And the cloud API response body should contain "${CTX:cloudGatewayEnvironment}"
 
-  # A new environment always gets its own default gateway, so the refusal is that gateway not being active yet.
   @TC_APIP_PROM_007 @ID_APIP_PROMOTION_008
   Scenario: Promoting into an environment that has no active gateway is refused
     Given I obtain an APIP cloud console token
