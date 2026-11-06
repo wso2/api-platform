@@ -239,6 +239,17 @@ gateway:
             # - text: Human-readable text format (recommended for development)
             format: json
 
+          # Clients (IPs or CIDRs) allowed to call the admin health and ready endpoints. The
+          # default, "*", allows every client. To restrict access, list addresses or ranges;
+          # any other client then gets 403. Keep the cluster's pod and node ranges in the
+          # list, or kubelet probes are refused and the pods never become Ready, and add
+          # external load balancers (or clients whose address is preserved,
+          # externalTrafficPolicy: Local). For example:
+          #   ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+          health:
+            allowed_clients:
+              - "*"
+
         # Router (Envoy) configuration
         router:
           # Gateway host for incoming requests
@@ -367,6 +378,17 @@ gateway:
 
               # Skip server certificate verification (insecure, development only)
               skip_verify: false
+
+          # Clients (IPs or CIDRs) allowed to call the gateway health routes. The default,
+          # "*", allows every client. To restrict access, list addresses or ranges; any other
+          # client then gets 403. Keep the cluster's pod and node ranges in the list, or
+          # kubelet probes are refused and the pods never become Ready, and add external load
+          # balancers (or clients whose address is preserved, externalTrafficPolicy: Local).
+          # For example:
+          #   ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
+          health:
+            allowed_clients:
+              - "*"
 
         policy_engine:
           server:
@@ -553,22 +575,36 @@ gateway:
           # goes through Gin + basic auth and returns 401 for kube-probe; standalone chart defaults
           # use admin :9092 where /health is probe-safe.
           # Admin API is served under /api/admin/v1 (see gateway-controller admin OpenAPI spec).
+          # Liveness probes the admin health endpoint; readiness and startup probe the admin
+          # ready endpoint. Both answer 503 while the controller's database is down and while
+          # the controller is still starting. Readiness takes the pod out of the Service after
+          # about 15 s of failed answers; liveness restarts it only after about 2 minutes, so
+          # a short database outage never causes a restart. These match the gateway chart's
+          # defaults.
           livenessProbe:
             httpGet:
               path: /api/admin/v1/health
               port: admin
-            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
-              path: /api/admin/v1/health
+              path: /api/admin/v1/ready
               port: admin
-            initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+          # Holds off the liveness probe while the controller starts. It allows 6 minutes;
+          # keep this above gateway.config.controller.health.database.startup_wait so the controller,
+          # not the probe, decides when a database wait gives up. Set to null to disable.
+          startupProbe:
+            httpGet:
+              path: /api/admin/v1/ready
+              port: admin
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 72
           # Resource limits and requests
           # Uncomment and adjust based on your workload
           resources: {}

@@ -390,6 +390,76 @@ func (c *Container) Stop(ctx context.Context) error {
 	return nil
 }
 
+// Halt stops the container's processes without removing the container, so Resume can start
+// it again with its filesystem intact. The container stays owned by the block and is still
+// removed at teardown.
+func (c *Container) Halt(ctx context.Context) error {
+	if c == nil || c.container == nil {
+		return fmt.Errorf("runtime: no container to halt")
+	}
+	if err := c.container.Stop(ctx, nil); err != nil {
+		return fmt.Errorf("runtime: halting %s: %w", c.def, err)
+	}
+	return nil
+}
+
+// Resume starts a halted container, waits for its readiness strategy and re-reads its host
+// ports, which Docker may reassign when a container starts again.
+func (c *Container) Resume(ctx context.Context) error {
+	if c == nil || c.container == nil {
+		return fmt.Errorf("runtime: no container to resume")
+	}
+	if err := c.container.Start(ctx); err != nil {
+		return fmt.Errorf("runtime: resuming %s: %w", c.def, err)
+	}
+	if c.Instance == nil || c.def == nil {
+		return nil
+	}
+	mapped := make(map[int]int, len(c.def.Endpoints))
+	for _, e := range c.def.Endpoints {
+		p, err := c.container.MappedPort(ctx, strconv.Itoa(e.Port)+"/tcp")
+		if err != nil {
+			continue
+		}
+		mapped[e.Port] = int(p.Num())
+	}
+	c.Instance.RefreshPorts(mapped)
+	return nil
+}
+
+// Pause freezes every process in the container. Open connections stay established but get no
+// answer until Unpause.
+func (c *Container) Pause(ctx context.Context) error { return c.setPaused(ctx, true) }
+
+// Unpause thaws a container frozen by Pause.
+func (c *Container) Unpause(ctx context.Context) error { return c.setPaused(ctx, false) }
+
+func (c *Container) setPaused(ctx context.Context, paused bool) error {
+	verb := "unpause"
+	if paused {
+		verb = "pause"
+	}
+	if c == nil || c.container == nil {
+		return fmt.Errorf("runtime: no container to %s", verb)
+	}
+	docker, err := testcontainers.NewDockerClientWithOpts(ctx)
+	if err != nil {
+		return fmt.Errorf("runtime: docker client to %s %s: %w", verb, c.def, err)
+	}
+	defer func() { _ = docker.Close() }()
+
+	id := c.container.GetContainerID()
+	if paused {
+		_, err = docker.ContainerPause(ctx, id, client.ContainerPauseOptions{})
+	} else {
+		_, err = docker.ContainerUnpause(ctx, id, client.ContainerUnpauseOptions{})
+	}
+	if err != nil {
+		return fmt.Errorf("runtime: %s %s: %w", verb, c.def, err)
+	}
+	return nil
+}
+
 // Exec runs a command inside the container and returns its combined output.
 func (c *Container) Exec(ctx context.Context, cmd []string) (string, error) {
 	if c == nil || c.container == nil {

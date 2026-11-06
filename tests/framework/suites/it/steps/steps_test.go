@@ -23,6 +23,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,12 +32,15 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/components"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
@@ -832,4 +836,245 @@ func requireFeatureStepsDefined(t *testing.T, relative ...string) {
 
 	require.NotZero(t, events.Len(), "godog wrote no events")
 	require.Empty(t, unresolvedSteps(t, events.Bytes()), "steps that match no pattern or more than one")
+}
+
+// healthTopology runs the components whose listeners serve health endpoints, each on a
+// distinct host port.
+func healthTopology(t *testing.T) *frameworkruntime.Topology {
+	t.Helper()
+	set := components.NewSet()
+	for _, c := range []struct {
+		name     string
+		endpoint components.Endpoint
+		extra    []components.Endpoint
+		hostPort int
+	}{
+		{name: "platform-api", endpoint: components.Endpoint{Name: "https", Port: 9243, Scheme: "https"}, hostPort: 19243},
+		{name: "api-portal", endpoint: components.Endpoint{Name: "https", Port: 9543, Scheme: "https"}, hostPort: 19543},
+		{name: "platform-gateway", endpoint: components.Endpoint{Name: "admin", Port: 9092, Scheme: "http"},
+			extra: []components.Endpoint{{Name: "http", Port: 8080, Scheme: "http"}}, hostPort: 19092},
+	} {
+		def := &components.Definition{Name: c.name, Image: components.ImageRef{Ref: "example/" + c.name}}
+		def.Endpoints = append([]components.Endpoint{c.endpoint}, c.extra...)
+		mapped := map[int]int{c.endpoint.Port: c.hostPort}
+		for _, e := range c.extra {
+			mapped[e.Port] = 18080
+		}
+		inst, err := components.NewInstance(def, 0, 1, "127.0.0.1", mapped)
+		require.NoError(t, err)
+		require.NoError(t, set.Add(inst))
+	}
+	return &frameworkruntime.Topology{Instances: set}
+}
+
+func TestHealthRequestTargetsEachComponentListener(t *testing.T) {
+	base := &Base{topo: healthTopology(t)}
+	tests := []struct {
+		component string
+		path      string
+		wantURL   string
+		wantHost  string
+	}{
+		{component: "platform-api", path: "/ready", wantURL: "https://127.0.0.1:19243/ready"},
+		{component: "API Portal", path: "/api-portal/ready", wantURL: "https://127.0.0.1:19543/api-portal/ready"},
+		{component: "gateway controller", path: "/api/admin/v1/ready", wantURL: "http://127.0.0.1:19092/api/admin/v1/ready"},
+		{component: "gateway runtime", path: "/_gateway-health/ready",
+			wantURL: "http://127.0.0.1:18080/_gateway-health/ready", wantHost: "health.example"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.component, func(t *testing.T) {
+			ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+			require.NoError(t, base.setRequestHost(ctx, "health.example"))
+			require.NoError(t, tcontext.Set(ctx, keyExtraHeaders, map[string]string{"X-Scenario": "kept"}))
+
+			req, err := base.healthRequest(ctx, " head ", tt.component, tt.path, "X-Forwarded-For", "127.0.0.1")
+			require.NoError(t, err)
+			require.Equal(t, "HEAD", req.Method)
+			require.Equal(t, tt.wantURL, req.URL)
+			require.Equal(t, tt.wantHost, req.Host, "only the runtime answers on a scenario's virtual host")
+			require.Equal(t, map[string]string{"X-Scenario": "kept", "X-Forwarded-For": "127.0.0.1"}, req.Headers)
+		})
+	}
+}
+
+func TestHealthRequestRejectsInvalidInput(t *testing.T) {
+	base := &Base{topo: healthTopology(t)}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	tests := []struct {
+		name, method, component, path, header, value, wantErr string
+	}{
+		{name: "empty method", method: " ", component: "platform-api", path: "/ready",
+			wantErr: "a health request needs a method"},
+		{name: "relative path", method: "GET", component: "platform-api", path: "ready",
+			wantErr: `health path "ready" must start with /`},
+		{name: "unknown component", method: "GET", component: "policy engine", path: "/health",
+			wantErr: `unknown health component "policy engine"`},
+		{name: "unknown context value in path", method: "GET", component: "platform-api", path: "/${CTX:missing}",
+			wantErr: `no value in context for key "missing"`},
+		{name: "unknown context value in header", method: "GET", component: "platform-api", path: "/ready",
+			header: "X-Forwarded-For", value: "${CTX:missing}", wantErr: `no value in context for key "missing"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := base.healthRequest(ctx, tt.method, tt.component, tt.path, tt.header, tt.value)
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+
+	_, err := (&Base{topo: &frameworkruntime.Topology{Instances: components.NewSet()}}).
+		healthRequest(ctx, "GET", "API Portal", "/ready", "", "")
+	require.Error(t, err, "a block without the component has no health URL for it")
+}
+
+type fakeDatabaseServer struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeDatabaseServer) Resume(context.Context) error {
+	f.calls = append(f.calls, "resume")
+	return f.err
+}
+
+func (f *fakeDatabaseServer) Unpause(context.Context) error {
+	f.calls = append(f.calls, "unpause")
+	return f.err
+}
+
+func TestRestoreDatabaseServerUndoesTheRecordedOutage(t *testing.T) {
+	lookupErr := errors.New("no such server")
+	tests := []struct {
+		name      string
+		id        string
+		serverErr error
+		lookupErr error
+		wantCalls []string
+		wantErr   string
+	}{
+		{name: "stopped server is resumed", id: "postgres/stop", wantCalls: []string{"resume"}},
+		{name: "paused server is unpaused", id: "postgres/pause", wantCalls: []string{"unpause"}},
+		{name: "restore failure is reported", id: "postgres/stop", serverErr: errors.New("boom"),
+			wantCalls: []string{"resume"}, wantErr: "boom"},
+		{name: "unknown server", id: "postgres/stop", lookupErr: lookupErr, wantErr: "no such server"},
+		{name: "unknown outage", id: "postgres/drop", wantErr: `database outage id "postgres/drop" names no known outage`},
+		{name: "missing outage", id: "postgres", wantErr: `malformed database outage id "postgres"`},
+		{name: "missing engine", id: "/stop", wantErr: `malformed database outage id "/stop"`},
+		{name: "empty id", id: "", wantErr: `malformed database outage id ""`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := &fakeDatabaseServer{err: tt.serverErr}
+			var asked components.DBType
+			lookup := func(engine components.DBType) (databaseServer, error) {
+				asked = engine
+				if tt.lookupErr != nil {
+					return nil, tt.lookupErr
+				}
+				return server, nil
+			}
+			err := restoreDatabaseServer(context.Background(), lookup, tt.id)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, components.Postgres, asked)
+			}
+			require.Equal(t, tt.wantCalls, server.calls)
+		})
+	}
+}
+
+func TestDatabaseOutageIsRestoredByCleanupUntilTheScenarioRestoresIt(t *testing.T) {
+	newContext := func(t *testing.T) (context.Context, *cleanup.Registry) {
+		t.Helper()
+		ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+		reg := cleanup.NewRegistry(slog.Default())
+		require.NoError(t, cleanup.Install(ctx, reg))
+		return ctx, reg
+	}
+	server := &fakeDatabaseServer{}
+	lookup := func(components.DBType) (databaseServer, error) { return server, nil }
+
+	t.Run("a failed scenario's outage is undone by cleanup", func(t *testing.T) {
+		ctx, reg := newContext(t)
+		require.NoError(t, registerDatabaseOutage(ctx, lookup, "postgres", outageStopped))
+		require.NoError(t, registerDatabaseOutage(ctx, lookup, "postgres", outagePaused))
+		pending := reg.Pending()
+		require.Len(t, pending, 2)
+		require.Equal(t, databaseOutageKind, pending[0].Kind)
+
+		server.calls = nil
+		require.NoError(t, reg.Sweep(ctx))
+		require.ElementsMatch(t, []string{"resume", "unpause"}, server.calls)
+		require.Zero(t, reg.Count())
+	})
+
+	t.Run("a restored outage is not undone again", func(t *testing.T) {
+		ctx, reg := newContext(t)
+		require.NoError(t, registerDatabaseOutage(ctx, lookup, " postgres ", outageStopped))
+		require.NoError(t, deregisterDatabaseOutage(ctx, "postgres", outageStopped))
+		require.Zero(t, reg.Count())
+
+		server.calls = nil
+		require.NoError(t, reg.Sweep(ctx))
+		require.Empty(t, server.calls)
+	})
+
+	t.Run("registration needs a cleanup registry", func(t *testing.T) {
+		ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+		require.ErrorContains(t, registerDatabaseOutage(ctx, lookup, "postgres", outageStopped), "no registry in context")
+		require.ErrorContains(t, deregisterDatabaseOutage(ctx, "postgres", outageStopped), "no registry in context")
+	})
+}
+
+func TestControlDatabaseServerNeedsTheBlockServer(t *testing.T) {
+	base := &Base{topo: &frameworkruntime.Topology{Storage: &frameworkruntime.Provisioned{}}}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(slog.Default())
+	require.NoError(t, cleanup.Install(ctx, reg))
+
+	err := base.controlDatabaseServer(ctx, "stop", "postgres")
+	require.ErrorContains(t, err, `no "postgres" database server is running`)
+	require.Zero(t, reg.Count(), "nothing is registered for a server that was never taken down")
+}
+
+func TestResponseArrivedWithin(t *testing.T) {
+	base := &Base{}
+	fast := publishedContext(t, &httpx.Response{StatusCode: 503, Elapsed: 1500 * time.Millisecond})
+	require.NoError(t, base.responseArrivedWithin(fast, "2"))
+	require.NoError(t, base.responseArrivedWithin(fast, "1.5"), "the limit is inclusive")
+	require.ErrorContains(t, base.responseArrivedWithin(fast, "1"), "the response took 1.5s, longer than 1s")
+	require.ErrorContains(t, base.responseArrivedWithin(fast, "-1"), "non-negative")
+	require.ErrorContains(t, base.responseArrivedWithin(fast, "soon"), "parsing expected seconds")
+
+	empty := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.ErrorContains(t, base.responseArrivedWithin(empty, "2"), "no response has been published")
+}
+
+// TestHealthFeatureStepsAreDefined resolves every health feature's steps without running them,
+// so a step that matches no pattern, or two, fails before a block is provisioned.
+func TestHealthFeatureStepsAreDefined(t *testing.T) {
+	for _, relative := range [][]string{
+		{"features", "gateway", "core", "health_endpoints.feature"},
+		{"features", "gateway", "core", "health_controller_outage.feature"},
+		{"features", "gateway", "security", "health_access.feature"},
+		{"features", "apiportal", "core", "health.feature"},
+		{"features", "apiportal", "security", "health_access.feature"},
+		{"features", "management-portal", "core", "health.feature"},
+		{"features", "health", "database_outage.feature"},
+	} {
+		t.Run(strings.Join(relative[1:], "/"), func(t *testing.T) {
+			requireFeatureStepsDefined(t, relative...)
+		})
+	}
+}
+
+func TestHealthFunnelTrustsEachComponentsCertificate(t *testing.T) {
+	suite, err := New(&frameworkruntime.Topology{})
+	require.NoError(t, err)
+	require.Same(t, suite.portalFunnel, suite.healthFunnel("API Portal"))
+	for _, component := range []string{"platform-api", "gateway controller", "gateway runtime"} {
+		require.Same(t, suite.funnel, suite.healthFunnel(component), component)
+	}
+	require.NotSame(t, suite.funnel, suite.portalFunnel)
 }

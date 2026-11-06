@@ -315,7 +315,7 @@ func TestClient_ProcessStream_ErrorHandling_Timeout(t *testing.T) {
 		recvError: context.DeadlineExceeded,
 	}
 
-	err = client.processStream(mockStream)
+	err = client.processStream(mockStream, nil)
 	assert.Error(t, err)
 }
 
@@ -331,7 +331,7 @@ func TestClient_ProcessStream_ErrorHandling_EOF(t *testing.T) {
 		recvError: io.EOF,
 	}
 
-	err = client.processStream(mockStream)
+	err = client.processStream(mockStream, nil)
 	assert.Equal(t, io.EOF, err)
 }
 
@@ -348,7 +348,7 @@ func TestClient_ProcessStream_ErrorHandling_NetworkError(t *testing.T) {
 		recvError: networkErr,
 	}
 
-	err = client.processStream(mockStream)
+	err = client.processStream(mockStream, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error receiving from stream")
 }
@@ -465,7 +465,7 @@ func TestClient_ProcessStream_SuccessfulResponse(t *testing.T) {
 	// Process stream in goroutine since it will run until EOF
 	done := make(chan error, 1)
 	go func() {
-		done <- client.processStream(mockStream)
+		done <- client.processStream(mockStream, nil)
 	}()
 
 	// Wait for processing
@@ -515,7 +515,7 @@ func TestClient_ProcessStream_UnknownTypeURL(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- client.processStream(mockStream)
+		done <- client.processStream(mockStream, nil)
 	}()
 
 	select {
