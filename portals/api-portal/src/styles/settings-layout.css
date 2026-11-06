@@ -2943,6 +2943,8 @@
   cursor: pointer;
 }
 
+.cfg-form-group .cfg-thumb-row label.cfg-action-btn:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+
 .cfg-thumb-row [hidden] { display: none; }
 
 .cfg-spec-current {

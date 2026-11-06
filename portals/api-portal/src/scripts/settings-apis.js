@@ -1310,23 +1310,36 @@
 
   function confirmReplaceContent() {
     var modal = document.getElementById('cfg-replace-content-modal');
+    var confirmBtn = document.getElementById('cfg-replace-content-confirm');
+    var cancelBtn = document.getElementById('cfg-replace-content-cancel');
+    var opener = document.activeElement;
     document.getElementById('cfg-replace-content-api').textContent = v('wz-name');
     document.getElementById('cfg-replace-content-zip').textContent = contentZipFile.name;
     return new Promise(function(resolve) {
       function done(ok) {
         modal.style.display = 'none';
-        document.getElementById('cfg-replace-content-confirm').removeEventListener('click', onOk);
-        document.getElementById('cfg-replace-content-cancel').removeEventListener('click', onCancel);
+        confirmBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
         modal.removeEventListener('click', onOverlay);
+        modal.removeEventListener('keydown', onKeydown);
+        if (opener) opener.focus();
         resolve(ok);
       }
       function onOk() { done(true); }
       function onCancel() { done(false); }
       function onOverlay(e) { if (e.target === modal) done(false); }
-      document.getElementById('cfg-replace-content-confirm').addEventListener('click', onOk);
-      document.getElementById('cfg-replace-content-cancel').addEventListener('click', onCancel);
+      /* The dialog has two controls, so Tab and Shift+Tab both move to the other one. */
+      function onKeydown(e) {
+        if (e.key !== 'Tab') return;
+        e.preventDefault();
+        (document.activeElement === cancelBtn ? confirmBtn : cancelBtn).focus();
+      }
+      confirmBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
       modal.addEventListener('click', onOverlay);
+      modal.addEventListener('keydown', onKeydown);
       modal.style.display = 'flex';
+      cancelBtn.focus();
     });
   }
 

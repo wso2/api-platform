@@ -78,6 +78,8 @@ describe('Settings — API wizard Details and Spec steps', () => {
         cy.get('#wz-thumb-name').should('have.text', 'No thumbnail');
         cy.get('#wz-thumb-hint').should('have.text', 'PNG or JPG');
         cy.get('#wz-thumb-input').should('have.attr', 'accept', '.png,.jpg,.jpeg');
+        cy.get('#wz-thumb-input').focus();
+        cy.focused().should('have.id', 'wz-thumb-input');
         cy.get('#wz-thumb-remove').should('not.be.visible');
 
         cy.get('#wz-name').type('Pets API');

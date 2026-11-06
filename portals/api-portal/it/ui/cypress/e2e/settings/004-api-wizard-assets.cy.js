@@ -184,8 +184,12 @@ describe('Settings — API wizard Assets step', () => {
         save();
         cy.get('#cfg-replace-content-modal').should('be.visible').and('contain', 'Replace all content?')
             .and('contain', `This replaces all documents, links, the landing page, its images and the thumbnail of Wizard ${handle} with the content of content.zip. Continue?`);
+        cy.focused().should('have.id', 'cfg-replace-content-cancel').trigger('keydown', { key: 'Tab' });
+        cy.focused().should('have.id', 'cfg-replace-content-confirm').trigger('keydown', { key: 'Tab', shiftKey: true });
+        cy.focused().should('have.id', 'cfg-replace-content-cancel');
         cy.get('#cfg-replace-content-cancel').click();
         cy.get('#cfg-replace-content-modal').should('not.be.visible');
+        cy.focused().should('have.id', 'cfg-wizard-next');
         asset(handle, 'DOC_Other', 'Old.md').its('status').should('eq', 200);
         asset(handle, 'MARKETING', 'apiContent.md').its('status').should('eq', 404);
 
