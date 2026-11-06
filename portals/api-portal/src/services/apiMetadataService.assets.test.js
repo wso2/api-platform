@@ -148,6 +148,50 @@ test('a document in docs/ that is not .md is rejected and named', async () => {
         rejectsWith(['docs/HowTo/guide.pdf: documents must be Markdown (.md)']));
 });
 
+// A ZIP that keeps its central directory but not the entries it lists.
+const damagedZip = () => {
+    const zip = createZip([{ name: 'docs/A.md', content: '# A' }]);
+    return zip.subarray(zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])));
+};
+
+test('a ZIP whose central directory lists entries it does not hold is rejected, not read as empty', async () => {
+    await assert.rejects(extractApiContentFromUploadedZip({ originalname: 'content.zip', buffer: damagedZip() }, 'o', 'a'),
+        { name: 'ValidationError', message: 'Invalid zip file' });
+});
+
+// The same ZIP with ZIP64 end records: the classic end record says 0xFFFF and the ZIP64 record holds `entries`.
+const asZip64 = (zip, entries, { locator = true } = {}) => {
+    const end = zip.length - 22;
+    const record = Buffer.alloc(56);
+    record.writeUInt32LE(0x06064b50, 0);
+    record.writeBigUInt64LE(44n, 4);
+    record.writeUInt16LE(45, 12);
+    record.writeUInt16LE(45, 14);
+    record.writeBigUInt64LE(BigInt(entries), 24);
+    record.writeBigUInt64LE(BigInt(entries), 32);
+    record.writeBigUInt64LE(BigInt(zip.readUInt32LE(end + 12)), 40);
+    record.writeBigUInt64LE(BigInt(zip.readUInt32LE(end + 16)), 48);
+    const zip64Locator = Buffer.alloc(20);
+    zip64Locator.writeUInt32LE(0x07064b50, 0);
+    zip64Locator.writeBigUInt64LE(BigInt(end), 8);
+    zip64Locator.writeUInt32LE(1, 16);
+    const classicEnd = Buffer.from(zip.subarray(end));
+    classicEnd.writeUInt16LE(0xFFFF, 8);
+    classicEnd.writeUInt16LE(0xFFFF, 10);
+    return Buffer.concat([zip.subarray(0, end), ...(locator ? [record, zip64Locator] : []), classicEnd]);
+};
+const readZip = (buffer) => extractApiContentFromUploadedZip({ originalname: 'content.zip', buffer }, 'o', 'a');
+
+test('a ZIP64 archive is checked against the entry count in its ZIP64 end record', async () => {
+    const valid = asZip64(createZip([{ name: 'docs/A.md', content: '# A' }]), 1);
+    assert.deepStrictEqual(names(await readZip(valid)), ['DOC_Other:A.md']);
+    await assert.rejects(readZip(asZip64(damagedZip(), 1)), { name: 'ValidationError', message: 'Invalid zip file' });
+});
+
+test('a ZIP that declares a ZIP64 count without a ZIP64 end record is rejected', async () => {
+    await assert.rejects(readZip(asZip64(damagedZip(), 1, { locator: false })), { name: 'ValidationError', message: 'Invalid zip file' });
+});
+
 test('a file that is not a ZIP is rejected naming the content field', async () => {
     await assert.rejects(extractApiContentFromUploadedZip({ originalname: 'a.txt', buffer: Buffer.from('x') }, 'o', 'a'),
         { name: 'ValidationError', message: 'content must be a .zip file' });
@@ -331,6 +375,17 @@ test('replace answers 201 when the API had no content and the upload adds some',
 
     assert.strictEqual(res.status, 201);
     assert.deepStrictEqual(res.body, { message: 'API content created successfully' });
+});
+
+test('replace with a damaged ZIP answers 400 and clears nothing', async (t) => {
+    knownApi(t);
+    const cleared = t.mock.method(apiFileDao, 'deleteAllContent', async () => 3);
+    for (const buffer of [damagedZip(), asZip64(damagedZip(), 1)]) {
+        const res = await call(updateAPIContent, { content: { originalname: 'content.zip', buffer } });
+        assert.strictEqual(res.status, 400);
+        assert.deepStrictEqual(res.body.errors, [{ message: 'Invalid zip file' }]);
+    }
+    assert.strictEqual(cleared.mock.callCount(), 0);
 });
 
 test('replace with an empty upload clears everything and stores nothing', async (t) => {
