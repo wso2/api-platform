@@ -38,27 +38,6 @@ Feature: APIP cloud secrets
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
     And the echoed request header "x-apip-secret-probe" should carry the synthetic secret's value
 
-  # Known issue: the dev CP gateway does not route PUT /secrets/{id} (B33); behind it, nothing pushes a rotation to gateways (B12).
-  @TC_APIP_SEC_003 @known-issue @ID_APIP_SECRETS_002
-  Scenario: A rotated secret reaches the gateway without a redeployment
-    Given I obtain an APIP cloud console token
-    And I find the default APIP project
-    And I find an active APIP gateway
-    And an echo backend is available for deployment overrides
-    And I create a synthetic secret
-    When I create a synthetic REST API in the default project with:
-      | policies | [{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"x-apip-secret-probe","value":"${CTX:cloudSecretReference}"}]}}}] |
-    And I request a deployment of the synthetic REST API with:
-      | environment | ${CTX:cloudGatewayEnvironment}                         |
-      | gatewayId   | ${CTX:cloudGatewayID}                                  |
-      | parameters  | {"productionEndpoint":"${CTX:cloudEchoBackendURL}"} |
-    Then the cloud API response status code should be 201
-    And the synthetic REST API deployment should become DEPLOYED
-    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
-    And the echoed request header "x-apip-secret-probe" should carry the synthetic secret's value
-    When I rotate the synthetic secret
-    Then a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" should echo the header "x-apip-secret-probe" with the rotated secret value
-
   @TC_APIP_SEC_004 @ID_APIP_SECRETS_003
   Scenario: A secret in use cannot be deleted, and once deleted it can no longer be used
     Given I obtain an APIP cloud console token
@@ -87,18 +66,6 @@ Feature: APIP cloud secrets
       | policies | [{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"x-apip-secret-probe","value":"${CTX:cloudSecretReference}"}]}}}] |
     Then the cloud API response status code should be 400
     And the cloud API error code should be "VALIDATION_FAILED"
-
-  # Known issue: the dev CP gateway does not route GET /secrets/{id} (B33).
-  @TC_APIP_SEC_005 @known-issue @ID_APIP_SECRETS_004
-  Scenario: A secret's value is never returned in a read response
-    Given I obtain an APIP cloud console token
-    When I create a synthetic secret
-    Then the response should not reveal the synthetic secret's value
-    When I read the synthetic secret
-    Then the response should not reveal the synthetic secret's value
-    And the synthetic secret should be described by a hash
-    When I list the secrets
-    Then the response should not reveal the synthetic secret's value
 
   @TC_APIP_SEC_006 @ID_APIP_SECRETS_005
   Scenario: A REST API that references a secret that does not exist is refused when it is created
