@@ -674,3 +674,76 @@ func TestSnapshotManager_UpdateSnapshot_DPToCPSyncedAPI(t *testing.T) {
 func TestSubscriptionStateTypeURL(t *testing.T) {
 	assert.Equal(t, "api-platform.wso2.org/v1.SubscriptionState", SubscriptionStateTypeURL)
 }
+
+// Each subscription carries its ID, its plan's ID and the plan's conditions. A plan synced before
+// conditions carries its throttle limit as a request-count condition, next to the throttle fields
+// subscription-validation v1 reads.
+func TestSnapshotManager_CarriesPlanConditions(t *testing.T) {
+	conditionsPlan, legacyPlan, freePlan := "plan-agents", "plan-legacy", "plan-free"
+	count, unit := 50, "Min"
+	store := &MockStorage{
+		configs: []*models.StoredConfig{{UUID: "api-1", Kind: "RestApi"}},
+		subscriptionPlans: []*models.SubscriptionPlan{
+			{ID: conditionsPlan, ThrottleLimitCount: &count, ThrottleLimitUnit: &unit, StopOnQuotaReach: true,
+				Conditions: []models.SubscriptionPlanCondition{
+					{ID: "requests", Type: "request-count", Params: []byte(`{"limits":[{"count":50,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`)},
+					{ID: "tool-calls", Type: "tool-call-count", Params: []byte(`{"limits":[{"count":10,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"allow"}`)},
+				}},
+			{ID: legacyPlan, ThrottleLimitCount: &count, ThrottleLimitUnit: &unit, StopOnQuotaReach: true},
+			{ID: freePlan, Conditions: []models.SubscriptionPlanCondition{}},
+		},
+		subscriptions: []*models.Subscription{
+			{ID: "sub-1", APIID: "api-1", SubscriptionPlanID: &conditionsPlan, SubscriptionTokenHash: "h1", Status: models.SubscriptionStatusActive},
+			{ID: "sub-2", APIID: "api-1", SubscriptionPlanID: &legacyPlan, SubscriptionTokenHash: "h2", Status: models.SubscriptionStatusActive},
+			{ID: "sub-3", APIID: "api-1", SubscriptionPlanID: &freePlan, SubscriptionTokenHash: "h3", Status: models.SubscriptionStatusActive},
+		},
+	}
+	sm := NewSnapshotManager(store, nil)
+	require.NoError(t, sm.UpdateSnapshot(context.Background()))
+
+	byID := map[string]policyenginev1.SubscriptionData{}
+	for _, s := range snapshotSubscriptions(t, sm) {
+		byID[s.SubscriptionId] = s
+	}
+	require.Len(t, byID, 3)
+
+	agents := byID["sub-1"]
+	assert.Equal(t, conditionsPlan, agents.PlanId)
+	require.Len(t, agents.Conditions, 2)
+	assert.Equal(t, "tool-calls", agents.Conditions[1].ID)
+	assert.JSONEq(t, `{"limits":[{"count":10,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"allow"}`, string(agents.Conditions[1].Params))
+	assert.Equal(t, 50, agents.ThrottleLimitCount)
+	assert.Equal(t, "Min", agents.ThrottleLimitUnit)
+
+	legacy := byID["sub-2"]
+	require.Len(t, legacy.Conditions, 1)
+	assert.Equal(t, "requests", legacy.Conditions[0].ID)
+	assert.JSONEq(t, `{"limits":[{"count":50,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`, string(legacy.Conditions[0].Params))
+
+	assert.Empty(t, byID["sub-3"].Conditions)
+	assert.Equal(t, freePlan, byID["sub-3"].PlanId)
+}
+
+// The policy engine gets a 2-hour plan's throttle limit for v1 (its count per hour) and the condition
+// with the 2-hour window for policies that read conditions.
+func TestSnapshotManager_LongerWindowPlan(t *testing.T) {
+	plan := "plan-2h"
+	count, unit := 1000, "Hour"
+	store := &MockStorage{
+		configs: []*models.StoredConfig{{UUID: "api-1", Kind: "RestApi"}},
+		subscriptionPlans: []*models.SubscriptionPlan{{ID: plan, ThrottleLimitCount: &count, ThrottleLimitUnit: &unit, StopOnQuotaReach: true,
+			Conditions: []models.SubscriptionPlanCondition{{ID: "requests", Type: "request-count",
+				Params: []byte(`{"limits":[{"count":1000,"timeAmount":2,"timeUnit":"HOUR"}],"onExceed":"reject"}`)}}}},
+		subscriptions: []*models.Subscription{{ID: "sub-1", APIID: "api-1", SubscriptionPlanID: &plan, SubscriptionTokenHash: "h1",
+			Status: models.SubscriptionStatusActive}},
+	}
+	sm := NewSnapshotManager(store, nil)
+	require.NoError(t, sm.UpdateSnapshot(context.Background()))
+	subs := snapshotSubscriptions(t, sm)
+	require.Len(t, subs, 1)
+	assert.Equal(t, 1000, subs[0].ThrottleLimitCount)
+	assert.Equal(t, "Hour", subs[0].ThrottleLimitUnit)
+	assert.True(t, subs[0].StopOnQuotaReach)
+	require.Len(t, subs[0].Conditions, 1)
+	assert.JSONEq(t, `{"limits":[{"count":1000,"timeAmount":2,"timeUnit":"HOUR"}],"onExceed":"reject"}`, string(subs[0].Conditions[0].Params))
+}

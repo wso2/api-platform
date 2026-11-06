@@ -4427,6 +4427,7 @@ func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}
 		ThrottleLimitUnit:  throttleLimitUnit,
 		ExpiryTime:         payload.ExpiryTime,
 		Status:             models.SubscriptionPlanStatus(payload.Status),
+		Conditions:         payload.Conditions,
 	}
 
 	if err := resourceService.UpsertSubscriptionPlan(plan, "CREATE", created.CorrelationID, logger); err != nil {
@@ -4488,6 +4489,9 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 	if payload.Status != "" {
 		existing.Status = models.SubscriptionPlanStatus(payload.Status)
 	}
+	// A control plane that predates conditions sends none: the plan is then held by its throttle
+	// limit alone, as the event's other fields describe it.
+	existing.Conditions = payload.Conditions
 
 	if err := resourceService.UpdateSubscriptionPlan(existing, updated.CorrelationID, logger); err != nil {
 		logger.Error("Failed to update subscription plan from subscriptionPlan.updated event",

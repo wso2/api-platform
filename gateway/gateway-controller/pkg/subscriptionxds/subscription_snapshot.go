@@ -149,6 +149,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 				APIId:             localAPIID,
 				SubscriptionToken: s.SubscriptionTokenHash,
 				Status:            string(s.Status),
+				SubscriptionId:    s.ID,
 			}
 			if s.ApplicationID != nil {
 				entry.ApplicationId = *s.ApplicationID
@@ -170,6 +171,8 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 				}
 				entry.StopOnQuotaReach = plan.StopOnQuotaReach
 				entry.PlanName = plan.PlanName
+				entry.PlanId = plan.ID
+				entry.Conditions = policyConditions(plan.EffectiveConditions())
 			}
 			if s.BillingCustomerID != nil {
 				entry.BillingCustomerId = s.BillingCustomerID
@@ -210,6 +213,15 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 }
 
 // createSubscriptionStateResource converts the state to an xDS resource.
+// policyConditions converts a plan's conditions to the policy engine's shape.
+func policyConditions(conditions []models.SubscriptionPlanCondition) []policyenginev1.SubscriptionCondition {
+	out := make([]policyenginev1.SubscriptionCondition, 0, len(conditions))
+	for _, c := range conditions {
+		out = append(out, policyenginev1.SubscriptionCondition{ID: c.ID, Type: c.Type, Params: c.Params})
+	}
+	return out
+}
+
 func createSubscriptionStateResource(state *policyenginev1.SubscriptionStateResource) (types.Resource, error) {
 	jsonBytes, err := json.Marshal(state)
 	if err != nil {
