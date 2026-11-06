@@ -39,6 +39,8 @@ type ProjectService struct {
 	projectRepo    repository.ProjectRepository
 	orgRepo        repository.OrganizationRepository
 	apiRepo        repository.APIRepository
+	graphqlAPIRepo repository.GraphQLAPIRepository
+	llmProxyRepo   repository.LLMProxyRepository
 	mcpProxyRepo   repository.MCPProxyRepository
 	agentProxyRepo repository.AgentProxyRepository
 	appRepo        repository.ApplicationRepository
@@ -49,7 +51,8 @@ type ProjectService struct {
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
-	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
+	apiRepo repository.APIRepository, graphqlAPIRepo repository.GraphQLAPIRepository,
+	llmProxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
 	agentProxyRepo repository.AgentProxyRepository,
 	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
 	identity *IdentityService, slogger *slog.Logger) *ProjectService {
@@ -57,6 +60,8 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 		projectRepo:    projectRepo,
 		orgRepo:        orgRepo,
 		apiRepo:        apiRepo,
+		graphqlAPIRepo: graphqlAPIRepo,
+		llmProxyRepo:   llmProxyRepo,
 		mcpProxyRepo:   mcpProxyRepo,
 		agentProxyRepo: agentProxyRepo,
 		appRepo:        appRepo,
@@ -328,6 +333,45 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	}
 	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
 	return nil
+}
+
+// CountArtifactsByProject returns the number of artifacts in a project: its REST and
+// GraphQL APIs and its LLM, MCP and Agent proxies, which are the artifacts deleting
+// the project removes with it. Plugin-owned artifacts are not counted.
+func (s *ProjectService) CountArtifactsByProject(handle, orgId string) (int, error) {
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
+	if err != nil {
+		return 0, err
+	}
+	if project == nil {
+		return 0, apperror.ProjectNotFound.New()
+	}
+
+	counters := []struct {
+		kind  string
+		count func(orgUUID, projectUUID string) (int, error)
+	}{
+		{"REST APIs", func(orgUUID, projectUUID string) (int, error) {
+			apis, err := s.apiRepo.GetAPIsByProjectUUID(projectUUID, orgUUID)
+			return len(apis), err
+		}},
+		{"GraphQL APIs", func(orgUUID, projectUUID string) (int, error) {
+			return s.graphqlAPIRepo.CountByProject(orgUUID, projectUUID, "")
+		}},
+		{"LLM proxies", s.llmProxyRepo.CountByProject},
+		{"MCP proxies", s.mcpProxyRepo.CountByProject},
+		{"Agent proxies", s.agentProxyRepo.CountByProject},
+	}
+
+	total := 0
+	for _, c := range counters {
+		n, err := c.count(orgId, project.ID)
+		if err != nil {
+			return 0, fmt.Errorf("count %s: %w", c.kind, err)
+		}
+		total += n
+	}
+	return total, nil
 }
 
 func (s *ProjectService) apiToModel(project *api.Project) *model.Project {

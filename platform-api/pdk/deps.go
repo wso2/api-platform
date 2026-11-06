@@ -99,6 +99,11 @@ type Projects interface {
 
 	// ListProjects returns one page of an organization's projects, newest first, with the total (Read).
 	ListProjects(organizationID string, limit, offset int) ([]api.Project, int, error)
+
+	// CountArtifactsByProject returns the number of artifacts in a project: its REST
+	// and GraphQL APIs and its LLM, MCP and Agent proxies (Read). Plugin-owned
+	// artifacts are not counted.
+	CountArtifactsByProject(handle, orgID string) (int, error)
 }
 
 // APIs exposes read-only lookups over the platform's REST APIs, scoped by
