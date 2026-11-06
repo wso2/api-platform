@@ -842,6 +842,20 @@ func (m mappingIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, 
 	return result, nil
 }
 
+func (m mappingIdentityRepo) GetOrCreateUUIDWithDisplayName(identity, _ string) (string, error) {
+	return identity, nil
+}
+
+func (m mappingIdentityRepo) GetIdentitiesByUUIDs(uuids []string) (map[string]repository.UserIdentity, error) {
+	result := make(map[string]repository.UserIdentity, len(uuids))
+	for _, id := range uuids {
+		if sub, ok := m.subs[id]; ok {
+			result[id] = repository.UserIdentity{IdpID: sub}
+		}
+	}
+	return result, nil
+}
+
 // TestCustomPolicyResponses_ResolveIdentity verifies that sync, get, and list
 // responses expose the external identity behind created_by/updated_by rather
 // than the internal platform UUID stored in the column, and fall back to the

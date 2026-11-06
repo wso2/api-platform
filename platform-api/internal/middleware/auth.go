@@ -40,6 +40,7 @@ const (
 	keyUserID        contextKey = "user_id"
 	keyUsername      contextKey = "username"
 	keyEmail         contextKey = "email"
+	keyDisplayName  contextKey = "display_name"
 	keyFirstName     contextKey = "first_name"
 	keyLastName      contextKey = "last_name"
 	keyOrganization  contextKey = "organization"
@@ -94,6 +95,9 @@ type ClaimMappings struct {
 	UserIDClaim       string
 	UsernameClaim     string
 	EmailClaim        string
+	// DisplayNameClaim names the claim carrying the user's human-readable name,
+	// stored for display only. Absent or empty in a token is not an error.
+	DisplayNameClaim string
 	ScopeClaim        string
 	RolesClaimPath    string
 	RoleScopeMap      map[string][]string
@@ -252,6 +256,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, config.ClaimMappings.UserIDClaim))
 	ctx = context.WithValue(ctx, keyUsername, claimsObj.Username)
 	ctx = context.WithValue(ctx, keyEmail, claimsObj.Email)
+	ctx = context.WithValue(ctx, keyDisplayName, getStringClaim(mapClaims, config.ClaimMappings.DisplayNameClaim))
 	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
 	ctx = context.WithValue(ctx, keyLastName, getStringClaim(mapClaims, "lastName"))
 	ctx = context.WithValue(ctx, keyOrganization, org)
@@ -350,6 +355,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			ctx = context.WithValue(ctx, keyUserID, userID)
 			ctx = context.WithValue(ctx, keyUsername, username)
 			ctx = context.WithValue(ctx, keyEmail, email)
+			ctx = context.WithValue(ctx, keyDisplayName, getStringClaim(mapClaims, claimNames.DisplayNameClaim))
 			ctx = context.WithValue(ctx, keyFirstName, firstName)
 			ctx = context.WithValue(ctx, keyLastName, lastName)
 			ctx = context.WithValue(ctx, keyOrganization, org)
@@ -572,6 +578,12 @@ func GetUsernameFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyUsername)
 }
 
+// GetDisplayNameFromRequest extracts the user's display name, read from the
+// configured display-name claim. ok is false when the token did not carry it.
+func GetDisplayNameFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyDisplayName)
+}
+
 // GetEmailFromRequest extracts the email from the request context.
 func GetEmailFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyEmail)
@@ -686,6 +698,11 @@ func WithOrgHandle(r *http.Request, orgHandle string) *http.Request {
 // WithUserID is a helper for tests to inject a user ID into the request context.
 func WithUserID(r *http.Request, id string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyUserID, id))
+}
+
+// WithDisplayName is a helper for tests to inject the display-name claim into the request context.
+func WithDisplayName(r *http.Request, name string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyDisplayName, name))
 }
 
 // WithScope is a helper for tests to inject a space-separated scope claim into

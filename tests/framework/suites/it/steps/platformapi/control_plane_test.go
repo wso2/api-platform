@@ -27,9 +27,11 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -47,6 +49,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
@@ -1774,7 +1777,7 @@ func TestSignedInControlPlaneRequests(t *testing.T) {
 	t.Run("a plain call signs in as admin and uses the versioned API", func(t *testing.T) {
 		s, _, requests := fakeControlPlane(t, handler)
 		ctx, _ := trackingContext(t)
-		require.NoError(t, s.sendControlPlaneStep(ctx, "get", "/service-accounts", "", "", "", nil))
+		require.NoError(t, s.sendControlPlaneStep(ctx, "get", "/service-accounts", "", "", "", "", nil))
 
 		got := requests()
 		require.Len(t, got, 1)
@@ -1786,11 +1789,33 @@ func TestSignedInControlPlaneRequests(t *testing.T) {
 	t.Run("an Authorization override replaces the sign-in", func(t *testing.T) {
 		s, _, requests := fakeControlPlane(t, handler)
 		ctx, _ := trackingContext(t)
-		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/projects", "", "Authorization", "Bearer sa-token", nil))
+		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/projects", "", "", "Authorization", "Bearer sa-token", nil))
 
 		got := requests()
 		require.Len(t, got, 1)
 		require.Equal(t, []string{"Bearer sa-token"}, got[0].header.Values("Authorization"))
+	})
+
+	t.Run("a stored token replaces the sign-in", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, tcontext.Set(ctx, "userToken", "minted-token"))
+		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "", "userToken", "", "", nil))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, []string{"Bearer minted-token"}, got[0].header.Values("Authorization"))
+	})
+
+	t.Run("a token and an actor together, or a missing token, are rejected", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, tcontext.Set(ctx, "userToken", "minted-token"))
+		require.ErrorContains(t,
+			s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "publisher", "userToken", "", "", nil), "give one")
+		require.ErrorContains(t,
+			s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "", "missing", "", "", nil), "unavailable")
+		require.Empty(t, requests())
 	})
 
 	t.Run("create sends the rendered template as JSON", func(t *testing.T) {
@@ -1840,4 +1865,87 @@ func TestSignedInControlPlaneRequests(t *testing.T) {
 		require.Equal(t, apiBase+"/service-accounts", got[0].path)
 		require.Empty(t, got[0].header.Get("Authorization"))
 	})
+}
+
+// loginToken signs claims as the control plane's file-mode login would.
+func loginToken(t *testing.T, claims jwt.MapClaims) string {
+	t.Helper()
+	block, _ := pem.Decode(shared.ControlPlaneCrypto()[controlPlaneSigningKeyFile])
+	require.NotNil(t, block)
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+	require.NoError(t, err)
+	return signed
+}
+
+// verifiedClaims verifies token against the control plane's public key, as platform-api does.
+func verifiedClaims(t *testing.T, token string) jwt.MapClaims {
+	t.Helper()
+	block, _ := pem.Decode(shared.ControlPlaneCrypto()["keys/jwt_public.pem"])
+	require.NotNil(t, block)
+	public, err := x509.ParsePKIXPublicKey(block.Bytes)
+	require.NoError(t, err)
+	claims := jwt.MapClaims{}
+	_, err = jwt.ParseWithClaims(token, claims, func(*jwt.Token) (any, error) { return public, nil },
+		jwt.WithValidMethods([]string{"RS256"}))
+	require.NoError(t, err)
+	return claims
+}
+
+func TestSignUserTokenReplacesTheActorIdentity(t *testing.T) {
+	expiry := time.Now().Add(time.Hour).Unix()
+	login := loginToken(t, jwt.MapClaims{
+		"sub": "publisher", "username": "publisher", "iss": "platform-api", "exp": expiry,
+		"organization": "org-uuid", "org_handle": "default", "scope": "ap:rest_api:manage", "roles": []string{"ap_publisher"},
+	})
+	key := shared.ControlPlaneCrypto()[controlPlaneSigningKeyFile]
+	const sub = "8b5c3f0e-2c1d-4f6a-9e7b-0a1b2c3d4e5f"
+
+	t.Run("with a name", func(t *testing.T) {
+		token, err := signUserToken(login, map[string]any{"sub": sub, "name": "Ada Lovelace"}, key)
+		require.NoError(t, err)
+		claims := verifiedClaims(t, token)
+		require.Equal(t, sub, claims["sub"])
+		require.Equal(t, "Ada Lovelace", claims["name"])
+		require.NotContains(t, claims, "username", "the actor's username never reaches the minted token")
+		require.Equal(t, "platform-api", claims["iss"])
+		require.Equal(t, "org-uuid", claims["organization"])
+		require.Equal(t, "ap:rest_api:manage", claims["scope"])
+		require.Equal(t, []any{"ap_publisher"}, claims["roles"])
+		require.EqualValues(t, expiry, claims["exp"])
+	})
+
+	t.Run("without a name", func(t *testing.T) {
+		named := loginToken(t, jwt.MapClaims{"sub": "publisher", "name": "Publisher", "iss": "platform-api", "exp": expiry})
+		token, err := signUserToken(named, map[string]any{"sub": sub}, key)
+		require.NoError(t, err)
+		claims := verifiedClaims(t, token)
+		require.Equal(t, sub, claims["sub"])
+		require.NotContains(t, claims, "name", "a name the table omits is absent, not inherited")
+	})
+
+	t.Run("malformed input", func(t *testing.T) {
+		_, err := signUserToken("not-a-jwt", map[string]any{"sub": sub}, key)
+		require.ErrorContains(t, err, "decoding the control-plane login token")
+		_, err = signUserToken(login, map[string]any{"sub": sub}, []byte("not pem"))
+		require.ErrorContains(t, err, "not PEM")
+		_, err = signUserToken(login, map[string]any{"sub": sub}, shared.ControlPlaneCrypto()["keys/jwt_public.pem"])
+		require.ErrorContains(t, err, "parsing the control-plane signing key")
+	})
+}
+
+func TestMintUserTokenValidatesItsInput(t *testing.T) {
+	s, _, requests := fakeControlPlane(t, func(http.ResponseWriter, *http.Request) {})
+	ctx, _ := trackingContext(t)
+	claims := valuesTable([]string{"sub", "8b5c3f0e-2c1d-4f6a-9e7b-0a1b2c3d4e5f"})
+
+	require.ErrorContains(t, s.mintUserToken(ctx, " ", "publisher", claims), "stored as")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "publisher", valuesTable([]string{"name", "Ada"})), "sub")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "nobody", claims), "unknown control-plane actor")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "publisher", claims), "decoding the control-plane login token",
+		"the fake login's opaque token is not a JWT")
+	_, err := tcontext.ResolveString(ctx, "token")
+	require.Error(t, err, "nothing is stored when minting fails")
+	require.Empty(t, requests())
 }

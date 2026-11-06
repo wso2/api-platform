@@ -51,7 +51,6 @@ const { spawnSync } = require('node:child_process');
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const SERVICE_MODULE = path.join(__dirname, 'oauth2KeyService.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = 'org-uuid-1';
 const OWNER = 'dev-1';
@@ -182,6 +181,51 @@ const as = (user, extra) => Object.assign(
         params: { keyId }, body: { applicationId: ${JSON.stringify(APP_HANDLE)} },
     }));
     out.listAfterAssociate = await call(svc.listOAuth2Keys, as(${JSON.stringify(OWNER)}));
+
+    // --- one key per key type per application ------------------------------
+    // ck-primary (PRODUCTION) is on my-app from the step above. A second
+    // production key must be refused; a sandbox key must not be, because the
+    // rule is per key type and not per application.
+    const sandboxKeyId = out.createdSandbox.body && out.createdSandbox.body.keyId;
+
+    out.secondProd = await call(svc.createOAuth2Key, as(${JSON.stringify(OWNER)}, {
+        body: { keyManagerId: 'offline-km', properties: { client_name: 'second prod', consumerKey: 'ck-prod-2' } },
+    }));
+    out.associateSecondProd = await call(svc.associateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
+        params: { keyId: out.secondProd.body.keyId }, body: { applicationId: ${JSON.stringify(APP_HANDLE)} },
+    }));
+
+    out.associateSandbox = await call(svc.associateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
+        params: { keyId: sandboxKeyId }, body: { applicationId: ${JSON.stringify(APP_HANDLE)} },
+    }));
+
+    // Re-associating a key to the application it is already on is the same row
+    // written again, not a conflict with itself.
+    out.reassociateSame = await call(svc.associateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
+        params: { keyId }, body: { applicationId: ${JSON.stringify(APP_HANDLE)} },
+    }));
+
+    out.secondSandbox = await call(svc.createOAuth2Key, as(${JSON.stringify(OWNER)}, {
+        body: { keyManagerId: 'sandbox-km', properties: { client_name: 'second sandbox', consumerKey: 'ck-sand-2' } },
+    }));
+    out.associateSecondSandbox = await call(svc.associateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
+        params: { keyId: out.secondSandbox.body.keyId }, body: { applicationId: ${JSON.stringify(APP_HANDLE)} },
+    }));
+
+    // The slot is a slot, not a permanent claim: freeing it lets the next key in.
+    out.appKeysWhenFull = await call(svc.listApplicationOAuth2Keys, as(${JSON.stringify(OWNER)}, {
+        params: { applicationId: ${JSON.stringify(APP_HANDLE)} },
+    }));
+    out.dissociateSandbox = await call(svc.dissociateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
+        params: { keyId: sandboxKeyId },
+    }));
+    out.associateSecondSandboxAfterFree = await call(svc.associateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
+        params: { keyId: out.secondSandbox.body.keyId }, body: { applicationId: ${JSON.stringify(APP_HANDLE)} },
+    }));
+    out.dissociateSecondSandbox = await call(svc.dissociateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
+        params: { keyId: out.secondSandbox.body.keyId },
+    }));
+
     out.dissociate = await call(svc.dissociateOAuth2KeyApplication, as(${JSON.stringify(OWNER)}, {
         params: { keyId },
     }));
@@ -208,7 +252,7 @@ function results() {
     const seed = path.join(dir, 'seed.js');
     fs.writeFileSync(seed, `
         const fs = require('fs');
-        const Database = require(${JSON.stringify(SQLITE)});
+        const Database = require('node:sqlite').DatabaseSync;
         const db = new Database(${JSON.stringify(dbFile)});
         db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
         db.prepare(\`INSERT INTO organizations
@@ -369,6 +413,54 @@ test('an associated key reports its application in the listing', () => {
     const row = results().listAfterAssociate.body.list.find((k) => k.consumerKey === 'ck-primary');
     assert.ok(row, 'the key is still listed');
     assert.match(JSON.stringify(row), /My App/, 'the listing carries the association');
+});
+
+test('a second production key is refused with 409, naming neither key', () => {
+    assert.equal(results().secondProd.status, 201, 'the second production key is created fine');
+    const r = results().associateSecondProd;
+    assert.equal(r.status, 409);
+    // The message says what to do about it, not merely that it failed. It does
+    // not name the incumbent key: the caller does not need its consumer key to
+    // act, and an error body is not a place to hand out credentials.
+    assert.match(r.body.message, /already associated with this application/);
+    assert.ok(!JSON.stringify(r.body).includes('ck-primary'), 'the incumbent key is not disclosed');
+});
+
+test('a sandbox key still fits alongside the production key', () => {
+    // The rule is one key per key type, not one key per application — an
+    // application with a production key must still be able to take a sandbox one.
+    assert.equal(results().associateSandbox.status, 200);
+});
+
+test('re-associating a key to the application it is already on is not a conflict', () => {
+    // The key would otherwise conflict with itself: it is a production key, and
+    // the application already has a production key, which is this one.
+    assert.equal(results().reassociateSame.status, 200);
+});
+
+test('a second sandbox key is refused too, so the rule is not production-only', () => {
+    // The message carries no key type, so what distinguishes this from the
+    // production case is the pair of outcomes either side of it: the FIRST
+    // sandbox key was accepted onto the same application a moment ago.
+    assert.equal(results().secondSandbox.status, 201);
+    assert.equal(results().associateSandbox.status, 200);
+    const r = results().associateSecondSandbox;
+    assert.equal(r.status, 409);
+    assert.match(r.body.message, /already associated with this application/);
+});
+
+test('a full application lists exactly one key of each type', () => {
+    const r = results().appKeysWhenFull;
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.body.list.map((k) => k.keyType).sort(), ['PRODUCTION', 'SANDBOX']);
+    assert.deepEqual(r.body.list.map((k) => k.consumerKey).sort(), ['ck-primary', 'ck-sandbox']);
+});
+
+test('freeing a key type lets the next key of that type in', () => {
+    // Otherwise the first key to claim a slot would hold it for good, and a
+    // developer rotating a key could never attach the replacement.
+    assert.ok([200, 204].includes(results().dissociateSandbox.status));
+    assert.equal(results().associateSecondSandboxAfterFree.status, 200);
 });
 
 test('dissociateOAuth2KeyApplication detaches it again', () => {

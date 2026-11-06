@@ -16,8 +16,7 @@
  * under the License.
  */
 
-// Package bedrock provides a deterministic AWS Bedrock ApplyGuardrail-compatible service.
-package bedrock
+package aws
 
 import (
 	"encoding/json"
@@ -28,23 +27,25 @@ import (
 	"strings"
 )
 
-// Port is the container port used by the testbench.
-const Port = 3006
+// BedrockPort is the Bedrock service's container port. The gateway runtime reaches it through
+// AWS_ENDPOINT_URL_BEDROCK_RUNTIME, as http://testbench:3006.
+const BedrockPort = 3006
 
-// Service implements the Bedrock testbench service.
-type Service struct{}
+// Bedrock is a deterministic AWS Bedrock ApplyGuardrail-compatible service, for the AWS Bedrock
+// Guardrail policy. It listens on its own port, BedrockPort, beside the AWS service on Port.
+type Bedrock struct{}
 
-// New returns a new Bedrock service.
-func New() *Service { return &Service{} }
+// NewBedrock returns a new Bedrock service.
+func NewBedrock() *Bedrock { return &Bedrock{} }
 
 // Name returns the service registration name.
-func (s *Service) Name() string { return "bedrock" }
+func (s *Bedrock) Name() string { return "bedrock" }
 
 // Port returns the service's listening port.
-func (s *Service) Port() int { return Port }
+func (s *Bedrock) Port() int { return BedrockPort }
 
 // Stateful reports whether the service keeps request-specific state.
-func (s *Service) Stateful() bool { return false }
+func (s *Bedrock) Stateful() bool { return false }
 
 // applyGuardrailRequest is the subset of the ApplyGuardrail request the decisions read.
 type applyGuardrailRequest struct {
@@ -94,7 +95,7 @@ var (
 )
 
 // Handler returns the ApplyGuardrail endpoint.
-func (s *Service) Handler() http.Handler {
+func (s *Bedrock) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +113,7 @@ func (s *Service) Handler() http.Handler {
 	return mux
 }
 
-func (s *Service) health(w http.ResponseWriter, r *http.Request) {
+func (s *Bedrock) health(w http.ResponseWriter, r *http.Request) {
 	if strings.ToUpper(r.Method) != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -126,7 +127,7 @@ func (s *Service) health(w http.ResponseWriter, r *http.Request) {
 }
 
 // apply returns a deterministic guardrail decision for the supplied text.
-func (s *Service) apply(w http.ResponseWriter, r *http.Request) {
+func (s *Bedrock) apply(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	body, err := io.ReadAll(r.Body)

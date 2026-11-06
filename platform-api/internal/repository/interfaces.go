@@ -644,6 +644,14 @@ type UserIdentityMappingRepository interface {
 	// a single query (avoids N+1 on list endpoints). UUIDs with no mapping are
 	// absent from the returned map.
 	GetSubsByUUIDs(uuids []string) (map[string]string, error)
+	// GetOrCreateUUIDWithDisplayName is GetOrCreateUUID that also stores the
+	// user's display name, or refreshes it when a non-empty value differs from
+	// the stored one. An empty displayName leaves the row as it is. A failure to
+	// save the name alone returns the valid UUID with ErrDisplayNameNotSaved.
+	GetOrCreateUUIDWithDisplayName(identity, displayName string) (string, error)
+	// GetIdentitiesByUUIDs batch-resolves multiple UUIDs to their idp_id and
+	// display name in a single query. UUIDs with no mapping are absent.
+	GetIdentitiesByUUIDs(uuids []string) (map[string]UserIdentity, error)
 }
 
 // UserOrganizationMappingRepository defines the interface for user<->organization
