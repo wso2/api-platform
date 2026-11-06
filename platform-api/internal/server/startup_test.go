@@ -842,3 +842,25 @@ func TestRedactDatabaseCause(t *testing.T) {
 		}
 	}
 }
+
+// A config built in code without health settings (platform.WithConfig) starts with the
+// health defaults instead of a database check that has no time to answer and a startup
+// wait of zero; out-of-range values are still rejected.
+func TestValidateServerConfigAppliesHealthDefaults(t *testing.T) {
+	cfg := &config.Server{}
+	if err := validateServerConfig(cfg); err != nil {
+		t.Fatalf("validateServerConfig() = %v, want nil", err)
+	}
+	if got := cfg.Health.Database.CheckTimeout; got != 2*time.Second {
+		t.Errorf("check_timeout = %s, want the 2s default", got)
+	}
+	if got := cfg.Health.Database.StartupWait; got != 5*time.Minute {
+		t.Errorf("startup_wait = %s, want the 5m default", got)
+	}
+
+	cfg = &config.Server{}
+	cfg.Health.Database.FailureWindow = 8760 * time.Hour
+	if err := validateServerConfig(cfg); err == nil || !strings.Contains(err.Error(), "failure_window") {
+		t.Fatalf("validateServerConfig() = %v, want a failure_window error", err)
+	}
+}

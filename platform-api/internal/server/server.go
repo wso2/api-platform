@@ -77,13 +77,18 @@ type Server struct {
 }
 
 // validateServerConfig enforces request-security requirements at startup that
-// are not covered by config-load validation. All checks are unconditional:
-// there is no relaxed/demo mode.
+// are not covered by config-load validation, and gives unset health settings their
+// defaults before validating them. All checks are unconditional: there is no
+// relaxed/demo mode.
 func validateServerConfig(cfg *config.Server) error {
 	if slices.Contains(cfg.Listeners.CORS.AllowedOrigins, "*") {
 		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
-	return nil
+	// A config built in code (platform.WithConfig) skips the loader, so its health
+	// settings may be unset; they take their defaults rather than leaving the database
+	// check with no time to answer.
+	config.ApplyHealthDefaults(&cfg.Health)
+	return config.ValidateHealth(&cfg.Health)
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies

@@ -19,9 +19,9 @@ allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # does not exist or an untrusted server certificate ends startup at once instead of waiting.
 # SQL Server reports a missing database the same way as one still recovering, so startup waits.
 [platform_api.health.database]
-# check_timeout   = '{{ env "APIP_CP_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for one run of the check and its ping
+# check_timeout   = '{{ env "APIP_CP_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for one run of the check and its ping; keep below the probe timeout
 # startup_wait    = '{{ env "APIP_CP_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting
-# failure_window  = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # how far back operation outcomes are counted
+# failure_window  = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # how far back operation outcomes are counted (at most 1h)
 # failure_ratio   = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that reports the database down
 # min_attempts    = '{{ env "APIP_CP_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
 # idle_period     = '{{ env "APIP_CP_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # with too few operations to decide, the check pings once per period

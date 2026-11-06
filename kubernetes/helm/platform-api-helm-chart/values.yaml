@@ -90,11 +90,11 @@ config:
     # outcomes of the server's own database operations, and pings the database only
     # while those are idle.
     database:
-      checkTimeout: 2s           # deadline for one run of the check, and so for its ping
+      checkTimeout: 2s           # deadline for one run of the check, and so for its ping; keep below the probes' timeoutSeconds
       # How long startup waits for the database before the server exits. Keep it below
       # the deployment.startupProbe allowance (6 minutes by default).
       startupWait: 5m
-      failureWindow: 30s         # how far back operation outcomes are counted
+      failureWindow: 30s         # how far back operation outcomes are counted (at most 1h)
       failureRatio: 0.5          # share of failed operations at or above which the database is down
       minAttempts: 5             # operations the window must hold before the ratio decides
       idlePeriod: 10s            # with too few operations to decide, the check pings once per period

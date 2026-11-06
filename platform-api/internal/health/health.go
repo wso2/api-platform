@@ -201,10 +201,12 @@ func (c *Checker) Evaluate() Result {
 	outcomes := c.run(checks)
 
 	c.mu.Lock()
-	ev.result = c.buildResult(started, checks, outcomes)
 	// An evaluation that Invalidate overtook may have run its checks before the change
-	// Invalidate announced, so its result answers only the callers already waiting on it.
-	if c.inflight == ev {
+	// Invalidate announced, so its result answers only the callers already waiting on it,
+	// and it leaves the failure history to the evaluations that replaced it.
+	current := c.inflight == ev
+	ev.result = c.buildResult(started, checks, outcomes, current)
+	if current {
 		c.cached = ev
 		c.cachedAt = c.now()
 		if c.logger != nil {
@@ -281,9 +283,10 @@ func runCheck(chk namedCheck) error {
 	}
 }
 
-// buildResult turns raw check errors into a Result and maintains each check's failure
-// start time. The caller must hold c.mu.
-func (c *Checker) buildResult(started time.Time, checks []namedCheck, errs map[string]error) Result {
+// buildResult turns raw check errors into a Result. When record is set, it also
+// maintains each check's failure start time; otherwise it only reads it. The caller must
+// hold c.mu.
+func (c *Checker) buildResult(started time.Time, checks []namedCheck, errs map[string]error, record bool) Result {
 	timeouts := make(map[string]time.Duration, len(checks))
 	for _, chk := range checks {
 		timeouts[chk.name] = chk.timeout
@@ -296,14 +299,18 @@ func (c *Checker) buildResult(started time.Time, checks []namedCheck, errs map[s
 	}
 	for name, err := range errs {
 		if err == nil {
-			delete(c.since, name)
+			if record {
+				delete(c.since, name)
+			}
 			res.Checks[name] = CheckResult{Status: StatusUp, unlogged: c.unlogged[name]}
 			continue
 		}
 		since, failing := c.since[name]
 		if !failing {
 			since = started
-			c.since[name] = since
+			if record {
+				c.since[name] = since
+			}
 		}
 		res.Healthy = false
 		res.Checks[name] = CheckResult{

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	"os"
 	"reflect"
 	"slices"
@@ -557,7 +558,7 @@ type ClaimMappings struct {
 	// DisplayName is the claim holding the user's human-readable name, returned
 	// as createdBy/updatedBy in responses. Read only; never required.
 	DisplayName string `koanf:"display_name"`
-	Roles        string `koanf:"roles"`
+	Roles       string `koanf:"roles"`
 }
 
 // IDP holds configuration for JWKS-based identity providers. Active when
@@ -1014,6 +1015,7 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateHealthConfig(&cfg.Health); err != nil {
 		return nil, err
 	}
+	warnHealthConfig(&cfg.Health)
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
 	}
@@ -1408,9 +1410,52 @@ func validateLoggingConfig(level, format string) error {
 	return nil
 }
 
-// healthProbeTimeout is the default timeout a gateway probe applies to a health
-// request; a check timeout at or above it lets the probe give up first.
-const healthProbeTimeout = 5 * time.Second
+// healthProbeTimeout is the timeout of the Helm chart's readiness and startup probes;
+// a check timeout at or above it lets the probe give up before the check answers.
+const healthProbeTimeout = 3 * time.Second
+
+// maxFailureWindow bounds failure_window. The window keeps one bucket per second, so a
+// very long window would allocate a large amount of memory at startup.
+const maxFailureWindow = time.Hour
+
+// ApplyHealthDefaults fills every unset (zero) health setting with its default. The
+// config loader applies defaults on its own; this is for a config built in code, such as
+// one passed to the platform package's WithConfig, which may predate the health
+// settings. Zero is never a valid value for these settings, so no explicit choice is
+// overwritten.
+func ApplyHealthDefaults(cfg *Health) {
+	def := defaultConfig().Health
+	if cfg.CacheTTL == 0 {
+		cfg.CacheTTL = def.CacheTTL
+	}
+	db, defDB := &cfg.Database, def.Database
+	for _, f := range []struct{ value, def *time.Duration }{
+		{&db.CheckTimeout, &defDB.CheckTimeout},
+		{&db.StartupWait, &defDB.StartupWait},
+		{&db.FailureWindow, &defDB.FailureWindow},
+		{&db.IdlePeriod, &defDB.IdlePeriod},
+		{&db.PoolWaitLimit, &defDB.PoolWaitLimit},
+	} {
+		if *f.value == 0 {
+			*f.value = *f.def
+		}
+	}
+	if db.FailureRatio == 0 {
+		db.FailureRatio = defDB.FailureRatio
+	}
+	if db.PoolSaturation == 0 {
+		db.PoolSaturation = defDB.PoolSaturation
+	}
+	if db.MinAttempts == 0 {
+		db.MinAttempts = defDB.MinAttempts
+	}
+}
+
+// ValidateHealth rejects out-of-range health settings and an invalid allowed-clients
+// list, the same way the config loader does.
+func ValidateHealth(cfg *Health) error {
+	return validateHealthConfig(cfg)
+}
 
 // validateHealthConfig rejects out-of-range health settings and an invalid
 // allowed-clients list at startup. Every message names the full key.
@@ -1440,12 +1485,15 @@ func validateHealthConfig(cfg *Health) error {
 		{dbPrefix + "failure_ratio", db.FailureRatio},
 		{dbPrefix + "pool_saturation", db.PoolSaturation},
 	} {
-		if f.value <= 0 || f.value > 1 {
+		if math.IsNaN(f.value) || f.value <= 0 || f.value > 1 {
 			return fmt.Errorf("%s must be > 0 and <= 1 (got %g)", f.key, f.value)
 		}
 	}
 	if db.MinAttempts < 1 {
 		return fmt.Errorf("%smin_attempts must be >= 1 (got %d)", dbPrefix, db.MinAttempts)
+	}
+	if db.FailureWindow > maxFailureWindow {
+		return fmt.Errorf("%sfailure_window must be <= %s (got %s)", dbPrefix, maxFailureWindow, db.FailureWindow)
 	}
 	if db.FailureWindow < cfg.CacheTTL {
 		return fmt.Errorf("%sfailure_window must be >= %scache_ttl (got %s < %s)",
@@ -1458,12 +1506,17 @@ func validateHealthConfig(cfg *Health) error {
 	if _, err := health.ParseAllowedClients("platform_api.health", cfg.AllowedClients); err != nil {
 		return err
 	}
-	if db.CheckTimeout >= healthProbeTimeout {
-		slog.Warn("database health check timeout is at or above the default probe timeout, so probes may give up before the check completes",
-			slog.Duration("check_timeout", db.CheckTimeout),
+	return nil
+}
+
+// warnHealthConfig warns about health settings that are valid but likely to misbehave
+// with the shipped deployment defaults.
+func warnHealthConfig(cfg *Health) {
+	if cfg.Database.CheckTimeout >= healthProbeTimeout {
+		slog.Warn("database health check timeout is at or above the Helm chart's readiness and startup probe timeout, so those probes may give up before the check completes; raise the probes' timeoutSeconds above it",
+			slog.Duration("check_timeout", cfg.Database.CheckTimeout),
 			slog.Duration("probe_timeout", healthProbeTimeout))
 	}
-	return nil
 }
 
 // validateDatabaseConfig fails closed when the selected driver's required

@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -998,6 +999,10 @@ func TestValidateHealthConfig(t *testing.T) {
 		{"failure_ratio above one", func(h *Health) { h.Database.FailureRatio = 1.5 },
 			"platform_api.health.database.failure_ratio must be > 0 and <= 1 (got 1.5)"},
 		{"failure_ratio of one is accepted", func(h *Health) { h.Database.FailureRatio = 1 }, ""},
+		{"failure_ratio NaN", func(h *Health) { h.Database.FailureRatio = math.NaN() },
+			"platform_api.health.database.failure_ratio must be > 0 and <= 1 (got NaN)"},
+		{"pool_saturation NaN", func(h *Health) { h.Database.PoolSaturation = math.NaN() },
+			"platform_api.health.database.pool_saturation must be > 0 and <= 1 (got NaN)"},
 		{"pool_saturation negative", func(h *Health) { h.Database.PoolSaturation = -0.1 },
 			"platform_api.health.database.pool_saturation must be > 0 and <= 1 (got -0.1)"},
 		{"pool_saturation above one", func(h *Health) { h.Database.PoolSaturation = 2 },
@@ -1011,6 +1016,9 @@ func TestValidateHealthConfig(t *testing.T) {
 			h.Database.FailureWindow = 3 * time.Second
 			h.Database.IdlePeriod = 3 * time.Second
 		}, ""},
+		{"failure_window of an hour is accepted", func(h *Health) { h.Database.FailureWindow = time.Hour }, ""},
+		{"failure_window longer than an hour", func(h *Health) { h.Database.FailureWindow = 8760 * time.Hour },
+			"platform_api.health.database.failure_window must be <= 1h0m0s (got 8760h0m0s)"},
 		{"idle_period longer than failure_window", func(h *Health) { h.Database.IdlePeriod = time.Minute },
 			"platform_api.health.database.idle_period must be <= platform_api.health.database.failure_window (got 1m0s > 30s)"},
 		{"check_timeout at the probe timeout is accepted", func(h *Health) { h.Database.CheckTimeout = 5 * time.Second }, ""},
@@ -1042,22 +1050,55 @@ func TestValidateHealthConfig(t *testing.T) {
 	}
 }
 
-// A database check timeout at or above the probe timeout starts, with a warning.
+// A database check timeout at or above the Helm probes' 3s timeout starts, with a
+// warning; one below it starts quietly.
 func TestLoadConfig_Health_LongCheckTimeoutWarns(t *testing.T) {
-	var loadErr error
-	logged := captureStdout(t, func() {
-		_, loadErr = loadWithKeys(t, `
+	for _, tt := range []struct {
+		checkTimeout string
+		warns        bool
+	}{
+		{"2s", false},
+		{"3s", true},
+		{"4s", true},
+	} {
+		t.Run(tt.checkTimeout, func(t *testing.T) {
+			var loadErr error
+			logged := captureStdout(t, func() {
+				_, loadErr = loadWithKeys(t, `
 [platform_api.logging]
 format = "text"
 
 [platform_api.health.database]
-check_timeout = "5s"
+check_timeout = "`+tt.checkTimeout+`"
 `)
-	})
+			})
 
-	require.NoError(t, loadErr)
-	assert.Contains(t, logged, "level=WARN")
-	assert.Contains(t, logged, "check_timeout=5s")
+			require.NoError(t, loadErr)
+			if !tt.warns {
+				assert.NotContains(t, logged, "database health check timeout")
+				return
+			}
+			assert.Contains(t, logged, "level=WARN")
+			assert.Contains(t, logged, "check_timeout="+tt.checkTimeout)
+			assert.Contains(t, logged, "probe_timeout=3s")
+		})
+	}
+}
+
+// A config built in code without health settings gets every default, and explicit
+// settings are kept.
+func TestApplyHealthDefaults(t *testing.T) {
+	var h Health
+	ApplyHealthDefaults(&h)
+	assert.Equal(t, defaultConfig().Health, Health{CacheTTL: h.CacheTTL, AllowedClients: ClientList{}, Database: h.Database})
+	require.NoError(t, ValidateHealth(&h))
+
+	custom := Health{CacheTTL: 5 * time.Second, Database: HealthDatabase{CheckTimeout: time.Second, MinAttempts: 2}}
+	ApplyHealthDefaults(&custom)
+	assert.Equal(t, 5*time.Second, custom.CacheTTL)
+	assert.Equal(t, time.Second, custom.Database.CheckTimeout)
+	assert.Equal(t, 2, custom.Database.MinAttempts)
+	assert.Equal(t, defaultConfig().Health.Database.StartupWait, custom.Database.StartupWait)
 }
 
 // Settings that moved into the database sub-table fail startup and name where they went.

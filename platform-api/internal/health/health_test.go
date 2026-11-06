@@ -379,6 +379,39 @@ func TestInvalidateDuringEvaluationIsNotCached(t *testing.T) {
 	assert.Equal(t, int32(2), runs.Load())
 }
 
+// An evaluation that Invalidate overtook finishes last with an older, healthy result. It
+// must not erase the failure start a newer evaluation recorded, or the next failing
+// answer reports the outage as starting later than it did.
+func TestOvertakenEvaluationKeepsFailureStart(t *testing.T) {
+	c, clk := newTestChecker(testOptions())
+	var runs atomic.Int32
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	c.Register("database", func(context.Context) error {
+		if runs.Add(1) == 1 {
+			close(entered)
+			<-release
+			return nil
+		}
+		return Reason("database unreachable")
+	})
+
+	stale := make(chan Result, 1)
+	go func() { stale <- c.Evaluate() }()
+	<-entered
+	c.Invalidate()
+
+	failedAt := clk.Now()
+	assert.Equal(t, failedAt, c.Evaluate().Checks["database"].Since)
+
+	close(release)
+	assert.True(t, (<-stale).Healthy)
+
+	clk.Advance(10 * time.Second)
+	assert.Equal(t, failedAt, c.Evaluate().Checks["database"].Since,
+		"an overtaken evaluation must not reset the failure start")
+}
+
 func TestEvaluateKeepsFailureStartAcrossEvaluations(t *testing.T) {
 	c, clk := newTestChecker(testOptions())
 	var failing atomic.Bool
