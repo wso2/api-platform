@@ -59,10 +59,20 @@ func testService(at time.Time) *Service {
 
 // signRequest signs r as the AWS SDK for Go v2 signer does, with the given credential.
 func signRequest(r *http.Request, body []byte, accessKeyID string, c credential, service, region string, at time.Time) {
+	signRequestWithHeaders(r, body, accessKeyID, c, service, region, at)
+}
+
+// signRequestWithHeaders signs r as signRequest does, and also signs the named headers, which r
+// must already carry.
+func signRequestWithHeaders(r *http.Request, body []byte, accessKeyID string, c credential, service, region string,
+	at time.Time, extra ...string) {
 	amzDate := at.UTC().Format(amzDateLayout)
 	r.Header.Set(headerAmzDate, amzDate)
 	r.Header.Set(headerAmzContentSHA256, hashHex(body))
 	signed := []string{"host", "x-amz-content-sha256", "x-amz-date"}
+	for _, name := range extra {
+		signed = append(signed, strings.ToLower(name))
+	}
 	if c.sessionToken != "" {
 		r.Header.Set(headerAmzSecurityToken, c.sessionToken)
 		signed = append(signed, "x-amz-security-token")
@@ -794,7 +804,12 @@ func TestIssuedCredentialsAreDerivedFromTheirExpiry(t *testing.T) {
 	require.True(t, strings.HasPrefix(accessKeyID, issuedKeyPrefix))
 	require.Equal(t, testNow.Add(issuedCredentialLifetime), issued.expiresAt)
 	require.Len(t, issued.secretAccessKey, 40)
-	require.NotEmpty(t, issued.sessionToken)
+	require.Contains(t, issued.secretAccessKey, "SecretAccessKey000")
+	require.Contains(t, issued.sessionToken, "SessionToken0001")
+	other, otherCred := issueCredentials(testNow.Add(time.Second), issuedCredentialLifetime)
+	require.NotEqual(t, accessKeyID, other)
+	require.NotEqual(t, issued.secretAccessKey, otherCred.secretAccessKey)
+	require.NotEqual(t, issued.sessionToken, otherCred.sessionToken)
 
 	resolved, ok := lookupCredential(accessKeyID)
 	require.True(t, ok)
@@ -1008,6 +1023,29 @@ func TestSTSReleasesAnUnresponsiveRequestWhenTheCallerLeaves(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the unresponsive request was not released when its caller left")
 	}
+}
+
+// SigV4 requires every x-amz-* header to be signed: one added after signing is rejected, and the
+// same header signed is accepted.
+func TestUpstreamRequiresEveryAmzHeaderToBeSigned(t *testing.T) {
+	permanent := fixtureCredentials[permanentKey]
+
+	unsigned := signedUpstreamRequest(http.MethodPost, backendURL, "{}", permanentKey, permanent, testNow)
+	unsigned.Header.Set("X-Amz-Target", "OrdersService.CreateOrder")
+	recorder := serve(testService(testNow).Handler(), unsigned)
+	require.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
+	require.Equal(t, codeUnsignedHeaders, errorCode(t, recorder))
+	require.Contains(t, recorder.Body.String(), "x-amz-target")
+
+	signed := httptest.NewRequest(http.MethodPost, backendURL, strings.NewReader("{}"))
+	signed.Host = "testbench"
+	signed.Header.Set("Content-Type", "application/json")
+	signed.Header.Set("X-Amz-Target", "OrdersService.CreateOrder")
+	signRequestWithHeaders(signed, []byte("{}"), permanentKey, permanent, "execute-api", "us-east-1", testNow,
+		"X-Amz-Target")
+	recorder = serve(testService(testNow).Handler(), signed)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	require.Equal(t, permanentKey, recorder.Header().Get(HeaderAccessKeyID))
 }
 
 // The receipt grace accepts a request signed before its credentials expired and received just
