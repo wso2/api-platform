@@ -88,6 +88,7 @@ func (s *APIServer) CreateMCPProxy(w http.ResponseWriter, r *http.Request) {
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 
 	if err != nil {
@@ -257,6 +258,7 @@ func (s *APIServer) UpdateMCPProxy(w http.ResponseWriter, r *http.Request, id st
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	}, log)
 
 	if err != nil {
@@ -298,7 +300,7 @@ func (s *APIServer) DeleteMCPProxy(w http.ResponseWriter, r *http.Request, id st
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(r)
 
-	cfg, err := s.mcpDeploymentService.DeleteMCPProxy(handle, correlationID, log)
+	cfg, err := s.mcpDeploymentService.DeleteMCPProxy(handle, correlationID, actorFromRequest(r), log)
 	if err != nil {
 		log.Warn("Failed to delete MCP proxy configuration", slog.String("handle", handle), slog.Any("error", err))
 		// Check if it's a not found error

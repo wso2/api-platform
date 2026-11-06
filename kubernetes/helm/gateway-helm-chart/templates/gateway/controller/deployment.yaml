@@ -3,6 +3,29 @@
 {{- $serverTls := default (dict) .Values.gateway.config.controller.server.tls -}}
 {{- $restApiTls := $controller.restApiTls -}}
 {{- $mountRestApiCerts := and $serverTls.enabled (ne $restApiTls.certificateProvider "none") -}}
+{{- $audit := .Values.gateway.config.controller.audit | default dict -}}
+{{- $auditFileSelected := false -}}
+{{- if and (kindIs "bool" $audit.enabled) $audit.enabled -}}
+  {{- range ($audit.outputs | default list) -}}
+    {{- if eq (lower (trim .)) "file" -}}{{- $auditFileSelected = true -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $auditLogVolume := merge (dict) ($controller.auditLogVolume | default dict) (dict "mountPath" "/var/log/wso2" "sizeLimit" "512Mi") -}}
+{{- /* Resolved like gatewayRuntime.trafficLogVolume: hasKey, not merge, so an explicit false is kept. */ -}}
+{{- $alvEnabled := $auditFileSelected -}}
+{{- if hasKey $auditLogVolume "enabled" -}}
+  {{- $alvEnabled = $auditLogVolume.enabled -}}
+{{- end -}}
+{{- $auditLogVolume = set $auditLogVolume "enabled" $alvEnabled -}}
+{{- if and $auditLogVolume.enabled $auditFileSelected -}}
+  {{- $logPath := "" -}}
+  {{- if $audit.file -}}{{- $logPath = $audit.file.path | default "" -}}{{- end -}}
+  {{- $mount := printf "%s/" (trimSuffix "/" (clean $auditLogVolume.mountPath)) -}}
+  {{- /* clean collapses "../" so a path cannot match the prefix and resolve outside the mount. */ -}}
+  {{- if and $logPath (not (hasPrefix $mount (clean $logPath))) -}}
+    {{- fail (printf "gateway.config.controller.audit.file.path (%q) is not under gateway.controller.auditLogVolume.mountPath (%q), so it would not land on the audit log volume: the controller would fail to start, or write the log onto its database volume. Move the path under the mount, change the mountPath, or set auditLogVolume.enabled=false if you are mounting your own volume." $logPath $auditLogVolume.mountPath) -}}
+  {{- end -}}
+{{- end -}}
 {{- if $deployment.enabled }}
 {{- if and $serverTls.enabled (eq $restApiTls.certificateProvider "secret") (not $restApiTls.secret.name) }}
 {{- fail "gateway.controller.restApiTls.secret.name is required when gateway.config.controller.server.tls.enabled=true and restApiTls.certificateProvider=secret." }}
@@ -196,6 +219,10 @@ spec:
               mountPath: {{ $controller.encryptionKeys.mountPath }}
               readOnly: true
             {{- end }}
+            {{- if $auditLogVolume.enabled }}
+            - name: audit-log
+              mountPath: {{ $auditLogVolume.mountPath | quote }}
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -256,6 +283,17 @@ spec:
         - name: encryption-keys
           secret:
             secretName: {{ $controller.encryptionKeys.secretName }}
+        {{- end }}
+        {{- if $auditLogVolume.enabled }}
+        {{- /* Per pod, so each replica rotates its own file. Keep sizeLimit above 2 x audit.file.max_size_mb. */}}
+        - name: audit-log
+          emptyDir:
+            {{- if $auditLogVolume.sizeLimit }}
+            sizeLimit: {{ $auditLogVolume.sizeLimit }}
+            {{- end }}
+            {{- if $auditLogVolume.medium }}
+            medium: {{ $auditLogVolume.medium | quote }}
+            {{- end }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

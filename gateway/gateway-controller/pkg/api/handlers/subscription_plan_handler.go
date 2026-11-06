@@ -118,7 +118,7 @@ func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		plan.ExpiryTime = req.ExpiryTime
 	}
 
-	if err := s.getSubscriptionResourceService().SaveSubscriptionPlan(plan, correlationID, log); err != nil {
+	if err := s.getSubscriptionResourceService().SaveSubscriptionPlan(plan, correlationID, actorFromRequest(r), log); err != nil {
 		if storage.IsConflictError(err) {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan already exists"})
 			return
@@ -276,7 +276,7 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	if err := s.getSubscriptionResourceService().UpdateSubscriptionPlan(&updated, correlationID, log); err != nil {
+	if err := s.getSubscriptionResourceService().UpdateSubscriptionPlan(&updated, correlationID, actorFromRequest(r), log); err != nil {
 		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 			return
@@ -301,7 +301,7 @@ func (s *APIServer) DeleteSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, log); err != nil {
+	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, actorFromRequest(r), log); err != nil {
 		if storage.IsNotFoundError(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 			return

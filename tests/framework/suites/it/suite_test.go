@@ -146,7 +146,8 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 // default (no flag set) case now lives in gateway-core instead, which sweeps every engine. So
 // does the trust-any block and the observability block, whose subjects (and its merged
 // default-identity-on scenario) are the data plane's behaviour, not the store. The AI Workspace
-// CLI runner moved into platform-api-core and now sweeps every engine with it.
+// CLI runner moved into platform-api-core and now sweeps every engine with it. The masked audit
+// block runs one engine too, since masking changes only the audit output lines.
 var singleEngineBlocks = map[string]components.DBType{
 	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
@@ -157,6 +158,7 @@ var singleEngineBlocks = map[string]components.DBType{
 	"gateway-mtls-hostnames-all-connections-required": components.SQLite,
 	"gateway-mtls-trust-any":                          components.SQLite,
 	"gateway-mtls-observability-default-identity":     components.SQLite,
+	"gateway-audit-masked":                            components.SQLite,
 }
 
 const coverageSubject = "platform-gateway"

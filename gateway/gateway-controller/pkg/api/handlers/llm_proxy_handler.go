@@ -85,6 +85,7 @@ func (s *APIServer) CreateLLMProxy(w http.ResponseWriter, r *http.Request) {
 		CorrelationID: correlationID,
 		Logger:        log,
 		Origin:        models.OriginGatewayAPI,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		if mapRenderError(w, "create", err) {
@@ -194,6 +195,7 @@ func (s *APIServer) UpdateLLMProxy(w http.ResponseWriter, r *http.Request, id st
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		if mapRenderError(w, "update", err) {
@@ -242,7 +244,7 @@ func (s *APIServer) DeleteLLMProxy(w http.ResponseWriter, r *http.Request, id st
 	log := middleware.GetLogger(r, s.logger)
 	correlationID := middleware.GetCorrelationID(r)
 
-	cfg, err := s.llmDeploymentService.DeleteLLMProxy(id, correlationID, log)
+	cfg, err := s.llmDeploymentService.DeleteLLMProxy(id, correlationID, actorFromRequest(r), log)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			log.Warn("LLM proxy configuration not found for deletion", slog.String("handle", id))

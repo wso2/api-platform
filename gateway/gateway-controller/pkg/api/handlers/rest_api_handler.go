@@ -85,6 +85,7 @@ func (h *RestAPIHandler) CreateRestAPI(w http.ResponseWriter, r *http.Request) {
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to deploy API configuration", slog.Any("error", err))
@@ -184,6 +185,7 @@ func (h *RestAPIHandler) UpdateRestAPI(w http.ResponseWriter, r *http.Request, i
 		ContentType:   r.Header.Get("Content-Type"),
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		log.Error("Failed to update API configuration", slog.Any("error", err))
@@ -254,6 +256,7 @@ func (h *RestAPIHandler) DeleteRestAPI(w http.ResponseWriter, r *http.Request, i
 		Handle:        id,
 		CorrelationID: correlationID,
 		Logger:        log,
+		Actor:         actorFromRequest(r),
 	})
 	if err != nil {
 		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
