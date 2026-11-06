@@ -113,19 +113,22 @@ const deleteByKey = async (key, apiId, t) => {
 const upsertMany = async (files, apiId, orgId, updatedBy, t) => {
     const exec = t || db;
     const filesToCreate = [];
+    const uploadedImages = new Set(files.filter((file) => file.key).map((file) => file.fileName));
 
     for (const file of files) {
-        // A keyed file (e.g. a named image slot) is identified by its lookup_key, since its
-        // file_name can change between uploads. Unkeyed files (docs, specs) are
-        // identified by file_name as before.
-        const existing = file.key
-            ? await getByKey(file.key, apiId, t)
-            : await get(file.fileName, file.type, orgId, apiId, t);
+        // A file already stored under this name is updated and keeps its slot: the upload has no
+        // way to say otherwise, and a second row with the name would break the unique index.
+        // Otherwise a keyed file (e.g. a named image slot) takes over its slot, since its
+        // file_name can change between uploads, unless the upload also carries that slot's file.
+        const sameName = await get(file.fileName, file.type, orgId, apiId, t);
+        const slotRow = !sameName && file.key ? await getByKey(file.key, apiId, t) : null;
+        const slotKept = !!slotRow && uploadedImages.has(slotRow.file_name);
+        const existing = sameName ?? (slotKept ? null : slotRow);
 
         if (existing == null) {
             filesToCreate.push({
                 file_content: toBlobBuffer(file.content), file_name: file.fileName, api_uuid: apiId, type: file.type,
-                lookup_key: file.key ?? null, created_by: updatedBy, updated_by: updatedBy,
+                lookup_key: slotKept ? null : file.key ?? null, created_by: updatedBy, updated_by: updatedBy,
             });
         } else {
             const updatedAt = new Date();
@@ -134,7 +137,7 @@ const upsertMany = async (files, apiId, orgId, updatedBy, t) => {
                  SET file_content = ?, file_name = ?, lookup_key = ?, updated_by = ?, updated_at = ?
                  WHERE api_uuid = ? AND file_name = ? AND type = ? AND ${TENANT_SCOPE_EXISTS}`,
                 [
-                    toBlobBuffer(file.content), file.fileName, file.key ?? existing.lookup_key, updatedBy, updatedAt,
+                    toBlobBuffer(file.content), file.fileName, sameName ? existing.lookup_key : file.key, updatedBy, updatedAt,
                     apiId, existing.file_name, existing.type, orgId, getPortalId(),
                 ]
             );

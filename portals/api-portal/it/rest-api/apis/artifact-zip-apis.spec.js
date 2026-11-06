@@ -212,6 +212,22 @@ describe('APIs via artifact ZIP upload', () => {
             expect(rejected(await post(zip))).toEqual(['README.md: unknown top-level entry']);
         });
 
+        it('updates an image already stored in another slot and keeps that slot', async () => {
+            const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+            const content = createZip([{ name: 'web/pets.png', content: PNG }]);
+            const { handle } = await createApiFromZip();
+            const stored = await client.as('publisher').putMultipart(`/apis/${handle}/assets`)
+                .field('imageMetadata', JSON.stringify({ 'api-icon': 'pets.png' }))
+                .attach('content', content, 'content.zip');
+            expect(stored.status).toBeLessThan(300);
+
+            const { zip } = buildZip({ handle, extra: [{ name: 'web/pets.png', content: PNG }] });
+            const res = await client.as('publisher').putMultipart(`/apis/${handle}`).attach('artifact', zip, 'artifact.zip');
+            expect(res.status).toBe(200);
+            const image = await client.as('publisher').get(`/apis/${handle}/assets?type=IMAGE&fileName=pets.png`).responseType('blob');
+            expect(image.status).toBe(200);
+        });
+
         it('rejects two images for one slot', async () => {
             const { zip } = buildZip({ extra: [
                 { name: 'web/logo.png', content: 'png' },

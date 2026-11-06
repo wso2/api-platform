@@ -523,3 +523,51 @@ test('delete of an allowed type answers 204, or 404 when nothing matched', async
     const missing = await call(deleteAPIFile, { query: { type: 'DOC_HowTo', fileName: 'A.md' } });
     assert.strictEqual(missing.status, 404);
 });
+
+// Stands in for a transaction over the content rows, enforcing the table's two unique indexes.
+const contentRows = (rows) => {
+    const unique = (row) => {
+        const others = rows.filter((other) => other !== row);
+        if (others.some((other) => other.file_name === row.file_name)
+            || (row.lookup_key && others.some((other) => other.lookup_key === row.lookup_key))) {
+            throw new Error('UNIQUE constraint failed');
+        }
+    };
+    return {
+        rows,
+        queryOne: async (sql, params) => (sql.includes('lookup_key = ?')
+            ? rows.find((row) => row.lookup_key === params[2])
+            : rows.find((row) => row.file_name === params[0])) ?? null,
+        execute: async (sql, params) => {
+            if (sql.startsWith('INSERT')) {
+                const row = { file_name: params[3], type: params[5], lookup_key: params[6] };
+                rows.push(row);
+                unique(row);
+            } else {
+                const row = rows.find((candidate) => candidate.file_name === params[6]);
+                Object.assign(row, { file_name: params[1], lookup_key: params[2], updated: true });
+                unique(row);
+            }
+            return { rowCount: 1 };
+        },
+    };
+};
+const artifactImage = (fileName) => ({ fileName, type: 'IMAGE', content: 'png', key: path.parse(fileName).name });
+
+test('an artifact image already stored in another slot updates that row and keeps the slot', async () => {
+    const t = contentRows([{ file_name: 'pets.png', type: 'IMAGE', lookup_key: 'api-icon' }]);
+    await apiFileDao.upsertMany([artifactImage('pets.png')], 'api-1', 'org-1', 'admin', t);
+    assert.deepStrictEqual(t.rows, [{ file_name: 'pets.png', type: 'IMAGE', lookup_key: 'api-icon', updated: true }]);
+});
+
+test('a new artifact image file takes over its slot', async () => {
+    const t = contentRows([{ file_name: 'logo.png', type: 'IMAGE', lookup_key: 'logo' }]);
+    await apiFileDao.upsertMany([artifactImage('logo.jpg')], 'api-1', 'org-1', 'admin', t);
+    assert.deepStrictEqual(t.rows, [{ file_name: 'logo.jpg', type: 'IMAGE', lookup_key: 'logo', updated: true }]);
+});
+
+test('an artifact keeps both files when one holds the slot the other is named for', async () => {
+    const t = contentRows([{ file_name: 'p.png', type: 'IMAGE', lookup_key: 'q' }]);
+    await apiFileDao.upsertMany([artifactImage('p.png'), artifactImage('q.png')], 'api-1', 'org-1', 'admin', t);
+    assert.deepStrictEqual(t.rows.map((row) => [row.file_name, row.lookup_key]), [['p.png', 'q'], ['q.png', null]]);
+});
