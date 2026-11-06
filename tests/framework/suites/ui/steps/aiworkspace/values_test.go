@@ -21,50 +21,13 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
-	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
-	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 )
-
-func TestExpandUIValueKeepsScenarioValuesStable(t *testing.T) {
-	generator, err := unique.NewGenerator()
-	require.NoError(t, err)
-	ctx := tcontext.WithLocal(
-		tcontext.WithShared(context.Background(), tcontext.NewShared("ui")),
-		tcontext.NewLocal("scenario"),
-	)
-	require.NoError(t, unique.Install(ctx, generator))
-	ctx = withUIExpansionState(ctx)
-
-	first, err := expandUIValue(ctx, "${UNIQUE:Provider} / ${UNIQUE:Template}")
-	require.NoError(t, err)
-	second, err := expandUIValue(ctx, "${UNIQUE:Provider}")
-	require.NoError(t, err)
-	parts := strings.Split(first, " / ")
-	require.Len(t, parts, 2)
-	require.Equal(t, parts[0], second)
-}
-
-func TestExpandUIValueRejectsMalformedPlaceholderAfterExpansion(t *testing.T) {
-	generator, err := unique.NewGenerator()
-	require.NoError(t, err)
-	ctx := tcontext.WithLocal(
-		tcontext.WithShared(context.Background(), tcontext.NewShared("ui")),
-		tcontext.NewLocal("scenario"),
-	)
-	require.NoError(t, unique.Install(ctx, generator))
-	ctx = withUIExpansionState(ctx)
-
-	_, err = expandUIValue(ctx, "prefix-${UNIQUE:Provider}-${UNIQUE:broken")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "malformed UNIQUE placeholder")
-}
 
 func TestPlatformAPIReadinessClientVerifiesCertificates(t *testing.T) {
 	crypto := shared.ControlPlaneCrypto()

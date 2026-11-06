@@ -719,11 +719,15 @@ CREATE INDEX IF NOT EXISTS idx_session_expire ON sessions(expire);
 -- Portal-scoped: each portal maintains its own view of a user identity so cross-portal reads
 -- are structurally impossible. If the same IdP `sub` is used across two portals, each portal
 -- gets its own row.
+-- display_name is the user's human-readable name from the configured token claim
+-- (auth.claim_mappings.display_name); responses show it as createdBy/updatedBy,
+-- else idp_id. NULL until a token carries it; never used for matching or authorization.
 CREATE TABLE IF NOT EXISTS user_idp_references (
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
     uuid VARCHAR(40) NOT NULL,
     idp_id VARCHAR(255) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    display_name VARCHAR(255),
     PRIMARY KEY (portal_id, uuid),
     UNIQUE (portal_id, idp_id)
 );

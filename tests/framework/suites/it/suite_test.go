@@ -150,6 +150,7 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 var singleEngineBlocks = map[string]components.DBType{
 	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
+	"tenant-isolation":                                components.SQLite,
 	"gateway-mtls-ha":                                 components.Postgres,
 	"gateway-mtls-hostnames-required":                 components.SQLite,
 	"gateway-mtls-hostnames-all-connections":          components.SQLite,

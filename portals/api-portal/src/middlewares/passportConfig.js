@@ -226,6 +226,9 @@ function configurePassport(SERVER_ID) {
                 view,
                 idToken: params.id_token,
                 email: decodedJWT['email'] || req.session.username,
+                // The configured display-name claim (auth.claim_mappings.display_name),
+                // stored on the user's idp reference row for display. Optional.
+                displayName: fromTokens(config.auth.claimMappings.displayName) ?? '',
                 [constants.ROLES.ORGANIZATION_CLAIM]: organizationId,
                 returnTo: req.session.returnTo,
                 accessToken,
@@ -287,6 +290,7 @@ function configurePassport(SERVER_ID) {
             firstName: user.firstName,
             lastName: user.lastName,
             email: user.email,
+            displayName: user.displayName,
             imageURL: user.imageURL,
             view: user.view,
             idToken: user.idToken,
