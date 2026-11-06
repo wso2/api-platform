@@ -113,17 +113,18 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	}
 
 	// Map every identifier a subscription may be keyed by to the local (gateway) API
-	// UUID, for RestApi configs only. A bottom-up (DP->CP) synced API keeps its
+	// UUID, for the kinds that take subscriptions (REST APIs and MCP proxies). A
+	// bottom-up (DP->CP) synced API keeps its
 	// locally generated UUID and records the control-plane UUID as cp_artifact_id
 	localAPIIDs := make(map[string]string)
 	for _, cfg := range configs {
-		if cfg == nil || cfg.Kind != models.KindRestApi {
+		if cfg == nil || !models.TakesSubscriptions(cfg.Kind) {
 			continue
 		}
 		localAPIIDs[cfg.UUID] = cfg.UUID
 	}
 	for _, cfg := range configs {
-		if cfg == nil || cfg.Kind != models.KindRestApi || cfg.CPArtifactID == "" {
+		if cfg == nil || !models.TakesSubscriptions(cfg.Kind) || cfg.CPArtifactID == "" {
 			continue
 		}
 		if _, taken := localAPIIDs[cfg.CPArtifactID]; !taken {
@@ -136,7 +137,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	for apiID, list := range subsByAPI {
 		localAPIID, known := localAPIIDs[apiID]
 		if !known {
-			sm.logger.Warn("Skipping subscriptions for an API with no matching RestApi config",
+			sm.logger.Warn("Skipping subscriptions for an API with no matching REST API or MCP proxy config",
 				slog.String("api_id", apiID),
 				slog.Int("skipped_subscription_count", len(list)))
 			continue

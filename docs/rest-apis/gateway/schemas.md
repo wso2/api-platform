@@ -1885,6 +1885,7 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |policies|[[Policy](#schemapolicy)]|false|none|List of MCP Proxy level policies applied|
+|subscriptionPlans|[string]|false|none|Names of the subscription plans this MCP proxy offers. A subscription to the proxy must use one of them. When empty, any active plan can be used.|
 |faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |tools|[[MCPTool](#schemamcptool)]|false|none|none|
 |resources|[[MCPResource](#schemamcpresource)]|false|none|none|

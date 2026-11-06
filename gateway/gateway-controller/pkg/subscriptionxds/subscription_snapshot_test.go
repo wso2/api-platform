@@ -649,10 +649,10 @@ func TestSnapshotManager_UpdateSnapshot_DPToCPSyncedAPI(t *testing.T) {
 		assert.Empty(t, snapshotSubscriptions(t, sm))
 	})
 
-	t.Run("a cp_artifact_id on a non-RestApi config is not accepted", func(t *testing.T) {
+	t.Run("a cp_artifact_id on a config that takes no subscriptions is not accepted", func(t *testing.T) {
 		store := &MockStorage{
 			configs: []*models.StoredConfig{
-				{UUID: "gw-uuid-1", CPArtifactID: "cp-uuid-1", Kind: models.KindMcp},
+				{UUID: "gw-uuid-1", CPArtifactID: "cp-uuid-1", Kind: models.KindLlmProxy},
 			},
 			subscriptionPlans: []*models.SubscriptionPlan{},
 			subscriptions: []*models.Subscription{
@@ -669,6 +669,41 @@ func TestSnapshotManager_UpdateSnapshot_DPToCPSyncedAPI(t *testing.T) {
 		require.NoError(t, sm.UpdateSnapshot(ctx))
 		assert.Empty(t, snapshotSubscriptions(t, sm))
 	})
+}
+
+// MCP proxy subscriptions are keyed by the local or control-plane UUID; other kinds get none.
+func TestSnapshotManager_MCPProxySubscriptions(t *testing.T) {
+	ctx := context.Background()
+	planID := "plan-gold"
+	count, unit := 5, "Min"
+	store := &MockStorage{
+		configs: []*models.StoredConfig{
+			{UUID: "mcp-local", Kind: models.KindMcp},
+			{UUID: "mcp-synced", CPArtifactID: "mcp-cp", Kind: models.KindMcp},
+			{UUID: "llm-proxy", Kind: models.KindLlmProxy},
+		},
+		subscriptionPlans: []*models.SubscriptionPlan{
+			{ID: planID, PlanName: "Gold", ThrottleLimitCount: &count, ThrottleLimitUnit: &unit, StopOnQuotaReach: true},
+		},
+		subscriptions: []*models.Subscription{
+			{ID: "sub-local", APIID: "mcp-local", SubscriptionPlanID: &planID, SubscriptionTokenHash: "h-local", Status: models.SubscriptionStatusActive},
+			{ID: "sub-synced", APIID: "mcp-cp", SubscriptionTokenHash: "h-synced", Status: models.SubscriptionStatusActive},
+			{ID: "sub-llm", APIID: "llm-proxy", SubscriptionTokenHash: "h-llm", Status: models.SubscriptionStatusActive},
+		},
+	}
+	sm := NewSnapshotManager(store, nil)
+	require.NoError(t, sm.UpdateSnapshot(ctx))
+
+	byID := map[string]policyenginev1.SubscriptionData{}
+	for _, s := range snapshotSubscriptions(t, sm) {
+		byID[s.SubscriptionId] = s
+	}
+	require.Len(t, byID, 2)
+	assert.Equal(t, "mcp-local", byID["sub-local"].APIId)
+	assert.Equal(t, 5, byID["sub-local"].ThrottleLimitCount)
+	assert.Equal(t, "Gold", byID["sub-local"].PlanName)
+	assert.Equal(t, "mcp-synced", byID["sub-synced"].APIId)
+	assert.NotContains(t, byID, "sub-llm")
 }
 
 func TestSubscriptionStateTypeURL(t *testing.T) {
