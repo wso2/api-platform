@@ -910,6 +910,24 @@
 
   /* ── Spec ── */
   var SPEC_FORMATS = { RestApi: 'OpenAPI', WS: 'AsyncAPI', WebSubApi: 'AsyncAPI', GRAPHQL: 'GraphQL SDL', SOAP: 'WSDL' };
+  var JSON_OR_YAML = ['.json', '.yaml', '.yml'];
+  var SPEC_EXTENSIONS = {
+    RestApi: JSON_OR_YAML, WS: JSON_OR_YAML, WebSubApi: JSON_OR_YAML, Mcp: JSON_OR_YAML,
+    GRAPHQL: ['.graphql', '.gql'], SOAP: ['.wsdl', '.xml']
+  };
+
+  function specExtensions() { return SPEC_EXTENSIONS[selectedApiType()] || JSON_OR_YAML; }
+
+  function specFileFits(f) {
+    var name = f.name.toLowerCase();
+    return specExtensions().some(function(ext) { return name.slice(-ext.length) === ext; });
+  }
+
+  function specTypeMessage() {
+    var exts = specExtensions();
+    var list = exts.length > 1 ? exts.slice(0, -1).join(', ') + ' or ' + exts[exts.length - 1] : exts[0];
+    return (wizardIsMcp ? 'The tools schema' : 'The ' + specFormatLabel() + ' spec') + ' must be a ' + list + ' file.';
+  }
 
   /* The format follows the API type chosen on Details; the file itself is not parsed. */
   function specFormatLabel() {
@@ -931,6 +949,17 @@
     document.getElementById('wz-spec-current-sub').textContent = 'On file for this ' + noun();
     document.getElementById('wz-spec-replaced-tag').hidden = !specFile;
     document.getElementById('wz-spec-formats').hidden = wizardIsMcp;
+    var exts = specExtensions();
+    document.getElementById('wz-spec-input').accept = exts.join(',');
+    document.getElementById('wz-spec-format-name').textContent = specFormatLabel();
+    var extCell = document.getElementById('wz-spec-format-exts');
+    extCell.textContent = '';
+    exts.forEach(function(ext, i) {
+      if (i) extCell.appendChild(document.createTextNode(' '));
+      var code = document.createElement('code');
+      code.textContent = ext;
+      extCell.appendChild(code);
+    });
 
     var chip = document.getElementById('wz-spec-chip');
     chip.classList.toggle('visible', !!specFile);
@@ -943,8 +972,8 @@
 
   function handleSpecFile(f) {
     if (!f) return;
-    if (!/\.(json|ya?ml|graphql|gql|wsdl|xml)$/i.test(f.name)) {
-      showAlert('Unsupported file type. Accepted: .json, .yaml, .yml, .graphql, .gql, .wsdl, .xml', 'error');
+    if (!specFileFits(f)) {
+      showAlert(specTypeMessage(), 'error');
       return;
     }
     specFile = f;
@@ -1038,6 +1067,10 @@
   document.getElementById('wz-name').addEventListener('input', function() { if (!thumbnailChange.file) renderThumbnail(); });
   document.getElementById('wz-type').addEventListener('change', function() {
     setFieldError('wz-type', 'wz-type-error', '');
+    if (specFile && !specFileFits(specFile)) {
+      specFile = null;
+      document.getElementById('wz-spec-input').value = '';
+    }
     if (!thumbnailChange.file) renderThumbnail();
   });
 
