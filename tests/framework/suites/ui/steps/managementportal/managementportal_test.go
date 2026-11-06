@@ -109,3 +109,11 @@ func TestAttachOperationPolicyAppendsToTheMatchingOperationOnly(t *testing.T) {
 	require.ErrorContains(t, attachOperationPolicy(api, "GET", "/absent", map[string]any{}), "no operation GET /absent")
 	require.ErrorContains(t, attachOperationPolicy(map[string]any{}, "GET", "/pets", map[string]any{}), "no operation")
 }
+
+func TestPolicyLabelMatchesTheHandleOrTheHubDisplayName(t *testing.T) {
+	label := policyLabel("set-headers")
+	require.Regexp(t, label, "set-headers")
+	require.Regexp(t, label, "Set Headers")
+	require.NotRegexp(t, label, "Set Headers v2")
+	require.NotRegexp(t, label, "set-headers-extra")
+}

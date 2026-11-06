@@ -24,6 +24,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
@@ -125,8 +126,7 @@ func (s *Steps) resourceShowsPolicy(ctx context.Context, policy, method, path st
 	if err != nil {
 		return err
 	}
-	if err := s.expect.Locator(body.GetByText(policy, playwright.LocatorGetByTextOptions{Exact: playwright.Bool(true)})).
-		ToBeVisible(); err != nil {
+	if err := s.expect.Locator(body.GetByText(policyLabel(policy))).ToBeVisible(); err != nil {
 		return fmt.Errorf("resource %s %s shows no policy %q: %w", method, path, policy, err)
 	}
 	return nil
@@ -298,6 +298,13 @@ func (s *Steps) confirmDialog(ctx context.Context, button string) error {
 		return fmt.Errorf("the dialog stayed open after %q: %w", button, err)
 	}
 	return nil
+}
+
+// policyLabel matches an attached policy's label. The console shows the handle ("set-headers")
+// until the public Policy Hub returns the display name ("Set Headers"), and keeps the handle
+// if the hub never answers, so the label depends on whether the hub is reachable.
+func policyLabel(handle string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)^\s*` + strings.ReplaceAll(regexp.QuoteMeta(handle), "-", "[- ]") + `\s*$`)
 }
 
 // fieldLabel matches a field's accessible name, which for a required field ends in an asterisk.
