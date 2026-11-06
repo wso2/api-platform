@@ -2148,3 +2148,54 @@ A failure that failover successfully rescues leaves no flagged entry at all — 
 determines the entry's response code and flags. That is not a gap (the policy already grades
 pre-commitment failures correctly from response headers), but T030k3 must not be designed expecting
 one entry per attempt.
+
+## T030k3 — the verdict reaches the POLICY and suspends the target (2026-11-06)
+
+Runtime, analytics disabled, truncating backend (`200` + chunked, one chunk, 1.5 s, then `RST`).
+Suspension is opt-in — `suspendDuration` defaults to 0, which disables tracking entirely — so the
+proxy sets `suspendAfterFailures: 2, suspendDuration: 60`.
+
+```
+WARN ModelFailover: target failed after committing its response
+     model=gpt-4o provider="" response_flags=[UPE] duration=2.65s request_id=5dae88b2-…
+WARN ModelFailover: target failed after committing its response
+     model=gpt-4o provider="" response_flags=[UPE] duration=2.57s request_id=15031ec7-…
+WARN ModelFailover: target suspended
+     model=gpt-4o provider="" reason=consecutive_failures observed=2 for_seconds=60
+```
+
+Three things this proves beyond the k1/k2 run:
+
+- **Delivery through the SDK interface works.** The grading is the policy's own, not the engine's
+  placeholder sink.
+- **The target is the exact configured one.** `provider=""` is the primary provider. A target
+  reconstructed from the cluster name could not have produced it — the whole reason the chain is
+  recorded in flight rather than inferred (FR-030q).
+- **The duration is real** (2.65 s, not 0), so the latency window gets a truthful sample.
+
+**Control, same suspension configuration:** three *complete* SSE responses through
+`/whole/chat/completions` — identical streaming shape, identical content type, no reset — produced
+**0** verdicts and no suspension. The discrimination is on how the exchange ended, not on the
+response looking streamed.
+
+### Finding: the published `sdk/core` is not reproducible from this repository
+
+Hit while pointing the image build at the local SDK. Published `sdk/core` v0.5.0/v0.5.1 contain
+identifiers present in **no** branch, tag or working tree here (`origin/main` included):
+
+| missing locally | needed by |
+|---|---|
+| the whole `sdk/core/signing` package | `backend-jwt` |
+| `FaultCodeProviderStreamFailed` `"960002"` | the three `openai-to-*` transformers |
+| `FaultCodeNoModelAvailable` `"960003"` | `model-weighted-round-robin` |
+| `FaultCodeInvalidRequestHeader` `"960004"` | `mcp-auth` |
+| `FaultCodeInvalidRequestURI` `"960005"` | — |
+| `APIKindWebSocket` `"WebSocketApi"` | — |
+
+Unrelated to this feature; it surfaced only because a main-module `replace` is the first thing
+that makes every compiled-in policy resolve the local tree instead of the published module. Worth
+raising with whoever owns the SDK release process — the repo cannot currently rebuild its own SDK.
+Backfilled locally as clearly-marked dev scaffolding (values copied verbatim so a backfilled
+constant cannot disagree with the wire value a shipped policy was compiled against); an exported-
+symbol diff via `go doc -all` across all four packages then showed no remaining gap.
+

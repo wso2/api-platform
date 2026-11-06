@@ -752,6 +752,24 @@ though the routing policy keeps nominating it, and that load spreads across the 
   for failover grading MUST degrade instead — failover still functions, grading conservatively per
   FR-030p, so an unusable transport there is a reduced capability rather than grounds to refuse
   traffic.
+- **FR-030q** *(added 2026-11-06)*: The verdict MUST be delivered to the policy configured on the
+  route that produced it, matched **structurally** against the gateway's own route registration —
+  never inferred from the upstream cluster's name. A proxied call can traverse more than one route
+  internally and produce one access-log entry per hop under a single request id, so cluster-based
+  attribution records one failure several times and attributes some of them to an internal hop that
+  is not a failover target at all.
+
+  Where health is keyed more finely than the cluster (a model *and* its provider, where several
+  models reach one provider), the target MUST be **recorded while the request is in flight** and
+  read back when the verdict arrives, never reconstructed from the verdict. A reconstructed key
+  cannot distinguish "the primary provider" from a named one, so it would simply fail to match and
+  grade nothing — a silent no-op rather than an error.
+
+  Only a failure AFTER the response was committed may be graded through this path. A failure before
+  commitment already reached the client as an error status and was graded by the response phase;
+  grading it twice suspends a target at half the configured threshold. The verdict MUST also carry
+  the attempt's real duration where a latency criterion exists: a zero sample is not neutral, it
+  reads as an unusually fast response and moves a percentile the wrong way.
 - **FR-030p** *(added 2026-11-05)*: Where the outcome of an attempt cannot be verified, the system
   MUST record **nothing** rather than a success. Verified-only accounting is what removes the
   immunity described in FR-030n, and it holds whether or not FR-030o's signal is available.
