@@ -48,7 +48,7 @@ const PNG_BYTES_ALT = Buffer.from(
 
 const HBS_BODY = '<section class="marketing">Buy our pets</section>';
 
-// API content ZIP wrapped in a top-level folder; resolveZipRootPath descends into it.
+// API content ZIP wrapped in a top-level folder, which the portal reads from inside.
 function buildContentZip({ iconName = 'api-icon.png', icon = PNG_BYTES, hbs = HBS_BODY } = {}) {
     return createZip([
         { name: 'bundle/web/api-content.hbs', content: hbs },
@@ -70,6 +70,12 @@ const docsZip = (names, folder = '') => createZip(names.map((name) => ({ name: `
 const link = (displayName, type = 'DOC_LINK') => [{ type, links: [{ displayName, url: 'https://example.com/guide' }] }];
 const getAsset = (handle, type, fileName, base = '/apis') =>
     client.as('publisher').get(`${base}/${handle}/assets?type=${type}&fileName=${encodeURIComponent(fileName)}`);
+const WEB_ONLY = 'web/ holds only apiContent.md, api-content.hbs and images';
+const rejectedEntries = (res) => {
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('COMMON_VALIDATION_ERROR');
+    return res.body.errors.map((e) => e.message);
+};
 const definitionReadable = async (handle) =>
     expect((await getAsset(handle, 'API_DEFINITION', 'definition.json')).status).toBe(200);
 
@@ -127,6 +133,17 @@ describe('API content assets', () => {
             expect(up.status).toBe(201);
             const img = await client.as('publisher').get(`/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.png`).responseType('blob');
             expect(img.status).toBe(200);
+        });
+
+        it('makes an image named in imageMetadata the thumbnail', async () => {
+            const api = await createApi();
+            const up = await uploadContent('publisher', api.id, createZip([{ name: 'web/pets-logo.png', content: PNG_BYTES }]), {
+                imageMetadata: { 'api-icon': 'pets-logo.png' },
+            });
+            expect(up.status).toBe(201);
+            const listed = await client.as('publisher').get(`/apis/${api.id}`);
+            expect(listed.body.apiImageMetadata).toEqual(expect.objectContaining({ 'api-icon': 'pets-logo.png' }));
+            expect(listed.body.apiImageMetadata['pets-logo']).toBeUndefined();
         });
 
         it('404s for a content file that does not exist', async () => {
@@ -265,18 +282,18 @@ describe('API content assets', () => {
             const api = await createApi();
             const res = await uploadContent('publisher', api.id, createZip([]));
             expect(res.status).toBe(400);
+            expect(res.body.errors[0].message).toBe('The upload has no content to add');
         });
 
-        it('rejects an upload with nothing the portal stores', async () => {
+        it('rejects files the portal does not store, listing each', async () => {
             const api = await createApi();
             const res = await uploadContent('publisher', api.id, createZip([{ name: 'web/style.css', content: 'a{}' }, { name: 'web/app.js', content: '1' }]));
-            expect(res.status).toBe(400);
-            expect(res.body.errors[0].message).toBe('The upload has no content to add');
+            expect(rejectedEntries(res)).toEqual([`web/app.js: ${WEB_ONLY}`, `web/style.css: ${WEB_ONLY}`]);
         });
 
         it('accepts an upload whose only content is a link', async () => {
             const api = await createApi();
-            const res = await uploadContent('publisher', api.id, createZip([{ name: 'web/style.css', content: 'a{}' }]), { docMetadata: link('Guide') });
+            const res = await uploadContent('publisher', api.id, createZip([]), { docMetadata: link('Guide') });
             expect(res.status).toBe(201);
             expect((await getAsset(api.id, 'DOC_LINK', 'LINK_Guide')).status).toBe(200);
         });
@@ -409,6 +426,182 @@ describe('API content assets', () => {
         it('answers 404 when an allowed type has nothing stored', async () => {
             const api = await createApi();
             expect((await client.as('publisher').del(`/apis/${api.id}/assets?type=DOC_Samples`)).status).toBe(404);
+        });
+    });
+
+    describe('invalid input is a 400 naming the cause', () => {
+        it('rejects metadata that is not JSON on add and replace', async () => {
+            const api = await createApi();
+            for (const method of ['post', 'put']) {
+                const doc = await uploadContent('publisher', api.id, docsZip(['A.md']), { method, docMetadata: 'not-json' });
+                expect(doc.status).toBe(400);
+                expect(doc.body.errors[0].message).toBe('docMetadata is not valid JSON');
+                const img = await uploadContent('publisher', api.id, docsZip(['A.md']), { method, imageMetadata: 'not-json' });
+                expect(img.status).toBe(400);
+                expect(img.body.errors[0].message).toBe('imageMetadata is not valid JSON');
+            }
+        });
+
+        it('rejects imageMetadata naming a file that is not uploaded, and stores nothing', async () => {
+            const api = await createApi();
+            const res = await uploadContent('publisher', api.id, buildContentZip(), { imageMetadata: { 'api-icon': 'icon.png' } });
+            expect(res.status).toBe(400);
+            expect(res.body.errors[0].message).toBe('imageMetadata names a file that is not in the upload: icon.png');
+            expect((await getAsset(api.id, 'IMAGE', 'api-icon.png')).status).toBe(404);
+        });
+
+        it('rejects imageMetadata naming one file for two slots', async () => {
+            const api = await createApi();
+            const res = await uploadContent('publisher', api.id, buildContentZip(), {
+                imageMetadata: { 'api-icon': 'api-icon.png', banner: 'api-icon.png' },
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.errors[0].message).toBe('imageMetadata names api-icon.png for more than one slot: api-icon, banner');
+        });
+
+        it('rejects two unnamed images that use the same slot, unless imageMetadata names one', async () => {
+            const api = await createApi();
+            const zip = () => createZip([
+                { name: 'web/api-icon.png', content: PNG_BYTES },
+                { name: 'web/api-icon.jpg', content: PNG_BYTES_ALT },
+            ]);
+            const clash = await uploadContent('publisher', api.id, zip());
+            expect(clash.status).toBe(400);
+            expect(clash.body.errors[0].message)
+                .toBe('Images api-icon.jpg, api-icon.png use the same image slot api-icon; name one in imageMetadata');
+
+            const named = await uploadContent('publisher', api.id, zip(), { imageMetadata: { 'api-icon': 'api-icon.jpg' } });
+            expect(named.status).toBe(201);
+            const listed = await client.as('publisher').get(`/apis/${api.id}`);
+            expect(listed.body.apiImageMetadata['api-icon']).toBe('api-icon.jpg');
+        });
+
+        it('rejects a link type outside DOC_*', async () => {
+            const api = await createApi();
+            const res = await uploadContent('publisher', api.id, docsZip(['A.md']), { docMetadata: link('Guide', 'API_DEFINITION') });
+            expect(res.status).toBe(400);
+            expect(res.body.errors[0].message).toBe('Invalid link type: API_DEFINITION');
+        });
+
+        it('rejects an unknown top-level folder and changes nothing', async () => {
+            const api = await createApi();
+            expect((await uploadContent('publisher', api.id, docsZip(['A.md']))).status).toBe(201);
+
+            const zip = createZip([{ name: 'docs/B.md', content: '# B' }, { name: 'doc/C.md', content: '# C' }]);
+            const res = await uploadContent('publisher', api.id, zip, { method: 'put' });
+            expect(rejectedEntries(res)).toEqual(['doc/: unknown top-level entry']);
+            expect(res.body.message).toBe('Bad Request');
+            expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(200);
+        });
+
+        it('rejects a document that is not .md on add and replace, and changes nothing', async () => {
+            const api = await createApi();
+            expect((await uploadContent('publisher', api.id, docsZip(['A.md']))).status).toBe(201);
+
+            const zip = docsZip(['B.md', 'diagram.txt'], 'HowTo/');
+            for (const method of ['post', 'put']) {
+                const res = await uploadContent('publisher', api.id, zip, { method });
+                expect(rejectedEntries(res)).toEqual(['docs/HowTo/diagram.txt: documents must be Markdown (.md)']);
+            }
+            expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(200);
+            expect((await getAsset(api.id, 'DOC_HowTo', 'B.md')).status).toBe(404);
+        });
+
+        it('ignores hidden files and folders in docs/', async () => {
+            const api = await createApi();
+            const zip = createZip([
+                { name: 'docs/A.md', content: '# A' },
+                { name: 'docs/.gitkeep', content: '' },
+                { name: 'docs/.git/config', content: 'x' },
+            ]);
+            expect((await uploadContent('publisher', api.id, zip, { method: 'put' })).status).toBe(201);
+            expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(200);
+            expect((await getAsset(api.id, 'DOC_Other', '.gitkeep')).status).toBe(404);
+        });
+
+        it('ignores OS-generated entries', async () => {
+            const api = await createApi();
+            const zip = createZip([
+                { name: 'web/api-content.hbs', content: HBS_BODY },
+                { name: '__MACOSX/web/._api-content.hbs', content: 'x' },
+                { name: '.DS_Store', content: 'x' },
+            ]);
+            expect((await uploadContent('publisher', api.id, zip)).status).toBe(201);
+        });
+
+        it('ignores hidden files at the top level and in web/', async () => {
+            const api = await createApi();
+            const zip = createZip([
+                { name: 'docs/A.md', content: '# A' },
+                { name: '.gitkeep', content: '' },
+                { name: 'web/.DS_Store', content: 'x' },
+                { name: 'web/.x.png', content: PNG_BYTES },
+            ]);
+            expect((await uploadContent('publisher', api.id, zip)).status).toBe(201);
+            expect((await getAsset(api.id, 'IMAGE', '.x.png')).status).toBe(404);
+        });
+    });
+
+    describe('one set of entry rules', () => {
+        const validZip = (extra = []) => createZip([
+            { name: 'web/apiContent.md', content: '# Pets' },
+            { name: 'web/api-icon.png', content: PNG_BYTES },
+            { name: 'docs/A.md', content: '# A' },
+            { name: 'docs/How To/B.md', content: '# B' },
+            ...extra,
+        ]);
+
+        it('stores each accepted entry as its row says', async () => {
+            const api = await createApi();
+            expect((await uploadContent('publisher', api.id, validZip(), { method: 'put' })).status).toBe(201);
+            expect((await getAsset(api.id, 'MARKETING', 'apiContent.md')).status).toBe(200);
+            expect((await getAsset(api.id, 'IMAGE', 'api-icon.png')).status).toBe(200);
+            expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(200);
+            expect((await getAsset(api.id, 'DOC_How To', 'B.md')).status).toBe(200);
+        });
+
+        it('gives the same result with hidden entries beside them', async () => {
+            const api = await createApi();
+            const zip = validZip([
+                { name: '.gitkeep', content: '' },
+                { name: 'docs/.git/config', content: 'x' },
+                { name: 'docs/._A.md', content: 'x' },
+                { name: '__MACOSX/docs/._B.md', content: 'x' },
+            ]);
+            expect((await uploadContent('publisher', api.id, zip, { method: 'put' })).status).toBe(201);
+            expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(200);
+            expect((await getAsset(api.id, 'DOC_Other', '._A.md')).status).toBe(404);
+        });
+
+        it('lists every rejected entry in one 400 and changes nothing', async () => {
+            const api = await createApi();
+            expect((await uploadContent('publisher', api.id, docsZip(['Kept.md']))).status).toBe(201);
+            const zip = validZip([
+                { name: 'web/style.css', content: 'a{}' },
+                { name: 'web/images/logo.png', content: PNG_BYTES },
+                { name: 'web/about.html', content: '<p>' },
+                { name: 'docs/guide.pdf', content: 'pdf' },
+                { name: 'docs/HowTo/v1/C.md', content: '# C' },
+            ]);
+            for (const method of ['post', 'put']) {
+                const res = await uploadContent('publisher', api.id, zip, { method });
+                expect(res.body.message).toBe('Bad Request');
+                expect(rejectedEntries(res)).toEqual([
+                    'docs/HowTo/v1/C.md: docs/ allows one category folder',
+                    'docs/guide.pdf: documents must be Markdown (.md)',
+                    `web/about.html: ${WEB_ONLY}`,
+                    `web/images/logo.png: ${WEB_ONLY}`,
+                    `web/style.css: ${WEB_ONLY}`,
+                ]);
+            }
+            expect((await getAsset(api.id, 'DOC_Other', 'Kept.md')).status).toBe(200);
+            expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(404);
+        });
+
+        it('rejects the landing page under a name the portal does not read', async () => {
+            const api = await createApi();
+            const res = await uploadContent('publisher', api.id, createZip([{ name: 'web/api-content.md', content: '# x' }]));
+            expect(rejectedEntries(res)).toEqual([`web/api-content.md: ${WEB_ONLY}`]);
         });
     });
 });

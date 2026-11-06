@@ -32,7 +32,6 @@ const orgContext = require("../utils/orgContext");
 const logger = require("../config/logger");
 const path = require("path");
 const fs = require("fs").promises;
-const fsDir = require("fs");
 const yaml = require('../utils/yaml');
 const APIDTO = require("../dto/apiDto");
 const ViewDTO = require("../dto/viewsDto");
@@ -70,7 +69,6 @@ const createAPIMetadata = async (req, res) => {
 
     try {
         let artifactApiContent = [];
-        let resolvedImageMetadata = {};
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, 'new-api');
             apiMetadata = fullApiBundle.apiMetadata;
@@ -83,14 +81,8 @@ const createAPIMetadata = async (req, res) => {
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
-            artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, 'new-api', 'artifact');
-            resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
-            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-            artifactApiContent.forEach(file => {
-                if (file.type === constants.DOC_TYPES.IMAGES) {
-                    file.key = filenameToKey[file.fileName];
-                }
-            });
+            artifactApiContent = fullApiBundle.content;
+            assignSlotsAndRejectDuplicates(artifactApiContent, {});
         } else if (req.files?.metadata?.[0]) {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
@@ -495,7 +487,6 @@ const updateAPIMetadata = async (req, res) => {
             apiId
         });
         let artifactApiContent = [];
-        let resolvedImageMetadata = {};
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, apiId);
             apiMetadata = fullApiBundle.apiMetadata;
@@ -508,14 +499,8 @@ const updateAPIMetadata = async (req, res) => {
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
-            artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, apiId, 'artifact');
-            resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
-            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-            artifactApiContent.forEach(file => {
-                if (file.type === constants.DOC_TYPES.IMAGES) {
-                    file.key = filenameToKey[file.fileName];
-                }
-            });
+            artifactApiContent = fullApiBundle.content;
+            assignSlotsAndRejectDuplicates(artifactApiContent, {});
         } else if (req.files?.metadata?.[0]) {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
@@ -850,23 +835,20 @@ const deleteAPIMetadata = async (req, res) => {
     }
 };
 
-const readContentUpload = async (req, uploadedFile, orgId, apiId, allowEmpty) => {
-    const apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic', { allowEmpty });
-    if (req.body.docMetadata) {
-        apiContent.push(...util.getAPIDocLinks(JSON.parse(req.body.docMetadata)));
-    }
-    const imageMetadata = req.body.imageMetadata ? JSON.parse(req.body.imageMetadata) : {};
-    const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata);
-    const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-    apiContent.forEach(file => {
-        if (file.type === constants.DOC_TYPES.IMAGES) {
-            file.key = filenameToKey[file.fileName];
-        }
-    });
+const assignSlotsAndRejectDuplicates = (apiContent, imageMetadata) => {
+    apiContentRules.assignImageSlots(apiContent, imageMetadata);
     const duplicates = apiContentRules.findDuplicateItems(apiContent);
     if (duplicates.length) {
         throw new ValidationError(`Duplicate content in upload: ${duplicates.map(apiContentRules.describeItem).join(', ')}`);
     }
+};
+
+const readContentUpload = async (req, uploadedFile, orgId, apiId) => {
+    const docMetadata = apiContentRules.parseDocMetadata(req.body.docMetadata);
+    const imageMetadata = apiContentRules.parseImageMetadata(req.body.imageMetadata);
+    const apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId);
+    apiContent.push(...util.getAPIDocLinks(docMetadata));
+    assignSlotsAndRejectDuplicates(apiContent, imageMetadata);
     return apiContent;
 };
 
@@ -885,7 +867,7 @@ const createAPIContent = async (req, res) => {
             return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
-        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId, false);
+        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId);
         if (apiContent.length === 0) {
             throw new ValidationError('The upload has no content to add');
         }
@@ -929,7 +911,7 @@ const updateAPIContent = async (req, res) => {
             return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
-        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId, true);
+        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId);
         let removed = 0;
         await db.withTransaction(async (t) => {
             const apiMetadata = await apiDao.get(orgId, apiId, t);
@@ -1777,117 +1759,70 @@ const getViewsFromDB = async (orgId) => {
     }
 }
 
-const collectWebContentFiles = async (webPath) => {
-    const files = await fs.readdir(webPath, { withFileTypes: true });
-    const contentFiles = [];
-    for (const file of files) {
-        if (!file.isFile() || file.name === '.DS_Store') {
-            continue;
-        }
-        const filePath = path.join(webPath, file.name);
-        const fileExtension = path.extname(file.name).toLowerCase();
-        if (util.isTextFile(fileExtension)) {
-            const content = await fs.readFile(filePath, constants.CHARSET_UTF8);
-            contentFiles.push({ fileName: file.name, content: content, type: constants.DOC_TYPES.API_LANDING });
-        } else if (util.isImageFile(fileExtension)) {
-            const content = await fs.readFile(filePath);
-            contentFiles.push({ fileName: file.name, content: content, type: constants.DOC_TYPES.IMAGES });
-        }
-    }
-    return contentFiles;
-};
-
-const buildImageMetadataFromContent = (contentFiles = [], providedImageMetadata = {}) => {
-    const resolvedImageMetadata = { ...(providedImageMetadata || {}) };
-
-    for (const file of contentFiles) {
-        if (file?.type !== constants.DOC_TYPES.IMAGES || !file.fileName) {
-            continue;
-        }
-        const imageTag = path.parse(file.fileName).name;
-        if (imageTag && !resolvedImageMetadata[imageTag]) {
-            resolvedImageMetadata[imageTag] = file.fileName;
-        }
-    }
-
-    return resolvedImageMetadata;
-};
-
-async function resolveZipRootPath(extractPath) {
-    const entries = await fs.readdir(extractPath, { withFileTypes: true });
-    const relevantEntries = entries.filter(entry => entry.name !== '.DS_Store' && entry.name !== '__MACOSX');
-    const contentDirs = [constants.ARTIFACT_DIR.WEB, constants.ARTIFACT_DIR.DOCS];
-    if (relevantEntries.length === 1 && relevantEntries[0].isDirectory() && !contentDirs.includes(relevantEntries[0].name)) {
-        return path.join(extractPath, relevantEntries[0].name);
-    }
-    return extractPath;
-}
-
-async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'classic', { allowEmpty = false } = {}) {
-    if (!zipFile) {
-        throw new ValidationError("Missing required zip file");
-    }
-
-    const zipFileName = path.basename(String(zipFile.originalname || ''));
-    if (!zipFileName?.toLowerCase().endsWith('.zip')) {
-        throw new ValidationError('Invalid zip file. Expected a .zip file');
-    }
-
+/**
+ * Reads a content ZIP (kind 'content') or a full API ZIP (kind 'artifact') by the content ZIP
+ * entry rules: extracts it once, rejects every entry the rules don't accept in one 400, and reads
+ * only the accepted files. Returns the content items and, for an artifact, its metadata file and
+ * definition as { fileName, buffer }.
+ */
+async function readContentZip(zipFile, orgId, apiId, kind) {
     const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const tempBasePath = path.join('/tmp', 'api-content-upload', extractionKey);
     const extractPath = path.join(tempBasePath, 'extracted');
     const tempZipPath = path.join(tempBasePath, `${extractionKey}.zip`);
-
     try {
         await fs.mkdir(extractPath, { recursive: true });
-
-        if (zipFile.path) {
-            await util.unzipDirectory(zipFile.path, extractPath, { allowEmpty: true });
-        } else if (zipFile.buffer) {
-            await fs.writeFile(tempZipPath, zipFile.buffer);
-            await util.unzipDirectory(tempZipPath, extractPath, { allowEmpty: true });
-        } else {
-            throw new ValidationError('Invalid zip input. Missing file path or buffer');
-        }
-
-        const rootPath = await resolveZipRootPath(extractPath);
-
-        const webPath = path.join(rootPath, constants.ARTIFACT_DIR.WEB);
-        const docsPath = path.join(rootPath, constants.ARTIFACT_DIR.DOCS);
-        const hasWebDir = fsDir.existsSync(webPath);
-        const hasDocsDir = fsDir.existsSync(docsPath);
-
-        if (!hasWebDir && !hasDocsDir) {
-            if (mode === 'artifact' || allowEmpty) {
-                return [];
+        let zipPath = zipFile.path;
+        if (!zipPath) {
+            if (!zipFile.buffer) {
+                throw new ValidationError('Invalid zip input. Missing file path or buffer');
             }
-            throw new ValidationError('Content ZIP must contain web/ or docs/ at the top level');
+            await fs.writeFile(tempZipPath, zipFile.buffer);
+            zipPath = tempZipPath;
         }
+        const extracted = await util.unzipDirectory(zipPath, extractPath, { allowEmpty: true });
+        const zipPaths = extracted.map((file) => path.relative(extractPath, file).split(path.sep).join('/'));
+        const { items, metadataPath, definitionPath, rejected } = apiContentRules.classifyContentZip(zipPaths, kind);
+        if (rejected.length) {
+            throw new ValidationError('Content ZIP has entries the portal does not accept',
+                rejected.map((entry) => ({ message: `${entry.path}: ${entry.reason}` })));
+        }
+        const read = (zipEntryPath, encoding) => fs.readFile(path.join(extractPath, ...zipEntryPath.split('/')), encoding);
+        const readNamed = async (zipEntryPath) => zipEntryPath
+            ? { fileName: path.posix.basename(zipEntryPath), buffer: await read(zipEntryPath) }
+            : null;
+        const content = [];
+        for (const item of items) {
+            const encoding = item.type === constants.DOC_TYPES.API_LANDING ? constants.CHARSET_UTF8 : undefined;
+            content.push({ fileName: item.fileName, content: await read(item.path, encoding), type: item.type });
+        }
+        return { content, metadata: await readNamed(metadataPath), definition: await readNamed(definitionPath) };
+    } finally {
+        await fs.rm(tempBasePath, { recursive: true, force: true });
+        // Multer may have saved the upload to disk (zipFile.path).
+        if (zipFile.path) {
+            await fs.rm(zipFile.path, { force: true });
+        }
+    }
+}
 
-        const apiContent = [];
-        if (hasWebDir) {
-            await fs.access(webPath);
-            const apiWebFiles = await collectWebContentFiles(webPath);
-            apiContent.push(...apiWebFiles);
-        }
-        if (hasDocsDir) {
-            await fs.access(docsPath);
-            const apiDocuments = await util.readDocFiles(docsPath, '', true);
-            apiContent.push(...apiDocuments);
-        }
-
-        return apiContent;
+async function extractApiContentFromUploadedZip(zipFile, orgId, apiId) {
+    if (!zipFile) {
+        throw new ValidationError('Missing required file: content');
+    }
+    const zipFileName = path.basename(String(zipFile.originalname || ''));
+    if (!zipFileName.toLowerCase().endsWith('.zip')) {
+        throw new ValidationError('content must be a .zip file');
+    }
+    try {
+        const { content } = await readContentZip(zipFile, orgId, apiId, apiContentRules.ZIP_KIND.CONTENT);
+        return content;
     } catch (error) {
         if (error instanceof ValidationError) {
             throw error;
         }
-        throw new ValidationError(`Invalid zip file: ${error.message}`);
-    } finally {
-        await fs.rm(tempBasePath, { recursive: true, force: true });
-        // Clean up the original upload file when multer saved it to disk (zipFile.path)
-        if (zipFile.path) {
-            await fs.rm(zipFile.path, { force: true });
-        }
+        logger.warn('Content ZIP could not be read', { error: error.message, orgId, apiId });
+        throw new ValidationError('Invalid zip file');
     }
 }
 
@@ -1900,70 +1835,35 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         throw new ValidationError("Invalid artifact file. Expected a .zip file");
     }
 
-    const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const tempBasePath = path.join('/tmp', 'api-content-upload', extractionKey);
-    const tempZipPath = path.join(tempBasePath, 'apiContent.zip');
-    const extractPath = path.join(tempBasePath, 'extracted');
-
     try {
-        await fs.mkdir(extractPath, { recursive: true });
-        await fs.writeFile(tempZipPath, zipFile.buffer);
-        await util.unzipDirectory(tempZipPath, extractPath);
-
-        const rootPath = await resolveZipRootPath(extractPath);
-        const metadataFilePath = await util.findFileByNameRecursive(rootPath, ['metadata.yaml', 'metadata.yml', 'api.yaml', 'mcp.yaml']);
-        if (!metadataFilePath) {
+        const { content, metadata, definition } =
+            await readContentZip(zipFile, orgId, apiId, apiContentRules.ZIP_KIND.ARTIFACT);
+        if (!metadata) {
             throw new ValidationError("Invalid full API zip: missing metadata.yaml, metadata.yml, api.yaml or mcp.yaml");
         }
-
-        const apiMetadataBuffer = await fs.readFile(metadataFilePath);
-        const apiMetadata = parseApiMetadataFromYamlFile(path.basename(metadataFilePath), apiMetadataBuffer);
+        const apiMetadata = parseApiMetadataFromYamlFile(metadata.fileName, metadata.buffer);
         const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
-
-        // The contract lives in a `definition` file. An MCP server's contract IS its tools
-        // schema (returned as schemaDefinitionFile so the MCP branch stores it under
-        // SCHEMA_DEFINITION); every other type carries an OpenAPI/WSDL/SDL definition
-        // (returned as apiDefinitionFile). Both use the same file name — the resolved
-        // API type decides how it is interpreted.
-        const definitionCandidates = [
-            constants.FILE_NAME.API_DEFINITION_YAML_FILE_NAME,
-            'definition.yml',
-            constants.FILE_NAME.API_DEFINITION_FILE_NAME,
-        ];
-        let schemaDefinitionFile;
-        let schemaDefinitionFileName;
-        let apiDefinitionFile;
-        let apiDefinitionFileName;
-        if (isMcp) {
-            const schemaDefinitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
-            if (!schemaDefinitionFilePath) {
-                throw new ValidationError("Invalid MCP server zip: missing definition file (definition.yaml/yml/json)");
-            }
-            schemaDefinitionFile = await fs.readFile(schemaDefinitionFilePath);
-            schemaDefinitionFileName = path.basename(schemaDefinitionFilePath);
-        } else {
-            const definitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
-            if (!definitionFilePath) {
-                throw new ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
-            }
-            apiDefinitionFile = await fs.readFile(definitionFilePath);
-            apiDefinitionFileName = path.basename(definitionFilePath);
+        if (!definition) {
+            throw new ValidationError(isMcp
+                ? "Invalid MCP server zip: missing definition file (definition.yaml/yml/json)"
+                : "Invalid full API zip: missing definition file (definition.yaml/yml/json)");
         }
 
+        // An MCP server's contract IS its tools schema (returned as schemaDefinitionFile so the MCP
+        // branch stores it under SCHEMA_DEFINITION); every other type carries an OpenAPI/WSDL/SDL
+        // definition (returned as apiDefinitionFile). The resolved API type decides which.
         return {
             apiMetadata,
-            apiDefinitionFile,
-            apiDefinitionFileName,
-            schemaDefinitionFile,
-            schemaDefinitionFileName,
+            content,
+            ...(isMcp
+                ? { schemaDefinitionFile: definition.buffer, schemaDefinitionFileName: definition.fileName }
+                : { apiDefinitionFile: definition.buffer, apiDefinitionFileName: definition.fileName }),
         };
     } catch (error) {
         if (error instanceof ValidationError) {
             throw error;
         }
         throw new ValidationError(`Invalid artifact zip file: ${error.message}`);
-    } finally {
-        await fs.rm(tempBasePath, { recursive: true, force: true });
     }
 }
 
