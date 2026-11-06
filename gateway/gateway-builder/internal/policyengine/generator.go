@@ -141,8 +141,8 @@ func generatePythonExecutorBase(srcDir string, outputDir string) error {
 
 // GeneratePythonArtifacts generates Python-specific build artifacts.
 // This includes:
-//  1. Copy each local policy's Python source into output/python-executor/policies/<name>/
-//     (pip policies are skipped — they are installed by pip in the python-deps Docker stage)
+//  1. Copy each local policy's Python source into output/python-executor/policies/<name>_<major>/
+//     (the module name carries the major version; pip policies are skipped — they are installed by pip in the python-deps Docker stage)
 //  2. Generate python_policy_registry.py
 //  3. Merge requirements.txt files
 func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPolicy, outputDir string) error {
@@ -173,7 +173,7 @@ func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPo
 			if p.IsPipPackage {
 				continue
 			}
-			policyDestDir := filepath.Join(policiesDir, sanitizeModuleName(p.Name))
+			policyDestDir := filepath.Join(policiesDir, localPythonModuleName(p))
 			if err := copyDir(p.PythonSourceDir, policyDestDir); err != nil {
 				return fmt.Errorf("failed to copy Python policy %s: %w", p.Name, err)
 			}
@@ -222,7 +222,7 @@ func GeneratePythonArtifacts(srcDir string, pythonPolicies []*types.DiscoveredPo
 }
 
 // generatePythonRegistry generates the python_policy_registry.py file.
-// For local (filePath) policies, the module path is "policies.<sanitized_name>.policy".
+// For local (filePath) policies, the module path is "policies.<sanitized_name>_<major>.policy".
 // For pip policies, the module path uses the real top-level module name: "<top_level>.policy".
 func generatePythonRegistry(policies []*types.DiscoveredPolicy) string {
 	var sb strings.Builder
@@ -253,8 +253,7 @@ func generatePythonRegistry(policies []*types.DiscoveredPolicy) string {
 		if p.IsPipPackage {
 			modulePath = fmt.Sprintf("%s.policy", p.PythonTopLevelModule)
 		} else {
-			moduleName := sanitizeModuleName(p.Name)
-			modulePath = fmt.Sprintf("policies.%s.policy", moduleName)
+			modulePath = fmt.Sprintf("policies.%s.policy", localPythonModuleName(p))
 		}
 
 		sb.WriteString(fmt.Sprintf("    \"%s\": \"%s\",\n", key, modulePath))
@@ -341,6 +340,13 @@ func mergeRequirements(policies []*types.DiscoveredPolicy, baseRequirements stri
 	result = append(result, allRequirements...)
 
 	return strings.Join(result, "\n"), nil
+}
+
+// localPythonModuleName is the module a local (filePath) Python policy is copied to and registered
+// under. It carries the major version so two versions of one policy get separate modules instead of
+// sharing one directory and one implementation.
+func localPythonModuleName(p *types.DiscoveredPolicy) string {
+	return fmt.Sprintf("%s_%s", sanitizeModuleName(p.Name), strings.Split(p.Version, ".")[0])
 }
 
 // sanitizeModuleName converts a policy name to a valid Python module name
