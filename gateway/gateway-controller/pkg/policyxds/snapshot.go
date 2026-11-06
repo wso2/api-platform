@@ -27,6 +27,7 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -152,8 +153,9 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		slog.Int("rdc_count", len(rdcs)),
 		slog.String("node_id", sm.nodeID))
 
-	// Translate RuntimeDeployConfigs to xDS resources (both types)
-	resourcesMap, err := sm.translator.TranslateRuntimeConfigs(rdcs)
+	// Translate RuntimeDeployConfigs to xDS resources (both types). The gateway's own
+	// health routes go last, so they win over any colliding route key.
+	resourcesMap, err := sm.translator.TranslateRuntimeConfigs(append(rdcs, gatewayHealthRuntimeConfig()))
 	if err != nil {
 		sm.logger.Error("Failed to translate runtime configs", slog.Any("error", err))
 		return fmt.Errorf("failed to translate runtime configs: %w", err)
@@ -331,6 +333,38 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 		slog.Int("route_resources", len(routeResources)))
 
 	return result, nil
+}
+
+// gatewayHealthRuntimeConfig describes the gateway's own health routes to the policy
+// engine as routes with an empty policy chain and no upstream. A current policy engine
+// answers these routes itself, before it looks up any route configuration, so it never
+// uses these entries. A policy engine that predates that handling would otherwise find
+// no configuration for the routes and reject every health probe; with these entries it
+// runs no policy and lets Envoy serve the route's own response, which keeps such
+// runtimes healthy while they wait to be upgraded.
+func gatewayHealthRuntimeConfig() *models.RuntimeDeployConfig {
+	rdc := &models.RuntimeDeployConfig{
+		Metadata: models.Metadata{
+			Kind:        "GatewayHealth",
+			DisplayName: "gateway-health",
+		},
+		PolicyChainResolver: models.RouteKeyResolverName,
+		Routes:              make(map[string]*models.Route, 2),
+		PolicyChains:        make(map[string]*models.PolicyChain, 2),
+	}
+	for routeKey, path := range map[string]string{
+		constants.GatewayReadyRouteName:   constants.GatewayReadyPath,
+		constants.GatewayHealthyRouteName: constants.GatewayHealthyPath,
+	} {
+		rdc.Routes[routeKey] = &models.Route{
+			Method:        "GET",
+			Path:          path,
+			OperationPath: path,
+			PathMatchType: "Exact",
+		}
+		rdc.PolicyChains[routeKey] = &models.PolicyChain{}
+	}
+	return rdc
 }
 
 // createPolicyChainResource creates a PolicyChainConfig xDS resource.
