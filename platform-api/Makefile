@@ -129,7 +129,7 @@ binary: ## Build target/$(BINARY_NAME).zip
 		test -f "$$src" || { echo "Error: no binary exported for $$p ($$src)" >&2; exit 1; }; \
 		mkdir -p "$$dst" && cp "$$src" "$$dst/platform-api"; \
 	done
-	@cp Dockerfile binary/README.md target/.binary-stage/platform-api/
+	@cp Dockerfile target/.binary-stage/platform-api/
 	@cp internal/database/schema.sql internal/database/schema.postgres.sql \
 		internal/database/schema.sqlserver.sql internal/database/schema.sqlite.sql \
 		target/.binary-stage/platform-api/internal/database/

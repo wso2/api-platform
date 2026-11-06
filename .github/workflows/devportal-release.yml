@@ -157,8 +157,6 @@ jobs:
               source and the Dockerfile its image is built from.
             - `${{ steps.platform_api_binary.outputs.zip }}`: the prebuilt Platform API binaries
               (linux/amd64, linux/arm64) of the version this distribution pins, with its Dockerfile.
-
-            See "Building Your Own API Portal Image" in the distribution's README.
           files: |
             portals/api-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
             portals/api-portal/target/wso2apip-api-portal-binary-${{ steps.version.outputs.version }}.zip

@@ -121,9 +121,7 @@ build-and-push-multiarch: binary ## Build and push multi-arch API Portal image t
 # (*.test.js) are left out; the image never runs them. pipefail makes a failed git
 # or tar step (e.g. a tracked file deleted on disk) fail the build instead of
 # producing a partial folder. Binary zips of other versions left in target/ by
-# earlier builds are removed first, so target/ only ever holds the current one. The
-# zip's README is the distribution pack's README, whose "Building Your Own API
-# Portal Image" section covers this folder.
+# earlier builds are removed first, so target/ only ever holds the current one.
 .PHONY: binary
 binary: ## Build target/$(BINARY_NAME).zip
 	@rm -rf target/.binary-stage
@@ -131,7 +129,6 @@ binary: ## Build target/$(BINARY_NAME).zip
 	@mkdir -p target/.binary-stage/api-portal
 	@set -o pipefail; git ls-files -z --cached --others --exclude-standard -- $(SOURCE_FILES) ':(exclude)*.test.js' \
 		| tar --null -T - -cf - | tar -xf - -C target/.binary-stage/api-portal
-	@cp distribution/README.md target/.binary-stage/api-portal/README.md
 	@cd target/.binary-stage && zip -rq ../$(BINARY_NAME).zip api-portal
 	@rm -rf target/.binary-stage
 	@echo "✓ Built target/$(BINARY_NAME).zip"
