@@ -57,7 +57,9 @@
 //
 // STS answers AssumeRole, signed with a permanent fixture credential, with temporary credentials
 // that expire after a short lifetime. Those credentials are derived from their expiry time rather
-// than stored. The name of the role a request assumes can select an STS failure or a shorter
+// than stored. Their secrets contain "SecretAccessKey000" and their session tokens
+// "SessionToken0001", as the fixture credentials' do, so a test can check that no secret of either
+// kind is disclosed. The name of the role a request assumes can select an STS failure or a shorter
 // credential lifetime, after the request's signature verifies:
 //
 //	testbench-sts-unavailable    always 503 ServiceUnavailable

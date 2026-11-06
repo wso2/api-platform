@@ -804,7 +804,12 @@ func TestIssuedCredentialsAreDerivedFromTheirExpiry(t *testing.T) {
 	require.True(t, strings.HasPrefix(accessKeyID, issuedKeyPrefix))
 	require.Equal(t, testNow.Add(issuedCredentialLifetime), issued.expiresAt)
 	require.Len(t, issued.secretAccessKey, 40)
-	require.NotEmpty(t, issued.sessionToken)
+	require.Contains(t, issued.secretAccessKey, "SecretAccessKey000")
+	require.Contains(t, issued.sessionToken, "SessionToken0001")
+	other, otherCred := issueCredentials(testNow.Add(time.Second), issuedCredentialLifetime)
+	require.NotEqual(t, accessKeyID, other)
+	require.NotEqual(t, issued.secretAccessKey, otherCred.secretAccessKey)
+	require.NotEqual(t, issued.sessionToken, otherCred.sessionToken)
 
 	resolved, ok := lookupCredential(accessKeyID)
 	require.True(t, ok)
