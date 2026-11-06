@@ -18,8 +18,11 @@
 package utils
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -40,8 +43,12 @@ func TestGenerateMCPDeploymentYAMLSubscriptionPlans(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateMCPDeploymentYAML returned error: %v", err)
 	}
-	if !strings.Contains(out, "subscriptionPlans:\n        - Gold\n        - Silver") {
-		t.Errorf("deployment YAML does not carry the plans:\n%s", out)
+	var deployment model.MCPProxyDeploymentYAML
+	if err := yaml.Unmarshal([]byte(out), &deployment); err != nil {
+		t.Fatalf("deployment YAML does not parse: %v\n%s", err, out)
+	}
+	if !reflect.DeepEqual(deployment.Spec.SubscriptionPlans, []string{"Gold", "Silver"}) {
+		t.Errorf("spec.subscriptionPlans = %v, want [Gold Silver]:\n%s", deployment.Spec.SubscriptionPlans, out)
 	}
 
 	proxy.Configuration.SubscriptionPlans = nil

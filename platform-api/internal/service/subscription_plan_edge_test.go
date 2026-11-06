@@ -224,3 +224,25 @@ func TestPlanService_PortalPlansMayDropTheDescription(t *testing.T) {
 		t.Fatalf("a REST plan: %+v, %v; want its description required", created, err)
 	}
 }
+
+// An updated name is saved trimmed, so a padded name on a plan in use can't reach the gateways, which
+// match an API's plans by name. A blank name on a plan not in use is refused.
+func TestUpdatePlan_TrimsTheName(t *testing.T) {
+	svc, repo := newPlanTestService()
+	repo.usage = model.SubscriptionPlanUsage{RESTAPIs: 1, Subscriptions: 1}
+
+	padded := "  Gold  "
+	got, err := svc.UpdatePlan("gold", "org-1", "", &model.SubscriptionPlanUpdate{Name: &padded})
+	if err != nil {
+		t.Fatalf("UpdatePlan: %v", err)
+	}
+	if got.Name != "Gold" || repo.plans["gold"].Name != "Gold" {
+		t.Fatalf("name = %q, stored %q, want Gold", got.Name, repo.plans["gold"].Name)
+	}
+
+	repo.usage = model.SubscriptionPlanUsage{}
+	blank := "   "
+	if _, err := svc.UpdatePlan("gold", "org-1", "", &model.SubscriptionPlanUpdate{Name: &blank}); !apperror.ValidationFailed.Is(err) {
+		t.Errorf("blank name: err = %v", err)
+	}
+}

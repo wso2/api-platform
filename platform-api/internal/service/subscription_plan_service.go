@@ -274,10 +274,11 @@ func updatedConditions(existing *model.SubscriptionPlan, update *model.Subscript
 // applyPlanUpdate saves the update with the given conditions and tells the gateways.
 func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPlan, orgUUID, actor string, update *model.SubscriptionPlanUpdate, conditions []model.SubscriptionPlanCondition) (*model.SubscriptionPlan, error) {
 	if update.Name != nil {
-		if *update.Name == "" {
+		name := strings.TrimSpace(*update.Name)
+		if name == "" {
 			return nil, apperror.ValidationFailed.New("name is required")
 		}
-		existing.Name = *update.Name
+		existing.Name = name
 	}
 	if update.Description != nil {
 		existing.Description = strings.TrimSpace(*update.Description)
