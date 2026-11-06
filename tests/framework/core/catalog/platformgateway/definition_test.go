@@ -393,6 +393,28 @@ func TestPolicyWorkspaceRejectsDuplicatePolicyNames(t *testing.T) {
 	require.ErrorContains(t, err, "duplicate policy name")
 }
 
+func TestPolicyWorkspaceAllowsTheSamePolicyAtDifferentVersions(t *testing.T) {
+	root := unitRepoRoot(t)
+	source, err := os.MkdirTemp(root, ".framework-policy-versions-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(source)) })
+	for name, version := range map[string]string{"same-policy": "v1.0.0", "same-policy-v2": "v2.0.0"} {
+		dir := filepath.Join(source, name)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "policy-definition.yaml"), []byte(
+			"name: same-policy\nversion: "+version+"\n"), 0o644))
+	}
+
+	relative, err := filepath.Rel(root, source)
+	require.NoError(t, err)
+	workspace, err := stagePolicyWorkspace(root, relative, nil, false)
+	require.NoError(t, err)
+	t.Cleanup(workspace.close)
+	manifest, err := os.ReadFile(workspace.BuildFile)
+	require.NoError(t, err)
+	require.Contains(t, string(manifest), "same-policy-v2")
+}
+
 func TestPolicyBuildValidatesInputsBeforeStaging(t *testing.T) {
 	root := unitRepoRoot(t)
 	runner := &policyRecordingRunner{}
