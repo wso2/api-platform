@@ -3128,7 +3128,7 @@ func (s *Steps) linkOrganizationToControlPlane(ctx context.Context) error {
 
 // registerWebhookSubscriber points api-portal's outgoing webhooks at platform-api's receiver,
 // with the same secret platform-api's [platform_api.webhook] config expects — see
-// core/catalog/overlays/platform-api-webhook.toml. Without this, api-portal never tells
+// core/catalog/overlays/platform-api-portal-publishing.toml. Without this, api-portal never tells
 // platform-api about anything created above; the webhook receiver, though enabled, has nothing
 // subscribed to deliver to it.
 //

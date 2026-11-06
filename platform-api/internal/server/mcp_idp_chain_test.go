@@ -22,6 +22,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"io"
 	"log/slog"
 	"math/big"
@@ -55,6 +56,12 @@ type countingUserRows struct{ created int }
 func (c *countingUserRows) GetOrCreateUUID(string) (string, error)             { c.created++; return "u1", nil }
 func (c *countingUserRows) GetSubByUUID(string) (string, bool, error)          { return "", false, nil }
 func (c *countingUserRows) GetSubsByUUIDs([]string) (map[string]string, error) { return nil, nil }
+func (c *countingUserRows) GetOrCreateUUIDWithDisplayName(identity, _ string) (string, error) {
+	return c.GetOrCreateUUID(identity)
+}
+func (c *countingUserRows) GetIdentitiesByUUIDs([]string) (map[string]repository.UserIdentity, error) {
+	return nil, nil
+}
 
 // idpTestKey serves the public half of a fresh RSA key as a JWKS and signs
 // tokens with the private half.
@@ -135,7 +142,9 @@ func newIDPChain(t *testing.T, key *idpTestKey, idpAudience []string, readOnly c
 	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, skip...)
 
 	utils.InitSharedHTTPClient(&http.Client{Timeout: 5 * time.Second}, 0)
-	authenticator, err := buildAuthenticator(cfg, logger, nil)
+	keyMap, err := buildIssuerKeyMap(cfg, nil)
+	require.NoError(t, err)
+	authenticator, err := buildAuthenticator(cfg, logger, nil, keyMap)
 	require.NoError(t, err)
 
 	chain := []func(http.Handler) http.Handler{

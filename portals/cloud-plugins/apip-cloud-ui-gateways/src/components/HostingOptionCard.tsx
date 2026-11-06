@@ -17,7 +17,7 @@
  */
 
 import type { FC, ReactNode } from 'react';
-import { Box, Card, Radio, Typography } from '@wso2/oxygen-ui';
+import { Box, Card, Radio, Tooltip, Typography } from '@wso2/oxygen-ui';
 
 export type HostingOptionCardProps = {
   icon: ReactNode;
@@ -26,6 +26,10 @@ export type HostingOptionCardProps = {
   selected: boolean;
   /** Roving tab stop: only the selected card (or the first, when none is) is reachable with Tab. */
   tabIndex?: number;
+  /** This hosting kind's quota is full: the card cannot be chosen. */
+  disabled?: boolean;
+  /** Why it cannot be chosen; shown on hover over the disabled card. */
+  disabledMessage?: string;
   onClick: () => void;
 };
 
@@ -36,13 +40,27 @@ export type HostingOptionCardProps = {
  * one-time, harder-to-reverse decision the admin needs more to go on than a
  * type pick does.
  */
-const HostingOptionCard: FC<HostingOptionCardProps> = ({ icon, title, description, selected, tabIndex = 0, onClick }) => (
+const HostingOptionCard: FC<HostingOptionCardProps> = ({
+  icon,
+  title,
+  description,
+  selected,
+  tabIndex = 0,
+  disabled = false,
+  disabledMessage,
+  onClick,
+}) => {
+  const card = (
   <Card
     role="radio"
     aria-checked={selected}
-    tabIndex={tabIndex}
-    onClick={onClick}
+    aria-disabled={disabled || undefined}
+    // Out of the roving tab order entirely: a stop that cannot be chosen is
+    // just a dead key press.
+    tabIndex={disabled ? -1 : tabIndex}
+    onClick={disabled ? undefined : onClick}
     onKeyDown={(event) => {
+      if (disabled) return;
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         onClick();
@@ -56,9 +74,10 @@ const HostingOptionCard: FC<HostingOptionCardProps> = ({ icon, title, descriptio
       p: 2,
       border: '1px solid',
       borderColor: selected ? 'primary.main' : 'divider',
-      cursor: 'pointer',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.5 : 1,
       transition: 'border-color 0.15s ease, background-color 0.15s ease',
-      '&:hover': selected ? undefined : { borderColor: 'text.disabled' },
+      '&:hover': selected || disabled ? undefined : { borderColor: 'text.disabled' },
     }}
   >
     <Box
@@ -86,8 +105,18 @@ const HostingOptionCard: FC<HostingOptionCardProps> = ({ icon, title, descriptio
         {description}
       </Typography>
     </Box>
-    <Radio checked={selected} tabIndex={-1} sx={{ p: 0, mt: 0.25 }} />
+    <Radio checked={selected} disabled={disabled} tabIndex={-1} sx={{ p: 0, mt: 0.25 }} />
   </Card>
-);
+  );
+
+  if (!disabled) return card;
+  // The card keeps pointer-events (it is not a disabled MUI control), but the
+  // Radio inside it does not, so the wrapper is what the Tooltip listens on.
+  return (
+    <Tooltip title={disabledMessage ?? ''}>
+      <Box sx={{ flex: 1, display: 'flex' }}>{card}</Box>
+    </Tooltip>
+  );
+};
 
 export default HostingOptionCard;

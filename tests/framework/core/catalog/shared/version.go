@@ -31,6 +31,8 @@ const (
 	platformAPIVersionFallback = "0.17.0-SNAPSHOT"
 	apiPortalVersionFallback   = "1.0.0-SNAPSHOT"
 	aiWorkspaceVersionFallback = "1.1.0-SNAPSHOT"
+
+	apiControlPlaneVersionFallback = "0.1.0-SNAPSHOT"
 )
 
 var gatewayVersion = sync.OnceValue(func() string { return versionFile("gateway", gatewayVersionFallback) })
@@ -40,6 +42,9 @@ var apiPortalVersion = sync.OnceValue(func() string {
 })
 var aiWorkspaceVersion = sync.OnceValue(func() string {
 	return versionFile(filepath.Join("portals", "ai-workspace"), aiWorkspaceVersionFallback)
+})
+var apiControlPlaneVersion = sync.OnceValue(func() string {
+	return versionFile(filepath.Join("portals", "api-control-plane"), apiControlPlaneVersionFallback)
 })
 
 // SourceVersion returns the version declared by a catalog product's VERSION file.
@@ -53,6 +58,8 @@ func SourceVersion(component string) (string, bool) {
 		return apiPortalVersion(), true
 	case "ai-workspace":
 		return aiWorkspaceVersion(), true
+	case "api-control-plane":
+		return apiControlPlaneVersion(), true
 	default:
 		return "", false
 	}
@@ -102,6 +109,11 @@ func APIPortalImage() string {
 // AIWorkspaceImage returns the AI Workspace image for its source version.
 func AIWorkspaceImage() string {
 	return "ghcr.io/wso2/api-platform/ai-workspace:" + aiWorkspaceVersion()
+}
+
+// APIControlPlaneImage returns the Management Portal image for its source version.
+func APIControlPlaneImage() string {
+	return "ghcr.io/wso2/api-platform/api-control-plane:" + apiControlPlaneVersion()
 }
 
 // RepoRootFromCallerFile locates the checkout containing gateway/VERSION.

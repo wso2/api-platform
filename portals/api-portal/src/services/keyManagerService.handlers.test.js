@@ -47,7 +47,6 @@ const { spawnSync } = require('node:child_process');
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const SERVICE_MODULE = path.join(__dirname, 'keyManagerService.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = 'org-uuid-1';
 const ADMIN = 'admin-1';
@@ -157,7 +156,7 @@ const base = {
     out.getAfterDelete = await call(svc.getKeyManager, as({ params: { kmId: 'sandbox-km' } }));
 
     // A key recorded against "primary" blocks both its rename and its deletion.
-    require(${JSON.stringify(SQLITE)})(${JSON.stringify('DB_FILE')}).prepare(
+    new (require('node:sqlite').DatabaseSync)(${JSON.stringify('DB_FILE')}).prepare(
         \`INSERT INTO oauth2_consumer_keys
          (uuid, org_uuid, portal_id, key_manager_id, consumer_key, name, key_type, status, created_by, updated_by)
          VALUES (?,?,?,?,?,?,?,?,?,?)\`
@@ -186,7 +185,7 @@ function results() {
     const seed = path.join(tmpDir, 'seed.js');
     fs.writeFileSync(seed, `
         const fs = require('fs');
-        const Database = require(${JSON.stringify(SQLITE)});
+        const Database = require('node:sqlite').DatabaseSync;
         const db = new Database(${JSON.stringify(dbFile)});
         db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
         db.prepare(\`INSERT INTO organizations

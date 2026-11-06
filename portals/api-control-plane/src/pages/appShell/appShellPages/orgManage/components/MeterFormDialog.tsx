@@ -20,6 +20,7 @@ import {
   Autocomplete,
   Box,
   Button,
+  ButtonBase,
   Dialog,
   DialogActions,
   DialogContent,
@@ -30,15 +31,32 @@ import {
   FormHelperText,
   FormLabel,
   IconButton,
-  Menu,
+  InputAdornment,
   MenuItem,
   OutlinedInput,
+  Popover,
   Select,
   Stack,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Plus, X } from '@wso2/oxygen-ui-icons-react';
+import {
+  Activity,
+  AlignLeft,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  Braces,
+  ChevronRight,
+  Code,
+  CornerDownRight,
+  Crosshair,
+  PencilLine,
+  Plus,
+  Search,
+  Sigma,
+  X,
+} from '@wso2/oxygen-ui-icons-react';
+import type { ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { useCreateMeter, useUpdateMeter, type Meter, type MeterBody } from '@/api/resources/meters';
@@ -58,7 +76,13 @@ import {
 } from './meterLabels';
 
 /** One property the meter's prices may filter on, as a row of the form: its name and the event key it reads. */
-type FilterFieldRow = { key: number; field: string; eventKey: string };
+type FilterFieldRow = {
+  key: number;
+  field: string;
+  eventKey: string;
+  /** Picked from our gateway's list: its event key is fixed. */
+  fromTemplate?: boolean;
+};
 
 type FormState = {
   displayName: string;
@@ -108,11 +132,51 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.createFailed',
     defaultMessage: 'Failed to add the meter.',
   },
-  custom: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.custom',
-    defaultMessage: 'Custom',
+  customFilter: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.customFilter',
+    defaultMessage: 'Custom filter',
     description:
       'The last choice when adding a filter property: a property with an empty name and key to fill in.',
+  },
+  customFilterHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.customFilterHint',
+    defaultMessage: 'Filter on any attribute path',
+    description: 'Under the Custom filter choice: it reads any event key the administrator types.',
+  },
+  groupMcp: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.groupMcp',
+    defaultMessage: 'MCP',
+    description: 'Heading over the properties of requests to MCP servers. Keep "MCP".',
+  },
+  groupRequest: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.groupRequest',
+    defaultMessage: 'Request',
+    description: 'Heading over the properties every request has, such as its status code.',
+  },
+  groupTokens: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.groupTokens',
+    defaultMessage: 'AI token usage',
+    description: 'Heading over the token counts of AI API requests.',
+  },
+  noFiltersRequests: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.noFiltersRequests',
+    defaultMessage: 'No filters. The meter counts every request.',
+    description: 'Shown in place of the filters of a Requests meter that has none.',
+  },
+  noFiltersTokens: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.noFiltersTokens',
+    defaultMessage: 'No filters. The meter adds up the tokens of every request.',
+    description: 'Shown in place of the filters of a Tokens meter that has none.',
+  },
+  noTemplates: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.noTemplates',
+    defaultMessage: 'No templates match your search.',
+    description: 'Shown in the list of filter properties when the search finds none.',
+  },
+  searchTemplates: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.searchTemplates',
+    defaultMessage: 'Search templates',
+    description: 'Placeholder and accessible name of the search box over the filter properties.',
   },
   descriptionLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.MeterFormDialog.descriptionLabel',
@@ -257,9 +321,68 @@ type TokenKeyInputProps = {
   onChange: (key: string) => void;
   disabled: boolean;
   error: boolean;
+  onBlur: () => void;
   /** The input's id, for its label. */
   id: string;
 };
+
+/** How each group of properties is shown in the Add filter list: its heading and tint. */
+const PRESET_GROUPS: readonly {
+  group: PropertyPreset['group'];
+  title: MessageDescriptor;
+  color: string;
+}[] = [
+  { color: '#f0813a', group: 'request', title: messages.groupRequest },
+  { color: '#8b9cf7', group: 'mcp', title: messages.groupMcp },
+  { color: '#6fcf97', group: 'tokens', title: messages.groupTokens },
+];
+
+/** The icon each of our gateway's properties is listed with. */
+const PRESET_ICONS: Record<string, ReactNode> = {
+  'metadata.aiTokenUsage.completionTokens': <ArrowLeftToLine size={16} />,
+  'metadata.aiTokenUsage.promptTokens': <ArrowRightToLine size={16} />,
+  'metadata.aiTokenUsage.totalTokens': <Sigma size={16} />,
+  'metadata.apiType': <Braces size={16} />,
+  'metadata.mcpAnalytics.capabilityName': <PencilLine size={16} />,
+  'metadata.mcpAnalytics.jsonRpcMethod': <Crosshair size={16} />,
+  'request.route': <CornerDownRight size={16} />,
+  'request.verb': <AlignLeft size={16} />,
+  'response.status': <Activity size={16} />,
+};
+
+/** A small rounded square holding an icon, tinted with `color`. */
+function IconTile({ children, color }: { children: ReactNode; color: string }) {
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        alignItems: 'center',
+        bgcolor: `${color}26`,
+        borderRadius: 1.5,
+        color,
+        display: 'flex',
+        flexShrink: 0,
+        height: 36,
+        justifyContent: 'center',
+        width: 36,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+const pickerItemSx = {
+  alignItems: 'center',
+  borderRadius: 1.5,
+  display: 'flex',
+  gap: 1.5,
+  justifyContent: 'flex-start',
+  px: 1,
+  py: 0.75,
+  textAlign: 'left',
+  width: '100%',
+} as const;
 
 /** A property preset as offered: its name, and the event key it reads under it. */
 function PresetLabel({ preset }: { preset: PropertyPreset }) {
@@ -279,7 +402,7 @@ function PresetLabel({ preset }: { preset: PropertyPreset }) {
  * A Tokens meter's Token key: our gateway's token keys to pick from, each with
  * its label, or any other key typed in.
  */
-function TokenKeyInput({ value, onChange, disabled, error, id }: TokenKeyInputProps) {
+function TokenKeyInput({ value, onChange, onBlur, disabled, error, id }: TokenKeyInputProps) {
   return (
     <Autocomplete<PropertyPreset, false, true, true>
       disableClearable
@@ -303,7 +426,7 @@ function TokenKeyInput({ value, onChange, disabled, error, id }: TokenKeyInputPr
           placeholder={DEFAULT_TOKEN_KEY}
           required
           slotProps={{
-            htmlInput: { ...inputProps, id, spellCheck: false },
+            htmlInput: { ...inputProps, id, onBlur, spellCheck: false },
             input: { ...InputProps, sx: { fontFamily: 'monospace' } },
             inputLabel: InputLabelProps,
           }}
@@ -357,8 +480,12 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
 
   const [form, setForm] = useState<FormState>(emptyForm);
   const [submitted, setSubmitted] = useState(false);
+  // The fields the user has left: their errors show from then on, not while they are first filled in.
+  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
   // The Add filter button while its list of properties is open.
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  // What is typed in that list's search box.
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -378,7 +505,9 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
         : emptyForm(),
     );
     setSubmitted(false);
+    setTouched(new Set());
     setAddAnchor(null);
+    setSearch('');
   }, [open, meter]);
 
   // Switching to Tokens fills in the default Token key; switching away removes it.
@@ -398,11 +527,22 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
           row.eventKey.trim() === preset.eventKey,
       ),
   );
-  const addFilterField = (field: string, eventKey: string) => {
+  const query = search.trim().toLowerCase();
+  const matchingPresets = presets.filter(
+    (preset) =>
+      !query ||
+      intl.formatMessage(preset.name).toLowerCase().includes(query) ||
+      preset.eventKey.toLowerCase().includes(query),
+  );
+  const addFilterField = (field: string, eventKey: string, fromTemplate = false) => {
     setAddAnchor(null);
+    setSearch('');
     setForm((current) => ({
       ...current,
-      filterFields: [...current.filterFields, { eventKey, field, key: nextRowKey.current++ }],
+      filterFields: [
+        ...current.filterFields,
+        { eventKey, field, fromTemplate, key: nextRowKey.current++ },
+      ],
     }));
   };
   const setFilterRow = (key: number, patch: Partial<FilterFieldRow>) =>
@@ -458,16 +598,30 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       return error ? [[row.key, error] as const] : [];
     }),
   );
+  const touch = (id: string) =>
+    setTouched((current) => (current.has(id) ? current : new Set(current).add(id)));
+  const shown = (id: string) => submitted || touched.has(id);
   // Each filter problem once under the filters, in the rows' order.
-  const rowErrors = [
+  const uniqueErrors = (errors: (RowError | undefined)[]) => [
     ...new Map(
-      form.filterFields
-        .flatMap((row) => [nameErrors.get(row.key), fieldKeyErrors.get(row.key)])
+      errors
         .filter((error): error is RowError => error !== undefined)
         .map((error) => [`${error.message.id}:${error.value ?? ''}`, error] as const),
     ).values(),
   ];
-  const canSubmit = !mutation.isPending;
+  const rowErrors = uniqueErrors(
+    form.filterFields.flatMap((row) => [nameErrors.get(row.key), fieldKeyErrors.get(row.key)]),
+  );
+  // Those of the fields the user has left.
+  const shownRowErrors = uniqueErrors(
+    form.filterFields.flatMap((row) => [
+      shown(`name:${row.key}`) ? nameErrors.get(row.key) : undefined,
+      shown(`key:${row.key}`) ? fieldKeyErrors.get(row.key) : undefined,
+    ]),
+  );
+  // Add is on once every required field is filled in and valid.
+  const canSubmit =
+    !mutation.isPending && !hasNameError && tokenKeyError === null && rowErrors.length === 0;
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -541,7 +695,10 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
         <DialogContent>
           <Form.Stack spacing={3}>
             <FormControl error={submitted && hasNameError} fullWidth required>
-              <FormLabel htmlFor={NAME_FIELD}>
+              <FormLabel
+                htmlFor={NAME_FIELD}
+                sx={{ '& .MuiFormLabel-asterisk': { color: 'primary.main' } }}
+              >
                 <FormattedMessage {...messages.nameLabel} />
               </FormLabel>
               <OutlinedInput
@@ -595,19 +752,20 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
             </FormControl>
 
             {isTokens && (
-              <FormControl error={submitted && tokenKeyError !== null} fullWidth>
+              <FormControl error={shown('token') && tokenKeyError !== null} fullWidth>
                 <FormLabel htmlFor={TOKEN_KEY_FIELD} required>
                   <FormattedMessage {...messages.tokenKeyLabel} />
                 </FormLabel>
                 <TokenKeyInput
                   disabled={readOnly}
-                  error={submitted && tokenKeyError !== null}
+                  error={shown('token') && tokenKeyError !== null}
+                  onBlur={() => touch('token')}
                   id={TOKEN_KEY_FIELD}
                   onChange={(typeKey) => setForm((current) => ({ ...current, typeKey }))}
                   value={form.typeKey}
                 />
                 <FormHelperText>
-                  {submitted && tokenKeyError ? <FormattedMessage {...tokenKeyError} /> : null}
+                  {shown('token') && tokenKeyError ? <FormattedMessage {...tokenKeyError} /> : null}
                 </FormHelperText>
               </FormControl>
             )}
@@ -634,24 +792,144 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                   </Button>
                 )}
               </Stack>
-              <Menu
+              <Popover
                 anchorEl={addAnchor}
-                onClose={() => setAddAnchor(null)}
+                anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                onClose={() => {
+                  setAddAnchor(null);
+                  setSearch('');
+                }}
                 open={addAnchor !== null}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      maxHeight: 440,
+                      mt: 0.5,
+                      width: 360,
+                    },
+                  },
+                }}
+                transformOrigin={{ horizontal: 'right', vertical: 'top' }}
               >
-                {presets.map((preset) => (
-                  <MenuItem
-                    key={preset.eventKey}
-                    onClick={() => addFilterField(intl.formatMessage(preset.name), preset.eventKey)}
+                <Box sx={{ p: 1.5 }}>
+                  <OutlinedInput
+                    autoFocus
+                    fullWidth
+                    inputProps={{ 'aria-label': intl.formatMessage(messages.searchTemplates) }}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder={intl.formatMessage(messages.searchTemplates)}
+                    size="small"
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <Search size={16} />
+                      </InputAdornment>
+                    }
+                    value={search}
+                  />
+                </Box>
+                <Divider />
+                <Box role="menu" sx={{ flex: 1, overflowY: 'auto', px: 1, py: 1 }}>
+                  {matchingPresets.length === 0 && (
+                    <Typography color="text.secondary" sx={{ px: 1, py: 1.5 }} variant="body2">
+                      <FormattedMessage {...messages.noTemplates} />
+                    </Typography>
+                  )}
+                  {PRESET_GROUPS.map(({ color, group, title }) => {
+                    const inGroup = matchingPresets.filter((preset) => preset.group === group);
+                    if (inGroup.length === 0) return null;
+                    return (
+                      <Box key={group} role="group" sx={{ mb: 1 }}>
+                        <Stack
+                          alignItems="center"
+                          direction="row"
+                          spacing={1.5}
+                          sx={{ px: 1, py: 1 }}
+                        >
+                          <Typography
+                            color="text.secondary"
+                            sx={{ fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}
+                            variant="caption"
+                          >
+                            <FormattedMessage {...title} />
+                          </Typography>
+                          <Divider sx={{ flex: 1 }} />
+                        </Stack>
+                        {inGroup.map((preset) => (
+                          <ButtonBase
+                            key={preset.eventKey}
+                            onClick={() =>
+                              addFilterField(intl.formatMessage(preset.name), preset.eventKey, true)
+                            }
+                            role="menuitem"
+                            sx={pickerItemSx}
+                            title={preset.eventKey}
+                          >
+                            <IconTile color={color}>{PRESET_ICONS[preset.eventKey]}</IconTile>
+                            <Typography variant="body1">
+                              <FormattedMessage {...preset.name} />
+                            </Typography>
+                          </ButtonBase>
+                        ))}
+                      </Box>
+                    );
+                  })}
+                </Box>
+                <Divider />
+                <Box sx={{ p: 1 }}>
+                  <ButtonBase
+                    onClick={() => addFilterField('', '')}
+                    role="menuitem"
+                    sx={pickerItemSx}
                   >
-                    <PresetLabel preset={preset} />
-                  </MenuItem>
-                ))}
-                {presets.length > 0 && <Divider />}
-                <MenuItem onClick={() => addFilterField('', '')}>
-                  <FormattedMessage {...messages.custom} />
-                </MenuItem>
-              </Menu>
+                    <Box
+                      aria-hidden
+                      sx={{
+                        alignItems: 'center',
+                        border: '1px dashed',
+                        borderColor: 'text.disabled',
+                        borderRadius: '50%',
+                        color: 'text.secondary',
+                        display: 'flex',
+                        flexShrink: 0,
+                        height: 44,
+                        justifyContent: 'center',
+                        width: 44,
+                      }}
+                    >
+                      <Code size={16} />
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography sx={{ fontWeight: 600 }} variant="body1">
+                        <FormattedMessage {...messages.customFilter} />
+                      </Typography>
+                      <Typography color="text.secondary" variant="body2">
+                        <FormattedMessage {...messages.customFilterHint} />
+                      </Typography>
+                    </Box>
+                    <ChevronRight size={16} />
+                  </ButtonBase>
+                </Box>
+              </Popover>
+              {form.filterFields.length === 0 && (
+                <Box
+                  sx={{
+                    border: '1px dashed',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    color: 'text.secondary',
+                    px: 2,
+                    py: 2,
+                  }}
+                >
+                  <Typography color="inherit" variant="body2">
+                    <FormattedMessage
+                      {...(isTokens ? messages.noFiltersTokens : messages.noFiltersRequests)}
+                    />
+                  </Typography>
+                </Box>
+              )}
               {form.filterFields.length > 0 && (
                 <Box
                   aria-hidden
@@ -678,7 +956,8 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                 >
                   <OutlinedInput
                     disabled={readOnly}
-                    error={submitted && nameErrors.has(row.key)}
+                    error={shown(`name:${row.key}`) && nameErrors.has(row.key)}
+                    onBlur={() => touch(`name:${row.key}`)}
                     inputProps={{ 'aria-label': intl.formatMessage(messages.filterField) }}
                     onChange={(event) => setFilterRow(row.key, { field: event.target.value })}
                     size="small"
@@ -686,9 +965,11 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                   />
                   <OutlinedInput
                     disabled={readOnly}
-                    error={submitted && fieldKeyErrors.has(row.key)}
+                    error={shown(`key:${row.key}`) && fieldKeyErrors.has(row.key)}
+                    onBlur={() => touch(`key:${row.key}`)}
                     inputProps={{
                       'aria-label': intl.formatMessage(messages.eventKey),
+                      readOnly: row.fromTemplate,
                       spellCheck: false,
                     }}
                     onChange={(event) => setFilterRow(row.key, { eventKey: event.target.value })}
@@ -713,16 +994,15 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
                   )}
                 </Box>
               ))}
-              {submitted &&
-                rowErrors.map((error) => (
-                  <Typography
-                    color="error"
-                    key={`${error.message.id}:${error.value ?? ''}`}
-                    variant="caption"
-                  >
-                    <FormattedMessage {...error.message} values={{ value: error.value }} />
-                  </Typography>
-                ))}
+              {shownRowErrors.map((error) => (
+                <Typography
+                  color="error"
+                  key={`${error.message.id}:${error.value ?? ''}`}
+                  variant="caption"
+                >
+                  <FormattedMessage {...error.message} values={{ value: error.value }} />
+                </Typography>
+              ))}
             </Stack>
           </Form.Stack>
         </DialogContent>

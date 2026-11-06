@@ -109,6 +109,8 @@ const attachRequestContext = (
         config.headers.delete('Content-Type');
     } else if (config.textContentType) {
         config.headers.set('Content-Type', config.textContentType);
+    } else if (config.data instanceof URLSearchParams) {
+        config.headers.set('Content-Type', 'application/x-www-form-urlencoded');
     } else {
         config.headers.set('Content-Type', 'application/json');
     }
@@ -352,10 +354,35 @@ export type RequestOptions = {
   query?: Query;
   headers?: Record<string, string>;
   body?: unknown;
+  /**
+   * Whether a 401 can mean the session is gone. `false` for a request carrying
+   * its own credentials (the service-account token exchange): there a 401 means
+   * those were wrong, so the session is not re-checked and nothing is retried,
+   * unless the BFF itself answers that the session is gone.
+   */
+  authFailureIsSession?: boolean;
+};
+
+/** Codes of the BFF's own 401s, which are about the session whatever the request carried. */
+const BFF_SESSION_CODES: ReadonlySet<unknown> = new Set(['NOT_AUTHENTICATED', 'SESSION_EXPIRED']);
+
+const isBffSessionFailure = (data: unknown): boolean => {
+  let body = data;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  return typeof body === 'object' && body !== null && BFF_SESSION_CODES.has((body as { code?: unknown }).code);
 };
 
 const isFormData = (value: unknown): value is FormData =>
   typeof FormData !== 'undefined' && value instanceof FormData;
+
+const isUrlEncoded = (value: unknown): value is URLSearchParams =>
+  typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams;
 
 /**
  * A request body sent as-is under its own content type, for an endpoint that
@@ -443,15 +470,16 @@ async function send(
     requestId,
     operationName: options.operationName,
     ...(responseType ? { responseType } : {}),
-    // FormData is passed through untouched; anything else is serialized here
-    // so the Content-Type set above is always accurate.
+    // FormData and URLSearchParams are passed through untouched; anything else
+    // is serialized here so the Content-Type set above is always accurate.
     ...(options.body instanceof TextBody
       ? { data: options.body.text, textContentType: options.body.contentType }
       : options.body !== undefined
         ? {
-            data: isFormData(options.body)
-              ? options.body
-              : JSON.stringify(options.body),
+            data:
+              isFormData(options.body) || isUrlEncoded(options.body)
+                ? options.body
+                : JSON.stringify(options.body),
           }
         : {}),
   };
@@ -470,7 +498,11 @@ async function send(
     deadline.release();
   }
 
-  if (response.status === 401 && !retried) {
+  if (
+    response.status === 401 &&
+    !retried &&
+    (options.authFailureIsSession !== false || isBffSessionFailure(response.data))
+  ) {
     const alive = await untilAborted(notifyUnauthorized(), options.signal);
     if (options.signal?.aborted) {
       throw platformErrorFromTransport(

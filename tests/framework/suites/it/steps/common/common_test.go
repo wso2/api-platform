@@ -78,11 +78,86 @@ func TestGenerateAPIVersionAndStore(t *testing.T) {
 	require.Regexp(t, `^v1\.0\.[1-9][0-9]{0,5}$`, value)
 }
 
+func TestGenerateUUIDAndStore(t *testing.T) {
+	ctx := commonContext()
+	require.NoError(t, GenerateUUIDAndStore(ctx, "first"))
+	require.NoError(t, GenerateUUIDAndStore(ctx, "second"))
+	first, err := StoredValue(ctx, "first")
+	require.NoError(t, err)
+	second, err := StoredValue(ctx, "second")
+	require.NoError(t, err)
+	uuidV4 := `^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`
+	require.Regexp(t, uuidV4, first)
+	require.Regexp(t, uuidV4, second)
+	require.NotEqual(t, first, second)
+
+	require.ErrorContains(t, GenerateUUIDAndStore(context.Background(), "id"), "runner context")
+	require.ErrorContains(t, GenerateUUIDAndStore(commonContext(), " "), "empty key")
+}
+
 func TestGenerateAndStoreRejectsInvalidContext(t *testing.T) {
 	require.ErrorContains(t, GenerateAndStore(context.Background(), "api", "name"), "runner context")
 	require.ErrorContains(t, GenerateAndStore(commonContext(), "api", " "), "empty key")
 	_, err := StoredValue(commonContext(), "missing")
 	require.ErrorContains(t, err, "no value in context")
+}
+
+// claimsTable builds a two-column table from name/value pairs.
+func claimsTable(t *testing.T, pairs ...string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	var rows []row
+	for i := 0; i+1 < len(pairs); i += 2 {
+		rows = append(rows, row{Cells: []cell{{pairs[i]}, {pairs[i+1]}}})
+	}
+	raw, err := json.Marshal(map[string]any{"rows": rows})
+	require.NoError(t, err)
+	var table godog.Table
+	require.NoError(t, json.Unmarshal(raw, &table))
+	return &table
+}
+
+func TestClaimsFromTableDecodesListsMapsAndQuotedStrings(t *testing.T) {
+	claims, err := ClaimsFromTable(context.Background(), claimsTable(t,
+		"sub", "ivy",
+		"org_id", `["acme"]`,
+		"org_map", `{"acme": {"id": "1"}}`,
+		"padded", `"default "`,
+		"org_name", "Acme Corp",
+	))
+	require.NoError(t, err)
+	require.Equal(t, "ivy", claims["sub"])
+	require.Equal(t, []any{"acme"}, claims["org_id"])
+	require.Equal(t, map[string]any{"acme": map[string]any{"id": "1"}}, claims["org_map"])
+	require.Equal(t, "default ", claims["padded"], "a quoted value keeps the space Gherkin would trim")
+	require.Equal(t, "Acme Corp", claims["org_name"])
+}
+
+func TestClaimsFromTableRejectsMalformedTables(t *testing.T) {
+	cases := map[string]*godog.Table{
+		"nil table":    nil,
+		"missing sub":  claimsTable(t, "org_id", "acme"),
+		"empty sub":    claimsTable(t, "sub", ""),
+		"empty name":   claimsTable(t, "sub", "u", " ", "value"),
+		"duplicate":    claimsTable(t, "sub", "u", "sub", "v"),
+		"invalid JSON": claimsTable(t, "sub", "u", "roles", "[unclosed"),
+		"wrong columns": func() *godog.Table {
+			table := claimsTable(t, "sub", "u")
+			table.Rows[0].Cells = table.Rows[0].Cells[:1]
+			return table
+		}(),
+	}
+	for name, table := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := ClaimsFromTable(context.Background(), table)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestExpansionResolvesScopedValuesConcurrently(t *testing.T) {
@@ -336,13 +411,19 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		"subscription.yaml":          "Subscription",
 	}
 	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
-	controlPlaneProtocols := map[string]string{
-		"agent-proxy.yaml": "a2a",
+	// Each names the payload block that identifies the resource.
+	controlPlaneBlocks := map[string]string{
+		"agent-proxy.yaml":     "a2a",
+		"llm-provider-cp.yaml": "upstream",
+	}
+	// Control-plane payloads without a protocol block name the fields every request carries.
+	controlPlaneFields := map[string][]string{
+		"service-account.yaml": {"displayName", "roles"},
 	}
 
 	paths, err := filepath.Glob(filepath.Join(root, "*.yaml"))
 	require.NoError(t, err)
-	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneProtocols))
+	require.Len(t, paths, len(gatewayKinds)+len(controlPlaneBlocks)+len(controlPlaneFields))
 	for _, path := range paths {
 		name := filepath.Base(path)
 		content, err := os.ReadFile(path)
@@ -350,13 +431,26 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 		var document map[string]any
 		require.NoError(t, yaml.Unmarshal(content, &document))
 
-		if protocol, isControlPlane := controlPlaneProtocols[name]; isControlPlane {
-			require.Equal(t, protocol, document["protocol"], "template %q", name)
+		if fields, isControlPlane := controlPlaneFields[name]; isControlPlane {
 			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
 				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
 			}
-			block, ok := document[protocol].(map[string]any)
-			require.True(t, ok, "template %q must define its %q protocol block", name, protocol)
+			require.Len(t, document, len(fields), "template %q", name)
+			for _, field := range fields {
+				require.Contains(t, document, field, "template %q", name)
+			}
+			continue
+		}
+
+		if blockName, isControlPlane := controlPlaneBlocks[name]; isControlPlane {
+			if name == "agent-proxy.yaml" {
+				require.Equal(t, "a2a", document["protocol"], "template %q", name)
+			}
+			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
+			}
+			block, ok := document[blockName].(map[string]any)
+			require.True(t, ok, "template %q must define its %q block", name, blockName)
 			require.NotEmpty(t, block, "template %q", name)
 			continue
 		}

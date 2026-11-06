@@ -10,6 +10,9 @@
 #     such a user's entire grant, so this file is the only place their privileges
 #     are defined; there is no per-user scope list to keep in sync with it.
 #
+# A service account may hold any role here, one or more. ap_service_account is
+# the read-only role the UI selects for a new account.
+#
 # When a token — or a file-mode user's roles list — carries multiple roles, the
 # effective scopes are the union of all matching entries; most-permissive wins.
 #
@@ -80,6 +83,8 @@ roles:
       - ap:mcp_proxy:manage
       - ap:agent_proxy:manage
       - ap:secret:manage
+      # Creating a service account creates privilege, so manage is admin-only.
+      - ap:service_account:manage
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
       - ap:api_key:all:manage
@@ -134,24 +139,33 @@ roles:
       - ap:llm_provider:read
       - ap:llm_provider:deployment:manage
       - ap:llm_provider:build:manage
+      - ap:llm_provider:api_key:read
       - ap:llm_proxy:read
       - ap:llm_proxy:deployment:manage
       - ap:llm_proxy:build:manage
+      - ap:llm_proxy:api_key:read
       - ap:mcp_proxy:read
       - ap:mcp_proxy:deployment:manage
       - ap:mcp_proxy:build:manage
       - ap:agent_proxy:read
       - ap:agent_proxy:deployment:manage
       - ap:agent_proxy:build:manage
+      - ap:agent_proxy:api_key:read
       - ap:subscription_plan:manage
       - ap:meter:manage
       - ap:application:read
       - ap:application:api_key:read
       - ap:application:association:read
+      - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:secret:read
+      - ap:service_account:read
       - ap:api_key:read
       - ap:api_portal:manage
+      # Drafts, REST and GraphQL publications are the one place the spec does
+      # NOT fold the subresource into the parent: ap:api_portal:manage reaches
+      # none of them, so the read is granted on its own.
+      - ap:api_portal:draft:read
       - ap:api_portal:publication:read
       - ap:api_publication:read
       # - ap:websub_api:read   # event-gateway build only
@@ -339,3 +353,34 @@ roles:
       - dp:api_workflow:read
       - dp:webhook_subscriber:read
       - dp:event:read
+
+  # Service account, read-only — a subset of ap_viewer's Platform API reads,
+  # with no credential reads (API keys, secrets, gateway tokens).
+  - name: ap_service_account
+    scopes:
+      - ap:organization:read
+      - ap:project:read
+      - ap:gateway:read
+      - ap:gateway_custom_policy:read
+      - ap:rest_api:read
+      - ap:rest_api:deployment:read
+      - ap:rest_api:build:read
+      - ap:graphql_api:read
+      - ap:graphql_api:deployment:read
+      - ap:graphql_api:build:read
+      - ap:application:read
+      - ap:subscription:read
+      - ap:subscription_plan:read
+      - ap:llm_template:read
+      - ap:llm_provider:read
+      - ap:llm_provider:deployment:read
+      - ap:llm_provider:build:read
+      - ap:llm_proxy:read
+      - ap:llm_proxy:deployment:read
+      - ap:llm_proxy:build:read
+      - ap:mcp_proxy:read
+      - ap:mcp_proxy:deployment:read
+      - ap:mcp_proxy:build:read
+      - ap:agent_proxy:read
+      - ap:agent_proxy:deployment:read
+      - ap:agent_proxy:build:read

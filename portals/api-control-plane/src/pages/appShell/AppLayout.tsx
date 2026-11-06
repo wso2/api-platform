@@ -31,6 +31,7 @@ import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
 import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
+import { useAuth } from '../../contexts/auth/AuthProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useResourceLimits } from '../../hooks/useResourceLimits';
 import { usePageTitle } from '../../navigation/usePageTitle';
@@ -44,6 +45,7 @@ import {
   type InvalidatableResource,
 } from '../../hostPort';
 import { useSlot } from '../../slots';
+import { usePermissions } from '../../permissions';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
@@ -54,6 +56,7 @@ export default function AppLayout() {
   const location = useLocation();
   const { params } = useConsoleScope();
   const { notify } = useNotifications();
+  const { hasScope } = usePermissions();
 
   // Every page inside the shell gets its tab title from here, so a new route
   // is named by its sidebar entry without touching the page itself.
@@ -75,6 +78,7 @@ export default function AppLayout() {
     readOnlyBanner,
     setReadOnly,
   } = useResourceLimits();
+  const auth = useAuth();
 
   const resourceLimits = useMemo(
     () => ({
@@ -140,6 +144,11 @@ export default function AppLayout() {
     gatewayControlPlaneHost: runtimeConfig.gatewayControlPlaneHostOverride || undefined,
     resourceLimits,
     resources,
+    // Answered by this console's own permission layer (exact any-of over the
+    // session's scopes; allowed while the session loads and in permissive mode),
+    // so a cloud control disables under the conditions a built-in one does.
+    permissions: { canAny: (scopes) => scopes.some(hasScope) },
+    user: auth.user ? { email: auth.user.email, name: auth.user.name } : undefined,
   };
 
   return (

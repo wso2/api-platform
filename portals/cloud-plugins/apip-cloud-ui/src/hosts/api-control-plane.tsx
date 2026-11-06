@@ -17,11 +17,20 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
-import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import { GATEWAY_OPERATIONS, GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
-import { LogsFeature, MetricsPanel, ScopedLogsNotice } from '@wso2-enterprise/apip-cloud-ui-logs';
-import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import {
+  LOG_OPERATIONS,
+  LogsFeature,
+  MetricsPanel,
+  ScopedLogsNotice,
+} from '@wso2-enterprise/apip-cloud-ui-logs';
+import {
+  ManagedPortalsPage,
+  PORTAL_OPERATIONS,
+} from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
 import {
   EntitlementsGate,
   TrialStatusFeature,
@@ -31,6 +40,7 @@ import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import {
   APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
+  HOME_GREETING_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
@@ -39,6 +49,7 @@ import {
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
+import { isFeatureDisabled } from '../../../../api-control-plane/src/config/features';
 import { runtimeConfig } from '../../../../api-control-plane/src/config/runtime';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
@@ -175,6 +186,21 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     ],
   }),
   defineCloudPlugin({
+    // Greets the signed-in user by their own name on the Organization home page,
+    // read from the session the host already holds (no request of its own). With no
+    // name the page keeps greeting by the organization's name.
+    id: 'user-profile',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'home-greeting-name',
+        slot: HOME_GREETING_SLOT,
+        order: 10,
+        resolveName: (port) => nameFromPort(port),
+      },
+    ],
+  }),
+  defineCloudPlugin({
     id: 'gateways',
     version: '0.1.0',
     extensions: [
@@ -213,6 +239,11 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         ),
         label: 'Gateways',
         level: 'organization',
+        // The scopes the gateways list accepts (see `GATEWAY_OPERATIONS` for
+        // why `ap:gateway:read` is among them). Gates the nav placement this
+        // override carries — `useNavigationItems` applies it to the built-in
+        // Gateways item it repositions — and the page gates itself the same way.
+        requiredScopes: GATEWAY_OPERATIONS.ListManagedGateways,
       },
     ],
   }),
@@ -271,7 +302,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // hands the claim back — to the project notice below, and inside an API
         // to the built-in submenu, whose Metrics and Alerts pages are the right
         // ones there.
-        isVisible: (scope) => !scope.isProjectScope && !scope.isApiScope,
+        isVisible: (scope) =>
+          !scope.isProjectScope && !scope.isApiScope && !isFeatureDisabled('observability'),
         // No `render`: a direct hit on /observability redirects to the first
         // child (Logs), so the URL names the page shown and the sidebar
         // highlights it.
@@ -279,6 +311,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // The page used to live at /logs, and that URL is in bookmarks and
         // runbooks.
         aliases: ['logs'],
+        // Logs are read under the gateway scopes. A user without them gets the
+        // built-in Observability item back, as for any claim that stands down.
+        requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
         label: 'Observability',
         icon: <Activity size={20} />,
         // Organization, not project: the observability API scopes a log query
@@ -296,8 +331,10 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             id: 'observability-logs',
             routePath: 'logs',
             render: (port) => <LogsFeature port={port} />,
+            requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
             label: 'Logs',
             icon: <Logs size={20} />,
+            isVisible: () => !isFeatureDisabled('logs'),
           },
           {
             id: 'observability-metrics',
@@ -308,6 +345,10 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             render: () => <MetricsPanel />,
             label: 'Metrics',
             icon: <Gauge size={20} />,
+            // This extension claims the built-in `observability` item wholesale
+            // (see the claim above), so the built-in's own `disableKey: 'metrics'`
+            // gating never runs for it — mirror that check here directly.
+            isVisible: () => !isFeatureDisabled('metrics'),
           },
         ],
       },
@@ -317,6 +358,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'project-observability',
         slot: 'sidebar.project',
         claims: 'observability',
+        // The notice points at the organization's logs, so it is for those who
+        // may read them.
+        requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
         group: 'operate',
         order: 70,
         routePath: 'observability',
@@ -366,6 +410,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         order: 120,
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
+        requiredScopes: PORTAL_OPERATIONS.ListManagedApiPortals,
         label: 'Portals',
         icon: <PanelsTopLeft size={20} />,
         level: 'organization',
@@ -396,7 +441,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
           return (
             Boolean(typed.isOrganizationScope) &&
             !typed.isProjectScope &&
-            !typed.isApiScope
+            !typed.isApiScope &&
+            !isFeatureDisabled('insights')
           );
         },
         // `InsightsFeature` brings its own `PageContent` on AI Workspace (whose
@@ -428,7 +474,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             isProjectScope?: boolean;
             isApiScope?: boolean;
           };
-          return Boolean(typed.isProjectScope) && !typed.isApiScope;
+          return (
+            Boolean(typed.isProjectScope) && !typed.isApiScope && !isFeatureDisabled('insights')
+          );
         },
         render: (port) => (
           <PageContent fullWidth>

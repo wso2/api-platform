@@ -23,7 +23,7 @@
  *
  * `properties` throughout is the open bag from the REST API — RFC 7591 client
  * metadata plus key-manager-specific keys, exactly as
- * OAuth2KeyProperties defines it in docs/api-portal-openapi-spec-v0.9.yaml.
+ * OAuth2KeyProperties defines it in resources/openapi/api-portal-openapi-spec-v0.9.yaml.
  * Those keys stay snake_case because they are RFC 7591 wire names handed to the
  * key manager verbatim; the envelope around them is camelCase like the rest of
  * this API.

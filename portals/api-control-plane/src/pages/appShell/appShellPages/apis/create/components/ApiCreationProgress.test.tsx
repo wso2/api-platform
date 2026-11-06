@@ -122,49 +122,58 @@ describe('ApiCreationProgress', () => {
       />,
     );
 
-    expect(screen.getByText('We are in the process of creating your Countries GraphQL API')).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'GraphQL API creation progress' })).toBeInTheDocument();
+    expect(
+      screen.getByText('We are in the process of creating your Countries GraphQL API'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('progressbar', { name: 'GraphQL API creation progress' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/API Proxy/i)).not.toBeInTheDocument();
     unmount();
 
     renderWithProviders(
-      <ApiCreationProgress apiKind="graphql" onBack={noop} onComplete={noop} onRetry={noop} status="failed" />,
+      <ApiCreationProgress
+        apiKind="graphql"
+        onBack={noop}
+        onComplete={noop}
+        onRetry={noop}
+        status="failed"
+      />,
     );
     expect(screen.getByText('We could not create this GraphQL API')).toBeInTheDocument();
   });
 
-  // Only the last step reflects real work; the first three are paced by the
+  // Only the last step reflects real work; the first is paced by the
   // clock and short, so a quick create is not held back.
   describe('steps', () => {
     const stepsList = () => screen.getByRole('list');
     const doneSteps = () => stepsList().querySelectorAll('svg.lucide-check').length;
 
-    it('completes the first three steps on a short timer, then waits on the server', () => {
+    it('completes the first step on a short timer, then waits on the server', () => {
       renderWithProviders(
         <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="creating" />,
       );
 
       expect(doneSteps()).toBe(0);
-      expect(screen.getByText('Validating API definition', { selector: 'li p' })).toBeInTheDocument();
+      expect(
+        screen.getByText('Validating API definition', { selector: 'li p' }),
+      ).toBeInTheDocument();
 
       act(() => {
         vi.advanceTimersByTime(1_000);
       });
-      expect(doneSteps()).toBe(2);
 
-      act(() => {
-        vi.advanceTimersByTime(2_000);
-      });
-
-      expect(doneSteps()).toBe(3);
-      expect(screen.getByText('Saving proxy', { selector: 'li p' })).toBeInTheDocument();
-      expect(stepsList().querySelector('[aria-current="step"]')).toHaveTextContent('Saving proxy');
+      expect(doneSteps()).toBe(1);
+      expect(screen.getByText('Creating API Proxy', { selector: 'li p' })).toBeInTheDocument();
+      expect(stepsList().querySelector('[aria-current="step"]')).toHaveTextContent(
+        'Creating API Proxy',
+      );
 
       // However long the server takes, the last step stays open.
       act(() => {
         vi.advanceTimersByTime(60_000);
       });
-      expect(doneSteps()).toBe(3);
+      expect(doneSteps()).toBe(1);
     });
 
     it('finishes every step the moment the server answers, even mid-pacing', () => {
@@ -179,7 +188,7 @@ describe('ApiCreationProgress', () => {
         <ApiCreationProgress onBack={noop} onComplete={noop} onRetry={noop} status="created" />,
       );
 
-      expect(doneSteps()).toBe(4);
+      expect(doneSteps()).toBe(2);
       expect(screen.getByText('API Proxy created. Taking you there…')).toBeInTheDocument();
     });
 
@@ -199,8 +208,9 @@ describe('ApiCreationProgress', () => {
       });
 
       expect(screen.getByText('Creating GraphQL API', { selector: 'li p' })).toBeInTheDocument();
-      expect(screen.getByText('Creating GraphQL API', { selector: '[aria-live="polite"]' })).toBeInTheDocument();
-      expect(screen.getByText('Preparing GraphQL schema and policies')).toBeInTheDocument();
+      expect(
+        screen.getByText('Creating GraphQL API', { selector: '[aria-live="polite"]' }),
+      ).toBeInTheDocument();
     });
 
     it('starts a retry from the first step again', () => {
@@ -218,10 +228,9 @@ describe('ApiCreationProgress', () => {
       );
 
       expect(doneSteps()).toBe(0);
-      expect(screen.getByRole('progressbar', { name: 'API proxy creation progress' })).toHaveAttribute(
-        'aria-valuenow',
-        '0',
-      );
+      expect(
+        screen.getByRole('progressbar', { name: 'API proxy creation progress' }),
+      ).toHaveAttribute('aria-valuenow', '0');
     });
   });
 });

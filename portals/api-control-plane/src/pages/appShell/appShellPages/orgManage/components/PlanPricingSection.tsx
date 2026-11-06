@@ -29,6 +29,7 @@ import {
   OutlinedInput,
   Select,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
@@ -43,6 +44,7 @@ import {
 } from 'react-intl';
 
 import type { Meter } from '@/api/resources/meters';
+import { isFeatureDisabled } from '@/config/features';
 import { hairline } from '@/theme/receipes';
 import { CURRENCIES, type Currency } from './currencies';
 import { MeterPicker } from './MeterPicker';
@@ -188,7 +190,7 @@ const messages = defineMessages({
   },
   noMeters: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.noMeters',
-    defaultMessage: 'Create a meter in Settings › Meters to charge for usage.',
+    defaultMessage: 'Create a meter in Manage › Meters to charge for usage.',
   },
   paidHelper: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.PlanPricingSection.paidHelper',
@@ -949,20 +951,22 @@ export function PlanPricingSection({
             <Typography sx={{ fontWeight: 600 }} variant="body1">
               <FormattedMessage {...messages.paidLabel} />
             </Typography>
-            <Chip
-              color="primary"
-              label={<FormattedMessage {...messages.comingSoon} />}
-              size="small"
-              variant="outlined"
-            />
-            {/* Hidden while paid plans are coming soon; the pricing form below is kept.
-            <Switch
-              checked={value.paid}
-              disabled={disabled}
-              onChange={(event) => set({ paid: event.target.checked })}
-              slotProps={{ input: { role: 'switch', 'aria-label': intl.formatMessage(messages.paidLabel) } }}
-            />
-            */}
+            {/* `paidplan` in disableFeatures keeps paid plans "coming soon": no switch to turn them on. */}
+            {isFeatureDisabled('paidplan') ? (
+              <Chip
+                color="primary"
+                label={<FormattedMessage {...messages.comingSoon} />}
+                size="small"
+                variant="outlined"
+              />
+            ) : (
+              <Switch
+                checked={value.paid}
+                disabled={disabled}
+                onChange={(event) => set({ paid: event.target.checked })}
+                slotProps={{ input: { role: 'switch', 'aria-label': intl.formatMessage(messages.paidLabel) } }}
+              />
+            )}
           </Stack>
           <Typography color="text.secondary" sx={{ opacity: 0.7 }} variant="body2">
             <FormattedMessage {...(readOnly ? messages.lockedHint : messages.paidHelper)} />
