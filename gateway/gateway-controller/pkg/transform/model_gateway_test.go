@@ -230,12 +230,12 @@ func (f *modelGatewayFixture) addModel(handle, modelName string, targets []api.M
 }
 
 func directTarget(name, model string) api.ModelTarget {
-	return api.ModelTarget{Name: name, Provider: api.ModelTargetProvider{Id: "openai-direct"}, UpstreamModel: model}
+	return api.ModelTarget{Name: model, Provider: "openai-direct", Alias: ptr(name)}
 }
 
 func routedTarget(name, model string) api.ModelTarget {
 	return api.ModelTarget{
-		Name: name, Provider: api.ModelTargetProvider{Id: "anthropic-routed"}, UpstreamModel: model,
+		Name: model, Provider: "anthropic-routed", Alias: ptr(name),
 		Auth: &api.LLMUpstreamAuth{Type: api.LLMUpstreamAuthTypeApiKey, Header: ptr("x-api-key"), Value: ptr("route-key")},
 	}
 }
@@ -404,7 +404,7 @@ func TestModelGateway_FailedModelIsLeftOutOthersServe(t *testing.T) {
 	f := newModelGatewayFixture(t)
 	f.addModel("gpt", "gpt-4o", []api.ModelTarget{directTarget("openai", "gpt-4o")}, nil)
 	f.addModel("broken", "broken", []api.ModelTarget{{
-		Name: "x", Provider: api.ModelTargetProvider{Id: "no-such-provider"}, UpstreamModel: "m",
+		Name: "m", Provider: "no-such-provider", Alias: ptr("x"),
 	}}, nil)
 
 	rdc, statuses, err := f.compiler.Compile(f.endpoint)
@@ -503,7 +503,7 @@ func TestModelGateway_GeminiEndpointReadsTheModelFromThePath(t *testing.T) {
 	})
 	gem := f.addEndpoint("gem", "/gemini", "gemini", nil)
 	f.addModel("flash", "gemini-flash", []api.ModelTarget{{
-		Name: "g", Provider: api.ModelTargetProvider{Id: "gemini-direct"}, UpstreamModel: "gemini-2.0-flash",
+		Name: "gemini-2.0-flash", Provider: "gemini-direct", Alias: ptr("g"),
 	}}, nil, "gem")
 
 	rdc, statuses, err := f.compiler.Compile(gem)
@@ -741,7 +741,7 @@ func TestModelGateway_ModelWithUnbuildableClusterIsLeftOut(t *testing.T) {
 	})
 	f.addModel("gpt", "gpt-4o", []api.ModelTarget{directTarget("openai", "gpt-4o")}, nil)
 	f.addModel("broken", "broken", []api.ModelTarget{{
-		Name: "x", Provider: api.ModelTargetProvider{Id: "bad-upstream"}, UpstreamModel: "m",
+		Name: "m", Provider: "bad-upstream", Alias: ptr("x"),
 	}}, nil)
 
 	rdc, statuses, err := f.compiler.Compile(f.endpoint)
@@ -792,7 +792,7 @@ func TestModelGateway_ProviderRenderedOncePerCompile(t *testing.T) {
 			Value: ptr(`Bearer {{ secret "openai-key" }}`)}
 	})
 	target := func(name, model string) api.ModelTarget {
-		return api.ModelTarget{Name: name, Provider: api.ModelTargetProvider{Id: "openai-secret"}, UpstreamModel: model}
+		return api.ModelTarget{Name: model, Provider: "openai-secret", Alias: ptr(name)}
 	}
 	roundRobin := &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"}}
 	f.addModel("a", "a", []api.ModelTarget{target("t", "gpt-4o")}, nil)

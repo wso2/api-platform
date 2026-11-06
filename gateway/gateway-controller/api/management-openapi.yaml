@@ -8449,8 +8449,8 @@ components:
           type: array
           maxItems: 16
           description: >
-            The paths the transformer writes upstream, with `{upstreamModel}` and
-            `{apiVersion}` placeholders. Used only to check that a provider reached
+            The paths the transformer writes upstream, with `{upstreamModel}` (the
+            target's `name`) and `{apiVersion}` placeholders. Used only to check that a provider reached
             through its own route allows them (accessControl).
           items:
             type: string
@@ -8493,10 +8493,9 @@ components:
           modelName: gpt-4o
           endpoints: [wso2]
           targets:
-            - name: openai
-              provider:
-                id: wso2-openai-provider
-              upstreamModel: gpt-4o
+            - name: gpt-4o
+              provider: wso2-openai-provider
+              alias: openai
 
     ModelConfiguration:
       allOf:
@@ -8519,10 +8518,9 @@ components:
           modelName: gpt-4o
           endpoints: [wso2]
           targets:
-            - name: openai
-              provider:
-                id: wso2-openai-provider
-              upstreamModel: gpt-4o
+            - name: gpt-4o
+              provider: wso2-openai-provider
+              alias: openai
         status:
           id: gpt-4o
           state: deployed
@@ -8619,28 +8617,34 @@ components:
       required:
         - name
         - provider
-        - upstreamModel
       properties:
         name:
           type: string
           description: >
-            Name of this target, unique within the Model. A routing policy's model
-            fields (`model`, `defaultModel`, `modelName`) may name the target by
-            this name, as well as by its upstream model.
+            The model name sent to the provider, as the provider knows it. For an
+            Azure OpenAI provider this is the deployment name. A routing policy's
+            model fields (`model`, `defaultModel`, `modelName`) may name the target
+            by this name or by its `alias`.
+          minLength: 1
+          maxLength: 256
+          example: claude-haiku-5-5
+        provider:
+          type: string
+          description: Handle of a deployed LLM provider
+          minLength: 1
+          maxLength: 253
+          example: acme-anthropic
+        alias:
+          type: string
+          description: >
+            A short name a routing policy's model fields may use for this target,
+            in place of its `name`. Defaults to `name`, and unique within the
+            Model, so two targets serving the same model through different
+            providers need an alias on at least one of them.
           pattern: '^[a-zA-Z0-9\-_]+$'
           minLength: 1
           maxLength: 100
-          example: openai
-        provider:
-          $ref: '#/components/schemas/ModelTargetProvider'
-        upstreamModel:
-          type: string
-          description: >
-            The model name sent to the provider. For an Azure OpenAI provider this
-            is the deployment name.
-          minLength: 1
-          maxLength: 256
-          example: gpt-4o
+          example: claude
         auth:
           description: >
             Credential the gateway presents to a provider reached through its own
@@ -8653,16 +8657,6 @@ components:
           allOf:
             - $ref: '#/components/schemas/LLMUpstreamAuth'
 
-    ModelTargetProvider:
-      type: object
-      required:
-        - id
-      properties:
-        id:
-          type: string
-          description: Handle of a deployed LLM provider
-          example: wso2-openai-provider
-
     ModelRouting:
       type: object
       required:
@@ -8672,8 +8666,8 @@ components:
         policy can be used (round-robin, weighted round-robin, semantic, cost-based,
         time-based, intelligent routing, header routing). Its parameters are the
         policy's own, written as the policy defines them. A parameter that names a
-        model (`model`, `defaultModel`, `modelName`) may give a target's name or its
-        upstream model; one that names a provider gives a provider handle. At request
+        model (`model`, `defaultModel`, `modelName`) may give a target's `alias` or
+        its `name`; one that names a provider gives a provider handle. At request
         time the gateway matches the policy's choice to one of the Model's targets,
         and a choice that matches none is served by the first target.
       properties:

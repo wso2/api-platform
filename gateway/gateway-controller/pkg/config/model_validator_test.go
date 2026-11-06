@@ -40,7 +40,7 @@ func validModel() api.ModelConfiguration {
 			ModelName:   "gpt-4o",
 			Endpoints:   []string{"wso2"},
 			Targets: []api.ModelTarget{{
-				Name: "openai", Provider: api.ModelTargetProvider{Id: "openai-provider"}, UpstreamModel: "gpt-4o",
+				Name: "gpt-4o", Provider: "openai-provider", Alias: stringPtr("openai"),
 			}},
 		},
 	}
@@ -49,6 +49,29 @@ func validModel() api.ModelConfiguration {
 func TestModelValidator_Valid(t *testing.T) {
 	m := validModel()
 	assert.Empty(t, NewModelValidator().Validate(&m))
+}
+
+func TestModelValidator_TargetAliases(t *testing.T) {
+	routing := &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"}}
+	cases := map[string][]api.ModelTarget{
+		"no alias":                {{Name: "gpt-4o", Provider: "openai-provider"}},
+		"a provider's model name": {{Name: "anthropic.claude-3-5-sonnet-20240620-v1:0", Provider: "bedrock"}},
+		"same model on two providers, one aliased": {
+			{Name: "gpt-4o", Provider: "openai-provider"},
+			{Name: "gpt-4o", Provider: "azure-provider", Alias: stringPtr("azure")},
+		},
+		"alias equal to its own name": {{Name: "gpt-4o", Provider: "openai-provider", Alias: stringPtr("gpt-4o")}},
+	}
+	for name, targets := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := validModel()
+			m.Spec.Targets = targets
+			if len(targets) > 1 {
+				m.Spec.Routing = routing
+			}
+			assert.Empty(t, NewModelValidator().Validate(&m))
+		})
+	}
 }
 
 func TestModelValidator_Rules(t *testing.T) {
@@ -73,24 +96,42 @@ func TestModelValidator_Rules(t *testing.T) {
 		{"empty endpoints", func(m *api.ModelConfiguration) { m.Spec.Endpoints = []string{} }, "spec.endpoints"},
 		{"endpoint handle", func(m *api.ModelConfiguration) { m.Spec.Endpoints = []string{"Bad Handle"} }, "spec.endpoints[0]"},
 		{"duplicate endpoint", func(m *api.ModelConfiguration) { m.Spec.Endpoints = []string{"wso2", "wso2"} }, "spec.endpoints[1]"},
-		{"target name pattern", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Name = "a b" }, "spec.targets[0].name"},
-		{"target provider", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Provider.Id = "" }, "spec.targets[0].provider.id"},
-		{"target upstream model", func(m *api.ModelConfiguration) { m.Spec.Targets[0].UpstreamModel = "" }, "spec.targets[0].upstreamModel"},
-		{"duplicate target name", func(m *api.ModelConfiguration) {
+		{"target name required", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Name = "" }, "spec.targets[0].name"},
+		{"target name length", func(m *api.ModelConfiguration) {
+			m.Spec.Targets[0].Name = strings.Repeat("a", MaxModelNameBytes+1)
+		}, "spec.targets[0].name"},
+		{"target name whitespace", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Name = " gpt-4o" }, "spec.targets[0].name"},
+		{"target provider", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Provider = "" }, "spec.targets[0].provider"},
+		{"target provider handle", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Provider = "Bad Handle" }, "spec.targets[0].provider"},
+		{"target alias empty", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Alias = stringPtr("") }, "spec.targets[0].alias"},
+		{"target alias pattern", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Alias = stringPtr("a b") }, "spec.targets[0].alias"},
+		{"duplicate target alias", func(m *api.ModelConfiguration) {
 			second := m.Spec.Targets[0]
-			second.UpstreamModel = "gpt-4o-mini"
+			second.Name = "gpt-4o-mini"
 			m.Spec.Targets = append(m.Spec.Targets, second)
 			m.Spec.Routing = &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"}}
-		}, "spec.targets[1].name"},
+		}, "spec.targets[1].alias"},
+		{"same model on two providers without an alias", func(m *api.ModelConfiguration) {
+			m.Spec.Targets = []api.ModelTarget{
+				{Name: "gpt-4o", Provider: "openai-provider"},
+				{Name: "gpt-4o", Provider: "azure-provider"},
+			}
+			m.Spec.Routing = &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"}}
+		}, "spec.targets[1].alias"},
+		{"alias naming another target", func(m *api.ModelConfiguration) {
+			m.Spec.Targets = append(m.Spec.Targets, api.ModelTarget{Name: "gpt-4o-mini", Provider: "openai-provider", Alias: stringPtr("gpt-4o")},
+				api.ModelTarget{Name: "gpt-4o", Provider: "azure-provider"})
+			m.Spec.Routing = &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"}}
+		}, "spec.targets[2].alias"},
 		{"duplicate provider and model", func(m *api.ModelConfiguration) {
 			second := m.Spec.Targets[0]
-			second.Name = "other"
+			second.Alias = stringPtr("other")
 			m.Spec.Targets = append(m.Spec.Targets, second)
 			m.Spec.Routing = &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"}}
 		}, "spec.targets[1]"},
 		{"two targets need routing", func(m *api.ModelConfiguration) {
 			m.Spec.Targets = append(m.Spec.Targets, api.ModelTarget{
-				Name: "b", Provider: api.ModelTargetProvider{Id: "openai-provider"}, UpstreamModel: "gpt-4o-mini"})
+				Name: "gpt-4o-mini", Provider: "openai-provider", Alias: stringPtr("b")})
 		}, "spec.routing"},
 		{"routing version", func(m *api.ModelConfiguration) {
 			m.Spec.Routing = &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1.0.0"}}

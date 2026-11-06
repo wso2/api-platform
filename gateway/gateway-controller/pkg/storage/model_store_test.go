@@ -46,7 +46,7 @@ func testModelConfig(handle, modelName string) *models.StoredConfig {
 			ModelName:   modelName,
 			Endpoints:   []string{"wso2"},
 			Targets: []api.ModelTarget{{
-				Name: "openai", Provider: api.ModelTargetProvider{Id: "openai"}, UpstreamModel: modelName,
+				Name: modelName, Provider: "openai", Alias: strPtr("openai"),
 			}},
 		},
 	}

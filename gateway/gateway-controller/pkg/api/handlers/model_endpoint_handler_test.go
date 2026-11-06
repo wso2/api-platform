@@ -208,7 +208,7 @@ func TestModelKeyHandlers(t *testing.T) {
 		body := map[string]any{
 			"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "Model", "metadata": map[string]any{"name": handle},
 			"spec": map[string]any{"displayName": handle, "version": "v1.0", "modelName": handle, "endpoints": endpoints,
-				"targets": []any{map[string]any{"name": "a", "provider": map[string]any{"id": "openai"}, "upstreamModel": "gpt-4o"}}},
+				"targets": []any{map[string]any{"name": "gpt-4o", "provider": "openai", "alias": "a"}}},
 		}
 		w := httptest.NewRecorder()
 		s.CreateModel(w, jsonRequest(t, http.MethodPost, "/models", body))

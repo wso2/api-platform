@@ -157,11 +157,20 @@ func ModelTargetProviderIDs(spec api.ModelConfigData) []string {
 	seen := make(map[string]bool, len(spec.Targets))
 	ids := make([]string, 0, len(spec.Targets))
 	for _, t := range spec.Targets {
-		if t.Provider.Id == "" || seen[t.Provider.Id] {
+		if t.Provider == "" || seen[t.Provider] {
 			continue
 		}
-		seen[t.Provider.Id] = true
-		ids = append(ids, t.Provider.Id)
+		seen[t.Provider] = true
+		ids = append(ids, t.Provider)
 	}
 	return ids
+}
+
+// ModelTargetAlias returns the name a routing policy uses for a target: its
+// alias, or its name when it sets none. It is unique within a valid Model.
+func ModelTargetAlias(t api.ModelTarget) string {
+	if t.Alias != nil && *t.Alias != "" {
+		return *t.Alias
+	}
+	return t.Name
 }

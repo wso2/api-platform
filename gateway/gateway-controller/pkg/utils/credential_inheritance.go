@@ -40,6 +40,7 @@ import (
 	"fmt"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -286,9 +287,11 @@ func inheritLLMUpstreamAuth(incoming **api.LLMUpstreamAuth, stored *api.LLMUpstr
 // Model update omits them.
 //
 // A credential belongs to the target it was stored against, and a target is the
-// pair of its name and its provider: an update that renames a target, or points it
-// at another provider, inherits nothing for it and must supply its own — the
-// stored key was issued for a different provider's route.
+// pair of its alias (its name, when it sets none) and its provider: an update that
+// changes a target's model but keeps its alias inherits its credential, while one
+// that re-aliases a target, or points it at another provider, inherits nothing for
+// it and must supply its own — the stored key was issued for a different
+// provider's route.
 func inheritModelTargetCredentials(incoming *api.ModelConfiguration, storedSource any) {
 	if incoming == nil {
 		return
@@ -299,11 +302,11 @@ func inheritModelTargetCredentials(incoming *api.ModelConfiguration, storedSourc
 	}
 	storedAuth := make(map[string]*api.LLMUpstreamAuth, len(stored.Spec.Targets))
 	for _, t := range stored.Spec.Targets {
-		storedAuth[t.Name+"\x00"+t.Provider.Id] = t.Auth
+		storedAuth[models.ModelTargetAlias(t)+"\x00"+t.Provider] = t.Auth
 	}
 	for i := range incoming.Spec.Targets {
 		t := &incoming.Spec.Targets[i]
-		if auth, found := storedAuth[t.Name+"\x00"+t.Provider.Id]; found {
+		if auth, found := storedAuth[models.ModelTargetAlias(*t)+"\x00"+t.Provider]; found {
 			inheritLLMUpstreamAuth(&t.Auth, auth)
 		}
 	}

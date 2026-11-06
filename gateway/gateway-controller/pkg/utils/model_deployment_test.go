@@ -186,8 +186,8 @@ func endpointBody(handle, context string, mutate ...func(spec map[string]any)) m
 	}
 }
 
-func modelTarget(name, provider, upstreamModel string) map[string]any {
-	return map[string]any{"name": name, "provider": map[string]any{"id": provider}, "upstreamModel": upstreamModel}
+func modelTarget(alias, provider, name string) map[string]any {
+	return map[string]any{"name": name, "provider": provider, "alias": alias}
 }
 
 func (f *modelServiceFixture) eventsOf(t eventhub.EventType) []eventhub.Event {
@@ -275,6 +275,20 @@ func TestModelService_InheritsTargetCredentialOnUpdate(t *testing.T) {
 	stored, err := f.svc.GetModelByHandle("gpt")
 	require.NoError(t, err)
 	auth := stored.SourceConfiguration.(api.ModelConfiguration).Spec.Targets[0].Auth
+	require.NotNil(t, auth)
+	require.NotNil(t, auth.Value)
+	assert.Equal(t, "issued-key", *auth.Value)
+
+	// The alias, not the model, identifies the target: moving it to a new model
+	// under the same alias keeps its credential.
+	newModel := modelTarget("a", "routed", "gpt-4o-mini")
+	newModel["auth"] = map[string]any{"type": "api-key", "header": "x-api-key"}
+	stepPastLastWrite()
+	_, err = f.svc.UpdateModel("gpt", f.params(modelBody("gpt", "gpt-4o", newModel)))
+	require.NoError(t, err)
+	stored, err = f.svc.GetModelByHandle("gpt")
+	require.NoError(t, err)
+	auth = stored.SourceConfiguration.(api.ModelConfiguration).Spec.Targets[0].Auth
 	require.NotNil(t, auth)
 	require.NotNil(t, auth.Value)
 	assert.Equal(t, "issued-key", *auth.Value)

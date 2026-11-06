@@ -129,8 +129,8 @@ func model(targets []api.ModelTarget, routing *api.ModelRouting) *api.ModelConfi
 	}
 }
 
-func target(name, providerID, upstreamModel string) api.ModelTarget {
-	return api.ModelTarget{Name: name, Provider: api.ModelTargetProvider{Id: providerID}, UpstreamModel: upstreamModel}
+func target(alias, providerID, name string) api.ModelTarget {
+	return api.ModelTarget{Name: name, Provider: providerID, Alias: ptr(alias)}
 }
 
 func apiKeyAuth(value string) *api.LLMUpstreamAuth {
@@ -146,6 +146,28 @@ func requireErrorMentioning(t *testing.T, err error, fragments ...string) {
 }
 
 func strict() Options { return Options{DefaultVhost: "*", Strict: true} }
+
+func TestResolve_TargetNames(t *testing.T) {
+	l := newLookup()
+	l.providers["openai"] = provider("openai", "openai", unexposed)
+	l.providers["azure"] = provider("azure", "openai", unexposed)
+	params := map[string]interface{}{"models": []interface{}{map[string]interface{}{"model": "gpt-4o"}}}
+	routing := &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "model-round-robin", Version: "v1"}, Params: &params}
+
+	// A target is named by its alias, or by its name when it sets none, and always
+	// sends its name upstream.
+	m, err := Resolve(model([]api.ModelTarget{
+		{Name: "gpt-4o", Provider: "openai"},
+		target("azure-gpt", "azure", "gpt-4o"),
+	}, routing), l, strict())
+	require.NoError(t, err)
+	require.Len(t, m.Targets, 2)
+	assert.Equal(t, "gpt-4o", m.Targets[0].Name)
+	assert.Equal(t, "gpt-4o", m.Targets[0].UpstreamModel)
+	assert.Equal(t, "azure-gpt", m.Targets[1].Name)
+	assert.Equal(t, "gpt-4o", m.Targets[1].UpstreamModel)
+	assert.Equal(t, []string{"azure-gpt", "gpt-4o"}, m.TargetNames())
+}
 
 func TestResolve_DirectTarget(t *testing.T) {
 	l := newLookup()
@@ -285,7 +307,7 @@ func TestResolve_RoutingRequiredAndPassedAsWritten(t *testing.T) {
 	_, err := Resolve(model(targets, nil), l, strict())
 	requireErrorMentioning(t, err, "needs a routing policy")
 
-	// A target's name, an upstream model, and an upstream model with its provider:
+	// A target's alias, a target's name, and a name with its provider:
 	// the router receives each exactly as written, and the route job matches it to
 	// a target at request time.
 	params := map[string]interface{}{"models": []interface{}{

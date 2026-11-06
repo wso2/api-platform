@@ -107,7 +107,10 @@ const (
 
 // Target is one resolved Model target.
 type Target struct {
-	Name          string
+	// Name is how routing policies name the target: its alias, or its name when it
+	// sets none. Unique within the Model.
+	Name string
+	// UpstreamModel is the target's name: the model sent to the provider.
 	UpstreamModel string
 
 	ProviderHandle string
@@ -268,31 +271,31 @@ func resolveTarget(field string, spec api.ModelTarget, lookup Lookup, opts Optio
 		errs = append(errs, config.ValidationError{Field: f, Message: fmt.Sprintf(format, args...)})
 	}
 
-	provider, err := lookup.Provider(spec.Provider.Id)
+	provider, err := lookup.Provider(spec.Provider)
 	if err != nil {
 		if errors.Is(err, ErrProviderNotFound) {
-			add(field+".provider.id", "provider '%s' not found", spec.Provider.Id)
+			add(field+".provider", "provider '%s' not found", spec.Provider)
 		} else {
-			add(field+".provider.id", "provider '%s' could not be read", spec.Provider.Id)
+			add(field+".provider", "provider '%s' could not be read", spec.Provider)
 		}
 		return nil, errs
 	}
 	if provider.DesiredState != models.StateDeployed {
-		add(field+".provider.id", "provider '%s' is not deployed", spec.Provider.Id)
+		add(field+".provider", "provider '%s' is not deployed", spec.Provider)
 		return nil, errs
 	}
 	pcfg := &provider.Config
 
 	template, err := lookup.Template(pcfg.Spec.Template)
 	if err != nil || template == nil {
-		add(field+".provider.id", "provider '%s' uses template '%s', which could not be found",
-			spec.Provider.Id, pcfg.Spec.Template)
+		add(field+".provider", "provider '%s' uses template '%s', which could not be found",
+			spec.Provider, pcfg.Spec.Template)
 		return nil, errs
 	}
 	target := &Target{
-		Name:           spec.Name,
-		UpstreamModel:  spec.UpstreamModel,
-		ProviderHandle: spec.Provider.Id,
+		Name:           models.ModelTargetAlias(spec),
+		UpstreamModel:  spec.Name,
+		ProviderHandle: spec.Provider,
 		Provider:       provider,
 		Template:       template,
 	}
@@ -304,7 +307,7 @@ func resolveTarget(field string, spec api.ModelTarget, lookup Lookup, opts Optio
 		// read as configuration that works when it does not.
 		if spec.Auth != nil && opts.Strict {
 			add(field+".auth", "a target on provider '%s' (exposure: none) is called with the provider's own "+
-				"upstream credential and must not set auth", spec.Provider.Id)
+				"upstream credential and must not set auth", spec.Provider)
 		}
 		if auth := pcfg.Spec.Upstream.Auth; auth != nil {
 			target.HeaderPhaseCredential = isHeaderPhaseCredential(string(auth.Type), auth.PolicyName)
@@ -321,7 +324,7 @@ func resolveTarget(field string, spec api.ModelTarget, lookup Lookup, opts Optio
 
 	hostname, err := routeHostname(pcfg, opts.DefaultVhost)
 	if err != nil {
-		add(field+".provider.id", "%s", err.Error())
+		add(field+".provider", "%s", err.Error())
 	}
 	target.RouteHostname = hostname
 
@@ -330,16 +333,16 @@ func resolveTarget(field string, spec api.ModelTarget, lookup Lookup, opts Optio
 	inbound := inboundAuthOf(pcfg)
 	switch {
 	case inbound.unsupported != "":
-		add(field+".provider.id", "provider '%s' authenticates its route with '%s', which a Model cannot present a "+
-			"credential for; give the provider api-key-auth, or set its exposure to 'none'", spec.Provider.Id, inbound.unsupported)
+		add(field+".provider", "provider '%s' authenticates its route with '%s', which a Model cannot present a "+
+			"credential for; give the provider api-key-auth, or set its exposure to 'none'", spec.Provider, inbound.unsupported)
 	case inbound.apiKey:
 		target.RouteValuePrefix = inbound.valuePrefix
 		if spec.Auth == nil || spec.Auth.Type == api.LLMUpstreamAuthTypeNone {
 			add(field+".auth", "provider '%s' authenticates its route with api-key-auth, so the target must set auth "+
-				"with type 'api-key' carrying a key issued for that provider", spec.Provider.Id)
+				"with type 'api-key' carrying a key issued for that provider", spec.Provider)
 		} else if spec.Auth.Type != api.LLMUpstreamAuthTypeApiKey {
 			add(field+".auth.type", "provider '%s' authenticates its route with api-key-auth, so the target's auth type "+
-				"must be 'api-key'", spec.Provider.Id)
+				"must be 'api-key'", spec.Provider)
 		} else {
 			target.RouteAuth = spec.Auth
 		}

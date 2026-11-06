@@ -45,7 +45,7 @@ type ModelValidator struct {
 	metadataNameRegex *regexp.Regexp
 	versionRegex      *regexp.Regexp
 	displayNameRegex  *regexp.Regexp
-	targetNameRegex   *regexp.Regexp
+	targetAliasRegex  *regexp.Regexp
 }
 
 // NewModelValidator creates a Model validator.
@@ -54,7 +54,7 @@ func NewModelValidator() *ModelValidator {
 		metadataNameRegex: regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`),
 		versionRegex:      regexp.MustCompile(`^v\d+\.\d+$`),
 		displayNameRegex:  regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
-		targetNameRegex:   regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`),
+		targetAliasRegex:  regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`),
 	}
 }
 
@@ -156,48 +156,59 @@ func (v *ModelValidator) validateModel(m *api.ModelConfiguration) []ValidationEr
 	if len(spec.Targets) == 0 {
 		add("spec.targets", "a Model needs at least one target")
 	}
-	names := make(map[string]int, len(spec.Targets))
+	aliases := make(map[string]int, len(spec.Targets))
 	pairs := make(map[string]int, len(spec.Targets))
 	for i, t := range spec.Targets {
 		field := fmt.Sprintf("spec.targets[%d]", i)
-		switch {
-		case t.Name == "":
+		switch m := t.Name; {
+		case strings.TrimSpace(m) == "":
 			add(field+".name", "target name is required")
-		case len(t.Name) > 100:
-			add(field+".name", "target name must not exceed 100 characters")
-		case !v.targetNameRegex.MatchString(t.Name):
-			add(field+".name", "target name may contain only letters, numbers, hyphens and underscores")
-		default:
-			if first, dup := names[t.Name]; dup {
-				add(field+".name", "target name '%s' is already used by spec.targets[%d]", t.Name, first)
+		case len(m) > MaxModelNameBytes:
+			add(field+".name", "target name must not exceed %d bytes", MaxModelNameBytes)
+		case strings.TrimSpace(m) != m || strings.IndexFunc(m, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0:
+			add(field+".name", "target name must not contain surrounding whitespace or control characters")
+		}
+
+		if t.Provider == "" {
+			add(field+".provider", "provider is required")
+		} else if !v.metadataNameRegex.MatchString(t.Provider) {
+			add(field+".provider", "provider must be the handle of an LLM provider")
+		}
+
+		// A routing policy names a target by its alias, or by its name when it has
+		// none, so that must pick out one target: two targets serving one model
+		// through different providers need an alias on at least one of them.
+		alias, aliasValid := t.Name, true
+		if t.Alias != nil {
+			alias, aliasValid = *t.Alias, false
+			switch {
+			case alias == "":
+				add(field+".alias", "target alias must not be empty")
+			case len(alias) > 100:
+				add(field+".alias", "target alias must not exceed 100 characters")
+			case !v.targetAliasRegex.MatchString(alias):
+				add(field+".alias", "target alias may contain only letters, numbers, hyphens and underscores")
+			default:
+				aliasValid = true
+			}
+		}
+		if aliasValid && alias != "" {
+			if first, dup := aliases[alias]; dup {
+				add(field+".alias", "'%s' already names spec.targets[%d]; give one of the two targets a distinct alias",
+					alias, first)
 			} else {
-				names[t.Name] = i
+				aliases[alias] = i
 			}
 		}
 
-		if t.Provider.Id == "" {
-			add(field+".provider.id", "provider id is required")
-		} else if !v.metadataNameRegex.MatchString(t.Provider.Id) {
-			add(field+".provider.id", "provider id must be the handle of an LLM provider")
-		}
-
-		switch m := t.UpstreamModel; {
-		case strings.TrimSpace(m) == "":
-			add(field+".upstreamModel", "upstreamModel is required")
-		case len(m) > MaxModelNameBytes:
-			add(field+".upstreamModel", "upstreamModel must not exceed %d bytes", MaxModelNameBytes)
-		case strings.TrimSpace(m) != m || strings.IndexFunc(m, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0:
-			add(field+".upstreamModel", "upstreamModel must not contain surrounding whitespace or control characters")
-		}
-
-		// A target is identified by its provider and upstream model together: two
-		// targets with the same pair would be one target under two names, and a
-		// router choosing one of them could not be told apart from choosing the other.
-		if t.Provider.Id != "" && t.UpstreamModel != "" {
-			key := t.Provider.Id + "\x00" + t.UpstreamModel
+		// A target is identified by its provider and name together: two targets with
+		// the same pair would be one target under two aliases, and a router choosing
+		// one of them could not be told apart from choosing the other.
+		if t.Provider != "" && t.Name != "" {
+			key := t.Provider + "\x00" + t.Name
 			if first, dup := pairs[key]; dup {
-				add(field, "target uses provider '%s' with upstreamModel '%s', which spec.targets[%d] already does",
-					t.Provider.Id, t.UpstreamModel, first)
+				add(field, "target uses provider '%s' with name '%s', which spec.targets[%d] already does",
+					t.Provider, t.Name, first)
 			} else {
 				pairs[key] = i
 			}

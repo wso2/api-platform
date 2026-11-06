@@ -150,7 +150,7 @@ func testModelStoredConfig(endpoints ...string) *models.StoredConfig {
 		Metadata:   api.Metadata{Name: "gpt"},
 		Spec: api.ModelConfigData{
 			DisplayName: "GPT", Version: "v1.0", ModelName: "gpt-4o", Endpoints: endpoints,
-			Targets: []api.ModelTarget{{Name: "a", Provider: api.ModelTargetProvider{Id: "openai"}, UpstreamModel: "gpt-4o"}},
+			Targets: []api.ModelTarget{{Name: "gpt-4o", Provider: "openai", Alias: stringPtr("a")}},
 		},
 	}
 	now := time.Now()
