@@ -699,13 +699,53 @@ function readDirTree(rootDir, baseDir = '') {
     return out;
 }
 
+const ZIP_END_RECORD = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+const ZIP_END_RECORD_SIZE = 22;
+const ZIP_MAX_COMMENT_SIZE = 0xFFFF;
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50;
+const ZIP64_LOCATOR_SIZE = 20;
+const ZIP64_RECORD_SIGNATURE = 0x06064b50;
+const ZIP64_RECORD_SIZE = 56;
+
+/**
+ * The entry count an archive declares, or null if it has no valid end record. Only the end records
+ * are read, because the count is attacker-controlled: walking the central directory allocates per
+ * declared entry, which a few hundred bytes can make exhaust the heap.
+ */
+const readDeclaredEntryCount = async (zipPath) => {
+    const file = await fs.promises.open(zipPath);
+    try {
+        const { size } = await file.stat();
+        const tail = Buffer.alloc(Math.min(size, ZIP_END_RECORD_SIZE + ZIP_MAX_COMMENT_SIZE));
+        await file.read(tail, 0, tail.length, size - tail.length);
+        const end = tail.lastIndexOf(ZIP_END_RECORD);
+        if (end < 0 || end + ZIP_END_RECORD_SIZE > tail.length) {
+            return null;
+        }
+        const count = tail.readUInt16LE(end + 10);
+        if (count !== 0xFFFF) {
+            return count;
+        }
+        const locator = end - ZIP64_LOCATOR_SIZE;
+        if (locator < 0 || tail.readUInt32LE(locator) !== ZIP64_LOCATOR_SIGNATURE) {
+            return null;
+        }
+        const record = Buffer.alloc(ZIP64_RECORD_SIZE);
+        const { bytesRead } = await file.read(record, 0, record.length, tail.readBigUInt64LE(locator + 8));
+        if (bytesRead < record.length || record.readUInt32LE(0) !== ZIP64_RECORD_SIGNATURE) {
+            return null;
+        }
+        return Number(record.readBigUInt64LE(32));
+    } finally {
+        await file.close();
+    }
+};
+
 const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {}) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
     }
-    // The entry count the central directory declares (read by unzipper, ZIP64 included). Read before
-    // extracting: the caller removes the file once this settles, while the parse below may still run.
-    const listed = await unzipper.Open.file(zipPath).then((directory) => directory.files.length, () => null);
+    const listed = await readDeclaredEntryCount(zipPath).catch(() => null);
     const extractedFiles = [];
     // Archive-extraction limits (config-sourced, with safe defaults).
     const maxFileSize = config.uploads?.maxBytes || 10485760;      // per-entry byte ceiling
@@ -716,36 +756,63 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
     let entryCount = 0;
     let entriesRead = 0;
 
+    const writers = new Map(); // open write stream -> the entry feeding it
+    const streams = [];
+    const source = fs.createReadStream(zipPath);
+    const parser = unzipper.Parse();
+    let failure = null;
+    let settleFailure;
+
+    // Stops on the first rejection and settles only once no write is open, because the caller
+    // removes the extraction folder as soon as this rejects.
+    const fail = (err) => {
+        if (failure) {
+            return;
+        }
+        failure = err;
+        source.unpipe(parser);
+        source.destroy();
+        parser.destroy();
+        for (const [out, entry] of writers) {
+            entry.unpipe(out);
+            entry.destroy();
+            out.destroy();
+        }
+        Promise.all(streams).then(() => settleFailure(err));
+    };
+
     // Streams each entry to disk, capping on bytes actually read rather than the
-    // declared header size. Rejects the outer promise on the first violation.
-    const writeEntryWithLimit = (entry, destPath, perEntryLimit, reject) => new Promise((resolveWrite, rejectWrite) => {
+    // declared header size. Fails the extraction on the first violation.
+    const writeEntryWithLimit = (entry, destPath, perEntryLimit) => new Promise((resolveWrite) => {
         let bytesWritten = 0;
         const out = fs.createWriteStream(destPath);
+        writers.set(out, entry);
         entry.on('data', chunk => {
             bytesWritten += chunk.length;
             if (bytesWritten > perEntryLimit || totalExtractedSize + bytesWritten > maxTotalSize) {
-                entry.unpipe(out);
-                out.destroy();
-                entry.destroy();
-                const limitErr = new CustomError(400, 'Error unzipping directory',
-                    'Archive entry exceeded the allowed size.');
-                rejectWrite(limitErr);
-                return reject(limitErr);
+                fail(new CustomError(400, 'Error unzipping directory', 'Archive entry exceeded the allowed size.'));
             }
         });
-        out.on('error', rejectWrite);
+        out.on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
         out.on('finish', () => {
             totalExtractedSize += bytesWritten;
+        });
+        out.on('close', () => {
+            writers.delete(out);
             resolveWrite();
         });
         entry.pipe(out);
     });
 
     return new Promise((resolve, reject) => {
-        const streams = [];
-        fs.createReadStream(zipPath)
-            .pipe(unzipper.Parse())
+        settleFailure = reject;
+        source.on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
+        source.pipe(parser)
             .on('entry', entry => {
+                if (failure) {
+                    entry.autodrain();
+                    return;
+                }
                 entriesRead += 1;
                 try {
                     const entryPath = entry.path;
@@ -756,7 +823,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
                         // Reject absolute paths, null bytes, and traversal sequences in entry names.
                         if (path.isAbsolute(entryPath) || entryPath.includes('..') || entryPath.includes('\0')) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'File access outside working directory detected.'));
                         }
 
@@ -768,7 +835,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
                         if (normalizedFilePath !== path.resolve(extractPath)
                             && !normalizedFilePath.startsWith(rootWithSep)) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'File access outside working directory detected.'));
                         }
 
@@ -776,7 +843,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
                         entryCount += 1;
                         if (entryCount > maxEntries) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'Archive exceeded the maximum entry count.'));
                         }
 
@@ -784,7 +851,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
                         if ((entryDepth > maxDepth) || (entrySize > maxFileSize)
                             || (totalExtractedSize + entrySize > maxTotalSize)) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'Archive entry exceeded the allowed size.'));
                         }
 
@@ -802,24 +869,21 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
                 } catch (err) {
                     logger.error("Error processing entry", { error: err.message, stack: err.stack });
                     entry.autodrain();
-                    reject(new Error('Error processing entry.'));
+                    fail(new Error('Error processing entry.'));
                 }
             })
             .on('close', async () => {
-                try {
-                    await Promise.all(streams); // Wait for all files to finish writing
-                    // An archive whose central directory lists entries the stream never read is damaged, not empty.
-                    if (listed !== entriesRead) {
-                        return reject(new CustomError(400, 'Error unzipping directory', 'The archive is damaged.'));
-                    }
-                    extractedFiles.length > 0 || allowEmpty ? resolve(extractedFiles) : reject(new Error('No files were extracted'));
-                } catch (err) {
-                    reject(new Error(`Unzip failed: ${err.message}`));
+                await Promise.all(streams); // Wait for all files to finish writing
+                if (failure) {
+                    return;
                 }
+                // An archive whose central directory lists entries the stream never read is damaged, not empty.
+                if (listed !== entriesRead) {
+                    return reject(new CustomError(400, 'Error unzipping directory', 'The archive is damaged.'));
+                }
+                extractedFiles.length > 0 || allowEmpty ? resolve(extractedFiles) : reject(new Error('No files were extracted'));
             })
-            .on('error', err => {
-                reject(new Error(`Unzip failed: ${err.message}`));
-            });
+            .on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
     });
 }
 
