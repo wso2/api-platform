@@ -139,6 +139,7 @@ type Server struct {
 	GatewayRelay         GatewayRelay         `koanf:"gateway_relay"`
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 	MCPServer            MCPServer            `koanf:"mcp_server"`
+	FeatureUsage         FeatureUsage         `koanf:"feature_usage"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -970,6 +971,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateCORSConfig(&cfg.Listeners.CORS); err != nil {
+		return nil, err
+	}
+	if err := validateFeatureUsageConfig(&cfg.FeatureUsage); err != nil {
 		return nil, err
 	}
 

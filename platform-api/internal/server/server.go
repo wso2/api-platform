@@ -39,6 +39,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
+	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/mcpserver"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -75,6 +76,7 @@ type Server struct {
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 	revocations    *service.RevocationCache
 	revocationPoll time.Duration
+	featureUsage   featureusage.Reporter
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -449,10 +451,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
-	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, apiService, slogger)
-	if err != nil {
-		return nil, err
-	}
 	apiDocumentHandler := handler.NewAPIDocumentHandler(apiDocumentService, identityService, slogger, cfg)
 	apiThumbnailHandler := handler.NewAPIThumbnailHandler(apiDocumentService, identityService, slogger, cfg)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
@@ -549,7 +547,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	appHandler.RegisterRoutes(core)
 	apiPortalHandler.RegisterRoutes(core)
 	apiHandler.RegisterRoutes(core)
-	apiInvokeHandler.RegisterRoutes(core)
 	apiDocumentHandler.RegisterRoutes(core)
 	apiThumbnailHandler.RegisterRoutes(core)
 	gatewayHandler.RegisterRoutes(core)
@@ -924,7 +921,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	)
 
 	startupOK = true
+	// Built last, so no earlier startup failure leaves its delivery workers
+	// running; no request is served before Start, so nothing is missed.
+	featureUsage, err := featureusage.NewFromConfig(cfg.FeatureUsage,
+		service.NewFeatureUsageAttributor(orgRepo, identityService), slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
+	}
+	apiHandler.SetFeatureUsageReporter(featureUsage)
+
 	return &Server{
+		featureUsage:   featureUsage,
 		mux:            mux,
 		handler:        gohttpkit.Chain(chain...)(mux),
 		orgRepo:        orgRepo,
@@ -1311,6 +1318,13 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 				s.logger.Error("HTTP server shutdown error", "addr", srv.Addr, "error", err)
 			}
 		}
+		// After the listeners: no request can record usage any more, so what
+		// is queued is everything left to deliver.
+		if s.featureUsage != nil {
+			if err := s.featureUsage.Close(shutdownCtx); err != nil {
+				s.logger.Warn("Feature usage reporter shutdown", "error", err)
+			}
+		}
 		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
@@ -1434,28 +1448,4 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 		"retryBackoff", cfg.RetryBackoff,
 		"overallTimeout", cfg.OverallTimeout)
 	return service.NewHTTPPortalPublisher(authRegistry, lightClient, listingClient, contentClient, cfg.PlanListingBudget()), nil
-}
-
-// newAPIInvokeHandler builds the gateway relay behind the invoke route. An
-// invalid allow_hosts entry fails startup.
-func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
-	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
-	if err != nil {
-		return nil, fmt.Errorf("invalid gateway_relay.egress: %w", err)
-	}
-	relay, err := gatewayrelay.NewRelay(gatewayrelay.RelayOptions{
-		RequestTimeout:   cfg.RequestTimeout,
-		MaxRequestBytes:  cfg.MaxRequestBytes,
-		MaxResponseBytes: cfg.MaxResponseBytes,
-		MaxConcurrent:    cfg.MaxConcurrent,
-		MaxPending:       cfg.MaxPending,
-		CAFile:           cfg.CAFile,
-		TLSSkipVerify:    cfg.TLSSkipVerify,
-		Egress:           policy,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize the gateway relay: %w", err)
-	}
-	slogger.Info("Gateway relay ready", "egress", policy.Describe())
-	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, cfg.RequestTimeout, slogger), nil
 }

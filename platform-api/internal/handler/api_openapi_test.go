@@ -269,6 +269,7 @@ type oaEnv struct {
 	artifactRepo *docHArtifactRepo
 	audit        *oaAudit
 	docAudit     *docHAudit
+	usage        *recordingUsage
 }
 
 func newOAEnv(t *testing.T) *oaEnv {
@@ -281,6 +282,7 @@ func newOAEnv(t *testing.T) *oaEnv {
 		artifactRepo: &docHArtifactRepo{},
 		audit:        &oaAudit{},
 		docAudit:     &docHAudit{},
+		usage:        &recordingUsage{},
 	}
 	identitySvc := service.NewIdentityService(oaIdentityRepo{})
 	apiService := service.NewAPIService(env.apiRepo, env.projectRepo,
@@ -290,7 +292,9 @@ func newOAEnv(t *testing.T) *oaEnv {
 	apiDocumentService := service.NewAPIDocumentService(env.docRepo, env.artifactRepo, env.docAudit, logger)
 
 	env.mux = http.NewServeMux()
-	NewAPIHandler(apiService, identitySvc, apiDocumentService, logger, &config.Server{}).RegisterRoutes(env.mux)
+	apiHandler := NewAPIHandler(apiService, identitySvc, apiDocumentService, logger, &config.Server{})
+	apiHandler.SetFeatureUsageReporter(env.usage)
+	apiHandler.RegisterRoutes(env.mux)
 	return env
 }
 

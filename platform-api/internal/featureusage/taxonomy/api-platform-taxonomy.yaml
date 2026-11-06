@@ -1,0 +1,2489 @@
+# =============================================================================
+# WSO2 API Platform — Feature Taxonomy
+# =============================================================================
+# Schema   : https://wso2.com/schemas/feature-taxonomy/v1
+# Product  : WSO2 API Platform (APIP)
+# =============================================================================
+
+
+schema:
+  version: "1.0.0"
+  id: "https://wso2.com/schemas/feature-taxonomy/v1"
+
+# -----------------------------------------------------------------------------
+# PRODUCT
+# -----------------------------------------------------------------------------
+
+product:
+  id: "apip"
+  name: "WSO2 API Platform"
+  version: "0.9.0"
+  description: "AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments."
+  category: "api-management"
+  is_active: true
+
+# -----------------------------------------------------------------------------
+# FEATURE CATEGORIES
+# Hierarchy drives reporting rollups. Feature category ids must match the
+# second segment of their feature.code.
+# -----------------------------------------------------------------------------
+
+categories:
+  - id: "api-design"
+    name: "API Design & Management"
+    description: "Creating, validating, documenting, and testing APIs in the API Control Plane console, the CLI, and the Platform API."
+    sub_categories:
+      - id: "manage-apis"
+        name: "Manage APIs"
+        description: "REST and GraphQL API creation and management capabilities."
+
+  - id: "gateway"
+    name: "Gateway & Runtime"
+    description: "Gateway registration, registration tokens, immutable mode, and Kubernetes resources for managed and self-hosted gateways."
+
+  - id: "policies"
+    name: "API Policies & Traffic Management"
+    description: "Policy-first traffic management: authentication, rate limiting, routing, transformation, validation, and custom policies applied to APIs."
+
+  - id: "security"
+    name: "API Security"
+    description: "API keys, secrets, service accounts, mutual TLS, and certificate management."
+
+  - id: "lifecycle"
+    name: "API Lifecycle Management"
+    description: "Build, deployment, and publication of APIs, and their deprecation and unpublishing."
+
+  - id: "developer-portal"
+    name: "API Portal & MCP Hub"
+    description: "Discovery, subscription, and consumption of APIs and MCP servers, and administration of the portal."
+
+  - id: "key-management"
+    name: "Key Management"
+    description: "Key manager integration and consumer token and key provisioning."
+
+  - id: "analytics"
+    name: "Analytics & Observability"
+    description: "Gateway analytics publishers, traffic logging, and tracing."
+
+  - id: "monetization"
+    name: "API Monetization"
+    description: "Subscription plans, usage meters, billing configuration, and consumer checkout."
+
+  - id: "admin"
+    name: "Administration & Configuration"
+    description: "Organization registration and project management."
+
+  - id: "ai-gateway"
+    name: "AI Gateway"
+    description: "AI and LLM gateway features: guardrails, semantic caching, model routing, prompt management, and cost control."
+    sub_categories:
+      - id: "mcp"
+        name: "MCP Gateway"
+        description: "Model Context Protocol governance at the gateway."
+
+  - id: "devops"
+    name: "DevOps & CLI"
+    description: "The ap command-line tool: GitOps apply, gateway and API Portal management, image builds, and MCP configuration generation."
+
+# -----------------------------------------------------------------------------
+# FEATURES
+# code convention: apip.<category-id>.<action>
+# -----------------------------------------------------------------------------
+
+features:
+
+  # ============================================================
+  # MANAGE APIS
+  # ============================================================
+
+  - code: "apip.manage-apis.create-rest-api"
+    name: "REST API Creation"
+    description: "Create a REST API in the console, with the CLI, or through the Platform API, from scratch or by importing an OpenAPI contract."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.create-rest-api"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "creation_method"
+          type: "enum"
+          values: ["scratch", "contract"]
+          required: true
+          description: "Whether the API was defined from scratch or from an imported contract."
+        - name: "has_sandbox_upstream"
+          type: "boolean"
+          required: false
+          description: "Whether a sandbox upstream was configured."
+      aggregations:
+        - type: "count"
+          label: "REST APIs Created"
+        - type: "count_distinct"
+          label: "Distinct Creation Methods Used"
+          dimension: "creation_method"
+    sub_features:
+      - code: "apip.manage-apis.create-rest-api.import-contract"
+        name: "Contract Import"
+        description: "Supply the OpenAPI contract by URL or file upload in the creation wizard."
+        category: "manage-apis"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.manage-apis.create-rest-api.import-contract"
+          event_category: "engagement"
+          platforms: ["web"]
+          dimensions:
+            - name: "contract_source"
+              type: "enum"
+              values: ["url", "file"]
+              required: true
+              description: "How the contract was provided."
+            - name: "api_type"
+              type: "enum"
+              values: ["rest-api", "graphql-api"]
+              required: false
+              description: "Which API type the wizard was creating."
+          aggregations:
+            - type: "count"
+              label: "Contracts Imported"
+
+  - code: "apip.manage-apis.create-graphql-api"
+    name: "GraphQL API Creation"
+    description: "Create a GraphQL API from an SDL schema supplied inline, by URL or file, or discovered by introspecting the backend."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.create-graphql-api"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "schema_source"
+          type: "enum"
+          values: ["inline", "url", "file", "introspection"]
+          required: true
+          description: "How the schema was supplied."
+      aggregations:
+        - type: "count"
+          label: "GraphQL APIs Created"
+
+  - code: "apip.manage-apis.update-api"
+    name: "API Update"
+    description: "Update the metadata or configuration of a REST or GraphQL API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.update-api"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Updates"
+    sub_features:
+      - code: "apip.manage-apis.update-api.openapi-definition"
+        name: "OpenAPI Definition Update"
+        description: "Replace the OpenAPI definition of an existing REST API."
+        category: "manage-apis"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.manage-apis.update-api.openapi-definition"
+          event_category: "lifecycle"
+          platforms: ["web", "api"]
+          dimensions: []
+          aggregations:
+            - type: "count"
+              label: "OpenAPI Definition Updates"
+
+  - code: "apip.manage-apis.delete-api"
+    name: "API Deletion"
+    description: "Delete a REST or GraphQL API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.delete-api"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "APIs Deleted"
+
+  - code: "apip.manage-apis.validate-api-contract"
+    name: "API Contract Validation"
+    description: "Validate an OpenAPI document or GraphQL schema before creating or updating an API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.validate-api-contract"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "contract_type"
+          type: "enum"
+          values: ["openapi", "graphql-schema"]
+          required: true
+        - name: "is_valid"
+          type: "boolean"
+          required: false
+          description: "Whether the contract passed validation."
+      aggregations:
+        - type: "count"
+          label: "Contract Validations"
+
+  - code: "apip.manage-apis.api-documentation"
+    name: "API Documentation"
+    description: "Add, update, or delete documents attached to an API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-documentation"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: false
+      aggregations:
+        - type: "count"
+          label: "Documentation Changes"
+
+  - code: "apip.manage-apis.api-thumbnail"
+    name: "API Thumbnail"
+    description: "Upload, replace, or delete the thumbnail shown for an API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-thumbnail"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["upsert", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Thumbnail Changes"
+
+  - code: "apip.manage-apis.api-gateway-association"
+    name: "API-to-Gateway Association"
+    description: "Associate an API with the gateways it can be deployed to."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-gateway-association"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Gateway Associations"
+
+  - code: "apip.manage-apis.test-console"
+    name: "Test Console"
+    description: "Invoke a deployed API from the console's test console, directly from the browser or relayed by the console server."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.test-console"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "call_mode"
+          type: "enum"
+          values: ["proxy", "direct"]
+          required: false
+          description: "REST only: proxy is relayed by the console server, direct is sent from the browser."
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Test Console Invocations"
+
+  # ============================================================
+  # GATEWAY
+  # ============================================================
+
+  - code: "apip.gateway.register-gateway"
+    name: "Gateway Registration"
+    description: "Register a gateway with the control plane so APIs can be deployed to it."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.register-gateway"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "gateway_type"
+          type: "enum"
+          values: ["regular", "ai"]
+          required: true
+          description: "Regular or AI gateway."
+        - name: "gateway_hosting"
+          type: "enum"
+          values: ["managed", "self-hosted"]
+          required: false
+        - name: "is_critical"
+          type: "boolean"
+          required: false
+          description: "Whether the gateway was marked critical."
+      aggregations:
+        - type: "count"
+          label: "Gateways Registered"
+        - type: "count_distinct"
+          label: "Distinct Gateway Types Registered"
+          dimension: "gateway_type"
+
+  - code: "apip.gateway.manage-gateway"
+    name: "Gateway Update & Deletion"
+    description: "Update or delete a registered gateway."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.manage-gateway"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["update", "delete"]
+          required: true
+        - name: "gateway_type"
+          type: "enum"
+          values: ["regular", "ai"]
+          required: false
+      aggregations:
+        - type: "count"
+          label: "Gateway Changes"
+
+  - code: "apip.gateway.gateway-token"
+    name: "Gateway Registration Token"
+    description: "Rotate or revoke the token a gateway uses to connect to the control plane."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.gateway-token"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["rotate", "revoke"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Token Changes"
+
+  - code: "apip.gateway.download-manifest"
+    name: "Gateway Manifest Download"
+    description: "Download the installation manifest of a registered gateway."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.download-manifest"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Manifest Downloads"
+
+  - code: "apip.gateway.immutable-gateway"
+    name: "Immutable Gateway Mode"
+    description: "Run a gateway in immutable mode, with its artifacts loaded from a directory at start-up."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.immutable-gateway"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Immutable Gateways Started"
+
+  - code: "apip.gateway.kubernetes-operator"
+    name: "Kubernetes Gateway Resources"
+    description: "Manage gateway configuration with the Kubernetes operator's custom resources."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.kubernetes-operator"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "resource_kind"
+          type: "enum"
+          values: ["agent", "api-gateway", "api-key", "api-policy", "certificate", "llm-provider", "llm-provider-template", "llm-proxy", "managed-secret", "mcp", "rest-api", "subscription-plan", "subscription"]
+          required: true
+          description: "The custom resource kind that was applied."
+      aggregations:
+        - type: "count"
+          label: "Custom Resources Applied"
+        - type: "count_distinct"
+          label: "Distinct Resource Kinds Used"
+          dimension: "resource_kind"
+
+  # ============================================================
+  # POLICIES
+  # ============================================================
+
+  - code: "apip.policies.client-authentication"
+    name: "Client Authentication"
+    description: "Authenticate API clients with API keys, basic credentials, JWTs, client certificates, or opaque-token introspection."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.client-authentication"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Authentication Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.policies.backend-authentication"
+    name: "Backend Authentication"
+    description: "Authenticate the gateway to backends with a generated JWT, AWS request signing, OAuth2 client credentials, or token exchange."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.backend-authentication"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Backend Authentication Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.policies.access-control"
+    name: "Subscription Validation"
+    description: "Authorize calls by validating the caller's subscription."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.access-control"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Subscription Validation Applied"
+
+  - code: "apip.policies.rate-limiting"
+    name: "Rate Limiting"
+    description: "Limit request rates with the basic or advanced rate-limit policy."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.rate-limiting"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Rate Limit Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.policies.traffic-routing"
+    name: "Traffic Routing"
+    description: "Route requests to a dynamic endpoint or redirect them."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.traffic-routing"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Routing Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.policies.transformation"
+    name: "Request & Response Transformation"
+    description: "Set or remove headers, rewrite requests and hosts, convert between JSON and XML, or return a fixed response."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.transformation"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Transformation Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.policies.content-validation"
+    name: "Content Validation"
+    description: "Validate message content by JSON schema, regular expression, length, URL, word, or sentence count."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.content-validation"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Validation Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.policies.cors"
+    name: "CORS"
+    description: "Apply cross-origin resource sharing rules to an API."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.cors"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "CORS Policies Applied"
+
+  - code: "apip.policies.interception"
+    name: "Interception & Logging"
+    description: "Call an external interceptor service or log messages as they pass through the gateway."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.interception"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Interception Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.policies.analytics-filtering"
+    name: "Analytics Header Filtering"
+    description: "Exclude chosen headers from analytics events."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.analytics-filtering"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API the policy was attached to."
+      aggregations:
+        - type: "count"
+          label: "Analytics Filters Applied"
+
+  - code: "apip.policies.custom-policy"
+    name: "Custom Policy"
+    description: "Sync a custom gateway policy to the organization or delete it."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.custom-policy"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["sync", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Custom Policy Changes"
+
+  - code: "apip.policies.browse-policies"
+    name: "Policy Hub Browsing"
+    description: "Browse and search the policies available in the Policy Hub from the console."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.browse-policies"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Policy Hub Browsing Sessions"
+
+  - code: "apip.policies.view-gateway-policies"
+    name: "Gateway Policies View"
+    description: "View the policies available on a gateway."
+    category: "policies"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.policies.view-gateway-policies"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Gateway Policy Views"
+
+  # ============================================================
+  # SECURITY
+  # ============================================================
+
+  - code: "apip.security.api-key-issuance"
+    name: "API Key Issuance"
+    description: "Issue an API key for an API, including the short-lived keys the test console creates."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.api-key-issuance"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "agent-proxy"]
+          required: true
+        - name: "key_purpose"
+          type: "enum"
+          values: ["production", "test"]
+          required: true
+          description: "Test keys are the console's short-lived keys."
+      aggregations:
+        - type: "count"
+          label: "API Keys Issued"
+        - type: "count_distinct"
+          label: "Distinct API Kinds with Keys"
+          dimension: "artifact_kind"
+
+  - code: "apip.security.api-key-management"
+    name: "API Key Update & Revocation"
+    description: "Update or revoke an API key."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.api-key-management"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "agent-proxy"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["update", "revoke"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Key Changes"
+
+  - code: "apip.security.secrets-management"
+    name: "Secrets Management"
+    description: "Create, rotate, or delete the managed secrets that gateway configuration refers to."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.secrets-management"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "rotate", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Secret Changes"
+
+  - code: "apip.security.service-accounts"
+    name: "Service Accounts"
+    description: "Create, update, or delete a service account, or regenerate its secret."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-accounts"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete", "regenerate-secret"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Service Account Changes"
+
+  - code: "apip.security.mtls"
+    name: "Mutual TLS (mTLS)"
+    description: "Authenticate clients with certificates and connect to backends over mutual TLS."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.mtls"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "direction"
+          type: "enum"
+          values: ["client-to-gateway", "gateway-to-backend"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "mTLS Configurations"
+
+  - code: "apip.security.certificate-management"
+    name: "Certificate Management"
+    description: "Upload, update, delete, or reload certificates on a gateway."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.certificate-management"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["upload", "update", "delete", "reload"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Certificate Changes"
+
+  # ============================================================
+  # LIFECYCLE
+  # ============================================================
+
+  - code: "apip.lifecycle.build-artifact"
+    name: "Artifact Build"
+    description: "Create or delete a build of an API or other artifact before deploying it."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.build-artifact"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["create", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Artifact Builds"
+
+  - code: "apip.lifecycle.deploy-api"
+    name: "Artifact Deployment"
+    description: "Deploy an API or other artifact to a gateway."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.deploy-api"
+      event_category: "adoption"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: true
+        - name: "gateway_type"
+          type: "enum"
+          values: ["regular", "ai"]
+          required: true
+        - name: "gateway_hosting"
+          type: "enum"
+          values: ["managed", "self-hosted"]
+          required: false
+        - name: "has_endpoint_override"
+          type: "boolean"
+          required: false
+          description: "A custom host was supplied for the deployment."
+      aggregations:
+        - type: "count"
+          label: "Deployments"
+        - type: "count_distinct"
+          label: "Distinct Gateway Types Deployed To"
+          dimension: "gateway_type"
+    sub_features:
+      - code: "apip.lifecycle.deploy-api.undeploy"
+        name: "Artifact Undeploy"
+        description: "Remove a deployment from a gateway."
+        category: "lifecycle"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.lifecycle.deploy-api.undeploy"
+          event_category: "lifecycle"
+          platforms: ["web", "api"]
+          dimensions:
+            - name: "artifact_kind"
+              type: "enum"
+              values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "Undeployments"
+      - code: "apip.lifecycle.deploy-api.restore"
+        name: "Deployment Restore"
+        description: "Redeploy an earlier deployment."
+        category: "lifecycle"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.lifecycle.deploy-api.restore"
+          event_category: "lifecycle"
+          platforms: ["web", "api"]
+          dimensions:
+            - name: "artifact_kind"
+              type: "enum"
+              values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "Deployment Restores"
+      - code: "apip.lifecycle.deploy-api.delete"
+        name: "Deployment Deletion"
+        description: "Delete a deployment record."
+        category: "lifecycle"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.lifecycle.deploy-api.delete"
+          event_category: "lifecycle"
+          platforms: ["web", "api"]
+          dimensions:
+            - name: "artifact_kind"
+              type: "enum"
+              values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "Deployment Deletions"
+
+  - code: "apip.lifecycle.view-deployment-history"
+    name: "Deployment History View"
+    description: "View the deployment history of an API."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.view-deployment-history"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Deployment History Views"
+
+  - code: "apip.lifecycle.publish-api"
+    name: "API Publication"
+    description: "Publish an API or MCP server to the API Portal & MCP Hub."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.publish-api"
+      event_category: "adoption"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "APIs Published"
+    sub_features:
+      - code: "apip.lifecycle.publish-api.unpublish"
+        name: "API Unpublish"
+        description: "Remove a published API from the API Portal."
+        category: "lifecycle"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.lifecycle.publish-api.unpublish"
+          event_category: "lifecycle"
+          platforms: ["web", "api"]
+          dimensions:
+            - name: "api_type"
+              type: "enum"
+              values: ["rest-api", "graphql-api", "mcp-proxy"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "APIs Unpublished"
+      - code: "apip.lifecycle.publish-api.deprecate"
+        name: "API Deprecation"
+        description: "Mark a published API as deprecated in the API Portal."
+        category: "lifecycle"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.lifecycle.publish-api.deprecate"
+          event_category: "lifecycle"
+          platforms: ["web", "api"]
+          dimensions:
+            - name: "api_type"
+              type: "enum"
+              values: ["rest-api", "graphql-api", "mcp-proxy"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "APIs Deprecated"
+
+  - code: "apip.lifecycle.publication-draft"
+    name: "Publication Draft"
+    description: "Save the metadata, definition, landing page, or thumbnail of a publication before publishing it."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.publication-draft"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "draft_part"
+          type: "enum"
+          values: ["metadata", "definition", "landing-page", "thumbnail"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Publication Drafts Saved"
+
+  - code: "apip.lifecycle.open-api-portal"
+    name: "API Portal Opened"
+    description: "Open the organization's API Portal from the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.open-api-portal"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "API Portal Opens"
+
+  - code: "apip.lifecycle.manage-api-portal"
+    name: "API Portal Registration"
+    description: "Create, update, or delete an API Portal registration."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.manage-api-portal"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Portal Changes"
+
+  # ============================================================
+  # DEVELOPER PORTAL
+  # ============================================================
+
+  - code: "apip.developer-portal.browse-catalog"
+    name: "Catalog Browsing"
+    description: "Browse the portal's catalog of APIs or MCP servers."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.browse-catalog"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions:
+        - name: "catalog_type"
+          type: "enum"
+          values: ["apis", "mcps"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Catalog Views"
+
+  - code: "apip.developer-portal.search"
+    name: "Catalog Search & Filter"
+    description: "Search the catalog or filter it by label."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.search"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions:
+        - name: "search_mode"
+          type: "enum"
+          values: ["search", "label-filter"]
+          required: true
+        - name: "zero_results"
+          type: "boolean"
+          required: false
+          description: "Whether the search found nothing."
+      aggregations:
+        - type: "count"
+          label: "Catalog Searches"
+
+  - code: "apip.developer-portal.view-api"
+    name: "API Detail View"
+    description: "Open the detail page of an API or MCP server."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.view-api"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions:
+        - name: "asset_kind"
+          type: "enum"
+          values: ["api", "mcp"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Detail Page Views"
+
+  - code: "apip.developer-portal.view-documentation"
+    name: "API Documentation View"
+    description: "Open a document or the specification of an API or MCP server in the portal."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.view-documentation"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions:
+        - name: "content_kind"
+          type: "enum"
+          values: ["document", "specification"]
+          required: true
+        - name: "asset_kind"
+          type: "enum"
+          values: ["api", "mcp"]
+          required: false
+      aggregations:
+        - type: "count"
+          label: "Documentation Views"
+
+  - code: "apip.developer-portal.try-it"
+    name: "Try-It Console"
+    description: "Try an API from the API Portal."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.try-it"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Try-It Invocations"
+
+  - code: "apip.developer-portal.create-application"
+    name: "Application Creation"
+    description: "Create an application to hold subscriptions and credentials."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.create-application"
+      event_category: "adoption"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Applications Created"
+
+  - code: "apip.developer-portal.manage-application"
+    name: "Application Update & Deletion"
+    description: "Update or delete an application."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.manage-application"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Application Changes"
+
+  - code: "apip.developer-portal.api-subscription"
+    name: "API Subscription"
+    description: "Subscribe an application to a published API or MCP server."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.api-subscription"
+      event_category: "adoption"
+      platforms: ["web"]
+      dimensions:
+        - name: "asset_kind"
+          type: "enum"
+          values: ["api", "mcp"]
+          required: false
+      aggregations:
+        - type: "count"
+          label: "Subscriptions Created"
+
+  - code: "apip.developer-portal.manage-subscription"
+    name: "Subscription Changes"
+    description: "Change the plan or status of a subscription, regenerate its token, or cancel it."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.manage-subscription"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["change-plan", "set-status", "regenerate-token", "cancel"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Subscription Changes"
+
+  - code: "apip.developer-portal.consumer-key-generation"
+    name: "Consumer Key Generation"
+    description: "Generate an API key or OAuth2 credentials for an application."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.consumer-key-generation"
+      event_category: "adoption"
+      platforms: ["web"]
+      dimensions:
+        - name: "key_type"
+          type: "enum"
+          values: ["api-key", "oauth2"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Consumer Keys Generated"
+
+  - code: "apip.developer-portal.manage-consumer-key"
+    name: "Consumer Key Update, Rotation & Revocation"
+    description: "Update an OAuth2 key, or regenerate or revoke a consumer key."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.manage-consumer-key"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "key_type"
+          type: "enum"
+          values: ["api-key", "oauth2"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["update", "regenerate", "revoke"]
+          required: true
+          description: "update applies to OAuth2 keys only."
+      aggregations:
+        - type: "count"
+          label: "Consumer Key Changes"
+
+  - code: "apip.developer-portal.key-association"
+    name: "Key Association"
+    description: "Associate a key with, or dissociate it from, an API or MCP server."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.key-association"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "key_type"
+          type: "enum"
+          values: ["api-key", "oauth2"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["associate", "dissociate"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Key Association Changes"
+
+  - code: "apip.developer-portal.view-usage"
+    name: "Usage Page View"
+    description: "Open a consumer's usage page."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.view-usage"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Usage Page Views"
+
+  - code: "apip.developer-portal.copy-mcp-config"
+    name: "MCP Client Configuration Copy"
+    description: "Copy the configuration an MCP client needs to connect to an MCP server in the MCP Hub."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.copy-mcp-config"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "MCP Configurations Copied"
+
+  - code: "apip.developer-portal.mcp-server-listing"
+    name: "MCP Server Listing"
+    description: "Publish, update, or remove an MCP server in the MCP Hub."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.mcp-server-listing"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["publish", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "MCP Server Listing Changes"
+
+  - code: "apip.developer-portal.api-workflows"
+    name: "API Workflows"
+    description: "Create, update, or delete a workflow that guides consumers or AI agents through a sequence of API calls."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.api-workflows"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Workflow Changes"
+    sub_features:
+      - code: "apip.developer-portal.api-workflows.visibility"
+        name: "Workflow Visibility"
+        description: "Choose whether a workflow is shown to people, to AI agents, or both."
+        category: "developer-portal"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.developer-portal.api-workflows.visibility"
+          event_category: "engagement"
+          platforms: ["web", "api"]
+          dimensions:
+            - name: "audience"
+              type: "enum"
+              values: ["human", "agent"]
+              required: true
+            - name: "visible"
+              type: "boolean"
+              required: true
+          aggregations:
+            - type: "count"
+              label: "Visibility Changes"
+      - code: "apip.developer-portal.api-workflows.publication"
+        name: "Workflow Publication"
+        description: "Publish a workflow so consumers can see it, or return it to draft."
+        category: "developer-portal"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.developer-portal.api-workflows.publication"
+          event_category: "adoption"
+          platforms: ["web", "api"]
+          dimensions:
+            - name: "operation"
+              type: "enum"
+              values: ["publish", "unpublish"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "Workflow Publication Changes"
+
+  - code: "apip.developer-portal.view-workflow"
+    name: "Workflow View"
+    description: "Open a workflow page."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.view-workflow"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Workflow Views"
+
+  - code: "apip.developer-portal.download-workflow"
+    name: "Workflow Download or Copy"
+    description: "Download or copy a workflow as an Arazzo document or an agent prompt."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.download-workflow"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact"
+          type: "enum"
+          values: ["arazzo", "agent-prompt"]
+          required: true
+        - name: "delivery"
+          type: "enum"
+          values: ["download", "copy"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Workflow Downloads"
+
+  - code: "apip.developer-portal.llms-txt-config"
+    name: "LLM Discovery Configuration"
+    description: "Configure and preview the llms.txt a portal view publishes for AI agents."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.llms-txt-config"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "llms.txt Configurations"
+
+  - code: "apip.developer-portal.manage-view"
+    name: "Portal View Management"
+    description: "Create, update, or delete a portal view."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.manage-view"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "View Changes"
+
+  - code: "apip.developer-portal.manage-label"
+    name: "Label Management"
+    description: "Create, update, or delete a label used to group and filter APIs."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.manage-label"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Label Changes"
+
+  - code: "apip.developer-portal.portal-theming"
+    name: "Portal Theming"
+    description: "Apply, export, or reset the theme of a portal view."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.portal-theming"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["apply", "export", "reset"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Theme Changes"
+
+  - code: "apip.developer-portal.portal-design-mode"
+    name: "Portal Design Mode"
+    description: "Develop and preview API page layouts and organization themes in the portal's design mode, which runs without a database or identity provider."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.portal-design-mode"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Design Mode Sessions"
+
+  - code: "apip.developer-portal.manage-webhook-subscriber"
+    name: "Webhook Subscriber Management"
+    description: "Create, update, or delete a subscriber for portal events."
+    category: "developer-portal"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.developer-portal.manage-webhook-subscriber"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Webhook Subscriber Changes"
+
+  # ============================================================
+  # KEY MANAGEMENT
+  # ============================================================
+
+  - code: "apip.key-management.third-party-km"
+    name: "Key Manager Integration"
+    description: "Register, update, or remove a key manager that issues OAuth2 credentials for the portal through dynamic client registration."
+    category: "key-management"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.key-management.third-party-km"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "km_type"
+          type: "enum"
+          values: ["asgardeo", "thunderid", "wso2is", "custom", "provision"]
+          required: true
+          description: "The registered key manager type."
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Key Manager Changes"
+        - type: "count_distinct"
+          label: "Distinct Key Manager Types"
+          dimension: "km_type"
+    sub_features:
+      - code: "apip.key-management.third-party-km.asgardeo"
+        name: "Asgardeo Key Manager"
+        description: "An Asgardeo key manager is registered, updated, or removed."
+        category: "key-management"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.key-management.third-party-km.asgardeo"
+          event_category: "lifecycle"
+          platforms: ["web"]
+          dimensions: []
+          aggregations:
+            - type: "count"
+              label: "Asgardeo Key Manager Changes"
+      - code: "apip.key-management.third-party-km.thunderid"
+        name: "ThunderID Key Manager"
+        description: "A ThunderID key manager is registered, updated, or removed."
+        category: "key-management"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.key-management.third-party-km.thunderid"
+          event_category: "lifecycle"
+          platforms: ["web"]
+          dimensions: []
+          aggregations:
+            - type: "count"
+              label: "ThunderID Key Manager Changes"
+      - code: "apip.key-management.third-party-km.wso2is"
+        name: "WSO2 Identity Server Key Manager"
+        description: "A WSO2 Identity Server key manager is registered, updated, or removed."
+        category: "key-management"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.key-management.third-party-km.wso2is"
+          event_category: "lifecycle"
+          platforms: ["web"]
+          dimensions: []
+          aggregations:
+            - type: "count"
+              label: "WSO2 Identity Server Key Manager Changes"
+      - code: "apip.key-management.third-party-km.custom"
+        name: "Custom Key Manager"
+        description: "A custom dynamic-client-registration key manager is registered, updated, or removed."
+        category: "key-management"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.key-management.third-party-km.custom"
+          event_category: "lifecycle"
+          platforms: ["web"]
+          dimensions: []
+          aggregations:
+            - type: "count"
+              label: "Custom Key Manager Changes"
+      - code: "apip.key-management.third-party-km.provision"
+        name: "Out-of-Band Key Manager"
+        description: "A key manager whose OAuth clients are created by hand at the identity server and only recorded in the portal is registered, updated, or removed."
+        category: "key-management"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.key-management.third-party-km.provision"
+          event_category: "lifecycle"
+          platforms: ["web"]
+          dimensions: []
+          aggregations:
+            - type: "count"
+              label: "Out-of-Band Key Manager Changes"
+
+  - code: "apip.key-management.token-generation"
+    name: "OAuth Token Generation"
+    description: "Generate an access token for an application's OAuth2 credentials through the portal."
+    category: "key-management"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.key-management.token-generation"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "grant_type"
+          type: "enum"
+          values: ["client-credentials"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Tokens Generated"
+
+  # ============================================================
+  # ANALYTICS
+  # ============================================================
+
+  - code: "apip.analytics.analytics-publisher"
+    name: "Analytics Publisher"
+    description: "Send gateway analytics events to Moesif or to an OpenTelemetry collector."
+    category: "analytics"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.analytics.analytics-publisher"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "publisher"
+          type: "enum"
+          values: ["moesif", "otel"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Analytics Publishers Enabled"
+        - type: "count_distinct"
+          label: "Distinct Publisher Types"
+          dimension: "publisher"
+
+  - code: "apip.analytics.traffic-log-sink"
+    name: "Traffic Log Sink"
+    description: "Write gateway traffic logs to stdout, a file, or an HTTP endpoint."
+    category: "analytics"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.analytics.traffic-log-sink"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "sink"
+          type: "enum"
+          values: ["stdout", "file", "http"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Traffic Log Sinks Enabled"
+        - type: "count_distinct"
+          label: "Distinct Sink Types"
+          dimension: "sink"
+
+  - code: "apip.analytics.distributed-tracing"
+    name: "Distributed Tracing"
+    description: "Export gateway traces to an OpenTelemetry collector."
+    category: "analytics"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.analytics.distributed-tracing"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Tracing Enabled"
+
+  # ============================================================
+  # MONETIZATION
+  # ============================================================
+
+  - code: "apip.monetization.subscription-plan-management"
+    name: "Subscription Plan Management"
+    description: "Create, update, or delete a subscription plan."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.subscription-plan-management"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Plan Changes"
+
+  - code: "apip.monetization.meter-management"
+    name: "Meter Management"
+    description: "Create, update, or delete a usage meter."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.meter-management"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Meter Changes"
+
+  - code: "apip.monetization.billing-configuration"
+    name: "Billing Configuration"
+    description: "Connect the portal to a payment provider and manage its webhook endpoint."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.billing-configuration"
+      event_category: "adoption"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "payment_provider"
+          type: "enum"
+          values: ["stripe"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["configure", "update-webhook-endpoint", "remove"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Billing Configurations"
+
+  - code: "apip.monetization.view-revenue"
+    name: "Revenue View"
+    description: "View revenue reports for monetized APIs."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.view-revenue"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Revenue Views"
+
+  - code: "apip.monetization.paid-checkout"
+    name: "Paid Plan Checkout"
+    description: "A consumer checks out a paid subscription plan."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.paid-checkout"
+      event_category: "adoption"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Checkouts Started"
+
+  - code: "apip.monetization.view-invoices"
+    name: "Invoice View"
+    description: "A consumer opens their invoices."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.view-invoices"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Invoice Views"
+
+  # ============================================================
+  # ADMIN
+  # ============================================================
+
+  - code: "apip.admin.organization-registration"
+    name: "Organization Registration"
+    description: "Register the organization with the platform when it first appears, on first sign-in to the console or through provisioning."
+    category: "admin"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.admin.organization-registration"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Organizations Registered"
+
+  - code: "apip.admin.manage-projects"
+    name: "Project Management"
+    description: "Create, update, or delete a project that groups APIs."
+    category: "admin"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.admin.manage-projects"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Project Changes"
+
+  # ============================================================
+  # AI GATEWAY
+  # ============================================================
+
+  - code: "apip.ai-gateway.ai-guardrails"
+    name: "AI Guardrails"
+    description: "Protect LLM traffic with PII masking and content-safety, prompt-injection, and semantic guardrails."
+    category: "ai-gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.ai-gateway.ai-guardrails"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+      aggregations:
+        - type: "count"
+          label: "Guardrail Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.ai-gateway.semantic-caching"
+    name: "Semantic Caching"
+    description: "Serve repeated or similar prompts from a semantic cache."
+    category: "ai-gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.ai-gateway.semantic-caching"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Semantic Caches Configured"
+
+  - code: "apip.ai-gateway.model-routing"
+    name: "Model Routing"
+    description: "Route LLM requests across models by round robin, weights, a header, or a typed router."
+    category: "ai-gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.ai-gateway.model-routing"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+      aggregations:
+        - type: "count"
+          label: "Model Routing Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.ai-gateway.prompt-management"
+    name: "Prompt Management"
+    description: "Apply prompt templates and decorators, or compress prompts."
+    category: "ai-gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.ai-gateway.prompt-management"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+      aggregations:
+        - type: "count"
+          label: "Prompt Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.ai-gateway.ai-cost-control"
+    name: "AI Cost & Token Limits"
+    description: "Limit LLM usage by tokens or cost and track the cost of calls."
+    category: "ai-gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.ai-gateway.ai-cost-control"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+      aggregations:
+        - type: "count"
+          label: "Cost Control Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  - code: "apip.ai-gateway.provider-transformation"
+    name: "AI Provider Transformation"
+    description: "Translate OpenAI-style requests for Anthropic, Azure OpenAI, Bedrock, Gemini, or Mistral."
+    category: "ai-gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.ai-gateway.provider-transformation"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+      aggregations:
+        - type: "count"
+          label: "Provider Transformations Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  # ============================================================
+  # MCP
+  # ============================================================
+
+  - code: "apip.mcp.mcp-governance"
+    name: "MCP Governance"
+    description: "Govern MCP traffic with authentication, authorization, access lists, rate limits, rewriting, specification validation, and tool filtering."
+    category: "mcp"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.mcp.mcp-governance"
+      event_category: "engagement"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "policy_name"
+          type: "string"
+          required: true
+          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+      aggregations:
+        - type: "count"
+          label: "MCP Governance Policies Applied"
+        - type: "count_distinct"
+          label: "Distinct Policies Used"
+          dimension: "policy_name"
+
+  # ============================================================
+  # DEVOPS
+  # ============================================================
+
+  - code: "apip.devops.cli-gateway-apply"
+    name: "CLI Gateway Apply"
+    description: "Apply REST, GraphQL, MCP, or LLM resource definitions to a gateway with ap gateway apply (GitOps)."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-gateway-apply"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "resource_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy", "llm-provider", "llm-proxy"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Gateway Applies"
+        - type: "count_distinct"
+          label: "Distinct Resource Kinds Applied"
+          dimension: "resource_kind"
+
+  - code: "apip.devops.cli-gateway-resource-management"
+    name: "CLI Gateway Resource Management"
+    description: "List, get, create, update, or delete gateway APIs, API keys, subscriptions, and subscription plans with ap gateway."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-gateway-resource-management"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "resource"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy", "api-key", "subscription", "subscription-plan"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["list", "get", "create", "update", "delete", "regenerate"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Gateway Resource Operations"
+
+  - code: "apip.devops.cli-api-portal-management"
+    name: "CLI API Portal Management"
+    description: "Apply, list, get, edit, or delete APIs, plans, subscriptions, applications, and keys in the API Portal with ap devportal."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-api-portal-management"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "resource"
+          type: "enum"
+          values: ["api", "subscription-plan", "subscription", "application", "api-key"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["apply", "list", "get", "create", "update", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Portal Operations"
+
+  - code: "apip.devops.cli-gateway-image-build"
+    name: "CLI Gateway Image Build"
+    description: "Build a gateway image with selected policies using ap gateway image build."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-gateway-image-build"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Gateway Images Built"
+
+  - code: "apip.devops.cli-mcp-config-generation"
+    name: "CLI MCP Config Generation"
+    description: "Generate MCP proxy configuration from a running MCP server with ap gateway mcp generate."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-mcp-config-generation"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "MCP Configurations Generated"
+
+  - code: "apip.devops.cli-connection-management"
+    name: "CLI Connection Management"
+    description: "Add, select, or remove the gateway and API Portal connections the CLI works with."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-connection-management"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "target"
+          type: "enum"
+          values: ["gateway", "devportal"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["add", "use", "remove"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Connection Changes"
+
+  - code: "apip.devops.cli-api-portal-artifact-build"
+    name: "CLI API Portal Artifact Build"
+    description: "Generate the default API Portal artifact for a project and build the project for the API Portal with ap devportal gen and build."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-api-portal-artifact-build"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "operation"
+          type: "enum"
+          values: ["generate", "build"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Portal Artifacts Built"
+
+  - code: "apip.devops.cli-project-init"
+    name: "CLI Project Init"
+    description: "Scaffold an API project with ap project init."
+    category: "devops"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.devops.cli-project-init"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Projects Initialised"
