@@ -507,7 +507,8 @@ type engineFailure struct {
 // The response body is left AUTHORED on purpose, which switches formatting off for it: the
 // body carries the correlation id that the x-error-id header and the internal error log also
 // carry, and re-rendering it would drop that. Fault policies still run, so a notifier reports
-// the failure — they just cannot reshape it.
+// the failure — they just cannot reshape it. On an OpenAI route the body is rendered in the
+// OpenAI envelope instead, which carries the same id as error_id.
 //
 // Not covered, deliberately: the 500 returned when no policy chain matched the route, since
 // there are no fault policies to select.
@@ -595,6 +596,7 @@ func (ec *PolicyExecutionContext) rejectUnsupportedEncoding(
 	)
 
 	errorBody := fmt.Sprintf(`{"error":%q,"error_id":"%s"}`, clientError, errorID)
+	body, contentType := ec.formatEngineRejection(ctx, httpStatus, errorID, clientError, []byte(errorBody))
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
@@ -603,10 +605,10 @@ func (ec *PolicyExecutionContext) rejectUnsupportedEncoding(
 					Code: statusCode,
 				},
 				Headers: buildHeaderValueOptions(map[string]string{
-					"content-type": "application/json",
+					"content-type": contentType,
 					"x-error-id":   errorID,
 				}),
-				Body: []byte(errorBody),
+				Body: body,
 			},
 		},
 	}
@@ -679,6 +681,7 @@ func (ec *PolicyExecutionContext) rejectUndecodableBody(
 	)
 
 	errorBody := fmt.Sprintf(`{"error":%q,"error_id":"%s"}`, clientError, errorID)
+	body, contentType := ec.formatEngineRejection(ctx, httpStatus, errorID, clientError, []byte(errorBody))
 
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
@@ -687,10 +690,10 @@ func (ec *PolicyExecutionContext) rejectUndecodableBody(
 					Code: statusCode,
 				},
 				Headers: buildHeaderValueOptions(map[string]string{
-					"content-type": "application/json",
+					"content-type": contentType,
 					"x-error-id":   errorID,
 				}),
-				Body: []byte(errorBody),
+				Body: body,
 			},
 		},
 	}

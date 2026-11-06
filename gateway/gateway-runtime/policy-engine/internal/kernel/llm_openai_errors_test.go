@@ -21,12 +21,16 @@ package kernel
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -629,6 +633,10 @@ func TestEncodedBody(t *testing.T) {
 	assert.False(t, encodedBody(map[string]string{"content-encoding": " "}))
 	assert.True(t, encodedBody(map[string]string{"content-encoding": "gzip"}))
 	assert.True(t, encodedBody(map[string]string{"CONTENT-ENCODING": "br"}))
+	// Both casings present: the answer must not depend on map iteration order.
+	for i := 0; i < 50; i++ {
+		assert.True(t, encodedBody(map[string]string{"content-encoding": "identity", "Content-Encoding": "gzip"}))
+	}
 }
 
 // When two response policies write a body, the client receives the last one, so that is the
@@ -719,4 +727,110 @@ func TestLLMOpenAIErrors_RejectionIsFormattedWhenTheFaultChainCannotRun(t *testi
 	assert.Equal(t, "Violation of applied word count constraints detected", inner["message"])
 	_, ok := inner["guardrail"].(map[string]any)
 	assert.True(t, ok, "the guardrail block is carried: %s", out.Body)
+}
+
+// Only errors the gateway constructed get the envelope. A response policy that writes its own
+// body over a provider error without rejecting it leaves the failure the provider's, so what the
+// pipeline produced is sent as written, whether or not the provider sent a body. A policy that
+// rejects the response (sets the status) constructed the error, so its body is reshaped.
+func TestLLMOpenAIErrors_PolicyBodyOverAProviderErrorIsFormattedOnlyWhenThePolicyRejects(t *testing.T) {
+	policyBody := []byte(`{"error":"Too Many Requests","message":"Slow down"}`)
+	for _, tc := range []struct {
+		providerBody string
+		rejects      bool
+	}{
+		{providerBody: "", rejects: false},
+		{providerBody: `{"error":{"message":"provider said no","type":"requests","param":null,"code":"x"}}`, rejects: false},
+		{providerBody: "", rejects: true},
+		{providerBody: `{"error":{"message":"provider said no","type":"requests","param":null,"code":"x"}}`, rejects: true},
+	} {
+		name := fmt.Sprintf("provider body=%v, policy rejects=%v", tc.providerBody != "", tc.rejects)
+		ec := llmCtx(t, nil, nil)
+		withRejectedBody(ec, 429)
+		ec.responseHeaderCtx.ResponseStatus = 429
+		ec.responseBodyCtx.ResponseStatus = 429
+		ec.responseCodeDetails = codeDetailsViaUpstream
+		ec.responseBodyCtx.ResponseBody = &policy.Body{Content: []byte(tc.providerBody), Present: tc.providerBody != ""}
+
+		action := policy.DownstreamResponseModifications{Body: policyBody}
+		if tc.rejects {
+			s := 429
+			action.StatusCode = &s
+		}
+		execResult := &executor.ResponseExecutionResult{Results: []executor.ResponsePolicyResult{{
+			PolicyName: "response-policy", PolicyVersion: "v1", Action: action,
+		}}}
+		// As processResponseBody does.
+		ec.handleFault(context.Background(), faultFromResponseBody(execResult, responseRejectedByPolicy(execResult.Results)))
+
+		formatted := formattedResult(execResult)
+		if !tc.rejects {
+			assert.Nil(t, formatted, "%s: passed through", name)
+			assert.Equal(t, policyBody, execResult.Results[0].Action.(policy.DownstreamResponseModifications).Body,
+				"%s: the policy's body is sent as written", name)
+			continue
+		}
+		require.NotNil(t, formatted, "%s: formatted", name)
+		assert.Equal(t, "Slow down", openAIErrorOf(t, formatted)["message"], name)
+		assert.Equal(t, "rate_limit_error", openAIErrorOf(t, formatted)["type"], name)
+	}
+}
+
+// The engine's own rejections of a body it cannot decode are errors the gateway constructed, so
+// an LLM route gets them in the OpenAI envelope, keeping the generic message, the status and the
+// correlation id. A REST route keeps the body it always had.
+func TestLLMOpenAIErrors_EngineBodyRejectionsAreFormatted(t *testing.T) {
+	type rejection func(ec *PolicyExecutionContext) *extprocv3.ProcessingResponse
+	unsupported := func(ec *PolicyExecutionContext) *extprocv3.ProcessingResponse {
+		return ec.rejectUnsupportedEncoding(context.Background(), []string{"zstd"}, "request_body",
+			typev3.StatusCode_UnsupportedMediaType, http.StatusUnsupportedMediaType, "Unsupported Media Type")
+	}
+	undecodable := func(ec *PolicyExecutionContext) *extprocv3.ProcessingResponse {
+		return ec.rejectUndecodableBody(context.Background(), errors.New("gzip: invalid header"), "response_body",
+			typev3.StatusCode_BadGateway, http.StatusBadGateway, "Bad Gateway")
+	}
+	for name, tc := range map[string]struct {
+		reject   rejection
+		message  string
+		wantType string
+	}{
+		"unsupported encoding": {unsupported, "Unsupported Media Type", "invalid_request_error"},
+		"undecodable body":     {undecodable, "Bad Gateway", "server_error"},
+	} {
+		imm := tc.reject(llmCtx(t, nil, nil)).GetImmediateResponse()
+		errorID := immediateHeader(imm, "x-error-id")
+		require.NotEmpty(t, errorID, name)
+		inner := openAIErrorOf(t, imm.GetBody())
+		assert.Equal(t, tc.message, inner["message"], name)
+		assert.Equal(t, tc.wantType, inner["type"], name)
+		assert.Equal(t, errorID, inner["error_id"], "%s: the envelope keeps the correlation id", name)
+		assert.Equal(t, "application/json", immediateHeader(imm, "content-type"), name)
+
+		rest := faultExecCtx(t, nil, nil)
+		rest.sharedCtx.APIKind = policy.APIKindRestApi
+		restImm := tc.reject(rest).GetImmediateResponse()
+		assert.JSONEq(t, fmt.Sprintf(`{"error":%q,"error_id":%q}`, tc.message, immediateHeader(restImm, "x-error-id")),
+			string(restImm.GetBody()), "%s: a REST route keeps its body", name)
+	}
+}
+
+// immediateHeader returns the value of header name on an immediate response, or "".
+func immediateHeader(imm *extprocv3.ImmediateResponse, name string) string {
+	for _, h := range imm.GetHeaders().GetSetHeaders() {
+		if strings.EqualFold(h.GetHeader().GetKey(), name) {
+			if v := h.GetHeader().GetValue(); v != "" {
+				return v
+			}
+			return string(h.GetHeader().GetRawValue())
+		}
+	}
+	return ""
+}
+
+// Without a server there is nothing to shape against, so the body is returned as it was.
+func TestFormatEngineRejection_WithoutAServerKeepsTheBody(t *testing.T) {
+	body := []byte(`{"error":"Bad Gateway","error_id":"id"}`)
+	got, contentType := (&PolicyExecutionContext{}).formatEngineRejection(context.Background(), http.StatusBadGateway, "id", "Bad Gateway", body)
+	assert.Equal(t, body, got)
+	assert.Equal(t, "application/json", contentType)
 }

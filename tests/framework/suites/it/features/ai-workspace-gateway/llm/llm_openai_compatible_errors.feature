@@ -59,6 +59,7 @@ Feature: OpenAI-compatible error responses for LLM APIs
     Then the response status code should be 422
     And the response header "Content-Type" should contain "application/json"
     And the JSON response field "error.type" should be "invalid_request_error"
+    And the JSON response field "error.guardrail.interveningGuardrail" should be "word-count-guardrail"
     And the JSON response should have field "error.message"
     And the response body should match pattern "\Wparam\W\s*:\s*null"
     And the response body should match pattern "\Wcode\W\s*:"
@@ -125,6 +126,7 @@ Feature: OpenAI-compatible error responses for LLM APIs
     Then the response status code should be 422
     And the response should be valid JSON
     And the JSON response field "error.type" should be "invalid_request_error"
+    And the JSON response field "error.guardrail.interveningGuardrail" should be "word-count-guardrail"
     And the JSON response should have field "error.message"
     And the response body should match pattern "\Wparam\W\s*:\s*null"
 

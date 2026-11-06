@@ -174,7 +174,8 @@ type Input struct {
 	// Formatting is opt-in through this, and that is a compatibility decision: gateways
 	// released before the fault contract sent those errors unformatted, and a policy that
 	// predates the contract describes nothing. Rendering only what a policy described keeps
-	// every such response byte-for-byte what it was.
+	// every such response byte-for-byte what it was. The OpenAI shape is the exception: see
+	// ShouldFormat.
 	PolicyDescribed bool
 	// Status is the response status, used only to pick a JSON-RPC code.
 	Status int
@@ -201,12 +202,12 @@ type Input struct {
 //
 // Nothing is synthesized for a kind outside supportedKinds, and that gate comes first.
 //
-// For an enabled kind, authorship and description decide the result:
+// For an enabled kind, authorship decides the rest:
 //
-//	Body authored              -> leave it alone
-//	Fault described            -> render it
-//	Not described, OpenAI      -> render it
-//	Not described, other shape -> leave it alone (see Input.PolicyDescribed)
+//	Not described by a policy -> leave alone (see Input.PolicyDescribed)
+//	Fault described   -> render, whatever the body holds
+//	no Fault          -> the body stands, described or empty
+//	OpenAI shape      -> rendered even when not described
 //
 // A body accompanying a described fault is a FALLBACK for a gateway that cannot render, not a
 // decision — so omitting Fault is how a policy keeps its own body. A body written by a fault
@@ -234,7 +235,7 @@ func ShouldFormat(r *Registry, in Input) Decision {
 		// Something already decided the final body. This is the customer-override path: a
 		// policy that writes a body and describes no Error switches this package off for that
 		// route, with no ordering requirement between the two.
-		return Decision{Reason: "response body already authored"}
+		return Decision{Reason: "body already authored by a policy"}
 	}
 
 	shape := Negotiate(Request{

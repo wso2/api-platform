@@ -113,12 +113,15 @@ func (ec *PolicyExecutionContext) faultFormatInput(
 	}
 }
 
-// encodedBody reports whether headers declare a content encoding other than identity.
+// encodedBody reports whether headers declare a content encoding other than identity, under any
+// casing of the header name.
 func encodedBody(headers map[string]string) bool {
 	for name, value := range headers {
-		if strings.EqualFold(name, "content-encoding") {
-			v := strings.TrimSpace(value)
-			return v != "" && !strings.EqualFold(v, "identity")
+		if !strings.EqualFold(name, "content-encoding") {
+			continue
+		}
+		if v := strings.TrimSpace(value); v != "" && !strings.EqualFold(v, "identity") {
+			return true
 		}
 	}
 	return false
@@ -197,17 +200,17 @@ func (ec *PolicyExecutionContext) errorResponseForFormatting() policy.FaultDetai
 // False when the server was built without the option, and false for a request that matched
 // no route — an unknown route has no kind, so no configuration could have named it, and the
 // reply Envoy already wrote stands.
+// isEngineFailure reports that the failure being handled is the engine's own — set by
+// engineError before the fault flow runs, so its description is the engine's, not a policy's.
+func (ec *PolicyExecutionContext) isEngineFailure() bool {
+	return ec.engineErrorID != ""
+}
+
 func (ec *PolicyExecutionContext) errorFormatterEnabled() bool {
 	if ec.server == nil {
 		return false
 	}
 	return ec.server.errorFormatterKinds.Enabled(ec.apiKind())
-}
-
-// isEngineFailure reports that the failure being handled is the engine's own — set by
-// engineError before the fault flow runs, so its description is the engine's, not a policy's.
-func (ec *PolicyExecutionContext) isEngineFailure() bool {
-	return ec.engineErrorID != ""
 }
 
 // apiKind reads the API kind, tolerating a context that has none (an unmatched request).
@@ -372,7 +375,8 @@ func (s *ExternalProcessorServer) formatSterileError(
 		// the engine's own, and the engine is not an author — same rule as its 500s.
 		BodyAuthored: false,
 		// Nor can a policy have described it, so this leaves the sterile body as released
-		// gateways sent it. Kept as an explicit field so the rule is visible here.
+		// gateways sent it, except in the OpenAI shape, which renders it anyway. Kept as an
+		// explicit field so the rule is visible here.
 		PolicyDescribed: false,
 		Err:             err,
 		Status:          status,
@@ -394,6 +398,19 @@ func (s *ExternalProcessorServer) formatSterileError(
 		"error_id", errorID, "api_kind", string(sig.APIKind),
 		"status", status, "reason", decision.Reason)
 	return decision.Body, decision.ContentType
+}
+
+// formatEngineRejection shapes the body of a request or response the engine rejected itself for
+// the caller's protocol, as formatSterileError does for the engine's other errors. The message
+// stays the generic clientError, and the correlation id is kept.
+func (ec *PolicyExecutionContext) formatEngineRejection(
+	ctx context.Context, status int, errorID, clientError string, body []byte,
+) ([]byte, string) {
+	if ec.server == nil {
+		return body, "application/json"
+	}
+	return ec.server.formatSterileError(ctx, ec.shapeSignals(), policy.FaultDetails{Message: clientError},
+		status, errorID, body, "application/json")
 }
 
 // shapeSignals reads the shape signals off an execution context.
