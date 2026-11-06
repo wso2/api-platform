@@ -29,7 +29,7 @@ Feature: MCP spec versions from the control plane to the gateway
   # gateway and a fetch returns nothing. Measured, not assumed - the runner was added, run, and
   # removed after all three scenarios failed for exactly those reasons.
   #
-  # Wiring it is one runner block in it-suite.yaml once the platform-api change lands, and the
+  # Wiring it is one runner in suites/it/blocks/ once the platform-api change lands, and the
   # last scenario additionally needs server/discover support, which is why it carries its own
   # tag.
   #
@@ -98,7 +98,7 @@ Feature: MCP spec versions from the control plane to the gateway
 
   # A modern server answers server/discover with every revision it serves, which no handshake
   # can report. Needs the control-plane discovery change, so it is held back by its own tag
-  # until that merges - see the runner in it-suite.yaml.
+  # until that merges - see the runner in suites/it/blocks/.
   @pending-platform-api-discovery
   Scenario: Discovery reports every revision a modern server serves
     When I fetch MCP server info via the control plane for "http://testbench:3009/mcp"

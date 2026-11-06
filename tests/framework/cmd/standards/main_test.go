@@ -213,6 +213,20 @@ func TestCheckSuiteYAMLsRejectsFrameworkOnlyRunner(t *testing.T) {
 	require.Contains(t, issues[0], "framework-only runner")
 }
 
+func TestCheckSuiteYAMLsFollowsBlockFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "blocks"), 0o700))
+	block := "blocks:\n  - runners:\n      - name: framework-cleanup\n        tags: '@framework'\n        features: [features/framework.feature]\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "blocks", "core.yaml"), []byte(block), 0o600))
+	path := filepath.Join(dir, "suite.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("blockFiles:\n  - blocks/core.yaml\n"), 0o600))
+
+	issues := checkSuiteYAMLs(path)
+	require.Len(t, issues, 1)
+	require.Contains(t, issues[0], filepath.Join("blocks", "core.yaml"))
+	require.Contains(t, issues[0], "framework-only runner")
+}
+
 func TestCheckCleanupRegistrationRequiresRegistrationOrDelegation(t *testing.T) {
 	root := t.TempDir()
 	source := `package steps

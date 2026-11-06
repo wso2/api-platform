@@ -59,7 +59,7 @@ Before adding a helper, step, or dependency:
 - A product scenario may test concurrent product requests only when that
   concurrency is part of user-visible product behavior. Use deterministic
   synchronization; runner parallelism alone is not a concurrency guarantee.
-- Keep framework-only tests out of `it-suite.yaml` and `ui-suite.yaml`.
+- Keep framework-only tests out of `it-suite.yaml` (and its `blocks/` files) and `ui-suite.yaml`.
 - Put each feature file in a product folder under `features/`, such as
   `features/gateway/mtls/`, never at the root of `features/`.
 

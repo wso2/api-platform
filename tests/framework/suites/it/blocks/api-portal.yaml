@@ -1,0 +1,268 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# API Portal blocks: the API Portal server, with the Platform API it needs (multi-organization
+# mode runs without it), but no gateway.
+#
+# Adding a test:
+#   1. Add a runner to the main block (the first one below). This is the default.
+#   2. Only if that cannot work, add a new block. This is the last resort: the test needs a
+#      product setting (an overlay) the other runners must not see, or must run alone (it
+#      restarts a product, counts metrics, or expects an empty product). Say why in a comment
+#      above the block.
+#   3. A test that needs a different set of products is not added here. A new combination
+#      (a new file) is an even worse last resort; see it-suite.yaml.
+# Feature paths are relative to suites/it, as in it-suite.yaml.
+
+blocks:
+  # The main API Portal block. A new API Portal test goes here unless it needs its own portal
+  # settings or must run alone.
+  - name: api-portal-core
+    parallel: 9
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+    runners:
+      - name: security
+        features:
+          - features/apiportal/security/security.feature
+      - name: auth
+        features:
+          - features/apiportal/security/auth.feature
+      - name: rest-apis
+        features:
+          - features/apiportal/core/rest_apis.feature
+      - name: rest-api-versions
+        features:
+          - features/apiportal/core/rest_api_versions.feature
+      - name: resources
+        features:
+          - features/apiportal/core/resources.feature
+      - name: mcp-servers
+        features:
+          - features/apiportal/ai/mcp_servers.feature
+      - name: monetization-meters
+        features:
+          - features/apiportal/monetization/meters.feature
+      - name: monetization-priced-plans
+        features:
+          - features/apiportal/monetization/priced_plans.feature
+      - name: monetization-paid-plans-without-billing
+        features:
+          - features/apiportal/monetization/paid_plans_without_billing.feature
+      - name: api-types
+        features:
+          - features/apiportal/core/api_types.feature
+      - name: subscriptions
+        features:
+          - features/apiportal/subscriptions/subscriptions.feature
+      - name: views-labels
+        features:
+          - features/apiportal/content/views_labels_advanced.feature
+      - name: views-pages
+        features:
+          - features/apiportal/content/views_pages.feature
+      - name: workflows
+        features:
+          - features/apiportal/ai/workflows.feature
+      - name: content
+        features:
+          - features/apiportal/content/content.feature
+      - name: organization-content
+        features:
+          - features/apiportal/content/organization_content.feature
+      - name: api-keys
+        features:
+          - features/apiportal/subscriptions/api_keys.feature
+      - name: discovery
+        features:
+          - features/apiportal/ai/discovery.feature
+      - name: organizations
+        features:
+          - features/apiportal/organizations/organizations.feature
+      - name: organization-isolation
+        features:
+          - features/apiportal/organizations/organization_isolation.feature
+      - name: artifact-uploads
+        features:
+          - features/apiportal/core/artifact_upload.feature
+
+  # Webhook subscribers are organization-wide. Keep their intentionally failing
+  # delivery targets isolated from every other API Portal runner.
+  - name: api-portal-webhooks
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: testbench
+    runners:
+      - name: webhook-subscribers
+        features:
+          - features/apiportal/webhooks/webhook_subscribers.feature
+      - name: application-webhooks
+        features:
+          - features/apiportal/webhooks/application_webhooks.feature
+      - name: api-key-webhooks
+        features:
+          - features/apiportal/webhooks/api_key_webhooks.feature
+      - name: subscription-webhooks
+        features:
+          - features/apiportal/webhooks/subscription_webhooks.feature
+      - name: webhook-delivery
+        features:
+          - features/apiportal/webhooks/webhook_delivery.feature
+      - name: webhook-secret-hash
+        features:
+          - features/apiportal/webhooks/webhook_secret_hash.feature
+      - name: monetization-events
+        features:
+          - features/apiportal/monetization/events.feature
+
+  # The portal authorizes requests by scope (api-portal-auth-scope.toml), a portal-wide mode.
+  - name: api-portal-auth-scope
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/platform-api-auth-users.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/platformapi/resources/api-portal-auth-roles.yaml
+      - name: api-portal
+        db: postgres
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/apiportal/resources/api-portal-auth-roles.yaml
+        overlay: tests/framework/core/catalog/overlays/api-portal-auth-scope.toml
+        dependsOn: [platform-api]
+    runners:
+      - name: authorization
+        features:
+          - features/apiportal/security/auth_scope.feature
+
+  # The portal authorizes requests by role (api-portal-auth-role.toml), a portal-wide mode.
+  - name: api-portal-auth-role
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/platform-api-auth-users.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/platformapi/resources/api-portal-auth-roles.yaml
+      - name: api-portal
+        db: postgres
+        stagedFiles:
+          role-to-scope-mapping.yaml: tests/framework/core/catalog/apiportal/resources/api-portal-auth-roles.yaml
+        overlay: tests/framework/core/catalog/overlays/api-portal-auth-role.toml
+        dependsOn: [platform-api]
+    runners:
+      - name: authorization
+        features:
+          - features/apiportal/security/auth_role.feature
+
+  # Checks that the portal's and Platform API's role grants match. Needs no testbench.
+  - name: api-portal-grant-table
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+    runners:
+      - name: grant-table-parity
+        features:
+          - features/apiportal/security/grant_table_parity.feature
+
+  # Multi-organization mode: IDP sign-in through the testbench identity provider, every
+  # organization under the portal's portal_id served.
+  - name: api-portal-multi-organization
+    parallel: 3
+    components:
+      - name: testbench
+      - name: api-portal-multi-organization
+        db:
+          matrix: [postgres, sqlserver]
+    runners:
+      - name: claims
+        features:
+          - features/apiportal/multi-organization/claims.feature
+      - name: isolation
+        features:
+          - features/apiportal/multi-organization/isolation.feature
+      - name: login
+        features:
+          - features/apiportal/multi-organization/login.feature
+      - name: webhooks
+        features:
+          - features/apiportal/multi-organization/webhooks.feature
+      - name: publishing
+        features:
+          - features/apiportal/multi-organization/publishing.feature
+      - name: portals
+        features:
+          - features/apiportal/multi-organization/portals.feature
+      - name: display-names
+        features:
+          - features/apiportal/multi-organization/display_names.feature
+
+  # A second API Portal pinned to another organization (api-portal-other-org): a portal serves
+  # only its own organization, and a credential logs in only to its matching portal.
+  - name: api-portal-foreign-org
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+      - name: api-portal-other-org
+        db: postgres
+        dependsOn: [platform-api]
+    runners:
+      - name: foreign-org-login
+        features:
+          - features/apiportal/organizations/foreign_org_login.feature
+
+  # Billing is set up once for a whole API Portal, so the runner that sets it up has a portal of its
+  # own: no other runner sees billing it leaves behind. It bills through the testbench's Stripe and
+  # Moesif services, which hold one account per block.
+  - name: api-portal-billing
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: testbench
+    runners:
+      - name: api-portal-billing
+        features:
+          - features/apiportal/monetization/billing_setup.feature
+          - features/apiportal/monetization/paid_checkout.feature
+          - features/apiportal/monetization/usage_billing.feature

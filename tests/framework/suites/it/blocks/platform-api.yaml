@@ -1,0 +1,42 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Platform API blocks: the control plane on its own, with no gateway or API Portal.
+#
+# Adding a test: add a runner to the block below. A new block is the last resort (a product
+# setting the other runners must not see, or a test that must run alone); say why in a
+# comment above it. A new combination (a new file) is an even worse last resort; see
+# it-suite.yaml.
+# Feature paths are relative to suites/it, as in it-suite.yaml.
+
+blocks:
+  # The deny-by-default posture of platform-api-core's shared-secret fallback (its overlay sets
+  # legacy_shared_secret = true, see the webhook-secret-* runners there): a platform-api with the
+  # webhook receiver enabled but legacy_shared_secret left at its default must still refuse a
+  # hash-less delivery outright, so this gets its own instance rather than reusing that block
+  # (which turns the fallback on). A single engine is enough — the setting is HTTP-layer config,
+  # not storage-engine-specific.
+  - name: platform-api-webhook-legacy-disabled
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-webhook-legacy-disabled.toml
+    runners:
+      - name: webhook-legacy-disabled
+        features:
+          - features/management-portal/webhook-secrets/webhook_secret_legacy_disabled.feature
