@@ -703,6 +703,9 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
     }
+    // The entry count the central directory declares (read by unzipper, ZIP64 included). Read before
+    // extracting: the caller removes the file once this settles, while the parse below may still run.
+    const listed = await unzipper.Open.file(zipPath).then((directory) => directory.files.length, () => null);
     const extractedFiles = [];
     // Archive-extraction limits (config-sourced, with safe defaults).
     const maxFileSize = config.uploads?.maxBytes || 10485760;      // per-entry byte ceiling
@@ -805,9 +808,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
             .on('close', async () => {
                 try {
                     await Promise.all(streams); // Wait for all files to finish writing
-                    // An archive whose central directory (read by unzipper, ZIP64 included) lists entries the
-                    // stream never read is damaged, not empty.
-                    const listed = await unzipper.Open.file(zipPath).then((directory) => directory.files.length, () => null);
+                    // An archive whose central directory lists entries the stream never read is damaged, not empty.
                     if (listed !== entriesRead) {
                         return reject(new CustomError(400, 'Error unzipping directory', 'The archive is damaged.'));
                     }
