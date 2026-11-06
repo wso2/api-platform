@@ -210,3 +210,86 @@ Feature: APIP cloud managed gateway configuration
       | gateway.config.router.upstream.timeouts.connect                              | "5s"  | is not an editable gateway setting |
       | gateway.config.policy_configurations.llm_cost_ratelimit_v1.cost_scale_factor | 1     | is not an editable gateway setting |
     Then every one of those writes should have been refused as invalid
+
+  # The settings below are written to a gateway the runner builds for itself: a write makes the
+  # gateway apply its release again, so it is never made to the shared gateway.
+  @TC_APIP_GWCFG_002 @ID_APIP_GATEWAY_CONFIG_016
+  Scenario: A written setting is reflected when the configuration is read
+    Given I obtain an APIP cloud console token
+    And I find an active APIP gateway
+    And I choose a synthetic managed APIP gateway name
+    When I request a synthetic managed APIP gateway that lasts for the runner with:
+      | environment | ${CTX:cloudGatewayEnvironment} |
+      | displayName | ${CTX:cloudManagedGatewayName} |
+      | handle      | ${CTX:cloudManagedGatewayName} |
+    Then the managed gateway request should be accepted
+    And synthetic managed APIP gateway 1 should become active
+    Given I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I save the gateway configuration with:
+      | gateway.config.controller.logging.level                              | debug |
+      | gateway.config.router.access_logs.enabled                            | false |
+      | gateway.config.policy_configurations.ratelimit_v1.memory.max_entries | 5000  |
+    Then the cloud API response status code should be 200
+    And the gateway configuration phase should be "applying"
+    And the gateway configuration should report:
+      | gateway.config.controller.logging.level                              | debug |
+      | gateway.config.router.access_logs.enabled                            | false |
+      | gateway.config.policy_configurations.ratelimit_v1.memory.max_entries | 5000  |
+
+  @TC_APIP_GWCFG_015 @ID_APIP_GATEWAY_CONFIG_017
+  Scenario: A limit is judged against the request that is already stored
+    Given I obtain an APIP cloud console token
+    And I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I save the gateway configuration with:
+      | gateway.controller.deployment.resources.requests.cpu | "1" |
+      | gateway.controller.deployment.resources.limits.cpu   | "2" |
+    Then the cloud API response status code should be 200
+    When I write the gateway configuration with:
+      | gateway.controller.deployment.resources.limits.cpu | "500m" |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "invalid_request"
+    And the cloud API response body should contain "request"
+
+  @TC_APIP_GWCFG_022 @ID_APIP_GATEWAY_CONFIG_018
+  Scenario: Clearing a setting returns the gateway to the platform default
+    Given I obtain an APIP cloud console token
+    And I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I save the gateway configuration with:
+      | gateway.config.controller.logging.level | debug |
+    Then the gateway configuration should report:
+      | gateway.config.controller.logging.level | debug |
+    When I save the gateway configuration with:
+      | gateway.config.controller.logging.level | null |
+    Then the cloud API response status code should be 200
+    And the gateway configuration should no longer report "gateway.config.controller.logging.level"
+
+  @TC_APIP_GWCFG_017 @ID_APIP_GATEWAY_CONFIG_019
+  Scenario: Raw TOML that redefines a configured section is refused
+    Given I obtain an APIP cloud console token
+    And I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I write the gateway configuration with:
+      | gateway.config_toml | [controller.logging]\nlevel = "debug" |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "invalid_request"
+
+  @TC_APIP_GWCFG_018 @ID_APIP_GATEWAY_CONFIG_020
+  Scenario: Raw TOML cannot repoint the gateway at another organisation's database
+    Given I obtain an APIP cloud console token
+    And I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I write the gateway configuration with:
+      | gateway.config_toml | [controller.storage.postgres]\nhost = "db.invalid" |
+    Then the cloud API response status code should be a client error
+
+  @TC_APIP_GWCFG_019 @ID_APIP_GATEWAY_CONFIG_021
+  Scenario: Simultaneous writes to a gateway's configuration are not silently overwritten
+    Given I obtain an APIP cloud console token
+    And I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I write the gateway configuration from 6 writers at once until one is rejected
+    Then the cloud API response status code should be 409
+    And the cloud API error code should be "conflict"

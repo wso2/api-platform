@@ -1080,6 +1080,9 @@ func (s *Steps) deleteManagedGateway(ctx context.Context) error {
 	return nil
 }
 
+// gatewayDeletedTimeout bounds how long a deleted gateway may stay readable or listed.
+const gatewayDeletedTimeout = 5 * time.Minute
+
 // verifyManagedGatewayDeleted waits until the gateway can no longer be read and is no longer
 // listed. The platform tears the gateway down before it removes the record, so this takes minutes.
 func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
@@ -1087,7 +1090,7 @@ func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	err = retry.Await(ctx, retry.Options{Timeout: gatewayReadyTimeout, Interval: gatewayPollInterval},
+	err = retry.Await(ctx, retry.Options{Timeout: gatewayDeletedTimeout, Interval: gatewayPollInterval},
 		func(ctx context.Context) (string, error) {
 			resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/managed-gateways/"+url.PathEscape(id), nil)
 			if err != nil {

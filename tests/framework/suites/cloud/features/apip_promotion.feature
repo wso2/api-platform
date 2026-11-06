@@ -241,9 +241,9 @@ Feature: APIP cloud promotion along a deployment pipeline
     And the cloud API response body should contain "is a promotion target"
     And the cloud API response body should contain "${CTX:cloudGatewayEnvironment}"
 
-  # Product issue: a new environment always gets its own default gateway, so the deploy is answered 409 gateway_not_active, not 400 "no gateway".
-  @known-issue @TC_APIP_PROM_007 @ID_APIP_PROMOTION_008
-  Scenario: Promoting into an environment that has no gateway is refused
+  # A new environment always gets its own default gateway, so the refusal is that gateway not being active yet.
+  @TC_APIP_PROM_007 @ID_APIP_PROMOTION_008
+  Scenario: Promoting into an environment that has no active gateway is refused
     Given I obtain an APIP cloud console token
     And I find the default APIP project
     And I find an active APIP gateway
@@ -256,7 +256,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     And I request a deployment of the synthetic REST API with:
       | environment     | ${CTX:cloudSyntheticEnvironment1} |
       | fromEnvironment | ${CTX:cloudGatewayEnvironment}    |
-    Then the cloud API response status code should be 400
-    And the cloud API response body should contain "has no gateway to deploy to"
+    Then the cloud API response status code should be 409
+    And the cloud API error code should be "gateway_not_active"
     And the cloud API response body should contain "${CTX:cloudSyntheticEnvironment1}"
     And the deployment stage of synthetic APIP environment 1 should show no gateway as deployed

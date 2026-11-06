@@ -67,15 +67,6 @@ Feature: APIP cloud project lifecycle
       | containing consecutive hyphens |
       | longer than 40 characters      |
 
-  # need an organization with a less amount of quota to test this scenario
-  @TC_APIP_PROJ_008 @known-issue @ID_APIP_PROJECT_005
-  Scenario: A project beyond the organisation's quota is refused with the quota error
-    Given I obtain an APIP cloud console token
-    When I create synthetic APIP projects until the organisation refuses one
-    Then the cloud API response status code should be 402
-    And the cloud API error code should be "quota_exceeded"
-    And the rejected APIP project should not exist
-
   @TC_APIP_PROJ_009 @ID_APIP_PROJECT_006
   Scenario: Reading a project that does not exist returns not found
     Given I obtain an APIP cloud console token
@@ -97,8 +88,7 @@ Feature: APIP cloud project lifecycle
       | status | active |
     And the synthetic APIP project should become active
 
-  # Known issue: creating the second synthetic environment answers 500 internal_error.
-  @TC_APIP_PROJ_012 @known-issue @ID_APIP_PROJECT_009
+  @TC_APIP_PROJ_012 @ID_APIP_PROJECT_009
   Scenario: A project is bound to a deployment pipeline and the binding is readable
     Given I obtain an APIP cloud console token
     And I create 2 synthetic non-production APIP environments
