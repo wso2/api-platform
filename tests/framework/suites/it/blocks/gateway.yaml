@@ -60,6 +60,10 @@ blocks:
       - name: health
         features:
           - features/gateway/core/health.feature
+      - name: health-endpoints
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/health_endpoints.feature
       - name: api-management
         features:
           - features/gateway/core/api_management.feature

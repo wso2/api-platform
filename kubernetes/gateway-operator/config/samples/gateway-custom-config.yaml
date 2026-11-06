@@ -172,9 +172,10 @@ data:
             httpGet:
               path: /api/admin/v1/health
               port: admin
+          # Readiness probes the ready endpoint, which also fails while the controller starts.
           readinessProbe:
             httpGet:
-              path: /api/admin/v1/health
+              path: /api/admin/v1/ready
               port: admin
 
       # Unified gateway-runtime (Envoy + policy-engine) (recommended for operator deploys)

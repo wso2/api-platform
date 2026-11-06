@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
@@ -138,10 +139,31 @@ func (s *Steps) policyEngineHealth(ctx context.Context) error {
 	return s.getHealth(ctx, "policy-engine")
 }
 
+// gatewayServiceStoppedKind restarts a gateway service a scenario stopped. It is cleaned
+// before every gateway resource, so the service is back when their deletion needs it.
+var gatewayServiceStoppedKind = cleanup.Kind{Name: "gateway-service-stopped", Order: 1}
+
+// stopService stops a gateway service and registers its restart for cleanup, so a failing
+// scenario cannot leave the block without the service.
 func (s *Steps) stopService(ctx context.Context, service string) error {
 	markGatewayChanged(ctx)
 	stack, resolved, err := s.topo.ServiceControl(service)
 	if err != nil {
+		return err
+	}
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(gatewayServiceStoppedKind, func(ctx context.Context, res cleanup.Resource) error {
+		return s.bringServiceUp(ctx, res.ID)
+	}); err != nil {
+		return err
+	}
+	if err := reg.Register(cleanup.Resource{
+		Kind: gatewayServiceStoppedKind, ID: service, Actor: "admin",
+		Description: "gateway service stopped by the scenario",
+	}); err != nil {
 		return err
 	}
 	if err := stack.StopService(ctx, resolved); err != nil {
@@ -152,6 +174,18 @@ func (s *Steps) stopService(ctx context.Context, service string) error {
 
 func (s *Steps) startService(ctx context.Context, service string) error {
 	markGatewayChanged(ctx)
+	if err := s.bringServiceUp(ctx, service); err != nil {
+		return err
+	}
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	reg.Deregister(gatewayServiceStoppedKind, service)
+	return nil
+}
+
+func (s *Steps) bringServiceUp(ctx context.Context, service string) error {
 	stack, resolved, err := s.topo.ServiceControl(service)
 	if err != nil {
 		return err
