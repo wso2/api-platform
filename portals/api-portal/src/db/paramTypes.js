@@ -22,7 +22,7 @@
  * inferred from the JS value alone by every dialect driver — namely a
  * nullable VARBINARY(MAX)/BYTEA/BLOB column.
  *
- * `pg` and `better-sqlite3` don't need this: both bind a `null` parameter
+ * `pg` and `node:sqlite` don't need this: both bind a `null` parameter
  * without trying to resolve a concrete SQL type for it. The `mssql` package
  * (tedious-based) infers a SQL type per-parameter from the JS value passed to
  * `request.input()` when no explicit type is given — for `null` there is no

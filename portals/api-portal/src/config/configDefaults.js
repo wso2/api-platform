@@ -169,6 +169,10 @@ const DEFAULTS = {
             orgHandle: '',
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
+            // Claim carrying the user's human-readable name (OIDC "name"), stored beside
+            // the user's IdP id; responses show it as createdBy/updatedBy. Optional: a
+            // token without it still works, and responses fall back to the IdP id.
+            displayName: 'name',
         },
         // Authorization — what a VERIFIED token may do. Deliberately outside both
         // auth.local and auth.idp: a token carries the same roles claim whether the

@@ -328,6 +328,9 @@ func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationCo
 	if c.Picture != "" {
 		m.Picture = c.Picture
 	}
+	if c.DisplayName != "" {
+		m.DisplayName = c.DisplayName
+	}
 	if c.OrgHandle != "" {
 		m.OrgHandle = c.OrgHandle
 	}

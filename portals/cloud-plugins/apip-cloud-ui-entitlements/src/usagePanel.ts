@@ -28,7 +28,10 @@ import {
   INFRASTRUCTURE_METRICS,
   MANAGED_INTERFACE_METRICS,
   METRIC_LABELS,
+  byCode,
+  displayQuotaOf,
   productOf,
+  usedOf,
 } from './entitlementLimits';
 import type { Entitlement, EntitlementSummary } from './entitlementTypes';
 
@@ -53,10 +56,14 @@ export type UsagePanel = {
   sections: UsageSection[];
 };
 
-const isCapped = (entitlement: Entitlement | undefined): entitlement is Entitlement =>
-  Boolean(entitlement) &&
-  entitlement!.limit !== null &&
-  entitlement!.limit !== undefined;
+/**
+ * A row is worth drawing only when the meter names a quota: the soft band's
+ * starting point, or the block point. Unlimited, uncapped and unresolved
+ * meters all arrive without one, and rendering them would invent a ceiling
+ * billing never set.
+ */
+const quotaOf = (entitlement: Entitlement | undefined): number | undefined =>
+  entitlement ? displayQuotaOf(entitlement) : undefined;
 
 /**
  * The panel's groups, in display order.
@@ -100,10 +107,7 @@ export function toUsagePanel(
   const product = productOf(summary);
   if (!product) return null;
 
-  const byCode = new Map<string, Entitlement>();
-  for (const e of product.entitlements ?? []) {
-    if (e?.name) byCode.set(e.name, e);
-  }
+  const entitlements = byCode(product);
 
   const sections: UsageSection[] = [];
 
@@ -111,14 +115,15 @@ export function toUsagePanel(
     // Only capped meters: an omitted or unlimited one is absent, not zero,
     // and rendering it would invent a cap billing never set.
     const items: UsageItem[] = group.codes.flatMap((code) => {
-      const entitlement = byCode.get(code);
-      if (!isCapped(entitlement)) return [];
+      const entitlement = entitlements.get(code);
+      const quota = quotaOf(entitlement);
+      if (quota === undefined) return [];
       return [
         {
           key: code,
           label: METRIC_LABELS[code] ?? code,
-          count: entitlement.used ?? 0,
-          limit: entitlement.limit!,
+          count: usedOf(entitlement),
+          limit: quota,
         },
       ];
     });

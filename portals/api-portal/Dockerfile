@@ -17,16 +17,12 @@
 # --------------------------------------------------------------------
 
 # API Portal Dockerfile
-# Uses node:24-alpine (musl libc) — better-sqlite3 compiles its native binding against musl
-# just as well as glibc (verified). Build tools (python3, make, g++) are installed only in
-# the builder stage and are not carried into the runtime image.
+# Uses node:24-alpine. SQLite is node:sqlite, built into Node, so the production
+# dependencies are plain JavaScript and need no native build tools.
 
-# Build stage — installs production dependencies (including native build of better-sqlite3)
+# Build stage — installs production dependencies
 FROM node:24-alpine AS builder
 WORKDIR /app
-# Install native build tools required by better-sqlite3's node-gyp compilation.
-# python3 is needed by node-gyp; make and g++ compile the C++ binding.
-RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci --omit=dev
 

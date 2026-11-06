@@ -190,6 +190,10 @@ user_id       = "sub"             # claim used as the user's unique ID
 username      = "username"
 email         = "email"
 scope         = "scope"           # space-separated scope string
+# Claim carrying the user's human-readable name (OIDC "name"). Stored beside the
+# user's IdP id; responses show it as createdBy/updatedBy. Optional: a token without
+# it still works, and responses fall back to the IdP id.
+display_name  = "name"
 # Claim carrying the user's roles. Read in role authorization mode, and it is the
 # claim the file-mode login endpoint signs the user's roles into. Default suits
 # Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles". A dotted path works

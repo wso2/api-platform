@@ -324,13 +324,13 @@ func TestBuildRecordSuccessOmitsErrorAttributes(t *testing.T) {
 
 // gen_ai.operation.name is the only AI attribute derived from the route rather
 // than from a property the AI pipeline wrote, and otelGenAIOperationName
-// substring-matches "/messages" and "/completions". Without a gate, ordinary REST
+// matches routes ending in "/messages" and "/completions". Without a gate, ordinary REST
 // routes containing those words emit a GenAI attribute and pollute GenAI
 // dashboards with traffic that never reached a model.
 func TestBuildRecordNonAIRouteOmitsGenAIOperation(t *testing.T) {
 	for _, route := range []string{
-		"/notify/messages",     // contains "/messages"
-		"/billing/completions", // contains "/completions"
+		"/notify/messages",     // ends in "/messages"
+		"/billing/completions", // ends in "/completions"
 		"/v1/chat/completions", // the real LLM shape, on a plain REST API
 		"/inbox/messages/{id}",
 	} {
@@ -364,6 +364,17 @@ func TestBuildRecordAIRouteKeepsGenAIOperation(t *testing.T) {
 		"/v1/chat/completions": "chat",
 		"/v1/messages":         "chat",
 		"/v1/embeddings":       "embeddings",
+		// Gemini's native API names the method after a colon on the model.
+		"/v1beta/models/gemini-2.5-pro:generateContent":        "generate_content",
+		"/v1beta/models/gemini-2.5-pro:streamGenerateContent":  "generate_content",
+		"/v1beta/models/text-embedding-004:embedContent":       "embeddings",
+		"/v1beta/models/text-embedding-004:batchEmbedContents": "embeddings",
+		// OpenAI's Responses API, including Azure OpenAI's path, is chat.
+		"/v1/responses":        "chat",
+		"/openai/v1/responses": "chat",
+		// Bedrock's Converse API is chat.
+		"/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse":        "chat",
+		"/model/us.anthropic.claude-sonnet-4-5-20250929-v1:0/converse-stream": "chat",
 	} {
 		t.Run(route, func(t *testing.T) {
 			event := restEvent()
