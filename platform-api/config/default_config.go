@@ -185,6 +185,8 @@ func defaultConfig() *Server {
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Api-Portal-Signature",
+
+			LegacySharedSecret: false,
 		},
 		HTTPClient: HTTPClientConfig{
 			Pooling: HTTPClientPoolingConfig{

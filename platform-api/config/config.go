@@ -524,6 +524,11 @@ type Webhook struct {
 	MaxBodySize int64 `koanf:"max_body_size"`
 	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
 	SignatureHeader string `koanf:"signature_header"`
+	// LegacySharedSecret accepts a delivery that carries no secret_hash (a portal that
+	// predates it): it is verified against each retained portal secret of its organization,
+	// then the shared Secret. Off, such a delivery is rejected before any signature check.
+	// Default off; turn it on only while a portal that predates secret_hash is still in use.
+	LegacySharedSecret bool `koanf:"legacy_shared_secret"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -780,6 +785,9 @@ type Security struct {
 	// (secrets, subscription tokens, WebSub HMAC secrets).
 	EncryptionKey string `koanf:"encryption_key"`
 	APIKey        APIKey `koanf:"api_key"`
+	// WebhookSecretMaxVersions caps how many versions a webhook secret keeps
+	// during rotation. Values below 2 select the default (3).
+	WebhookSecretMaxVersions int `koanf:"webhook_secret_max_versions"`
 }
 
 // package-level singleton.

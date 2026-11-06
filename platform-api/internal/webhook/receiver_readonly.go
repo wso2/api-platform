@@ -24,7 +24,6 @@ package webhook
 
 import (
 	"log/slog"
-	"net/http"
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -45,17 +44,16 @@ func (r *Receiver) SetReadOnly(ro *config.ReadOnly) {
 	r.readOnly = ro
 }
 
-// rejectIfReadOnly writes a 503 and reports true when the event's (already
-// resolved) organization is read-only. 503 — the same status the user-facing
-// routes return — lets the producer retry once maintenance ends rather than
-// silently losing the event. It is written directly rather than returned
-// through the error mapper: this is an expected maintenance outcome, not a 5xx
-// system fault that warrants an ERROR log with a stack.
-func (r *Receiver) rejectIfReadOnly(w http.ResponseWriter, env *Envelope, log *slog.Logger) bool {
+// rejectIfReadOnly returns OrganizationReadOnly when the event's (already
+// resolved) organization is read-only. The route answers it with the same
+// response as every other failed delivery (rejectUniformly), so a read-only
+// organization is not told apart from any other rejection; the WARN line here
+// is where the reason is recorded. It is an expected maintenance outcome, not a
+// system fault, so rejectUniformly does not log it again at ERROR.
+func (r *Receiver) rejectIfReadOnly(env *Envelope, log *slog.Logger) error {
 	if r.readOnly == nil || !r.readOnly.IsReadOnlyOrg(env.OrgID) {
-		return false
+		return nil
 	}
 	log.Warn("Rejected webhook event in read-only mode")
-	apperror.WriteHTTP(w, apperror.OrganizationReadOnly.New(), "")
-	return true
+	return apperror.OrganizationReadOnly.New()
 }

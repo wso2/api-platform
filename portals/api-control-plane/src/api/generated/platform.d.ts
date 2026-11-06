@@ -3597,6 +3597,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhook-secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List webhook secrets
+         * @description Returns metadata of the organization's webhook secrets. Secret values are never included.
+         */
+        get: operations["listWebhookSecrets"];
+        put?: never;
+        /**
+         * Create a webhook secret
+         * @description Creates an organization-level webhook secret (for example for an API portal) and
+         *     returns its first version. The plaintext `secret` is returned only in this response
+         *     and cannot be retrieved again.
+         */
+        post: operations["createWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-secrets/{secretId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a webhook secret
+         * @description Returns the webhook secret with its retained versions (masked values only).
+         */
+        get: operations["getWebhookSecret"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a webhook secret
+         * @description Deletes the webhook secret and all of its versions.
+         */
+        delete: operations["deleteWebhookSecret"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-secrets/{secretId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a webhook secret
+         * @description Issues a new version of the secret. Every retained version stays valid. The plaintext
+         *     `secret` of the new version is returned only in this response. When the secret already
+         *     holds the maximum number of versions (3 by default) the request fails with 409 and a
+         *     version must be deleted first.
+         */
+        post: operations["rotateWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-secrets/{secretId}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a webhook secret version
+         * @description Deletes one version to free a slot for rotation. The last remaining version cannot be
+         *     deleted; delete the webhook secret instead.
+         */
+        delete: operations["deleteWebhookSecretVersion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/secrets/{secretId}": {
         parameters: {
             query?: never;
@@ -7741,6 +7838,56 @@ export interface components {
             /** @description Number of secrets in current response */
             count: number;
             list: components["schemas"]["SecretSummary"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        WebhookSecretCreateRequest: {
+            /** @example portal-3f9a1c */
+            id: string;
+            /** @example Developer portal webhook secret */
+            name: string;
+            /**
+             * @default PORTAL
+             * @enum {string}
+             */
+            type: "PORTAL";
+        };
+        /** @description One rotation version. Never includes the plaintext value. */
+        WebhookSecretVersion: {
+            /** @example 2 */
+            version?: number;
+            /** @example whsec_****9f2c */
+            maskedSecret?: string;
+            /**
+             * @description Identifier of this version: the lowercase hex SHA3-256 of `api-portal-webhook-secret-hash-v1:` followed by the secret. The API Portal sends the same value as `secret_hash` in each delivery, and the receiver uses it with the organization to find the secret.
+             * @example 32413deb36859f80321545a85378e517fad68ae583f7c3f3a0c6e50a1c96f824
+             */
+            hash?: string;
+            readonly createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /** @description Webhook secret metadata with its retained versions. */
+        WebhookSecretInfo: {
+            /** @example portal-3f9a1c */
+            id?: string;
+            name?: string;
+            /** @enum {string} */
+            type?: "PORTAL";
+            readonly createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            versions?: components["schemas"]["WebhookSecretVersion"][];
+        };
+        WebhookSecretWithValue: components["schemas"]["WebhookSecretInfo"] & {
+            /**
+             * @description Plaintext of the newly issued version. Returned once and never retrievable again.
+             * @example whsec_0f3c9a...
+             */
+            secret: string;
+        };
+        WebhookSecretListResponse: {
+            count: number;
+            list: components["schemas"]["WebhookSecretInfo"][];
             pagination: components["schemas"]["Pagination"];
         };
         /** @description A service account. Never carries the plaintext secret. */
@@ -16099,6 +16246,188 @@ export interface operations {
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listWebhookSecrets: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of webhook secrets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookSecretCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Webhook secret created. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretWithValue"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The webhook secret. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretInfo"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Webhook secret deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    rotateWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New version issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretWithValue"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Conflict. The maximum number of versions is reached; delete a version first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteWebhookSecretVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+                /** @description The version number */
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Version deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Conflict. The last remaining version cannot be deleted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalServerError"];
         };
     };
     getSecret: {

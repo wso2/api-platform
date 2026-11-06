@@ -9192,6 +9192,219 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /webhook-secrets:
+    post:
+      summary: Create a webhook secret
+      description: |
+        Creates an organization-level webhook secret (for example for an API portal) and
+        returns its first version. The plaintext `secret` is returned only in this response
+        and cannot be retrieved again.
+      operationId: createWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:create
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookSecretCreateRequest'
+      responses:
+        '201':
+          description: Webhook secret created.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretWithValue'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List webhook secrets
+      description: Returns metadata of the organization's webhook secrets. Secret values are never included.
+      operationId: listWebhookSecrets
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:read
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: List of webhook secrets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webhook-secrets/{secretId}:
+    parameters:
+      - name: secretId
+        in: path
+        required: true
+        description: The webhook secret id
+        schema:
+          type: string
+    get:
+      summary: Get a webhook secret
+      description: Returns the webhook secret with its retained versions (masked values only).
+      operationId: getWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:read
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      responses:
+        '200':
+          description: The webhook secret.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete a webhook secret
+      description: Deletes the webhook secret and all of its versions.
+      operationId: deleteWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:delete
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      responses:
+        '204':
+          description: Webhook secret deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webhook-secrets/{secretId}/rotate:
+    post:
+      summary: Rotate a webhook secret
+      description: |
+        Issues a new version of the secret. Every retained version stays valid. The plaintext
+        `secret` of the new version is returned only in this response. When the secret already
+        holds the maximum number of versions (3 by default) the request fails with 409 and a
+        version must be deleted first.
+      operationId: rotateWebhookSecret
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:rotate
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      parameters:
+        - name: secretId
+          in: path
+          required: true
+          description: The webhook secret id
+          schema:
+            type: string
+      responses:
+        '201':
+          description: New version issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecretWithValue'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. The maximum number of versions is reached; delete a version first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webhook-secrets/{secretId}/versions/{version}:
+    delete:
+      summary: Delete a webhook secret version
+      description: |
+        Deletes one version to free a slot for rotation. The last remaining version cannot be
+        deleted; delete the webhook secret instead.
+      operationId: deleteWebhookSecretVersion
+      security:
+        - OAuth2Security:
+            - ap:webhook_secret:delete
+            - ap:webhook_secret:manage
+      tags:
+        - Webhook Secrets
+      parameters:
+        - name: secretId
+          in: path
+          required: true
+          description: The webhook secret id
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          description: The version number
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '204':
+          description: Version deleted.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. The last remaining version cannot be deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /secrets/{secretId}:
     get:
       summary: Get a secret by handle
@@ -9876,6 +10089,11 @@ components:
             ap:subscription_plan:pricing:read: Read the pricing of a subscription plan
             ap:thumbnail:manage: Create, update, and delete an API's thumbnail
             ap:thumbnail:read: Read an API's thumbnail
+            ap:webhook_secret:create: Create a webhook secret
+            ap:webhook_secret:delete: Delete a webhook secret or one of its versions
+            ap:webhook_secret:manage: Full access to webhook secrets
+            ap:webhook_secret:read: Read webhook secret metadata
+            ap:webhook_secret:rotate: Rotate a webhook secret
   schemas:
     APIKeyItem:
       type: object
@@ -15249,6 +15467,103 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SecretSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    WebhookSecretCreateRequest:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 40
+          example: portal-3f9a1c
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Developer portal webhook secret
+        type:
+          type: string
+          enum: [PORTAL]
+          default: PORTAL
+
+    WebhookSecretVersion:
+      type: object
+      description: One rotation version. Never includes the plaintext value.
+      properties:
+        version:
+          type: integer
+          example: 2
+        maskedSecret:
+          type: string
+          example: whsec_****9f2c
+        hash:
+          type: string
+          description: >-
+            Identifier of this version: the lowercase hex SHA3-256 of
+            `api-portal-webhook-secret-hash-v1:` followed by the secret. The API Portal sends the
+            same value as `secret_hash` in each delivery, and the receiver uses it with the
+            organization to find the secret.
+          example: 32413deb36859f80321545a85378e517fad68ae583f7c3f3a0c6e50a1c96f824
+        createdBy:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+
+    WebhookSecretInfo:
+      type: object
+      description: Webhook secret metadata with its retained versions.
+      properties:
+        id:
+          type: string
+          example: portal-3f9a1c
+        name:
+          type: string
+        type:
+          type: string
+          enum: [PORTAL]
+        createdBy:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSecretVersion'
+
+    WebhookSecretWithValue:
+      allOf:
+        - $ref: '#/components/schemas/WebhookSecretInfo'
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              description: Plaintext of the newly issued version. Returned once and never retrievable again.
+              example: whsec_0f3c9a...
+
+    WebhookSecretListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSecretInfo'
         pagination:
           $ref: '#/components/schemas/Pagination'
 

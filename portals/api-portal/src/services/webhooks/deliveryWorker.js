@@ -24,6 +24,8 @@ const { parseJsonColumn } = require('../../db/rows');
 const eventDao = require('../../dao/eventDao');
 const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
+const { secretHash, encryptField, SEALED_WITH_KEY } = require('./envelopeCrypto');
+const { openAtRest, SEALED_AT_REST_KEY } = require('./fieldAtRest');
 const logger = require('../../config/logger');
 const orgContext = require('../../utils/orgContext');
 const { buildOutboundAgents } = require('../../config/httpClientOptions');
@@ -62,6 +64,8 @@ let batchInProgress = false;
  *   event_id, event_type, occurred_at,
  *   org: { ref_id },          — CP_REF_ID, falls back to internal ORG_UUID
  *   encrypted_fields: [],     — names of fields in `data` that carry an encrypted envelope
+ *   secret_hash,   — hash of the subscriber secret that signs and encrypts this
+ *                               delivery; present only when the subscriber has a secret
  *   data: {
  *     ...event payload,
  *     [fieldName]: { iv, tag, ciphertext }  — per encrypted field
@@ -81,7 +85,29 @@ async function post(delivery, event) {
     const deliveryId = delivery.uuid;
     const timeoutMs = (sub && sub.timeoutMs) || 5000;
 
-    const encryptedFields = delivery.encrypted_fields || {};
+    const { [SEALED_WITH_KEY]: sealedWith, [SEALED_AT_REST_KEY]: sealedAtRest, ...storedFields } = delivery.encrypted_fields || {};
+    let encryptedFields = storedFields;
+    if (sealedAtRest) {
+        // Stored under the portal key. Open and re-encrypt under the subscriber's current secret
+        // here, from the same `sub` that signs below, so the fields, secret_hash and signature
+        // always agree even if the secret was rotated since the event was published.
+        if (!sub.secret) {
+            return { ok: false, error: 'Subscriber has no secret to encrypt the event fields with' };
+        }
+        try {
+            encryptedFields = {};
+            for (const [fieldName, sealed] of Object.entries(storedFields)) {
+                encryptedFields[fieldName] = encryptField(sub.secret, openAtRest(fieldName, sealed));
+            }
+        } catch (err) {
+            logger.error('Failed to re-encrypt event fields for delivery', { deliveryId, error: err.message });
+            return { ok: false, error: 'Event fields could not be re-encrypted for the subscriber' };
+        }
+    } else if (sealedWith && sub.secret && secretHash(sub.secret) !== sealedWith) {
+        // Legacy row, sealed under the subscriber's secret of that time. If the secret has been
+        // replaced since, signing with the new one would send fields the receiver cannot decrypt.
+        return { ok: false, error: 'Subscriber secret changed after the event was sealed' };
+    }
     const outgoing = {
         event_id: event.uuid,
         event_type: event.type,
@@ -90,6 +116,11 @@ async function post(delivery, event) {
         encrypted_fields: Object.keys(encryptedFields),
         data: { ...(event.payload || {}), ...encryptedFields }
     };
+
+    // Inside the signed body, so a receiver can trust it to select the secret before decrypting.
+    if (sub.secret) {
+        outgoing.secret_hash = secretHash(sub.secret);
+    }
 
     const body = JSON.stringify(outgoing);
 

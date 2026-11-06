@@ -193,6 +193,14 @@ const (
 	CodeSecretInUse    = "SECRET_IN_USE"
 )
 
+// Webhook secret domain codes.
+const (
+	CodeWebhookSecretNotFound     = "WEBHOOK_SECRET_NOT_FOUND"
+	CodeWebhookSecretExists       = "WEBHOOK_SECRET_EXISTS"
+	CodeWebhookSecretVersionLimit = "WEBHOOK_SECRET_VERSION_LIMIT"
+	CodeWebhookSecretLastVersion  = "WEBHOOK_SECRET_LAST_VERSION"
+)
+
 // Service account domain codes.
 const (
 	CodeServiceAccountNotFound = "SERVICE_ACCOUNT_NOT_FOUND"
