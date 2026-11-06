@@ -64,6 +64,36 @@ jobs:
           git tag -a "platform-api/v${VERSION}" -m "Platform API ${VERSION}"
           git push origin "platform-api/v${VERSION}"
 
+      # The binary zip `make build-and-push-platform-api-multiarch` built (the published
+      # images come from it). Attached here so the API Portal release can pick up the
+      # zip of the Platform API version it bundles.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: platform-api/v${{ inputs.version }}
+          name: Platform API ${{ inputs.version }}
+          body: |
+            ## Platform API Release ${{ inputs.version }}
+
+            ### Docker Image
+            ```bash
+            docker pull ${{ env.DOCKER_REGISTRY }}/platform-api:${{ inputs.version }}
+            ```
+
+            ### Supported Platforms
+            - `linux/amd64`
+            - `linux/arm64`
+
+            ### Binary zip
+            The attached `wso2apip-platform-api-binary-${{ inputs.version }}.zip` holds the prebuilt
+            Platform API binaries for linux/amd64 and linux/arm64, the files they read at runtime,
+            and the Dockerfile the image above is built from, to build your own image.
+          files: platform-api/target/wso2apip-platform-api-binary-${{ inputs.version }}.zip
+          fail_on_unmatched_files: true
+          draft: true
+          prerelease: ${{ contains(inputs.version, '-') }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
 
       - name: Set next dev version
         env:
