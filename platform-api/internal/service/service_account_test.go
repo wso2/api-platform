@@ -613,6 +613,14 @@ func (renamingIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, e
 	return out, nil
 }
 
+func (renamingIdentityRepo) GetIdentitiesByUUIDs(uuids []string) (map[string]repository.UserIdentity, error) {
+	out := map[string]repository.UserIdentity{}
+	for _, id := range uuids {
+		out[id] = repository.UserIdentity{IdpID: "resolved:" + id}
+	}
+	return out, nil
+}
+
 // With a cache attached, a revoke on this replica applies before the next poll.
 func TestServiceAccountRevokeAppliesToLocalCache(t *testing.T) {
 	f := newSAFixture(t)

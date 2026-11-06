@@ -294,5 +294,34 @@
       },
       "version": "v1.0"
     }
+  },
+  {
+    "apiVersion": "gateway.api-platform.wso2.com/v1",
+    "kind": "LlmProviderTemplate",
+    "metadata": {
+      "name": "typesafe"
+    },
+    "spec": {
+      "completionTokens": {
+        "identifier": "$.usage.output_tokens",
+        "location": "payload"
+      },
+      "displayName": "TypeSafe",
+      "groupId": "wso2-typesafe",
+      "managedBy": "wso2",
+      "promptTokens": {
+        "identifier": "$.usage.input_tokens",
+        "location": "payload"
+      },
+      "requestModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "responseModel": {
+        "identifier": "$.model",
+        "location": "payload"
+      },
+      "version": "v1.0"
+    }
   }
 ]

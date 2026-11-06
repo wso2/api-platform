@@ -15,6 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const path = require('node:path');
+
 // Hardcoded URL prefix the whole portal mounts itself under (see ROUTE.BASE_PATH).
 // Single-sourced here so the invocation-URL builders below and the route mount in
 // app.js can't disagree about it.
@@ -33,8 +35,15 @@ const API_PORTAL_BASE_PATH = `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`
 // backward-compatibility but not used — org context is resolved from the
 // token/session, not the URL.
 const apiPortalOrgPath = (_orgId) => `${PORTAL_BASE_PATH}/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
+// The API Portal OpenAPI spec. It is read at runtime (routing, request validation,
+// scope checks), so it lives under resources/, not docs/. Resolved from this file
+// rather than process.cwd() so it is found whatever the working folder is.
+const OPENAPI_SPEC_PATH = path.join(
+    __dirname, '..', '..', 'resources', 'openapi', 'api-portal-openapi-spec-v0.9.yaml'
+);
 
 module.exports = {
+    OPENAPI_SPEC_PATH,
     // Allowed algorithms for IdP JWT verification.
     JWT_ASYMMETRIC_ALGORITHMS: ['RS256', 'RS384', 'RS512', 'PS256'],
     API_PORTAL_API: {
@@ -135,7 +144,7 @@ module.exports = {
         ADMIN: 'admin',
         DEVELOPER: 'dev',
         // Same any-of scope groups the admin `/api/v0.9/mcp-servers*` OpenAPI security
-        // requirements declare per operation (docs/api-portal-openapi-spec-v0.9.yaml) — reused
+        // requirements declare per operation (resources/openapi/api-portal-openapi-spec-v0.9.yaml) — reused
         // here so the MCP registry protocol routes (mcpRegistryRoute.js) grant access to
         // exactly the same principals as the equivalent admin CRUD operation.
         MCP_CREATE: ['dp:mcp_server:create', 'dp:mcp_server:manage'],
@@ -359,6 +368,11 @@ module.exports = {
         OAUTH2_KEY_DELETE_ERROR: "Error while deleting OAuth2 key",
         OAUTH2_KEY_RETRIEVE_ERROR: "Error while retrieving OAuth2 key",
         OAUTH2_KEY_NOT_FOUND: "OAuth2 key not found",
+        // An application holds at most one key per key type. The sentence says what
+        // to do about it rather than only that it failed. The key type is left out
+        // on purpose: the picker already disables the choices that would land here,
+        // so by the time anyone reads this they are looking at a direct API call.
+        OAUTH2_KEY_ALREADY_ASSOCIATED: "A key is already associated with this application. Remove it to associate another.",
         APPLICATION_NOT_FOUND: "Application not found",
         OAUTH2_KEY_OPERATION_UNSUPPORTED: "The key manager does not support this operation",
         OAUTH2_KEY_TOKEN_ERROR: "Error while generating the access token",

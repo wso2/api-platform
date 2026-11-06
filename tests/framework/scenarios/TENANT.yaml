@@ -1,0 +1,85 @@
+# Scenario list: Control Plane Tenant Isolation (TENANT).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: TENANT
+title: Control Plane Tenant Isolation
+scenarios:
+  - id: TENANT-001
+    title: As org B, get each of org A's REST API, gateway, application and secret; each returns 404, the same as a resource that does not exist.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/tenant_isolation.feature
+          scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
+      note: The Management Portal shows only REST APIs and gateways; applications, secrets, LLM providers and MCP proxies have no console screen and are covered in IT.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/tenant-isolation/read.feature
+          scenario: Another organization gets not found for a REST API, gateway, application and secret
+  - id: TENANT-002
+    title: As org B, list REST APIs, gateways, applications, secrets, LLM providers and MCP proxies; no list contains any of org A's resources.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/tenant_isolation.feature
+          scenario: "Journey: another organization can neither find nor open an organization's API and gateway"
+      note: The Management Portal shows only REST APIs and gateways; applications, secrets, LLM providers and MCP proxies have no console screen and are covered in IT.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/tenant-isolation/list.feature
+          scenario: Another organization lists REST APIs, gateways, applications, secrets, LLM providers and MCP proxies without any of the organization's
+  - id: TENANT-003
+    title: As org B, update and delete org A's REST API, rotate org A's gateway token and delete org A's secret; each returns 404 and nothing changes.
+    priority: P0
+    ui:
+      status: exempt
+      reason: The console gives org B no way to reach an edit, delete or rotate control for org A's resources, because their pages show not found (TENANT-001). The writes are tested at the API level in IT (decided 2026-11-03).
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/tenant-isolation/write.feature
+          scenario: Another organization's update, delete, token rotation and secret delete are refused and change nothing
+  - id: TENANT-004
+    title: As org A, deploy an API to org B's connected gateway; refused with 404 (gateway not found) and nothing reaches org B's gateway.
+    priority: P0
+    ui:
+      status: exempt
+      reason: The console never offers another organization's gateway as a deploy target, so it cannot submit the deploy; the refusal is tested at the API level in IT (decided 2026-11-03).
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/tenant-isolation/deploy.feature
+          scenario: "Deploying to another organization's connected gateway is refused as not found and nothing reaches it"
+  - id: TENANT-005
+    title: With org B's gateway token, fetch org A's API, its subscriptions and the secrets from the gateway internal API; 404, 404, and none of org A's secrets.
+    priority: P0
+    ui:
+      status: exempt
+      reason: Gateway-to-control-plane traffic only; the Management Portal has no screen for it (decided 2026-10-30).
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/tenant-isolation/gateway_connection.feature
+          scenario: "Another organization's gateway token gets not found for the API and its subscriptions, and none of the secrets"
+      note: Passes through per-gateway scoping, as TENANT-006 does; an API cannot deploy across organizations, so no test can isolate the organization check from it.
+  - id: TENANT-006
+    title: One organization with gateways G1 and G2 and an API deployed to G1 only; with G2's token the API returns 404 and the secret list is empty.
+    priority: P1
+    ui:
+      status: exempt
+      reason: Gateway-to-control-plane traffic only; the Management Portal has no screen for it (decided 2026-10-30).
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/multigateway.feature
+          scenario: "A gateway gets only what is deployed to it, so another gateway of the organization gets neither the API nor its secret"

@@ -153,6 +153,8 @@ func TestNew_RefusesAMalformedPluginTool(t *testing.T) {
 		"no routes":            {with(func(tool *pdk.MCPTool) { tool.Routes = nil }), "needs a name"},
 		"no risk":              {with(func(tool *pdk.MCPTool) { tool.Risk = 0 }), "needs a name"},
 		"route with no scopes": {with(func(tool *pdk.MCPTool) { tool.Routes = []string{"GET /no-such-route"} }), "no scopes"},
+		"pointer output":       {with(func(tool *pdk.MCPTool) { tool.Output = &echoOutput{} }), "output must be a struct value"},
+		"output not a struct":  {with(func(tool *pdk.MCPTool) { tool.Output = []echoItem{} }), "output must be a struct value"},
 		"destructive with its own confirm": {with(func(tool *pdk.MCPTool) {
 			tool.Risk, tool.Input = pdk.MCPDestructive, confirmInput{}
 		}), "gets confirm from the server"},
@@ -248,6 +250,74 @@ func TestPluginTool_Schema(t *testing.T) {
 		return
 	}
 	t.Fatal("echo_thing is not listed")
+}
+
+type echoItem struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type echoOutput struct {
+	Items      []echoItem `json:"items"`
+	NextCursor string     `json:"nextCursor,omitempty"`
+	Total      int        `json:"total"`
+}
+
+// A plugin tool with an Output lists its output schema, so clients can show the result.
+func TestPluginTool_OutputSchema(t *testing.T) {
+	tool := echoTool("echo_thing", func(context.Context, pdk.MCPCall) (any, error) {
+		return echoOutput{Items: []echoItem{{ID: "a1", Name: "A"}}, Total: 1}, nil
+	})
+	tool.Output = echoOutput{}
+	s, err := newPluginServer(t, tool, echoTool("plain_thing", func(context.Context, pdk.MCPCall) (any, error) {
+		return map[string]string{"ok": "yes"}, nil
+	}))
+	require.NoError(t, err)
+	cs := connect(t, s, who(testOrg, "ap:project:read"))
+	res, err := cs.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+
+	byName := map[string]*mcp.Tool{}
+	for _, listed := range res.Tools {
+		byName[listed.Name] = listed
+	}
+	require.Contains(t, byName, "echo_thing")
+	var schema struct {
+		Type       string         `json:"type"`
+		Properties map[string]any `json:"properties"`
+	}
+	b, _ := json.Marshal(byName["echo_thing"].OutputSchema)
+	require.NoError(t, json.Unmarshal(b, &schema))
+	assert.Equal(t, "object", schema.Type)
+	assert.ElementsMatch(t, []string{"items", "nextCursor", "total"}, keys(schema.Properties))
+	assert.Nil(t, byName["plain_thing"].OutputSchema, "no Output, no output schema")
+
+	called, text := call(t, cs, "echo_thing", map[string]any{"name": "a"})
+	require.False(t, called.IsError, text)
+	assert.JSONEq(t, `{"items":[{"id":"a1","name":"A"}],"total":1}`, text)
+	assert.NotNil(t, called.StructuredContent)
+}
+
+// A result that does not match the declared Output is a bug in the plugin: the call fails.
+func TestPluginTool_ResultMustMatchItsOutput(t *testing.T) {
+	tool := echoTool("echo_thing", func(context.Context, pdk.MCPCall) (any, error) {
+		return map[string]any{"items": []any{}, "total": 0, "apiType": "rest-api"}, nil
+	})
+	tool.Output = echoOutput{}
+	s, err := newPluginServer(t, tool)
+	require.NoError(t, err)
+
+	_, err = connect(t, s, who(testOrg, "ap:project:read")).
+		CallTool(context.Background(), &mcp.CallToolParams{Name: "echo_thing", Arguments: map[string]any{"name": "a"}})
+	assert.ErrorContains(t, err, "validating tool output")
+}
+
+func keys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 type apiTypeInput struct {

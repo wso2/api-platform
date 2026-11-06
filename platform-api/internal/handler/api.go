@@ -385,7 +385,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	// Validate and extract operations from spec
 	operations, err := h.apiDocumentService.ExtractOperationsFromSpec(specContent)
 	if err != nil {
-		return err
+		return utils.HandleSpecValidationError(w, err)
 	}
 
 	// Create the API with extracted operations
@@ -511,17 +511,13 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 	if existingAPI.ReadOnly != nil && *existingAPI.ReadOnly {
 		// Read-only API: validate the spec but do not update operations.
 		if result := h.apiDocumentService.ValidateOpenAPISpec(specContent); !result.IsValid {
-			msg := "invalid OpenAPI specification"
-			if len(result.Errors) > 0 {
-				msg = result.Errors[0].Message
-			}
-			return apperror.ValidationFailed.New(msg)
+			return utils.WriteSpecValidationErrors(w, result.Errors)
 		}
 	} else {
 		// Non-read-only: validate, extract operations, merge with existing policies.
 		syncedOps, err := h.apiDocumentService.ExtractAndMergeOperations(specContent, existingAPI.Operations)
 		if err != nil {
-			return err
+			return utils.HandleSpecValidationError(w, err)
 		}
 		if len(syncedOps) > 0 {
 			updatedAPI := *existingAPI

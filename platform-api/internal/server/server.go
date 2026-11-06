@@ -1018,6 +1018,7 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 		UserIDClaim:       cm.UserID,
 		UsernameClaim:     cm.Username,
 		EmailClaim:        cm.Email,
+		DisplayNameClaim:  cm.DisplayName,
 		ScopeClaim:        cm.Scope,
 		RolesClaimPath:    cm.Roles,
 		RoleScopeMap:      roleScopeMap,

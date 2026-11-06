@@ -8,7 +8,8 @@
  */
 
 export { ManagedPortalsPage, type ManagedPortalsPageProps } from './ManagedPortalsPage';
-export type { CloudHostPort, NotifySeverity } from './hostPort';
+export type { CloudHostPort, NotifySeverity, PermissionsPort } from './hostPort';
+export { NO_PERMISSION_TOOLTIP, PORTAL_OPERATIONS } from './permissions';
 export { createMockPortalPort } from './mockPort';
 export { createRealPortalPort, resolveApiBase } from './realPort';
 export { useManagedPortalList } from './hooks';

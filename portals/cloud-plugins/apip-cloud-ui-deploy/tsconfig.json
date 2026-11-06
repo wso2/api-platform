@@ -18,5 +18,5 @@
   "include": ["src"],
   // The AI Workspace has no vitest installed, so the tests cannot resolve it
   // under these paths. tsconfig.console.json typechecks and runs them.
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

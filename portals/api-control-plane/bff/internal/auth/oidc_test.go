@@ -404,3 +404,35 @@ func TestOIDC_LogoutURL_NoEndSessionEndpoint(t *testing.T) {
 		t.Errorf("LogoutURL = %q, want the post-logout URL directly (no end_session_endpoint)", got)
 	}
 }
+
+// The resource indicator reaches /authorize exactly when configured. An IdP that
+// scopes tokens per resource server (ThunderID) issues no product scope without
+// it, and rejects an empty resource=, so unset must send no parameter at all.
+func TestOIDC_AuthCodeURL_ResourceIndicator(t *testing.T) {
+	srv := idpServer(t, func(w http.ResponseWriter, r *http.Request) {})
+	defer srv.Close()
+
+	for _, resource := range []string{"", "urn:wso2:cloud"} {
+		opts := baseOpts(srv)
+		opts.Resource = resource
+		o, err := NewOIDC(context.Background(), srv.Client(), opts, session.DefaultClaimMapping(), time.Hour)
+		if err != nil {
+			t.Fatalf("NewOIDC: %v", err)
+		}
+		authURL, _, err := o.AuthCodeURL("/dashboard")
+		o.Close()
+		if err != nil {
+			t.Fatalf("AuthCodeURL: %v", err)
+		}
+		u, err := url.Parse(authURL)
+		if err != nil {
+			t.Fatalf("parse authURL: %v", err)
+		}
+		if _, present := u.Query()["resource"]; present != (resource != "") {
+			t.Errorf("resource %q: parameter present = %v", resource, present)
+		}
+		if got := u.Query().Get("resource"); got != resource {
+			t.Errorf("resource = %q, want %q", got, resource)
+		}
+	}
+}

@@ -20,6 +20,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -60,6 +61,10 @@ type failingIdentityRepo struct{ passthroughIdentityRepo }
 
 func (failingIdentityRepo) GetSubByUUID(string) (string, bool, error) {
 	return "", false, errors.New("database unavailable")
+}
+
+func (failingIdentityRepo) GetIdentitiesByUUIDs([]string) (map[string]repository.UserIdentity, error) {
+	return nil, errors.New("database unavailable")
 }
 
 // When the creator cannot be resolved, a gateway that re-checks ownership gets

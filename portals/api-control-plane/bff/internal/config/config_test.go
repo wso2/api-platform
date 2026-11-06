@@ -313,3 +313,88 @@ func TestBuildRuntimeConfig_OmitsGatewayVersionsWhenEmpty(t *testing.T) {
 		t.Error("gatewayVersions present for an empty catalog, want it omitted")
 	}
 }
+
+// An empty scope key, which is the shipped config.toml's env token with
+// APIP_ACP_AUTH_OIDC_SCOPE unset, keeps the built-in default rather than
+// requesting no scope; a set one replaces the default verbatim.
+func TestLoad_OIDCScopeEmptyKeepsDefault(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalControlPlane+`
+[api_control_plane.auth.oidc]
+scope = ""
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.OIDC.Scopes != defaultOIDCScopes {
+		t.Errorf("Scopes = %q, want the built-in default", cfg.Auth.OIDC.Scopes)
+	}
+	cfg, err = Load(writeConfig(t, minimalControlPlane+`
+[api_control_plane.auth.oidc]
+scope = "openid offline_access ap:project:read"
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.OIDC.Scopes != "openid offline_access ap:project:read" {
+		t.Errorf("Scopes = %q, want the override", cfg.Auth.OIDC.Scopes)
+	}
+}
+
+// A scope override replaces the default, so one that names only a plugin's
+// scopes, or drops offline_access, is reported at startup.
+func TestOIDCScopeOverrideWarnings(t *testing.T) {
+	if w := oidcScopeOverrideWarnings(defaultOIDCScopes); len(w) != 0 {
+		t.Errorf("default list: got warnings %q, want none", w)
+	}
+	if w := oidcScopeOverrideWarnings(defaultOIDCScopes + " ap:environment:read ap:pipeline:read"); len(w) != 0 {
+		t.Errorf("default plus plugin scopes: got warnings %q, want none", w)
+	}
+	w := oidcScopeOverrideWarnings("openid offline_access ap:environment:read ap:pipeline:read")
+	if len(w) != 1 || !strings.Contains(w[0], "replaces the built-in default") {
+		t.Errorf("plugin scopes only: got %q, want one missing-default-scopes warning", w)
+	}
+	w = oidcScopeOverrideWarnings(strings.Replace(defaultOIDCScopes, " offline_access", "", 1))
+	if len(w) != 1 || !strings.Contains(w[0], "offline_access") {
+		t.Errorf("no offline_access: got %q, want one offline_access warning", w)
+	}
+}
+
+// The default scope list is the Platform API spec's, so it has to name the
+// resources added since the list was first written, and nothing the spec lacks.
+func TestDefaultOIDCScopes_FollowTheSpec(t *testing.T) {
+	have := " " + defaultOIDCScopes + " "
+	for _, s := range []string{"openid", "offline_access", "ap:rest_api:read", "ap:graphql_api:read",
+		"ap:llm_proxy:manage", "ap:mcp_proxy:read", "ap:agent_proxy:read", "ap:api_portal:draft:read",
+		"ap:meter:read", "ap:subscription_plan:pricing:read", "ap:api_portal:mcp_proxy:manage",
+		"ap:service_account:read", "ap:service_account:manage"} {
+		if !strings.Contains(have, " "+s+" ") {
+			t.Errorf("default scopes miss %q", s)
+		}
+	}
+	for _, s := range []string{"ap:rest_api:import", "ap:organization:subscription:read", "ap:environment:read"} {
+		if strings.Contains(have, " "+s+" ") {
+			t.Errorf("default scopes carry %q, which the Platform API spec does not declare", s)
+		}
+	}
+}
+
+// The resource indicator is empty unless configured, and trimmed when it is.
+func TestLoad_OIDCResource(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalControlPlane))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.OIDC.Resource != "" {
+		t.Errorf("Resource = %q, want empty by default", cfg.Auth.OIDC.Resource)
+	}
+	cfg, err = Load(writeConfig(t, minimalControlPlane+`
+[api_control_plane.auth.oidc]
+resource = " urn:wso2:cloud "
+`))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.OIDC.Resource != "urn:wso2:cloud" {
+		t.Errorf("Resource = %q, want urn:wso2:cloud", cfg.Auth.OIDC.Resource)
+	}
+}
