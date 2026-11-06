@@ -17,7 +17,7 @@
  */
 'use strict';
 
-/* The /assets handlers: what a content ZIP is read as, and how add and replace
+/* The /assets handlers: what a content ZIP is read as, and how add, replace and delete
    answer. Storage is mocked; the REST integration tests cover the real database. */
 
 const test = require('node:test');
@@ -53,6 +53,7 @@ const {
     extractApiContentFromUploadedZip,
     createAPIContent,
     updateAPIContent,
+    deleteAPIFile,
 } = require('./apiMetadataService');
 
 const zipUpload = (entries) => ({ originalname: 'content.zip', buffer: createZip(entries) });
@@ -195,4 +196,28 @@ test('replace with an empty upload clears everything and stores nothing', async 
     assert.strictEqual(res.status, 200);
     assert.strictEqual(cleared.mock.callCount(), 1);
     assert.strictEqual(stored.mock.callCount(), 0);
+});
+
+test('delete rejects a missing or disallowed type before touching storage', async (t) => {
+    knownApi(t);
+    const del = t.mock.method(apiFileDao, 'deleteAll', async () => 1);
+    for (const type of ['A', '_', '%', 'DOC', 'image', 'API_DEFINITION', 'SCHEMA_DEFINITION']) {
+        const res = await call(deleteAPIFile, { query: { type } });
+        assert.strictEqual(res.status, 400, type);
+        assert.strictEqual(res.body.errors[0].message, `Invalid content type: ${type}`);
+    }
+    const missing = await call(deleteAPIFile, { query: {} });
+    assert.strictEqual(missing.status, 400);
+    assert.strictEqual(del.mock.callCount(), 0);
+});
+
+test('delete of an allowed type answers 204, or 404 when nothing matched', async (t) => {
+    knownApi(t);
+    t.mock.method(apiFileDao, 'deleteAll', async () => 1);
+    const removed = await call(deleteAPIFile, { query: { type: 'DOC_HowTo' } });
+    assert.strictEqual(removed.status, 204);
+
+    t.mock.method(apiFileDao, 'delete', async () => 0);
+    const missing = await call(deleteAPIFile, { query: { type: 'DOC_HowTo', fileName: 'A.md' } });
+    assert.strictEqual(missing.status, 404);
 });

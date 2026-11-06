@@ -26,12 +26,13 @@ my-api-content.zip
 
 Every image in `web/` fills the slot named by its file name without the extension: `api-icon.png` (or `.jpg`) is the thumbnail, and `banner.png` is `apiImageMetadata.banner` in a landing-page template.
 
-## Add or Replace API Content
+## Add, Replace or Delete API Content
 
 | Method | What it does | Success |
 |---|---|---|
 | `PUT /apis/{apiId}/assets` | Replaces **all** content with the ZIP: documents, links, landing page and images. Anything not in the ZIP is removed. An empty ZIP with no `docMetadata` links removes all content. The API definition is never changed. | `201` if the API had no content and the upload adds some, otherwise `200` (including an empty upload) |
 | `POST /apis/{apiId}/assets` | Adds new content only. Nothing existing is changed or removed. If any file, image slot or link already exists, the whole request is rejected with `409` listing every clash, and nothing is stored. An empty ZIP is rejected with `400`. | `201` |
+| `DELETE /apis/{apiId}/assets?type=<type>[&fileName=<name>]` | Deletes one file, or all content of exactly that type. `type` must be `MARKETING`, `IMAGE` or `DOC_<Category>`; anything else is rejected with `400`. | `204`, or `404` if nothing matched |
 
 MCP servers use the same operations under `/mcp-servers/{mcpServerId}/assets`.
 
@@ -159,10 +160,10 @@ curl -k -X POST \
 
 ## Get API Content
 
-Retrieving content requires both a `type` (`web`, `document`, `image`, or `link`) and a `fileName` query parameter to select a single stored file:
+Retrieving content requires both a `type` and a `fileName` query parameter to select a single stored file. `type` is matched exactly: `MARKETING` (landing-page files), `IMAGE`, `DOC_<Category>` (documents and links, for example `DOC_Other` for files directly in `docs/`), `API_DEFINITION` or `SCHEMA_DEFINITION`:
 
 ```bash
-curl -k "https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md" \
+curl -k "https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=DOC_Other&fileName=getting-started.md" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

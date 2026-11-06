@@ -270,7 +270,7 @@ rejected by `POST`. Links in `docMetadata` count as content.
 
 ```shell
 
-curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=DOC_HowTo&fileName=getting-started.md \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Accept: text/css'
 
@@ -291,7 +291,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:r
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
+|type|query|string|true|Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`). Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
@@ -372,13 +372,13 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:r
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document \
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=DOC_HowTo \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Accept: application/json'
 
 ```
 
-Deletes stored MCP server content. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
+Deletes stored MCP server content, matching `type` exactly. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -393,7 +393,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:d
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
+|type|query|string|true|Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`). Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.|
 |fileName|query|string|false|File name selector used to delete a single stored API content file.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
@@ -417,8 +417,12 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:d
 
 > 404 Response
 
-```
-"string"
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
 ```
 
 > 500 Response
@@ -437,7 +441,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:d
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|MCP server content deleted successfully.|None|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-mcp-server-content-files-responseschema">Response Schema</h3>

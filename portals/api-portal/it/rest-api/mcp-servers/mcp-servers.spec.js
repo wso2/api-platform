@@ -382,5 +382,12 @@ describe('MCP servers', () => {
             expect(res.status).toBe(409);
             expect(res.body.errors.map((e) => e.message)).toEqual(['Content already exists: A.md (DOC_Other)']);
         });
+
+        it('rejects deleting the tools schema', async () => {
+            const mcp = await createMcpServer();
+            const res = await client.as('publisher').del(`/mcp-servers/${mcp.id}/assets?type=SCHEMA_DEFINITION`);
+            expect(res.status).toBe(400);
+            expect((await get(mcp.id, 'SCHEMA_DEFINITION', 'definition.yaml')).status).toBe(200);
+        });
     });
 });

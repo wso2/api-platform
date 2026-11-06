@@ -19,6 +19,10 @@
 
 const constants = require('./constants');
 
+const isContentType = (type) =>
+    typeof type === 'string'
+    && (constants.CONTENT_TYPES.FIXED.includes(type) || constants.CONTENT_TYPES.DOC_PATTERN.test(type));
+
 const itemIdentity = (item) =>
     (item.type === constants.DOC_TYPES.IMAGES && item.key)
         ? `${constants.DOC_TYPES.IMAGES}\u0000key\u0000${item.key}`
@@ -44,6 +48,7 @@ const describeItem = (item) =>
         : `${item.fileName} (${item.type})`;
 
 module.exports = {
+    isContentType,
     findDuplicateItems,
     describeItem,
 };

@@ -215,35 +215,19 @@ const update = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
 
 const deleteFile = async (fileName, type, orgId, apiId, t) => {
     const exec = t || db;
-    const contentsToDelete = await exec.query(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
-         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
-        [fileName, apiId, `%${type}%`, orgId, getPortalId()]
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${CONTENT_TABLE} WHERE file_name = ? AND api_uuid = ? AND type = ? AND portal_id = ? AND ${TENANT_SCOPE_EXISTS}`,
+        [fileName, apiId, type, getPortalId(), orgId, getPortalId()]
     );
-    let rowCount = 0;
-    for (const content of contentsToDelete) {
-        ({ rowCount } = await exec.execute(
-            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ? AND portal_id = ?`,
-            [content.api_uuid, content.file_name, content.type, content.portal_id]
-        ));
-    }
     return rowCount;
 };
 
 const deleteAll = async (type, orgId, apiId, t) => {
     const exec = t || db;
-    const contentsToDelete = await exec.query(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
-         WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
-        [apiId, `%${type}%`, orgId, getPortalId()]
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND portal_id = ? AND ${TENANT_SCOPE_EXISTS}`,
+        [apiId, type, getPortalId(), orgId, getPortalId()]
     );
-    let rowCount = 0;
-    for (const content of contentsToDelete) {
-        ({ rowCount } = await exec.execute(
-            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ? AND portal_id = ?`,
-            [content.api_uuid, content.file_name, content.type, content.portal_id]
-        ));
-    }
     return rowCount;
 };
 
