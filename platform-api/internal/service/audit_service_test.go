@@ -144,11 +144,11 @@ func (unresolvableIdentity) DisplayIdentity(string) (string, error) {
 func TestAuditServiceMasksTheUserInTheLine(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		maskPII  bool
+		mask     bool
 		identity auditIdentity
 		wantLog  string
 	}{
-		{"mask_pii", true, unresolvableIdentity{}, ""}, // the identity is not looked up
+		{"mask_sensitive_fields", true, unresolvableIdentity{}, ""}, // the identity is not looked up
 		{"identity lookup fails", false, unresolvableIdentity{}, "Failed to resolve the audit actor; masking it in the output"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -156,10 +156,10 @@ func TestAuditServiceMasksTheUserInTheLine(t *testing.T) {
 			logPath := filepath.Join(t.TempDir(), "audit.log")
 			logs := &auditLogBuffer{}
 			s, err := NewAuditService(db, tc.identity, config.Audit{
-				Enabled: true,
-				MaskPII: tc.maskPII,
-				Outputs: []string{config.AuditOutputFile},
-				File:    config.AuditFile{Path: logPath},
+				Enabled:             true,
+				MaskSensitiveFields: tc.mask,
+				Outputs:             []string{config.AuditOutputFile},
+				File:                config.AuditFile{Path: logPath},
 			}, slog.New(slog.NewTextHandler(logs, nil)))
 			if err != nil {
 				t.Fatalf("NewAuditService error = %v", err)

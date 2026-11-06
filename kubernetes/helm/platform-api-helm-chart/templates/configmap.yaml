@@ -241,8 +241,8 @@ data:
 
     [platform_api.audit]
     enabled = {{ and (kindIs "bool" .enabled) .enabled }}
-    {{- if kindIs "bool" .maskPii }}
-    mask_pii = {{ .maskPii }}
+    {{- if kindIs "bool" .maskSensitiveFields }}
+    mask_sensitive_fields = {{ .maskSensitiveFields }}
     {{- end }}
     {{- if .outputs }}
     outputs = [{{- range $i, $o := .outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]

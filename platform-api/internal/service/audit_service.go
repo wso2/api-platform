@@ -51,20 +51,36 @@ type auditRecordJSON struct {
 	PerformedBy    string    `json:"performedBy"`
 }
 
+// auditSensitiveFields are the record fields that identify a person;
+// mask_sensitive_fields hides them in the output lines.
+var auditSensitiveFields = []func(*auditRecordJSON) *string{
+	func(r *auditRecordJSON) *string { return &r.PerformedBy },
+}
+
+// maskAuditSensitiveFields leaves an empty value empty, so "****" always
+// stands for a real one.
+func maskAuditSensitiveFields(r *auditRecordJSON) {
+	for _, field := range auditSensitiveFields {
+		if value := field(r); *value != "" {
+			*value = auditMaskedValue
+		}
+	}
+}
+
 // AuditService implements repository.AuditRepository, so the services that
 // already record through it are unchanged.
 type AuditService struct {
-	enabled  bool
-	maskPII  bool
-	repo     auditTable
-	identity auditIdentity
-	sinks    []auditSink
-	logger   *slog.Logger
+	enabled             bool
+	maskSensitiveFields bool
+	repo                auditTable
+	identity            auditIdentity
+	sinks               []auditSink
+	logger              *slog.Logger
 }
 
 // NewAuditService builds the configured sinks; an error means startup must fail.
 func NewAuditService(repo auditTable, identity auditIdentity, cfg config.Audit, logger *slog.Logger) (*AuditService, error) {
-	s := &AuditService{enabled: cfg.Enabled, maskPII: cfg.MaskPII, repo: repo, identity: identity, logger: logger}
+	s := &AuditService{enabled: cfg.Enabled, maskSensitiveFields: cfg.MaskSensitiveFields, repo: repo, identity: identity, logger: logger}
 	if !cfg.Enabled {
 		return s, nil
 	}
@@ -129,17 +145,7 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 	if len(s.sinks) == 0 {
 		return err
 	}
-	// The table keeps the internal user id; the line shows the user's identity,
-	// or a mask when mask_pii is set.
-	shownBy := auditMaskedValue
-	if !s.maskPII {
-		if display, idErr := s.identity.DisplayIdentity(performedBy); idErr == nil {
-			shownBy = display
-		} else {
-			s.logger.Warn("Failed to resolve the audit actor; masking it in the output", "error", idErr)
-		}
-	}
-	line, jsonErr := json.Marshal(auditRecordJSON{
+	record := auditRecordJSON{
 		Time:           performedAt,
 		LogType:        "audit",
 		ID:             id,
@@ -147,8 +153,19 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 		ResourceType:   resourceType,
 		ResourceID:     resourceUUID,
 		OrganizationID: orgUUID,
-		PerformedBy:    shownBy,
-	})
+		PerformedBy:    performedBy,
+	}
+	// The table keeps the internal user id. The line shows the user's identity,
+	// or a mask when mask_sensitive_fields is set, which skips the lookup.
+	if s.maskSensitiveFields {
+		maskAuditSensitiveFields(&record)
+	} else if display, idErr := s.identity.DisplayIdentity(performedBy); idErr == nil {
+		record.PerformedBy = display
+	} else {
+		s.logger.Warn("Failed to resolve the audit actor; masking it in the output", "error", idErr)
+		record.PerformedBy = auditMaskedValue
+	}
+	line, jsonErr := json.Marshal(record)
 	if jsonErr != nil {
 		s.logger.Error("Failed to marshal audit record", "error", jsonErr)
 		return err
