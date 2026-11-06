@@ -192,17 +192,23 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 }
 
 // List retrieves all MCP proxies for an organization
-func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProxy, error) {
-	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+func (r *MCPProxyRepo) List(orgUUID string, opts ListOptions) ([]*model.MCPProxy, error) {
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
-		WHERE organization_uuid = ?
-		ORDER BY created_at DESC
-		` + pageClause
-	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgUUID}, pageArgs...)...)
+		WHERE organization_uuid = ?`
+	args := []any{orgUUID}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " ORDER BY " + col + " " + dir + ", uuid ASC " + pageClause
+	args = append(args, pageArgs...)
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -235,21 +241,38 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 }
 
 // Count returns the total number of MCP proxies for an organization
-func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
-	return r.artifactRepo.CountByKindAndOrg(constants.MCPProxy, orgUUID)
+func (r *MCPProxyRepo) Count(orgUUID, search string) (int, error) {
+	query := `SELECT COUNT(*) FROM mcp_proxies WHERE organization_uuid = ?`
+	args := []any{orgUUID}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	var count int
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
-// ListByProject retrieves all MCP proxies for a specific project
-func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error) {
+// ListByProject retrieves MCP proxies for a specific project, paginated.
+func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string, opts ListOptions) ([]*model.MCPProxy, error) {
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
-		WHERE organization_uuid = ? AND project_uuid = ?
-		ORDER BY created_at DESC
-		`
-	rows, err := r.db.Query(r.db.Rebind(query), orgUUID, projectUUID)
+		WHERE organization_uuid = ? AND project_uuid = ?`
+	args := []any{orgUUID, projectUUID}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " ORDER BY " + col + " " + dir + ", uuid ASC " + pageClause
+	args = append(args, pageArgs...)
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,12 +305,15 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 }
 
 // CountByProject returns the total number of MCP proxies for a specific project
-func (r *MCPProxyRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
+func (r *MCPProxyRepo) CountByProject(orgUUID, projectUUID, search string) (int, error) {
+	query := `SELECT COUNT(*) FROM mcp_proxies WHERE organization_uuid = ? AND project_uuid = ?`
+	args := []any{orgUUID, projectUUID}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
 	var count int
-	query := `
-		SELECT COUNT(*) FROM mcp_proxies
-		WHERE organization_uuid = ? AND project_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil

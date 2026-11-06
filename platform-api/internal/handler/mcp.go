@@ -104,9 +104,9 @@ func (h *MCPProxyHandler) ListMCPProxies(w http.ResponseWriter, r *http.Request)
 		return apperror.ValidationFailed.New("projectId query parameter is required")
 	}
 
-	limit, offset := parsePagination(r)
+	opts := parseListOptions(r)
 
-	resp, err := h.service.ListByProject(orgID, projectID, limit, offset)
+	resp, err := h.service.ListByProject(orgID, projectID, opts)
 	if err != nil {
 		return h.mapServiceError(err)
 	}

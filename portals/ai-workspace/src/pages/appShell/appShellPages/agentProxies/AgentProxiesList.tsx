@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Avatar,
@@ -66,18 +66,19 @@ import { getErrorMessage } from '../../../../utils/apiError';
 import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
+import * as agentProxiesApis from '../../../../apis/agent/agentProxiesApis';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { logger } from '../../../../utils/logger';
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
 }
 
-// -1 is MUI's convention for an "All" rows-per-page option.
-const ALL_ROWS = -1;
-const ROWS_PER_PAGE_OPTIONS = [
-  20,
-  50,
-  { label: 'All', value: ALL_ROWS },
-];
+// The backend hard-caps `limit` at 100, so there is no true "All" option once
+// the list is paginated server-side.
+const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -112,21 +113,108 @@ export default function AgentProxiesList(): React.JSX.Element {
   const isProjectLevel = Boolean(effectiveProject?.id);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
-  const {
-    agentProxiesResponse,
-    isLoading: isAgentProxiesLoading,
-    deleteAgentProxy,
-  } = useAgentProxies();
-  const agentProxies = agentProxiesResponse.list;
+  const { deleteAgentProxy } = useAgentProxies();
   const [deleteTarget, setDeleteTarget] = useState<AgentProxyListItem | null>(null);
 
   const organizationId = currentOrganization?.uuid ?? '';
+  const apimBaseUrl = PLATFORM_API_BASE_URL;
+
+  // Server-paginated/searched page of agent proxies — fetched directly by this
+  // page rather than through AgentProxiesContext's `fetchAllPages`-backed
+  // cache, which other consumers (overview cards, the create form) still need
+  // in full.
+  const [agentProxies, setAgentProxies] = useState<AgentProxyListItem[]>([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    offset: 0,
+    limit: 20,
+  });
+  const [isAgentProxiesLoading, setIsAgentProxiesLoading] = useState(true);
+  // True once the first fetch (success or failure) has completed. Prevents a
+  // background refetch (e.g. from typing in search) from unmounting the
+  // search box and table in favor of the full skeleton, which would drop
+  // input focus mid-keystroke.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [agentProxiesError, setAgentProxiesError] = useState<Error | null>(
+    null
+  );
+  const [hasAnyAgentProxies, setHasAnyAgentProxies] = useState(false);
+  const fetchAgentProxiesRequestRef = useRef(0);
+  const effectiveProjectId = effectiveProject?.id ?? '';
 
   useEffect(() => {
     setSelectedProjectId('');
   }, [currentOrganization?.id]);
+
+  // A stale search term carried across a project switch would otherwise keep
+  // `hasAnyAgentProxies` pinned to the previous project's value (it's only
+  // recomputed from an unfiltered fetch) — reset the search box so the new
+  // project's own "has any" state is captured on its first fetch.
+  useEffect(() => {
+    setSearchQuery('');
+  }, [effectiveProjectId]);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const fetchAgentProxies = useCallback(async () => {
+    const requestId = (fetchAgentProxiesRequestRef.current += 1);
+    if (!organizationId || !effectiveProjectId) {
+      setAgentProxies([]);
+      setPagination({ total: 0, offset: 0, limit: rowsPerPage });
+      setIsAgentProxiesLoading(false);
+      return;
+    }
+
+    try {
+      setIsAgentProxiesLoading(true);
+      setAgentProxiesError(null);
+      const response = await agentProxiesApis.getAgentProxies(
+        effectiveProjectId,
+        apimBaseUrl,
+        rowsPerPage,
+        page * rowsPerPage,
+        debouncedSearchQuery ? { search: debouncedSearchQuery } : undefined
+      );
+      if (fetchAgentProxiesRequestRef.current !== requestId) return;
+      setAgentProxies(response.list ?? []);
+      setPagination(
+        response.pagination ?? { total: 0, offset: 0, limit: rowsPerPage }
+      );
+      if (!debouncedSearchQuery) {
+        setHasAnyAgentProxies((response.pagination?.total ?? 0) > 0);
+      }
+    } catch (err) {
+      if (fetchAgentProxiesRequestRef.current !== requestId) return;
+      logger.error('Failed to fetch Agent Proxies:', err);
+      setAgentProxiesError(
+        err instanceof Error ? err : new Error('Failed to fetch agent proxies')
+      );
+    } finally {
+      if (fetchAgentProxiesRequestRef.current === requestId) {
+        setIsAgentProxiesLoading(false);
+        setHasLoadedOnce(true);
+      }
+    }
+  }, [
+    organizationId,
+    effectiveProjectId,
+    apimBaseUrl,
+    page,
+    rowsPerPage,
+    debouncedSearchQuery,
+  ]);
+
+  useEffect(() => {
+    fetchAgentProxies();
+  }, [fetchAgentProxies]);
 
   const selectedProject = useMemo(
     () =>
@@ -144,48 +232,17 @@ export default function AgentProxiesList(): React.JSX.Element {
     );
   };
 
-  const filteredAgentProxies = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return agentProxies;
-
-    return agentProxies.filter((agentProxy) =>
-      [
-        agentProxy.displayName,
-        agentProxy.description,
-        agentProxy.context,
-        agentProxy.version,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [searchQuery, agentProxies]);
-
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, rowsPerPage]);
+  }, [debouncedSearchQuery, rowsPerPage]);
 
-  // A search/rowsPerPage change is handled above, but the list can also
-  // shrink out from under the current page from other causes — a delete, a
-  // refresh, or switching projects — which must clamp `page` back into range
-  // too, or the table renders an empty slice while results still exist.
+  // The list can shrink out from under the current page — a delete, or a
+  // search/rowsPerPage change reducing the total — which must clamp `page`
+  // back into range too, or the table requests a page past the end.
   useEffect(() => {
-    if (rowsPerPage === ALL_ROWS) return;
-    const maxPage = Math.max(
-      0,
-      Math.ceil(filteredAgentProxies.length / rowsPerPage) - 1
-    );
+    const maxPage = Math.max(0, Math.ceil(pagination.total / rowsPerPage) - 1);
     if (page > maxPage) setPage(maxPage);
-  }, [filteredAgentProxies.length, rowsPerPage, page]);
-
-  const pagedAgentProxies = useMemo(() => {
-    if (rowsPerPage === ALL_ROWS) return filteredAgentProxies;
-    return filteredAgentProxies.slice(
-      page * rowsPerPage,
-      page * rowsPerPage + rowsPerPage
-    );
-  }, [filteredAgentProxies, page, rowsPerPage]);
+  }, [pagination.total, rowsPerPage, page]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || !organizationId) return;
@@ -193,6 +250,7 @@ export default function AgentProxiesList(): React.JSX.Element {
     try {
       await deleteAgentProxy(agentProxyId);
       showSnackbar('Agent Proxy deleted successfully.', 'success');
+      await fetchAgentProxies();
     } catch (error) {
       showSnackbar(
         getErrorDescription(error, 'Failed to delete Agent Proxy.'),
@@ -324,7 +382,7 @@ export default function AgentProxiesList(): React.JSX.Element {
             </PageTitle.SubHeader>
           </PageTitle>
 
-          {agentProxies.length > 0 ? (
+          {hasAnyAgentProxies ? (
             <Tooltip title={createAgentProxyTooltip}>
               <Box component="span" sx={{ ml: 'auto', flexShrink: 0 }}>
                 <Button
@@ -350,7 +408,7 @@ export default function AgentProxiesList(): React.JSX.Element {
         </Box>
       </Grid>
 
-      {isAgentProxiesLoading ? (
+      {isAgentProxiesLoading && !hasLoadedOnce ? (
         <Grid size={{ xs: 12 }}>
           <Card>
             <TableContainer>
@@ -398,7 +456,11 @@ export default function AgentProxiesList(): React.JSX.Element {
             </TableContainer>
           </Card>
         </Grid>
-      ) : agentProxies.length === 0 ? (
+      ) : agentProxiesError && !isAgentProxiesLoading ? (
+        <Grid size={{ xs: 12 }}>
+          <ErrorAlert error={agentProxiesError} onRetry={fetchAgentProxies} />
+        </Grid>
+      ) : hasLoadedOnce && !hasAnyAgentProxies && !isAgentProxiesLoading ? (
         <Grid size={{ xs: 12 }}>
           <Box
             sx={{
@@ -480,7 +542,14 @@ export default function AgentProxiesList(): React.JSX.Element {
             />
           </Grid>
 
-          <Grid size={{ xs: 12 }}>
+          <Grid
+            size={{ xs: 12 }}
+            sx={{
+              opacity: isAgentProxiesLoading ? 0.5 : 1,
+              transition: 'opacity 0.15s ease',
+              pointerEvents: isAgentProxiesLoading ? 'none' : 'auto',
+            }}
+          >
             <Card>
               <TableContainer>
                 <Table size="small">
@@ -495,19 +564,21 @@ export default function AgentProxiesList(): React.JSX.Element {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredAgentProxies.length === 0 ? (
+                    {agentProxies.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6}>
-                          <Typography variant="body2" color="text.secondary">
-                            <FormattedMessage
-                              id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.no.agent.proxies.found"
-                              defaultMessage="No agent proxies found."
-                            />
-                          </Typography>
+                          <NoSearchResults
+                            message={
+                              <FormattedMessage
+                                id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.no.agent.proxies.found"
+                                defaultMessage="No agent proxies match your search."
+                              />
+                            }
+                          />
                         </TableCell>
                       </TableRow>
                     ) : (
-                      pagedAgentProxies.map((agentProxy) => (
+                      agentProxies.map((agentProxy) => (
                         <TableRow
                           key={agentProxy.id}
                           hover
@@ -592,10 +663,10 @@ export default function AgentProxiesList(): React.JSX.Element {
                 </Table>
               </TableContainer>
 
-              {filteredAgentProxies.length >= 20 && (
+              {pagination.total >= ROWS_PER_PAGE_OPTIONS[0] && (
                 <TablePagination
                   component="div"
-                  count={filteredAgentProxies.length}
+                  count={pagination.total}
                   page={page}
                   onPageChange={(_event, nextPage) => setPage(nextPage)}
                   rowsPerPage={rowsPerPage}

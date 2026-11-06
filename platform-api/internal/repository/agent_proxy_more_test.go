@@ -306,7 +306,7 @@ func TestAgentProxyListSurfacesCorruptRow(t *testing.T) {
 		t.Fatalf("corrupt row: %v", err)
 	}
 
-	if _, err := repo.List("org-1", AgentProxyListOptions{Limit: 10}); err == nil {
+	if _, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10}}); err == nil {
 		t.Fatal("list over a corrupt row succeeded")
 	}
 	if _, err := repo.ListByProject("org-1", "proj-1"); err == nil {
@@ -331,7 +331,7 @@ func TestAgentProxyRepoSurfacesDatabaseErrors(t *testing.T) {
 		"update": func() error { return repo.Update(minimalAgentProxy("org-1", "proj-1", "x")) },
 		"delete": func() error { return repo.Delete("x", "org-1") },
 		"list": func() error {
-			_, err := repo.List("org-1", AgentProxyListOptions{Limit: 10})
+			_, err := repo.List("org-1", AgentProxyListOptions{ListOptions: ListOptions{Limit: 10}})
 			return err
 		},
 		"count": func() error {

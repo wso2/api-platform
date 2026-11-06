@@ -118,7 +118,7 @@ func (h *AgentProxyHandler) ListAgentProxies(w http.ResponseWriter, r *http.Requ
 			WithLogMessage("organization claim not found in token")
 	}
 
-	limit, offset := parsePagination(r)
+	opts := parseListOptions(r)
 
 	// Presence, not emptiness: "?protocol=" or "?projectId=" is a supplied filter
 	// with an invalid value, which the service rejects, while an absent parameter
@@ -133,7 +133,7 @@ func (h *AgentProxyHandler) ListAgentProxies(w http.ResponseWriter, r *http.Requ
 		projectID = &values[0]
 	}
 
-	resp, err := h.service.List(orgID, protocol, projectID, limit, offset)
+	resp, err := h.service.List(orgID, protocol, projectID, opts)
 	if err != nil {
 		return h.mapServiceError(err)
 	}

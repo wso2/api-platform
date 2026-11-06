@@ -1064,20 +1064,20 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	return s.toProviderAPI(created, tpl.ID)
 }
 
-func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMProviderListResponse, error) {
-	items, err := s.repo.List(orgUUID, limit, offset)
+func (s *LLMProviderService) List(orgUUID string, opts repository.ListOptions) (*api.LLMProviderListResponse, error) {
+	items, err := s.repo.List(orgUUID, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list providers: %w", err)
 	}
-	totalCount, err := s.repo.Count(orgUUID)
+	totalCount, err := s.repo.Count(orgUUID, opts.Search)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count providers: %w", err)
 	}
 	resp := &api.LLMProviderListResponse{
 		Count: len(items),
 		Pagination: api.Pagination{
-			Limit:  limit,
-			Offset: offset,
+			Limit:  opts.Limit,
+			Offset: opts.Offset,
 			Total:  totalCount,
 		},
 	}
@@ -1336,7 +1336,7 @@ func listProxiesReferencingProvider(repo repository.LLMProxyRepository, orgUUID,
 	var referencing []*model.LLMProxy
 	const pageSize = 200
 	for offset := 0; ; offset += pageSize {
-		proxies, err := repo.List(orgUUID, pageSize, offset)
+		proxies, err := repo.List(orgUUID, repository.ListOptions{Limit: pageSize, Offset: offset})
 		if err != nil {
 			return nil, fmt.Errorf("failed to list proxies for provider reference check: %w", err)
 		}
@@ -1941,7 +1941,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	return s.toProxyAPI(orgUUID, created)
 }
 
-func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, offset int) (*api.LLMProxyListResponse, error) {
+func (s *LLMProxyService) List(orgUUID string, projectHandle *string, opts repository.ListOptions) (*api.LLMProxyListResponse, error) {
 	var resolvedProjectUUID *string
 	if projectHandle != nil && *projectHandle != "" {
 		if s.projectRepo == nil {
@@ -1960,18 +1960,18 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 	var items []*model.LLMProxy
 	var err error
 	if resolvedProjectUUID != nil {
-		items, err = s.repo.ListByProject(orgUUID, *resolvedProjectUUID, limit, offset)
+		items, err = s.repo.ListByProject(orgUUID, *resolvedProjectUUID, opts)
 	} else {
-		items, err = s.repo.List(orgUUID, limit, offset)
+		items, err = s.repo.List(orgUUID, opts)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to list proxies: %w", err)
 	}
 	var totalCount int
 	if resolvedProjectUUID != nil {
-		totalCount, err = s.repo.CountByProject(orgUUID, *resolvedProjectUUID)
+		totalCount, err = s.repo.CountByProject(orgUUID, *resolvedProjectUUID, opts.Search)
 	} else {
-		totalCount, err = s.repo.Count(orgUUID)
+		totalCount, err = s.repo.Count(orgUUID, opts.Search)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to count proxies: %w", err)
@@ -1979,8 +1979,8 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 	resp := &api.LLMProxyListResponse{
 		Count: len(items),
 		Pagination: api.Pagination{
-			Limit:  limit,
-			Offset: offset,
+			Limit:  opts.Limit,
+			Offset: opts.Offset,
 			Total:  totalCount,
 		},
 	}

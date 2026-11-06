@@ -36,11 +36,32 @@ import (
 // mockMCPProxyRepository is a minimal mock of repository.MCPProxyRepository.
 type mockMCPProxyRepository struct {
 	repository.MCPProxyRepository
-	getByHandleResult *model.MCPProxy
+	getByHandleResult   *model.MCPProxy
+	listByProjectItems  []*model.MCPProxy
+	countByProjectValue int
 }
 
 func (m *mockMCPProxyRepository) GetByHandle(handle, orgUUID string) (*model.MCPProxy, error) {
 	return m.getByHandleResult, nil
+}
+
+// ListByProject/CountByProject honor opts.Limit/opts.Offset the same way the
+// real repo now does post-fix — this is what lets a test assert the service
+// actually threads the caller's pagination through rather than (as the fixed
+// bug did) ignoring it and returning the whole project every time.
+func (m *mockMCPProxyRepository) ListByProject(orgUUID, projectUUID string, opts repository.ListOptions) ([]*model.MCPProxy, error) {
+	if opts.Offset >= len(m.listByProjectItems) {
+		return nil, nil
+	}
+	items := m.listByProjectItems[opts.Offset:]
+	if opts.Limit > 0 && opts.Limit < len(items) {
+		items = items[:opts.Limit]
+	}
+	return items, nil
+}
+
+func (m *mockMCPProxyRepository) CountByProject(orgUUID, projectUUID, search string) (int, error) {
+	return m.countByProjectValue, nil
 }
 
 func validMCPProxyRequest() *api.MCPProxy {
@@ -85,6 +106,37 @@ func TestMCPProxyServiceGetReturnsProjectHandle(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp.ProjectId)
 	assert.Equal(t, "test-project", *resp.ProjectId)
+}
+
+// TestMCPProxyServiceListByProject_HonorsPagination is the regression guard
+// for the bug this PR fixes: ListByProject used to call the repo with no
+// limit/offset at all (marked `// TODO: pagination`), so `resp.List` always
+// held the whole project regardless of what the caller asked for, while
+// `resp.Pagination` lied about the page actually returned.
+func TestMCPProxyServiceListByProject_HonorsPagination(t *testing.T) {
+	projectUUID := "550e8400-e29b-41d4-a716-446655440001"
+	repo := &mockMCPProxyRepository{
+		listByProjectItems: []*model.MCPProxy{
+			{UUID: "u1", Handle: "mcp-1", Name: "MCP One", Version: "v1.0", ProjectUUID: &projectUUID},
+			{UUID: "u2", Handle: "mcp-2", Name: "MCP Two", Version: "v1.0", ProjectUUID: &projectUUID},
+			{UUID: "u3", Handle: "mcp-3", Name: "MCP Three", Version: "v1.0", ProjectUUID: &projectUUID},
+		},
+		countByProjectValue: 3,
+	}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: projectUUID, Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewMCPProxyService(repo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	resp, err := service.ListByProject("org-1", "test-project", repository.ListOptions{Limit: 1, Offset: 0})
+	require.NoError(t, err)
+	assert.Equal(t, 1, resp.Count, "expected the response to respect the limit (count 1)")
+	assert.Equal(t, 3, resp.Pagination.Total, "expected pagination.total to reflect the full project count")
+	assert.Equal(t, 1, resp.Pagination.Limit)
+	assert.Equal(t, 0, resp.Pagination.Offset)
+
+	secondPage, err := service.ListByProject("org-1", "test-project", repository.ListOptions{Limit: 1, Offset: 1})
+	require.NoError(t, err)
+	require.Len(t, secondPage.List, 1)
+	assert.NotEqual(t, *resp.List[0].Id, *secondPage.List[0].Id, "offset page returned the same item as the first page")
 }
 
 func TestMCPProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {

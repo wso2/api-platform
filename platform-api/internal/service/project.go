@@ -288,7 +288,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 		return apperror.ValidationFailed.New("Project has associated APIs")
 	}
 
-	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, project.ID)
+	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, project.ID, "")
 	if err != nil {
 		return err
 	}
@@ -309,7 +309,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	// applications no longer cascade-delete with the project (the project_uuid foreign key was
 	// removed), so refuse deletion while any application still references this project. The caller
 	// must reassign or delete those applications first.
-	appCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgId, "")
+	appCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgId, "", "")
 	if err != nil {
 		return err
 	}

@@ -1317,8 +1317,12 @@ export type ApplicationListResponse = ApiListResponse<Application>;
  */
 export interface ApplicationListQueryParams {
   projectId?: string;
+  type?: 'genai';
   limit?: number;
   offset?: number;
+  query?: string;
+  sortBy?: 'name' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
 }
 
 /**

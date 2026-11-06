@@ -46,6 +46,7 @@ import {
 import { Search, ShieldCheck, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import {
   deleteGatewayCustomPolicy,
   getGatewayCustomPolicies,
@@ -291,62 +292,66 @@ export default function CustomPoliciesList({
       {error ? (
         <ErrorAlert error={error} onRetry={fetchPolicies} />
       ) : !isLoading && pageItems.length === 0 ? (
-        <Box
-          sx={{
-            border: '1px dashed',
-            borderColor: 'divider',
-            borderRadius: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            px: 3,
-            py: 8,
-          }}
-        >
-          <Stack spacing={1.5} alignItems="center" sx={{ textAlign: 'center' }}>
-            <Box
-              sx={{
-                width: 64,
-                height: 64,
-                borderRadius: 2,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'primary.main',
-                bgcolor: (theme) =>
-                  `color-mix(in srgb, ${theme.palette.primary.main} 12%, transparent)`,
-                border: '1px solid',
-                borderColor: (theme) =>
-                  `color-mix(in srgb, ${theme.palette.primary.main} 30%, transparent)`,
-              }}
-            >
-              <ShieldCheck size={28} />
-            </Box>
-            <Typography variant="body1" sx={{ fontWeight: 700 }}>
+        searchQuery ? (
+          <NoSearchResults
+            message={
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.noData.title"
-                defaultMessage="No custom policies found"
+                id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.noData.noResults"
+                defaultMessage="No custom policies match your search."
               />
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ maxWidth: 380 }}
-            >
-              {searchQuery ? (
+            }
+          />
+        ) : (
+          <Box
+            sx={{
+              border: '1px dashed',
+              borderColor: 'divider',
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: 3,
+              py: 8,
+            }}
+          >
+            <Stack spacing={1.5} alignItems="center" sx={{ textAlign: 'center' }}>
+              <Box
+                sx={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'primary.main',
+                  bgcolor: (theme) =>
+                    `color-mix(in srgb, ${theme.palette.primary.main} 12%, transparent)`,
+                  border: '1px solid',
+                  borderColor: (theme) =>
+                    `color-mix(in srgb, ${theme.palette.primary.main} 30%, transparent)`,
+                }}
+              >
+                <ShieldCheck size={28} />
+              </Box>
+              <Typography variant="body1" sx={{ fontWeight: 700 }}>
                 <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.noData.noResults"
-                  defaultMessage="No custom policies match your search."
+                  id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.noData.title"
+                  defaultMessage="No custom policies found"
                 />
-              ) : (
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ maxWidth: 380 }}
+              >
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.noData.description"
                   defaultMessage="Custom policies synced from your gateways will appear here."
                 />
-              )}
-            </Typography>
-          </Stack>
-        </Box>
+              </Typography>
+            </Stack>
+          </Box>
+        )
       ) : (
         <Card>
           <TableContainer>

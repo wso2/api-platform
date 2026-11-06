@@ -195,12 +195,12 @@ func (s *AgentProxyService) Get(orgUUID, handle string) (*api.A2AAgentProxy, err
 // filter value rather than "no filter" — so the two cannot be collapsed into one
 // empty string. A project handle that does not resolve within the organization
 // is a 404, never an empty page.
-func (s *AgentProxyService) List(orgUUID string, protocol, projectHandle *string, limit, offset int) (*api.AgentProxyListResponse, error) {
+func (s *AgentProxyService) List(orgUUID string, protocol, projectHandle *string, listOpts repository.ListOptions) (*api.AgentProxyListResponse, error) {
 	filter, err := parseAgentProxyProtocolFilter(protocol)
 	if err != nil {
 		return nil, err
 	}
-	opts := repository.AgentProxyListOptions{Limit: limit, Offset: offset, Protocol: filter}
+	opts := repository.AgentProxyListOptions{ListOptions: listOpts, Protocol: filter}
 	if projectHandle != nil {
 		if strings.TrimSpace(*projectHandle) == "" {
 			return nil, apperror.ValidationFailed.New("The projectId filter must not be empty.")
@@ -223,7 +223,7 @@ func (s *AgentProxyService) List(orgUUID string, protocol, projectHandle *string
 
 	resp := &api.AgentProxyListResponse{
 		List:       make([]api.AgentProxyListItem, 0, len(proxies)),
-		Pagination: api.Pagination{Limit: limit, Offset: offset, Total: total},
+		Pagination: api.Pagination{Limit: opts.Limit, Offset: opts.Offset, Total: total},
 	}
 
 	// One memo for the whole page: a project handle is otherwise re-queried once

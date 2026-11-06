@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Avatar,
@@ -63,11 +63,16 @@ import { truncateProviderDisplayName } from '../../../../utils/providerTemplateD
 import { FormattedMessage } from 'react-intl';
 import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorMessage } from '../../../../utils/apiError';
 import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import * as proxyApis from '../../../../apis/proxyApis';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { logger } from '../../../../utils/logger';
+import type { Proxy } from '../../../../utils/types';
 
 function getHttpStatusCode(error?: Error | null): number | null {
   if (!error) return null;
@@ -85,13 +90,9 @@ function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
 }
 
-// -1 is MUI's convention for an "All" rows-per-page option.
-const ALL_ROWS = -1;
-const ROWS_PER_PAGE_OPTIONS = [
-  20,
-  50,
-  { label: 'All', value: ALL_ROWS },
-];
+// The backend hard-caps `limit` at 100, so there is no true "All" option once
+// the list is paginated server-side.
+const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
 type LLMProxyListLocationState = {
   proxyDeleted?: boolean;
@@ -102,15 +103,8 @@ export default function LLMProxiesList() {
   const location = useLocation();
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
-  const {
-    proxiesResponse,
-    isLoading: isProxiesLoading,
-    error: proxiesError,
-    deleteProxy,
-    refreshProxies,
-  } = useProxies();
+  const { deleteProxy } = useProxies();
   const { providersResponse } = useLLMProviders();
-  const proxies = proxiesResponse.list;
   const emptyMessage = 'No Available App LLM Proxies';
   const {
     currentProject,
@@ -124,6 +118,7 @@ export default function LLMProxiesList() {
     ? buildProjectPath(currentOrganization, currentProject, '/proxies/create')
     : buildOrgPath(currentOrganization, '/proxies/create');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -133,9 +128,99 @@ export default function LLMProxiesList() {
     readOnly: boolean;
   } | null>(null);
 
+  // Server-paginated/searched page of proxies — fetched directly by this page
+  // rather than through ProxiesContext's `fetchAllPages`-backed cache, which
+  // other consumers (proxy pickers, overview cards) still need in full.
+  const [proxies, setProxies] = useState<Proxy[]>([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    offset: 0,
+    limit: 20,
+  });
+  const [isProxiesLoading, setIsProxiesLoading] = useState(true);
+  // True once the first fetch (success or failure) has completed. Prevents a
+  // background refetch (e.g. from typing in search) from unmounting the
+  // search box and table in favor of the full-page spinner, which would drop
+  // input focus mid-keystroke.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [proxiesError, setProxiesError] = useState<Error | null>(null);
+  const [hasAnyProxies, setHasAnyProxies] = useState(false);
+  const fetchProxiesRequestRef = useRef(0);
+  const apimBaseUrl = PLATFORM_API_BASE_URL;
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  const fetchProxies = useCallback(async () => {
+    const requestId = (fetchProxiesRequestRef.current += 1);
+    const organizationId = currentOrganization?.uuid ?? '';
+    const projectId = currentProject?.id ?? '';
+    if (!organizationId || !projectId) {
+      setProxies([]);
+      setPagination({ total: 0, offset: 0, limit: rowsPerPage });
+      setIsProxiesLoading(false);
+      return;
+    }
+
+    try {
+      setIsProxiesLoading(true);
+      setProxiesError(null);
+      const response = await proxyApis.getProxies(
+        organizationId,
+        projectId,
+        apimBaseUrl,
+        rowsPerPage,
+        page * rowsPerPage,
+        debouncedSearchQuery ? { search: debouncedSearchQuery } : undefined
+      );
+      if (fetchProxiesRequestRef.current !== requestId) return;
+      setProxies(response.list ?? []);
+      setPagination(
+        response.pagination ?? { total: 0, offset: 0, limit: rowsPerPage }
+      );
+      if (!debouncedSearchQuery) {
+        setHasAnyProxies((response.pagination?.total ?? 0) > 0);
+      }
+    } catch (err) {
+      if (fetchProxiesRequestRef.current !== requestId) return;
+      logger.error('Failed to fetch App LLM Proxies:', err);
+      setProxiesError(
+        err instanceof Error ? err : new Error('Failed to fetch proxies')
+      );
+    } finally {
+      if (fetchProxiesRequestRef.current === requestId) {
+        setIsProxiesLoading(false);
+        setHasLoadedOnce(true);
+      }
+    }
+  }, [
+    currentOrganization?.uuid,
+    currentProject?.id,
+    apimBaseUrl,
+    page,
+    rowsPerPage,
+    debouncedSearchQuery,
+  ]);
+
+  useEffect(() => {
+    fetchProxies();
+  }, [fetchProxies]);
+
   useEffect(() => {
     setSelectedProjectId('');
   }, [currentOrganization?.id]);
+
+  // A stale search term carried across a project switch would otherwise keep
+  // `hasAnyProxies` pinned to the previous project's value (it's only
+  // recomputed from an unfiltered fetch) — reset the search box so the new
+  // project's own "has any" state is captured on its first fetch.
+  useEffect(() => {
+    setSearchQuery('');
+  }, [currentProject?.id]);
 
   useEffect(() => {
     const state = location.state as LLMProxyListLocationState;
@@ -183,49 +268,17 @@ export default function LLMProxiesList() {
     return `${normalizedDescription.slice(0, maxLength).trim()}…`;
   };
 
-  const filteredProxies = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return proxies;
-
-    return proxies.filter((proxy) => {
-      const haystack = [
-        proxy.displayName,
-        proxy.description,
-        proxy.context,
-        getProviderId(proxy.provider),
-        proxy.version,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [proxies, searchQuery]);
-
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, rowsPerPage]);
+  }, [debouncedSearchQuery, rowsPerPage]);
 
-  // A search/rowsPerPage change is handled above, but the list can also
-  // shrink out from under the current page from other causes — a delete, a
-  // refresh, or switching projects — which must clamp `page` back into range
-  // too, or the table renders an empty slice while results still exist.
+  // The list can shrink out from under the current page — a delete, or a
+  // search/rowsPerPage change reducing the total — which must clamp `page`
+  // back into range too, or the table requests a page past the end.
   useEffect(() => {
-    if (rowsPerPage === ALL_ROWS) return;
-    const maxPage = Math.max(
-      0,
-      Math.ceil(filteredProxies.length / rowsPerPage) - 1
-    );
+    const maxPage = Math.max(0, Math.ceil(pagination.total / rowsPerPage) - 1);
     if (page > maxPage) setPage(maxPage);
-  }, [filteredProxies.length, rowsPerPage, page]);
-
-  const pagedProxies = useMemo(() => {
-    if (rowsPerPage === ALL_ROWS) return filteredProxies;
-    return filteredProxies.slice(
-      page * rowsPerPage,
-      page * rowsPerPage + rowsPerPage
-    );
-  }, [filteredProxies, page, rowsPerPage]);
+  }, [pagination.total, rowsPerPage, page]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
@@ -233,6 +286,7 @@ export default function LLMProxiesList() {
       await deleteProxy(deleteTarget.id);
       showSnackbar('Successfully deleted App LLM Proxy.', 'success');
       setDeleteTarget(null);
+      await fetchProxies();
     } catch (error) {
       showSnackbar(
         getErrorDescription(error, 'Failed to delete App LLM Proxy.'),
@@ -296,7 +350,7 @@ export default function LLMProxiesList() {
                 spacing={1.5}
                 sx={{ ml: 'auto', flexShrink: 0 }}
               >
-                {proxies.length > 0 ? (
+                {hasAnyProxies ? (
                   <Tooltip title={createProxyTooltip}>
                     <Box component="span">
                       <Button
@@ -392,17 +446,17 @@ export default function LLMProxiesList() {
               </Stack>
             </Card>
           </Grid>
-        ) : isProxiesLoading ? (
+        ) : isProxiesLoading && !hasLoadedOnce ? (
           <Grid size={{ xs: 12 }}>
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
               <CircularProgress />
             </Box>
           </Grid>
-        ) : proxiesError && !isProxyNotFoundError ? (
+        ) : proxiesError && !isProxiesLoading && !isProxyNotFoundError ? (
           <Grid size={{ xs: 12 }}>
-            <ErrorAlert error={proxiesError} onRetry={refreshProxies} />
+            <ErrorAlert error={proxiesError} onRetry={fetchProxies} />
           </Grid>
-        ) : proxies.length === 0 || isProxyNotFoundError ? (
+        ) : hasLoadedOnce && (!hasAnyProxies || isProxyNotFoundError) && !isProxiesLoading ? (
           <Grid size={{ xs: 12 }}>
             <Box
               sx={{
@@ -479,7 +533,14 @@ export default function LLMProxiesList() {
               />
             </Grid>
 
-            <Grid size={{ xs: 12 }}>
+            <Grid
+              size={{ xs: 12 }}
+              sx={{
+                opacity: isProxiesLoading ? 0.5 : 1,
+                transition: 'opacity 0.15s ease',
+                pointerEvents: isProxiesLoading ? 'none' : 'auto',
+              }}
+            >
               <Card>
                 <TableContainer>
                   <Table size="small">
@@ -494,19 +555,21 @@ export default function LLMProxiesList() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filteredProxies.length === 0 ? (
+                      {proxies.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={6}>
-                            <Typography variant="body2" color="text.secondary">
-                              <FormattedMessage
-                                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxiesList.no.llm.proxies.found"
-                                defaultMessage={'No App LLM Proxies found.'}
-                              />
-                            </Typography>
+                            <NoSearchResults
+                              message={
+                                <FormattedMessage
+                                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxiesList.no.llm.proxies.found"
+                                  defaultMessage={'No App LLM Proxies match your search.'}
+                                />
+                              }
+                            />
                           </TableCell>
                         </TableRow>
                       ) : (
-                        pagedProxies.map((proxy) => (
+                        proxies.map((proxy) => (
                           <TableRow
                             key={proxy.id}
                             hover
@@ -597,10 +660,10 @@ export default function LLMProxiesList() {
                   </Table>
                 </TableContainer>
 
-                {filteredProxies.length >= 20 && (
+                {pagination.total >= ROWS_PER_PAGE_OPTIONS[0] && (
                   <TablePagination
                     component="div"
-                    count={filteredProxies.length}
+                    count={pagination.total}
                     page={page}
                     onPageChange={(_event, nextPage) => setPage(nextPage)}
                     rowsPerPage={rowsPerPage}

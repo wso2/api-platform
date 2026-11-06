@@ -119,10 +119,11 @@ func (h *ApplicationHandler) ListApplications(w http.ResponseWriter, r *http.Req
 	if projectID == "" {
 		return apperror.ValidationFailed.New("Project ID is required")
 	}
+	appType := strings.TrimSpace(r.URL.Query().Get("type"))
 
 	opts := parseListOptions(r)
 
-	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID, opts)
+	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID, appType, opts)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to list applications for project %s in org %s", projectID, orgID))
 	}

@@ -78,9 +78,9 @@ type ApplicationRepository interface {
 	GetLLMProxyProjectUUID(artifactUUID, orgID string) (string, error)
 	GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error)
 	GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error)
-	GetApplicationsByProjectIDPaginated(projectID, orgID string, opts ListOptions) ([]*model.Application, error)
+	GetApplicationsByProjectIDPaginated(projectID, orgID, appType string, opts ListOptions) ([]*model.Application, error)
 	GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error)
-	CountApplicationsByProjectID(projectID, orgID, search string) (int, error)
+	CountApplicationsByProjectID(projectID, orgID, appType, search string) (int, error)
 	CountApplicationsByOrganizationID(orgID string) (int, error)
 	GetApplicationByNameInProject(name, projectID, orgID string) (*model.Application, error)
 	CheckApplicationHandleExists(handle, orgID string) (bool, error)
@@ -356,8 +356,8 @@ type LLMProviderRepository interface {
 	Create(p *model.LLMProvider) error
 	CreateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	GetByID(providerID, orgUUID string) (*model.LLMProvider, error)
-	List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error)
-	Count(orgUUID string) (int, error)
+	List(orgUUID string, opts ListOptions) ([]*model.LLMProvider, error)
+	Count(orgUUID, search string) (int, error)
 	Update(p *model.LLMProvider) error
 	UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	Delete(providerID, orgUUID string) error
@@ -386,10 +386,10 @@ type APIKeyRepository interface {
 type LLMProxyRepository interface {
 	Create(p *model.LLMProxy) error
 	GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
-	List(orgUUID string, limit, offset int) ([]*model.LLMProxy, error)
-	ListByProject(orgUUID, projectUUID string, limit, offset int) ([]*model.LLMProxy, error)
-	Count(orgUUID string) (int, error)
-	CountByProject(orgUUID, projectUUID string) (int, error)
+	List(orgUUID string, opts ListOptions) ([]*model.LLMProxy, error)
+	ListByProject(orgUUID, projectUUID string, opts ListOptions) ([]*model.LLMProxy, error)
+	Count(orgUUID, search string) (int, error)
+	CountByProject(orgUUID, projectUUID, search string) (int, error)
 	Update(p *model.LLMProxy) error
 	Delete(proxyID, orgUUID string) error
 	Exists(proxyID, orgUUID string) (bool, error)
@@ -444,10 +444,10 @@ type MCPProxyRepository interface {
 	Create(p *model.MCPProxy) error
 	GetByHandle(handle, orgUUID string) (*model.MCPProxy, error)
 	GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error)
-	List(orgUUID string, limit, offset int) ([]*model.MCPProxy, error)
-	ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error)
-	Count(orgUUID string) (int, error)
-	CountByProject(orgUUID, projectUUID string) (int, error)
+	List(orgUUID string, opts ListOptions) ([]*model.MCPProxy, error)
+	ListByProject(orgUUID, projectUUID string, opts ListOptions) ([]*model.MCPProxy, error)
+	Count(orgUUID, search string) (int, error)
+	CountByProject(orgUUID, projectUUID, search string) (int, error)
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)

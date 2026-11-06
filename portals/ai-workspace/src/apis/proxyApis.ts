@@ -57,7 +57,18 @@ export async function createProxy(
 }
 
 /**
- * Get all LLM Proxies
+ * Options for filtering/sorting a {@link getProxies} page. `search` is a
+ * case-insensitive substring match against the proxy's display name and id,
+ * applied server-side.
+ */
+export interface GetProxiesOptions {
+  search?: string;
+  sortBy?: 'name' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Get a page of LLM Proxies
  *
  * @param organizationId - The organization ID
  * @param baseUrl - The APIM base URL
@@ -68,11 +79,26 @@ export async function getProxies(
   projectId: string,
   baseUrl: string,
   limit: number = 20,
-  offset: number = 0
+  offset: number = 0,
+  options?: GetProxiesOptions
 ): Promise<ProxiesResponse> {
   try {
+    const params = new URLSearchParams({
+      projectId,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (options?.search) {
+      params.set('query', options.search);
+    }
+    if (options?.sortBy) {
+      params.set('sortBy', options.sortBy);
+    }
+    if (options?.sortOrder) {
+      params.set('sortOrder', options.sortOrder);
+    }
     const response = await get<ProxiesResponse>(
-      `/llm-proxies?projectId=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
+      `/llm-proxies?${params.toString()}`,
       undefined,
       baseUrl
     );

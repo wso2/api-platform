@@ -54,6 +54,7 @@ import { useAppShell } from '../../../../contexts/AppShellContext';
 import { formatRelativeTime } from '../../../../contexts/ApplicationsContext';
 import { ProjectsProvider, useProjects } from '../../../../contexts/ProjectsContext';
 import AILoader from '../../../../Components/AILoader';
+import NoSearchResults from '../../../../Components/common/NoSearchResults';
 import {
   buildOrgPath,
   buildProjectPath,
@@ -302,12 +303,14 @@ function ProjectListViewInner() {
               </Box>
             ) : pagedProjects.length === 0 ? (
               <Box sx={{ gridColumn: '1 / -1' }}>
-                <Typography variant="body2" color="text.secondary">
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.no.projects.match.search"
-                    defaultMessage={'No projects match your search.'}
-                  />
-                </Typography>
+                <NoSearchResults
+                  message={
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.no.projects.match.search"
+                      defaultMessage={'No projects match your search.'}
+                    />
+                  }
+                />
               </Box>
             ) : (
               pagedProjects.map((project) => (

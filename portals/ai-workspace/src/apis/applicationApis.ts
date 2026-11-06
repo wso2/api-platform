@@ -97,8 +97,12 @@ export async function getApplications(
   try {
     const query = buildQueryString({
       projectId,
+      type: options?.type,
       limit: options?.limit,
       offset: options?.offset,
+      query: options?.query,
+      sortBy: options?.sortBy,
+      sortOrder: options?.sortOrder,
     });
     const response = await get<ApplicationListResponse>(
       `/applications${query}`,

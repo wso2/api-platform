@@ -60,8 +60,7 @@ var ErrAgentProxyProjectOrgMismatch = errors.New("project does not belong to the
 // the list and the count query build their predicate from the same helper so a
 // filtered page can never disagree with the total it is paginated against.
 type AgentProxyListOptions struct {
-	Limit       int
-	Offset      int
+	ListOptions
 	Protocol    model.AgentProxyProtocol
 	ProjectUUID string
 }
@@ -185,11 +184,13 @@ func (r *AgentProxyRepo) GetByUUID(uuid, orgUUID string) (*model.AgentProxy, err
 // one protocol and/or one project.
 func (r *AgentProxyRepo) List(orgUUID string, opts AgentProxyListOptions) ([]*model.AgentProxy, error) {
 	filter, filterArgs := agentProxyListPredicate(opts)
+	col, dir := resolveSortColumn(opts.SortBy, opts.SortOrder, listSortColumns, "created_at")
 	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
 	query := `SELECT` + agentProxyColumns + `
 		FROM agent_proxies
 		WHERE organization_uuid = ?` + filter + `
-		ORDER BY created_at DESC
+		ORDER BY ` + col + ` ` + dir + `,
+		uuid ASC
 		` + pageClause
 
 	args := append([]any{orgUUID}, filterArgs...)
@@ -408,6 +409,10 @@ func agentProxyListPredicate(opts AgentProxyListOptions) (string, []any) {
 	if opts.ProjectUUID != "" {
 		filter += ` AND project_uuid = ?`
 		args = append(args, opts.ProjectUUID)
+	}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		filter += searchClause
+		args = append(args, searchArgs...)
 	}
 	return filter, args
 }

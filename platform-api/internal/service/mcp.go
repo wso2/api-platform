@@ -257,13 +257,13 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 }
 
 // List retrieves all MCP proxies for an organization
-func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxyListResponse, error) {
-	proxies, err := s.repo.List(orgUUID, limit, offset)
+func (s *MCPProxyService) List(orgUUID string, opts repository.ListOptions) (*api.MCPProxyListResponse, error) {
+	proxies, err := s.repo.List(orgUUID, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list MCP proxies: %w", err)
 	}
 
-	totalCount, err := s.repo.Count(orgUUID)
+	totalCount, err := s.repo.Count(orgUUID, opts.Search)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count MCP proxies: %w", err)
 	}
@@ -271,8 +271,8 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 	resp := &api.MCPProxyListResponse{
 		Count: len(proxies),
 		Pagination: api.Pagination{
-			Limit:  limit,
-			Offset: offset,
+			Limit:  opts.Limit,
+			Offset: opts.Offset,
 			Total:  totalCount,
 		},
 	}
@@ -301,7 +301,7 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 }
 
 // ListByProject retrieves MCP proxies for an organization filtered by project ID
-func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, offset int) (*api.MCPProxyListResponse, error) {
+func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, opts repository.ListOptions) (*api.MCPProxyListResponse, error) {
 	// projectHandle is the project handle; resolve it to the project UUID so the
 	// filter matches the identifier proxies are stored against. Without the
 	// project repository we cannot resolve the handle, and must not filter on the
@@ -318,13 +318,12 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 	}
 	projectUUID := project.ID
 
-	// TODO: pagination
-	proxies, err := s.repo.ListByProject(orgUUID, projectUUID)
+	proxies, err := s.repo.ListByProject(orgUUID, projectUUID, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list MCP proxies by project: %w", err)
 	}
 
-	totalCount, err := s.repo.CountByProject(orgUUID, projectUUID)
+	totalCount, err := s.repo.CountByProject(orgUUID, projectUUID, opts.Search)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count MCP proxies by project: %w", err)
 	}
@@ -332,8 +331,8 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 	resp := &api.MCPProxyListResponse{
 		Count: len(proxies),
 		Pagination: api.Pagination{
-			Limit:  limit,
-			Offset: offset,
+			Limit:  opts.Limit,
+			Offset: opts.Offset,
 			Total:  totalCount,
 		},
 	}

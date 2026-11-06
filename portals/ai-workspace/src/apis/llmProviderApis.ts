@@ -187,7 +187,18 @@ export async function createLLMProvider(
 }
 
 /**
- * Get all LLM Providers
+ * Options for filtering/sorting a {@link getLLMProviders} page. `search` is a
+ * case-insensitive substring match against the provider's display name and
+ * id, applied server-side (see platform-api's `handleSearchClause`).
+ */
+export interface GetLLMProvidersOptions {
+  search?: string;
+  sortBy?: 'name' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Get a page of LLM Providers
  *
  * @param organizationId - The organization ID
  * @returns Promise with the list of LLM providers
@@ -202,11 +213,25 @@ export async function getLLMProviders(
   organizationId: string,
   baseUrl: string,
   limit: number = 20,
-  offset: number = 0
+  offset: number = 0,
+  options?: GetLLMProvidersOptions
 ): Promise<LLMProvidersResponse> {
   try {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (options?.search) {
+      params.set('query', options.search);
+    }
+    if (options?.sortBy) {
+      params.set('sortBy', options.sortBy);
+    }
+    if (options?.sortOrder) {
+      params.set('sortOrder', options.sortOrder);
+    }
     const response = await get<LLMProvidersResponse>(
-      `/llm-providers?limit=${limit}&offset=${offset}`,
+      `/llm-providers?${params.toString()}`,
       undefined,
       baseUrl
     );
