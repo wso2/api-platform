@@ -283,7 +283,7 @@ rejected by `POST`. Links in `docMetadata` count as content.
 
 ```shell
 
-curl -X GET https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=DOC_HowTo&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
@@ -304,7 +304,7 @@ session: an anonymous request for a non-image type is rejected.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
+|type|query|string|true|Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`). Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
 |orgId|query|string|false|DEPRECATED and ignored. Accepted only so existing callers (the portal's own image-URL rewrite appends it) are not rejected. The organization is always this instance's own — from the session when there is one, otherwise from `organization.handle` configuration. It was previously honoured on this unauthenticated endpoint, which made it a selector for any organization's API icons in a shared database.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
@@ -386,7 +386,7 @@ session: an anonymous request for a non-image type is rejected.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=document \
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=DOC_HowTo \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Accept: application/json'
 
@@ -394,8 +394,9 @@ curl -X DELETE https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?ty
 
 Deletes stored API content.
 
-Send both `type` and `fileName` to delete one file. Send only `type` to delete all stored content
-files matching that content category for the API.
+Send both `type` and `fileName` to delete one file. Send only `type` to delete all content of exactly
+that type. `type` must be `MARKETING`, `IMAGE` or `DOC_<Category>` and is matched exactly; any other
+value, including `API_DEFINITION` and `SCHEMA_DEFINITION`, is rejected with `400`.
 
 ### Authentication
 
@@ -410,7 +411,7 @@ Required scopes (the token must carry at least one of): `dp:api_content:delete`,
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
+|type|query|string|true|Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`). Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.|
 |fileName|query|string|false|File name selector used to delete a single stored API content file.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
@@ -434,8 +435,12 @@ Required scopes (the token must carry at least one of): `dp:api_content:delete`,
 
 > 404 Response
 
-```
-"string"
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
 ```
 
 > 500 Response
@@ -454,7 +459,7 @@ Required scopes (the token must carry at least one of): `dp:api_content:delete`,
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|API content deleted successfully.|None|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-api-content-files-responseschema">Response Schema</h3>

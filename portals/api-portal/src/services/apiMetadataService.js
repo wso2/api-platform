@@ -1064,6 +1064,12 @@ const deleteAPIFile = async (req, res) => {
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
     try {
+        if (!fileType) {
+            throw new ValidationError('Missing required query parameter: type');
+        }
+        if (!apiContentRules.isContentType(fileType)) {
+            throw new ValidationError(`Invalid content type: ${fileType}`);
+        }
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return util.sendError(res, 404, 'API not found');

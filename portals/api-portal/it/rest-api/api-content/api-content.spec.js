@@ -354,4 +354,61 @@ describe('API content assets', () => {
             expect((await getAsset(api.id, 'MARKETING', 'api-content.hbs')).status).toBe(200);
         });
     });
+
+    describe('delete matches the type exactly', () => {
+        it('rejects a missing or disallowed type and removes nothing', async () => {
+            const api = await createApi();
+            expect((await uploadContent('publisher', api.id, docsZip(['A.md']))).status).toBe(201);
+
+            expect((await client.as('publisher').del(`/apis/${api.id}/assets`)).status).toBe(400);
+            for (const type of ['A', '_', '%25', 'DOC', 'image', 'API_DEFINITION', 'SCHEMA_DEFINITION']) {
+                const res = await client.as('publisher').del(`/apis/${api.id}/assets?type=${type}`);
+                expect(res.status).toBe(400);
+                expect(res.body.code).toBe('COMMON_VALIDATION_ERROR');
+            }
+            expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(200);
+            await definitionReadable(api.id);
+        });
+
+        it('deletes documents stored under folder names with spaces or dots', async () => {
+            const api = await createApi();
+            const zip = createZip([
+                { name: 'docs/How To/setup.md', content: '# Setup' },
+                { name: 'docs/v1.0/notes.md', content: '# Notes' },
+                { name: 'docs/guide.md', content: '# Guide' },
+            ]);
+            expect((await uploadContent('publisher', api.id, zip)).status).toBe(201);
+
+            const del = (type, fileName) => client.as('publisher')
+                .del(`/apis/${api.id}/assets?type=${encodeURIComponent(type)}&fileName=${fileName}`);
+            expect((await del('DOC_How To', 'setup.md')).status).toBe(204);
+            expect((await del('DOC_v1.0', 'notes.md')).status).toBe(204);
+            expect((await getAsset(api.id, encodeURIComponent('DOC_How To'), 'setup.md')).status).toBe(404);
+            expect((await getAsset(api.id, 'DOC_v1.0', 'notes.md')).status).toBe(404);
+            expect((await getAsset(api.id, 'DOC_Other', 'guide.md')).status).toBe(200);
+        });
+
+        it('removes only the named file, or only the exact type', async () => {
+            const api = await createApi();
+            const zip = createZip([
+                { name: 'docs/HowTo/A.md', content: '# A' },
+                { name: 'docs/HowTo/B.md', content: '# B' },
+                { name: 'docs/C.md', content: '# C' },
+            ]);
+            expect((await uploadContent('publisher', api.id, zip)).status).toBe(201);
+
+            expect((await client.as('publisher').del(`/apis/${api.id}/assets?type=DOC_HowTo&fileName=A.md`)).status).toBe(204);
+            expect((await getAsset(api.id, 'DOC_HowTo', 'A.md')).status).toBe(404);
+            expect((await getAsset(api.id, 'DOC_HowTo', 'B.md')).status).toBe(200);
+
+            expect((await client.as('publisher').del(`/apis/${api.id}/assets?type=DOC_HowTo`)).status).toBe(204);
+            expect((await getAsset(api.id, 'DOC_HowTo', 'B.md')).status).toBe(404);
+            expect((await getAsset(api.id, 'DOC_Other', 'C.md')).status).toBe(200);
+        });
+
+        it('answers 404 when an allowed type has nothing stored', async () => {
+            const api = await createApi();
+            expect((await client.as('publisher').del(`/apis/${api.id}/assets?type=DOC_Samples`)).status).toBe(404);
+        });
+    });
 });

@@ -1311,8 +1311,9 @@ paths:
       description: |
         Deletes stored API content.
 
-        Send both `type` and `fileName` to delete one file. Send only `type` to delete all stored content
-        files matching that content category for the API.
+        Send both `type` and `fileName` to delete one file. Send only `type` to delete all content of exactly
+        that type. `type` must be `MARKETING`, `IMAGE` or `DOC_<Category>` and is matched exactly; any other
+        value, including `API_DEFINITION` and `SCHEMA_DEFINITION`, is rejected with `400`.
       operationId: deleteApiContentFile
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
@@ -1323,7 +1324,7 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/TextMessageResponse"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2276,7 +2277,7 @@ paths:
         - MCP Server Content
       summary: Delete MCP server content files
       description: >-
-        Deletes stored MCP server content. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
+        Deletes stored MCP server content, matching `type` exactly. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: deleteMcpServerContentFile
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
@@ -2287,7 +2288,7 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/TextMessageResponse"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -3838,10 +3839,11 @@ components:
       required: true
       schema:
         type: string
-        example: document
+        example: DOC_HowTo
       description: >-
-        Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the
-        uploaded ZIP content was classified.
+        Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the
+        thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`).
+        Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.
     contentFileNameQuery:
       name: fileName
       in: query

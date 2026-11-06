@@ -20,9 +20,26 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
 const {
+    isContentType,
     findDuplicateItems,
     describeItem,
 } = require('./apiContentRules');
+
+describe('isContentType', () => {
+    test('accepts the landing page, image and document types', () => {
+        for (const type of ['MARKETING', 'IMAGE', 'DOC_Other', 'DOC_HowTo', 'DOC_LINK', 'DOC_my-docs_2',
+            'DOC_How To', 'DOC_v1.0', 'DOC_%']) {
+            assert.strictEqual(isContentType(type), true, type);
+        }
+    });
+
+    test('rejects the definition, schema and partial values', () => {
+        for (const type of ['API_DEFINITION', 'SCHEMA_DEFINITION', 'DOC', 'DOC_', 'A', '%', '_', 'image',
+            '', undefined, null, 42]) {
+            assert.strictEqual(isContentType(type), false, String(type));
+        }
+    });
+});
 
 describe('findDuplicateItems', () => {
     test('finds two files with the same type and name', () => {
