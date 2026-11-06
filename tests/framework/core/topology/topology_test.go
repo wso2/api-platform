@@ -875,6 +875,95 @@ blocks:
 	}
 }
 
+func TestBlockFiles(t *testing.T) {
+	// writeSuite writes a suite and its block files into a new directory and returns the
+	// suite path.
+	writeSuite := func(t *testing.T, suite string, files map[string]string) string {
+		t.Helper()
+		dir := t.TempDir()
+		for name, content := range files {
+			path := filepath.Join(dir, name)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		}
+		path := filepath.Join(dir, "suite.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(suite), 0o644))
+		return path
+	}
+	const head = `
+suite: s
+defaults: {parallel: 3, db: {gateway-controller: sqlite, api-portal: postgres}}
+`
+	block := func(name string) string {
+		return `
+  - name: ` + name + `
+    components: [{name: mock-jwks}]
+    runners: [{name: r, features: [features/` + name + `.feature]}]
+`
+	}
+
+	t.Run("blocks are added after the suite's own, in the order listed", func(t *testing.T) {
+		path := writeSuite(t, head+"blocks:"+block("inline")+`
+blockFiles:
+  - blocks/one.yaml
+  - blocks/two.yaml
+`, map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a") + block("b"),
+			"blocks/two.yaml": "blocks:" + block("c"),
+		})
+		r, err := LoadFile(path, testRegistry(t))
+		require.NoError(t, err)
+		require.Equal(t, 3, r.Parallel)
+		var names []string
+		for _, b := range r.Blocks {
+			names = append(names, b.Name)
+		}
+		require.Equal(t, []string{"inline", "a", "b", "c"}, names)
+	})
+
+	t.Run("a block name used in two files is rejected", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/one.yaml, blocks/two.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a"),
+			"blocks/two.yaml": "blocks:" + block("a"),
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `duplicate block name "a"`)
+	})
+
+	t.Run("a missing block file is an error", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/missing.yaml]\n", nil)
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `reading block file "blocks/missing.yaml"`)
+	})
+
+	t.Run("a block file without blocks is an error", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/empty.yaml]\n", map[string]string{
+			"blocks/empty.yaml": "blocks: []\n",
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, "declares no blocks")
+	})
+
+	t.Run("a block file holds only blocks", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "defaults: {parallel: 9}\nblocks:" + block("a"),
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, "field defaults not found")
+	})
+
+	t.Run("an absolute block file path is rejected", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [/etc/blocks.yaml]\n", nil)
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, "must be a path relative to the suite file")
+	})
+
+	t.Run("Load without a file location refuses block files", func(t *testing.T) {
+		_, err := load(t, head+"blockFiles: [blocks/one.yaml]\n")
+		require.ErrorContains(t, err, "load it with LoadFile")
+	})
+}
+
 func TestAllProblemsReportedAtOnce(t *testing.T) {
 	src := `
 suite: s

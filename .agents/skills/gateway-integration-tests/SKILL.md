@@ -25,9 +25,10 @@ conventions for writing features and steps.
 ## Layout
 
 - Framework root: `tests/framework/` — run `go test` from here.
-- Suite: `suites/it/it-suite.yaml`. It declares **blocks** (a set of components — gateway,
-  database, testbench, platform-api, … — started once) and, inside each block, **runners**
-  (lists of feature files that run against that block). Blocks with a database matrix expand
+- Suite: `suites/it/it-suite.yaml` holds the shared settings; the **blocks** live in
+  `suites/it/blocks/*.yaml`, one file per combination of products. A block is a set of
+  components (gateway, database, testbench, platform-api, …) started once; inside each block,
+  **runners** (lists of feature files that run against that block). Blocks with a database matrix expand
   to one variant per engine: `<block>/sqlite`, `<block>/postgres`, `<block>/sqlserver`.
 - Features: `suites/it/features/<area>/…/*.feature`. Each feature file starts with a tag
   (e.g. `@config-dump`).
@@ -66,7 +67,7 @@ make -C tests/framework ap-cli
 Find the block and runner that run your feature:
 
 ```bash
-grep -n "<feature-file>.feature" tests/framework/suites/it/it-suite.yaml   # then read up to the block's `- name:`
+grep -rn "<feature-file>.feature" tests/framework/suites/it/blocks/   # then read up to the block's `- name:`
 ```
 
 Run one block variant, optionally narrowed to one feature by its tag:

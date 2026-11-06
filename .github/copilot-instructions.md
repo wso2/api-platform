@@ -28,7 +28,7 @@ code, whether you changed gateway components or only test files.
    ```bash
    make -C gateway test-integration
    ```
-   Or the block and feature you changed. Find the block in `tests/framework/suites/it/it-suite.yaml`
+   Or the block and feature you changed. Find the block in `tests/framework/suites/it/blocks/`
    and select the feature by its tag:
    ```bash
    cd tests/framework
@@ -100,7 +100,7 @@ When creating integration tests for a policy:
 
 2. **Identify systemParameters**: Look for properties with `"wso2/defaultValue"` - these need gateway config entries
 
-3. **Add system parameter values to the block's gateway configuration**: Add the required configuration under `policy_configurations` in the overlay the block uses (`tests/framework/core/catalog/overlays/<name>.toml`, referenced by the block's `overlay:` in `tests/framework/suites/it/it-suite.yaml`), following the JSON path from `"wso2/defaultValue"`:
+3. **Add system parameter values to the block's gateway configuration**: Add the required configuration under `policy_configurations` in the overlay the block uses (`tests/framework/core/catalog/overlays/<name>.toml`, referenced by the block's `overlay:` in its `tests/framework/suites/it/blocks/*.yaml` file), following the JSON path from `"wso2/defaultValue"`:
    - Path: `${config.policy_configurations.<policy_id>.<param_name>}`
    - Location: the overlay → `[policy_configurations.<policy_id>]` → `<param_name>`
    - Note: The `<policy_id>` in the path typically follows the pattern `<policyname>_v<version>` with underscores (e.g., `jwtauth_v1` for `jwt-auth` v1)

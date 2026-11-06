@@ -276,34 +276,47 @@ func checkSuiteYAMLs(paths string) []string {
 		if path == "" {
 			continue
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			issues = append(issues, fmt.Sprintf("%s: read suite YAML: %v", path, err))
-			continue
-		}
-		var suite struct {
-			Blocks []struct {
-				Runners []struct {
-					Name     string   `yaml:"name"`
-					Tags     string   `yaml:"tags"`
-					Features []string `yaml:"features"`
-				} `yaml:"runners"`
-			} `yaml:"blocks"`
-		}
-		if err := yaml.Unmarshal(data, &suite); err != nil {
-			issues = append(issues, fmt.Sprintf("%s: parse suite YAML: %v", path, err))
-			continue
-		}
-		for _, block := range suite.Blocks {
-			for _, runner := range block.Runners {
-				if !hasFrameworkMarker(runner.Tags) && !hasFrameworkMarker(runner.Name) {
-					continue
-				}
-				issues = append(issues, fmt.Sprintf("%s: framework-only runner %q must not be registered in a product suite", path, runner.Name))
-			}
+		blockFiles, fileIssues := checkSuiteYAML(path)
+		issues = append(issues, fileIssues...)
+		// A suite's blockFiles are relative to it and hold more of its blocks.
+		for _, name := range blockFiles {
+			_, blockIssues := checkSuiteYAML(filepath.Join(filepath.Dir(path), name))
+			issues = append(issues, blockIssues...)
 		}
 	}
 	return issues
+}
+
+// checkSuiteYAML checks the runners of one suite or block file and returns the block
+// files it names.
+func checkSuiteYAML(path string) ([]string, []string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("%s: read suite YAML: %v", path, err)}
+	}
+	var suite struct {
+		BlockFiles []string `yaml:"blockFiles"`
+		Blocks     []struct {
+			Runners []struct {
+				Name     string   `yaml:"name"`
+				Tags     string   `yaml:"tags"`
+				Features []string `yaml:"features"`
+			} `yaml:"runners"`
+		} `yaml:"blocks"`
+	}
+	if err := yaml.Unmarshal(data, &suite); err != nil {
+		return nil, []string{fmt.Sprintf("%s: parse suite YAML: %v", path, err)}
+	}
+	var issues []string
+	for _, block := range suite.Blocks {
+		for _, runner := range block.Runners {
+			if !hasFrameworkMarker(runner.Tags) && !hasFrameworkMarker(runner.Name) {
+				continue
+			}
+			issues = append(issues, fmt.Sprintf("%s: framework-only runner %q must not be registered in a product suite", path, runner.Name))
+		}
+	}
+	return suite.BlockFiles, issues
 }
 
 func hasFrameworkMarker(value string) bool {
