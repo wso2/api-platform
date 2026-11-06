@@ -192,6 +192,29 @@ test('a ZIP that declares a ZIP64 count without a ZIP64 end record is rejected',
     await assert.rejects(readZip(asZip64(damagedZip(), 1, { locator: false })), { name: 'ValidationError', message: 'Invalid zip file' });
 });
 
+test('a ZIP rejected part-way is not read again once rejected, so the caller can remove it', async (t) => {
+    const unzipper = require('unzipper');
+    const util = require('../utils/util');
+    const openFile = unzipper.Open.file;
+    let settled = false;
+    let readsAfterSettle = 0;
+    t.mock.method(unzipper.Open, 'file', function (...args) {
+        if (settled) {
+            readsAfterSettle += 1;
+        }
+        return openFile.apply(this, args);
+    });
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'slip-'));
+    const zip = path.join(dir, 'content.zip');
+    fs.writeFileSync(zip, createZip([{ name: 'docs/A.md', content: '# A' }, { name: '../evil.txt', content: 'x' }]));
+
+    await assert.rejects(util.unzipDirectory(zip, path.join(dir, 'out'), { allowEmpty: true }));
+    settled = true;
+    fs.rmSync(dir, { recursive: true, force: true });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.strictEqual(readsAfterSettle, 0);
+});
+
 test('a file that is not a ZIP is rejected naming the content field', async () => {
     await assert.rejects(extractApiContentFromUploadedZip({ originalname: 'a.txt', buffer: Buffer.from('x') }, 'o', 'a'),
         { name: 'ValidationError', message: 'content must be a .zip file' });
