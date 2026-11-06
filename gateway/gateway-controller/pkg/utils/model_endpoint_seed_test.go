@@ -67,7 +67,7 @@ func TestModelEndpointSeedTransformers_MatchTheTemplates(t *testing.T) {
 	for i := range seed {
 		seed[i].Version = ptrTo("v0")
 	}
-	endpoint := modelgateway.Endpoint{Handle: "wso2", InboundTemplate: "openai", InboundGroup: "wso2-openai",
+	endpoint := modelgateway.Endpoint{Handle: "openai", InboundTemplate: "openai", InboundGroup: "wso2-openai",
 		Transformers: seed, DispatchPaths: []string{"/chat/completions"}}
 
 	templateStore, err := NewLLMTemplateLoader(slog.New(slog.NewTextHandler(io.Discard, nil))).
@@ -152,10 +152,10 @@ func TestModelKeyScopes(t *testing.T) {
 		require.NoError(t, store.Add(&models.StoredConfig{UUID: models.ModelEndpointUUID(handle),
 			Kind: models.KindModelEndpoint, Handle: handle, DisplayName: handle, Version: "v1.0", SourceConfiguration: e}))
 	}
-	addEndpoint("wso2", "")
+	addEndpoint("openai", "")
 	addEndpoint("anthropic-native", "anthropic")
 	m := api.ModelConfiguration{Metadata: api.Metadata{Name: "claude-haiku"},
-		Spec: api.ModelConfigData{Endpoints: []string{"wso2", "anthropic-native", "not-here"}}}
+		Spec: api.ModelConfigData{Endpoints: []string{"openai", "anthropic-native", "not-here"}}}
 	require.NoError(t, store.Add(&models.StoredConfig{UUID: "model-uuid", Kind: models.KindModel,
 		Handle: "claude-haiku", DisplayName: "Claude Haiku", Version: "v1.0", SourceConfiguration: m}))
 	require.NoError(t, store.Add(&models.StoredConfig{UUID: "rest-uuid", Kind: models.KindRestApi, Handle: "orders",
@@ -166,7 +166,7 @@ func TestModelKeyScopes(t *testing.T) {
 	scopes, ok := resolve("model-uuid")
 	require.True(t, ok)
 	assert.Equal(t, []apikeyxds.KeyScope{
-		{APIId: models.ModelEndpointUUID("wso2"), Operations: []string{"claude-haiku", "GET /models"}, Owner: "claude-haiku"},
+		{APIId: models.ModelEndpointUUID("openai"), Operations: []string{"claude-haiku", "GET /models"}, Owner: "claude-haiku"},
 		{APIId: models.ModelEndpointUUID("anthropic-native"), Operations: []string{"claude-haiku", "GET /v1/models"},
 			Owner: "claude-haiku"},
 	}, scopes, "one scope per endpoint the gateway has; the missing one is skipped")

@@ -3662,9 +3662,8 @@ paths:
         Add a model endpoint to the Gateway. A model endpoint is the client-facing
         API that serves Models: a request names a Model (in the body or the path,
         as the endpoint's inbound template says) and is dispatched to that Model's
-        own policy chain. The handle `wso2` is reserved for the endpoint the
+        own policy chain. The handle `openai` is reserved for the endpoint the
         gateway provisions when `controller.models.endpoint.provision` is set.
-        Requires `controller.models.enabled`.
       operationId: createModelEndpoint
       x-basicauth-roles: [admin]
       tags:
@@ -3695,7 +3694,7 @@ paths:
         '409':
           description: >
             Conflict - an endpoint with the same handle or display name exists, the
-            context and vhost are already used, or the handle is the reserved `wso2`
+            context and vhost are already used, or the handle is the reserved `openai`
           content:
             application/json:
               schema:
@@ -3821,7 +3820,7 @@ paths:
         Update a model endpoint. Every Model the endpoint serves is recompiled; an
         update that would leave a Model it serves today unable to compile (for
         example by removing the transformer that Model's provider needs) is refused,
-        naming those Models. The context of the provisioned `wso2` endpoint is set
+        naming those Models. The context of the provisioned `openai` endpoint is set
         by `controller.models.endpoint.context` and cannot be changed here.
       operationId: updateModelEndpoint
       x-basicauth-roles: [admin]
@@ -3884,7 +3883,7 @@ paths:
       summary: Delete a model endpoint
       description: >
         Delete a model endpoint and its API keys. Refused while a deployed Model
-        names the endpoint in `spec.endpoints`, and for the provisioned `wso2`
+        names the endpoint in `spec.endpoints`, and for the provisioned `openai`
         endpoint while `controller.models.endpoint.provision` is set.
       operationId: deleteModelEndpoint
       x-basicauth-roles: [admin]
@@ -3922,7 +3921,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
-          description: A deployed Model names the endpoint, or it is the provisioned `wso2` endpoint
+          description: A deployed Model names the endpoint, or it is the provisioned `openai` endpoint
           content:
             application/json:
               schema:
@@ -4195,12 +4194,11 @@ paths:
       description: >
         Add a Model to the Gateway. A Model is an AI model the gateway serves on
         the model endpoints it names in `spec.endpoints` (for example the
-        gateway-provisioned `wso2`, by default at `/wso2/v1`): clients send the
+        gateway-provisioned `openai`, by default at `/openai/v1`): clients send the
         Model's `modelName` where the endpoint's inbound format carries the model,
         and the gateway routes the request to one of the Model's targets. The Model
         is not checked against its endpoints: one that an endpoint cannot serve is
-        left out of that endpoint and the reason is logged. Requires
-        `controller.models.enabled`.
+        left out of that endpoint and the reason is logged.
       operationId: createModel
       x-basicauth-roles: [admin]
       tags:
@@ -8334,7 +8332,7 @@ components:
           type: string
           description: >
             Base path the endpoint is served at (must start with /, no trailing
-            slash). Required for every endpoint but the provisioned `wso2`, whose
+            slash). Required for every endpoint but the provisioned `openai`, whose
             context is set by `controller.models.endpoint.context`. The context and vhost
             must not clash with any other artifact on the gateway.
           pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
@@ -8491,7 +8489,7 @@ components:
           displayName: GPT-4o
           version: v1.0
           modelName: gpt-4o
-          endpoints: [wso2]
+          endpoints: [openai]
           targets:
             - name: gpt-4o
               provider: wso2-openai-provider
@@ -8516,7 +8514,7 @@ components:
           displayName: GPT-4o
           version: v1.0
           modelName: gpt-4o
-          endpoints: [wso2]
+          endpoints: [openai]
           targets:
             - name: gpt-4o
               provider: wso2-openai-provider
@@ -8575,7 +8573,7 @@ components:
             type: string
             minLength: 1
             maxLength: 253
-          example: [wso2]
+          example: [openai]
         targets:
           type: array
           minItems: 1

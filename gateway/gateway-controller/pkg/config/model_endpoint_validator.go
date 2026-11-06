@@ -31,7 +31,7 @@ import (
 // whose context comes from controller.models.endpoint.context rather than its spec. Kept
 // here as well as in pkg/models because this package cannot import that one's
 // helpers without a cycle; a test pins the two together.
-const ModelEndpointDefaultHandle = "wso2"
+const ModelEndpointDefaultHandle = "openai"
 
 // transformerTypeNone attaches no transformer.
 const transformerTypeNone = "none"

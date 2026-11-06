@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# The transformer entries the provisioned default model endpoint ("wso2", an OpenAI
+# The transformer entries the provisioned default model endpoint ("openai", an OpenAI
 # endpoint) is created with. Written once, when the endpoint is first created; from
 # then on they are the operator's configuration and an upgrade never rewrites them.
 # OpenAI providers need no entry: they already speak the endpoint's format.

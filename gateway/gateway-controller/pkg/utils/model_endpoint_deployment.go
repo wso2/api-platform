@@ -44,7 +44,7 @@ var (
 	ErrModelEndpointValidation = errors.New("model endpoint configuration invalid")
 
 	// ErrModelEndpointReserved is returned for a write the provisioned default
-	// endpoint does not allow through the API: creating or deleting `wso2`, or
+	// endpoint does not allow through the API: creating or deleting `openai`, or
 	// moving it off its configured context, while provisioning is on.
 	ErrModelEndpointReserved = errors.New("model endpoint reserved")
 )
@@ -66,9 +66,6 @@ func (s *LLMDeploymentService) publishModelEndpointEvent(action, entityID, corre
 func (s *LLMDeploymentService) DeployModelEndpointConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
-	}
-	if !s.ModelsEnabled() {
-		return nil, fmt.Errorf("%w: %w", ErrModelEndpointValidation, ErrModelsDisabled)
 	}
 	logger := params.Logger
 	if logger == nil {
@@ -225,7 +222,7 @@ func (s *LLMDeploymentService) DeployModelEndpointConfiguration(params LLMDeploy
 }
 
 // applyDefaultEndpointRules enforces what the provisioned endpoint does not let the
-// API change. While provisioning is on, `wso2` is the gateway's: the API can
+// API change. While provisioning is on, `openai` is the gateway's: the API can
 // neither create it nor move it off controller.models.endpoint.context. Its context is
 // configuration, so a write that omits it keeps the configured one. With
 // provisioning off it is an ordinary endpoint, still defaulting to the configured

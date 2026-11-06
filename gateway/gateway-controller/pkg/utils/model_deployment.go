@@ -38,22 +38,12 @@ import (
 var (
 	// ErrModelValidation is returned when a Model fails parsing or validation.
 	ErrModelValidation = errors.New("model configuration invalid")
-
-	// ErrModelsDisabled is returned for a Model write while controller.models is
-	// off. A Model saved then would be stored and never served, which reads to an
-	// operator as a Model that does not work.
-	ErrModelsDisabled = errors.New("the models feature is disabled; set controller.models.enabled to serve Models")
 )
 
 // SetModelsConfig sets the [controller.models] configuration the Model and model
-// endpoint paths check against. Unset, the feature is off.
+// endpoint paths check against. Unset, no default endpoint is provisioned.
 func (s *LLMDeploymentService) SetModelsConfig(cfg config.ModelsConfig) {
 	s.modelsConfig = cfg
-}
-
-// ModelsEnabled reports whether the models feature is on.
-func (s *LLMDeploymentService) ModelsEnabled() bool {
-	return s.modelsConfig.Enabled
 }
 
 func (s *LLMDeploymentService) publishModelEvent(action, entityID, correlationID string, logger *slog.Logger) {
@@ -84,10 +74,6 @@ func (s *LLMDeploymentService) DeployModelConfiguration(params LLMDeploymentPara
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
 	}
-	if !s.ModelsEnabled() {
-		return nil, fmt.Errorf("%w: %w", ErrModelValidation, ErrModelsDisabled)
-	}
-
 	var modelConfig api.ModelConfiguration
 	if err := s.parser.Parse(params.Data, params.ContentType, &modelConfig); err != nil {
 		return nil, fmt.Errorf("%w: failed to parse model configuration: %v", ErrModelValidation, err)

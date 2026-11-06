@@ -338,15 +338,15 @@ func TestPushGatewayArtifacts_SkipsModelKinds(t *testing.T) {
 	endpoint := api.ModelEndpointConfiguration{
 		ApiVersion: api.ModelEndpointConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.ModelEndpointConfigurationKindModelEndpoint,
-		Metadata:   api.Metadata{Name: "wso2"},
-		Spec:       api.ModelEndpointConfigData{DisplayName: "WSO2 Model Endpoint", Version: "v1.0"},
+		Metadata:   api.Metadata{Name: "openai"},
+		Spec:       api.ModelEndpointConfigData{DisplayName: "OpenAI Model Endpoint", Version: "v1.0"},
 	}
-	seed(&models.StoredConfig{UUID: models.ModelEndpointUUID("wso2"), Kind: models.KindModelEndpoint, Handle: "wso2",
-		DisplayName: "WSO2 Model Endpoint", Version: "v1.0", Origin: models.OriginGatewayAPI,
+	seed(&models.StoredConfig{UUID: models.ModelEndpointUUID("openai"), Kind: models.KindModelEndpoint, Handle: "openai",
+		DisplayName: "OpenAI Model Endpoint", Version: "v1.0", Origin: models.OriginGatewayAPI,
 		DesiredState: models.StateDeployed, Configuration: endpoint, SourceConfiguration: endpoint})
 	model := api.ModelConfiguration{
 		ApiVersion: "gateway.api-platform.wso2.com/v1", Kind: "Model", Metadata: api.Metadata{Name: "gpt"},
-		Spec: api.ModelConfigData{DisplayName: "GPT", Version: "v1.0", ModelName: "gpt-4o", Endpoints: []string{"wso2"}},
+		Spec: api.ModelConfigData{DisplayName: "GPT", Version: "v1.0", ModelName: "gpt-4o", Endpoints: []string{"openai"}},
 	}
 	seed(&models.StoredConfig{UUID: "gw-model", Kind: models.KindModel, Handle: "gpt", DisplayName: "GPT",
 		Version: "v1.0", Origin: models.OriginGatewayAPI, DesiredState: models.StateDeployed,

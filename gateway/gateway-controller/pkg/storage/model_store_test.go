@@ -44,7 +44,7 @@ func testModelConfig(handle, modelName string) *models.StoredConfig {
 			DisplayName: handle,
 			Version:     "v1.0",
 			ModelName:   modelName,
-			Endpoints:   []string{"wso2"},
+			Endpoints:   []string{"openai"},
 			Targets: []api.ModelTarget{{
 				Name: modelName, Provider: "openai", Alias: strPtr("openai"),
 			}},
@@ -231,5 +231,5 @@ func TestSQLite_UpgradeV6AddsModelTables(t *testing.T) {
 
 	model := testModelConfig("gpt", "gpt-4o")
 	assert.NilError(t, s.SaveConfig(model))
-	assert.NilError(t, s.SaveConfig(testModelEndpointConfig("wso2", "/wso2/v1")))
+	assert.NilError(t, s.SaveConfig(testModelEndpointConfig("openai", "/openai/v1")))
 }

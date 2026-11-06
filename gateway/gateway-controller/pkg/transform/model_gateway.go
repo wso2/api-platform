@@ -177,11 +177,6 @@ func (c *ModelGatewayCompiler) Compile(cfg *models.StoredConfig) (*models.Runtim
 	}
 	sensitive := newStringSet(cfg.SensitiveValues)
 
-	if !mcfg.Enabled {
-		slog.Warn("A model endpoint exists but controller.models.enabled is off; it serves nothing",
-			slog.String("endpoint", cfg.Handle))
-		return rdc, nil, nil
-	}
 	if rdc.Context == "" {
 		slog.Error("Model endpoint has no context; it serves nothing", slog.String("endpoint", cfg.Handle))
 		return rdc, nil, nil

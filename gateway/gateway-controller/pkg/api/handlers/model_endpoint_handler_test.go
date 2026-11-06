@@ -64,8 +64,8 @@ func newModelEndpointTestServer(t *testing.T) *APIServer {
 		"test-gateway", nil, &http.Client{})
 	llm := utils.NewLLMDeploymentService(store, db, nil, nil, templates, deploymentService, routerCfg,
 		utils.NewLoadedPolicyVersionResolver(defs), config.NewPolicyValidator(defs, nil))
-	llm.SetModelsConfig(config.ModelsConfig{Enabled: true,
-		Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/wso2/v1"}})
+	llm.SetModelsConfig(config.ModelsConfig{
+		Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/openai/v1"}})
 	require.NoError(t, llm.ProvisionModelEndpoint(logger))
 
 	apiKeyCfg := &config.APIKeyConfig{APIKeysPerUserPerAPI: 10, Algorithm: "sha256", MinKeyLength: 32, MaxKeyLength: 128}
@@ -124,11 +124,11 @@ func TestModelEndpointHandlers_CRUD(t *testing.T) {
 	assert.Equal(t, "partners", *created.Status.Id)
 
 	w = httptest.NewRecorder()
-	s.GetModelEndpointById(w, jsonRequest(t, http.MethodGet, "/model-endpoints/wso2", nil), "wso2")
+	s.GetModelEndpointById(w, jsonRequest(t, http.MethodGet, "/model-endpoints/openai", nil), "openai")
 	require.Equal(t, http.StatusOK, w.Code)
-	var wso2 api.ModelEndpointConfiguration
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &wso2))
-	assert.Equal(t, "/wso2/v1", *wso2.Spec.Context)
+	var provisioned api.ModelEndpointConfiguration
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &provisioned))
+	assert.Equal(t, "/openai/v1", *provisioned.Spec.Context)
 
 	w = httptest.NewRecorder()
 	s.ListModelEndpoints(w, jsonRequest(t, http.MethodGet, "/model-endpoints", nil), api.ListModelEndpointsParams{})
@@ -165,8 +165,8 @@ func TestModelEndpointHandlers_Errors(t *testing.T) {
 		{"invalid", endpointRequestBody("p", "", nil), http.StatusBadRequest},
 		{"unsupported inbound format", endpointRequestBody("p", "/p", map[string]any{"inboundTemplate": "awsbedrock"}),
 			http.StatusBadRequest},
-		{"reserved handle", endpointRequestBody("wso2", "", nil), http.StatusConflict},
-		{"context taken", endpointRequestBody("p", "/wso2/v1", nil), http.StatusConflict},
+		{"reserved handle", endpointRequestBody("openai", "", nil), http.StatusConflict},
+		{"context taken", endpointRequestBody("p", "/openai/v1", nil), http.StatusConflict},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -177,7 +177,7 @@ func TestModelEndpointHandlers_Errors(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	s.DeleteModelEndpoint(w, jsonRequest(t, http.MethodDelete, "/model-endpoints/wso2", nil), "wso2")
+	s.DeleteModelEndpoint(w, jsonRequest(t, http.MethodDelete, "/model-endpoints/openai", nil), "openai")
 	assert.Equal(t, http.StatusConflict, w.Code, "the provisioned endpoint cannot be deleted")
 }
 
@@ -186,12 +186,12 @@ func TestModelKeyHandlers(t *testing.T) {
 
 	// An endpoint key.
 	w := httptest.NewRecorder()
-	s.CreateModelEndpointAPIKey(w, jsonRequest(t, http.MethodPost, "/model-endpoints/wso2/api-keys",
-		map[string]any{"name": "team-a"}), "wso2")
+	s.CreateModelEndpointAPIKey(w, jsonRequest(t, http.MethodPost, "/model-endpoints/openai/api-keys",
+		map[string]any{"name": "team-a"}), "openai")
 	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 
 	w = httptest.NewRecorder()
-	s.ListModelEndpointAPIKeys(w, jsonRequest(t, http.MethodGet, "/model-endpoints/wso2/api-keys", nil), "wso2")
+	s.ListModelEndpointAPIKeys(w, jsonRequest(t, http.MethodGet, "/model-endpoints/openai/api-keys", nil), "openai")
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "team-a")
 
@@ -214,7 +214,7 @@ func TestModelKeyHandlers(t *testing.T) {
 		s.CreateModel(w, jsonRequest(t, http.MethodPost, "/models", body))
 		require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 	}
-	createModel("gpt", "wso2")
+	createModel("gpt", "openai")
 	w = httptest.NewRecorder()
 	s.CreateModelAPIKey(w, jsonRequest(t, http.MethodPost, "/models/gpt/api-keys", map[string]any{"name": "gpt-app"}), "gpt")
 	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())

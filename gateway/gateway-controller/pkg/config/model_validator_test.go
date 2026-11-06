@@ -38,7 +38,7 @@ func validModel() api.ModelConfiguration {
 			DisplayName: "GPT-4o",
 			Version:     "v1.0",
 			ModelName:   "gpt-4o",
-			Endpoints:   []string{"wso2"},
+			Endpoints:   []string{"openai"},
 			Targets: []api.ModelTarget{{
 				Name: "gpt-4o", Provider: "openai-provider", Alias: stringPtr("openai"),
 			}},
@@ -95,7 +95,7 @@ func TestModelValidator_Rules(t *testing.T) {
 		{"no endpoints", func(m *api.ModelConfiguration) { m.Spec.Endpoints = nil }, "spec.endpoints"},
 		{"empty endpoints", func(m *api.ModelConfiguration) { m.Spec.Endpoints = []string{} }, "spec.endpoints"},
 		{"endpoint handle", func(m *api.ModelConfiguration) { m.Spec.Endpoints = []string{"Bad Handle"} }, "spec.endpoints[0]"},
-		{"duplicate endpoint", func(m *api.ModelConfiguration) { m.Spec.Endpoints = []string{"wso2", "wso2"} }, "spec.endpoints[1]"},
+		{"duplicate endpoint", func(m *api.ModelConfiguration) { m.Spec.Endpoints = []string{"openai", "openai"} }, "spec.endpoints[1]"},
 		{"target name required", func(m *api.ModelConfiguration) { m.Spec.Targets[0].Name = "" }, "spec.targets[0].name"},
 		{"target name length", func(m *api.ModelConfiguration) {
 			m.Spec.Targets[0].Name = strings.Repeat("a", MaxModelNameBytes+1)
@@ -208,8 +208,15 @@ func TestModelValidator_EndpointsNotCheckedAgainstGateway(t *testing.T) {
 	// A Model may name endpoints the gateway does not have: it is served on the ones
 	// it has, and naming the right ones is the configurator's job.
 	m := validModel()
-	m.Spec.Endpoints = []string{"wso2", "partners", "not-on-this-gateway"}
+	m.Spec.Endpoints = []string{"openai", "partners", "not-on-this-gateway"}
 	assert.Empty(t, NewModelValidator().Validate(&m))
+}
+
+func TestConfig_ModelsDefaults(t *testing.T) {
+	m := defaultConfig().Controller.Models
+	assert.True(t, m.ProvisionsDefaultEndpoint(), "the gateway provisions its default model endpoint unless told not to")
+	assert.Equal(t, "/openai/v1", m.EffectiveContext())
+	assert.Zero(t, m.Endpoint.MaxRequestBodyBytes, "zero takes the listener's buffer limit")
 }
 
 func TestConfig_Validate_ModelsConfig(t *testing.T) {
@@ -222,20 +229,18 @@ func TestConfig_Validate_ModelsConfig(t *testing.T) {
 		{name: "defaults", models: ModelsConfig{}, check: func(t *testing.T, m ModelsConfig) {
 			assert.Equal(t, DefaultModelsContext, m.Endpoint.Context)
 			assert.Equal(t, int64(1048576), m.Endpoint.MaxRequestBodyBytes)
-			assert.False(t, m.ProvisionsDefaultEndpoint(), "nothing is provisioned while the feature is off")
+			assert.False(t, m.ProvisionsDefaultEndpoint(), "nothing is provisioned unless provision is set")
 		}},
-		{name: "provisions when enabled", models: ModelsConfig{Enabled: true, Endpoint: ModelEndpointConfig{Provision: true}},
+		{name: "provisions", models: ModelsConfig{Endpoint: ModelEndpointConfig{Provision: true}},
 			check: func(t *testing.T, m ModelsConfig) { assert.True(t, m.ProvisionsDefaultEndpoint()) }},
-		{name: "provision off", models: ModelsConfig{Enabled: true},
-			check: func(t *testing.T, m ModelsConfig) { assert.False(t, m.ProvisionsDefaultEndpoint()) }},
 		{name: "root context", models: ModelsConfig{Endpoint: ModelEndpointConfig{Context: "/"}}, wantErr: "must not be '/'"},
-		{name: "relative context", models: ModelsConfig{Endpoint: ModelEndpointConfig{Context: "wso2"}}, wantErr: "absolute path"},
+		{name: "relative context", models: ModelsConfig{Endpoint: ModelEndpointConfig{Context: "openai"}}, wantErr: "absolute path"},
 		{name: "trailing slash", models: ModelsConfig{Endpoint: ModelEndpointConfig{Context: "/wso2/"}}, wantErr: "absolute path"},
 		{name: "dot segment", models: ModelsConfig{Endpoint: ModelEndpointConfig{Context: "/wso2/../x"}}, wantErr: "absolute path"},
 		{name: "health namespace", models: ModelsConfig{Endpoint: ModelEndpointConfig{Context: "/_gateway-health/x"}}, wantErr: "health-check"},
 		{name: "negative body", models: ModelsConfig{Endpoint: ModelEndpointConfig{MaxRequestBodyBytes: -1}}, wantErr: "negative"},
 		{name: "body above listener", models: ModelsConfig{Endpoint: ModelEndpointConfig{MaxRequestBodyBytes: 1 << 30}}, wantErr: "raise both together"},
-		{name: "custom", models: ModelsConfig{Enabled: true, Endpoint: ModelEndpointConfig{Context: "/ai/v1", MaxRequestBodyBytes: 4096}},
+		{name: "custom", models: ModelsConfig{Endpoint: ModelEndpointConfig{Context: "/ai/v1", MaxRequestBodyBytes: 4096}},
 			check: func(t *testing.T, m ModelsConfig) {
 				assert.Equal(t, "/ai/v1", m.Endpoint.Context)
 				assert.Equal(t, int64(4096), m.Endpoint.MaxRequestBodyBytes)

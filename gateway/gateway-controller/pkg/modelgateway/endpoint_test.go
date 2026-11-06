@@ -29,7 +29,7 @@ import (
 
 func openAIEndpoint(entries ...api.ModelEndpointTransformer) Endpoint {
 	return Endpoint{
-		Handle:          "wso2",
+		Handle:          "openai",
 		InboundTemplate: "openai",
 		InboundGroup:    "wso2-openai",
 		Transformers:    entries,
@@ -78,7 +78,7 @@ func TestBind_ProviderOnTheInboundFormatPassesThrough(t *testing.T) {
 func TestBind_NoEntryLeavesTheModelOut(t *testing.T) {
 	m := resolved(t, provider("claude", "anthropic", unexposed), "claude-sonnet")
 	_, err := Bind(m, openAIEndpoint())
-	requireErrorMentioning(t, err, "endpoint 'wso2' (inbound format 'openai')", "no transformer for provider 'claude'",
+	requireErrorMentioning(t, err, "endpoint 'openai' (inbound format 'openai')", "no transformer for provider 'claude'",
 		"template 'anthropic'", "spec.transformers", "reads 'openai' requests", "remove the endpoint from the Model")
 
 	// An OpenAI provider behind an Anthropic endpoint needs a transformer the
@@ -143,7 +143,7 @@ func TestBind_Placeholders(t *testing.T) {
 	// {apiVersion} with no default needs the provider to state one.
 	m := resolved(t, provider("az", "azure-openai", unexposed), "my-deployment")
 	_, err := Bind(m, openAIEndpoint(azureEntry))
-	requireErrorMentioning(t, err, "endpoint 'wso2', provider 'az'", "spec.upstream.apiVersion")
+	requireErrorMentioning(t, err, "endpoint 'openai', provider 'az'", "spec.upstream.apiVersion")
 
 	m = resolved(t, provider("az", "azure-openai", unexposed, func(p *api.LLMProviderConfiguration) {
 		p.Spec.Upstream.ApiVersion = ptr("2024-10-21")
@@ -186,7 +186,7 @@ func TestBind_RoutedTargetNeedsItsPathsAllowed(t *testing.T) {
 	})
 	m := resolved(t, routed, "gemini-1.5-pro")
 	_, err := Bind(m, openAIEndpoint(geminiEntry))
-	requireErrorMentioning(t, err, ":streamGenerateContent", "accessControl", "endpoint 'wso2'")
+	requireErrorMentioning(t, err, ":streamGenerateContent", "accessControl", "endpoint 'openai'")
 
 	m.Targets[0].Provider.Config.Spec.AccessControl.Exceptions = &[]api.RouteException{{
 		Path: "/v1beta/models/*", Methods: []api.RouteExceptionMethods{"POST"},

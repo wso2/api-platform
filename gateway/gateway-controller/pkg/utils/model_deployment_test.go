@@ -40,16 +40,16 @@ import (
 )
 
 type modelServiceFixture struct {
-	t       *testing.T
-	svc     *LLMDeploymentService
-	db      storage.Storage
-	store   *storage.ConfigStore
-	hub     *mockLLMEventHub
-	logger  *slog.Logger
-	enabled config.ModelsConfig
+	t      *testing.T
+	svc    *LLMDeploymentService
+	db     storage.Storage
+	store  *storage.ConfigStore
+	hub    *mockLLMEventHub
+	logger *slog.Logger
+	models config.ModelsConfig
 }
 
-func newModelServiceFixture(t *testing.T, enabled bool) *modelServiceFixture {
+func newModelServiceFixture(t *testing.T) *modelServiceFixture {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	metrics.Init()
@@ -87,9 +87,9 @@ func newModelServiceFixture(t *testing.T, enabled bool) *modelServiceFixture {
 	apiSvc := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerCfg, hub, testGatewayID)
 	svc := NewLLMDeploymentService(store, db, nil, nil, templates, apiSvc, routerCfg,
 		NewLoadedPolicyVersionResolver(defs), config.NewPolicyValidator(defs, nil))
-	mc := config.ModelsConfig{Enabled: enabled, Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/wso2/v1"}}
+	mc := config.ModelsConfig{Endpoint: config.ModelEndpointConfig{Provision: true, Context: config.DefaultModelsContext}}
 	svc.SetModelsConfig(mc)
-	return &modelServiceFixture{t: t, svc: svc, db: db, store: store, hub: hub, logger: logger, enabled: mc}
+	return &modelServiceFixture{t: t, svc: svc, db: db, store: store, hub: hub, logger: logger, models: mc}
 }
 
 func (f *modelServiceFixture) params(body any) LLMDeploymentParams {
@@ -98,7 +98,7 @@ func (f *modelServiceFixture) params(body any) LLMDeploymentParams {
 	return LLMDeploymentParams{Data: data, ContentType: "application/json", Origin: models.OriginGatewayAPI, Logger: f.logger}
 }
 
-// provisionDefaultEndpoint provisions wso2, the endpoint modelBody names.
+// provisionDefaultEndpoint provisions openai, the endpoint modelBody names.
 func (f *modelServiceFixture) provisionDefaultEndpoint() {
 	f.t.Helper()
 	require.NoError(f.t, f.svc.ProvisionModelEndpoint(f.logger))
@@ -165,7 +165,7 @@ func modelBody(handle, modelName string, targets ...map[string]any) map[string]a
 		"kind":       "Model",
 		"metadata":   map[string]any{"name": handle},
 		"spec": map[string]any{"displayName": handle, "version": "v1.0", "modelName": modelName,
-			"endpoints": []any{"wso2"}, "targets": ts},
+			"endpoints": []any{"openai"}, "targets": ts},
 	}
 }
 
@@ -200,18 +200,8 @@ func (f *modelServiceFixture) eventsOf(t eventhub.EventType) []eventhub.Event {
 	return out
 }
 
-func TestModelService_RefusedWhileDisabled(t *testing.T) {
-	f := newModelServiceFixture(t, false)
-	f.createDirectProvider("openai")
-	_, err := f.svc.CreateModel(f.params(modelBody("gpt", "gpt-4o", modelTarget("a", "openai", "gpt-4o"))))
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrModelValidation))
-	assert.True(t, errors.Is(err, ErrModelsDisabled))
-	assert.Empty(t, f.eventsOf(eventhub.EventTypeModel))
-}
-
 func TestModelService_CreateUpdateDelete(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.provisionDefaultEndpoint()
 	f.createDirectProvider("openai")
 
@@ -246,17 +236,17 @@ func TestModelService_CreateUpdateDelete(t *testing.T) {
 
 // A missing endpoint and a missing provider are both reported, in one error.
 func TestModelService_ResolutionErrorsAreValidationErrors(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	_, err := f.svc.CreateModel(f.params(modelBody("gpt", "gpt-4o", modelTarget("a", "missing", "gpt-4o"))))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrModelValidation))
 	assert.Contains(t, err.Error(), "2 error(s)")
-	assert.Contains(t, err.Error(), "spec.endpoints[0]: model endpoint 'wso2' not found")
+	assert.Contains(t, err.Error(), "spec.endpoints[0]: model endpoint 'openai' not found")
 	assert.Contains(t, err.Error(), "provider 'missing' not found")
 }
 
 func TestModelService_InheritsTargetCredentialOnUpdate(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.provisionDefaultEndpoint()
 	f.createRoutedProvider("routed")
 
@@ -303,7 +293,7 @@ func TestModelService_InheritsTargetCredentialOnUpdate(t *testing.T) {
 }
 
 func TestModelService_ReferencedProviderCannotBeDeletedOrUndeployed(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.provisionDefaultEndpoint()
 	f.createDirectProvider("openai")
 	_, err := f.svc.CreateModel(f.params(modelBody("gpt", "gpt-4o", modelTarget("a", "openai", "gpt-4o"))))
@@ -338,7 +328,7 @@ func TestModelService_ReferencedProviderCannotBeDeletedOrUndeployed(t *testing.T
 }
 
 func TestModelEndpointProvisioning(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 
 	require.NoError(t, f.svc.ProvisionModelEndpoint(f.logger))
 	cfg, err := f.db.GetConfigByKindAndHandle(models.KindModelEndpoint, models.DefaultModelEndpointHandle)
@@ -347,7 +337,7 @@ func TestModelEndpointProvisioning(t *testing.T) {
 	assert.Empty(t, cfg.CPSyncStatus, "a model endpoint is not pushed to the control plane yet")
 	endpoint := cfg.SourceConfiguration.(api.ModelEndpointConfiguration)
 	assert.Equal(t, models.DefaultModelEndpointDisplayName, endpoint.Spec.DisplayName)
-	assert.Equal(t, "/wso2/v1", *endpoint.Spec.Context)
+	assert.Equal(t, config.DefaultModelsContext, *endpoint.Spec.Context)
 	require.NotNil(t, endpoint.Spec.Policies)
 	auth := (*endpoint.Spec.Policies)[0]
 	assert.Equal(t, "api-key-auth", auth.Name)
@@ -368,7 +358,7 @@ func TestModelEndpointProvisioning(t *testing.T) {
 	assert.Len(t, f.eventsOf(eventhub.EventTypeModelEndpoint), created)
 
 	// The context follows configuration; everything an operator owns is kept.
-	moved := config.ModelsConfig{Enabled: true, Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/ai/v1"}}
+	moved := config.ModelsConfig{Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/ai/v1"}}
 	f.svc.SetModelsConfig(moved)
 	stepPastLastWrite()
 	require.NoError(t, f.svc.ProvisionModelEndpoint(f.logger))
@@ -377,15 +367,15 @@ func TestModelEndpointProvisioning(t *testing.T) {
 	assert.Equal(t, "/ai/v1", *cfg.SourceConfiguration.(api.ModelEndpointConfiguration).Spec.Context)
 
 	// With provisioning off nothing is provisioned.
-	f2 := newModelServiceFixture(t, true)
-	f2.svc.SetModelsConfig(config.ModelsConfig{Enabled: true, Endpoint: config.ModelEndpointConfig{Context: "/wso2/v1"}})
+	f2 := newModelServiceFixture(t)
+	f2.svc.SetModelsConfig(config.ModelsConfig{Endpoint: config.ModelEndpointConfig{Context: config.DefaultModelsContext}})
 	require.NoError(t, f2.svc.ProvisionModelEndpoint(f2.logger))
 	_, err = f2.db.GetConfigByKindAndHandle(models.KindModelEndpoint, models.DefaultModelEndpointHandle)
 	assert.True(t, storage.IsNotFoundError(err))
 }
 
 func TestModelEndpointProvisioning_RefusesWithoutAuthentication(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.svc.policyValidator = config.NewPolicyValidator(map[string]models.PolicyDefinition{}, nil)
 	err := f.svc.ProvisionModelEndpoint(f.logger)
 	require.Error(t, err)
@@ -395,7 +385,7 @@ func TestModelEndpointProvisioning_RefusesWithoutAuthentication(t *testing.T) {
 // Only an omitted spec.policies defaults to api-key-auth. An explicit list, even an
 // empty one, is the author's choice and is stored as given.
 func TestModelEndpointService_ExplicitEmptyPoliciesAreKept(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("open", "/open/v1", func(spec map[string]any) {
 		spec["policies"] = []any{}
 	})))
@@ -409,7 +399,7 @@ func TestModelEndpointService_ExplicitEmptyPoliciesAreKept(t *testing.T) {
 }
 
 func TestModelEndpointService_CreateUpdateListDelete(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 
 	// A context is required for every endpoint but the provisioned one.
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("partners", "")))
@@ -481,7 +471,7 @@ func TestModelEndpointService_CreateUpdateListDelete(t *testing.T) {
 }
 
 func TestModelEndpointService_InboundTemplate(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("bedrock", "/bedrock-native", func(spec map[string]any) {
 		spec["inboundTemplate"] = "awsbedrock"
@@ -499,7 +489,7 @@ func TestModelEndpointService_InboundTemplate(t *testing.T) {
 }
 
 func TestModelEndpointService_TransformerContract(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 
 	// A policy that is not loaded is refused.
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("p", "/p", func(spec map[string]any) {
@@ -525,47 +515,47 @@ func TestModelEndpointService_TransformerContract(t *testing.T) {
 
 // What the API may and may not do to the provisioned endpoint.
 func TestModelEndpointService_DefaultEndpointRules(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 
 	// It cannot be created through the API while the gateway provisions it.
-	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("wso2", "")))
+	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("openai", "")))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrModelEndpointReserved), "%v", err)
 
 	require.NoError(t, f.svc.ProvisionModelEndpoint(f.logger))
 
 	// Its context is configuration.
-	_, err = f.svc.UpdateModelEndpoint("wso2", f.params(endpointBody("wso2", "/elsewhere")))
+	_, err = f.svc.UpdateModelEndpoint("openai", f.params(endpointBody("openai", "/elsewhere")))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrModelEndpointReserved))
 
 	// An update that leaves the context out keeps the configured one.
 	stepPastLastWrite()
-	_, err = f.svc.UpdateModelEndpoint("wso2", f.params(endpointBody("wso2", "", func(spec map[string]any) {
+	_, err = f.svc.UpdateModelEndpoint("openai", f.params(endpointBody("openai", "", func(spec map[string]any) {
 		spec["displayName"] = "Renamed Endpoint"
 	})))
 	require.NoError(t, err)
-	cfg, err := f.db.GetConfigByKindAndHandle(models.KindModelEndpoint, "wso2")
+	cfg, err := f.db.GetConfigByKindAndHandle(models.KindModelEndpoint, "openai")
 	require.NoError(t, err)
-	assert.Equal(t, "/wso2/v1", *cfg.SourceConfiguration.(api.ModelEndpointConfiguration).Spec.Context)
+	assert.Equal(t, config.DefaultModelsContext, *cfg.SourceConfiguration.(api.ModelEndpointConfiguration).Spec.Context)
 	assert.Equal(t, "Renamed Endpoint", cfg.DisplayName)
 
 	// It cannot be deleted while provisioning is on.
-	_, err = f.svc.DeleteModelEndpoint("wso2", "", f.logger)
+	_, err = f.svc.DeleteModelEndpoint("openai", "", f.logger)
 	require.Error(t, err)
 	assert.True(t, storage.IsConflictError(err))
 	assert.Contains(t, err.Error(), "provisioned by the gateway")
 
 	// With provisioning off it is an ordinary endpoint.
-	f.svc.SetModelsConfig(config.ModelsConfig{Enabled: true, Endpoint: config.ModelEndpointConfig{Context: "/wso2/v1"}})
-	_, err = f.svc.DeleteModelEndpoint("wso2", "", f.logger)
+	f.svc.SetModelsConfig(config.ModelsConfig{Endpoint: config.ModelEndpointConfig{Context: config.DefaultModelsContext}})
+	_, err = f.svc.DeleteModelEndpoint("openai", "", f.logger)
 	require.NoError(t, err)
-	_, err = f.svc.CreateModelEndpoint(f.params(endpointBody("wso2", "")))
+	_, err = f.svc.CreateModelEndpoint(f.params(endpointBody("openai", "")))
 	require.NoError(t, err)
 }
 
 func TestModelEndpointService_DeleteRefusedWhileAModelNamesIt(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.createDirectProvider("openai")
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("partners", "/partners/v1")))
 	require.NoError(t, err)
@@ -588,19 +578,19 @@ func TestModelEndpointService_DeleteRefusedWhileAModelNamesIt(t *testing.T) {
 // An endpoint change that would stop it serving a Model it serves today is
 // refused, naming the Model; one that breaks nothing is not.
 func TestModelEndpointService_ChangeThatBreaksAModelIsRefused(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	require.NoError(t, f.svc.ProvisionModelEndpoint(f.logger))
 	f.createDirectAnthropicProvider("claude-prod")
 	_, err := f.svc.CreateModel(f.params(modelBody("claude", "claude", modelTarget("a", "claude-prod", "claude-haiku"))))
 	require.NoError(t, err)
 
 	authParams := map[string]any{"key": "Authorization", "in": "header", "valuePrefix": "Bearer"}
-	withoutTransformers := endpointBody("wso2", "", func(spec map[string]any) {
+	withoutTransformers := endpointBody("openai", "", func(spec map[string]any) {
 		spec["policies"] = []any{map[string]any{"name": "api-key-auth", "version": "v1", "params": authParams}}
 		spec["transformers"] = []any{}
 	})
 	stepPastLastWrite()
-	_, err = f.svc.UpdateModelEndpoint("wso2", f.params(withoutTransformers))
+	_, err = f.svc.UpdateModelEndpoint("openai", f.params(withoutTransformers))
 	require.Error(t, err)
 	assert.True(t, storage.IsConflictError(err))
 	assert.Contains(t, err.Error(), "claude")
@@ -608,19 +598,19 @@ func TestModelEndpointService_ChangeThatBreaksAModelIsRefused(t *testing.T) {
 
 	// Switching the inbound format would also take the Model off.
 	stepPastLastWrite()
-	_, err = f.svc.UpdateModelEndpoint("wso2", f.params(endpointBody("wso2", "", func(spec map[string]any) {
+	_, err = f.svc.UpdateModelEndpoint("openai", f.params(endpointBody("openai", "", func(spec map[string]any) {
 		spec["inboundTemplate"] = "gemini"
 	})))
 	require.Error(t, err)
 	assert.True(t, storage.IsConflictError(err))
 
 	// A change the Model survives is accepted.
-	stored, err := f.svc.GetModelEndpointByHandle("wso2")
+	stored, err := f.svc.GetModelEndpointByHandle("openai")
 	require.NoError(t, err)
 	current := stored.SourceConfiguration.(api.ModelEndpointConfiguration)
 	current.Spec.DisplayName = "Renamed"
 	stepPastLastWrite()
-	_, err = f.svc.UpdateModelEndpoint("wso2", f.params(current))
+	_, err = f.svc.UpdateModelEndpoint("openai", f.params(current))
 	require.NoError(t, err)
 
 	// A Model the endpoint could not serve before does not block a change. A save
@@ -646,7 +636,7 @@ func TestModelEndpointService_ChangeThatBreaksAModelIsRefused(t *testing.T) {
 	require.NoError(t, err, "a provider change is not checked against the endpoints its Models name")
 	current.Spec.DisplayName = "Renamed Again"
 	stepPastLastWrite()
-	_, err = f.svc.UpdateModelEndpoint("wso2", f.params(current))
+	_, err = f.svc.UpdateModelEndpoint("openai", f.params(current))
 	require.NoError(t, err)
 }
 
@@ -665,10 +655,10 @@ func (d failingModelListDB) GetAllConfigsByKind(kind string) ([]*models.StoredCo
 // An endpoint change whose Models cannot be listed is refused, not saved without
 // the check that it breaks none of them.
 func TestModelEndpointService_ChangeGuardFailsClosed(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	require.NoError(t, f.svc.ProvisionModelEndpoint(f.logger))
 
-	stored, err := f.svc.GetModelEndpointByHandle("wso2")
+	stored, err := f.svc.GetModelEndpointByHandle("openai")
 	require.NoError(t, err)
 	current := stored.SourceConfiguration.(api.ModelEndpointConfiguration)
 	before := current.Spec.DisplayName
@@ -676,19 +666,19 @@ func TestModelEndpointService_ChangeGuardFailsClosed(t *testing.T) {
 
 	f.svc.db = failingModelListDB{Storage: f.db}
 	stepPastLastWrite()
-	_, err = f.svc.UpdateModelEndpoint("wso2", f.params(current))
+	_, err = f.svc.UpdateModelEndpoint("openai", f.params(current))
 	require.Error(t, err)
 	assert.False(t, storage.IsConflictError(err), "a failed check is not a conflict: %v", err)
 	assert.Contains(t, err.Error(), "database unavailable")
 
 	f.svc.db = f.db
-	unchanged, err := f.svc.GetModelEndpointByHandle("wso2")
+	unchanged, err := f.svc.GetModelEndpointByHandle("openai")
 	require.NoError(t, err)
 	assert.Equal(t, before, unchanged.SourceConfiguration.(api.ModelEndpointConfiguration).Spec.DisplayName)
 }
 
 func TestModelService_ModelNeedsEndpoints(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.createDirectProvider("openai")
 	body := modelBody("gpt", "gpt-4o", modelTarget("a", "openai", "gpt-4o"))
 	delete(body["spec"].(map[string]any), "endpoints")
@@ -699,7 +689,7 @@ func TestModelService_ModelNeedsEndpoints(t *testing.T) {
 
 	// Every endpoint named must exist; the error names each one that does not.
 	f.provisionDefaultEndpoint()
-	body["spec"].(map[string]any)["endpoints"] = []any{"wso2", "not-here"}
+	body["spec"].(map[string]any)["endpoints"] = []any{"openai", "not-here"}
 	_, err = f.svc.CreateModel(f.params(body))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrModelValidation))
@@ -708,7 +698,7 @@ func TestModelService_ModelNeedsEndpoints(t *testing.T) {
 	_, err = f.svc.GetModelByHandle("gpt")
 	assert.True(t, storage.IsNotFoundError(err), "a refused Model is not saved")
 
-	body["spec"].(map[string]any)["endpoints"] = []any{"wso2"}
+	body["spec"].(map[string]any)["endpoints"] = []any{"openai"}
 	_, err = f.svc.CreateModel(f.params(body))
 	require.NoError(t, err)
 	stored, err := f.svc.GetModelByHandle("gpt")
@@ -716,7 +706,7 @@ func TestModelService_ModelNeedsEndpoints(t *testing.T) {
 	assert.Empty(t, stored.CPSyncStatus, "a Model is not pushed to the control plane yet")
 
 	// Adding one on an update is refused the same way, and the Model is unchanged.
-	body["spec"].(map[string]any)["endpoints"] = []any{"wso2", "partners"}
+	body["spec"].(map[string]any)["endpoints"] = []any{"openai", "partners"}
 	stepPastLastWrite()
 	_, err = f.svc.UpdateModel("gpt", f.params(body))
 	require.Error(t, err)
@@ -724,7 +714,7 @@ func TestModelService_ModelNeedsEndpoints(t *testing.T) {
 	assert.Contains(t, err.Error(), "model endpoint 'partners' not found")
 	stored, err = f.svc.GetModelByHandle("gpt")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"wso2"}, stored.SourceConfiguration.(api.ModelConfiguration).Spec.Endpoints)
+	assert.Equal(t, []string{"openai"}, stored.SourceConfiguration.(api.ModelConfiguration).Spec.Endpoints)
 
 	// Once the endpoint exists, even undeployed, the update is accepted.
 	_, err = f.svc.CreateModelEndpoint(f.params(endpointBody("partners", "/partners/v1")))
@@ -742,14 +732,14 @@ func TestModelService_ModelNeedsEndpoints(t *testing.T) {
 // An endpoint deleted while the only Model naming it is undeployed leaves that
 // handle behind; the Model cannot be saved again until the handle is removed.
 func TestModelService_HandleOfADeletedEndpointMustBeRemoved(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.provisionDefaultEndpoint()
 	f.createDirectProvider("openai")
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("partners", "/partners/v1")))
 	require.NoError(t, err)
 	body := modelBody("gpt", "gpt-4o", modelTarget("a", "openai", "gpt-4o"))
 	spec := body["spec"].(map[string]any)
-	spec["endpoints"] = []any{"wso2", "partners"}
+	spec["endpoints"] = []any{"openai", "partners"}
 	_, err = f.svc.CreateModel(f.params(body))
 	require.NoError(t, err)
 	spec["deploymentState"] = "undeployed"
@@ -766,13 +756,13 @@ func TestModelService_HandleOfADeletedEndpointMustBeRemoved(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "spec.endpoints[1]: model endpoint 'partners' not found")
 
-	spec["endpoints"] = []any{"wso2"}
+	spec["endpoints"] = []any{"openai"}
 	_, err = f.svc.UpdateModel("gpt", f.params(body))
 	require.NoError(t, err)
 }
 
 func TestCheckModelEndpointStartup(t *testing.T) {
-	enabled := config.ModelsConfig{Enabled: true, Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/wso2/v1"}}
+	provisioned := config.ModelsConfig{Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/openai/v1"}}
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
 	restAt := func(context string) *models.StoredConfig {
@@ -791,40 +781,39 @@ func TestCheckModelEndpointStartup(t *testing.T) {
 	}
 
 	store := storage.NewConfigStore()
-	require.NoError(t, CheckModelEndpointStartup(store, enabled, logger))
+	require.NoError(t, CheckModelEndpointStartup(store, provisioned, logger))
 
 	// First provisioning does not take over an artifact already at the context.
-	require.NoError(t, store.Add(restAt("/wso2/v1/")))
-	err := CheckModelEndpointStartup(store, enabled, logger)
+	require.NoError(t, store.Add(restAt("/openai/v1/")))
+	err := CheckModelEndpointStartup(store, provisioned, logger)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RestApi 'orders'")
-	assert.NoError(t, CheckModelEndpointStartup(store, config.ModelsConfig{}, logger), "nothing to check with the feature off")
-	assert.NoError(t, CheckModelEndpointStartup(store, config.ModelsConfig{Enabled: true, Endpoint: config.ModelEndpointConfig{Context: "/wso2/v1"}}, logger),
+	assert.NoError(t, CheckModelEndpointStartup(store, config.ModelsConfig{Endpoint: config.ModelEndpointConfig{Context: "/openai/v1"}}, logger),
 		"nothing is provisioned at the context with provisioning off")
 
 	// Nor does moving the endpoint to a context in use.
 	store = storage.NewConfigStore()
 	require.NoError(t, store.Add(endpointAt(models.DefaultModelEndpointHandle, "/old/v1")))
-	require.NoError(t, store.Add(restAt("/wso2/v1")))
-	err = CheckModelEndpointStartup(store, enabled, logger)
+	require.NoError(t, store.Add(restAt("/openai/v1")))
+	err = CheckModelEndpointStartup(store, provisioned, logger)
 	require.Error(t, err, "controller.models.endpoint.context moved onto an artifact")
 
 	// An artifact written later at the context an endpoint already serves is a
 	// conflict to report, not a gateway that can no longer restart.
 	store = storage.NewConfigStore()
-	require.NoError(t, store.Add(endpointAt(models.DefaultModelEndpointHandle, "/wso2/v1")))
+	require.NoError(t, store.Add(endpointAt(models.DefaultModelEndpointHandle, "/openai/v1")))
 	require.NoError(t, store.Add(endpointAt("partners", "/orders")))
-	require.NoError(t, CheckModelEndpointStartup(store, enabled, logger))
+	require.NoError(t, CheckModelEndpointStartup(store, provisioned, logger))
 	assert.Empty(t, logs.String())
 	require.NoError(t, store.Add(restAt("/orders")))
 	require.NoError(t, store.Add(&models.StoredConfig{
 		UUID: "rest-2", Kind: models.KindRestApi, Handle: "shadow", DisplayName: "Shadow", Version: "v1.0",
-		SourceConfiguration: api.RestAPI{Spec: api.APIConfigData{Context: "/wso2/v1"}},
+		SourceConfiguration: api.RestAPI{Spec: api.APIConfigData{Context: "/openai/v1"}},
 	}))
-	require.NoError(t, CheckModelEndpointStartup(store, enabled, logger))
+	require.NoError(t, CheckModelEndpointStartup(store, provisioned, logger))
 	assert.Contains(t, logs.String(), "model_endpoint=partners")
 	assert.Contains(t, logs.String(), "other=orders")
-	assert.Contains(t, logs.String(), "model_endpoint=wso2")
+	assert.Contains(t, logs.String(), "model_endpoint=openai")
 	assert.Contains(t, logs.String(), "other=shadow")
 }
 
@@ -838,7 +827,7 @@ func stepPastLastWrite() { time.Sleep(5 * time.Millisecond) }
 // A deployed Model is refused when an endpoint it names cannot serve it, and the
 // error says which endpoint and why. One that can serve it everywhere is saved.
 func TestModelService_RefusedWhereAnEndpointCannotServeIt(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.provisionDefaultEndpoint()
 	f.createDirectProvider("openai")
 	f.createDirectAnthropicProvider("claude-prod")
@@ -851,7 +840,7 @@ func TestModelService_RefusedWhereAnEndpointCannotServeIt(t *testing.T) {
 
 	// An OpenAI provider on an Anthropic endpoint with no transformer entries.
 	body := modelBody("gpt", "gpt-4o", modelTarget("a", "openai", "gpt-4o"))
-	body["spec"].(map[string]any)["endpoints"] = []any{"wso2", "claude-native"}
+	body["spec"].(map[string]any)["endpoints"] = []any{"openai", "claude-native"}
 	_, err := f.svc.CreateModel(f.params(body))
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrModelValidation))
@@ -863,17 +852,17 @@ func TestModelService_RefusedWhereAnEndpointCannotServeIt(t *testing.T) {
 	assert.True(t, storage.IsNotFoundError(err), "a refused Model is not saved")
 
 	// Every endpoint that cannot serve it is reported at once.
-	body["spec"].(map[string]any)["endpoints"] = []any{"claude-native", "wso2", "claude-two"}
+	body["spec"].(map[string]any)["endpoints"] = []any{"claude-native", "openai", "claude-two"}
 	_, err = f.svc.CreateModel(f.params(body))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "2 error(s)")
 	assert.Contains(t, err.Error(), "spec.endpoints[0]: endpoint 'claude-native'")
 	assert.Contains(t, err.Error(), "spec.endpoints[2]: endpoint 'claude-two'")
 
-	// An Anthropic provider passes through on the Anthropic endpoints, and wso2
+	// An Anthropic provider passes through on the Anthropic endpoints, and openai
 	// has a transformer for it.
 	claude := modelBody("claude", "claude", modelTarget("a", "claude-prod", "claude-haiku"))
-	claude["spec"].(map[string]any)["endpoints"] = []any{"wso2", "claude-native", "claude-two"}
+	claude["spec"].(map[string]any)["endpoints"] = []any{"openai", "claude-native", "claude-two"}
 	_, err = f.svc.CreateModel(f.params(claude))
 	require.NoError(t, err)
 }
@@ -881,7 +870,7 @@ func TestModelService_RefusedWhereAnEndpointCannotServeIt(t *testing.T) {
 // An undeployed Model is a draft: it is saved even where an endpoint cannot serve
 // it, and checked when it is saved as deployed again.
 func TestModelService_UndeployedModelIsCheckedWhenDeployed(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.provisionDefaultEndpoint()
 	f.createDirectProvider("openai")
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("claude-native", "/anthropic", func(spec map[string]any) {
@@ -893,7 +882,7 @@ func TestModelService_UndeployedModelIsCheckedWhenDeployed(t *testing.T) {
 	require.NoError(t, err)
 
 	spec := body["spec"].(map[string]any)
-	spec["endpoints"] = []any{"wso2", "claude-native"}
+	spec["endpoints"] = []any{"openai", "claude-native"}
 	spec["deploymentState"] = "undeployed"
 	stepPastLastWrite()
 	_, err = f.svc.UpdateModel("gpt", f.params(body))
@@ -912,7 +901,7 @@ func TestModelService_UndeployedModelIsCheckedWhenDeployed(t *testing.T) {
 // A transformer entry that uses {apiVersion} needs the provider to set it.
 // Setting it on the provider is what makes the Model servable there.
 func TestModelService_RefusedWhenAProviderLeavesAPlaceholderEmpty(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.createDirectAnthropicProvider("claude-prod")
 	_, err := f.svc.CreateModelEndpoint(f.params(endpointBody("versioned", "/versioned", func(spec map[string]any) {
 		spec["transformers"] = []any{map[string]any{"template": "anthropic", "type": "openai-to-anthropic-transformer",
@@ -947,7 +936,7 @@ func TestModelService_RefusedWhenAProviderLeavesAPlaceholderEmpty(t *testing.T) 
 // A routed target is refused where its provider's accessControl does not allow
 // the path the endpoint would call it on.
 func TestModelService_RefusedWhereARoutedProviderRefusesThePath(t *testing.T) {
-	f := newModelServiceFixture(t, true)
+	f := newModelServiceFixture(t)
 	f.provisionDefaultEndpoint()
 	_, err := f.svc.CreateLLMProvider(f.params(map[string]any{
 		"apiVersion": "gateway.api-platform.wso2.com/v1",
@@ -969,5 +958,5 @@ func TestModelService_RefusedWhereARoutedProviderRefusesThePath(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ErrModelValidation))
 	assert.Contains(t, err.Error(), "spec.endpoints[0]: provider 'locked' does not allow POST /chat/completions")
-	assert.Contains(t, err.Error(), "on endpoint 'wso2'")
+	assert.Contains(t, err.Error(), "on endpoint 'openai'")
 }

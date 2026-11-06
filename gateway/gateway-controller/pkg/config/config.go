@@ -455,14 +455,12 @@ type LLMConfig struct {
 }
 
 // DefaultModelsContext is the default model endpoint's context when none is configured.
-const DefaultModelsContext = "/wso2/v1"
+const DefaultModelsContext = "/openai/v1"
 
-// ModelsConfig configures Models and the model endpoints that serve them.
+// ModelsConfig configures Models and the model endpoints that serve them. The
+// feature is always on; whether the gateway provisions its default endpoint is
+// Endpoint.Provision.
 type ModelsConfig struct {
-	// Enabled turns the feature on. Off by default, so upgrading a gateway
-	// provisions nothing and claims no path until an operator asks for it.
-	Enabled bool `koanf:"enabled"`
-
 	// Endpoint configures model endpoints: the default one the gateway provisions,
 	// and the request limit every endpoint applies.
 	Endpoint ModelEndpointConfig `koanf:"endpoint"`
@@ -471,11 +469,11 @@ type ModelsConfig struct {
 // ModelEndpointConfig is [controller.models.endpoint].
 type ModelEndpointConfig struct {
 	// Provision makes the gateway create and own the default model endpoint,
-	// `wso2`, at Context. On by default once the feature is enabled. While it is
-	// on, `wso2` can be neither created nor deleted through the API.
+	// `openai`, at Context. On by default. While it is on, `openai` can be neither
+	// created nor deleted through the API.
 	Provision bool `koanf:"provision"`
 
-	// Context is the path the provisioned default endpoint (`wso2`) is served at.
+	// Context is the path the provisioned default endpoint (`openai`) is served at.
 	// The startup check refuses to start when another artifact already uses it.
 	Context string `koanf:"context"`
 
@@ -485,9 +483,9 @@ type ModelEndpointConfig struct {
 	MaxRequestBodyBytes int64 `koanf:"max_request_body_bytes"`
 }
 
-// ProvisionsDefaultEndpoint reports whether the gateway provisions `wso2`.
+// ProvisionsDefaultEndpoint reports whether the gateway provisions `openai`.
 func (m ModelsConfig) ProvisionsDefaultEndpoint() bool {
-	return m.Enabled && m.Endpoint.Provision
+	return m.Endpoint.Provision
 }
 
 // EffectiveContext returns the default endpoint's configured context, or the default.
@@ -1274,7 +1272,6 @@ func defaultConfig() *Config {
 				TemplateDefinitionsPath: "./default-llm-provider-templates",
 			},
 			Models: ModelsConfig{
-				Enabled:  false,
 				Endpoint: ModelEndpointConfig{Provision: true, Context: DefaultModelsContext},
 			},
 			Storage: StorageConfig{
@@ -2729,8 +2726,8 @@ func (c *Config) IsAccessLogsEnabled() bool {
 var modelsContextPattern = regexp.MustCompile(`^/([a-zA-Z0-9_\-/]*[^/])?$`)
 
 // validateModelsConfig validates [controller.models], failing closed. The checks
-// run whether or not the feature is enabled, so a bad value is found when it is
-// written rather than on the day someone switches the feature on.
+// run whether or not the default endpoint is provisioned, so a bad value is found
+// when it is written rather than on the day someone switches provisioning on.
 func (c *Config) validateModelsConfig() error {
 	m := &c.Controller.Models
 	ep := &m.Endpoint

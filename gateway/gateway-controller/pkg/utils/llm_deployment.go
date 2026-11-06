@@ -1230,7 +1230,7 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 // served until it is updated, and the operator who made the change should hear
 // about that from the change, not from the Model's callers.
 func (s *LLMDeploymentService) warnUnresolvableDependentModels(providerHandle string, logger *slog.Logger) {
-	if logger == nil || !s.ModelsEnabled() {
+	if logger == nil {
 		return
 	}
 	handles, err := s.ModelsReferencingProvider(providerHandle)

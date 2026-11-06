@@ -27,21 +27,21 @@ import (
 func TestModelEndpointUUID(t *testing.T) {
 	// Derived, so every replica agrees on it without coordinating — and fixed: the
 	// UUID is the endpoint's API id on the data plane, which its keys are fed under.
-	if got := ModelEndpointUUID("wso2"); got != ModelEndpointUUID("wso2") {
+	if got := ModelEndpointUUID("openai"); got != ModelEndpointUUID("openai") {
 		t.Fatalf("not deterministic: %s", got)
 	}
-	if ModelEndpointUUID("wso2") == ModelEndpointUUID("partners") {
+	if ModelEndpointUUID("openai") == ModelEndpointUUID("partners") {
 		t.Fatal("two handles derived one UUID")
 	}
-	if got, want := ModelEndpointUUID("wso2"), "0546d6c2-957b-5997-99f2-6da2752a3933"; got != want {
-		t.Fatalf("ModelEndpointUUID(wso2) = %s, want %s: the derivation must never change", got, want)
+	if got, want := ModelEndpointUUID(DefaultModelEndpointHandle), "fcbb7e71-8ab5-5a53-983f-5ee484fde13e"; got != want {
+		t.Fatalf("ModelEndpointUUID(%s) = %s, want %s: the derivation must never change", DefaultModelEndpointHandle, got, want)
 	}
 }
 
 func TestModelEndpointHelpers(t *testing.T) {
-	spec := api.ModelConfigData{Endpoints: []string{"wso2", " partners ", "wso2", ""}}
+	spec := api.ModelConfigData{Endpoints: []string{"openai", " partners ", "openai", ""}}
 	got := ModelEndpointHandles(spec)
-	if len(got) != 2 || got[0] != "wso2" || got[1] != "partners" {
+	if len(got) != 2 || got[0] != "openai" || got[1] != "partners" {
 		t.Fatalf("ModelEndpointHandles = %v", got)
 	}
 	if !ModelNamesEndpoint(spec, "partners") || ModelNamesEndpoint(spec, "other") {
@@ -55,7 +55,7 @@ func TestModelEndpointHelpers(t *testing.T) {
 	if EffectiveInboundTemplate(api.ModelEndpointConfigData{InboundTemplate: &tmpl}) != "anthropic" {
 		t.Fatal("EffectiveInboundTemplate")
 	}
-	if ModelEndpointProviderName("wso2") == ModelEndpointProviderName("partners") {
+	if ModelEndpointProviderName("openai") == ModelEndpointProviderName("partners") {
 		t.Fatal("each endpoint has its own provider name")
 	}
 	if IsControlPlaneSyncedKind(KindModel) || IsControlPlaneSyncedKind(KindModelEndpoint) || !IsControlPlaneSyncedKind(KindLlmProxy) {

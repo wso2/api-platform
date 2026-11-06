@@ -33,12 +33,12 @@ const (
 	// DefaultModelEndpointHandle is the handle of the model endpoint the gateway
 	// provisions when controller.models.endpoint.provision is set. Reserved: no
 	// other endpoint may take it, so a key issued against it keeps working.
-	DefaultModelEndpointHandle = "wso2"
+	DefaultModelEndpointHandle = "openai"
 
 	// DefaultModelEndpointDisplayName and DefaultModelEndpointVersion are what the
 	// provisioner writes when it creates the default endpoint. An operator may
 	// change the display name afterwards; the version is kept.
-	DefaultModelEndpointDisplayName = "WSO2 Model Endpoint"
+	DefaultModelEndpointDisplayName = "OpenAI Model Endpoint"
 	DefaultModelEndpointVersion     = "v1.0"
 
 	// DefaultModelEndpointInboundTemplate is the inbound template of an endpoint

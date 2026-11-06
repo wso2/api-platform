@@ -102,8 +102,8 @@ func newModelGatewayFixture(t *testing.T) *modelGatewayFixture {
 	routerCfg.ListenerPort = testListenerPort
 	routerCfg.VHosts.Main.Default = "*"
 	sysCfg := &config.Config{Router: *routerCfg}
-	sysCfg.Controller.Models = config.ModelsConfig{Enabled: true,
-		Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/wso2/v1", MaxRequestBodyBytes: 1 << 20}}
+	sysCfg.Controller.Models = config.ModelsConfig{
+		Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/openai/v1", MaxRequestBodyBytes: 1 << 20}}
 
 	store := storage.NewConfigStore()
 	defs := modelGatewayPolicyDefinitions()
@@ -288,10 +288,10 @@ func TestModelGateway_CompilesRoutesChainsAndClusters(t *testing.T) {
 	assert.Equal(t, uuid, rdc.Metadata.UUID)
 	require.NotNil(t, rdc.Metadata.LLM)
 	assert.Equal(t, "openai", rdc.Metadata.LLM.TemplateHandle)
-	assert.Equal(t, models.ModelEndpointProviderName("wso2"), rdc.Metadata.LLM.ProviderName)
-	assert.Equal(t, "/wso2/v1", rdc.Context, "the provisioned endpoint's context is configuration")
+	assert.Equal(t, models.ModelEndpointProviderName("openai"), rdc.Metadata.LLM.ProviderName)
+	assert.Equal(t, "/openai/v1", rdc.Context, "the provisioned endpoint's context is configuration")
 
-	chat := rdc.Routes["POST|/wso2/v1/chat/completions|*"]
+	chat := rdc.Routes["POST|/openai/v1/chat/completions|*"]
 	require.NotNil(t, chat, "chat completions route; routes: %v", keys(rdc.Routes))
 	assert.Equal(t, constants.LLM_MODEL_DISPATCH_RESOLVER_NAME, chat.ResolverName)
 	assert.Equal(t, "openai", chat.ErrorFormat)
@@ -306,7 +306,7 @@ func TestModelGateway_CompilesRoutesChainsAndClusters(t *testing.T) {
 	assert.Equal(t, map[string]string{"location": "payload", "identifier": "$.model"}, rc.ModelLocation)
 	assert.Equal(t, map[string]string{"location": "payload", "identifier": "$.stream"}, rc.Stream)
 
-	catalogRoute := rdc.Routes["GET|/wso2/v1/models|*"]
+	catalogRoute := rdc.Routes["GET|/openai/v1/models|*"]
 	require.NotNil(t, catalogRoute)
 	assert.Equal(t, "openai", catalogRoute.ErrorFormat)
 	assert.True(t, catalogRoute.NoPathRewrite)
@@ -350,7 +350,7 @@ func TestModelGateway_CompilesRoutesChainsAndClusters(t *testing.T) {
 	assert.Equal(t, map[string]any{"location": "payload", "identifier": "$.model"}, routeJob["modelLocation"])
 	scope := routeJob["scope"].(map[string]any)
 	assert.Equal(t, "openai", scope["templateHandle"])
-	assert.Equal(t, models.ModelEndpointProviderName("wso2"), scope["providerName"])
+	assert.Equal(t, models.ModelEndpointProviderName("openai"), scope["providerName"])
 
 	dispatch := rdc.PolicyChains[chainkey.For(uuid, "*", constants.LLM_MODEL_DISPATCH_ERROR_OPERATION)]
 	require.NotNil(t, dispatch)
@@ -358,7 +358,7 @@ func TestModelGateway_CompilesRoutesChainsAndClusters(t *testing.T) {
 	assert.Equal(t, "dispatchError", modelJob(dispatch.Policies[1]))
 	assert.Equal(t, map[string]any{"format": "openai"}, dispatch.Policies[1].Params["dispatchError"])
 
-	catalog := rdc.PolicyChains["GET|/wso2/v1/models|*"]
+	catalog := rdc.PolicyChains["GET|/openai/v1/models|*"]
 	require.NotNil(t, catalog)
 	assert.Equal(t, []string{"api-key-auth", "wso2_apip_sys_model"}, policyNames(catalog))
 	catalogJob := catalog.Policies[1].Params["catalog"].(map[string]any)
@@ -418,7 +418,7 @@ func TestModelGateway_FailedModelIsLeftOutOthersServe(t *testing.T) {
 	uuid := models.ModelEndpointUUID(models.DefaultModelEndpointHandle)
 	assert.NotNil(t, rdc.PolicyChains[chainkey.For(uuid, "*", "gpt")])
 	assert.Nil(t, rdc.PolicyChains[chainkey.For(uuid, "*", "broken")])
-	assert.Equal(t, map[string]string{"gpt-4o": "gpt"}, resolverConfigOf(t, rdc.Routes["POST|/wso2/v1/chat/completions|*"]).Models)
+	assert.Equal(t, map[string]string{"gpt-4o": "gpt"}, resolverConfigOf(t, rdc.Routes["POST|/openai/v1/chat/completions|*"]).Models)
 }
 
 // Each endpoint compiles only the Models that name it, with its own UUID, context,
@@ -426,22 +426,22 @@ func TestModelGateway_FailedModelIsLeftOutOthersServe(t *testing.T) {
 func TestModelGateway_SeveralEndpoints(t *testing.T) {
 	f := newModelGatewayFixture(t)
 	partners := f.addEndpoint("partners", "/partners/v1", "", nil) // no transformer entries
-	f.addModel("gpt", "gpt-4o", []api.ModelTarget{directTarget("openai", "gpt-4o")}, nil, "wso2", "partners")
-	f.addModel("claude", "claude", []api.ModelTarget{routedTarget("anthropic", "claude-sonnet")}, nil, "wso2", "partners")
+	f.addModel("gpt", "gpt-4o", []api.ModelTarget{directTarget("openai", "gpt-4o")}, nil, "openai", "partners")
+	f.addModel("claude", "claude", []api.ModelTarget{routedTarget("anthropic", "claude-sonnet")}, nil, "openai", "partners")
 	f.addModel("partner-only", "partner-chat", []api.ModelTarget{directTarget("openai", "gpt-4o-mini")}, nil, "partners")
 	f.addModel("elsewhere", "elsewhere", []api.ModelTarget{directTarget("openai", "gpt-4o-mini")}, nil, "not-on-this-gateway")
 
-	wso2, statuses, err := f.compiler.Compile(f.endpoint)
+	primary, statuses, err := f.compiler.Compile(f.endpoint)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"gpt-4o": "gpt", "claude": "claude"},
-		resolverConfigOf(t, wso2.Routes["POST|/wso2/v1/chat/completions|*"]).Models)
+		resolverConfigOf(t, primary.Routes["POST|/openai/v1/chat/completions|*"]).Models)
 	assert.Len(t, statuses, 2, "a Model naming another endpoint is not this endpoint's to report")
 
 	rdc, statuses, err := f.compiler.Compile(partners)
 	require.NoError(t, err)
 	partnersUUID := models.ModelEndpointUUID("partners")
 	assert.Equal(t, partnersUUID, rdc.Metadata.UUID)
-	assert.NotEqual(t, wso2.Metadata.UUID, rdc.Metadata.UUID)
+	assert.NotEqual(t, primary.Metadata.UUID, rdc.Metadata.UUID)
 	assert.Equal(t, "/partners/v1", rdc.Context)
 	chat := rdc.Routes["POST|/partners/v1/chat/completions|*"]
 	require.NotNil(t, chat, "routes: %v", keys(rdc.Routes))
@@ -534,7 +534,7 @@ func TestModelGateway_MixedFormatsWarnAboutModelPolicies(t *testing.T) {
 	m := api.ModelConfiguration{
 		ApiVersion: "gateway.api-platform.wso2.com/v1", Kind: "Model", Metadata: api.Metadata{Name: "gpt"},
 		Spec: api.ModelConfigData{
-			DisplayName: "gpt", Version: "v1.0", ModelName: "gpt-4o", Endpoints: []string{"wso2", "anthropic-native"},
+			DisplayName: "gpt", Version: "v1.0", ModelName: "gpt-4o", Endpoints: []string{"openai", "anthropic-native"},
 			Targets:  []api.ModelTarget{directTarget("openai", "gpt-4o")},
 			Policies: &[]api.Policy{{Name: "token-based-ratelimit", Version: "v1"}},
 		},
@@ -567,7 +567,7 @@ func TestModelGateway_RouterParamsReachTheRouterAsWritten(t *testing.T) {
 	require.Len(t, statuses, 1)
 	require.True(t, statuses[0].Served, statuses[0].Reason)
 
-	chain := rdc.PolicyChains[chainkey.For(models.ModelEndpointUUID("wso2"), "*", "mixed")]
+	chain := rdc.PolicyChains[chainkey.For(models.ModelEndpointUUID("openai"), "*", "mixed")]
 	require.NotNil(t, chain)
 	assert.Equal(t, []string{
 		"api-key-auth",
@@ -592,18 +592,6 @@ func TestModelGateway_RouterParamsReachTheRouterAsWritten(t *testing.T) {
 	requestModel, err := json.Marshal(router.Params["requestModel"])
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"location":"payload","identifier":"$.model"}`, string(requestModel))
-}
-
-func TestModelGateway_FeatureOffServesNothing(t *testing.T) {
-	f := newModelGatewayFixture(t)
-	f.sysCfg.Controller.Models.Enabled = false
-	f.addModel("gpt", "gpt-4o", []api.ModelTarget{directTarget("openai", "gpt-4o")}, nil)
-
-	rdc, _, err := f.compiler.Compile(f.endpoint)
-	require.NoError(t, err)
-	assert.Empty(t, rdc.Routes)
-	assert.Empty(t, rdc.PolicyChains)
-	assert.Empty(t, rdc.UpstreamClusters)
 }
 
 func TestModelGateway_DeterministicOutput(t *testing.T) {
@@ -697,14 +685,14 @@ func TestModelGateway_TranslatesOnBothXDSPaths(t *testing.T) {
 		for _, vh := range rc.GetVirtualHosts() {
 			for _, r := range vh.GetRoutes() {
 				routeNames = append(routeNames, r.GetName())
-				if r.GetName() == "POST|/wso2/v1/chat/completions|*" {
+				if r.GetName() == "POST|/openai/v1/chat/completions|*" {
 					assert.Equal(t, constants.TargetUpstreamHeader, r.GetRoute().GetClusterHeader())
 				}
 			}
 		}
 	}
-	assert.Contains(t, routeNames, "POST|/wso2/v1/chat/completions|*")
-	assert.Contains(t, routeNames, "GET|/wso2/v1/models|*")
+	assert.Contains(t, routeNames, "POST|/openai/v1/chat/completions|*")
+	assert.Contains(t, routeNames, "GET|/openai/v1/models|*")
 	for _, name := range routeNames {
 		// The unexposed provider has no route, and nothing was built at "/" by the
 		// legacy path for it or for a Model.
@@ -726,7 +714,7 @@ func TestModelGateway_TranslatesOnBothXDSPaths(t *testing.T) {
 	assert.Contains(t, policyResources[policyxds.PolicyChainTypeURL], chainkey.For(uuid, "*", "claude"))
 	assert.Contains(t, policyResources[policyxds.PolicyChainTypeURL],
 		chainkey.For(uuid, "*", constants.LLM_MODEL_DISPATCH_ERROR_OPERATION))
-	assert.Contains(t, policyResources[policyxds.RouteConfigTypeURL], "POST|/wso2/v1/chat/completions|*")
+	assert.Contains(t, policyResources[policyxds.RouteConfigTypeURL], "POST|/openai/v1/chat/completions|*")
 }
 
 // A Model whose provider's cluster cannot be built is left out of the endpoint, with
@@ -756,8 +744,8 @@ func TestModelGateway_ModelWithUnbuildableClusterIsLeftOut(t *testing.T) {
 	assert.Nil(t, rdc.PolicyChains[chainkey.For(uuid, "*", "broken")])
 	assert.NotContains(t, rdc.UpstreamClusters, "upstream_LlmProxy_"+uuid+"_bad-upstream")
 	assert.Equal(t, map[string]string{"gpt-4o": "gpt"},
-		resolverConfigOf(t, rdc.Routes["POST|/wso2/v1/chat/completions|*"]).Models)
-	catalog := rdc.PolicyChains["GET|/wso2/v1/models|*"].Policies[1].Params["catalog"].(map[string]any)
+		resolverConfigOf(t, rdc.Routes["POST|/openai/v1/chat/completions|*"]).Models)
+	catalog := rdc.PolicyChains["GET|/openai/v1/models|*"].Policies[1].Params["catalog"].(map[string]any)
 	assert.Len(t, catalog["models"], 1, "the catalog lists only the Model that is served")
 }
 

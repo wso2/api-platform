@@ -57,7 +57,7 @@ func ModelEndpointSeedTransformers() ([]api.ModelEndpointTransformer, error) {
 // CheckModelEndpointStartup verifies, before anything is served, that provisioning
 // the default endpoint takes over nothing an operator already owns.
 //
-// It fails closed for that one case: when provisioning would put `wso2` at a
+// It fails closed for that one case: when provisioning would put `openai` at a
 // context it does not serve today — on first start, or after
 // controller.models.endpoint.context changed — and another artifact already serves that
 // context, startup is refused, naming the artifact (GO-AUTH-011: verified locally,
@@ -67,9 +67,8 @@ func ModelEndpointSeedTransformers() ([]api.ModelEndpointTransformer, error) {
 // artifact written at that context since, through an API that does not check model
 // endpoints, is logged as a conflict for the operator to resolve, never a reason
 // to refuse a restart: otherwise one write could leave the gateway unable to start.
-// With the feature off nothing is served and nothing is checked.
 func CheckModelEndpointStartup(store *storage.ConfigStore, cfg config.ModelsConfig, logger *slog.Logger) error {
-	if !cfg.Enabled || store == nil {
+	if store == nil {
 		return nil
 	}
 	if logger == nil {
@@ -126,7 +125,7 @@ func warnModelEndpointContextShared(logger *slog.Logger, handle, context string,
 }
 
 // ProvisionModelEndpoint makes sure the default model endpoint exists when the
-// gateway provisions it: ModelEndpoint `wso2`, at its deterministic UUID, at the
+// gateway provisions it: ModelEndpoint `openai`, at its deterministic UUID, at the
 // configured context.
 //
 // It is an idempotent upsert, run on every start by every replica:

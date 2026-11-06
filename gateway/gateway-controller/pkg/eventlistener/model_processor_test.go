@@ -51,8 +51,8 @@ func newModelReplica(t *testing.T, db storage.Storage) *modelReplica {
 	logger := newTestLogger()
 	routerConfig := agentTestRouterConfig()
 	systemConfig := &config.Config{Router: *routerConfig}
-	systemConfig.Controller.Models = config.ModelsConfig{Enabled: true,
-		Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/wso2/v1", MaxRequestBodyBytes: 1 << 20}}
+	systemConfig.Controller.Models = config.ModelsConfig{
+		Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/openai/v1", MaxRequestBodyBytes: 1 << 20}}
 
 	defs := map[string]models.PolicyDefinition{}
 	for name, version := range map[string]string{
@@ -101,7 +101,7 @@ func newModelReplica(t *testing.T, db storage.Storage) *modelReplica {
 		SourceConfiguration: provider, Configuration: provider, DesiredState: models.StateDeployed,
 	}))
 
-	for handle, context := range map[string]string{"wso2": "/wso2/v1", "partners": "/partners/v1"} {
+	for handle, context := range map[string]string{"openai": "/openai/v1", "partners": "/partners/v1"} {
 		require.NoError(t, store.Add(testModelEndpointStoredConfig(handle, context)))
 	}
 
@@ -185,7 +185,7 @@ func (r *modelReplica) chainsOf(t *testing.T, handle string) map[string]*models.
 // Endpoints it does not name are left alone. A delete takes the chain out again.
 func TestHandleEvent_ModelConvergesIntoItsEndpoints(t *testing.T) {
 	db := setupSQLiteDBForEventListenerTests(t)
-	cfg := testModelStoredConfig("wso2")
+	cfg := testModelStoredConfig("openai")
 	require.NoError(t, db.SaveConfig(cfg))
 
 	replica := newModelReplica(t, db)
@@ -195,33 +195,33 @@ func TestHandleEvent_ModelConvergesIntoItsEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.KindModel, stored.Kind)
 
-	chain := chainkey.For(models.ModelEndpointUUID("wso2"), agentTestVHost, "gpt")
-	assert.Contains(t, replica.chainsOf(t, "wso2"), chain, "the named endpoint is recompiled with the Model's chain")
+	chain := chainkey.For(models.ModelEndpointUUID("openai"), agentTestVHost, "gpt")
+	assert.Contains(t, replica.chainsOf(t, "openai"), chain, "the named endpoint is recompiled with the Model's chain")
 	assert.Nil(t, replica.chainsOf(t, "partners"), "an endpoint the Model does not name is not touched")
 
 	require.NoError(t, db.DeleteConfig(cfg.UUID))
 	replica.listener.handleEvent(modelEvent("DELETE", cfg.UUID))
 	_, err = replica.store.Get(cfg.UUID)
 	assert.True(t, storage.IsNotFoundError(err))
-	assert.NotContains(t, replica.chainsOf(t, "wso2"), chain)
+	assert.NotContains(t, replica.chainsOf(t, "openai"), chain)
 }
 
 // Moving a Model between endpoints recompiles both the one it left and the one it
 // joined.
 func TestHandleEvent_ModelMovingEndpointsRecompilesOldAndNew(t *testing.T) {
 	db := setupSQLiteDBForEventListenerTests(t)
-	cfg := testModelStoredConfig("wso2")
+	cfg := testModelStoredConfig("openai")
 	require.NoError(t, db.SaveConfig(cfg))
 	replica := newModelReplica(t, db)
 	replica.listener.handleEvent(modelEvent("CREATE", cfg.UUID))
-	require.Contains(t, replica.chainsOf(t, "wso2"), chainkey.For(models.ModelEndpointUUID("wso2"), agentTestVHost, "gpt"))
+	require.Contains(t, replica.chainsOf(t, "openai"), chainkey.For(models.ModelEndpointUUID("openai"), agentTestVHost, "gpt"))
 
 	moved := testModelStoredConfig("partners")
 	moved.UpdatedAt = time.Now().Add(time.Second)
 	require.NoError(t, db.UpdateConfig(moved))
 	replica.listener.handleEvent(modelEvent("UPDATE", cfg.UUID))
 
-	assert.NotContains(t, replica.chainsOf(t, "wso2"), chainkey.For(models.ModelEndpointUUID("wso2"), agentTestVHost, "gpt"))
+	assert.NotContains(t, replica.chainsOf(t, "openai"), chainkey.For(models.ModelEndpointUUID("openai"), agentTestVHost, "gpt"))
 	assert.Contains(t, replica.chainsOf(t, "partners"), chainkey.For(models.ModelEndpointUUID("partners"), agentTestVHost, "gpt"))
 }
 
@@ -277,5 +277,5 @@ func TestRefreshEndpointsForProvider(t *testing.T) {
 
 	replica.listener.refreshEndpointsForProvider("openai", "corr")
 	assert.Contains(t, replica.chainsOf(t, "partners"), chainkey.For(models.ModelEndpointUUID("partners"), agentTestVHost, "gpt"))
-	assert.Nil(t, replica.chainsOf(t, "wso2"))
+	assert.Nil(t, replica.chainsOf(t, "openai"))
 }

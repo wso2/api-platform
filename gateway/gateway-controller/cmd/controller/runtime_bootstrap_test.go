@@ -103,7 +103,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsModelEndpoints(t *
 	transformer := &fakeRuntimeTransformer{}
 
 	configs := []*models.StoredConfig{
-		{UUID: "endpoint-1", Kind: models.KindModelEndpoint, Handle: "wso2", DisplayName: "WSO2", Version: "v1.0"},
+		{UUID: "endpoint-1", Kind: models.KindModelEndpoint, Handle: "openai", DisplayName: "OpenAI", Version: "v1.0"},
 		{UUID: "model-1", Kind: models.KindModel, Handle: "gpt", DisplayName: "GPT", Version: "v1.0"},
 	}
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(configs, runtimeStore, nil, transformer,
@@ -111,8 +111,8 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsModelEndpoints(t *
 
 	assert.NoError(t, err)
 	assert.Equal(t, 1, loadedCount)
-	assert.Equal(t, []string{storage.Key(models.KindModelEndpoint, "wso2")}, transformer.calls)
-	_, ok := runtimeStore.Get(storage.Key(models.KindModelEndpoint, "wso2"))
+	assert.Equal(t, []string{storage.Key(models.KindModelEndpoint, "openai")}, transformer.calls)
+	_, ok := runtimeStore.Get(storage.Key(models.KindModelEndpoint, "openai"))
 	assert.True(t, ok)
 }
 
