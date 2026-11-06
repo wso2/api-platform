@@ -31,6 +31,7 @@ import { activeFilterCount, completenessNotes, downloadFilename, sameQuery } fro
 import { createLogsClient } from './logsApi';
 import { useDebounced } from './useDebounced';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { LOG_OPERATIONS, permissionsOf } from './permissions';
 import type { LogPage, LogQuery, LogViewFilters } from './types';
 
 export type LogsFeatureProps = {
@@ -84,7 +85,13 @@ const ASSUMED_RETENTION_DAYS = 3;
  */
 const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   const { apiFetch, notify, orgHandle } = port;
+  const permissions = permissionsOf(port);
   const client = useMemo(() => createLogsClient(apiFetch), [apiFetch]);
+  // What the signed-in user may read, from the scopes each operation accepts.
+  // The server still decides; this keeps the page from making a call it knows
+  // will be refused — and from polling for one every five seconds.
+  const canQuery = permissions.canAny(LOG_OPERATIONS.QueryGatewayLogs);
+  const canReadEnvironments = permissions.canAny(LOG_OPERATIONS.ListEnvironments);
 
   const [query, setQuery] = useState<LogQuery>(INITIAL_QUERY);
   const debouncedQuery = useDebounced(query, QUERY_DEBOUNCE_MS, sameQuery);
@@ -111,6 +118,7 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
 
   const load = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!canQuery) return;
       const seq = ++loadSeqRef.current;
       // Only a load the reader asked for shows as busy. A silent live poll
       // setting it would disable Refresh and blink the header spinner every five
@@ -156,7 +164,7 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
         }
       }
     },
-    [client, debouncedQuery]
+    [canQuery, client, debouncedQuery]
   );
 
   // Fires on mount and on every settled query change — `load`'s identity tracks
@@ -170,6 +178,9 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   // Fails soft: without the catalogue the Environment group falls back to the
   // environments seen in the loaded lines.
   useEffect(() => {
+    // The catalogue only feeds the filter, so there is nothing to read it for
+    // on a page that may not query logs at all.
+    if (!canQuery || !canReadEnvironments) return undefined;
     let cancelled = false;
     client
       .fetchEnvironments()
@@ -180,10 +191,10 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [canQuery, canReadEnvironments, client]);
 
   useEffect(() => {
-    if (!live) return undefined;
+    if (!live || !canQuery) return undefined;
     const timer = window.setInterval(() => {
       // A hidden tab stops polling: the window is rolling, so nothing is missed
       // by waiting.
@@ -191,7 +202,7 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
       void load({ silent: true });
     }, LIVE_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [live, load]);
+  }, [canQuery, live, load]);
 
   // The buffer stays unfiltered so the facet counts do not collapse to whatever
   // is selected.
@@ -227,6 +238,17 @@ const LogsFeature: FC<LogsFeatureProps> = ({ port }) => {
   /** The project this row came from, for the "show only this" action. */
   const projectOf = (line: ConsoleLine) =>
     line.details?.find((detail) => detail.label === 'Project')?.value;
+
+  if (!canQuery) {
+    return (
+      <PageContent fullWidth>
+        <PageTitle sx={{ mb: 2 }}>
+          <PageTitle.Header>Runtime logs</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view runtime logs.</Alert>
+      </PageContent>
+    );
+  }
 
   return (
     <PageContent fullWidth>

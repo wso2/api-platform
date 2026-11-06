@@ -32,6 +32,7 @@ import StatusDot from './StatusDot';
 import StatusPill from './StatusPill';
 import { gatewayStatusTone } from '../utils/status';
 import { activeGatewayCount, deployedGatewayCount } from '../utils/status';
+import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import type { Environment } from '../types';
 
 export type ProviderEnvironmentRowProps = {
@@ -39,6 +40,10 @@ export type ProviderEnvironmentRowProps = {
   expanded: boolean;
   onToggleExpand: (expanded: boolean) => void;
   busy: boolean;
+  /** Whether the user holds a scope that deploys; Deploy is disabled otherwise. */
+  canDeploy: boolean;
+  /** Whether the user holds a scope that undeploys; every Stop is disabled otherwise. */
+  canStop: boolean;
   onDeployClick: () => void;
   onStopGateway: (gatewayId: string) => void;
 };
@@ -56,6 +61,8 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
   expanded,
   onToggleExpand,
   busy,
+  canDeploy,
+  canStop,
   onDeployClick,
   onStopGateway,
 }) => {
@@ -72,8 +79,9 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
     )
   ).sort();
 
-  const deployDisabledReason =
-    gateways.length === 0
+  const deployDisabledReason = !canDeploy
+    ? NO_PERMISSION_TOOLTIP
+    : gateways.length === 0
       ? 'No AI gateway is bound to this environment yet.'
       : activeCount === 0
         ? 'Every gateway here is inactive. Activate one to deploy.'
@@ -184,8 +192,11 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
               // Stopping is offered on the gateway's own line rather than behind another
               // disclosure: it is the only thing there is to do to a gateway here, and a
               // second thing to open before reaching it read as though it were missing.
-              const canStop =
-                !busy && !!gateway.deploymentId && ['DEPLOYED', 'FAILED'].includes(gateway.status);
+              const stopEnabled =
+                canStop &&
+                !busy &&
+                !!gateway.deploymentId &&
+                ['DEPLOYED', 'FAILED'].includes(gateway.status);
               return (
                 <Box
                   key={gateway.id}
@@ -216,15 +227,21 @@ const ProviderEnvironmentRow: FC<ProviderEnvironmentRowProps> = ({
                       </Typography>
                     ) : null}
                   </Box>
-                  <Button
-                    size="small"
-                    color="error"
-                    variant="outlined"
-                    disabled={!canStop}
-                    onClick={() => onStopGateway(gateway.id)}
-                  >
-                    Stop
-                  </Button>
+                  <Tooltip title={canStop ? '' : NO_PERMISSION_TOOLTIP}>
+                    {/* Wrapped: a disabled button fires no events, so the tooltip
+                        explaining why it is disabled would never open. */}
+                    <span>
+                      <Button
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                        disabled={!stopEnabled}
+                        onClick={() => onStopGateway(gateway.id)}
+                      >
+                        Stop
+                      </Button>
+                    </span>
+                  </Tooltip>
                 </Box>
               );
             })}
