@@ -195,14 +195,14 @@ Feature: APIP cloud managed gateway lifecycle
     Then the managed APIP gateway should eventually be absent
     And the active APIP gateway should still be active
 
-  # Product issue: the recreated gateway gets a suffixed id (`-xxxx`) because core still holds the deleted gateway's name while its data-plane teardown finishes.
-  @known-issue @TC_APIP_PROV_004 @ID_APIP_GATEWAY_013
+  # The platform holds a deleted gateway's name until its infrastructure is removed, so the request is repeated until the name is free.
+  @TC_APIP_PROV_004 @ID_APIP_GATEWAY_013
   Scenario: A deleted gateway's name is free again in its environment
     Given I obtain an APIP cloud console token
     And I work with synthetic managed APIP gateway 2
     When I delete the managed APIP gateway
     Then the managed APIP gateway should eventually be absent
-    When I request a synthetic managed APIP gateway with:
+    When I request a synthetic managed APIP gateway once its name is free with:
       | environment | ${CTX:cloudManagedGatewayEnvironment} |
     Then the managed gateway request should be accepted
     And the managed APIP gateway should be registered under the id its name gives it

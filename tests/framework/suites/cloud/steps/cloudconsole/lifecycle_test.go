@@ -2284,6 +2284,33 @@ func TestRequestManagedGatewayRegistersASuffixedIDTheRepeatWasAnsweredWith(t *te
 	require.ElementsMatch(t, []string{"dev-syn-gw-1", "dev-syn-gw-1-ow9j"}, pending, "the second gateway must not be left behind")
 }
 
+func TestRequestManagedGatewayOnceItsNameIsFreeDeletesTheSuffixedGatewayAndTriesAgain(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	gatewayNameReleaseInterval = time.Millisecond
+	defer func() { gatewayNameReleaseInterval = 30 * time.Second }()
+	answers := []string{"dev-syn-gw-1-ow9j", "dev-syn-gw-1"}
+	var deleted []string
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = append(deleted, r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:])
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"id": answers[0]})
+		answers = answers[1:]
+	})
+	local.Set(keyManagedGatewayName, "syn-gw-1")
+
+	require.NoError(t, steps.requestManagedGatewayOnceItsNameIsFreeWith(ctx, map[string]string{"environment": "dev"}))
+
+	require.Equal(t, []string{"dev-syn-gw-1-ow9j"}, deleted, "only the gateway under the suffixed id is deleted")
+	var pending []string
+	for _, resource := range registry.Pending() {
+		pending = append(pending, resource.ID)
+	}
+	require.Equal(t, []string{"dev-syn-gw-1"}, pending)
+}
+
 func TestRequestManagedGatewayRegistersForCleanupAndKeepsOnlyWhatWasCreated(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	status := http.StatusCreated
