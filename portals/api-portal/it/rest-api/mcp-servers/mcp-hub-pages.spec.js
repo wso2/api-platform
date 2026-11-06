@@ -96,6 +96,12 @@ describe('Image URLs and landing text on the portal pages', () => {
         expect(res.text).toContain('Weather MCP landing page');
     });
 
+    it('the Markdown page lists the tools of a YAML schema', async () => {
+        const page = await client.raw().get(viewPath(`/mcp/${mcpId}.md`));
+        expect(page.status).toBe(200);
+        expect(page.text).toContain('Health check tool.');
+    });
+
     it('the MCP server image is readable without a session, but its other content is not', async () => {
         const anonymous = (query) => client.raw()
             .get(`${client.API_PREFIX}/mcp-servers/${mcpId}/assets?${query}`)
