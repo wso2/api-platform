@@ -8,24 +8,12 @@
  */
 
 import { PageContent } from '@wso2/oxygen-ui';
-import {
-  Activity,
-  BarChart3,
-  Gauge,
-  Logs,
-  PanelsTopLeft,
-} from '@wso2/oxygen-ui-icons-react';
+import { BarChart3, PanelsTopLeft } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { GATEWAY_OPERATIONS, GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
-import {
-  LOG_OPERATIONS,
-  LogsFeature,
-  MetricsPanel,
-  ScopedLogsNotice,
-} from '@wso2-enterprise/apip-cloud-ui-logs';
 import {
   ManagedPortalsPage,
   PORTAL_OPERATIONS,
@@ -42,7 +30,6 @@ import {
   HEADER_ACTIONS_SLOT,
   HOME_GREETING_SLOT,
   PAGE_API_DEPLOY_SLOT,
-  PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneCloudEntry,
@@ -104,10 +91,6 @@ function CloudDeployPage({ port }: { port: CloudHostPort }) {
   return isApiScope ? gate : <AppPage>{gate}</AppPage>;
 }
 
-/** Where the project/API notices send a reader for the organization's logs. */
-const observabilityLogsPath = (orgHandle: string) =>
-  `/organizations/${orgHandle}/observability/logs`;
-
 /**
  * Cloud features registered for the api-control-plane host. All live in this
  * same repo now (this package is copied into the cloned portal tree at
@@ -142,19 +125,6 @@ const observabilityLogsPath = (orgHandle: string) =>
  * built-in Insights item, so it gives way wherever one of them is visible (org
  * and project scope) and comes back inside an API. Gated on
  * `cloudProxyEnabled` via `filterExtensionsForRuntime`.
- *
- * `observability` claims the built-in Observability item, which is per-API, and
- * stands in for it at organization level as a disclosure with two pages of its
- * own: Logs, which reads `/logs` (served by apip-platform-api), and a Metrics
- * placeholder. Its `aliases` keep the old `/logs` URL alive as a redirect.
- *
- * Inside a project and inside an API there are no logs to show — a gateway's
- * log line carries no API identity, and the query is scoped by organization
- * namespace — so both levels get the same notice pointing back at the
- * organization page. The project one claims the built-in item the way the
- * organization one does; the API one leaves the built-in Observability submenu
- * (Metrics, Alerts) in place and replaces only its Logs page, through
- * `PAGE_API_OBSERVABILITY_LOGS_SLOT`.
  */
 
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
@@ -280,121 +250,6 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
           />
         ),
         label: 'Deploy',
-        level: 'api',
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'observability',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'observability',
-        slot: 'sidebar.organization',
-        // The built-in item's own cluster, and after organization-insights (70)
-        // so Insights stays above Observability here as it does in a project
-        // and inside an API.
-        claims: 'observability',
-        group: 'operate',
-        order: 75,
-        routePath: 'observability',
-        // Organization scope only. Deeper in, this entry standing down is what
-        // hands the claim back — to the project notice below, and inside an API
-        // to the built-in submenu, whose Metrics and Alerts pages are the right
-        // ones there.
-        isVisible: (scope) =>
-          !scope.isProjectScope && !scope.isApiScope && !isFeatureDisabled('observability'),
-        // No `render`: a direct hit on /observability redirects to the first
-        // child (Logs), so the URL names the page shown and the sidebar
-        // highlights it.
-        //
-        // The page used to live at /logs, and that URL is in bookmarks and
-        // runbooks.
-        aliases: ['logs'],
-        // Logs are read under the gateway scopes. A user without them gets the
-        // built-in Observability item back, as for any claim that stands down.
-        requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
-        label: 'Observability',
-        icon: <Activity size={20} />,
-        // Organization, not project: the observability API scopes a log query
-        // by organization namespace and has no project filter that would work
-        // here — every provisioned gateway lives in one shared project, and a
-        // gateway's log line carries no API identity to attribute it by. That is
-        // why the project entry below is a notice and not a second console; when
-        // RBAC lands, project scoping has to be a server-side filter in apip-platform-api.
-        level: 'organization',
-        children: [
-          {
-            // Logs before Metrics, unlike the built-in submenu: Metrics is a
-            // placeholder, and opening on an empty page is worse than the
-            // inconsistency.
-            id: 'observability-logs',
-            routePath: 'logs',
-            render: (port) => <LogsFeature port={port} />,
-            requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
-            label: 'Logs',
-            icon: <Logs size={20} />,
-            isVisible: () => !isFeatureDisabled('logs'),
-          },
-          {
-            id: 'observability-metrics',
-            routePath: 'metrics',
-            // The plugin's own placeholder, not core's `ComingSoon`: this package
-            // is typechecked against both host portals' Oxygen versions, and
-            // importing that component fails under the older one.
-            render: () => <MetricsPanel />,
-            label: 'Metrics',
-            icon: <Gauge size={20} />,
-            // This extension claims the built-in `observability` item wholesale
-            // (see the claim above), so the built-in's own `disableKey: 'metrics'`
-            // gating never runs for it — mirror that check here directly.
-            isVisible: () => !isFeatureDisabled('metrics'),
-          },
-        ],
-      },
-      {
-        // The same claim one scope down. A leaf, not a disclosure: there is one
-        // page here, and two children would say the same thing twice.
-        id: 'project-observability',
-        slot: 'sidebar.project',
-        claims: 'observability',
-        // The notice points at the organization's logs, so it is for those who
-        // may read them.
-        requiredScopes: LOG_OPERATIONS.QueryGatewayLogs,
-        group: 'operate',
-        order: 70,
-        routePath: 'observability',
-        render: (port) => (
-          <ScopedLogsNotice
-            scope="project"
-            onViewOrganizationLogs={() =>
-              port.navigate(observabilityLogsPath(port.orgHandle))
-            }
-          />
-        ),
-        label: 'Observability',
-        icon: <Activity size={20} />,
-        level: 'project',
-        isVisible: (scope) => scope.isProjectScope && !scope.isApiScope,
-      },
-      {
-        // The Logs page of the built-in per-API Observability submenu, which
-        // otherwise renders a placeholder promising per-API runtime logs. Its
-        // siblings (Metrics, Alerts) are left alone. `routePath`/`level` are
-        // inert on a `page.*` entry, as for the gateways and deploy overrides.
-        id: 'api-observability-logs',
-        slot: PAGE_API_OBSERVABILITY_LOGS_SLOT,
-        order: 0,
-        routePath: 'observability/logs',
-        render: (port) => (
-          <ScopedLogsNotice
-            scope="API"
-            onViewOrganizationLogs={() =>
-              port.navigate(observabilityLogsPath(port.orgHandle))
-            }
-          />
-        ),
-        label: 'Logs',
         level: 'api',
       },
     ],

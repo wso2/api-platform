@@ -176,14 +176,6 @@ export const PAGE_API_DEPLOY_SLOT = 'page.apiDeploy';
 export const PAGE_GRAPHQL_API_DEPLOY_SLOT = 'page.graphqlApiDeploy';
 
 /**
- * Slot for overriding the built-in per-API Logs page under Observability. Same
- * arrangement as `PAGE_API_DEPLOY_SLOT`: consumed by the
- * `apiObservabilityLogs` route wrapper in `AppRoutes`, with `routePath`/`level`
- * inert.
- */
-export const PAGE_API_OBSERVABILITY_LOGS_SLOT = 'page.apiObservabilityLogs';
-
-/**
  * Slot for an entry in the app header's action area, rendered before the
  * built-in controls. Consumed directly by `AppHeader` (via `useSlot`) — not by
  * the sidebar or Settings-tab filters, which only match `sidebar.*` /
