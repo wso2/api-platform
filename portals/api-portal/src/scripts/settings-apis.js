@@ -37,7 +37,6 @@
   var currentThumb = null;                  /* { name, src } of the saved thumbnail, or null */
   var thumbObjectUrl = null;
   var skipImportConfirm = false; /* the API was created in this wizard run; its first import replaces nothing */
-  var saving = false;            /* a second click must not send the save again; a failed save clears it at once */
   var wizardOrigin = 'cfg-apis'; /* tab that launched the wizard: 'cfg-apis' or 'cfg-mcps' */
   /* MCP is created via its own flow (type field hidden, always 'Mcp'); the API-type
      dropdown only offers the user-selectable API types. wizardEditType preserves the
@@ -426,10 +425,6 @@
 
     var importing = assetsMode === 'import' && !!contentZipFile;
     if (importing && editingId && !skipImportConfirm && !(await confirmReplaceContent())) return;
-    /* The file confirmed here is the one imported: the import view is locked until the save ends. */
-    var importFile = importing ? contentZipFile : null;
-    var importPanel = document.getElementById('wz-assets-panel-import');
-    importPanel.inert = importing;
     var removeOnSave = assetsMode === 'docs' ? docsToRemoveOnSave() : [];
 
     var meta = {
@@ -473,6 +468,9 @@
       : window.apiPortalApi.root(base);
     var method = editingId ? 'PUT' : 'POST';
 
+    /* The page stays locked until the save ends, so the wizard can't change under it. */
+    var page = document.querySelector('.cfg-layout');
+    page.inert = true;
     try {
       var res = await fetch(url, {
         method: method,
@@ -483,9 +481,8 @@
         var savedNoun = meta.type === 'Mcp' ? 'MCP server' : 'API';
         var created = !editingId;
         if (importing) {
-          var contentError = await importContent(base, editingId || handle, importFile);
+          var contentError = await importContent(base, editingId || handle, contentZipFile);
           if (contentError) {
-            importPanel.inert = false;
             applySavedThumbnail();
             if (created) switchToEditAfterCreate(handle);
             showContentError(contentError);
@@ -509,7 +506,7 @@
     } catch(e) {
       showAlert('Error: ' + e.message, 'error');
     } finally {
-      importPanel.inert = false;
+      page.inert = false;
     }
   }
 
@@ -903,9 +900,8 @@
         return;
       }
       updateWizardStep(2);
-    } else if (!saving) {
-      saving = true;
-      try { await saveApi(); } finally { saving = false; }
+    } else {
+      await saveApi();
     }
   });
 

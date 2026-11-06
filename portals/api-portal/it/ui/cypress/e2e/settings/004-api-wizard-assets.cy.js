@@ -272,7 +272,7 @@ describe('Settings — API wizard Assets step', () => {
         asset(handle, 'DOC_Other', 'Guide.md').its('status').should('eq', 404);
     });
 
-    it('locks the package choice while the save runs', () => {
+    it('locks the page while the save runs', () => {
         const handle = `it-wizard-lock-${uid}`;
         cy.login();
         cy.seedApi({ id: handle, name: `Wizard ${handle}` });
@@ -284,7 +284,7 @@ describe('Settings — API wizard Assets step', () => {
         cy.intercept('PUT', `**/api/v0.9/apis/${handle}`, (req) => req.on('response', (res) => res.setDelay(1000)));
         save();
         cy.get('#cfg-replace-content-confirm').click();
-        cy.get('#wz-assets-panel-import').should('have.prop', 'inert', true);
+        cy.get('.cfg-layout').should('have.prop', 'inert', true);
         saved();
         asset(handle, 'DOC_Other', 'Guide.md').its('status').should('eq', 200);
     });
