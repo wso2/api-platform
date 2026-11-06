@@ -161,12 +161,11 @@ func referencedGlobalPropertyVariables(compiledAst *cel.Ast) map[string]bool {
 }
 
 // globalPropertyVariable declares one "$ctx:" variable resolvable for global traffic-log
-// properties: its CEL type (for env construction) and its Go zero value (for
-// buildGlobalPropertyEvalCtx, when the corresponding event field is absent or the variable
-// is otherwise unreferenced-but-needed). A nil zero marks an optional variable: it is left
-// unbound when the request has no value, because an empty value would look like real data
-// (a latency of 0). Evaluating it then fails, so a template writes the field as null and
-// traffic_logging.properties leaves the property out. Declaring name/type/zero together in
+// properties: its CEL type (for env construction) and its Go zero value, the starting value
+// traffic_logging.properties uses when the request has no value (see fillStartingValues). A
+// template never uses it: a variable the request has no value for is unbound, so the field is
+// written as null. A nil zero marks a variable with no starting value, because an empty value would
+// look like real data (a latency of 0); properties omit it. Declaring name/type/zero together in
 // one slice — rather than inline cel.Variable(...) env options plus a separate map literal of zero
 // values — is what lets referencedGlobalPropertyVariables and buildGlobalPropertyEvalCtx
 // stay in lock-step with the declared variable set with no risk of the lists drifting apart.
@@ -221,8 +220,7 @@ var globalPropertyVariables = []globalPropertyVariable{
 
 	// Backed by analytics metadata the collector system policy stamps generically
 	// for any authenticated request (see globalPropertyEvaluator doc comment).
-	// Always bound (to a zero value when the request wasn't authenticated), so
-	// referencing auth.* never errors.
+	// auth.authenticated is always bound; the others only when the request carries them.
 	{"auth.subject", cel.StringType, ""},
 	{"auth.type", cel.StringType, ""},
 	{"auth.issuer", cel.StringType, ""},
@@ -239,8 +237,7 @@ var globalPropertyVariables = []globalPropertyVariable{
 	// namespace above. There is no fixed schema, so values are cel.DynType rather
 	// than StringType; a policy author writing to SharedContext.Metadata should
 	// assume its value is visible here, since (unlike headers) there is no masking
-	// config for this path. Always bound to an empty map when absent, so
-	// referencing metadata never errors — same zero-value guarantee as auth.*.
+	// config for this path.
 	{"metadata", cel.MapType(cel.StringType, cel.DynType), map[string]interface{}{}},
 
 	// The same values as the traffic log line's client, errorType and error fields.
@@ -269,8 +266,8 @@ var globalPropertyVariables = []globalPropertyVariable{
 	{"latencies.backendLatency", cel.IntType, nil},
 }
 
-// globalPropertyZeroValues maps each variable name to its zero value, so building a request's
-// context visits only the variables its expressions read.
+// globalPropertyZeroValues maps each variable name to its zero value, the starting value
+// fillStartingValues gives traffic_logging.properties for a variable the request has no value for.
 var globalPropertyZeroValues = func() map[string]interface{} {
 	zeros := make(map[string]interface{}, len(globalPropertyVariables))
 	for _, v := range globalPropertyVariables {
@@ -356,9 +353,9 @@ func createGlobalPropertyEnv() (*cel.Env, error) {
 // does). Literal values pass through unchanged; "$ctx:" expressions are
 // evaluated and converted to a plain Go value. An expression that fails to
 // evaluate at runtime is skipped for that line only, logged at debug level —
-// in practice only when it reads an optional variable (nil zero in
-// globalPropertyVariables) the request has no value for, since every other
-// variable is always bound to a zero value rather than left unbound.
+// in practice only when it reads a variable with no starting value (nil zero in
+// globalPropertyVariables) the request has no value for, since fillStartingValues
+// binds every other variable.
 func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface{} {
 	if len(e.literals) == 0 && len(e.compiled) == 0 {
 		return nil
@@ -373,6 +370,7 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 	}
 
 	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders, e.maxPayloadSize)
+	fillStartingValues(evalCtx, e.referencedVars)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
@@ -392,10 +390,9 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // buildGlobalPropertyEvalCtx builds the CEL evaluation context from a dto.Event, populating
 // only the variables in referenced — the union, across every compiled expression, of the
 // variables actually used (see globalPropertyEvaluator.referencedVars) — rather than the
-// full declared set. Every populated variable is always bound (to its zero value when the
-// corresponding event field is absent) so evaluation never fails merely because a nested
-// pointer was nil — except an optional variable (nil zero), which stays unbound when the
-// request has no value for it. request.body/response.body are cut to maxPayloadSize.
+// full declared set. A variable is bound only when the event carries a value for it, so a
+// template writes null for the rest; traffic_logging.properties then calls fillStartingValues.
+// request.body/response.body are cut to maxPayloadSize.
 // request.header/response.header are masked with the same maskedHeaders
 // config applied to the emitted requestHeaders/responseHeaders maps (see maskHeaders in
 // log.go), so a property expression like "$ctx:request.header['authorization']" cannot
@@ -405,12 +402,6 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // expression, which is the whole point of this function taking referenced at all.
 func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders map[string]bool, maxPayloadSize int) map[string]interface{} {
 	ctx := make(map[string]interface{}, len(referenced))
-	for name := range referenced {
-		if zero := globalPropertyZeroValues[name]; zero != nil {
-			ctx[name] = zero
-		}
-	}
-
 	if event == nil {
 		return ctx
 	}
@@ -510,15 +501,15 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	// than a separately stamped flag, since the collector only ever stamps these keys
 	// together, gated on Authenticated && Subject != "" (see populateAuthAnalyticsMetadata
 	// in gateway/system-policies/analytics/analytics.go). Both are derived from the same
-	// lookup, so it's guarded by either being referenced.
+	// lookup, so it's guarded by either being referenced. auth.authenticated is false when
+	// there is no subject.
 	if referenced["auth.subject"] || referenced["auth.authenticated"] {
-		if subject, ok := event.Properties[dto.PropKeyAuthUserID].(string); ok && subject != "" {
-			if referenced["auth.subject"] {
-				ctx["auth.subject"] = subject
-			}
-			if referenced["auth.authenticated"] {
-				ctx["auth.authenticated"] = true
-			}
+		subject, _ := event.Properties[dto.PropKeyAuthUserID].(string)
+		if referenced["auth.subject"] && subject != "" {
+			ctx["auth.subject"] = subject
+		}
+		if referenced["auth.authenticated"] {
+			ctx["auth.authenticated"] = subject != ""
 		}
 	}
 	if referenced["auth.type"] {
@@ -583,58 +574,61 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		}
 	}
 
-	// The same event fields as the traffic log line's client, errorType and error.
-	if referenced["client.ip"] {
+	// The same event fields as the traffic log line's client, errorType and error. An empty
+	// value is left unbound.
+	if referenced["client.ip"] && event.UserIP != "" {
 		ctx["client.ip"] = event.UserIP
 	}
-	if referenced["client.userAgent"] {
+	if referenced["client.userAgent"] && event.UserAgentHeader != "" {
 		ctx["client.userAgent"] = event.UserAgentHeader
 	}
-	if referenced["error.category"] {
+	if referenced["error.category"] && event.ErrorType != "" {
 		ctx["error.category"] = event.ErrorType
 	}
+	// Empty error fields are left unbound. errorCode, the status the client got, is always
+	// bound; it is 0 when the client got no response.
 	if e := event.Error; e != nil {
 		if referenced["error.errorCode"] {
 			ctx["error.errorCode"] = e.ErrorCode
 		}
-		if referenced["error.errorMessage"] {
+		if referenced["error.errorMessage"] && e.ErrorMessage != "" {
 			ctx["error.errorMessage"] = string(e.ErrorMessage)
 		}
-		if referenced["error.wso2ErrorCode"] {
+		if referenced["error.wso2ErrorCode"] && e.Wso2ErrorCode != 0 {
 			ctx["error.wso2ErrorCode"] = e.Wso2ErrorCode
 		}
-		if referenced["error.type"] {
+		if referenced["error.type"] && e.Type != "" {
 			ctx["error.type"] = e.Type
 		}
-		if referenced["error.direction"] {
+		if referenced["error.direction"] && e.Direction != "" {
 			ctx["error.direction"] = e.Direction
 		}
-		if referenced["error.summary"] {
+		if referenced["error.summary"] && e.Summary != "" {
 			ctx["error.summary"] = e.Summary
 		}
-		if referenced["error.policy"] {
+		if referenced["error.policy"] && e.Policy != "" {
 			ctx["error.policy"] = e.Policy
 		}
-		if referenced["error.policyPhase"] {
+		if referenced["error.policyPhase"] && e.PolicyPhase != "" {
 			ctx["error.policyPhase"] = e.PolicyPhase
 		}
-		if referenced["error.source"] {
+		if referenced["error.source"] && e.Source != "" {
 			ctx["error.source"] = e.Source
 		}
-		if referenced["error.originalStatus"] {
+		if referenced["error.originalStatus"] && e.OriginalStatus != 0 {
 			ctx["error.originalStatus"] = e.OriginalStatus
 		}
-		if referenced["error.jsonRpcCode"] {
+		if referenced["error.jsonRpcCode"] && e.JSONRPCCode != 0 {
 			ctx["error.jsonRpcCode"] = e.JSONRPCCode
 		}
 		if g := e.Guardrail; g != nil {
-			if referenced["error.guardrail.name"] {
+			if referenced["error.guardrail.name"] && g.Name != "" {
 				ctx["error.guardrail.name"] = g.Name
 			}
-			if referenced["error.guardrail.action"] {
+			if referenced["error.guardrail.action"] && g.Action != "" {
 				ctx["error.guardrail.action"] = g.Action
 			}
-			if referenced["error.guardrail.reason"] {
+			if referenced["error.guardrail.reason"] && g.Reason != "" {
 				ctx["error.guardrail.reason"] = g.Reason
 			}
 		}
@@ -657,6 +651,20 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	}
 
 	return ctx
+}
+
+// fillStartingValues binds each referenced variable that ctx does not have to its starting value
+// from globalPropertyZeroValues, so traffic_logging.properties gets "", 0, false, [] or {} for it.
+// A variable with no starting value stays unbound.
+func fillStartingValues(ctx map[string]interface{}, referenced map[string]bool) {
+	for name := range referenced {
+		if _, bound := ctx[name]; bound {
+			continue
+		}
+		if zero := globalPropertyZeroValues[name]; zero != nil {
+			ctx[name] = zero
+		}
+	}
 }
 
 // lowerCaseHeaderKeys returns a copy of headers with all keys lower-cased.

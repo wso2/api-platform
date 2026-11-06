@@ -517,9 +517,9 @@ func TestLogTemplate_ExclusionThatEmptiesAValueRemovesIt(t *testing.T) {
 		event.Properties[dto.PropKeyAuthProperties] = `{"tenant":"acme"}`
 		return event
 	}
-	noClaims := func() *dto.Event {
+	emptyClaims := func() *dto.Event {
 		event := exclusionEvent()
-		delete(event.Properties, dto.PropKeyAuthProperties)
+		event.Properties[dto.PropKeyAuthProperties] = `{}`
 		return event
 	}
 	metadata := func() *dto.Event {
@@ -541,10 +541,10 @@ func TestLogTemplate_ExclusionThatEmptiesAValueRemovesIt(t *testing.T) {
 		{"emptied objects above it are removed too", `{"o":{"p":{"a":"$ctx:auth.property"}},"b":1}`, []string{"o.p.a.tenant"}, onlyTenant(), `{"b":1}`},
 		{"an object above it with other fields stays", `{"o":{"a":"$ctx:auth.property","n":"$ctx:api.name"}}`, []string{"o.a.tenant"}, onlyTenant(), `{"o":{"n":"Orders"}}`},
 		{"every field emptied gives an empty line object", `{"a":"$ctx:auth.property"}`, []string{"a.tenant"}, onlyTenant(), `{}`},
-		{"a value that is already empty stays", `{"a":"$ctx:auth.property"}`, []string{"a.tenant"}, noClaims(), `{"a":{}}`},
+		{"a value that is already empty stays", `{"a":"$ctx:auth.property"}`, []string{"a.tenant"}, emptyClaims(), `{"a":{}}`},
 		{"an object written empty stays", `{"e":{},"b":1}`, []string{"e.x"}, onlyTenant(), `{"e":{},"b":1}`},
 		{"a header map emptied by exclusion is removed", `{"h":"$ctx:request.header","b":1}`, []string{"h.authorization", "h.x-foo"}, ordersEvent(), `{"b":1}`},
-		{"a header map with no captured headers stays", `{"h":"$ctx:request.header"}`, []string{"h.x-foo"}, createBaseEvent(), `{"h":{}}`},
+		{"a header map with no captured headers is null", `{"h":"$ctx:request.header"}`, []string{"h.x-foo"}, createBaseEvent(), `{"h":null}`},
 		{"a flat key inside a value", `{"m":"$ctx:metadata"}`, []string{"m.x.y"}, metadata(), `{"m":{"deep":{"k":{"v":3}},"list":[{"k":1}],"x":{"y":2}}}`},
 		{"emptied maps inside a value are removed", `{"m":"$ctx:metadata"}`, []string{"m.deep.k.v"}, metadata(), `{"m":{"list":[{"k":1}],"x":{"y":2},"x.y":1}}`},
 		{"lists inside a value are not reached", `{"m":"$ctx:metadata"}`, []string{"m.list.0.k"}, metadata(), `{"m":{"deep":{"k":{"v":3}},"list":[{"k":1}],"x":{"y":2},"x.y":1}}`},
@@ -694,7 +694,7 @@ func TestLogTemplate_NoLatenciesWritesNull(t *testing.T) {
 	assert.Equal(t, `{"d":null,"rq":null,"rs":null,"b":null,"ms":null}`, line)
 }
 
-// dropEmpty removes "", 0 and objects left empty, so a template line, which writes every
+// dropEmpty removes null, "", 0 and objects left empty, so a template line, which writes every
 // field, can be compared with the default line, which leaves empty fields out.
 func dropEmpty(m map[string]interface{}) {
 	for k, v := range m {
@@ -705,7 +705,7 @@ func dropEmpty(m map[string]interface{}) {
 			}
 			continue
 		}
-		if v == "" || v == float64(0) {
+		if v == nil || v == "" || v == float64(0) {
 			delete(m, k)
 		}
 	}
@@ -827,13 +827,66 @@ func TestLogTemplate_MaxPayloadSizeCutsBodiesLikeTheDefaultLine(t *testing.T) {
 
 // A field with no value for a request is logged at DEBUG with the field and the reason, and only
 // when debug logging is on.
+// A template writes null for every variable the request has no value for, unlike properties,
+// which keep their starting values. auth.authenticated and response.status always have a value.
+func TestLogTemplate_NoValueIsNull(t *testing.T) {
+	event := createBaseEvent()
+	event.API = nil
+	event.ProxyResponseCode = 503
+	event.TrafficLogLatencies = nil
+	template := `{"api":"$ctx:api.name","project":"$ctx:project.id","app":"$ctx:application.id",` +
+		`"subject":"$ctx:auth.subject","anonymous":"$ctx:auth.subject == ''","scopes":"$ctx:auth.scopes",` +
+		`"user":"$ctx:auth.authenticated ? auth.subject : 'anonymous'",` +
+		`"claims":"$ctx:auth.property","authorized":"$ctx:auth.authorized","authenticated":"$ctx:auth.authenticated",` +
+		`"category":"$ctx:error.category","code":"$ctx:error.errorCode","guardrail":"$ctx:error.guardrail.name",` +
+		`"metadata":"$ctx:metadata","headers":"$ctx:request.header","responseHeaders":"$ctx:response.header",` +
+		`"durationMs":"$ctx:convertUnit(latencies.duration, 'ms')","status":"$ctx:response.status"}`
+
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: template, ExcludeFields: []string{"headers.x-foo"}})
+	l.Publish(event)
+
+	assert.Equal(t, `{"api":null,"project":null,"app":null,"subject":null,"anonymous":null,"scopes":null,"user":"anonymous",`+
+		`"claims":null,"authorized":null,"authenticated":false,"category":null,"code":null,"guardrail":null,`+
+		`"metadata":null,"headers":null,"responseHeaders":null,"durationMs":null,"status":503}`+"\n", buf.String())
+}
+
+// backendErrorEvent is a request the backend failed: the error has a code, a type and a source,
+// but no policy, fault code, original status, JSON-RPC code or guardrail.
+func backendErrorEvent() *dto.Event {
+	event := createBaseEvent()
+	event.ProxyResponseCode = 503
+	event.ErrorType = string(dto.FaultCategoryTargetConnectivity)
+	event.Error = &dto.Error{
+		ErrorCode: 503, ErrorMessage: dto.TargetConnectivityOther, Type: "upstream", Source: "backend",
+	}
+	return event
+}
+
+// backendErrorTemplate reads every error variable.
+const backendErrorTemplate = `{"category":"$ctx:error.category","code":"$ctx:error.errorCode",` +
+	`"message":"$ctx:error.errorMessage","wso2":"$ctx:error.wso2ErrorCode","type":"$ctx:error.type",` +
+	`"direction":"$ctx:error.direction","summary":"$ctx:error.summary","policy":"$ctx:error.policy",` +
+	`"phase":"$ctx:error.policyPhase","source":"$ctx:error.source","original":"$ctx:error.originalStatus",` +
+	`"jsonRpc":"$ctx:error.jsonRpcCode","guardrail":{"name":"$ctx:error.guardrail.name",` +
+	`"action":"$ctx:error.guardrail.action","reason":"$ctx:error.guardrail.reason"}}`
+
+// Inside an error, a field that error does not use is null; the fields it fills keep their values.
+func TestLogTemplate_ErrorFieldsTheErrorDoesNotUseAreNull(t *testing.T) {
+	assert.Equal(t, `{"category":"TARGET_CONNECTIVITY","code":503,"message":"OTHER","wso2":null,`+
+		`"type":"upstream","direction":null,"summary":null,"policy":null,"phase":null,"source":"backend",`+
+		`"original":null,"jsonRpc":null,"guardrail":{"name":null,"action":null,"reason":null}}`,
+		templateLine(t, backendErrorTemplate, backendErrorEvent()))
+}
+
 func TestLogTemplate_NoValueIsLoggedAtDebug(t *testing.T) {
 	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: `{"a":"$ctx:metadata['absent']"}`})
+	event := ordersEvent()
+	event.Properties[dto.PropKeyMetadata] = `{"present":1}`
 
 	t.Run("debug on", func(t *testing.T) {
 		buf.Reset()
 		logs := captureLogs(t)
-		l.Publish(ordersEvent())
+		l.Publish(event)
 
 		assert.Equal(t, `{"a":null}`+"\n", buf.String())
 		assert.Contains(t, logs.String(), `level=DEBUG msg="Traffic log template field has no value for this request; writing null" `+
@@ -846,7 +899,7 @@ func TestLogTemplate_NoValueIsLoggedAtDebug(t *testing.T) {
 		prev := slog.Default()
 		slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
 		t.Cleanup(func() { slog.SetDefault(prev) })
-		l.Publish(ordersEvent())
+		l.Publish(event)
 
 		assert.Equal(t, `{"a":null}`+"\n", buf.String())
 		assert.Empty(t, logs.String())

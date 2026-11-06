@@ -393,6 +393,57 @@ func TestGlobalPropertyEvaluator_ReferencedVariableWithNilEventField_ResolvesToZ
 	assert.Equal(t, "", resolved["appId"])
 }
 
+// Properties keep the starting values for a request that carries almost nothing: "" for text,
+// 0 for numbers, false, [] and {}.
+func TestGlobalPropertyEvaluator_AlmostEmptyEventGetsStartingValues(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"path":          "$ctx:request.path",
+		"api":           "$ctx:api.name",
+		"app":           "$ctx:application.id",
+		"subject":       "$ctx:auth.subject",
+		"client":        "$ctx:client.ip",
+		"category":      "$ctx:error.category",
+		"status":        "$ctx:response.status",
+		"code":          "$ctx:error.errorCode",
+		"authenticated": "$ctx:auth.authenticated",
+		"authorized":    "$ctx:auth.authorized",
+		"scopes":        "$ctx:auth.scopes",
+		"claims":        "$ctx:auth.property",
+		"metadata":      "$ctx:metadata",
+		"headers":       "$ctx:request.header",
+	}, nil, 0)
+
+	resolved := e.resolve(&dto.Event{Properties: map[string]interface{}{}})
+
+	assert.Equal(t, map[string]interface{}{
+		"path": "", "api": "", "app": "", "subject": "", "client": "", "category": "",
+		"status": float64(0), "code": float64(0),
+		"authenticated": false, "authorized": false,
+		"scopes":   []interface{}{},
+		"claims":   map[string]interface{}{},
+		"metadata": map[string]interface{}{},
+		"headers":  map[string]interface{}{},
+	}, resolved)
+}
+
+// For the same backend error, properties keep "" and 0 for the fields the error does not use.
+func TestGlobalPropertyEvaluator_ErrorFieldsTheErrorDoesNotUseKeepStartingValues(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"code":     "$ctx:error.errorCode",
+		"type":     "$ctx:error.type",
+		"wso2":     "$ctx:error.wso2ErrorCode",
+		"policy":   "$ctx:error.policy",
+		"original": "$ctx:error.originalStatus",
+		"jsonRpc":  "$ctx:error.jsonRpcCode",
+		"name":     "$ctx:error.guardrail.name",
+	}, nil, 0)
+
+	assert.Equal(t, map[string]interface{}{
+		"code": float64(503), "type": "upstream",
+		"wso2": float64(0), "policy": "", "original": float64(0), "jsonRpc": float64(0), "name": "",
+	}, e.resolve(backendErrorEvent()))
+}
+
 // Traffic log templates rely on two cel-go behaviours: evaluating a declared variable that is
 // missing from the activation fails, and a variable name whose last part is also a CEL
 // function name (type, timestamp) still compiles and evaluates as the variable.
