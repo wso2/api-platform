@@ -333,7 +333,7 @@
       setSelectedPolicies(api.subscriptionPlans || []);
       setSelectedLabels(api.labels || []);
       /* existing docs are embedded server-side in cfg-org-apis-data */
-      existingDocs = (api.existingDocs || []).filter(function(n, i, all) { return all.indexOf(n) === i; });
+      existingDocs = api.existingDocs || [];
     } else {
       /* add mode */
       editingId = null;
@@ -1089,10 +1089,24 @@
   }());
 
   /* ── Assets: Upload documents ──
-     A new file named like an existing doc replaces it: on save its name goes in docsToRemove
-     too, and the server removes that name (in any category) before storing the new file. */
-  function isReplaced(name) {
-    return docFiles.some(function(f) { return f.name === name; });
+     An uploaded file is stored in category Other, so it replaces the Other document of its
+     name, and a document of that name in another category stays. */
+  var DOC_TYPE_OTHER = 'DOC_Other';
+
+  function isReplaced(doc) {
+    return doc.type === DOC_TYPE_OTHER && docFiles.some(function(f) { return f.name === doc.name; });
+  }
+
+  function replacesExisting(file) {
+    return existingDocs.some(function(doc) { return doc.type === DOC_TYPE_OTHER && doc.name === file.name; });
+  }
+
+  function isSameDoc(a, b) {
+    return a.name === b.name && a.type === b.type;
+  }
+
+  function docLabel(doc) {
+    return doc.type === DOC_TYPE_OTHER ? doc.name : doc.type.replace(/^DOC_/, '') + '/' + doc.name;
   }
 
   function docItem(name, tag, action, size) {
@@ -1116,23 +1130,23 @@
     newList.innerHTML = '';
 
     var shownExisting = 0;
-    existingDocs.forEach(function(name) {
-      if (isReplaced(name)) return;
+    existingDocs.forEach(function(doc) {
+      if (isReplaced(doc)) return;
       shownExisting++;
-      var removed = docsToRemove.indexOf(name) !== -1;
-      var item = docItem(name, removed ? 'Will be removed' : '', removed ? 'undo' : 'remove');
+      var removed = docsToRemove.some(function(d) { return isSameDoc(d, doc); });
+      var item = docItem(docLabel(doc), removed ? 'Will be removed' : '', removed ? 'undo' : 'remove');
       if (removed) item.classList.add('cfg-docs-item--removed');
       item.querySelector('button').addEventListener('click', function() {
         docsToRemove = removed
-          ? docsToRemove.filter(function(n) { return n !== name; })
-          : docsToRemove.concat(name);
+          ? docsToRemove.filter(function(d) { return !isSameDoc(d, doc); })
+          : docsToRemove.concat(doc);
         renderDocs();
       });
       existingList.appendChild(item);
     });
 
     docFiles.forEach(function(f) {
-      var item = docItem(f.name, existingDocs.indexOf(f.name) !== -1 ? 'Replaces existing' : 'New', 'remove', f.size);
+      var item = docItem(f.name, replacesExisting(f) ? 'Replaces existing' : 'New', 'remove', f.size);
       item.querySelector('button').addEventListener('click', function() {
         docFiles = docFiles.filter(function(x) { return x !== f; });
         renderDocs();
@@ -1148,9 +1162,9 @@
   function renderDocsSummary() {
     var el = document.getElementById('wz-docs-summary');
     if (!el) return;
-    var replaced = docFiles.filter(function(f) { return existingDocs.indexOf(f.name) !== -1; }).length;
+    var replaced = docFiles.filter(replacesExisting).length;
     var added = docFiles.length - replaced;
-    var removed = docsToRemove.filter(function(n) { return !isReplaced(n); }).length;
+    var removed = docsToRemove.filter(function(d) { return !isReplaced(d); }).length;
     var parts = [[added, 'added'], [replaced, 'replaced'], [removed, 'removed']]
       .filter(function(p) { return p[0] > 0; })
       .map(function(p, i) {
@@ -1160,13 +1174,9 @@
     el.textContent = text ? 'When you save: ' + text + '.' : '';
   }
 
-  /* Names the API save removes before storing the uploaded docs. */
+  /* The documents the API save removes; an uploaded file overwrites its own name without being listed. */
   function docsToRemoveOnSave() {
-    var names = docsToRemove.slice();
-    docFiles.forEach(function(f) {
-      if (existingDocs.indexOf(f.name) !== -1 && names.indexOf(f.name) === -1) names.push(f.name);
-    });
-    return names;
+    return docsToRemove.map(function(doc) { return { fileName: doc.name, type: doc.type }; });
   }
 
   /* The docs page opens a document as <name>.md, so only .md files are accepted. */

@@ -65,6 +65,17 @@ const applyThumbnailChange = async (change, apiId, orgId, userId, t) => {
     }
 };
 
+// A docsToRemove entry: a file name removes it from every category, { fileName, type } from that one.
+const removeDoc = async (doc, orgId, apiId, t) => {
+    if (typeof doc === 'string') {
+        return apiFileDao.deleteByFileName(doc, orgId, apiId, t);
+    }
+    if (typeof doc?.fileName !== 'string' || typeof doc?.type !== 'string' || !constants.CONTENT_TYPES.DOC_PATTERN.test(doc.type)) {
+        throw new ValidationError('docsToRemove entries must be a file name or { fileName, type }');
+    }
+    return apiFileDao.delete(doc.fileName, doc.type, orgId, apiId, t);
+};
+
 const createAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
     const userId = util.resolveActor(req);
@@ -702,8 +713,8 @@ const updateAPIMetadata = async (req, res) => {
             }
             // remove docs the user deleted in the wizard
             if (Array.isArray(apiMetadata.docsToRemove)) {
-                for (const fileName of apiMetadata.docsToRemove) {
-                    await apiFileDao.deleteByFileName(fileName, orgId, apiId, t);
+                for (const doc of apiMetadata.docsToRemove) {
+                    await removeDoc(doc, orgId, apiId, t);
                 }
             }
             // upsert newly uploaded documentation files — use update (upsert by file_name+type)

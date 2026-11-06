@@ -402,13 +402,13 @@ const listDocNamesForApis = async (orgId, apiIds) => {
 
     const placeholders = apiIds.map(() => '?').join(', ');
     const rows = await db.query(
-        `SELECT c.file_name AS file_name, c.api_uuid AS api_uuid
+        `SELECT c.file_name AS file_name, c.type AS type, c.api_uuid AS api_uuid
          FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
          WHERE c.api_uuid IN (${placeholders}) AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
         [...apiIds, `${constants.DOC_TYPES.DOC_ID}%`, orgId, getPortalId()]
     );
     for (const row of rows) {
-        docNamesByApiId[row.api_uuid].push(row.file_name);
+        docNamesByApiId[row.api_uuid].push({ name: row.file_name, type: row.type });
     }
     return docNamesByApiId;
 };

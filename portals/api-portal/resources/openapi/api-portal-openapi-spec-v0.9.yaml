@@ -4503,7 +4503,8 @@ components:
                   id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes
                   the API's stored handle; when the API is created from a YAML artifact instead, the handle is
                   always taken from `metadata.name`. On update it also accepts `docsToRemove` (array
-                  of document file names to delete) and, on create and update, `removeThumbnail` (boolean;
+                  of documents to delete: a file name removes it from every category, `{ "fileName", "type" }` only
+                  from that `DOC_<Category>`) and, on create and update, `removeThumbnail` (boolean;
                   `true` deletes the thumbnail on update and has no effect on create). Sending a `thumbnail` part
                   together with `removeThumbnail: true` is a `400`.
                 example: >-
@@ -4570,10 +4571,11 @@ components:
                   `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`,
                   `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL),
                   and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already
-                  exist in the organization). `id` becomes the MCP server's stored handle. On update it also accepts `docsToRemove` (array
-                  of document file names to delete) and, on create and update, `removeThumbnail` (boolean;
-                  `true` deletes the thumbnail on update and has no effect on create). Sending a `thumbnail` part
-                  together with `removeThumbnail: true` is a `400`.
+                  exist in the organization). `id` becomes the MCP server's stored handle. On update it also
+                  accepts `docsToRemove` (array of documents to delete: a file name removes it from every category,
+                  `{ "fileName", "type" }` only from that `DOC_<Category>`) and, on create and update,
+                  `removeThumbnail` (boolean; `true` deletes the thumbnail on update and has no effect on create).
+                  Sending a `thumbnail` part together with `removeThumbnail: true` is a `400`.
                 example: >-
                   {"name":"Travel Assistant MCP","version":"v1","description":"MCP server for travel
                   planning tools","type":"MCP","agentVisibility":"VISIBLE","status":"PUBLISHED",

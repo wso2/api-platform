@@ -20,28 +20,42 @@
 
 const client = require('../support/client');
 const { uniqueHandle } = require('../support/fixtures');
+const { createZip } = require('../support/zipBuilder');
 
 const DEFINITION = JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} });
 const MESSAGE = 'diagram.txt: documents must be Markdown (.md)';
 
-const metadata = (id) => JSON.stringify({
+const metadata = (id, extra = {}) => JSON.stringify({
     id,
     name: `Docs API ${id}`,
     version: 'v1.0',
     type: 'REST',
     status: 'PUBLISHED',
     endPoints: { productionURL: `https://backend.example.invalid/${id}` },
+    ...extra,
 });
 
 const create = (id) => client.as('publisher').postMultipart('/apis')
     .field('metadata', metadata(id))
     .attach('definition', Buffer.from(DEFINITION), 'definition.json');
 
-const update = (id) => client.as('publisher').putMultipart(`/apis/${id}`)
-    .field('metadata', metadata(id));
+const update = (id, extra) => client.as('publisher').putMultipart(`/apis/${id}`)
+    .field('metadata', metadata(id, extra));
 
-const getDoc = (id, fileName) => client.as('publisher')
-    .get(`/apis/${id}/assets?type=DOC_Other&fileName=${fileName}`);
+const getDoc = (id, fileName, type = 'DOC_Other') => client.as('publisher')
+    .get(`/apis/${id}/assets?type=${type}&fileName=${fileName}`);
+
+async function createWithGuideInTwoCategories() {
+    const id = uniqueHandle('docs');
+    expect((await create(id)).status).toBe(201);
+    const content = createZip([
+        { name: 'docs/Guide.md', content: '# Other' },
+        { name: 'docs/HowTo/Guide.md', content: '# HowTo' },
+    ]);
+    const stored = await client.as('publisher').putMultipart(`/apis/${id}/assets`).attach('content', content, 'content.zip');
+    expect(stored.status).toBeLessThan(300);
+    return id;
+}
 
 describe('API documents in the save request', () => {
     beforeAll(async () => {
@@ -76,5 +90,27 @@ describe('API documents in the save request', () => {
         expect(res.body.errors).toEqual([{ message: MESSAGE }]);
         expect((await getDoc(id, 'A.md')).status).toBe(200);
         expect((await getDoc(id, 'B.md')).status).toBe(404);
+    });
+
+    it('removes a document from one category with { fileName, type }', async () => {
+        const id = await createWithGuideInTwoCategories();
+        const res = await update(id, { docsToRemove: [{ fileName: 'Guide.md', type: 'DOC_HowTo' }] });
+        expect(res.status).toBe(200);
+        expect((await getDoc(id, 'Guide.md', 'DOC_HowTo')).status).toBe(404);
+        expect((await getDoc(id, 'Guide.md')).status).toBe(200);
+    });
+
+    it('removes a document from every category with a file name', async () => {
+        const id = await createWithGuideInTwoCategories();
+        expect((await update(id, { docsToRemove: ['Guide.md'] })).status).toBe(200);
+        expect((await getDoc(id, 'Guide.md', 'DOC_HowTo')).status).toBe(404);
+        expect((await getDoc(id, 'Guide.md')).status).toBe(404);
+    });
+
+    it('rejects a docsToRemove type that is not a document category, and removes nothing', async () => {
+        const id = await createWithGuideInTwoCategories();
+        const res = await update(id, { docsToRemove: [{ fileName: 'definition.json', type: 'API_DEFINITION' }] });
+        expect(res.status).toBe(400);
+        expect((await client.as('publisher').get(`/apis/${id}/assets?type=API_DEFINITION&fileName=definition.json`)).status).toBe(200);
     });
 });
