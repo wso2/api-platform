@@ -84,7 +84,7 @@ test: ## Run tests with coverage report
 	@echo "Running tests..."
 	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
 
-build: binary ## Build Docker image (from the binary zip, for this machine's CPU)
+build: binary ## Build Docker image (from the binary zip, for this machine's CPU; needs a multi-platform builder, see `binary`)
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
 	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
@@ -107,11 +107,24 @@ build: binary ## Build Docker image (from the binary zip, for this machine's CPU
 # The binaries are compiled by Dockerfile.build and exported with its `binary` stage
 # (at linux-<arch>/platform-api). Its builder stage runs on the build machine's own
 # platform and cross-compiles, so no emulation is needed.
+#
+# Building both platforms in one go needs a builder that supports multi-platform
+# builds: a `docker-container` builder, or the default `docker` builder with the
+# containerd image store turned on. `binary` checks this first, so `build` and
+# `build-and-push-multiarch` (which run it) fail with the fix instead of a Docker error.
 BINARY_NAME      := wso2apip-platform-api-binary-$(VERSION)
 BINARY_PLATFORMS := linux/amd64,linux/arm64
 
 .PHONY: binary
-binary: ## Build target/$(BINARY_NAME).zip
+binary: ## Build target/$(BINARY_NAME).zip (needs a multi-platform builder)
+	@if [ "$$(docker buildx inspect | awk '/^Driver:/ {print $$2; exit}')" = "docker" ] && \
+	    ! docker info --format '{{json .DriverStatus}}' | grep -q 'io.containerd.snapshotter'; then \
+		echo "Error: the binary zip is built for $(BINARY_PLATFORMS) in one build, which the" >&2; \
+		echo "current 'docker' builder can't do without the containerd image store." >&2; \
+		echo "Either turn on the containerd image store, or create and use a docker-container builder:" >&2; \
+		echo "  docker buildx create --name multiarch --driver docker-container --use" >&2; \
+		exit 1; \
+	fi
 	@rm -rf target/.binary-out target/.binary-stage target/$(BINARY_NAME).zip
 	docker buildx build -f Dockerfile.build \
 		--platform $(BINARY_PLATFORMS) \
