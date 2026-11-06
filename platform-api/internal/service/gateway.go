@@ -1013,7 +1013,7 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 		return fmt.Errorf("failed to revoke token: %w", err)
 	}
 
-	if s.auditRepo != nil {
+	if s.auditRepo != nil && token.IsActive() {
 		_ = s.auditRepo.Record("REVOKE", tokenId, "gateway_token", orgId, revokedBy)
 	}
 
