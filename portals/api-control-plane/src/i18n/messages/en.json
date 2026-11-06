@@ -465,7 +465,7 @@
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
   "api.create.generalForm.targetUrl.error.required": {
-    "defaultMessage": "Enter a target URL."
+    "defaultMessage": "Enter an endpoint."
   },
   "api.create.generalForm.targetUrl.helper": {
     "defaultMessage": "The backend the gateway routes to."

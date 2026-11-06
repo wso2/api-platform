@@ -203,7 +203,7 @@ const messages = defineMessages({
   },
   targetUrlErrorRequired: {
     id: 'api.create.generalForm.targetUrl.error.required',
-    defaultMessage: 'Enter a target URL.',
+    defaultMessage: 'Enter an endpoint.',
   },
   targetUrlHelper: {
     id: 'api.create.generalForm.targetUrl.helper',
