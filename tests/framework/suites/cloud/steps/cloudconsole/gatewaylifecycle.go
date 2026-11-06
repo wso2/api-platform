@@ -90,6 +90,7 @@ func (s *Steps) registerManagedGatewayLifecycleSteps(sc *godog.ScenarioContext) 
 	sc.Step(`^I hand the default of the environment back to the gateway that held it$`, s.handDefaultBack)
 	sc.Step(`^I request the deletion of the managed APIP gateway$`, s.requestGatewayDeletion)
 	sc.Step(`^I delete the managed APIP gateway$`, s.deleteManagedGateway)
+	sc.Step(`^I request a synthetic managed APIP gateway once its name is free with:$`, s.requestManagedGatewayOnceItsNameIsFree)
 	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
 	sc.Step(`^I deploy a build of the synthetic REST API to synthetic managed APIP gateway (\d+)$`, s.deployBuildToSyntheticGateway)
 	sc.Step(`^the synthetic REST API should be deployed on synthetic managed APIP gateway (\d+)$`,
@@ -557,6 +558,50 @@ func (s *Steps) assertGatewayHasItsNameAsID(ctx context.Context) error {
 		return fmt.Errorf("the gateway is registered as %q, want %q: its name was not free", id, want)
 	}
 	return nil
+}
+
+// gatewayNameReleaseTimeout bounds how long the platform may hold a deleted gateway's name, which
+// it does while the gateway's infrastructure is removed.
+const gatewayNameReleaseTimeout = 5 * time.Minute
+
+// gatewayNameReleaseInterval is how often the request is made again while the name is held.
+var gatewayNameReleaseInterval = 30 * time.Second
+
+// requestManagedGatewayOnceItsNameIsFree requests the gateway until the platform registers it
+// under the id its name gives it. A try answered with a suffixed id found the name still held, so
+// that gateway is deleted at once and the request is made again.
+func (s *Steps) requestManagedGatewayOnceItsNameIsFree(ctx context.Context, table *godog.Table) error {
+	values, err := tableValues(table)
+	if err != nil {
+		return err
+	}
+	return s.requestManagedGatewayOnceItsNameIsFreeWith(ctx, values)
+}
+
+func (s *Steps) requestManagedGatewayOnceItsNameIsFreeWith(ctx context.Context, values map[string]string) error {
+	return retry.Await(ctx, retry.Options{Timeout: gatewayNameReleaseTimeout, Interval: gatewayNameReleaseInterval},
+		func(ctx context.Context) (string, error) {
+			if err := s.requestManagedGatewayWith(ctx, values); err != nil {
+				return "", err
+			}
+			if err := s.assertGatewayRequestAccepted(ctx); err != nil {
+				return "", err
+			}
+			if s.assertGatewayHasItsNameAsID(ctx) == nil {
+				return "", nil
+			}
+			id, _, err := currentGateway(ctx)
+			if err != nil {
+				return "", err
+			}
+			if err := s.deleteManagedGateway(ctx); err != nil {
+				return "", err
+			}
+			deregister(ctx, cleanup.KindGateway, id)
+			return "the name is still held; deleted " + id, nil
+		},
+		func(pending string) bool { return pending == "" },
+		"waiting for the name of the gateway to be released")
 }
 
 // managedGatewayUpdateKeys lists the values a managed gateway update table may carry.
