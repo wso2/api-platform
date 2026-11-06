@@ -70,7 +70,7 @@ const AddGatewayButton: FC<{ port: AIWorkspaceHostPort; onClick: () => void }> =
       startIcon={<Plus size={20} />}
       disabled={blocked}
     >
-      Add Gateway
+      Add API Gateway
     </Button>
   );
   if (!blocked) return button;
@@ -466,8 +466,8 @@ const GatewaysList: FC<GatewaysListProps> = ({
         <Grid size={{ xs: 12 }}>
           <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 2 }}>
             <PageTitle sx={{ minWidth: 0, flex: 1 }}>
-              <PageTitle.Header>Gateways</PageTitle.Header>
-              <PageTitle.SubHeader>Manage and monitor your gateway deployments.</PageTitle.SubHeader>
+              <PageTitle.Header>API Gateways</PageTitle.Header>
+              <PageTitle.SubHeader>Manage and monitor your API gateway deployments.</PageTitle.SubHeader>
             </PageTitle>
 
             <Stack direction="row" spacing={1.5} sx={{ ml: 'auto', flexShrink: 0 }}>
@@ -487,7 +487,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
             <Box sx={{ display: 'flex', '& > button + button': { ml: '-1px' } }}>
               <HostingTab
                 icon={<Cloud size={20} />}
-                title="WSO2 managed gateways"
+                title="WSO2 managed API gateways"
                 description="Hosted and operated by WSO2 in the cloud."
                 active={managedSummary.active}
                 inactive={managedSummary.inactive}
@@ -496,7 +496,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
               />
               <HostingTab
                 icon={<Server size={20} />}
-                title="Self-hosted gateways"
+                title="Self-hosted API gateways"
                 description="Running on your infrastructure, connected to this control plane."
                 active={selfHostedSummary.active}
                 inactive={selfHostedSummary.inactive}

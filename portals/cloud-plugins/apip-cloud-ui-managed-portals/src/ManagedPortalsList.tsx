@@ -41,7 +41,7 @@ import {
 
 import { useManagedPortalList } from "./hooks";
 import type { ManagedPortal } from "./types";
-import { PortalIllustration } from "./PortalIllustration";
+import { PortalPublishAnimation } from "./PortalPublishAnimation";
 import { usePortalFeature } from "./portContext";
 import UnexpectedErrorState from "./components/UnexpectedErrorState";
 
@@ -226,7 +226,7 @@ export default function ManagedPortalsList({
                 alignItems="center"
                 sx={{ maxWidth: 440, textAlign: "center" }}
               >
-                <PortalIllustration />
+                <PortalPublishAnimation />
                 <Typography variant="h5" sx={{ fontWeight: 700, pt: 2 }}>
                   Create your first portal
                 </Typography>

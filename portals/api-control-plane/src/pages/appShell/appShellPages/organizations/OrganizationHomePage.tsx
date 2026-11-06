@@ -127,15 +127,15 @@ const messages = defineMessages({
   },
   gatewayAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction',
-    defaultMessage: 'Connect a gateway',
+    defaultMessage: 'Connect an API gateway',
   },
   gatewayDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription',
-    defaultMessage: 'Run your APIs on a managed gateway or a self-hosted one.',
+    defaultMessage: 'Run your APIs on a managed API gateway or a self-hosted one.',
   },
   gatewayTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle',
-    defaultMessage: 'Gateways',
+    defaultMessage: 'API Gateways',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading',
