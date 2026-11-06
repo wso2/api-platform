@@ -5,7 +5,7 @@
     "moduleResolution": "Bundler",
     // Resolved against the API Control Plane's tree, not AI Workspace's like
     // the other cloud plugins. This plugin is console-only, and it needs
-    // @wso2/oxygen-ui 0.18.0 for `TrialBadge`, which AI Workspace (on 0.5.0)
+    // @wso2/oxygen-ui 0.21.0 for `TrialBadge` and its usage groups, which AI Workspace (on 0.5.0)
     // does not have. A plugin pointed at AI Workspace compiles against AI
     // Workspace's versions whatever its own package.json says.
     "paths": {

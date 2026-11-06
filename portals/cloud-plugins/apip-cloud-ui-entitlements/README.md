@@ -37,8 +37,8 @@ deliberately left in place, because fixing it would change AI Workspace.
 
 ## Dependency note
 
-This package is on `@wso2/oxygen-ui` **0.18.0** — the version that introduced
-`TrialBadge` — while the other cloud plugins remain on 0.5.0.
+This package is on `@wso2/oxygen-ui` **0.21.0** — 0.18.0 introduced
+`TrialBadge`, and 0.21.0 added the usage panel's `groups` — while the other cloud plugins remain on 0.5.0.
 
 Its `tsconfig.json` therefore resolves `@wso2/oxygen-ui` through
 `../../api-control-plane/node_modules`, **not** `../../ai-workspace/node_modules`
