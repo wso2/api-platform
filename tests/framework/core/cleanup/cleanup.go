@@ -88,9 +88,15 @@ var (
 	KindLLMProviderTemplate = Kind{Name: "llm-provider-template", Order: 86}
 	// A provider or proxy deployment references its gateway by id, so gateway deletes after
 	// both.
-	KindGateway     = Kind{Name: "gateway", Order: 88}
-	KindEnvironment = Kind{Name: "environment", Order: 95}
-	KindProject     = Kind{Name: "project", Order: 100}
+	KindGateway = Kind{Name: "gateway", Order: 88}
+	// A self-hosted gateway is a separate kind, not KindGateway, because the registry keeps
+	// one deleter per kind name: where gateways are deleted through a different collection
+	// than self-hosted ones (the cloud's /managed-gateways and /self-hosted-gateways), sharing
+	// the kind would send one of them to the wrong endpoint, which answers 404 and is swept as
+	// already gone. It lives in an environment, so it deletes before KindEnvironment.
+	KindSelfHostedGateway = Kind{Name: "self-hosted-gateway", Order: 88}
+	KindEnvironment       = Kind{Name: "environment", Order: 95}
+	KindProject           = Kind{Name: "project", Order: 100}
 )
 
 // Deleter removes one resource as the actor that created it.

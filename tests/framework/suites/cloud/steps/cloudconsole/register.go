@@ -52,6 +52,11 @@ const (
 	keyEnvironmentName  = "cloudEnvironmentName"
 	keyManagedGatewayID = "cloudManagedGatewayID"
 
+	keySelfHostedGatewayID = "cloudSelfHostedGatewayID"
+	// keyRevokedTokenIDs holds the comma-joined ids of the registration tokens a reconfigure
+	// revoked. Only token ids are ever stored; a token's secret value never enters the context.
+	keyRevokedTokenIDs = "cloudRevokedRegistrationTokenIDs"
+
 	keyAPIDefinition        = "cloudAPIDefinition"
 	keyAPIKey               = "cloudAPIKey"
 	keyRejectedAPIID        = "cloudRejectedAPIID"
@@ -137,11 +142,20 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^I delete the synthetic APIP environment$`, s.deleteEnvironment)
 	sc.Step(`^deleting the synthetic APIP environment should eventually return not found$`, s.verifyEnvironmentDeleted)
 
-	sc.Step(`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment)
+	sc.Step(`^I select an existing APIP environment for a (?:managed|self-hosted) gateway$`, s.selectGatewayEnvironment)
 	sc.Step(`^I create a synthetic managed APIP gateway$`, s.createManagedGateway)
 	sc.Step(`^the managed APIP gateway should be retrievable through the managed-gateway endpoint$`, s.getManagedGateway)
 	sc.Step(`^I delete the synthetic managed APIP gateway$`, s.deleteManagedGateway)
 	sc.Step(`^the managed APIP gateway should eventually be absent$`, s.verifyManagedGatewayDeleted)
+
+	sc.Step(`^I create a synthetic self-hosted APIP gateway$`, s.createSelfHostedGateway)
+	sc.Step(`^the self-hosted APIP gateway should be retrievable and awaiting connection$`, s.getSelfHostedGatewayAwaitingConnection)
+	sc.Step(`^I generate a registration token for the self-hosted APIP gateway$`, s.generateRegistrationToken)
+	sc.Step(`^I reconfigure the registration token of the self-hosted APIP gateway$`, s.reconfigureRegistrationToken)
+	sc.Step(`^the self-hosted APIP gateway should have exactly (\d+) active registration tokens?$`, s.assertActiveRegistrationTokens)
+	sc.Step(`^the revoked registration tokens should no longer be active$`, s.assertRevokedTokensInactive)
+	sc.Step(`^I delete the synthetic self-hosted APIP gateway$`, s.deleteSelfHostedGateway)
+	sc.Step(`^the self-hosted APIP gateway should eventually be absent$`, s.verifySelfHostedGatewayDeleted)
 }
 
 // registerIdentitySteps binds the steps that inspect the console token and send requests with
@@ -213,7 +227,10 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(kindPipeline, cloudDeleter(topo, client, "/pipelines", true)); err != nil {
 		return err
 	}
-	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false))
+	if err := reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, "/managed-gateways", false)); err != nil {
+		return err
+	}
+	return reg.RegisterDeleter(cleanup.KindSelfHostedGateway, cloudDeleter(topo, client, selfHostedGatewaysPath, false))
 }
 
 // environmentsCollection is the collection an environment is deleted from.

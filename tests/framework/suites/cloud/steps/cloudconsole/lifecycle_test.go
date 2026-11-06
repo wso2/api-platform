@@ -2181,3 +2181,65 @@ func TestChooseActiveGatewayAppliesNoFilterToAnAIGateway(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "sgw-like", choice.id)
 }
+
+func TestCheckAwaitingConnection(t *testing.T) {
+	valid := func() map[string]any {
+		return map[string]any{
+			"id": "development-shgw-1", "environment": "development",
+			"isActive": false, "endpoints": []any{pendingEndpoint},
+		}
+	}
+	require.NoError(t, checkAwaitingConnection(valid(), "development-shgw-1", "development"))
+
+	for name, mutate := range map[string]func(map[string]any){
+		"wrong id":           func(d map[string]any) { d["id"] = "other" },
+		"wrong environment":  func(d map[string]any) { d["environment"] = "production" },
+		"active":             func(d map[string]any) { d["isActive"] = true },
+		"isActive missing":   func(d map[string]any) { delete(d, "isActive") },
+		"real endpoint":      func(d map[string]any) { d["endpoints"] = []any{"https://gw.example.com"} },
+		"extra endpoint":     func(d map[string]any) { d["endpoints"] = []any{pendingEndpoint, "https://gw.example.com"} },
+		"endpoints missing":  func(d map[string]any) { delete(d, "endpoints") },
+		"isActive as string": func(d map[string]any) { d["isActive"] = "false" },
+	} {
+		document := valid()
+		mutate(document)
+		require.Error(t, checkAwaitingConnection(document, "development-shgw-1", "development"), name)
+	}
+}
+
+func TestMintedTokenIDNeverQuotesTheBody(t *testing.T) {
+	id, err := mintedTokenID([]byte(`{"id":"tok-1","token":"plain-text-secret"}`))
+	require.NoError(t, err)
+	require.Equal(t, "tok-1", id)
+
+	for _, body := range []string{
+		`{"token":"plain-text-secret"}`,
+		`{"id":"tok-1","token":""}`,
+		`plain-text-secret`,
+	} {
+		_, err := mintedTokenID([]byte(body))
+		require.Error(t, err, body)
+		require.NotContains(t, err.Error(), "plain-text-secret")
+	}
+}
+
+func TestActiveTokenIDsFollowsTheConsoleRule(t *testing.T) {
+	require.Equal(t, []string{"active-1", "no-status"}, activeTokenIDs([]map[string]any{
+		{"id": "active-1", "status": "active"},
+		{"id": "no-status"},
+		{"id": "revoked-1", "status": "revoked"},
+		{"id": "", "status": "active"},
+		{"status": "active"},
+	}))
+	require.Empty(t, activeTokenIDs(nil))
+}
+
+func TestStillActive(t *testing.T) {
+	require.Equal(t, []string{"old-2"}, stillActive([]string{"old-1", "old-2"}, []string{"new-1", "old-2"}))
+	require.Empty(t, stillActive([]string{"old-1"}, []string{"new-1"}))
+}
+
+func TestSelfHostedGatewayPathsEscapeID(t *testing.T) {
+	require.Equal(t, "/self-hosted-gateways/id%2Fwith%20separator", selfHostedGatewayPath("id/with separator"))
+	require.Equal(t, "/self-hosted-gateways/gw-1/tokens", selfHostedGatewayTokensPath("gw-1"))
+}

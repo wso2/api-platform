@@ -25,3 +25,7 @@ blocks:
       - name: apip-deploy
         features:
           - features/apip_deploy.feature
+      - name: apip-self-hosted-gateway
+        features:
+          - features/apip_self_hosted_gateway.feature
+
