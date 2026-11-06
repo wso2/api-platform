@@ -414,6 +414,9 @@
   "api.create.generalForm.description.label": {
     "defaultMessage": "Description"
   },
+  "api.create.generalForm.description.placeholder": {
+    "defaultMessage": "Ex: Manages customer orders and their fulfilment status."
+  },
   "api.create.generalForm.identifier.error.pattern": {
     "defaultMessage": "Use lowercase letters and numbers, separated by single hyphens."
   },
@@ -462,13 +465,13 @@
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
   "api.create.generalForm.targetUrl.error.required": {
-    "defaultMessage": "Enter a target URL."
+    "defaultMessage": "Enter an endpoint."
   },
   "api.create.generalForm.targetUrl.helper": {
     "defaultMessage": "The backend the gateway routes to."
   },
   "api.create.generalForm.targetUrl.label": {
-    "defaultMessage": "Target URL"
+    "defaultMessage": "Endpoint"
   },
   "api.create.generalForm.targetUrl.placeholder.notice": {
     "defaultMessage": "This API is using https://example.com as a placeholder backend. Replace it with your actual backend URL now, or update it before deploying."
@@ -941,10 +944,6 @@
     "defaultMessage": "WSO2-managed gateways",
     "description": "Plural noun for WSO2-managed gateways, used inside the limit-reached sentence."
   },
-  "apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways": {
-    "defaultMessage": "self-hosted gateways",
-    "description": "Plural noun for self-hosted gateways, used inside the limit-reached sentence."
-  },
   "apiControlPlane.hooks.useResourceLimits.componentPortals": {
     "defaultMessage": "portals",
     "description": "Plural noun for developer portals, used inside the limit-reached sentence."
@@ -952,6 +951,10 @@
   "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
     "defaultMessage": "APIs",
     "description": "Plural noun for APIs, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways": {
+    "defaultMessage": "self-hosted gateways",
+    "description": "Plural noun for self-hosted gateways, used inside the limit-reached sentence."
   },
   "apiControlPlane.hooks.useResourceLimits.limitReached": {
     "defaultMessage": "You cannot create more {component} because your organization has reached the maximum of {max}.",
@@ -3189,13 +3192,13 @@
     "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
-    "defaultMessage": "Connect a gateway"
+    "defaultMessage": "Connect an API gateway"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription": {
-    "defaultMessage": "Run your APIs on a managed gateway or a self-hosted one."
+    "defaultMessage": "Run your APIs on a managed API gateway or a self-hosted one."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle": {
-    "defaultMessage": "Gateways"
+    "defaultMessage": "API Gateways"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading": {
     "defaultMessage": "Loading organization"

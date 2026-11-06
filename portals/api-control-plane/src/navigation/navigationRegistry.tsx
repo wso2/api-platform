@@ -403,7 +403,7 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     id: 'gateways',
-    label: 'Gateways',
+    label: 'API Gateways',
     group: CLUSTER.place,
     order: 30,
     icon: <Network />,
@@ -447,7 +447,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     id: 'test',
     label: 'Test',
     group: CLUSTER.api,
-    order: 40,
+    order: 50,
     icon: <FlaskConical />,
     isVisible: apiCapability(({ canTest }) => canTest),
     // A leaf, not a parent: the console, the cURL builder and the response all
@@ -463,7 +463,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     id: 'deploy',
     label: 'Deploy',
     group: CLUSTER.api,
-    order: 50,
+    order: 40,
     icon: <Rocket />,
     isVisible: apiCapability(({ canDeploy }) => canDeploy),
     to: apiLevelTo(routes.apiDeploy, routes.graphqlApiDeploy),

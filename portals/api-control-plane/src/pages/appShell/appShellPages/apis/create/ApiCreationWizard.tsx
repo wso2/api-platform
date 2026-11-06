@@ -521,8 +521,16 @@ const ApiCreationWizardContent = () => {
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button
-                disabled={step === 'apiType'}
-                onClick={() => setStep(step === 'configure' ? 'source' : 'apiType')}
+                onClick={() => {
+                  if (step === 'apiType') {
+                    const { orgHandle, projectHandler } = params;
+                    if (orgHandle && projectHandler) {
+                      navigate(routes.projectHome(orgHandle, projectHandler));
+                    }
+                    return;
+                  }
+                  setStep(step === 'configure' ? 'source' : 'apiType');
+                }}
                 type="button"
                 variant="text"
               >
