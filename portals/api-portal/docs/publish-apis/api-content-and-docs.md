@@ -173,7 +173,7 @@ docs/
 
 Example doc page:
 
-```markdown
+````markdown
 <!-- docs/getting-started.md -->
 # Getting Started
 
@@ -187,7 +187,7 @@ Include your API key in the `X-API-Key` header on every request.
 curl https://api.example.com/orders \
   -H "X-API-Key: <your-key>"
 ```
-```
+````
 
 ## External Doc Links
 

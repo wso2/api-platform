@@ -125,7 +125,7 @@ module.exports = {
     CONTENT_TYPES: {
         FIXED: ['MARKETING', 'IMAGE'],
         // Any category name, as an upload stores it from docs/<Folder>/; the match is exact, so no wildcards.
-        DOC_PATTERN: /^DOC_.+$/,
+        DOC_PATTERN: /^DOC_.+$/s,
     },
     MIME_TYPES: {
         HTML: 'text/html',

@@ -37,7 +37,7 @@ const {
 describe('isContentType', () => {
     test('accepts the landing page, image and document types', () => {
         for (const type of ['MARKETING', 'IMAGE', 'DOC_Other', 'DOC_HowTo', 'DOC_LINK', 'DOC_my-docs_2',
-            'DOC_How To', 'DOC_v1.0', 'DOC_%']) {
+            'DOC_How To', 'DOC_How\nTo', 'DOC_v1.0', 'DOC_%']) {
             assert.strictEqual(isContentType(type), true, type);
         }
     });

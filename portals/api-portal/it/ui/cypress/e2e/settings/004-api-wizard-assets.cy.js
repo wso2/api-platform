@@ -127,7 +127,7 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#wz-content-chip').should('not.have.class', 'visible');
     });
 
-    it('replaces a same-name doc, removes with Undo, and leaves the landing page alone', () => {
+    it('replaces a same-name doc and removes another with Undo', () => {
         const handle = `it-wizard-edit-docs-${uid}`;
         cy.login();
         cy.seedApi({ id: handle, name: `Wizard ${handle}`, docs: [{ name: 'A.md', content: '# Old A' }, { name: 'B.md', content: '# B' }] });

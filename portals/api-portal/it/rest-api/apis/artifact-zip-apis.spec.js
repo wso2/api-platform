@@ -226,6 +226,8 @@ describe('APIs via artifact ZIP upload', () => {
             expect(res.status).toBe(200);
             const image = await client.as('publisher').get(`/apis/${handle}/assets?type=IMAGE&fileName=pets.png`).responseType('blob');
             expect(image.status).toBe(200);
+            const api = await client.as('publisher').get(`/apis/${handle}`);
+            expect(api.body.apiImageMetadata['api-icon']).toBe('pets.png');
         });
 
         it('rejects two images for one slot', async () => {

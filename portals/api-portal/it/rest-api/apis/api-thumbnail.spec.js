@@ -224,7 +224,7 @@ describe('API thumbnail in the save request', () => {
             expect(res.status).toBe(413);
         }, 30000);
 
-        it('saves nothing when a later part of the save fails', async () => {
+        it('changes nothing when the save is rejected', async () => {
             const id = await createWithThumbnail();
             const res = await update(id, { name: 'Renamed', addedLabels: [], removedLabels: ['not-on-this-api'] })
                 .attach('thumbnail', JPEG_BYTES, 'logo.jpg');
