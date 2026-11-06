@@ -604,4 +604,44 @@ describe('API content assets', () => {
             expect(rejectedEntries(res)).toEqual([`web/api-content.md: ${WEB_ONLY}`]);
         });
     });
+
+    describe('serving headers', () => {
+        const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
+
+        it('serves an SVG as a download, with nosniff', async () => {
+            const api = await createApi();
+            const zip = createZip([{ name: 'web/api-icon.svg', content: SVG }]);
+            expect((await uploadContent('publisher', api.id, zip)).status).toBe(201);
+
+            const res = await client.raw()
+                .get(`${client.API_PREFIX}/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.svg`)
+                .responseType('blob');
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toContain('image/svg+xml');
+            expect(res.headers['content-disposition']).toMatch(/^attachment; filename="?api-icon\.svg"?$/);
+            expect(res.headers['x-content-type-options']).toBe('nosniff');
+        });
+
+        it('serves PNG images and documents inline, with nosniff', async () => {
+            const api = await createApi();
+            const zip = createZip([
+                { name: 'web/api-icon.png', content: PNG_BYTES },
+                { name: 'docs/Guide.md', content: '# Guide' },
+            ]);
+            expect((await uploadContent('publisher', api.id, zip)).status).toBe(201);
+
+            const img = await getAsset(api.id, 'IMAGE', 'api-icon.png').responseType('blob');
+            expect(img.status).toBe(200);
+            expect(img.headers['content-type']).toContain('image/png');
+            expect(img.headers['content-disposition']).toBeUndefined();
+            expect(img.headers['x-content-type-options']).toBe('nosniff');
+            expect(Buffer.compare(img.body, PNG_BYTES)).toBe(0);
+
+            const doc = await getAsset(api.id, 'DOC_Other', 'Guide.md');
+            expect(doc.status).toBe(200);
+            expect(doc.headers['content-disposition']).toBeUndefined();
+            expect(doc.headers['x-content-type-options']).toBe('nosniff');
+            expect(String(doc.text || doc.body)).toContain('# Guide');
+        });
+    });
 });

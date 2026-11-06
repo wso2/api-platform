@@ -962,6 +962,7 @@ const getAPIFile = async (req, res) => {
     // visitors, so ?orgId does select the organization whose icons are read — any
     // organization under this portal_id (orgContext.resolvePublicContentOrg).
     const isImageType = type === constants.DOC_TYPES.IMAGES;
+    res.set('X-Content-Type-Options', 'nosniff');
     let apiFileResponse;
     let apiFile;
     let contentType;
@@ -1002,6 +1003,10 @@ const getAPIFile = async (req, res) => {
             contentType = util.retrieveContentType(apiFileName, constants.IMAGE);
         }
         res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
+        // An SVG can carry script: opened directly it is downloaded, while <img> tags still show it.
+        if (contentType === constants.MIME_TYPES.SVG) {
+            res.attachment(apiFileName);
+        }
         // Send file content as text
         return res.status(200).send(apiFile);
     } catch (error) {
