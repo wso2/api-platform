@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/faultinjection"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
@@ -169,6 +170,10 @@ func Testbench() *components.Definition {
 			// which the gateway runtime reaches through AWS_ENDPOINT_URL_STS. See
 			// testbench/services/aws.
 			{Name: "aws", Port: aws.Port, Scheme: "http", AwaitListening: true},
+			// fault-injection is STATEFUL and block-partitioned: it answers a scenario's scripted
+			// faults, then forwards to another service on this testbench, addressed as
+			// http://testbench:3026/<block>/<id>. See testbench/services/faultinjection.
+			{Name: "fault-injection", Port: faultinjection.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert: string(shared.IdentityProviderTLS().CertPEM),

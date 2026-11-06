@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/faultinjection"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
@@ -134,6 +135,7 @@ func services() ([]testbench.Service, error) {
 		stripeSvc,
 		moesifSvc,
 		aws.New(),
+		faultinjection.New(),
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))
