@@ -19,6 +19,7 @@ package service
 
 import (
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -165,4 +166,35 @@ func TestCountArtifactsByProject_FailedCountIsAnError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "GraphQL APIs")
 	assert.Zero(t, total)
+}
+
+// GraphQL APIs and LLM proxies cascade with their project, so deleting a project is refused
+// while either remains, as it is for REST APIs.
+func TestDeleteProject_RefusedWhileGraphQLAPIsOrLLMProxiesRemain(t *testing.T) {
+	for name, tc := range map[string]struct {
+		graphql, llm int
+		want         string
+	}{
+		"GraphQL API": {graphql: 1, want: "GraphQL APIs"},
+		"LLM proxy":   {llm: 1, want: "LLM proxies"},
+		"neither":     {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			projects := &mockProjectDeletionRepo{projects: []*model.Project{
+				{ID: artifactsTestProject, Handle: "payments", OrganizationID: artifactsTestOrg},
+				{ID: "project-2", Handle: "orders", OrganizationID: artifactsTestOrg},
+			}}
+			svc := NewProjectService(projects, nil, &emptyAPIRepo{}, &countingGraphQLRepo{n: tc.graphql},
+				&countingLLMProxyRepo{n: tc.llm}, &mockAgentProjectMCPRepo{}, &countingAgentProxyRepo{},
+				&emptyApplicationRepo{}, &noopAuditRepo{}, newTestIdentityService(), slog.Default())
+
+			err := svc.DeleteProject("payments", artifactsTestOrg, "alice")
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			assert.True(t, apperror.ValidationFailed.Is(err), "got %v", err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
 }

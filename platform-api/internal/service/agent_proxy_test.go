@@ -241,8 +241,9 @@ func TestProjectDeletionIsRefusedWhileAgentProxiesRemain(t *testing.T) {
 			{ID: "project-2", Handle: "second-project", OrganizationID: agentTestOrg},
 		},
 	}
-	svc := NewProjectService(projectRepo, nil, &emptyAPIRepo{}, nil, nil, &mockAgentProjectMCPRepo{},
-		agentRepo, &emptyApplicationRepo{}, &noopAuditRepo{}, newTestIdentityService(), slog.Default())
+	svc := NewProjectService(projectRepo, nil, &emptyAPIRepo{}, &countingGraphQLRepo{}, &countingLLMProxyRepo{},
+		&mockAgentProjectMCPRepo{}, agentRepo, &emptyApplicationRepo{}, &noopAuditRepo{}, newTestIdentityService(),
+		slog.Default())
 
 	err := svc.DeleteProject("default-project", agentTestOrg, "alice")
 	if !apperror.ValidationFailed.Is(err) {

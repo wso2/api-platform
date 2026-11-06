@@ -293,6 +293,24 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 		return apperror.ValidationFailed.New("Project has associated APIs")
 	}
 
+	// GraphQL APIs and LLM proxies cascade with the project in the database, so without these
+	// checks deleting the project would silently remove them.
+	graphqlAPIsCount, err := s.graphqlAPIRepo.CountByProject(orgId, project.ID, "")
+	if err != nil {
+		return err
+	}
+	if graphqlAPIsCount > 0 {
+		return apperror.ValidationFailed.New("Project has associated GraphQL APIs")
+	}
+
+	llmProxiesCount, err := s.llmProxyRepo.CountByProject(orgId, project.ID)
+	if err != nil {
+		return err
+	}
+	if llmProxiesCount > 0 {
+		return apperror.ValidationFailed.New("Project has associated LLM proxies")
+	}
+
 	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, project.ID)
 	if err != nil {
 		return err
@@ -336,8 +354,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 }
 
 // CountArtifactsByProject returns the number of artifacts in a project: its REST and
-// GraphQL APIs and its LLM, MCP and Agent proxies, which are the artifacts deleting
-// the project removes with it. Plugin-owned artifacts are not counted.
+// GraphQL APIs and its LLM, MCP and Agent proxies. Plugin-owned artifacts are not counted.
 func (s *ProjectService) CountArtifactsByProject(handle, orgId string) (int, error) {
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
