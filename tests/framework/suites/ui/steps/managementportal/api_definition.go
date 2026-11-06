@@ -39,6 +39,7 @@ import (
 func (s *Steps) registerAPIDefinitionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a REST API "([^"]*)" is imported from spec fixture "([^"]*)" in project "([^"]*)" on the control plane$`,
 		s.importedAPIExists)
+	sc.Step(`^the REST API "([^"]*)" created in the Management Portal is deleted after the scenario$`, s.deleteConsoleAPIAfterScenario)
 	sc.Step(`^I store the https URL of spec fixture "([^"]*)" as "([^"]*)"$`, storeSpecFixtureURL)
 	sc.Step(`^the user chooses "([^"]*)" in the Management Portal$`, s.choose)
 	sc.Step(`^the user enters "([^"]*)" as the "([^"]*)" in the Management Portal$`, s.enter)
@@ -223,6 +224,16 @@ func (s *Steps) importedAPIExists(ctx context.Context, name, fixture, project st
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("importing REST API %q: %s", resolved, resp.Describe())
+	}
+	return cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindAPI, ID: resolved, Actor: s.topo.Admin.Username})
+}
+
+// deleteConsoleAPIAfterScenario registers an API the console creates, which the framework never
+// sees: its project cannot be deleted while the API remains. A 404 at teardown counts as deleted.
+func (s *Steps) deleteConsoleAPIAfterScenario(ctx context.Context, name string) error {
+	resolved, err := uivalue.Expand(ctx, name)
+	if err != nil {
+		return err
 	}
 	return cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindAPI, ID: resolved, Actor: s.topo.Admin.Username})
 }

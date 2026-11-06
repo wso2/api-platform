@@ -618,6 +618,8 @@ blocks:
     components:
       - name: platform-api
         db: sqlite
+        # A 30s deployment timeout keeps the deployment-sync wait for a timed-out deployment short.
+        overlay: tests/framework/core/catalog/overlays/platform-api-deployment-timeout.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
@@ -637,6 +639,11 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
+      # Deployment sync with a disconnected gateway.
+      - name: deployment-sync
+        tags: "~@known-issue"
+        features:
+          - features/management-portal/deployments/sync/deployment_sync.feature
 
   # REST API definition import and update. platform-api trusts the testbench specs service, so
   # a definition is imported over HTTPS, caps a definition at 64 KiB, and adds a user with no
@@ -666,26 +673,6 @@ blocks:
         tags: "gateway-version>=1.2.0;~@known-issue"
         features:
           - features/management-portal/api-definitions/update_read_only.feature
-
-  # Deployment sync with a disconnected gateway: every scenario stops or restarts
-  # gateway-controller, so the block hosts them alone. A 30s deployment timeout keeps the
-  # wait for a timed-out deployment short.
-  - name: deployment-sync
-    parallel: 1
-    components:
-      - name: platform-api
-        db: sqlite
-        overlay: tests/framework/core/catalog/overlays/platform-api-deployment-timeout.toml
-      - name: platform-gateway
-        dependsOn: [platform-api]
-        db:
-          matrix: [sqlite, postgres, sqlserver]
-      - name: testbench
-    runners:
-      - name: deployment-sync
-        tags: "~@known-issue"
-        features:
-          - features/management-portal/deployments/sync/deployment_sync.feature
 
   - name: gateway-metrics
     parallel: 1
