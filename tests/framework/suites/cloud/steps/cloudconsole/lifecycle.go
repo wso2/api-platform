@@ -93,7 +93,7 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
-	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway}
+	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway, notInSyntheticEnvironment}
 	if pin := strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)); pin != "" {
 		filters = append(filters, pinnedGateway(pin))
 	}
@@ -136,7 +136,12 @@ const regularGatewayKind = "regular"
 
 // syntheticGatewayName is the display name a suite run gives the managed gateways it creates:
 // "sgw" and the run's suffix and counter.
-var syntheticGatewayName = regexp.MustCompile(`^sgw-[a-z2-7]{8}-\d+$`)
+// A name cut to the length limit of a handle keeps its tail, so the prefix may be cut short and the
+// name may be padded with letters.
+var syntheticGatewayName = regexp.MustCompile(`^(?:s|sg|sgw|g|gw|w)?-?[a-z2-7]{8}-\d+x*$`)
+
+// syntheticEnvironmentName is the name a suite run gives the environments it creates.
+var syntheticEnvironmentName = regexp.MustCompile(`^(?:e|syn-env)-[a-z2-7]{8}-\d+$`)
 
 // regularGatewaysOnly rejects a gateway that is not of the regular kind. A listing that does not
 // say what kind a gateway is leaves it to the platform's own filter.
@@ -154,6 +159,16 @@ func notSyntheticGateway(item map[string]any) string {
 		if name, _ := item[field].(string); syntheticGatewayName.MatchString(strings.ToLower(strings.TrimSpace(name))) {
 			return "a synthetic gateway of a suite run"
 		}
+	}
+	return ""
+}
+
+// notInSyntheticEnvironment rejects a gateway of an environment that a suite run created for its
+// own scenario, whose gateways are not the shared one the scenarios deploy to.
+func notInSyntheticEnvironment(item map[string]any) string {
+	environment, _ := item["environment"].(string)
+	if syntheticEnvironmentName.MatchString(strings.ToLower(strings.TrimSpace(environment))) {
+		return "an environment of a suite run"
 	}
 	return ""
 }
@@ -526,17 +541,41 @@ func (s *Steps) verifyProjectDeleted(ctx context.Context) error {
 	return nil
 }
 
+// syntheticEnvironmentBase is the base of the names a suite run gives its environments. It is
+// short on purpose: the platform renders a gateway's service name from the environment name twice,
+// so every character of the environment's name is two taken from the handle of each gateway in it.
+const syntheticEnvironmentBase = "e"
+
+// createEnvironment creates an environment that is removed when the scenario ends.
 func (s *Steps) createEnvironment(ctx context.Context) error {
-	if err := generateResourceAndStore(ctx, "syn-env", keyEnvironmentName); err != nil {
+	return s.createEnvironmentScoped(ctx, cleanup.ScenarioScope)
+}
+
+// createRunnerEnvironment creates an environment that later scenarios of the runner keep using, so
+// it is removed when the runner ends.
+func (s *Steps) createRunnerEnvironment(ctx context.Context) error {
+	return s.createEnvironmentScoped(ctx, cleanup.RunnerScope)
+}
+
+func registerEnvironment(ctx context.Context, scope cleanup.Scope, id string) error {
+	resource := cleanup.Resource{
+		Kind: cleanup.KindEnvironment, ID: id, Actor: resourceActor, Description: "environment " + id,
+	}
+	if scope == cleanup.RunnerScope {
+		return cleanup.RegisterRunner(ctx, resource)
+	}
+	return cleanup.Register(ctx, resource)
+}
+
+func (s *Steps) createEnvironmentScoped(ctx context.Context, scope cleanup.Scope) error {
+	if err := generateResourceAndStore(ctx, syntheticEnvironmentBase, keyEnvironmentName); err != nil {
 		return err
 	}
 	id, err := requiredValue(ctx, keyEnvironmentName)
 	if err != nil {
 		return err
 	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindEnvironment, ID: id, Actor: resourceActor, Description: "environment " + id,
-	}); err != nil {
+	if err := registerEnvironment(ctx, scope, id); err != nil {
 		return fmt.Errorf("registering environment %q for cleanup: %w", id, err)
 	}
 	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/environments", map[string]any{
@@ -554,9 +593,7 @@ func (s *Steps) createEnvironment(ctx context.Context) error {
 	}
 	if createdID != id {
 		deregister(ctx, cleanup.KindEnvironment, id)
-		if registerErr := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindEnvironment, ID: createdID, Actor: resourceActor, Description: "environment " + createdID,
-		}); registerErr != nil {
+		if registerErr := registerEnvironment(ctx, scope, createdID); registerErr != nil {
 			return fmt.Errorf("registering environment %q for cleanup: %w", createdID, registerErr)
 		}
 		return fmt.Errorf("created APIP environment id = %q, want %q", createdID, id)

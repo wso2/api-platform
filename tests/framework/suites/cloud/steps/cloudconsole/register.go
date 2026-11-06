@@ -72,6 +72,14 @@ const (
 	keyConfigGatewayID     = "cloudConfigGatewayID"
 	keyConfigAttempts      = "cloudConfigAttempts"
 
+	// keySyntheticGateways lists the managed gateways the runner created, in creation order; the
+	// numbered keys name the nth of them for a table cell.
+	keySyntheticGateways    = "cloudSyntheticGatewayIDs"
+	keyManagedGatewayPrefix = "cloudSyntheticManagedGateway"
+	keyGatewayIdentity      = "cloudManagedGatewayIdentity"
+	keyDefaultGatewayID     = "cloudDefaultManagedGatewayID"
+	keyDeployedTargets      = "cloudDeployedTargets"
+
 	cloudConsoleAccessTokenEnv = "CLOUD_CONSOLE_ACCESS_TOKEN"
 
 	cloudConsoleExpiredTokenEnv = "CLOUD_CONSOLE_EXPIRED_ACCESS_TOKEN"
@@ -145,6 +153,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^the synthetic APIP project should eventually be absent$`, s.verifyProjectDeleted)
 
 	sc.Step(`^I create a synthetic non-production APIP environment$`, s.createEnvironment)
+	sc.Step(`^I create a synthetic non-production APIP environment that lasts for the runner$`, s.createRunnerEnvironment)
 	sc.Step(`^creating the same APIP environment again should return conflict$`, s.duplicateEnvironment)
 	sc.Step(`^I delete the synthetic APIP environment$`, s.deleteEnvironment)
 	sc.Step(`^deleting the synthetic APIP environment should eventually return not found$`, s.verifyEnvironmentDeleted)
@@ -193,11 +202,20 @@ func (s *Steps) registerDeploymentSteps(sc *godog.ScenarioContext) {
 // project to it and check what a promotion along it does to each environment.
 func (s *Steps) registerPromotionSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I create (\d+) synthetic non-production APIP environments?$`, s.createSyntheticEnvironments)
+	sc.Step(`^I have (\d+) synthetic non-production APIP environments? for the runner with an active gateway each$`, s.ensureRunnerEnvironments)
 	sc.Step(`^I create a synthetic deployment pipeline with the promotion paths:$`, s.createPipeline)
+	sc.Step(`^I replace the promotion paths of the synthetic deployment pipeline with:$`, s.replacePipelinePaths)
 	sc.Step(`^I create a synthetic APIP project bound to the synthetic deployment pipeline$`, s.createProjectBoundToPipeline)
 	sc.Step(`^I create a synthetic REST API in the synthetic APIP project$`,
 		func(ctx context.Context) error { return s.createAPIInSyntheticProject(ctx, nil) })
 	sc.Step(`^the deployment stage of synthetic APIP environment (\d+) should show no gateway as deployed$`, s.assertStageHoldsNothing)
+	sc.Step(`^the deployment response should list the gateway of synthetic APIP environment (\d+)$`, s.assertDeploymentListsGatewayOf)
+	sc.Step(`^the deployment stage of synthetic APIP environment (\d+) should show its gateway running the rendered build$`, s.assertStageRunsRenderedBuild)
+	sc.Step(`^the deployment stage of synthetic APIP environment (\d+) should show its gateway as no longer deployed$`, s.assertStageNoLongerDeployed)
+	sc.Step(`^I undeploy the promoted deployment from synthetic APIP environment (\d+)$`, s.undeployFromSyntheticEnvironment)
+	sc.Step(`^I read the endpoint of the gateway of synthetic APIP environment (\d+)$`, s.recordSyntheticEnvironmentEndpoint)
+	sc.Step(`^the synthetic REST API should be DEPLOYED on every gateway the deployment request named$`, s.waitDeployedOnTargets)
+	sc.Step(`^the synthetic REST API should hold (\d+) builds$`, s.assertBuildCount)
 }
 
 // registerGatewaySteps binds the steps that list the managed gateways and request a gateway the
@@ -209,6 +227,7 @@ func (s *Steps) registerGatewaySteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the listed managed gateways should each report an identity, an environment and a status$`, s.assertListingIsValid)
 	sc.Step(`^the listed managed gateways should include the active gateway$`, s.assertListingIncludesActiveGateway)
 	sc.Step(`^the selected APIP environment should be listed by the platform$`, s.assertSelectedEnvironmentListed)
+	s.registerManagedGatewayLifecycleSteps(sc)
 }
 
 // registerGatewayConfigSteps binds the steps that read the active gateway's configuration and
@@ -216,10 +235,17 @@ func (s *Steps) registerGatewaySteps(sc *godog.ScenarioContext) {
 func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I read the configuration of the active APIP gateway$`, s.readGatewayConfiguration)
 	sc.Step(`^the active APIP gateway's configuration should be readable$`, s.awaitConfigurationReadable)
+	sc.Step(`^the configuration of the selected gateway should become readable$`, s.awaitConfigurationReadable)
 	sc.Step(`^the gateway configuration should be a valid document$`, s.assertConfigurationDocument)
 	sc.Step(`^I write the gateway configuration with:$`, s.writeGatewayConfiguration)
 	sc.Step(`^I write the gateway configuration path "([^"]*)" with a string of (\d+) characters$`, s.writeLongString)
 	sc.Step(`^I write each of these gateway configuration values separately:$`, s.writeEachValue)
+	sc.Step(`^I work with the configuration of synthetic managed APIP gateway (\d+)$`, s.selectConfigurationGateway)
+	sc.Step(`^I save the gateway configuration with:$`, s.saveGatewayConfiguration)
+	sc.Step(`^the gateway configuration phase should be "([^"]*)"$`, s.assertConfigurationPhase)
+	sc.Step(`^the gateway configuration should report:$`, s.assertConfigurationReports)
+	sc.Step(`^the gateway configuration should no longer report "([^"]*)"$`, s.assertConfigurationOmits)
+	sc.Step(`^I write the gateway configuration from (\d+) writers at once until one is rejected$`, s.writeConcurrently)
 	sc.Step(`^every one of those writes should have been refused as invalid$`, s.assertEveryWriteRejected)
 }
 
@@ -263,6 +289,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindSecret, cloudDeleter(topo, client, secretsCollection, false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindDefaultRestore, restoreDefaultDeleter(topo, client)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, managedGatewaysCollection, false))

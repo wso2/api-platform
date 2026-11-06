@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -36,7 +38,41 @@ import (
 const (
 	// configReadyTimeout bounds how long a new gateway's configuration may take to become readable.
 	configReadyTimeout = 3 * time.Minute
+	// configSaveTimeout bounds how long a setup write is retried while the platform reports a
+	// concurrent change to the gateway's configuration.
+	configSaveTimeout = 2 * time.Minute
+	// concurrentWriteTimeout bounds how long rounds of simultaneous writes are tried before one
+	// is rejected as a conflict.
+	concurrentWriteTimeout = 90 * time.Second
+	// concurrentWritePath is the setting the simultaneous writers each give a value of their own.
+	concurrentWritePath = "gateway.config.policy_configurations.ratelimit_v1.memory.max_entries"
+	// concurrentWriteBase is the lowest value a simultaneous writer sends; the setting accepts
+	// 1000 to 1000000.
+	concurrentWriteBase = 10000
+
+	keyConfigTarget = "cloudConfigTargetGatewayID"
 )
+
+// configurationGateway is the gateway the configuration steps are about: the one a scenario picked
+// with "I work with the configuration of synthetic managed APIP gateway N", and the active gateway
+// when it picked none.
+func configurationGateway(ctx context.Context) (string, error) {
+	if id := optionalValue(ctx, keyConfigTarget); id != "" {
+		return id, nil
+	}
+	return requiredValue(ctx, keyGatewayID)
+}
+
+// selectConfigurationGateway makes the nth gateway the runner created the one the configuration
+// steps read and write, so a setting is written to a gateway that can be given up and never to the
+// shared one.
+func (s *Steps) selectConfigurationGateway(ctx context.Context, n int) error {
+	id, _, err := syntheticGatewayAt(ctx, n)
+	if err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, keyConfigTarget, id)
+}
 
 // configPhases are the phases a configuration reports.
 var configPhases = map[string]bool{"applying": true, "healthy": true, "failed": true, "unknown": true}
@@ -141,7 +177,7 @@ func configurationPath(id string) string {
 
 // readGatewayConfiguration reads the active gateway's configuration and publishes the response.
 func (s *Steps) readGatewayConfiguration(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyGatewayID)
+	id, err := configurationGateway(ctx)
 	if err != nil {
 		return err
 	}
@@ -155,7 +191,7 @@ func (s *Steps) readGatewayConfiguration(ctx context.Context) error {
 // awaitConfigurationReadable waits until the active gateway's configuration can be read, because a
 // write is judged against it.
 func (s *Steps) awaitConfigurationReadable(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyGatewayID)
+	id, err := configurationGateway(ctx)
 	if err != nil {
 		return err
 	}
@@ -296,7 +332,7 @@ func (s *Steps) assertConfigurationDocument(ctx context.Context) error {
 // writeGatewayConfiguration writes the settings of a table to the synthetic gateway and
 // publishes the response without requiring success.
 func (s *Steps) writeGatewayConfiguration(ctx context.Context, table *godog.Table) error {
-	id, err := requiredValue(ctx, keyGatewayID)
+	id, err := configurationGateway(ctx)
 	if err != nil {
 		return err
 	}
@@ -310,7 +346,7 @@ func (s *Steps) writeGatewayConfiguration(ctx context.Context, table *godog.Tabl
 
 // writeLongString writes a string of the given length to one setting and publishes the response.
 func (s *Steps) writeLongString(ctx context.Context, path string, length int) error {
-	id, err := requiredValue(ctx, keyGatewayID)
+	id, err := configurationGateway(ctx)
 	if err != nil {
 		return err
 	}
@@ -325,7 +361,7 @@ func (s *Steps) writeLongString(ctx context.Context, path string, length int) er
 // writeEachValue writes every setting of a table in a write of its own, so one refusal cannot hide
 // another, and records what the platform answered to each.
 func (s *Steps) writeEachValue(ctx context.Context, table *godog.Table) error {
-	id, err := requiredValue(ctx, keyGatewayID)
+	id, err := configurationGateway(ctx)
 	if err != nil {
 		return err
 	}
@@ -366,4 +402,213 @@ func (s *Steps) assertEveryWriteRejected(ctx context.Context) error {
 		return fmt.Errorf("%d of %d writes were not refused as invalid:\n  %s", len(failures), len(attempts), strings.Join(failures, "\n  "))
 	}
 	return nil
+}
+
+// saveGatewayConfiguration writes the settings of a table and requires the platform to accept them,
+// trying again while it reports a concurrent change to the configuration.
+func (s *Steps) saveGatewayConfiguration(ctx context.Context, table *godog.Table) error {
+	id, err := configurationGateway(ctx)
+	if err != nil {
+		return err
+	}
+	values, err := configValuesFromTable(table)
+	if err != nil {
+		return err
+	}
+	return retry.Await(ctx, retry.Options{Timeout: configSaveTimeout, Interval: 3 * time.Second},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, err := s.doAuthenticated(ctx, http.MethodPut, configurationPath(id), map[string]any{"values": values})
+			if err != nil {
+				return nil, retry.Transient(err)
+			}
+			if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusConflict {
+				return nil, responseError(resp)
+			}
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == http.StatusOK },
+		"waiting for the configuration of managed gateway "+id+" to be saved")
+}
+
+// assertConfigurationPhase checks the reconcile phase the last configuration response reports.
+func (s *Steps) assertConfigurationPhase(ctx context.Context, want string) error {
+	response, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var document struct {
+		Status struct {
+			Phase string `json:"phase"`
+		} `json:"status"`
+	}
+	if err := json.Unmarshal(response.Body, &document); err != nil {
+		return fmt.Errorf("decoding the configuration: %w (%s)", err, response.Describe())
+	}
+	if document.Status.Phase != want {
+		return fmt.Errorf("the configuration phase is %q, want %q (%s)", document.Status.Phase, want, response.Describe())
+	}
+	return nil
+}
+
+// configurationValues reads the settings the gateway currently holds.
+func (s *Steps) configurationValues(ctx context.Context, id string) (map[string]any, error) {
+	resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet, configurationPath(id), nil)
+	if err != nil {
+		return nil, retry.Transient(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, retry.Transient(responseError(resp))
+	}
+	var document struct {
+		Values map[string]any `json:"values"`
+	}
+	if err := json.Unmarshal(resp.Body, &document); err != nil {
+		return nil, retry.Transient(fmt.Errorf("decoding the configuration: %w", err))
+	}
+	return document.Values, nil
+}
+
+// assertConfigurationReports waits until a read of the configuration shows the table's values.
+func (s *Steps) assertConfigurationReports(ctx context.Context, table *godog.Table) error {
+	id, err := configurationGateway(ctx)
+	if err != nil {
+		return err
+	}
+	expected, err := configValuesFromTable(table)
+	if err != nil {
+		return err
+	}
+	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo), Interval: 3 * time.Second},
+		func(ctx context.Context) (string, error) {
+			values, err := s.configurationValues(ctx, id)
+			if err != nil {
+				return "", err
+			}
+			var differing []string
+			for path, want := range expected {
+				if got, present := values[path]; !present || !sameValue(got, want) {
+					differing = append(differing, fmt.Sprintf("%s is %v, want %v", path, got, want))
+				}
+			}
+			sort.Strings(differing)
+			return strings.Join(differing, "; "), nil
+		},
+		func(differing string) bool { return differing == "" },
+		"waiting for the configuration of managed gateway "+id+" to report the written values")
+}
+
+// assertConfigurationOmits waits until a read of the configuration no longer reports a setting.
+func (s *Steps) assertConfigurationOmits(ctx context.Context, path string) error {
+	id, err := configurationGateway(ctx)
+	if err != nil {
+		return err
+	}
+	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo), Interval: 3 * time.Second},
+		func(ctx context.Context) (map[string]any, error) { return s.configurationValues(ctx, id) },
+		func(values map[string]any) bool { _, present := values[path]; return values != nil && !present },
+		"waiting for the configuration of managed gateway "+id+" to stop reporting "+path)
+}
+
+// writeRound is what one round of simultaneous writes was answered.
+type writeRound struct {
+	statuses []int
+	conflict *httpx.Response
+	unwanted []string
+}
+
+// judgeRound sorts the answers of one round: a write is accepted or rejected as a conflict, and
+// anything else is a fault.
+func judgeRound(responses []*httpx.Response) writeRound {
+	round := writeRound{}
+	for index, resp := range responses {
+		round.statuses = append(round.statuses, resp.StatusCode)
+		switch resp.StatusCode {
+		case http.StatusOK:
+		case http.StatusConflict:
+			if round.conflict == nil {
+				round.conflict = resp
+			}
+			if code, _ := errorFields(resp.Body); code != "conflict" {
+				round.unwanted = append(round.unwanted, fmt.Sprintf("writer %d: conflict with error code %q", index, code))
+			}
+		default:
+			round.unwanted = append(round.unwanted, fmt.Sprintf("writer %d: %s", index, resp.Describe()))
+		}
+	}
+	return round
+}
+
+// writeConcurrently has several writers change the same setting at once, round after round, until
+// one of them is refused as a conflict. A platform that lets every write through would lose all
+// but the last, silently.
+func (s *Steps) writeConcurrently(ctx context.Context, writers int) error {
+	id, err := configurationGateway(ctx)
+	if err != nil {
+		return err
+	}
+	if writers < 2 {
+		return fmt.Errorf("at least two writers are needed, got %d", writers)
+	}
+	token, err := bearerToken(ctx)
+	if err != nil {
+		return err
+	}
+	var rounds []string
+	var rejected *httpx.Response
+	roundNumber := 0
+	err = retry.Await(ctx, retry.Options{Timeout: concurrentWriteTimeout, Interval: time.Second},
+		func(ctx context.Context) (writeRound, error) {
+			roundNumber++
+			responses := make([]*httpx.Response, writers)
+			failures := make([]error, writers)
+			var group sync.WaitGroup
+			for writer := range writers {
+				group.Add(1)
+				go func() {
+					defer group.Done()
+					value := concurrentWriteBase + roundNumber*writers + writer
+					responses[writer], failures[writer] = s.sendConfigurationWrite(ctx, token, id, value)
+				}()
+			}
+			group.Wait()
+			if err := errors.Join(failures...); err != nil {
+				return writeRound{}, retry.Transient(err)
+			}
+			round := judgeRound(responses)
+			rounds = append(rounds, fmt.Sprint(round.statuses))
+			if len(round.unwanted) > 0 {
+				return writeRound{}, fmt.Errorf("round %d: %s", roundNumber, strings.Join(round.unwanted, "; "))
+			}
+			if round.conflict != nil {
+				rejected = round.conflict
+			}
+			return round, nil
+		},
+		func(round writeRound) bool { return round.conflict != nil },
+		"waiting for one of "+fmt.Sprint(writers)+" simultaneous writes to be rejected as a conflict")
+	if err != nil {
+		return fmt.Errorf("%w (answers per round: %s)", err, strings.Join(rounds, " "))
+	}
+	if s.funnel == nil {
+		return nil
+	}
+	return s.funnel.Publish(ctx, rejected)
+}
+
+// sendConfigurationWrite sends one writer's value without publishing the response.
+func (s *Steps) sendConfigurationWrite(ctx context.Context, token, id string, value int) (*httpx.Response, error) {
+	raw, err := json.Marshal(map[string]any{"values": map[string]any{concurrentWritePath: value}})
+	if err != nil {
+		return nil, err
+	}
+	target, err := s.apiURL(configurationPath(id))
+	if err != nil {
+		return nil, err
+	}
+	return s.client.Do(ctx, httpx.Request{
+		Method:  http.MethodPut,
+		URL:     target,
+		Headers: map[string]string{"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+		Body:    raw,
+	}, 0, 0)
 }

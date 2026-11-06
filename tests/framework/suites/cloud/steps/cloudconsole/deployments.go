@@ -43,6 +43,9 @@ const (
 	defaultEchoBackend = "https://httpbin.org/anything"
 )
 
+// deployedTimeout bounds how long a deployment on a gateway may take to report DEPLOYED.
+const deployedTimeout = 10 * time.Minute
+
 // buildIDPattern is the shape of a build identifier: the day it was prepared and that day's index.
 var buildIDPattern = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})-[1-9]\d*$`)
 
@@ -359,12 +362,14 @@ func recordDeployments(ctx context.Context, resp *httpx.Response) error {
 		return fmt.Errorf("decoding the deployment response: %w", err)
 	}
 	build := ""
+	targets := map[string]string{}
 	for _, item := range items {
 		gatewayID, _ := item["gatewayId"].(string)
 		deploymentID, _ := item["deploymentId"].(string)
 		if gatewayID == "" || deploymentID == "" {
 			continue
 		}
+		targets[gatewayID] = deploymentID
 		if id, _ := item["buildId"].(string); id != "" {
 			build = id
 		}
@@ -374,7 +379,84 @@ func recordDeployments(ctx context.Context, resp *httpx.Response) error {
 			}
 		}
 	}
+	encoded, err := json.Marshal(targets)
+	if err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyDeployedTargets, string(encoded)); err != nil {
+		return err
+	}
 	return tcontext.Set(ctx, keyDeployedBuildID, build)
+}
+
+// stillDeployed are the statuses a deployment listing gives a gateway that serves, or is about to
+// serve, the API.
+var stillDeployed = map[string]bool{"DEPLOYED": true, "DEPLOYING": true}
+
+// recordedTargets reads the deployments the last successful request created, by gateway.
+func recordedTargets(ctx context.Context) (map[string]string, error) {
+	encoded, err := requiredValue(ctx, keyDeployedTargets)
+	if err != nil {
+		return nil, fmt.Errorf("no deployment has been requested: %w", err)
+	}
+	targets := map[string]string{}
+	if err := json.Unmarshal([]byte(encoded), &targets); err != nil {
+		return nil, err
+	}
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("the deployment request created no deployment")
+	}
+	return targets, nil
+}
+
+// waitDeployedOnTargets waits until every deployment the last request created is DEPLOYED.
+func (s *Steps) waitDeployedOnTargets(ctx context.Context) error {
+	targets, err := recordedTargets(ctx)
+	if err != nil {
+		return err
+	}
+	apiID, err := requiredValue(ctx, keyAPIID)
+	if err != nil {
+		return err
+	}
+	return retry.Await(ctx, retry.Options{Timeout: deployedTimeout, Interval: 5 * time.Second},
+		func(ctx context.Context) (string, error) {
+			resp, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/rest-apis/"+url.PathEscape(apiID)+"/deployments", nil)
+			if err != nil {
+				return "", retry.Transient(err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				return "", retry.Transient(responseError(resp))
+			}
+			items, err := listItems(resp)
+			if err != nil {
+				return "", retry.Transient(fmt.Errorf("decoding APIP deployments: %w", err))
+			}
+			status := map[string]string{}
+			for _, item := range items {
+				deploymentID, _ := item["deploymentId"].(string)
+				state, _ := item["status"].(string)
+				status[deploymentID] = state
+			}
+			pending := make([]string, 0, len(targets))
+			for gatewayID, deploymentID := range targets {
+				if status[deploymentID] != "DEPLOYED" {
+					pending = append(pending, gatewayID+": "+status[deploymentID])
+				}
+			}
+			sort.Strings(pending)
+			return strings.Join(pending, ", "), nil
+		},
+		func(pending string) bool { return pending == "" },
+		"waiting for every requested deployment to be DEPLOYED")
+}
+
+// assertBuildCount waits until the synthetic REST API holds exactly the given number of builds.
+func (s *Steps) assertBuildCount(ctx context.Context, want int) error {
+	return retry.Await(ctx, retry.Options{Timeout: propagationTimeout(s.topo), Interval: 3 * time.Second},
+		s.fetchBuilds,
+		func(items []map[string]any) bool { return len(items) == want },
+		fmt.Sprintf("waiting for the synthetic REST API to hold %d builds", want))
 }
 
 // deploymentEntry finds the response entry for a gateway.
