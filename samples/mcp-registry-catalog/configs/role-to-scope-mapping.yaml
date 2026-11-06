@@ -227,9 +227,8 @@ roles:
       - dp:view:read
       - dp:label:read
 
-  # Auditor — read-only across both components. Grants no mutating scope
-  # (the one POST it can reach, mcp-proxies/fetch-server-info, is a read
-  # the spec models as a POST).
+  # Auditor — read-only across both components. Grants no mutating scope,
+  # and reaches no POST.
   - name: ap_viewer
     scopes:
       # Platform API
