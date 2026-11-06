@@ -20,6 +20,7 @@ package config
 
 import (
 	"crypto/tls"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -2405,6 +2406,10 @@ func TestConfig_ValidateHealthConfig(t *testing.T) {
 		{name: "failure_ratio of one", mutate: func(h *HealthConfig) { h.Database.FailureRatio = 1 }},
 		{name: "Negative pool_saturation", mutate: func(h *HealthConfig) { h.Database.PoolSaturation = -0.1 }, errContains: "controller.health.database.pool_saturation must be > 0 and <= 1"},
 		{name: "pool_saturation above one", mutate: func(h *HealthConfig) { h.Database.PoolSaturation = 1.01 }, errContains: "controller.health.database.pool_saturation must be > 0 and <= 1"},
+		{name: "NaN failure_ratio", mutate: func(h *HealthConfig) { h.Database.FailureRatio = math.NaN() }, errContains: "controller.health.database.failure_ratio must be > 0 and <= 1, got: NaN"},
+		{name: "NaN pool_saturation", mutate: func(h *HealthConfig) { h.Database.PoolSaturation = math.NaN() }, errContains: "controller.health.database.pool_saturation must be > 0 and <= 1, got: NaN"},
+		{name: "failure_window of an hour", mutate: func(h *HealthConfig) { h.Database.FailureWindow = time.Hour }},
+		{name: "failure_window longer than an hour", mutate: func(h *HealthConfig) { h.Database.FailureWindow = 8760 * time.Hour }, errContains: "controller.health.database.failure_window must be <= 1h0m0s, got: 8760h0m0s"},
 		{name: "Zero min_attempts", mutate: func(h *HealthConfig) { h.Database.MinAttempts = 0 }, errContains: "controller.health.database.min_attempts must be >= 1, got: 0"},
 		{name: "min_attempts of one", mutate: func(h *HealthConfig) { h.Database.MinAttempts = 1 }},
 		{

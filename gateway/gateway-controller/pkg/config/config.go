@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"math"
 	"reflect"
 	"regexp"
 	"sort"
@@ -2376,6 +2377,11 @@ func (c *Config) validateHealthConfig() error {
 	return nil
 }
 
+// maxHealthFailureWindow bounds controller.health.database.failure_window. The window
+// keeps one bucket per second, so a very long window would allocate a large amount of
+// memory at startup.
+const maxHealthFailureWindow = time.Hour
+
 // validateHealthDatabaseConfig validates the database check settings. The window must
 // outlast the cached answer, and an idle instance must ping at least once per window.
 func validateHealthDatabaseConfig(d *HealthDatabaseConfig, cacheTTL time.Duration) error {
@@ -2403,12 +2409,15 @@ func validateHealthDatabaseConfig(d *HealthDatabaseConfig, cacheTTL time.Duratio
 		{"pool_saturation", d.PoolSaturation},
 	}
 	for _, f := range ratios {
-		if f.value <= 0 || f.value > 1 {
+		if math.IsNaN(f.value) || f.value <= 0 || f.value > 1 {
 			return fmt.Errorf("%s%s must be > 0 and <= 1, got: %g", prefix, f.key, f.value)
 		}
 	}
 	if d.MinAttempts < 1 {
 		return fmt.Errorf("%smin_attempts must be >= 1, got: %d", prefix, d.MinAttempts)
+	}
+	if d.FailureWindow > maxHealthFailureWindow {
+		return fmt.Errorf("%sfailure_window must be <= %s, got: %s", prefix, maxHealthFailureWindow, d.FailureWindow)
 	}
 	if d.FailureWindow < cacheTTL {
 		return fmt.Errorf("%sfailure_window must be >= controller.health.cache_ttl (%s), got: %s",

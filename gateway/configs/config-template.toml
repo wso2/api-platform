@@ -361,7 +361,7 @@ allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # [controller.health.database]
 # check_timeout   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for the check's own ping
 # startup_wait    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting
-# failure_window  = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # sliding window of operation outcomes
+# failure_window  = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # sliding window of operation outcomes (at most 1h)
 # failure_ratio   = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that fails the check
 # min_attempts    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
 # idle_period     = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # with too few operations to decide, the check pings once per period
