@@ -51,8 +51,18 @@ jobs:
             echo "Error: next_dev_version must differ from the version being released (${RELEASE_VERSION})"
             exit 1
           fi
-          # The next release would push ap/v<next version>, so that tag must not exist yet.
+          # The next release would push ap/v<next version>: it must be a valid tag name that does
+          # not exist yet. version-get-release removes the first "-SNAPSHOT", so the qualifier
+          # must not contain SNAPSHOT itself, or the two would derive different versions.
           NEXT_RELEASE_VERSION="${NEXT_DEV_VERSION%-SNAPSHOT}"
+          if [[ "${NEXT_RELEASE_VERSION}" == *SNAPSHOT* ]]; then
+            echo "Error: next_dev_version must not contain SNAPSHOT before its -SNAPSHOT suffix"
+            exit 1
+          fi
+          if ! git check-ref-format "refs/tags/ap/v${NEXT_RELEASE_VERSION}"; then
+            echo "Error: ap/v${NEXT_RELEASE_VERSION} is not a valid Git tag name"
+            exit 1
+          fi
           if ! TAG_REFS=$(git ls-remote --refs origin "refs/tags/ap/v${NEXT_RELEASE_VERSION}"); then
             echo "Error: could not check whether tag ap/v${NEXT_RELEASE_VERSION} exists"
             exit 1
