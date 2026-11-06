@@ -1185,12 +1185,16 @@
     return names;
   }
 
+  /* The docs page opens a document as <name>.md, so only .md files are accepted. */
   function handleDocsFiles(files) {
+    var refused = [];
     Array.prototype.slice.call(files || []).forEach(function(f) {
+      if (f.name.slice(-3) !== '.md') { refused.push(f.name); return; }
       docFiles = docFiles.filter(function(x) { return x.name !== f.name; });
       docFiles.push(f);
     });
     renderDocs();
+    if (refused.length) showAlert('Only Markdown (.md) documents are supported: ' + refused.join(', '), 'error');
   }
 
   document.getElementById('wz-docs-input').addEventListener('change', function(e) {

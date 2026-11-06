@@ -4467,8 +4467,9 @@ components:
                   is rejected with `400`, listing each rejected path.
               docs:
                 description: >-
-                  Document files to add. Repeat the part for several documents. Each is stored as a document of
-                  category Other; a file with the name of an existing document replaces it.
+                  Markdown (`.md`) document files to add. Repeat the part for several documents. Each is stored as
+                  a document of category Other; a file with the name of an existing document replaces it. Any other
+                  file is rejected with `400`, naming it, and nothing is saved.
                 oneOf:
                   - type: string
                     format: binary
@@ -4536,8 +4537,9 @@ components:
                   exposes. Required on create; when supplied on update it replaces the stored schema.
               docs:
                 description: >-
-                  Document files to add. Repeat the part for several documents. Each is stored as a document of
-                  category Other; a file with the name of an existing document replaces it.
+                  Markdown (`.md`) document files to add. Repeat the part for several documents. Each is stored as
+                  a document of category Other; a file with the name of an existing document replaces it. Any other
+                  file is rejected with `400`, naming it, and nothing is saved.
                 oneOf:
                   - type: string
                     format: binary

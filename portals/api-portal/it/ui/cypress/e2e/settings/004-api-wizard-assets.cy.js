@@ -73,7 +73,7 @@ describe('Settings — API wizard Assets step', () => {
         handles.forEach((handle) => cy.deleteApi(handle));
     });
 
-    it('shows three steps and the create text, and saves uploaded docs with the API', () => {
+    it('shows three steps and the create text, and saves uploaded Markdown docs with the API', () => {
         const handle = `it-wizard-create-docs-${uid}`;
         openCreate(handle);
 
@@ -86,14 +86,18 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#wz-existing-docs-section').should('not.be.visible');
         cy.get('#wz-assets-to-import').should('be.visible').and('contain', 'Import content from ZIP');
 
+        cy.get('#wz-docs-input').should('have.attr', 'accept', '.md');
+        cy.get('#wz-docs-zone').should('contain', 'Markdown (.md) files');
         cy.get('#wz-docs-input').selectFile([docFile('A.md'), docFile('diagram.txt', 'not markdown')], { force: true });
-        cy.get('#wz-docs-list .cfg-docs-item').should('have.length', 2).each(($item) => expect($item).to.contain('New'));
-        cy.get('#wz-docs-summary').should('have.text', 'When you save: 2 documents will be added.');
+        cy.get('#alertToast').should('have.class', 'error')
+            .find('.alert-toast-message').should('have.text', 'Only Markdown (.md) documents are supported: diagram.txt');
+        cy.get('#wz-docs-list .cfg-docs-item').should('have.length', 1).and('contain', 'A.md').and('contain', 'New');
+        cy.get('#wz-docs-summary').should('have.text', 'When you save: 1 document will be added.');
         save();
         saved();
 
         asset(handle, 'DOC_Other', 'A.md').its('status').should('eq', 200);
-        asset(handle, 'DOC_Other', 'diagram.txt').its('status').should('eq', 200);
+        asset(handle, 'DOC_Other', 'diagram.txt').its('status').should('eq', 404);
     });
 
     it('clears the view left when switching between documents and import', () => {

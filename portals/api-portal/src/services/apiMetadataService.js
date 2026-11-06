@@ -65,6 +65,17 @@ const applyThumbnailChange = async (change, apiId, orgId, userId, t) => {
     }
 };
 
+// Each `docs` part of an API save is stored as a document, so it must be Markdown like a ZIP's docs/.
+const assertMarkdownDocParts = (files) => {
+    const rejected = (files?.docs || []).map((doc) => doc.originalname)
+        .filter((name) => !apiContentRules.isMarkdownDocName(name))
+        .sort();
+    if (rejected.length) {
+        throw new ValidationError('Documents must be Markdown (.md)',
+            rejected.map((name) => ({ message: `${name}: ${apiContentRules.ZIP_REJECTION.NOT_MARKDOWN}` })));
+    }
+};
+
 const createAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
     const userId = util.resolveActor(req);
@@ -136,6 +147,7 @@ const createAPIMetadata = async (req, res) => {
             );
         }
         const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, true);
+        assertMarkdownDocParts(req.files);
         delete apiMetadata.removeThumbnail;
         const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
@@ -553,6 +565,7 @@ const updateAPIMetadata = async (req, res) => {
             );
         }
         const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, false);
+        assertMarkdownDocParts(req.files);
         delete apiMetadata.removeThumbnail;
         const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
