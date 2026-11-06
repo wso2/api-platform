@@ -13,6 +13,9 @@ WORKDIR /web
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
+# .dockerignore keeps this from copying the host's node_modules over the tree npm
+# just installed (and its dist/, .env and local keys) — see the notes there before
+# adding a file any build stage needs.
 COPY . .
 RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
         NODE_OPTIONS=--max-old-space-size=8192 VITE_COVERAGE=true npm run build -- --sourcemap hidden; \

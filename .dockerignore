@@ -1,0 +1,24 @@
+# Repo-root build context exclusions.
+#
+# This file applies ONLY when the build context is the repository root. Each
+# component's own image (portals/ai-workspace, platform-api, gateway/*, ...) builds
+# from its own directory and reads its own .dockerignore instead — Docker reads only
+# the .dockerignore at a context's root, never a nested one.
+#
+# The case this exists for is a build that binds the whole repo as a context, which
+# is how downstream cloud wrappers source an unreleased portal — apim-saas's
+# apip-ai-workspace image takes `--build-context api-platform-local=<this repo>` for
+# local development. Without these two entries BuildKit transfers ~1.4GB of a typical
+# working tree, nearly all of it files no build reads.
+#
+# Deliberately minimal: only things that are regenerated inside every image that
+# needs them, so no build can be broken by their absence. Component-specific
+# exclusions belong in that component's own .dockerignore, not here.
+
+# Reinstalled inside the image by npm ci / npm install (~590MB here, and built for
+# the developer's platform rather than the image's linux/*).
+**/node_modules
+
+# Repository history (~630MB). No Dockerfile in this repo reads it: the builds that
+# stamp a commit take it as a build ARG (GIT_COMMIT) rather than shelling out to git.
+.git
