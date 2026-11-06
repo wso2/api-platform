@@ -211,8 +211,6 @@ Feature: APIP cloud managed gateway configuration
       | gateway.config.policy_configurations.llm_cost_ratelimit_v1.cost_scale_factor | 1     | is not an editable gateway setting |
     Then every one of those writes should have been refused as invalid
 
-  # The settings below are written to a gateway the runner builds for itself: a write makes the
-  # gateway apply its release again, so it is never made to the shared gateway.
   @TC_APIP_GWCFG_002 @ID_APIP_GATEWAY_CONFIG_016
   Scenario: A written setting is reflected when the configuration is read
     Given I obtain an APIP cloud console token
