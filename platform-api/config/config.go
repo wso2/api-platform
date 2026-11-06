@@ -210,6 +210,7 @@ type Server struct {
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 	MCPServer            MCPServer            `koanf:"mcp_server"`
 	Organizations        Organizations        `koanf:"organizations"`
+	FeatureUsage         FeatureUsage         `koanf:"feature_usage"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -559,7 +560,7 @@ type ClaimMappings struct {
 	// DisplayName is the claim holding the user's human-readable name, returned
 	// as createdBy/updatedBy in responses. Read only; never required.
 	DisplayName string `koanf:"display_name"`
-	Roles       string `koanf:"roles"`
+	Roles        string `koanf:"roles"`
 }
 
 // IDP holds configuration for JWKS-based identity providers. Active when
@@ -594,11 +595,6 @@ type Webhook struct {
 	MaxBodySize int64 `koanf:"max_body_size"`
 	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
 	SignatureHeader string `koanf:"signature_header"`
-	// LegacySharedSecret accepts a delivery that carries no secret_hash (a portal that
-	// predates it): it is verified against each retained portal secret of its organization,
-	// then the shared Secret. Off, such a delivery is rejected before any signature check.
-	// Default off; turn it on only while a portal that predates secret_hash is still in use.
-	LegacySharedSecret bool `koanf:"legacy_shared_secret"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -838,12 +834,6 @@ type Deployments struct {
 	TimeoutDuration int  `koanf:"timeout_duration"`
 }
 
-// Organizations configures how new organizations are set up.
-type Organizations struct {
-	// CreateDefaultProject creates a project named "default" with every new organization.
-	CreateDefaultProject bool `koanf:"create_default_project"`
-}
-
 // APIKey holds API key-specific configuration.
 type APIKey struct {
 	HashingAlgorithms []string `koanf:"hashing_algorithms"`
@@ -855,9 +845,6 @@ type Security struct {
 	// (secrets, subscription tokens, WebSub HMAC secrets).
 	EncryptionKey string `koanf:"encryption_key"`
 	APIKey        APIKey `koanf:"api_key"`
-	// WebhookSecretMaxVersions caps how many versions a webhook secret keeps
-	// during rotation. Values below 2 select the default (3).
-	WebhookSecretMaxVersions int `koanf:"webhook_secret_max_versions"`
 }
 
 // package-level singleton.
@@ -911,15 +898,6 @@ const platformAPIConfigKey = "platform_api"
 // recognized so a config file carrying it fails startup instead of being
 // silently ignored. Path is relative to the platform_api subtree.
 const removedAuthSkipPathsKey = "auth.skip_paths"
-
-// healthDatabaseKey is the health sub-table holding the database check's settings,
-// relative to the platform_api subtree.
-const healthDatabaseKey = "health.database"
-
-// movedHealthKeys are health settings that moved into the database sub-table. They are
-// still recognized so a config file carrying them at the old place fails startup
-// instead of being silently ignored.
-var movedHealthKeys = []string{"check_timeout", "startup_wait"}
 
 // LoadConfig loads configuration with priority: config files > defaults.
 //
@@ -991,9 +969,6 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 			"(use auth.authorization.enabled to control authorization enforcement)",
 			platformAPIConfigKey, removedAuthSkipPathsKey)
 	}
-	if err := checkHealthKeys(k); err != nil {
-		return nil, err
-	}
 
 	// Subtree is already promoted to the top level by Cut, so unmarshal from the
 	// root ("") rather than re-descending through platformAPIConfigKey.
@@ -1003,7 +978,6 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 			WeaklyTypedInput: true,
 			Result:           cfg,
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
-				stringToClientListHook,
 				mapstructure.StringToSliceHookFunc(","),
 				mapstructure.StringToTimeDurationHookFunc(),
 				fileBasedUsersDecodeHook(),
@@ -1027,10 +1001,6 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
 		return nil, err
 	}
-	if err := validateHealthConfig(&cfg.Health); err != nil {
-		return nil, err
-	}
-	warnHealthConfig(&cfg.Health)
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
 	}
@@ -1072,6 +1042,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateCORSConfig(&cfg.Listeners.CORS); err != nil {
+		return nil, err
+	}
+	if err := validateFeatureUsageConfig(&cfg.FeatureUsage); err != nil {
 		return nil, err
 	}
 
@@ -1425,115 +1398,6 @@ func validateLoggingConfig(level, format string) error {
 	return nil
 }
 
-// healthProbeTimeout is the timeout of the Helm chart's readiness and startup probes;
-// a check timeout at or above it lets the probe give up before the check answers.
-const healthProbeTimeout = 3 * time.Second
-
-// maxFailureWindow bounds failure_window. The window keeps one bucket per second, so a
-// very long window would allocate a large amount of memory at startup.
-const maxFailureWindow = time.Hour
-
-// ApplyHealthDefaults fills every unset (zero) health setting with its default. The
-// config loader applies defaults on its own; this is for a config built in code, such as
-// one passed to the platform package's WithConfig, which may predate the health
-// settings. Zero is never a valid value for these settings, so no explicit choice is
-// overwritten.
-func ApplyHealthDefaults(cfg *Health) {
-	def := defaultConfig().Health
-	if cfg.CacheTTL == 0 {
-		cfg.CacheTTL = def.CacheTTL
-	}
-	db, defDB := &cfg.Database, def.Database
-	for _, f := range []struct{ value, def *time.Duration }{
-		{&db.CheckTimeout, &defDB.CheckTimeout},
-		{&db.StartupWait, &defDB.StartupWait},
-		{&db.FailureWindow, &defDB.FailureWindow},
-		{&db.IdlePeriod, &defDB.IdlePeriod},
-		{&db.PoolWaitLimit, &defDB.PoolWaitLimit},
-	} {
-		if *f.value == 0 {
-			*f.value = *f.def
-		}
-	}
-	if db.FailureRatio == 0 {
-		db.FailureRatio = defDB.FailureRatio
-	}
-	if db.PoolSaturation == 0 {
-		db.PoolSaturation = defDB.PoolSaturation
-	}
-	if db.MinAttempts == 0 {
-		db.MinAttempts = defDB.MinAttempts
-	}
-}
-
-// ValidateHealth rejects out-of-range health settings and an invalid allowed-clients
-// list, the same way the config loader does.
-func ValidateHealth(cfg *Health) error {
-	return validateHealthConfig(cfg)
-}
-
-// validateHealthConfig rejects out-of-range health settings and an invalid
-// allowed-clients list at startup. Every message names the full key.
-func validateHealthConfig(cfg *Health) error {
-	const prefix = "platform_api.health."
-	const dbPrefix = prefix + "database."
-	db := &cfg.Database
-	for _, f := range []struct {
-		key   string
-		value time.Duration
-	}{
-		{prefix + "cache_ttl", cfg.CacheTTL},
-		{dbPrefix + "check_timeout", db.CheckTimeout},
-		{dbPrefix + "startup_wait", db.StartupWait},
-		{dbPrefix + "failure_window", db.FailureWindow},
-		{dbPrefix + "idle_period", db.IdlePeriod},
-		{dbPrefix + "pool_wait_limit", db.PoolWaitLimit},
-	} {
-		if f.value <= 0 {
-			return fmt.Errorf("%s must be > 0 (got %s)", f.key, f.value)
-		}
-	}
-	for _, f := range []struct {
-		key   string
-		value float64
-	}{
-		{dbPrefix + "failure_ratio", db.FailureRatio},
-		{dbPrefix + "pool_saturation", db.PoolSaturation},
-	} {
-		if math.IsNaN(f.value) || f.value <= 0 || f.value > 1 {
-			return fmt.Errorf("%s must be > 0 and <= 1 (got %g)", f.key, f.value)
-		}
-	}
-	if db.MinAttempts < 1 {
-		return fmt.Errorf("%smin_attempts must be >= 1 (got %d)", dbPrefix, db.MinAttempts)
-	}
-	if db.FailureWindow > maxFailureWindow {
-		return fmt.Errorf("%sfailure_window must be <= %s (got %s)", dbPrefix, maxFailureWindow, db.FailureWindow)
-	}
-	if db.FailureWindow < cfg.CacheTTL {
-		return fmt.Errorf("%sfailure_window must be >= %scache_ttl (got %s < %s)",
-			dbPrefix, prefix, db.FailureWindow, cfg.CacheTTL)
-	}
-	if db.IdlePeriod > db.FailureWindow {
-		return fmt.Errorf("%sidle_period must be <= %sfailure_window (got %s > %s)",
-			dbPrefix, dbPrefix, db.IdlePeriod, db.FailureWindow)
-	}
-	if _, err := health.ParseAllowedClients("platform_api.health", cfg.AllowedClients); err != nil {
-		return err
-	}
-	return nil
-}
-
-// warnHealthConfig warns about health settings that are valid but likely to misbehave
-// with the shipped deployment defaults.
-func warnHealthConfig(cfg *Health) {
-	if cfg.Database.CheckTimeout >= healthProbeTimeout {
-		slog.Warn("database health check timeout is at or above the Helm chart's readiness and startup probe timeout, so those probes may give up before the check completes; raise the probes' timeoutSeconds above it",
-			slog.Duration("check_timeout", cfg.Database.CheckTimeout),
-			slog.Duration("probe_timeout", healthProbeTimeout))
-	}
-}
-
 // validateDatabaseConfig fails closed when the selected driver's required
 // connection fields are missing, rather than surfacing an opaque driver-level
 // connection error only once the server tries to open the database.
@@ -1697,52 +1561,6 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 
 // validateWebhookConfig validates and fills defaults for the webhook receiver config.
 // It is a no-op when the webhook is disabled.
-// checkHealthKeys fails on a health setting still at its old place and on any key in the
-// health table or its database sub-table that is not a known setting, so neither a stale
-// nor a misspelled setting is silently ignored; a misspelled allowed_clients would
-// otherwise leave the health endpoints open to every client. Removed health settings
-// stay accepted, with the warning warnRemovedConfigKeys gives. Other unknown keys keep
-// the loader's usual leniency.
-func checkHealthKeys(k *koanf.Koanf) error {
-	for _, key := range movedHealthKeys {
-		if k.Exists("health." + key) {
-			return fmt.Errorf("%s.health.%s has moved to %s.%s.%s",
-				platformAPIConfigKey, key, platformAPIConfigKey, healthDatabaseKey, key)
-		}
-	}
-	knownHealth := koanfKeys(reflect.TypeFor[Health]())
-	for removed := range removedConfigKeys {
-		if key, ok := strings.CutPrefix(removed, "health."); ok {
-			knownHealth[key] = true
-		}
-	}
-	for _, table := range []struct {
-		path  string
-		known map[string]bool
-	}{
-		{"health", knownHealth},
-		{healthDatabaseKey, koanfKeys(reflect.TypeFor[HealthDatabase]())},
-	} {
-		for _, key := range slices.Sorted(maps.Keys(k.Cut(table.path).Raw())) {
-			if !table.known[key] {
-				return fmt.Errorf("%s.%s: unknown key %q", platformAPIConfigKey, table.path, key)
-			}
-		}
-	}
-	return nil
-}
-
-// koanfKeys returns the koanf tag names of a struct type's fields.
-func koanfKeys(t reflect.Type) map[string]bool {
-	keys := make(map[string]bool, t.NumField())
-	for i := range t.NumField() {
-		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
-			keys[tag] = true
-		}
-	}
-	return keys
-}
-
 // removedConfigKeys maps a config key that no longer exists to the guidance shown
 // when it is still present. Keys are relative to the platform_api subtree, matching
 // the koanf tree after Cut. Add an entry whenever a setting is dropped: the
@@ -1754,16 +1572,7 @@ var removedConfigKeys = map[string]string{
 	"deployments.transitional_status_enabled": "a deployment is now always treated as transitional until the gateway " +
 		"acknowledges it, so there is nothing left to toggle; this setting has no effect and can be deleted " +
 		"(deployments.timeout_duration bounds how long an unacknowledged deployment waits before being marked FAILED)",
-	"health.log_file":        removedHealthLogGuidance,
-	"health.log_max_size_mb": removedHealthLogGuidance,
-	"health.log_max_files":   removedHealthLogGuidance,
-	"health.backoff_initial": removedHealthLogGuidance,
-	"health.backoff_max":     removedHealthLogGuidance,
 }
-
-// removedHealthLogGuidance is shown for the health log settings, which no longer exist.
-const removedHealthLogGuidance = "health check failures and recoveries are now logged once per change of state to " +
-	"the main log on stdout, with no separate log file or repeated lines; this setting has no effect and can be deleted"
 
 // warnRemovedConfigKeys logs a warning for each removed key still present in the
 // loaded config. It deliberately warns rather than failing: the removed setting is

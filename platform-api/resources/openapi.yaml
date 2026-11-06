@@ -11684,6 +11684,18 @@ components:
           example: default-project
         upstream:
           $ref: "#/components/schemas/Upstream"
+        creationMethod:
+          type: string
+          enum: [scratch, contract]
+          default: contract
+          description: |
+            How the API's definition was produced: `scratch` when the user
+            started from a blank definition in the console, `contract` when it
+            came from an existing contract. Used only for feature-usage
+            analytics; it does not change how the API is created. Omit it
+            unless you are the console: the default, `contract`, is right for
+            any caller that supplies its own spec.
+          example: contract
 
     OpenAPISpecFileRequest:
       type: object

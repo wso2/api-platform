@@ -535,6 +535,24 @@ func (e GraphQLIntrospectionMode) Valid() bool {
 	}
 }
 
+// Defines values for ImportOpenAPIRequestCreationMethod.
+const (
+	Contract ImportOpenAPIRequestCreationMethod = "contract"
+	Scratch  ImportOpenAPIRequestCreationMethod = "scratch"
+)
+
+// Valid indicates whether the value is a known member of the ImportOpenAPIRequestCreationMethod enum.
+func (e ImportOpenAPIRequestCreationMethod) Valid() bool {
+	switch e {
+	case Contract:
+		return true
+	case Scratch:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LLMAccessControlMode.
 const (
 	AllowAll LLMAccessControlMode = "allow_all"
@@ -4026,8 +4044,16 @@ type GraphQLSdlValidationIssue struct {
 // `file` or `url` must be provided; the backend rejects requests that
 // supply both or neither.
 type ImportOpenAPIRequest struct {
-	Context     string  `json:"context" yaml:"context"`
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+	Context string `json:"context" yaml:"context"`
+
+	// CreationMethod How the API's definition was produced: `scratch` when the user
+	// started from a blank definition in the console, `contract` when it
+	// came from an existing contract. Used only for feature-usage
+	// analytics; it does not change how the API is created. Omit it
+	// unless you are the console: the default, `contract`, is right for
+	// any caller that supplies its own spec.
+	CreationMethod *ImportOpenAPIRequestCreationMethod `json:"creationMethod,omitempty" yaml:"creationMethod,omitempty"`
+	Description    *string                             `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the API
 	DisplayName string `json:"displayName" yaml:"displayName"`
@@ -4049,6 +4075,14 @@ type ImportOpenAPIRequest struct {
 	Url     *string `json:"url,omitempty" yaml:"url,omitempty"`
 	Version string  `json:"version" yaml:"version"`
 }
+
+// ImportOpenAPIRequestCreationMethod How the API's definition was produced: `scratch` when the user
+// started from a blank definition in the console, `contract` when it
+// came from an existing contract. Used only for feature-usage
+// analytics; it does not change how the API is created. Omit it
+// unless you are the console: the default, `contract`, is right for
+// any caller that supplies its own spec.
+type ImportOpenAPIRequestCreationMethod string
 
 // JWK An RSA or EC public signing key (RFC 7517)
 type JWK struct {

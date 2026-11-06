@@ -129,6 +129,7 @@ export const DefineApiPanel = ({
       },
       contractImport: {
         specFile: new File([scratchRawText], 'api_definition.json', { type: 'application/json' }),
+        creationMethod: 'scratch',
       },
     };
   }, [endpointUrl]);
@@ -149,6 +150,7 @@ export const DefineApiPanel = ({
       ...base,
       contractImport: {
         specFile: new File([rawBlob], fileName, { type: contentType }),
+        creationMethod: 'contract',
       },
     };
   }, [contract]);

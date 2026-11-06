@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -46,6 +47,7 @@ type APIHandler struct {
 	apiDocumentService *service.APIDocumentService
 	slogger      *slog.Logger
 	cfg          *config.Server
+	featureUsage featureusage.Reporter
 }
 
 func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, apiDocumentService *service.APIDocumentService, slogger *slog.Logger,cfg *config.Server) *APIHandler {
@@ -56,6 +58,21 @@ func NewAPIHandler(apiService *service.APIService, identity *service.IdentitySer
 		slogger:      slogger,
 		cfg:          cfg,
 	}
+}
+
+// SetFeatureUsageReporter injects the reporter that records each call to a
+// REST API creation route (apip.manage-apis.create-rest-api) as a Moesif API
+// event, successful or failed. Without one, nothing is recorded.
+func (h *APIHandler) SetFeatureUsageReporter(r featureusage.Reporter) {
+	h.featureUsage = r
+}
+
+// trackCreation reports every call next serves as one REST API creation event,
+// with the status the caller received. The reporter is looked up per call, so
+// routes can be registered before it is injected.
+func (h *APIHandler) trackCreation(next http.Handler) http.Handler {
+	return featureusage.Track(func() featureusage.Reporter { return h.featureUsage },
+		featureusage.FeatureCreateRESTAPI, featureusage.RESTAPICreationDefaults(), next)
 }
 
 // getOpenAPISpecMaxBytes returns the configured max bytes, falling back to 5 MiB if unset.
@@ -73,11 +90,15 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 		return apperror.Unauthorized.New().
 			WithLogMessage("organization claim not found in token")
 	}
+	// Feature usage: this call is reported whatever its outcome (trackCreation).
+	usage := featureusage.CallFrom(r.Context())
+	usage.SetOrganization(orgId)
 
 	var req api.CreateRESTAPIRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return apperror.NewValidation(err)
 	}
+	usage.SetHasSandboxUpstream(req.Upstream.Sandbox != nil && !isEmptyUpstreamDefinition(*req.Upstream.Sandbox))
 
 	// Validate required fields
 	if req.DisplayName == "" {
@@ -104,10 +125,12 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	apiResponse, _, err := h.apiService.CreateAPI(&req, orgId, createdBy)
+	usage.SetActor(createdBy)
+	apiResponse, artifactUUID, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create API in org %s", orgId))
 	}
+	usage.SetResource(artifactUUID)
 
 	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
 	httputil.WriteJSON(w, http.StatusCreated, apiResponse)
@@ -332,6 +355,9 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if !exists {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
+	// Feature usage: this call is reported whatever its outcome (trackCreation).
+	usage := featureusage.CallFrom(r.Context())
+	usage.SetOrganization(orgId)
 
 	maxBytes := h.getOpenAPISpecMaxBytes()
 	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
@@ -354,6 +380,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 			return apperror.ValidationFailed.New("upstream must be a valid JSON object")
 		}
 	}
+	usage.SetHasSandboxUpstream(req.Upstream.Sandbox != nil && !isEmptyUpstreamDefinition(*req.Upstream.Sandbox))
 
 	if req.DisplayName == "" {
 		return apperror.ValidationFailed.New("displayName is required")
@@ -373,6 +400,11 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
 		return err
 	}
+	creationMethod, err := parseCreationMethod(r.FormValue("creationMethod"))
+	if err != nil {
+		return err
+	}
+	usage.SetCreationMethod(creationMethod)
 
 	spec, err := h.readOpenAPISpecFromMultipart(w, r, maxBytes)
 	if err != nil {
@@ -393,6 +425,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
+	usage.SetActor(createdBy)
 
 	createReq := &api.CreateRESTAPIRequest{
 		Id:          req.Id,
@@ -409,6 +442,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return serviceError(err, "failed to create API in org "+orgId)
 	}
+	usage.SetResource(artifactUUID)
 
 	// Persist the spec document
 	// If this fails, rollback the API creation
@@ -679,8 +713,8 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering REST API routes")
 	base := constants.APIBasePath + "/rest-apis"
 	mux.HandleFunc("POST "+base+"/validate-openapi", middleware.MapErrors(h.slogger, h.ValidateOpenAPI))
-	mux.HandleFunc("POST "+base+"/import-openapi", middleware.MapErrors(h.slogger, h.ImportOpenAPI))
-	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPI))
+	mux.Handle("POST "+base+"/import-openapi", h.trackCreation(middleware.MapErrors(h.slogger, h.ImportOpenAPI)))
+	mux.Handle("POST "+base, h.trackCreation(middleware.MapErrors(h.slogger, h.CreateAPI)))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIs))
 	mux.HandleFunc("GET "+base+"/versions", middleware.MapErrors(h.slogger, h.ListAPIVersions))
 	mux.HandleFunc("GET "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.GetAPI))
@@ -690,6 +724,23 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/{restApiId}/gateways", middleware.MapErrors(h.slogger, h.AddGatewaysToAPI))
 	mux.HandleFunc("GET "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.GetOpenAPISpec))
 	mux.HandleFunc("PUT "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.PutOpenAPISpec))
+}
+
+// parseCreationMethod reads import-openapi's optional creationMethod field,
+// which only feeds feature-usage reporting. The API Control Plane console sends
+// the approach the user picked; any other caller supplied a contract, so an
+// absent value means "contract". Anything else is rejected rather than guessed
+// (the rejected call is still reported, as "contract": only a declared
+// "scratch" is ever reported as scratch).
+func parseCreationMethod(raw string) (featureusage.CreationMethod, error) {
+	switch method := featureusage.CreationMethod(strings.TrimSpace(raw)); method {
+	case "":
+		return featureusage.CreationMethodContract, nil
+	case featureusage.CreationMethodScratch, featureusage.CreationMethodContract:
+		return method, nil
+	default:
+		return "", apperror.ValidationFailed.New("creationMethod must be one of: scratch, contract")
+	}
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {

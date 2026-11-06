@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
+	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/mcpserver"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -74,6 +75,7 @@ type Server struct {
 	markStarted    func()          // ends the health check's startup phase once the full API serves
 	revocations    *service.RevocationCache
 	revocationPoll time.Duration
+	featureUsage   featureusage.Reporter
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -947,7 +949,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	startupOK = true
 	built = true
+	// Built last, so no earlier startup failure leaves its delivery workers
+	// running; no request is served before Start, so nothing is missed.
+	featureUsage, err := featureusage.NewFromConfig(cfg.FeatureUsage,
+		service.NewFeatureUsageAttributor(orgRepo, identityService), slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
+	}
+	apiHandler.SetFeatureUsageReporter(featureUsage)
+
 	return &Server{
+		featureUsage:   featureUsage,
 		mux:            mux,
 		handler:        gohttpkit.Chain(chain...)(mux),
 		orgRepo:        orgRepo,
