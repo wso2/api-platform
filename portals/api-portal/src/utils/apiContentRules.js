@@ -203,6 +203,17 @@ const DEFINITION_NAMES = new Set([
 // The docs page opens a document as <name>.md, so any other file would show in the list and open blank.
 const isMarkdownDocName = (name) => name.endsWith(constants.FILE_EXTENSIONS.MD);
 
+// Each `docs` part of an API save is stored as a document, so it must be Markdown like a ZIP's docs/.
+const assertMarkdownDocParts = (files) => {
+    const rejected = (files?.docs || []).map((doc) => doc.originalname)
+        .filter((name) => !isMarkdownDocName(name))
+        .sort();
+    if (rejected.length) {
+        throw new ValidationError('Documents must be Markdown (.md)',
+            rejected.map((name) => ({ message: `${name}: ${ZIP_REJECTION.NOT_MARKDOWN}` })));
+    }
+};
+
 const isIgnoredPath = (segments) => segments.some((segment) => segment.startsWith('.') || segment === '__MACOSX');
 
 /**
@@ -305,5 +316,6 @@ module.exports = {
     describeItem,
     ZIP_KIND,
     isMarkdownDocName,
+    assertMarkdownDocParts,
     classifyContentZip,
 };

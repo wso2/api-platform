@@ -136,6 +136,7 @@ const createAPIMetadata = async (req, res) => {
             );
         }
         const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, true);
+        apiContentRules.assertMarkdownDocParts(req.files);
         delete apiMetadata.removeThumbnail;
         const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
@@ -553,6 +554,7 @@ const updateAPIMetadata = async (req, res) => {
             );
         }
         const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, false);
+        apiContentRules.assertMarkdownDocParts(req.files);
         delete apiMetadata.removeThumbnail;
         const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
