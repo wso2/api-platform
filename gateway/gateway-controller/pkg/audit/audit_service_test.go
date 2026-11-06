@@ -153,20 +153,21 @@ func TestNilAuditServiceRecordsNothing(t *testing.T) {
 	}
 }
 
-func TestAuditServiceMasksTheUserInTheLineOnly(t *testing.T) {
+func TestAuditServiceMasksSensitiveFieldsInTheLineOnly(t *testing.T) {
 	db := &recordingAuditTable{}
 	logPath := filepath.Join(t.TempDir(), "audit.log")
 	s, err := NewAuditService(db, "gw-1", config.AuditConfig{
-		Enabled: true,
-		MaskPII: true,
-		Outputs: []string{config.AuditOutputFile},
-		File:    config.AuditFileConfig{Path: logPath},
+		Enabled:             true,
+		MaskSensitiveFields: true,
+		Outputs:             []string{config.AuditOutputFile},
+		File:                config.AuditFileConfig{Path: logPath},
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAuditService error = %v", err)
 	}
 
 	s.Record("UPDATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
+	s.Record("DELETE", "res-2", "petstore", "rest_api", OutcomeSucceeded, "", "corr-2")
 	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("Close error = %v", err)
 	}
@@ -175,15 +176,26 @@ func TestAuditServiceMasksTheUserInTheLineOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var line recordJSON
-	if err := json.Unmarshal(out, &line); err != nil {
-		t.Fatalf("output line is not one JSON object: %v: %q", err, out)
+	var lines []recordJSON
+	for _, raw := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		var line recordJSON
+		if err := json.Unmarshal([]byte(raw), &line); err != nil {
+			t.Fatalf("output line is not a JSON object: %v: %q", err, raw)
+		}
+		lines = append(lines, line)
 	}
-	if line.PerformedBy != "****" {
-		t.Fatalf("line performedBy = %q, want it masked", line.PerformedBy)
+	if len(lines) != 2 {
+		t.Fatalf("output lines = %d, want 2", len(lines))
+	}
+	if got := lines[0]; got.PerformedBy != "****" || got.ResourceName != "petstore" || got.ResourceID != "res-1" || got.CorrelationID != "corr-1" {
+		t.Errorf("line = %+v, want only performedBy masked", got)
+	}
+	// An empty value stays empty, so "****" always stands for a real value.
+	if got := lines[1].PerformedBy; got != "" {
+		t.Errorf("line performedBy = %q, want the empty user left empty", got)
 	}
 	if db.rows[0].performedBy != "admin" {
-		t.Fatalf("row performedBy = %q, want the user", db.rows[0].performedBy)
+		t.Errorf("row performedBy = %q, want the user", db.rows[0].performedBy)
 	}
 }
 

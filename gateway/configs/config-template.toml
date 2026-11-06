@@ -346,9 +346,10 @@ format = "text"
 # lines. Changes pushed from the control plane are never recorded.
 [controller.audit]
 enabled = false
-# true writes "****" instead of the user (basic-auth username or token sub) in the
-# output lines. The audit table always keeps the user.
-mask_pii = false
+# true writes "****" instead of the sensitive fields in the output lines: the
+# user who made the change (performedBy, the basic-auth username or token sub).
+# An empty value stays empty. The audit table always keeps the real values.
+mask_sensitive_fields = false
 # Also write each record as a JSON line tagged "logType":"audit" to any of
 # "stdout", "file" and "http". Outputs are additive and order is irrelevant.
 # While enabled, an unknown or repeated name fails startup. Empty keeps records in

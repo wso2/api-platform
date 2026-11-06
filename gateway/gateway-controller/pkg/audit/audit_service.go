@@ -58,17 +58,17 @@ const (
 // AuditService records changes made through the management API: a row in the
 // audit table and, optionally, the same record as a JSON line on every sink.
 type AuditService struct {
-	enabled   bool
-	maskPII   bool
-	store     auditTable
-	gatewayID string
-	sinks     []sink
-	logger    *slog.Logger
+	enabled             bool
+	maskSensitiveFields bool
+	store               auditTable
+	gatewayID           string
+	sinks               []sink
+	logger              *slog.Logger
 }
 
 // NewAuditService builds the configured sinks; an error means startup must fail.
 func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig, logger *slog.Logger) (*AuditService, error) {
-	s := &AuditService{enabled: cfg.Enabled, maskPII: cfg.MaskPII, store: store, gatewayID: gatewayID, logger: logger}
+	s := &AuditService{enabled: cfg.Enabled, maskSensitiveFields: cfg.MaskSensitiveFields, store: store, gatewayID: gatewayID, logger: logger}
 	if !cfg.Enabled {
 		return s, nil
 	}
@@ -83,6 +83,22 @@ func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig,
 const sinkCleanupTimeout = 5 * time.Second
 
 const maskedValue = "****"
+
+// sensitiveFields are the record fields that identify a person;
+// mask_sensitive_fields hides them in the output lines.
+var sensitiveFields = []func(*recordJSON) *string{
+	func(r *recordJSON) *string { return &r.PerformedBy },
+}
+
+// maskSensitiveFields leaves an empty value empty, so "****" always stands for
+// a real one.
+func maskSensitiveFields(r *recordJSON) {
+	for _, field := range sensitiveFields {
+		if value := field(r); *value != "" {
+			*value = maskedValue
+		}
+	}
+}
 
 // newSinks closes the sinks already built when a later one fails, so a failed
 // startup leaks no file descriptor or goroutine.
@@ -151,12 +167,7 @@ func (s *AuditService) Record(action, resourceUUID, resourceName, resourceType, 
 	if len(s.sinks) == 0 {
 		return
 	}
-	// The table keeps the user; mask_pii hides it in the line only.
-	shownBy := performedBy
-	if s.maskPII {
-		shownBy = maskedValue
-	}
-	line, err := json.Marshal(recordJSON{
+	record := recordJSON{
 		Time:          performedAt,
 		LogType:       "audit",
 		ID:            id,
@@ -167,8 +178,13 @@ func (s *AuditService) Record(action, resourceUUID, resourceName, resourceType, 
 		ResourceID:    resourceUUID,
 		ResourceName:  resourceName,
 		Outcome:       outcome,
-		PerformedBy:   shownBy,
-	})
+		PerformedBy:   performedBy,
+	}
+	// The table keeps every value; mask_sensitive_fields hides them in the line only.
+	if s.maskSensitiveFields {
+		maskSensitiveFields(&record)
+	}
+	line, err := json.Marshal(record)
 	if err != nil {
 		s.logger.Error("Failed to marshal audit record", slog.Any("error", err))
 		return

@@ -346,8 +346,8 @@ data:
 
     [controller.audit]
     enabled = {{ and (kindIs "bool" .enabled) .enabled }}
-    {{- if kindIs "bool" .mask_pii }}
-    mask_pii = {{ .mask_pii }}
+    {{- if kindIs "bool" .mask_sensitive_fields }}
+    mask_sensitive_fields = {{ .mask_sensitive_fields }}
     {{- end }}
     {{- if .outputs }}
     outputs = [{{- range $i, $o := .outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]
