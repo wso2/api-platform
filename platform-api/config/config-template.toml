@@ -664,6 +664,10 @@ secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
 signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature
+# false (default): a delivery without secret_hash is rejected before any signature check.
+# true: accept it (portal older than the field), verified against each of the organization's
+# portal secrets, then the shared secret. Enable only while such a portal is still in use.
+legacy_shared_secret = false
 
 # ---------------------------------------------------------------------------
 # Read-only (maintenance) mode — TEMPORARY, v1 → v2 migration (TEMP-READ-ONLY-MODE)

@@ -38,13 +38,14 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways      Gateways
-	Projects      Projects
-	APIs          APIs
-	APIPortals    APIPortals
-	Deployments   Deployments
-	Organizations Organizations
-	Identity      Identity
+	Gateways       Gateways
+	Projects       Projects
+	APIs           APIs
+	APIPortals     APIPortals
+	WebhookSecrets WebhookSecrets
+	Deployments    Deployments
+	Organizations  Organizations
+	Identity       Identity
 	// add more capability groups as external plugins need them
 	// (Subscriptions, Applications, LLM, MCP, …)
 
@@ -168,6 +169,24 @@ type APIPortals interface {
 	// core can decrypt it, so plugins that call the portal after Create (once its
 	// pod is up) get the header here instead of keeping the plaintext key.
 	AuthHeaderForPortal(ctx context.Context, handle, orgID string) (string, error)
+}
+
+// WebhookSecrets exposes the managed webhook secret of an API Portal, scoped by
+// organization. It runs the same service as the /webhook-secrets REST endpoints,
+// so versions, the retention limit and receiver verification behave identically.
+type WebhookSecrets interface {
+	// IssuePortalSecret issues a new version of the portal's webhook secret and
+	// returns its plaintext, creating the secret on first use. At the version
+	// limit it fails with a conflict (WEBHOOK_SECRET_VERSION_LIMIT) and deletes
+	// nothing: whether the oldest version is still needed is not known here, so
+	// an operator frees a slot through the /webhook-secrets endpoints. A frozen
+	// (read-only) organization is refused. The plaintext is not retrievable
+	// afterwards.
+	IssuePortalSecret(ctx context.Context, orgID, portalHandle string) (string, error)
+	// DeletePortalSecret removes the portal's webhook secret and all its versions.
+	// A secret that does not exist is not an error; a frozen (read-only)
+	// organization is refused.
+	DeletePortalSecret(ctx context.Context, orgID, portalHandle string) error
 }
 
 // Organizations exposes read-only lookups over the platform's organizations.

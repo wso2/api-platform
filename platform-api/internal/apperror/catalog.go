@@ -245,6 +245,14 @@ var (
 	SecretInUse    = def(CodeSecretInUse, http.StatusConflict, "The secret is in use and cannot be deleted.")
 )
 
+// Webhook secret entries.
+var (
+	WebhookSecretNotFound     = def(CodeWebhookSecretNotFound, http.StatusNotFound, "The specified webhook secret could not be found.")
+	WebhookSecretExists       = def(CodeWebhookSecretExists, http.StatusConflict, "A webhook secret with this id already exists.")
+	WebhookSecretVersionLimit = def(CodeWebhookSecretVersionLimit, http.StatusConflict, "The maximum number of secret versions is reached. Delete a version before rotating.")
+	WebhookSecretLastVersion  = def(CodeWebhookSecretLastVersion, http.StatusConflict, "The last remaining secret version cannot be deleted. Delete the webhook secret instead.")
+)
+
 // Service account entries.
 var (
 	ServiceAccountNotFound = def(CodeServiceAccountNotFound, http.StatusNotFound, "The specified service account could not be found.")

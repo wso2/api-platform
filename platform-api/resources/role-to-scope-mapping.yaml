@@ -83,6 +83,7 @@ roles:
       - ap:mcp_proxy:manage
       - ap:agent_proxy:manage
       - ap:secret:manage
+      - ap:webhook_secret:manage
       # Creating a service account creates privilege, so manage is admin-only.
       - ap:service_account:manage
       - ap:api_key:read
@@ -159,6 +160,7 @@ roles:
       - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:secret:read
+      - ap:webhook_secret:read
       - ap:service_account:read
       - ap:api_key:read
       - ap:api_portal:manage
@@ -324,6 +326,7 @@ roles:
       - ap:agent_proxy:build:read
       - ap:agent_proxy:api_key:read
       - ap:secret:read
+      - ap:webhook_secret:read
       - ap:api_key:read
       - ap:api_portal:draft:read
       - ap:api_portal:publication:read

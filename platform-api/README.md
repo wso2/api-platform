@@ -553,7 +553,8 @@ What the freeze covers, beyond the HTTP routes:
 - **Background jobs**: the deployment timeout job and the startup LLM-template seeding skip
   frozen organizations.
 - **API Portal webhook** (`/api/internal/v0.9/webhook/events`): events for a frozen
-  organization are refused with 503 so the portal can retry after maintenance.
+  organization are refused. Like every failed delivery, the refusal is the generic `401`
+  response, so it reveals nothing about the organization; the reason is logged internally.
 - **Requests without an organization** in the context pass the guard only on the auth skip
   paths (gateway token, webhook signature, login), where the handler applies the check itself
   once the organization is known; on any other route a write without an organization is
