@@ -53,9 +53,7 @@ func TestNormalizeMethod(t *testing.T) {
 }
 
 func TestSanitizeHeadersRefusesHeadersTheRelayOwns(t *testing.T) {
-	// Every one of these would either let the caller contradict what the relay
-	// resolved, smuggle a second request past the gateway, or attach ambient
-	// browser credentials to a tenant-controlled destination.
+	// Each would contradict the relay, allow request smuggling, or carry ambient credentials.
 	for _, name := range []string{
 		"Host", "host", "Content-Length", "Transfer-Encoding", "Connection",
 		"Upgrade", "TE", "Trailer", "Proxy-Authorization", "Expect",
@@ -69,9 +67,7 @@ func TestSanitizeHeadersRefusesHeadersTheRelayOwns(t *testing.T) {
 }
 
 func TestSanitizeHeadersAllowsAuthorizationFromTheConsoleForm(t *testing.T) {
-	// The API under test may well require one, and the value comes from the
-	// console's own header list. What must never travel is the *session's*
-	// token, and that is guaranteed by this package never holding it.
+	// The API under test may need one; the caller's own token never reaches this package.
 	got, err := SanitizeHeaders([]Header{
 		{Name: "Authorization", Value: "Bearer api-under-test-token"},
 		{Name: "X-API-Key", Value: "test-key"},
@@ -110,8 +106,7 @@ func TestSanitizeHeadersEnforcesCountAndSizeCeilings(t *testing.T) {
 	_, err := SanitizeHeaders(many)
 	assert.ErrorIs(t, err, ErrTooManyHeaders)
 
-	// Under the count ceiling but far over the byte ceiling: the two bounds are
-	// independent, and a JSON size limit alone would not catch this.
+	// Under the count limit but over the byte limit: the two bounds are independent.
 	big := []Header{{Name: "X-Test", Value: strings.Repeat("a", maxHeaderBytes+1)}}
 	_, err = SanitizeHeaders(big)
 	assert.ErrorIs(t, err, ErrHeadersTooLarge)
@@ -132,8 +127,7 @@ func TestSanitizeQueryEncodesRatherThanTrusts(t *testing.T) {
 		{Name: "next", Value: "x#frag"},
 	})
 	require.NoError(t, err)
-	// The ampersand and hash are encoded, so neither can introduce an extra
-	// parameter or a fragment into the resolved URL.
+	// Encoded, so neither can add a parameter or a fragment.
 	assert.Equal(t, "next=x%23frag&q=a%26b%3Dc", got)
 }
 
@@ -159,8 +153,7 @@ func TestResolvePathContainsRequestsWithinTheAPI(t *testing.T) {
 		{name: "empty defaults to root", in: "", wantDecoded: "/pizza/v1/"},
 		{name: "nested path", in: "/order/42/items", wantDecoded: "/pizza/v1/order/42/items"},
 
-		// Containment. Each of these resolves outside the one API the caller
-		// was authorized for, and reaches a sibling route on the same gateway.
+		// Each resolves outside the API, to a sibling route on the gateway.
 		{name: "dot-dot escapes the context", in: "/../admin", wantErr: ErrPathEscapesAPI},
 		{name: "deep dot-dot escapes", in: "/a/../../admin", wantErr: ErrPathEscapesAPI},
 		{name: "encoded dot-dot escapes", in: "/%2e%2e/admin", wantErr: ErrPathEscapesAPI},
@@ -174,8 +167,7 @@ func TestResolvePathContainsRequestsWithinTheAPI(t *testing.T) {
 		{name: "CRLF injection", in: "/order\r\nX-Evil: 1", wantErr: ErrInvalidPath},
 		{name: "NUL byte", in: "/order\x00", wantErr: ErrInvalidPath},
 
-		// Query and fragment have their own envelope field; smuggling them
-		// through the path would bypass SanitizeQuery entirely.
+		// A query or fragment in the path would bypass SanitizeQuery.
 		{name: "query smuggled in path", in: "/order?admin=1", wantErr: ErrInvalidPath},
 		{name: "fragment smuggled in path", in: "/order#x", wantErr: ErrInvalidPath},
 	} {
@@ -192,9 +184,7 @@ func TestResolvePathContainsRequestsWithinTheAPI(t *testing.T) {
 }
 
 func TestResolvePathPreservesEncodedSegments(t *testing.T) {
-	// A path parameter whose value contains a slash is legitimate, and must
-	// reach the gateway still encoded — re-sending it decoded would turn one
-	// segment into two and address a different route.
+	// Decoding an encoded slash would turn one segment into two: another route.
 	decoded, escaped, err := ResolvePath("/pizza/v1", "/order/a%2Fb")
 	require.NoError(t, err)
 	assert.Equal(t, "/pizza/v1/order/a/b", decoded)
@@ -208,29 +198,4 @@ func TestResolvePathWithRootContext(t *testing.T) {
 
 	_, _, err = ResolvePath("", "/../order")
 	require.NoError(t, err, "a traversal that cannot escape the root is harmless")
-}
-
-func TestDecodeBody(t *testing.T) {
-	b, err := Envelope{Body: "hello"}.DecodeBody()
-	require.NoError(t, err)
-	assert.Equal(t, "hello", string(b))
-
-	b, err = Envelope{Body: "aGVsbG8=", BodyEncoding: EncodingBase64}.DecodeBody()
-	require.NoError(t, err)
-	assert.Equal(t, "hello", string(b))
-
-	_, err = Envelope{Body: "x", BodyEncoding: "rot13"}.DecodeBody()
-	assert.ErrorIs(t, err, ErrInvalidBodyEncoding)
-}
-
-func TestEncodeBodyFallsBackToBase64ForBinary(t *testing.T) {
-	body, enc := EncodeBody([]byte("plain text"))
-	assert.Equal(t, EncodingUTF8, enc)
-	assert.Equal(t, "plain text", body)
-
-	// A PNG header is not valid UTF-8; carrying it as a JSON string would
-	// replace the invalid bytes and corrupt the response the tester sees.
-	body, enc = EncodeBody([]byte{0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe})
-	assert.Equal(t, EncodingBase64, enc)
-	assert.NotEmpty(t, body)
 }

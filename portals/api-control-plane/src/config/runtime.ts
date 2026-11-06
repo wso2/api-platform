@@ -58,13 +58,6 @@ export type RuntimeConfig = {
    */
   authContract: AuthContract;
   /**
-   * The Test console's relay, which sends a request to a deployed gateway and
-   * returns its answer. This portal's BFF serves it at
-   * /api/gateway-relay/invoke; set it wherever the deployment serves the relay,
-   * whatever the auth mode.
-   */
-  gatewayRelayUrl: string;
-  /**
    * Per-deployment default locale (BCP 47, e.g. "en"). Falls through
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
    */
@@ -221,7 +214,6 @@ type LegacyWindowConfig = Partial<{
   authLogoutUrl: string;
   authLogoutStyle: string;
   authClaimMappings: string | Record<string, unknown>;
-  gatewayRelayUrl: string;
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
@@ -390,10 +382,6 @@ export const runtimeConfig: RuntimeConfig = {
     logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
     claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
   }),
-  gatewayRelayUrl:
-    fromWindow().gatewayRelayUrl ||
-    import.meta.env.VITE_GATEWAY_RELAY_URL ||
-    '/api/gateway-relay/invoke',
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
     fromWindow().defaultLocale ||

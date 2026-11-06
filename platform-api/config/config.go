@@ -136,6 +136,7 @@ type Server struct {
 	HTTPClient           HTTPClientConfig     `koanf:"http_client"`
 	APIPortalPublication APIPortalPublication `koanf:"api_portal_publication"`
 	AgentCardCache       AgentCardCache       `koanf:"agent_card_cache"`
+	GatewayRelay         GatewayRelay         `koanf:"gateway_relay"`
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 	MCPServer            MCPServer            `koanf:"mcp_server"`
 }
@@ -217,6 +218,36 @@ type AgentCardCache struct {
 	// exhaustion vector for an organization with many passthrough Agent proxies.
 	// Zero or less means the cache holds nothing.
 	MaxBytes int64 `koanf:"max_bytes"`
+}
+
+// GatewayRelay configures POST /gateway-relay/invoke.
+// Its client is not the shared one: it never follows redirects, and Egress
+// decides which gateway addresses it may dial.
+type GatewayRelay struct {
+	// RequestTimeout runs from a test request's arrival to the end of the gateway
+	// call, so reading the request and the target lookup take from it; it must stay
+	// below server.timeouts.write.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// MaxRequestBytes bounds the decoded request body.
+	MaxRequestBytes int64 `koanf:"max_request_bytes"`
+	// MaxResponseBytes bounds the response body; a longer one is truncated, not failed.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
+	// MaxConcurrent calls run at once per replica, MaxPending more may wait; the
+	// rest get 503.
+	MaxConcurrent int `koanf:"max_concurrent"`
+	MaxPending    int `koanf:"max_pending"`
+	// CAFile is a PEM bundle to trust for gateway certificates. TLSSkipVerify
+	// disables verification, for development only; the two are exclusive.
+	CAFile        string `koanf:"ca_file"`
+	TLSSkipVerify bool   `koanf:"tls_skip_verify"`
+	// Egress decides which gateway addresses the relay may dial.
+	Egress GatewayRelayEgress `koanf:"egress"`
+}
+
+// GatewayRelayEgress is [gateway_relay.egress]: nothing is reachable unless an
+// AllowHosts entry ("[scheme://]host[:port]", "*" allowed in host) matches.
+type GatewayRelayEgress struct {
+	AllowHosts []string `koanf:"allow_hosts"`
 }
 
 // HTTPClientConfig configures the single shared outbound *http.Client used by every
@@ -908,6 +939,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateAPIPortalPublicationConfig(&cfg.APIPortalPublication, cfg.Listeners.Timeouts.Write); err != nil {
 		return nil, err
 	}
+	if err := validateGatewayRelayConfig(&cfg.GatewayRelay, cfg.Listeners.Timeouts.Write); err != nil {
+		return nil, err
+	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
 		return nil, err
 	}
@@ -1076,6 +1110,39 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 		return fmt.Errorf(
 			"api_portal_publication.overall_timeout (%s) must be shorter than server.timeouts.write (%s), or the response is cut off before the deadline can report a failure",
 			cfg.OverallTimeout, writeTimeout,
+		)
+	}
+	return nil
+}
+
+// validateGatewayRelayConfig rejects a relay without bounds, or one the server's
+// write timeout would cut off. allow_hosts is parsed when the relay is built.
+func validateGatewayRelayConfig(cfg *GatewayRelay, writeTimeout time.Duration) error {
+	if cfg.RequestTimeout <= 0 {
+		return fmt.Errorf("gateway_relay.request_timeout must be greater than zero (got %s)", cfg.RequestTimeout)
+	}
+	for _, f := range []struct {
+		name  string
+		value int64
+	}{
+		{"gateway_relay.max_request_bytes", cfg.MaxRequestBytes},
+		{"gateway_relay.max_response_bytes", cfg.MaxResponseBytes},
+		{"gateway_relay.max_concurrent", int64(cfg.MaxConcurrent)},
+	} {
+		if f.value <= 0 {
+			return fmt.Errorf("%s must be greater than zero (got %d)", f.name, f.value)
+		}
+	}
+	if cfg.MaxPending < 0 {
+		return fmt.Errorf("gateway_relay.max_pending must not be negative (got %d)", cfg.MaxPending)
+	}
+	if cfg.CAFile != "" && cfg.TLSSkipVerify {
+		return fmt.Errorf("gateway_relay.ca_file and gateway_relay.tls_skip_verify are mutually exclusive")
+	}
+	if writeTimeout > 0 && cfg.RequestTimeout >= writeTimeout {
+		return fmt.Errorf(
+			"gateway_relay.request_timeout (%s) must be shorter than server.timeouts.write (%s), or the response is cut off before the relay can report a failure",
+			cfg.RequestTimeout, writeTimeout,
 		)
 	}
 	return nil

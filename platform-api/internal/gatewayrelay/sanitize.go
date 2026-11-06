@@ -24,10 +24,8 @@ import (
 	"strings"
 )
 
-// Errors the sanitizer and envelope decoding can produce. They are all mapped
-// to one generic client-facing rejection by the handler — the distinction
-// exists for the server-side log, not for the caller, who must not be told
-// which specific check refused their request.
+// Errors from checking the request. The handler answers all of them with one
+// generic rejection; which check failed is for the log, not the caller.
 var (
 	ErrInvalidMethod       = errors.New("method is not one of the methods the console offers")
 	ErrInvalidPath         = errors.New("path is not a relative path within the API")
@@ -43,17 +41,16 @@ var (
 	ErrBodyTooLarge        = errors.New("request body exceeds the allowed size")
 )
 
-// Bounds on the envelope's own lists, independent of the JSON byte ceiling.
-// A 2 MiB envelope could otherwise hold tens of thousands of one-byte headers.
+// Bounds on the request's lists, independent of its byte limit, which alone
+// would allow tens of thousands of one-byte headers.
 const (
 	maxHeaderCount     = 50
 	maxHeaderBytes     = 16 << 10 // 16 KiB across all names and values
 	maxQueryParamCount = 100
 )
 
-// allowedMethods is the closed set the console offers, matching the SPA's own
-// HTTP_METHODS list. CONNECT and TRACE are absent deliberately: neither is a
-// meaningful API call, and CONNECT would ask the relay to open a tunnel.
+// allowedMethods is the set the console offers. CONNECT and TRACE are left out:
+// neither is an API call, and CONNECT would ask the relay to open a tunnel.
 var allowedMethods = map[string]bool{
 	http.MethodGet:     true,
 	http.MethodPost:    true,
@@ -64,25 +61,11 @@ var allowedMethods = map[string]bool{
 	http.MethodOptions: true,
 }
 
-// forbiddenHeaders are the headers a caller may never set on a relayed request.
-//
-// Three groups, all for different reasons:
-//
-//   - Hop-by-hop headers (RFC 9110 §7.6.1) describe this connection, not the
-//     message, and forwarding them invites request smuggling between the relay
-//     and the gateway.
-//   - Headers the relay owns (Host, Content-Length) would contradict what the
-//     resolved target and the actual body say.
-//   - Cookie and the forwarding headers would let the browser attach ambient
-//     credentials or forge the apparent client address. Nothing the browser
-//     holds should travel to a tenant-controlled gateway implicitly; a tester
-//     who wants a cookie sent can still say so via the Gateway relay's own
-//     header list under a name that is not Cookie.
-//
-// Authorization is NOT in this list: an API under test legitimately needs one,
-// and the value comes from the console's own form. What must never appear is
-// the *session's* token, and that is guaranteed structurally; this package
-// never receives it.
+// forbiddenHeaders may never be set on a relayed request: hop-by-hop headers
+// (RFC 9110 §7.6.1) invite request smuggling, Host and Content-Length belong to
+// the relay, and Cookie and the forwarding headers would carry ambient
+// credentials or forge the client address. Authorization stays allowed for the
+// API under test; the caller's own token never reaches this package.
 var forbiddenHeaders = map[string]bool{
 	"connection":          true,
 	"keep-alive":          true,
@@ -106,10 +89,8 @@ var forbiddenHeaders = map[string]bool{
 	"x-real-ip":           true,
 }
 
-// NormalizeMethod upper-cases the caller's method before checking it against
-// the allowlist. Normalizing at the point of extraction is what stops a
-// lowercase "get" from missing an uppercase-keyed check and being treated as
-// something other than what it is.
+// NormalizeMethod upper-cases the method before checking it, so a lowercase
+// "get" cannot miss the uppercase allowlist. An empty method is GET.
 func NormalizeMethod(raw string) (string, error) {
 	m := strings.ToUpper(strings.TrimSpace(raw))
 	if m == "" {
@@ -142,9 +123,8 @@ func isTokenByte(c byte) bool {
 	return strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0
 }
 
-// hasControlChars reports whether s carries a byte that must never reach a
-// header value or a URL: CR and LF (header/request splitting), NUL, and the
-// rest of the C0 set apart from horizontal tab, which is legal in a field value.
+// hasControlChars reports a C0 control or DEL, which would allow header or
+// request splitting. Tab is legal in a field value.
 func hasControlChars(s string) bool {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -158,10 +138,8 @@ func hasControlChars(s string) bool {
 	return false
 }
 
-// SanitizeHeaders validates the caller's header list and returns it as an
-// http.Header. Anything refused fails the whole request rather than being
-// silently dropped: a tester whose header was quietly discarded would be
-// debugging the wrong thing.
+// SanitizeHeaders validates the caller's headers. A refused header fails the
+// whole request rather than being dropped, which would mislead the tester.
 func SanitizeHeaders(in []Header) (http.Header, error) {
 	if len(in) > maxHeaderCount {
 		return nil, ErrTooManyHeaders
@@ -188,9 +166,8 @@ func SanitizeHeaders(in []Header) (http.Header, error) {
 	return out, nil
 }
 
-// SanitizeQuery validates the caller's query parameters and encodes them.
-// url.Values.Encode percent-encodes both names and values, so a value cannot
-// smuggle an extra parameter or a fragment into the target URL.
+// SanitizeQuery validates and encodes the query parameters. Encoding names and
+// values keeps a value from adding a parameter or a fragment.
 func SanitizeQuery(in []Header) (string, error) {
 	if len(in) > maxQueryParamCount {
 		return "", ErrTooManyQueryParams
@@ -205,20 +182,12 @@ func SanitizeQuery(in []Header) (string, error) {
 	return values.Encode(), nil
 }
 
-// ResolvePath joins the caller's path onto the API's invoke path and proves the
-// result still lies inside it.
+// ResolvePath joins the caller's path onto the invoke URL's path (basePath, e.g.
+// "/pizza/v1") and refuses a result outside it, so "/../admin" cannot reach the
+// gateway's "/admin". The check runs on the decoded path, catching %2e%2e too.
 //
-// basePath is the invoke URL's own path (the gateway's base plus the API's
-// context, e.g. "/pizza/v1"). The containment check is what stops a path of
-// "/../admin" from resolving to the gateway's "/admin" — outside the one API
-// the caller was authorized for. It is performed on the *decoded* path, so an
-// encoded traversal (%2e%2e%2f) is caught too: url.Parse decodes it into
-// u.Path before path.Clean ever sees it.
-//
-// Both forms are returned. Callers must assign escaped to URL.RawPath and
-// decoded to URL.Path, so a legitimately percent-encoded path segment (a path
-// parameter whose value contains a slash) is transmitted as the caller wrote
-// it rather than being re-interpreted as a segment separator on the wire.
+// Callers set URL.Path to decoded and URL.RawPath to escaped, so an encoded
+// slash inside a segment is sent as written.
 func ResolvePath(basePath, rawPath string) (decoded, escaped string, err error) {
 	if rawPath == "" {
 		rawPath = "/"
@@ -229,8 +198,7 @@ func ResolvePath(basePath, rawPath string) (decoded, escaped string, err error) 
 	if !strings.HasPrefix(rawPath, "/") {
 		return "", "", ErrInvalidPath
 	}
-	// "//host/x" and "/\host/x" are parsed as an authority by WHATWG URL
-	// parsing, so neither is the relative path it looks like.
+	// A URL parser reads "//host/x" as an authority, not a path.
 	if strings.HasPrefix(rawPath, "//") {
 		return "", "", ErrInvalidPath
 	}
@@ -239,8 +207,7 @@ func ResolvePath(basePath, rawPath string) (decoded, escaped string, err error) 
 	if err != nil || u.Scheme != "" || u.Host != "" || u.Opaque != "" || u.User != nil {
 		return "", "", ErrInvalidPath
 	}
-	// The envelope carries query parameters in their own field; a query or
-	// fragment smuggled through the path field would bypass SanitizeQuery.
+	// Query parameters have their own field; one in the path would bypass SanitizeQuery.
 	if u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return "", "", ErrInvalidPath
 	}

@@ -79,6 +79,25 @@ var (
 	RESTAPIDeploymentValidationFailed = def(CodeRESTAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
 	RESTAPIAPIKeyNotFound             = def(CodeRESTAPIAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	RESTAPIAPIKeyForbidden            = def(CodeRESTAPIAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
+
+	// Invoking a REST API through a gateway. The messages never name the
+	// resolved address or which check refused a request; that goes to the log.
+	RESTAPIInvokeGatewayNotDeployed = def(CodeRESTAPIInvokeGatewayNotDeployed, http.StatusNotFound,
+		"This REST API is not deployed to the selected gateway.")
+	RESTAPIInvokeGatewayNoEndpoint = def(CodeRESTAPIInvokeGatewayNoEndpoint, http.StatusUnprocessableEntity,
+		"The selected gateway has no endpoint configured.")
+	RESTAPIInvokeGatewayUnsupportedScheme = def(CodeRESTAPIInvokeGatewayUnsupportedScheme, http.StatusUnprocessableEntity,
+		"The selected gateway's endpoint is not an http or https address.")
+	RESTAPIInvokeTargetNotAllowed = def(CodeRESTAPIInvokeTargetNotAllowed, http.StatusForbidden,
+		"This gateway cannot be reached from the control plane.")
+	RESTAPIInvokeRequestInvalid = def(CodeRESTAPIInvokeRequestInvalid, http.StatusBadRequest,
+		"This request cannot be sent as written.")
+	RESTAPIInvokeBusy = def(CodeRESTAPIInvokeBusy, http.StatusServiceUnavailable,
+		"Too many test requests are in flight; try again shortly.")
+	RESTAPIInvokeUpstreamTimeout = def(CodeRESTAPIInvokeUpstreamTimeout, http.StatusGatewayTimeout,
+		"The gateway did not respond in time.")
+	RESTAPIInvokeUpstreamUnreachable = def(CodeRESTAPIInvokeUpstreamUnreachable, http.StatusBadGateway,
+		"The gateway could not be reached.")
 )
 
 // LLM provider / proxy entries.
