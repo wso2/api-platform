@@ -510,7 +510,7 @@ function handleError(res, error) {
             status: 'error',
             code: 'COMMON_VALIDATION_ERROR',
             message: 'Bad Request',
-            errors: [{ message: error.message }],
+            errors: error.errors || [{ message: error.message }],
         });
     } else if (error instanceof NotFoundError) {
         return res.status(404).json({
@@ -737,7 +737,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
         entry.pipe(out);
     });
 
-    await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
         const streams = [];
         fs.createReadStream(zipPath)
             .pipe(unzipper.Parse())
@@ -803,7 +803,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
             .on('close', async () => {
                 try {
                     await Promise.all(streams); // Wait for all files to finish writing
-                    extractedFiles.length > 0 || allowEmpty ? resolve() : reject(new Error('No files were extracted'));
+                    extractedFiles.length > 0 || allowEmpty ? resolve(extractedFiles) : reject(new Error('No files were extracted'));
                 } catch (err) {
                     reject(new Error(`Unzip failed: ${err.message}`));
                 }
@@ -811,8 +811,6 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
             .on('error', err => {
                 reject(new Error(`Unzip failed: ${err.message}`));
             });
-    }).catch((err) => {
-        throw err;
     });
 }
 
@@ -876,39 +874,6 @@ const getAPIDocLinks = (documentMetadata) => {
     });
     return files;
 };
-
-async function readDocFiles(directory, baseDir = '', topLevelOnly = false) {
-
-    const files = await fs.promises.readdir(directory, { withFileTypes: true });
-    let fileDetails = [];
-    for (const file of files) {
-        const filePath = path.join(directory, file.name);
-        const relativePath = path.join(baseDir, file.name);
-        if (file.isDirectory()) {
-            const subDirContents = await readDocFiles(filePath, relativePath, topLevelOnly);
-            fileDetails = fileDetails.concat(subDirContents);
-        } else {
-            if (!(file.name === '.DS_Store')) {
-                let content = await fs.promises.readFile(filePath);
-                let docType;
-                if (topLevelOnly) {
-                    docType = baseDir
-                        ? baseDir.split(path.sep)[0]
-                        : constants.DOC_TYPES.DOCS.OTHER;
-                } else {
-                    docType = baseDir;
-                }
-                fileDetails.push({
-                    type: constants.DOC_TYPES.DOC_ID + docType,
-                    fileName: file.name,
-                    content: content,
-                });
-            }
-        }
-    }
-    return fileDetails;
-}
-
 
 const validateIDP = () => {
 
@@ -1410,30 +1375,6 @@ async function listFiles(path) {
     return files;
 }
 
-async function findFileByNameRecursive(rootPath, targetNames) {
-    const normalizedTargetNames = new Set(Array.from(targetNames).map(name => String(name).toLowerCase()));
-    const stack = [rootPath];
-
-    while (stack.length > 0) {
-        const currentPath = stack.pop();
-        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.name === '.DS_Store' || entry.name === '__MACOSX') {
-                continue;
-            }
-            const fullPath = path.join(currentPath, entry.name);
-            if (entry.isDirectory()) {
-                stack.push(fullPath);
-                continue;
-            }
-            if (normalizedTargetNames.has(entry.name.toLowerCase())) {
-                return fullPath;
-            }
-        }
-    }
-    return null;
-}
-
 function normalizeStringArray(value) {
     if (!Array.isArray(value)) {
         return [];
@@ -1576,8 +1517,6 @@ module.exports = {
     appendAPIImageURL,
     appendSubscriptionPlanDetails,
     listFiles,
-    readDocFiles,
-    findFileByNameRecursive,
     unzipDirectory,
     createZipBuffer,
     readDirTree,
@@ -1586,7 +1525,6 @@ module.exports = {
     requireArtifactTypeFromPath,
     isAiDisabledForPortal,
     resolveAiEnabled,
-    isImageFile,
     normalizeStringArray,
     resolveApiType,
     artifactPageSection,

@@ -19,10 +19,16 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
+const { ValidationError } = require('./errors/customErrors');
 const {
     isContentType,
+    parseDocMetadata,
+    parseImageMetadata,
+    assignImageSlots,
     findDuplicateItems,
     describeItem,
+    classifyContentZip,
+    isMarkdownDocName,
 } = require('./apiContentRules');
 
 describe('isContentType', () => {
@@ -38,6 +44,101 @@ describe('isContentType', () => {
             '', undefined, null, 42]) {
             assert.strictEqual(isContentType(type), false, String(type));
         }
+    });
+});
+
+describe('parseDocMetadata', () => {
+    test('returns an empty list when the field is absent', () => {
+        assert.deepStrictEqual(parseDocMetadata(undefined), []);
+        assert.deepStrictEqual(parseDocMetadata(''), []);
+    });
+
+    test('parses links with a DOC_ type', () => {
+        const raw = JSON.stringify([{ type: 'DOC_LINK', links: [{ displayName: 'Guide', url: 'https://example.com' }] }]);
+        assert.deepStrictEqual(parseDocMetadata(raw)[0].links[0].displayName, 'Guide');
+    });
+
+    test('rejects text that is not JSON as a validation error naming the field', () => {
+        assert.throws(() => parseDocMetadata('not-json'),
+            (err) => err instanceof ValidationError && /docMetadata is not valid JSON/.test(err.message));
+    });
+
+    test('rejects the wrong shape', () => {
+        for (const value of [{}, [{ type: 'DOC_LINK' }], [{ type: 'DOC_LINK', links: [{ url: 'x' }] }], ['x']]) {
+            assert.throws(() => parseDocMetadata(JSON.stringify(value)), ValidationError, JSON.stringify(value));
+        }
+    });
+
+    test('rejects a link type outside DOC_*', () => {
+        for (const type of ['API_DEFINITION', 'LINK', 'MARKETING', 'IMAGE']) {
+            const raw = JSON.stringify([{ type, links: [{ displayName: 'G', url: 'https://example.com' }] }]);
+            assert.throws(() => parseDocMetadata(raw),
+                (err) => err instanceof ValidationError && err.message === `Invalid link type: ${type}`);
+        }
+    });
+
+    test('rejects a link type that is not a string, even one that reads as DOC_*', () => {
+        for (const type of [['DOC_HowTo'], 42, null]) {
+            const raw = JSON.stringify([{ type, links: [{ displayName: 'G', url: 'https://example.com' }] }]);
+            assert.throws(() => parseDocMetadata(raw), ValidationError, JSON.stringify(type));
+        }
+    });
+});
+
+describe('parseImageMetadata', () => {
+    test('returns an empty object when the field is absent', () => {
+        assert.deepStrictEqual(parseImageMetadata(undefined), {});
+    });
+
+    test('parses a slot to file name map', () => {
+        assert.deepStrictEqual(parseImageMetadata('{"api-icon":"logo.png"}'), { 'api-icon': 'logo.png' });
+    });
+
+    test('rejects text that is not JSON as a validation error naming the field', () => {
+        assert.throws(() => parseImageMetadata('{oops'),
+            (err) => err instanceof ValidationError && /imageMetadata is not valid JSON/.test(err.message));
+    });
+
+    test('rejects the wrong shape', () => {
+        for (const value of ['[]', '"x"', '{"api-icon":3}', 'null']) {
+            assert.throws(() => parseImageMetadata(value), ValidationError, value);
+        }
+    });
+});
+
+const slotsOf = (imageMetadata, ...names) => {
+    const items = [...names.map((fileName) => ({ type: 'IMAGE', fileName })), { type: 'DOC_HowTo', fileName: 'icon.png' }];
+    assignImageSlots(items, imageMetadata);
+    return Object.fromEntries(items.filter((item) => item.type === 'IMAGE').map((item) => [item.fileName, item.key]));
+};
+const rejects = (message, imageMetadata, ...names) => assert.throws(() => slotsOf(imageMetadata, ...names),
+    (err) => err instanceof ValidationError && err.message === message);
+
+describe('assignImageSlots', () => {
+    test('gives an image the slot named for it, otherwise its file name without the extension', () => {
+        assert.deepStrictEqual(slotsOf({}, 'logo.png', 'banner.png'), { 'logo.png': 'logo', 'banner.png': 'banner' });
+        assert.deepStrictEqual(slotsOf({ 'api-icon': 'pets.png' }, 'pets.png'), { 'pets.png': 'api-icon' });
+        assert.deepStrictEqual(slotsOf({ 'api-icon': '' }, 'api-icon.png'), { 'api-icon.png': 'api-icon' });
+        assert.deepStrictEqual(slotsOf({}, 'constructor.png'), { 'constructor.png': 'constructor' });
+    });
+
+    test('leaves an image without a slot when metadata gives its slot to another file', () => {
+        assert.deepStrictEqual(slotsOf({ 'api-icon': 'api-icon.jpg' }, 'api-icon.png', 'api-icon.jpg'),
+            { 'api-icon.png': undefined, 'api-icon.jpg': 'api-icon' });
+    });
+
+    test('rejects metadata naming a file that is not an uploaded image', () => {
+        rejects('imageMetadata names a file that is not in the upload: icon.png', { 'api-icon': 'icon.png' }, 'logo.png');
+    });
+
+    test('rejects metadata naming one file for two slots', () => {
+        rejects('imageMetadata names logo.png for more than one slot: api-icon, banner',
+            { banner: 'logo.png', 'api-icon': 'logo.png' }, 'logo.png');
+    });
+
+    test('rejects two unnamed images left with the same slot', () => {
+        rejects('Images api-icon.jpg, api-icon.png use the same image slot api-icon; name one in imageMetadata',
+            {}, 'api-icon.png', 'api-icon.jpg');
     });
 });
 
@@ -72,5 +173,129 @@ describe('describeItem', () => {
     test('names a file with its type, and an image by its slot', () => {
         assert.strictEqual(describeItem({ type: 'DOC_HowTo', fileName: 'A.md' }), 'A.md (DOC_HowTo)');
         assert.strictEqual(describeItem({ type: 'IMAGE', fileName: 'api-icon.png', key: 'api-icon' }), 'image slot api-icon');
+    });
+});
+
+describe('isMarkdownDocName', () => {
+    test('accepts only a lowercase .md extension', () => {
+        assert.strictEqual(isMarkdownDocName('A.md'), true);
+        for (const name of ['A.MD', 'A.Md', 'A.markdown', 'A.txt', 'md']) {
+            assert.strictEqual(isMarkdownDocName(name), false, name);
+        }
+    });
+});
+
+describe('classifyContentZip', () => {
+    const UNKNOWN = 'unknown top-level entry';
+    const WEB = 'web/ holds only apiContent.md, api-content.hbs and images';
+    const NOT_MD = 'documents must be Markdown (.md)';
+    const DEPTH = 'docs/ allows one category folder';
+
+    const accepted = (paths, kind) => classifyContentZip(paths, kind).items
+        .map((item) => `${item.type}:${item.fileName}`).sort();
+    const rejected = (paths, kind) => classifyContentZip(paths, kind).rejected
+        .map((r) => `${r.path}: ${r.reason}`);
+
+    for (const kind of ['content', 'artifact']) {
+        describe(`kind ${kind}`, () => {
+            test('row 2: a single wrapper folder is read from inside', () => {
+                assert.deepStrictEqual(accepted(['my-api/docs/A.md', 'my-api/web/apiContent.md'], kind),
+                    ['DOC_Other:A.md', 'MARKETING:apiContent.md']);
+                assert.deepStrictEqual(classifyContentZip(['my-api/docs/A.md'], kind).items[0].path, 'my-api/docs/A.md');
+            });
+
+            test('row 2: a lone web/ or docs/ is not a wrapper', () => {
+                assert.deepStrictEqual(accepted(['docs/HowTo/B.md'], kind), ['DOC_HowTo:B.md']);
+                assert.deepStrictEqual(accepted(['web/api-icon.png'], kind), ['IMAGE:api-icon.png']);
+            });
+
+            test('row 2: ignored entries beside the wrapper do not count', () => {
+                assert.deepStrictEqual(accepted(['my-api/docs/A.md', '.DS_Store', '__MACOSX/my-api/._x'], kind),
+                    ['DOC_Other:A.md']);
+            });
+
+            test('row 3: hidden and __MACOSX entries are ignored', () => {
+                const result = classifyContentZip(['docs/A.md', '.gitkeep', 'docs/.git/config', 'docs/._A.md',
+                    'web/.DS_Store', 'web/.x.png', '__MACOSX/x', 'docs/HowTo/.gitkeep'], kind);
+                assert.deepStrictEqual(result.items.map((item) => item.path), ['docs/A.md']);
+                assert.deepStrictEqual(result.rejected, []);
+            });
+
+            test('row 4: the two landing page names, exactly', () => {
+                assert.deepStrictEqual(accepted(['web/apiContent.md', 'web/api-content.hbs'], kind),
+                    ['MARKETING:api-content.hbs', 'MARKETING:apiContent.md']);
+                assert.deepStrictEqual(rejected(['web/api-content.md', 'web/ApiContent.md'], kind),
+                    [`web/ApiContent.md: ${WEB}`, `web/api-content.md: ${WEB}`]);
+            });
+
+            test('row 5: images by extension in any letter case', () => {
+                const paths = ['web/a.PNG', 'web/b.jpg', 'web/c.jpeg', 'web/d.gif', 'web/e.svg', 'web/f.ico'];
+                assert.deepStrictEqual(accepted(paths, kind),
+                    paths.map((p) => `IMAGE:${p.slice(4)}`).sort());
+            });
+
+            test('row 6: docs/<name>.md is a document of category Other', () => {
+                assert.deepStrictEqual(accepted(['docs/A.md'], kind), ['DOC_Other:A.md']);
+                assert.deepStrictEqual(rejected(['docs/A.MD'], kind), [`docs/A.MD: ${NOT_MD}`]);
+            });
+
+            test('row 7: docs/<Category>/<name>.md, one folder level', () => {
+                assert.deepStrictEqual(accepted(['docs/How To/B.md'], kind), ['DOC_How To:B.md']);
+                assert.deepStrictEqual(rejected(['docs/HowTo/v1/C.md', 'docs/HowTo/v1/d.txt'], kind),
+                    [`docs/HowTo/v1/C.md: ${DEPTH}`, `docs/HowTo/v1/d.txt: ${NOT_MD}`]);
+            });
+
+            test('row 9: everything else is rejected, a foreign folder once, sorted by path', () => {
+                assert.deepStrictEqual(rejected(['doc/x.md', 'doc/y.md', 'web/style.css', 'docs/guide.pdf',
+                    'web/images/logo.png', 'README.md', 'docs/A.md'], kind), [
+                    `README.md: ${UNKNOWN}`,
+                    `doc/: ${UNKNOWN}`,
+                    `docs/guide.pdf: ${NOT_MD}`,
+                    `web/images/logo.png: ${WEB}`,
+                    `web/style.css: ${WEB}`,
+                ]);
+            });
+
+            test('an empty list has nothing to keep or reject', () => {
+                assert.deepStrictEqual(classifyContentZip([], kind),
+                    { items: [], metadataPath: null, definitionPath: null, rejected: [] });
+            });
+        });
+    }
+
+    test('row 8: a full API ZIP has its metadata file and definition at the top level', () => {
+        const result = classifyContentZip(['api.yaml', 'definition.json', 'docs/A.md'], 'artifact');
+        assert.strictEqual(result.metadataPath, 'api.yaml');
+        assert.strictEqual(result.definitionPath, 'definition.json');
+        assert.deepStrictEqual(result.items.map((item) => item.path), ['docs/A.md']);
+        assert.deepStrictEqual(result.rejected, []);
+        for (const name of ['metadata.yaml', 'metadata.yml', 'mcp.yaml']) {
+            assert.strictEqual(classifyContentZip([name], 'artifact').metadataPath, name);
+        }
+        for (const name of ['definition.yaml', 'definition.yml']) {
+            assert.strictEqual(classifyContentZip([name], 'artifact').definitionPath, name);
+        }
+        const wrapped = classifyContentZip(['my-api/api.yaml', 'my-api/definition.yaml'], 'artifact');
+        assert.strictEqual(wrapped.metadataPath, 'my-api/api.yaml');
+        assert.strictEqual(wrapped.definitionPath, 'my-api/definition.yaml');
+    });
+
+    test('row 8: metadata or definition below the top level is not read', () => {
+        const result = classifyContentZip(['docs/api.yaml', 'web/definition.json'], 'artifact');
+        assert.strictEqual(result.metadataPath, null);
+        assert.strictEqual(result.definitionPath, null);
+        assert.deepStrictEqual(rejected(['docs/api.yaml', 'web/definition.json'], 'artifact'),
+            [`docs/api.yaml: ${NOT_MD}`, `web/definition.json: ${WEB}`]);
+    });
+
+    test('row 8: a second metadata file or definition is rejected', () => {
+        assert.deepStrictEqual(rejected(['api.yaml', 'metadata.yaml', 'definition.json', 'definition.yaml'], 'artifact'),
+            ['definition.yaml: more than one definition file', 'metadata.yaml: more than one metadata file']);
+    });
+
+    test('row 8 applies to the full API ZIP only', () => {
+        const result = classifyContentZip(['api.yaml', 'definition.json'], 'content');
+        assert.strictEqual(result.metadataPath, null);
+        assert.deepStrictEqual(result.rejected.map((r) => r.path), ['api.yaml', 'definition.json']);
     });
 });

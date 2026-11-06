@@ -52,9 +52,13 @@ class NotFoundError extends Error {
  * `error instanceof Sequelize.ValidationError` -> `error instanceof ValidationError`.
  */
 class ValidationError extends Error {
-    constructor(message) {
+    /** `errors`, when given, lists each problem as `{ message }` so the response can name every one. */
+    constructor(message, errors) {
         super(message);
         this.name = 'ValidationError';
+        if (errors) {
+            this.errors = errors;
+        }
         Error.captureStackTrace(this, this.constructor);
     }
 }

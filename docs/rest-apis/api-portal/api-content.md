@@ -15,7 +15,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
   -F 'content=string' \
-  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'docMetadata=[{"type":"DOC_LINK","links":[{"displayName":"External guide","url":"https://example.com/docs/guide"}]}]' \
   -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
@@ -43,25 +43,33 @@ Required scopes (the token must carry at least one of): `dp:api_content:create`,
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
 |» content|body|string(binary)|true|ZIP upload field named `content`.|
-|» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
-|» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
+|» docMetadata|body|string|false|Optional JSON array of document links, grouped by type. Each `type` must be `DOC_<Category>`. A link is stored as `LINK_<displayName>` under that type.|
+|» imageMetadata|body|string|false|Optional JSON object mapping an image slot to an uploaded file name, overriding the slot taken from the file name. Each named file must be in the upload and fills one slot. Two images whose names differ only by extension take the same slot, so one of them must be named here.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
 **body**: API content ZIP upload.
 
-Expected ZIP structure:
-- `web/`: landing-page files (`.md`, `.hbs`, `.html`, `.json`, `.yaml`) and images. Every image fills the
-  slot named by its file name without the extension; `api-icon.png` or `api-icon.jpg` is the thumbnail.
-- `docs/`: documents. Files directly in `docs/` are stored as `DOC_Other`; files in `docs/<Category>/` as
-  `DOC_<Category>`.
+Each path in the ZIP gets one outcome, from the first rule that matches:
+- If the ZIP breaks an extraction limit or holds an unsafe path, the whole upload is rejected.
+- If the only top-level entry is one folder other than `web/` or `docs/`, the ZIP is read from inside it.
+- A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
+  ignored.
+- `web/apiContent.md` and `web/api-content.hbs` are the landing page.
+- `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
+  fills the slot named by its file name without the extension, unless `imageMetadata` names another;
+  `api-icon.png` or `api-icon.jpg` is the thumbnail.
+- `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
+  `DOC_<Category>`. The `.md` extension is lowercase.
+- Anything else is rejected.
 
-Only `web/` and `docs/` are read, optionally inside one wrapper folder (a lone `web/` or `docs/` is never
-treated as a wrapper). An upload with no content is accepted by `PUT` (it removes all content) and
-rejected by `POST`. Links in `docMetadata` count as content.
+If any path is rejected, the upload is rejected with `400` and nothing is stored; `errors` lists every rejected
+path, sorted, as `<path>: <reason>`. An upload with no content is accepted by `PUT` (it removes all content)
+and rejected by `POST`. Links in `docMetadata` count as content.
 
-`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
+`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields;
+text that isn't valid JSON, or of the wrong shape, is rejected with `400`.
 
 > Example responses
 >
@@ -160,7 +168,7 @@ curl -X PUT https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
   -F 'content=string' \
-  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'docMetadata=[{"type":"DOC_LINK","links":[{"displayName":"External guide","url":"https://example.com/docs/guide"}]}]' \
   -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
@@ -189,25 +197,33 @@ Required scopes (the token must carry at least one of): `dp:api_content:update`,
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
 |» content|body|string(binary)|true|ZIP upload field named `content`.|
-|» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
-|» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
+|» docMetadata|body|string|false|Optional JSON array of document links, grouped by type. Each `type` must be `DOC_<Category>`. A link is stored as `LINK_<displayName>` under that type.|
+|» imageMetadata|body|string|false|Optional JSON object mapping an image slot to an uploaded file name, overriding the slot taken from the file name. Each named file must be in the upload and fills one slot. Two images whose names differ only by extension take the same slot, so one of them must be named here.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 #### Detailed descriptions
 
 **body**: API content ZIP upload.
 
-Expected ZIP structure:
-- `web/`: landing-page files (`.md`, `.hbs`, `.html`, `.json`, `.yaml`) and images. Every image fills the
-  slot named by its file name without the extension; `api-icon.png` or `api-icon.jpg` is the thumbnail.
-- `docs/`: documents. Files directly in `docs/` are stored as `DOC_Other`; files in `docs/<Category>/` as
-  `DOC_<Category>`.
+Each path in the ZIP gets one outcome, from the first rule that matches:
+- If the ZIP breaks an extraction limit or holds an unsafe path, the whole upload is rejected.
+- If the only top-level entry is one folder other than `web/` or `docs/`, the ZIP is read from inside it.
+- A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
+  ignored.
+- `web/apiContent.md` and `web/api-content.hbs` are the landing page.
+- `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
+  fills the slot named by its file name without the extension, unless `imageMetadata` names another;
+  `api-icon.png` or `api-icon.jpg` is the thumbnail.
+- `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
+  `DOC_<Category>`. The `.md` extension is lowercase.
+- Anything else is rejected.
 
-Only `web/` and `docs/` are read, optionally inside one wrapper folder (a lone `web/` or `docs/` is never
-treated as a wrapper). An upload with no content is accepted by `PUT` (it removes all content) and
-rejected by `POST`. Links in `docMetadata` count as content.
+If any path is rejected, the upload is rejected with `400` and nothing is stored; `errors` lists every rejected
+path, sorted, as `<path>: <reason>`. An upload with no content is accepted by `PUT` (it removes all content)
+and rejected by `POST`. Links in `docMetadata` count as content.
 
-`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
+`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields;
+text that isn't valid JSON, or of the wrong shape, is rejected with `400`.
 
 > Example responses
 >

@@ -18,11 +18,10 @@
 
 // POST/PUT /apis via the `artifact` full-ZIP upload path (as opposed to the JSON
 // `metadata` field or the standalone `api`/`definition` YAML pair) — see
-// apiMetadataService.js's extractFullApiBundleFromUploadedZip. A ZIP must contain
-// one of metadata.yaml/api.yaml/mcp.yaml plus a definition file
-// (definition.(yaml|yml|json)); `web`/`docs`
-// directories are optional (extractApiContentFromUploadedZip's 'artifact' mode
-// tolerates neither being present).
+// apiMetadataService.js's extractFullApiBundleFromUploadedZip. A ZIP must contain,
+// at its top level, one of metadata.yaml/metadata.yml/api.yaml/mcp.yaml plus a
+// definition file (definition.(yaml|yml|json)); its optional `web`/`docs` content
+// follows the same entry rules as the /assets content ZIP.
 
 const client = require('../support/client');
 const { uniqueHandle } = require('../support/fixtures');
@@ -49,6 +48,7 @@ function buildZip(overrides = {}) {
             }),
         },
         { name: 'definition.json', content: overrides.definition || SAMPLE_DEFINITION },
+        ...(overrides.extra || []),
     ];
     return { handle, zip: createZip(entries) };
 }
@@ -174,6 +174,51 @@ describe('APIs via artifact ZIP upload', () => {
 
             const get = await client.as('publisher').get(`/apis/${handle}`);
             expect(get.body.labels).toEqual([]);
+        });
+    });
+
+    describe('content in the ZIP follows the content ZIP entry rules', () => {
+        const post = (zip) => client.as('publisher').postMultipart('/apis').attach('artifact', zip, 'artifact.zip');
+        const rejected = (res) => {
+            expect(res.status).toBe(400);
+            expect(res.body.code).toBe('COMMON_VALIDATION_ERROR');
+            return res.body.errors.map((e) => e.message);
+        };
+
+        it('stores a document from docs/ as category Other', async () => {
+            const { handle, zip } = buildZip({ extra: [{ name: 'docs/A.md', content: '# A' }] });
+            expect((await post(zip)).status).toBe(201);
+            const doc = await client.as('publisher').get(`/apis/${handle}/assets?type=DOC_Other&fileName=A.md`);
+            expect(doc.status).toBe(200);
+        });
+
+        it('rejects a document that is not Markdown and creates nothing', async () => {
+            const { handle, zip } = buildZip({ extra: [{ name: 'docs/guide.pdf', content: 'pdf' }] });
+            expect(rejected(await post(zip))).toEqual(['docs/guide.pdf: documents must be Markdown (.md)']);
+            expect((await client.as('publisher').get(`/apis/${handle}`)).status).toBe(404);
+        });
+
+        it('reads the metadata file only from the top level', async () => {
+            const handle = uniqueHandle('zip-api');
+            const zip = createZip([
+                { name: 'docs/api.yaml', content: buildApiYaml({ handle, displayName: 'Nested', version: 'v1.0', description: 'd' }) },
+                { name: 'definition.json', content: SAMPLE_DEFINITION },
+            ]);
+            expect(rejected(await post(zip))).toEqual(['docs/api.yaml: documents must be Markdown (.md)']);
+        });
+
+        it('rejects an unknown top-level file', async () => {
+            const { zip } = buildZip({ extra: [{ name: 'README.md', content: '# Read me' }] });
+            expect(rejected(await post(zip))).toEqual(['README.md: unknown top-level entry']);
+        });
+
+        it('rejects two images for one slot', async () => {
+            const { zip } = buildZip({ extra: [
+                { name: 'web/logo.png', content: 'png' },
+                { name: 'web/logo.jpg', content: 'jpg' },
+            ] });
+            expect(rejected(await post(zip))).toEqual(
+                ['Images logo.jpg, logo.png use the same image slot logo; name one in imageMetadata']);
         });
     });
 });
