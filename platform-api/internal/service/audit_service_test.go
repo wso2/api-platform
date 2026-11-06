@@ -148,7 +148,7 @@ func TestAuditServiceMasksTheUserInTheLine(t *testing.T) {
 		identity auditIdentity
 		wantLog  string
 	}{
-		{"mask_sensitive_fields", true, unresolvableIdentity{}, ""}, // the identity is not looked up
+		{"mask_sensitive_fields", true, staticIdentity{"user-1": "alice"}, ""},
 		{"identity lookup fails", false, unresolvableIdentity{}, "Failed to resolve the audit actor; masking it in the output"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

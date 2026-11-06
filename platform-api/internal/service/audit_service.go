@@ -153,17 +153,10 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 		ResourceType:   resourceType,
 		ResourceID:     resourceUUID,
 		OrganizationID: orgUUID,
-		PerformedBy:    performedBy,
+		PerformedBy:    s.actorIdentity(performedBy),
 	}
-	// The table keeps the internal user id. The line shows the user's identity,
-	// or a mask when mask_sensitive_fields is set, which skips the lookup.
 	if s.maskSensitiveFields {
 		maskAuditSensitiveFields(&record)
-	} else if display, idErr := s.identity.DisplayIdentity(performedBy); idErr == nil {
-		record.PerformedBy = display
-	} else {
-		s.logger.Warn("Failed to resolve the audit actor; masking it in the output", "error", idErr)
-		record.PerformedBy = auditMaskedValue
 	}
 	line, jsonErr := json.Marshal(record)
 	if jsonErr != nil {
@@ -174,6 +167,19 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 		sk.Write(line)
 	}
 	return err
+}
+
+// actorIdentity returns the identity an output line shows for the internal
+// user id that the table keeps: the token's sub, or the username for file-based
+// users. The internal id must never leave the process, so a failed lookup
+// shows "****".
+func (s *AuditService) actorIdentity(internalUserID string) string {
+	identity, err := s.identity.DisplayIdentity(internalUserID)
+	if err != nil {
+		s.logger.Warn("Failed to resolve the audit actor; masking it in the output", "error", err)
+		return auditMaskedValue
+	}
+	return identity
 }
 
 func (s *AuditService) Close(ctx context.Context) error {
