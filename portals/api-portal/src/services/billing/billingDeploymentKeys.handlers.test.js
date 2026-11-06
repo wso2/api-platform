@@ -38,7 +38,6 @@ const { spawnSync } = require('node:child_process');
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const SERVICE = path.join(__dirname, 'billingConfigurationService.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = '0b5c9a4e-1f2d-4c3b-9a8e-7d6f5e4c3b2a';
 const PORTAL = 'test-portal';
@@ -86,7 +85,7 @@ const { BillingProviderError } = require(${JSON.stringify(path.join(PROJECT_ROOT
 const stripeConnector = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/billing/connectors/moesif/payments/stripe/index.js'))});
 const moesifConnector = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/billing/connectors/moesif/index.js'))});
 const configurationDao = require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/dao/billingConfigurationDao.js'))});
-const Database = require(${JSON.stringify(SQLITE)});
+const Database = require('node:sqlite').DatabaseSync;
 const out = {};
 
 const STATE_FILE = process.env.STATE_FILE;
@@ -165,10 +164,10 @@ const db = new Database(${JSON.stringify('DB_FILE')});
         out.moesifCallsOnCreate = moesifCalls.splice(0);
         out.endpointsAfterCreate = state.endpoints.map((e) => e.url);
         const raw = db.prepare('SELECT * FROM billing_configurations').get();
-        out.storedSecretProviders = Object.keys(JSON.parse(raw.provider_secrets_enc.toString('utf8')));
-        out.storedMoesifSettings = JSON.parse(raw.provider_settings.toString('utf8')).moesif;
+        out.storedSecretProviders = Object.keys(JSON.parse(Buffer.from(raw.provider_secrets_enc).toString('utf8')));
+        out.storedMoesifSettings = JSON.parse(Buffer.from(raw.provider_settings).toString('utf8')).moesif;
         out.moesifEndpointInStripe = state.endpoints.some((e) => e.url.includes(encodeURIComponent(${JSON.stringify(FIRST_KEYS.moesifCollectorApplicationId)})));
-        out.storedText = Object.values(raw).map((v) => (Buffer.isBuffer(v) ? v.toString('utf8') : String(v))).join('|');
+        out.storedText = Object.values(raw).map((v) => (v instanceof Uint8Array ? Buffer.from(v).toString('utf8') : String(v))).join('|');
         const conn = await configurationDao.getWithSecrets(${JSON.stringify(ORG)});
         out.connectionKeys = { collector: conn.moesifCollectorApplicationId, key: conn.moesifManagementKey };
     } else if (process.env.PHASE === 'promoted') {
@@ -179,7 +178,7 @@ const db = new Database(${JSON.stringify('DB_FILE')});
         await require(${JSON.stringify(path.join(PROJECT_ROOT, 'src/dao/planPricingDao.js'))}).create(${JSON.stringify(ORG)}, 'plan-silver',
             { pricingType: 'FLAT_RATE', currency: 'USD', billingPeriod: 'MONTH', flatAmount: '49.00' });
         const pairs = [{ api: { uuid: 'api-1', name: 'Weather API', version: 'v1.0' }, planUuid: 'plan-silver' }];
-        const stored = () => JSON.parse(db.prepare('SELECT provider_settings FROM billing_configurations').get().provider_settings.toString('utf8')).moesif;
+        const stored = () => JSON.parse(Buffer.from(db.prepare('SELECT provider_settings FROM billing_configurations').get().provider_settings).toString('utf8')).moesif;
         out.settingsBeforeMove = stored();
         const endpointsBeforeMove = state.endpoints.map((e) => e.id);
 
@@ -274,7 +273,7 @@ function run(phase, supplied) {
         const seed = path.join(tmpDir, 'seed.js');
         fs.writeFileSync(seed, `
             const fs = require('fs');
-            const Database = require(${JSON.stringify(SQLITE)});
+            const Database = require('node:sqlite').DatabaseSync;
             const db = new Database(${JSON.stringify(path.join(tmpDir, 'portal.db'))});
             db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
             db.prepare(\`INSERT INTO organizations

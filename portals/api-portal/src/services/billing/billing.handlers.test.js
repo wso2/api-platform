@@ -43,7 +43,6 @@ const METER_SERVICE = path.join(__dirname, 'meterService.js');
 const PRICING_SERVICE = path.join(__dirname, 'planPricingService.js');
 const PLAN_SERVICE = path.join(__dirname, '..', 'apiMetadataService.js');
 const SCHEMA = path.join(PROJECT_ROOT, 'database', 'schema.sqlite.sql');
-const SQLITE = path.join(PROJECT_ROOT, 'node_modules', 'better-sqlite3');
 
 const ORG = 'org-uuid-1';
 const PORTAL = 'test-portal';
@@ -71,7 +70,7 @@ const PROBE = `
 const meters = require(${JSON.stringify(METER_SERVICE)});
 const pricing = require(${JSON.stringify(PRICING_SERVICE)});
 const plans = require(${JSON.stringify(PLAN_SERVICE)});
-const Database = require(${JSON.stringify(SQLITE)});
+const Database = require('node:sqlite').DatabaseSync;
 const out = {};
 
 function call(fn, req) {
@@ -399,7 +398,7 @@ function results() {
     const seed = path.join(tmpDir, 'seed.js');
     fs.writeFileSync(seed, `
         const fs = require('fs');
-        const Database = require(${JSON.stringify(SQLITE)});
+        const Database = require('node:sqlite').DatabaseSync;
         const db = new Database(${JSON.stringify(dbFile)});
         db.exec(fs.readFileSync(${JSON.stringify(SCHEMA)}, 'utf8'));
         db.prepare(\`INSERT INTO organizations
