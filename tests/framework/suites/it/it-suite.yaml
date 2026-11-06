@@ -79,6 +79,9 @@ blocks:
       - name: views-pages
         features:
           - features/apiportal/content/views_pages.feature
+      - name: health
+        features:
+          - features/apiportal/core/health.feature
       - name: workflows
         features:
           - features/apiportal/ai/workflows.feature
@@ -455,6 +458,10 @@ blocks:
       - name: health
         features:
           - features/gateway/core/health.feature
+      - name: health-endpoints
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/health_endpoints.feature
       - name: api-management
         features:
           - features/gateway/core/api_management.feature
@@ -864,6 +871,9 @@ blocks:
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
         tags: "~@known-issue"
+      - name: platform-api-health
+        features:
+          - features/management-portal/core/health.feature
       - name: platform-api-paid-subscription-suspension
         features:
           - features/management-portal/monetization/paid_subscription_suspension.feature
@@ -1094,3 +1104,51 @@ blocks:
           - features/apiportal/monetization/billing_setup.feature
           - features/apiportal/monetization/paid_checkout.feature
           - features/apiportal/monetization/usage_billing.feature
+
+  # The health endpoints answer only loopback here, while the suite calls them from the host, so
+  # every probe is a refused client. Booting is unaffected: the framework waits for the router
+  # through the Envoy admin endpoint and for the portal through its root page.
+  - name: health-restricted-clients
+    parallel: 2
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/health-clients-loopback.toml
+        db: sqlite
+      - name: testbench
+      - name: platform-api
+        db: sqlite
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-health-clients-loopback.toml
+    runners:
+      - name: gateway-health-access
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/health_access.feature
+      - name: api-portal-health-access
+        features:
+          - features/apiportal/security/health_access.feature
+
+  # These scenarios take the block's shared Postgres server and the gateway controller down, so
+  # the block runs them one at a time and no other runner shares it.
+  - name: health-dependency-outage
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+      - name: platform-gateway
+        db: postgres
+      - name: testbench
+    runners:
+      - name: health-database-outage
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/health/database_outage.feature
+      - name: health-controller-outage
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/health_controller_outage.feature

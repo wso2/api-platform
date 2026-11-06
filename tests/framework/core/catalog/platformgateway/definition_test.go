@@ -516,7 +516,7 @@ func TestTwoControllerComposeOverride(t *testing.T) {
 	require.Contains(t, xds["ports"], fmt.Sprint(xdsControllerAdminPort))
 	require.Contains(t, xds["env_file"], "api-platform.env", "both controllers must read the same database settings")
 	require.Contains(t, xds["image"], "${"+EnvImagePGController)
-	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/health", xdsControllerAdminPort))
+	require.Contains(t, fmt.Sprint(xds["healthcheck"]), fmt.Sprintf("localhost:%d/api/admin/v1/ready", xdsControllerAdminPort))
 
 	base := composeServiceEnv(t, svcController)
 	replica := composeServiceEnvIn(t, doc, svcXDSController)

@@ -42,6 +42,22 @@ data:
     format = {{ $cfg.logging.format | quote }}
     console_only = {{ $cfg.logging.consoleOnly }}
 
+    {{- $health := $cfg.health }}
+    {{- $dbHealth := $health.database }}
+
+    [api_portal.health]
+    cache_ttl = {{ $health.cacheTtl | quote }}
+    allowed_clients = [{{ range $i, $c := $health.allowedClients }}{{ if $i }}, {{ end }}{{ $c | toString | quote }}{{ end }}]
+
+    [api_portal.health.database]
+    check_timeout = {{ $dbHealth.checkTimeout | quote }}
+    failure_window = {{ $dbHealth.failureWindow | quote }}
+    failure_ratio = {{ $dbHealth.failureRatio | float64 }}
+    min_attempts = {{ $dbHealth.minAttempts | int }}
+    idle_period = {{ $dbHealth.idlePeriod | quote }}
+    pool_saturation = {{ $dbHealth.poolSaturation | float64 }}
+    pool_wait_limit = {{ $dbHealth.poolWaitLimit | quote }}
+
     [api_portal.database]
     # Rendered as the canonical dialect rather than the raw values.yaml spelling,
     # so an alias (sqlserver, postgresql, pgx, sqlite3) also works against a

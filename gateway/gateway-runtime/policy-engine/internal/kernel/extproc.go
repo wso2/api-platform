@@ -100,6 +100,10 @@ type ExternalProcessorServer struct {
 	// Nil when the collector is disabled (Config.IsCollectorEnabled) -- nothing
 	// will ever read the store in that case, so nothing writes to it either.
 	correlationStore *correlation.Store
+
+	// health answers the gateway's own health routes; nil leaves them to the normal
+	// request path.
+	health *healthRoutes
 }
 
 // ServerOption configures an ExternalProcessorServer at construction.
@@ -300,6 +304,7 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 	}()
 
+	firstMessage := true
 	for {
 		// Receive request from Envoy
 		req, err := stream.Recv()
@@ -329,6 +334,22 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 				span.SetStatus(codes.Error, "ext_proc stream receive failed")
 			}
 			return status.Errorf(grpccodes.Unknown, "failed to receive request: %v", err)
+		}
+
+		// The gateway's health routes are answered on the stream's first message, before
+		// any span, request metric or route lookup, so a health probe runs no policy and
+		// leaves nothing in traces, metrics or analytics. With execCtx and span still
+		// nil, every deferred teardown above is a no-op.
+		if firstMessage {
+			firstMessage = false
+			if resp, ok := s.healthRouteResponse(req); ok {
+				if err := stream.Send(resp); err != nil {
+					slog.ErrorContext(ctx, "Error sending health response", "error", err)
+					metrics.StreamErrorsTotal.WithLabelValues("send").Inc()
+					return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
+				}
+				return nil
+			}
 		}
 
 		// Start the root span on the first message, parented on the request's

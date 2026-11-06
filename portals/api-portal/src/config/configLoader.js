@@ -39,6 +39,9 @@ const routeConstants = require('../utils/constants');
 // db/rebind.js is a pure helper module with no requires of its own (db/driver.js is
 // what requires *this* module), so taking the dialect name table from it cannot cycle.
 const { DIALECTS, DRIVER_ALIASES, normalizeDriver } = require('../db/rebind');
+// Both health helpers are require-free apart from ipaddr.js, so neither can cycle.
+const { parseDuration, formatDuration } = require('../health/duration');
+const { parseAllowedClients } = require('../health/allowedClients');
 
 // Load api-platform.env if present (silently ignored if absent)
 try {
@@ -62,6 +65,19 @@ try {
  * — the module bootstrap turns that into a fatal, non-zero exit at startup
  * rather than booting on pure built-in DEFAULTS.
  */
+// Keys written under [api_portal.health.database], in every --config file, exactly as
+// spelled there. Captured before the snake_case-to-camelCase conversion so an unknown
+// key can be rejected under the name the operator actually typed (see
+// validateHealthConfig below).
+const healthDatabaseKeys = new Set();
+
+function collectHealthDatabaseKeys(parsed) {
+    const table = parsed?.api_portal?.health?.database;
+    if (table !== null && typeof table === 'object' && !Array.isArray(table)) {
+        for (const key of Object.keys(table)) healthDatabaseKeys.add(key);
+    }
+}
+
 function loadConfigFiles(paths) {
     let merged = {};
     for (const p of paths) {
@@ -78,6 +94,7 @@ function loadConfigFiles(paths) {
         } catch (err) {
             throw new Error(`config file "${p}" is not valid TOML: ${err.message}`, { cause: err });
         }
+        collectHealthDatabaseKeys(parsed);
         const tree = snakeToCamelDeep(parsed).apiPortal || {};
         merged = mergeOver(merged, tree);
     }
@@ -499,6 +516,109 @@ function validateDatabasePoolConfig(database) {
 }
 
 validateDatabasePoolConfig(config.database);
+
+// The keys [api_portal.health.database] accepts, in their config.toml spelling.
+const HEALTH_DATABASE_KEYS = [
+    'check_timeout', 'failure_window', 'failure_ratio', 'min_attempts',
+    'idle_period', 'pool_saturation', 'pool_wait_limit',
+];
+
+// A check_timeout at or above this still works, but holds a probe long enough that most
+// probe timeouts give up first.
+const SLOW_HEALTH_CHECK_TIMEOUT_MS = 5000;
+
+/**
+ * Fail-closed startup check for [api_portal.health] and [api_portal.health.database],
+ * with the same rules as the Go components' health settings. An invalid value aborts
+ * startup rather than serving a health answer computed from a setting the operator did
+ * not mean; so does an unknown key in the database table, which would otherwise be
+ * ignored and leave its default in force.
+ *
+ * Each duration gains a parsed millisecond twin (cacheTtlMs, checkTimeoutMs, ...), and
+ * allowedClients is normalized to an array, accepting a comma-separated string so the
+ * list can come from a single env var.
+ */
+function validateHealthConfig(cfg, databaseKeys) {
+    const fatal = (message) => {
+        process.stderr.write(`[FATAL] ${message} Refusing to start with an invalid health setting.\n`);
+        process.exit(1);
+    };
+
+    for (const key of databaseKeys) {
+        if (!HEALTH_DATABASE_KEYS.includes(key)) {
+            fatal(`api_portal.health.database: unknown key "${key}". Known keys: ${HEALTH_DATABASE_KEYS.join(', ')}.`);
+        }
+    }
+
+    const isTable = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (!isTable(cfg.health) || !isTable(cfg.health.database)) {
+        fatal('[api_portal.health] and [api_portal.health.database] must be tables.');
+    }
+    const health = cfg.health;
+    const database = health.database;
+
+    const duration = (table, field, key) => {
+        const ms = parseDuration(table[field]);
+        if (!(ms > 0)) {
+            fatal(`${key} must be a positive duration such as "3s" or "500ms", got ${JSON.stringify(table[field])}.`);
+        }
+        table[`${field}Ms`] = ms;
+        return ms;
+    };
+    const ratio = (field, key) => {
+        const value = database[field];
+        if (typeof value !== 'number' || !(value > 0 && value <= 1)) {
+            fatal(`${key} must be a number greater than 0 and at most 1, got ${JSON.stringify(value)}.`);
+        }
+    };
+
+    const cacheTtl = duration(health, 'cacheTtl', 'api_portal.health.cache_ttl');
+    const checkTimeout = duration(database, 'checkTimeout', 'api_portal.health.database.check_timeout');
+    const failureWindow = duration(database, 'failureWindow', 'api_portal.health.database.failure_window');
+    const idlePeriod = duration(database, 'idlePeriod', 'api_portal.health.database.idle_period');
+    duration(database, 'poolWaitLimit', 'api_portal.health.database.pool_wait_limit');
+    ratio('failureRatio', 'api_portal.health.database.failure_ratio');
+    ratio('poolSaturation', 'api_portal.health.database.pool_saturation');
+    if (!Number.isInteger(database.minAttempts) || database.minAttempts < 1) {
+        fatal(`api_portal.health.database.min_attempts must be a whole number of at least 1, got ${JSON.stringify(database.minAttempts)}.`);
+    }
+    if (failureWindow < cacheTtl) {
+        fatal(
+            `api_portal.health.database.failure_window (${formatDuration(failureWindow)}) must not be shorter than ` +
+            `api_portal.health.cache_ttl (${formatDuration(cacheTtl)}).`
+        );
+    }
+    if (idlePeriod > failureWindow) {
+        fatal(
+            `api_portal.health.database.idle_period (${formatDuration(idlePeriod)}) must not be longer than ` +
+            `api_portal.health.database.failure_window (${formatDuration(failureWindow)}).`
+        );
+    }
+    if (checkTimeout >= SLOW_HEALTH_CHECK_TIMEOUT_MS) {
+        process.stderr.write(
+            `[WARN] api_portal.health.database.check_timeout is ${formatDuration(checkTimeout)}; probes with a ` +
+            'shorter timeout of their own give up before the check does.\n'
+        );
+    }
+
+    const raw = health.allowedClients;
+    let entries;
+    if (typeof raw === 'string') {
+        entries = raw.split(',').map((e) => e.trim()).filter(Boolean);
+    } else if (Array.isArray(raw) && raw.every((e) => typeof e === 'string')) {
+        entries = raw.map((e) => e.trim());
+    } else {
+        fatal(`api_portal.health.allowed_clients must be a list of IP addresses or CIDR ranges, got ${JSON.stringify(raw)}.`);
+    }
+    try {
+        parseAllowedClients('api_portal.health', entries);
+    } catch (err) {
+        fatal(`${err.message}.`);
+    }
+    health.allowedClients = entries;
+}
+
+validateHealthConfig(config, healthDatabaseKeys);
 
 /**
  * Resolves organization.handle and fails closed when it is missing or unusable.
