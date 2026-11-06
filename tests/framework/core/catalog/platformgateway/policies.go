@@ -354,11 +354,14 @@ func stagePolicyWorkspace(repoRoot, source string, only map[string]bool, sourceB
 				"policy", definition.Name)
 			continue
 		}
-		if previous, exists := seen[definition.Name]; exists {
-			return policyWorkspace{}, fmt.Errorf("platform-gateway: duplicate policy name %q in %q and %q",
-				definition.Name, previous, entry.Name())
+		// A gateway carries several versions of one policy, so a policy is identified by its name
+		// and version together. Only the same name at the same version twice is a duplicate.
+		identity := definition.Name + "@" + definition.Version
+		if previous, exists := seen[identity]; exists {
+			return policyWorkspace{}, fmt.Errorf("platform-gateway: duplicate policy name %q version %q in %q and %q",
+				definition.Name, definition.Version, previous, entry.Name())
 		}
-		seen[definition.Name] = entry.Name()
+		seen[identity] = entry.Name()
 
 		dst := filepath.Join(workspace.Policies, entry.Name())
 		if err := copyPolicyTree(src, dst); err != nil {
