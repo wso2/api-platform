@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	cerrdefs "github.com/containerd/errdefs"
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver
 	_ "github.com/mattn/go-sqlite3"    // registers the "sqlite3" driver
 	"github.com/moby/moby/client"
@@ -200,13 +201,13 @@ func pauseContainer(ctx context.Context, stack *ComposeStack, service string) (f
 
 // copyContainerFile copies one file from a service's container to a local path.
 // isNotFound reports whether err means the container path does not exist, as opposed to the
-// copy having failed. The Docker client marks such errors with a NotFound method rather than
-// a comparable sentinel; matching the method keeps this free of a dependency on the errdefs
-// package that defines it. An unrecognised error is treated as a real failure, so a change in
-// that convention surfaces a missing sidecar loudly instead of yielding a stale snapshot.
+// copy having failed. The Docker client marks a daemon 404, such as a missing file on the
+// archive endpoint, as matching errdefs.ErrNotFound under errors.Is, and some client-side
+// failures with a NotFound method; errdefs.IsNotFound recognises both. An unrecognised error
+// is treated as a real failure, so a change in that convention surfaces a missing sidecar
+// loudly instead of yielding a stale snapshot.
 func isNotFound(err error) bool {
-	var notFound interface{ NotFound() }
-	return errors.As(err, &notFound)
+	return cerrdefs.IsNotFound(err)
 }
 
 func copyContainerFile(ctx context.Context, stack *ComposeStack, service, containerPath, localPath string) error {

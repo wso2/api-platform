@@ -1078,6 +1078,31 @@ func TestIsNotFoundMatchesDockerNotFoundErrors(t *testing.T) {
 		"isNotFound must match through the wrapping copyContainerFile applies")
 }
 
+// TestIsNotFoundMatchesADaemonNotFoundResponse asks the Docker client for a file through a
+// daemon that answers 404, as the archive endpoint does for a WAL sidecar that has been
+// checkpointed away. The client marks that error for errors.Is, not with a NotFound method.
+func TestIsNotFoundMatchesADaemonNotFoundResponse(t *testing.T) {
+	daemon := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/_ping") {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"message":"Could not find the file /app/data/x.db-wal in container c"}`))
+	}))
+	t.Cleanup(daemon.Close)
+	docker, err := client.New(client.WithHost("tcp://" + strings.TrimPrefix(daemon.URL, "http://")))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = docker.Close() })
+
+	_, err = docker.CopyFromContainer(context.Background(), "c", client.CopyFromContainerOptions{SourcePath: "/app/data/x.db-wal"})
+
+	require.Error(t, err)
+	require.True(t, isNotFound(err), "a daemon 404 is not recognised as a missing file: %v", err)
+	require.True(t, isNotFound(fmt.Errorf("runtime: copying %q: %w", "/app/data/x.db-wal", err)))
+}
+
 // TestIsNotFoundRejectsCopyFailures keeps every non-absence failure fatal: treating one as an
 // absent sidecar would open a database missing the commits still held in its WAL.
 func TestIsNotFoundRejectsCopyFailures(t *testing.T) {
