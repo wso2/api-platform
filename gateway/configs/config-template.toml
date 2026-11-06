@@ -425,21 +425,24 @@ retry_backoff = "1s"
 #   "bearer"  .bearer     token              Authorization: Bearer <token>
 #   "basic"   .basic      username, password Authorization: Basic <base64(user:pass)>
 #   "header"  .header     name, value        <name>: <value>
-# Never inline a credential: use {{ env "VAR" }} or {{ file "/path" }}.
+# Never inline a credential: use {{ env "VAR" "" }}. The gateway runtime reads
+# this file too and fails on a token it cannot resolve, so give the token an
+# empty default; the controller still refuses an empty credential.
 [controller.audit.http.auth]
 type = "none"
 
 [controller.audit.http.auth.bearer]
 token = ""
-# token = '{{ env "APIP_GW_AUDIT_HTTP_TOKEN" }}'
+# token = '{{ env "APIP_GW_AUDIT_HTTP_TOKEN" "" }}'
 
 [controller.audit.http.auth.basic]
 username = ""
 password = ""
 
-# For a scheme other than Bearer, e.g. Splunk HEC:
+# For a scheme other than Bearer, e.g. Splunk HEC, the variable holds the whole
+# value ("Splunk <token>"), so a missing one leaves it empty and fails startup:
 #   name  = "Authorization"
-#   value = 'Splunk {{ env "APIP_GW_AUDIT_HEC_TOKEN" }}'
+#   value = '{{ env "APIP_GW_AUDIT_HEC_AUTH" "" }}'
 [controller.audit.http.auth.header]
 name = ""
 value = ""

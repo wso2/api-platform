@@ -415,7 +415,7 @@ data:
       {{- range $field, $spec := $sensitive -}}
         {{- $val := toString $spec.v -}}
         {{- if not (regexMatch $spec.re (trim $val)) -}}
-          {{- fail (printf "gateway.config.controller.audit.http.%s holds a literal value, which would be written in plaintext into the gateway ConfigMap. Supply it as an interpolation token resolved at runtime instead, e.g. '{{ env \"APIP_GW_AUDIT_HTTP_TOKEN\" }}' (injected via gateway.controller.deployment.extraEnv or extraEnvFrom) or '{{ file \"/secrets/gateway-controller/audit-token\" }}' (allowed source dirs: /etc/gateway-controller, /secrets/gateway-controller). Set gateway.config.controller.audit.http.auth.allow_plaintext_credentials=true only for local development." $field) -}}
+          {{- fail (printf "gateway.config.controller.audit.http.%s holds a literal value, which would be written in plaintext into the gateway ConfigMap. Supply it as an {{ env }} token with an empty default instead, e.g. '{{ env \"APIP_GW_AUDIT_HTTP_TOKEN\" \"\" }}', and inject the variable via gateway.controller.deployment.extraEnv or extraEnvFrom. The gateway runtime reads the same config and fails on a token it cannot resolve, which is why the default is needed. Set gateway.config.controller.audit.http.auth.allow_plaintext_credentials=true only for local development." $field) -}}
         {{- end -}}
       {{- end -}}
     {{- end }}
