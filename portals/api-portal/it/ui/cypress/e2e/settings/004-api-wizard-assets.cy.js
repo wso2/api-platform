@@ -21,6 +21,7 @@
 // with one ZIP (PUT /assets), asking first when the API already exists.
 
 import { contentPackage, invalidContentPackage } from '../../support/contentPackages';
+import { createZip } from '../../support/zip';
 
 describe('Settings — API wizard Assets step', () => {
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -246,5 +247,108 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#wz-content-input').selectFile(contentPackage(), { force: true });
         cy.get('#wz-content-chip').should('contain', 'Applied when you save').and('not.contain', 'Not uploaded');
         cy.get('#wz-content-error').should('not.be.visible');
+        save();
+        saved();
+        asset(handle, 'MARKETING', 'apiContent.md').its('status').should('eq', 200);
+        asset(handle, 'DOC_HowTo', 'Setup.md').its('status').should('eq', 200);
+    });
+
+    it('drops the chosen package when a new choice is not a ZIP', () => {
+        const handle = `it-wizard-bad-choice-${uid}`;
+        openCreate(handle);
+        toImport();
+        cy.get('#wz-content-input').selectFile(contentPackage(), { force: true });
+        cy.get('#wz-content-chip').should('have.class', 'visible');
+
+        cy.get('#wz-content-input').selectFile(docFile('notes.txt'), { force: true });
+        cy.get('#wz-content-error').should('have.text', 'Unsupported file type. Accepted: .zip');
+        cy.get('#wz-content-chip').should('not.have.class', 'visible');
+        save();
+        saved();
+        asset(handle, 'DOC_Other', 'Guide.md').its('status').should('eq', 404);
+    });
+
+    it('locks the package choice while the save runs', () => {
+        const handle = `it-wizard-lock-${uid}`;
+        cy.login();
+        cy.seedApi({ id: handle, name: `Wizard ${handle}` });
+        handles.push(handle);
+
+        openEdit(handle);
+        toImport();
+        cy.get('#wz-content-input').selectFile(contentPackage(), { force: true });
+        cy.intercept('PUT', `**/api/v0.9/apis/${handle}`, (req) => req.on('response', (res) => res.setDelay(1000)));
+        save();
+        cy.get('#cfg-replace-content-confirm').click();
+        cy.get('#wz-assets-panel-import').should('have.prop', 'inert', true);
+        saved();
+        asset(handle, 'DOC_Other', 'Guide.md').its('status').should('eq', 200);
+    });
+
+    it('shows a removed thumbnail as gone when the import after it is rejected', () => {
+        const handle = `it-wizard-thumb-rejected-${uid}`;
+        cy.login();
+        cy.seedApi({ id: handle, name: `Wizard ${handle}` });
+        handles.push(handle);
+
+        openSettings();
+        cy.get(`.cfg-edit-trigger[data-id="${handle}"]`).first().click({ force: true });
+        cy.get('#wz-thumb-input').selectFile(JPEG, { force: true });
+        toAssets();
+        save();
+        saved();
+
+        openSettings();
+        cy.get(`.cfg-edit-trigger[data-id="${handle}"]`).first().click({ force: true });
+        cy.get('#wz-thumb-remove').click();
+        toAssets();
+        toImport();
+        cy.get('#wz-content-input').selectFile(invalidContentPackage(), { force: true });
+        save();
+        cy.get('#cfg-replace-content-confirm').click();
+
+        cy.get('#wz-content-chip').should('contain', 'Not uploaded');
+        cy.get('#wz-thumb-name').should('have.text', 'No thumbnail');
+        cy.get('#wz-thumb-tag').should('have.attr', 'hidden');
+        cy.get('#wz-thumb-undo').should('have.attr', 'hidden');
+        asset(handle, 'IMAGE', 'api-icon.jpg').its('status').should('eq', 404);
+    });
+
+    it('replaces only the Other document of a name and keeps it in other categories', () => {
+        const handle = `it-wizard-doc-category-${uid}`;
+        cy.login();
+        cy.seedApi({ id: handle, name: `Wizard ${handle}` });
+        handles.push(handle);
+
+        openEdit(handle);
+        toImport();
+        cy.get('#wz-content-input').selectFile({
+            contents: createZip([
+                { name: 'docs/Guide.md', content: '# Other' },
+                { name: 'docs/HowTo/Guide.md', content: '# HowTo' },
+            ]),
+            fileName: 'content.zip',
+            mimeType: 'application/zip',
+        }, { force: true });
+        save();
+        cy.get('#cfg-replace-content-confirm').click();
+        saved();
+
+        openEdit(handle);
+        cy.contains('#wz-existing-docs-list .cfg-docs-item', 'HowTo/Guide.md').should('exist');
+        cy.get('#wz-docs-input').selectFile(docFile('Guide.md', '# New'), { force: true });
+        cy.get('#wz-docs-summary').should('have.text', 'When you save: 1 document will be replaced.');
+        cy.contains('#wz-existing-docs-list .cfg-docs-item', 'HowTo/Guide.md').should('exist');
+        save();
+        saved();
+        asset(handle, 'DOC_Other', 'Guide.md').its('body').should('contain', 'New');
+        asset(handle, 'DOC_HowTo', 'Guide.md').its('body').should('contain', 'HowTo');
+
+        openEdit(handle);
+        cy.contains('#wz-existing-docs-list .cfg-docs-item', 'HowTo/Guide.md').find('.cfg-docs-remove').click();
+        save();
+        saved();
+        asset(handle, 'DOC_HowTo', 'Guide.md').its('status').should('eq', 404);
+        asset(handle, 'DOC_Other', 'Guide.md').its('status').should('eq', 200);
     });
 });

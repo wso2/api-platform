@@ -37,6 +37,7 @@
   var currentThumb = null;                  /* { name, src } of the saved thumbnail, or null */
   var thumbObjectUrl = null;
   var skipImportConfirm = false; /* the API was created in this wizard run; its first import replaces nothing */
+  var saving = false;            /* a second click must not send the save again; a failed save clears it at once */
   var wizardOrigin = 'cfg-apis'; /* tab that launched the wizard: 'cfg-apis' or 'cfg-mcps' */
   /* MCP is created via its own flow (type field hidden, always 'Mcp'); the API-type
      dropdown only offers the user-selectable API types. wizardEditType preserves the
@@ -419,12 +420,16 @@
     var version = v('wz-version');
     var handle  = v('wz-handle');
     if (!name || !version || !handle) {
-      await showAlert('Name, version, and handle are required.', 'error');
+      showAlert('Name, version, and handle are required.', 'error');
       return;
     }
 
     var importing = assetsMode === 'import' && !!contentZipFile;
     if (importing && editingId && !skipImportConfirm && !(await confirmReplaceContent())) return;
+    /* The file confirmed here is the one imported: the import view is locked until the save ends. */
+    var importFile = importing ? contentZipFile : null;
+    var importPanel = document.getElementById('wz-assets-panel-import');
+    importPanel.inert = importing;
     var removeOnSave = assetsMode === 'docs' ? docsToRemoveOnSave() : [];
 
     var meta = {
@@ -478,12 +483,14 @@
         var savedNoun = meta.type === 'Mcp' ? 'MCP server' : 'API';
         var created = !editingId;
         if (importing) {
-          var contentError = await importContent(base, editingId || handle);
+          var contentError = await importContent(base, editingId || handle, importFile);
           if (contentError) {
+            importPanel.inert = false;
+            applySavedThumbnail();
             if (created) switchToEditAfterCreate(handle);
             showContentError(contentError);
             markContentRejected();
-            await showAlert(savedNoun + (created ? ' created' : ' updated') + ', but the content was not imported: ' + contentError, 'error');
+            showAlert(savedNoun + (created ? ' created' : ' updated') + ', but the content was not imported: ' + contentError, 'error');
             return;
           }
         }
@@ -497,18 +504,20 @@
           updateWizardStep(0);
           return;
         }
-        await showAlert('Failed: ' + reasonOf(err, res.statusText), 'error');
+        showAlert('Failed: ' + reasonOf(err, res.statusText), 'error');
       }
     } catch(e) {
-      await showAlert('Error: ' + e.message, 'error');
+      showAlert('Error: ' + e.message, 'error');
+    } finally {
+      importPanel.inert = false;
     }
   }
 
-  /* Replaces all content of the API with the selected package. Returns the reason on failure. */
-  async function importContent(base, handle) {
+  /* Replaces all content of the API with the given package. Returns the reason on failure. */
+  async function importContent(base, handle, file) {
     try {
       var fd = new FormData();
-      fd.append('content', contentZipFile);
+      fd.append('content', file);
       var res = await fetch(window.apiPortalApi.root(base + '/' + encodeURIComponent(handle) + '/assets'), {
         method: 'PUT',
         headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
@@ -525,6 +534,16 @@
     }
   }
 
+  /* The save committed the thumbnail change, so a retry must not offer or send it again. */
+  function applySavedThumbnail() {
+    if (thumbnailChange.action === 'none') return;
+    currentThumb = thumbnailChange.action === 'replace'
+      ? { name: 'api-icon.' + (thumbnailChange.file.type === 'image/png' ? 'png' : 'jpg'), src: thumbObjectUrl }
+      : null;
+    thumbnailChange = { action: 'none' };
+    renderThumbnail();
+  }
+
   /* The API now exists, so the next Save updates it and retries only the import. */
   function switchToEditAfterCreate(handle) {
     editingId = handle;
@@ -533,11 +552,6 @@
     specFile = null;
     document.getElementById('wz-spec-input').value = '';
     renderSpecStep();
-    if (thumbnailChange.action === 'replace') {
-      currentThumb = { name: 'api-icon.' + (thumbnailChange.file.type === 'image/png' ? 'png' : 'jpg'), src: thumbObjectUrl };
-      thumbnailChange = { action: 'none' };
-      renderThumbnail();
-    }
     document.getElementById('wz-handle').readOnly = true;
     document.getElementById('wz-type').disabled = true;
     document.getElementById('cfg-wizard-title').textContent = wizardIsMcp ? 'Edit MCP Server' : 'Edit API';
@@ -889,8 +903,9 @@
         return;
       }
       updateWizardStep(2);
-    } else {
-      await saveApi();
+    } else if (!saving) {
+      saving = true;
+      try { await saveApi(); } finally { saving = false; }
     }
   });
 
@@ -1284,7 +1299,7 @@
   function handleContentZipFile(f) {
     if (!f) return;
     var problem = contentZipProblem(f);
-    if (problem) { showContentError(problem); return; }
+    if (problem) { resetContentUpload(); showContentError(problem); return; }
     contentZipFile = f;
     document.getElementById('wz-content-name').textContent = f.name;
     document.getElementById('wz-content-sub').textContent = fmtSize(f.size) + ' · Applied when you save';
