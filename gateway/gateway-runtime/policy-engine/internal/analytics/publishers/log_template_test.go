@@ -98,9 +98,9 @@ func templateLine(t *testing.T, template string, event *dto.Event) string {
 // useTemplateRoot makes root the only directory a template_file may be in, for the test.
 func useTemplateRoot(t *testing.T, root string) {
 	t.Helper()
-	previous := templateFileAllowlist
-	templateFileAllowlist = []string{root}
-	t.Cleanup(func() { templateFileAllowlist = previous })
+	previous := config.TemplateFileAllowlist
+	config.TemplateFileAllowlist = []string{root}
+	t.Cleanup(func() { config.TemplateFileAllowlist = previous })
 }
 
 // writeTemplateFileIn writes text to dir/name and returns its path.
@@ -173,7 +173,12 @@ func TestLogTemplate_AnyValueStaysOneLineOfValidJSON(t *testing.T) {
 	require.True(t, json.Valid([]byte(line)), line)
 	assert.NotContains(t, line, "\n")
 	assert.NotContains(t, line, "<")
-	assert.Equal(t, `{"note":"say \"hi\"\n\u003cb\u003ecafé \ufffd","fixed":"a\u003cb"}`, line)
+	// How an invalid byte is written, as \ufffd or as the character itself, depends on the Go
+	// version, so the value is compared after decoding. The invalid byte reads back as U+FFFD.
+	var decoded struct{ Note, Fixed string }
+	require.NoError(t, json.Unmarshal([]byte(line), &decoded))
+	assert.Equal(t, "say \"hi\"\n<b>caf\u00e9 \ufffd", decoded.Note)
+	assert.Equal(t, "a<b", decoded.Fixed)
 }
 
 func TestLogTemplate_OutputRules(t *testing.T) {
@@ -240,16 +245,16 @@ func TestLogTemplate_HeadersIgnoreTheTrafficLoggingSwitches(t *testing.T) {
 	assert.Equal(t, `{"h":"bar"}`+"\n", buf.String())
 }
 
-// noLinesSuffix ends every template-error message.
-const noLinesSuffix = "; no traffic log lines will be written until the template is fixed and the gateway restarted"
-
 // logged reports whether logs holds a message at level with exactly the text msg.
 func logged(logs, level, msg string) bool {
 	return strings.Contains(logs, "level="+level+" msg="+strconv.Quote(msg))
 }
 
-// A template that cannot be used is reported once, at startup, as an ERROR; startup goes on and
-// no line is written, not even the default line.
+// A template that cannot be used makes NewLog return the error as it is: the whole startup
+// message, with no suffix. The template parser is the only place that checks the template's
+// content: invalid JSON, a top level that is not an object, content after the object, a repeated
+// key and nesting that is too deep. A template file that cannot be read is also an error here,
+// although config.Validate reports it first.
 func TestLogTemplate_TemplateErrors(t *testing.T) {
 	tooDeep := strings.Repeat(`{"a":`, maxTemplateDepth+1) + "1" + strings.Repeat("}", maxTemplateDepth+1)
 	root := t.TempDir()
@@ -261,11 +266,6 @@ func TestLogTemplate_TemplateErrors(t *testing.T) {
 		cfg  config.TrafficLoggingConfig
 		want string
 	}{
-		{
-			name: "both sources",
-			cfg:  config.TrafficLoggingConfig{Template: `{"a":1}`, TemplateFile: "/etc/gateway/template.json"},
-			want: "traffic_logging.template, traffic_logging.template_file: both are set; set only one",
-		},
 		{
 			name: "file too large",
 			cfg:  config.TrafficLoggingConfig{TemplateFile: tooLargeFile},
@@ -309,38 +309,40 @@ func TestLogTemplate_TemplateErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := publishWithTemplateError(t, tt.cfg)
-			assert.True(t, logged(logs, "ERROR", tt.want+noLinesSuffix), logs)
+			assert.EqualError(t, newLogTemplateError(t, tt.cfg), tt.want)
 		})
 	}
 }
 
-// publishWithTemplateError builds a Log from cfg and publishes 100 events. It checks that
-// nothing is written, not even the default line, and that exactly one message is logged, and
-// returns the logs.
-func publishWithTemplateError(t *testing.T, cfg config.TrafficLoggingConfig) string {
+// newLogTemplateError calls NewLog with cfg, which must have a template that cannot be used, and
+// returns the error. It checks that no Log is returned and that nothing is logged: the caller
+// reports the error.
+func newLogTemplateError(t *testing.T, cfg config.TrafficLoggingConfig) error {
 	t.Helper()
 	logs := captureLogs(t)
-	l, buf := newTemplateLog(t, cfg)
-
-	for range 100 {
-		l.Publish(ordersEvent())
+	cfg.Enabled = true
+	if cfg.MaskedHeaders == nil {
+		cfg.MaskedHeaders = testMaskedHeaders
 	}
 
-	assert.Empty(t, buf.String(), "no line, not even the default line")
-	assert.Equal(t, 1, strings.Count(logs.String(), "level="), "exactly one message: %s", logs.String())
-	return logs.String()
+	l, err := NewLog(&cfg, nil)
+
+	require.Error(t, err)
+	assert.Nil(t, l, "no Log is returned with the error")
+	assert.Empty(t, logs.String(), "NewLog only returns the error")
+	return err
 }
 
-// A template file that does not exist is a template error that names the path.
+// A template file that does not exist is a template error that names the path and never the
+// file's content.
 func TestLogTemplate_UnreadableTemplateFile(t *testing.T) {
 	root := t.TempDir()
 	useTemplateRoot(t, root)
 	path := filepath.Join(root, "missing.json")
 
-	logs := publishWithTemplateError(t, config.TrafficLoggingConfig{TemplateFile: path})
+	err := newLogTemplateError(t, config.TrafficLoggingConfig{TemplateFile: path})
 
-	assert.True(t, logged(logs, "ERROR", `traffic_logging.template_file: required file "`+path+`" is not found`+noLinesSuffix), logs)
+	assert.EqualError(t, err, `traffic_logging.template_file: required file "`+path+`" is not found`)
 }
 
 // traffic_logging.properties applies only to the default line: with a template it is reported
@@ -915,7 +917,7 @@ func TestLogTemplate_TemplateFileStartingWithAByteOrderMark(t *testing.T) {
 }
 
 // A template_file outside the allowed folder is rejected before it is read, even when its content
-// is a valid template: one ERROR that names the path but never the content, and no line written.
+// is a valid template: the error names the path but never the content.
 func TestLogTemplate_TemplateFileOutsideTheAllowedRoot(t *testing.T) {
 	const content = `{"token":"leaked-content"}`
 	base := t.TempDir()
@@ -942,11 +944,10 @@ func TestLogTemplate_TemplateFileOutsideTheAllowedRoot(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := publishWithTemplateError(t, config.TrafficLoggingConfig{TemplateFile: tt.path})
+			err := newLogTemplateError(t, config.TrafficLoggingConfig{TemplateFile: tt.path})
 
-			want := `traffic_logging.template_file: file ` + strconv.Quote(tt.path) + ` is not in an allowed source directory`
-			assert.True(t, logged(logs, "ERROR", want+noLinesSuffix), logs)
-			assert.NotContains(t, logs, "leaked-content")
+			assert.EqualError(t, err, `traffic_logging.template_file: file `+strconv.Quote(tt.path)+` is not in an allowed source directory`)
+			assert.NotContains(t, err.Error(), "leaked-content")
 		})
 	}
 }
@@ -955,7 +956,7 @@ func TestLogTemplate_TemplateFileOutsideTheAllowedRoot(t *testing.T) {
 // the secrets folder that a {{ file }} token may read is not allowed. These paths are rejected
 // before any file is opened.
 func TestLogTemplate_TemplateFileRootIsOnlyTheConfigFolder(t *testing.T) {
-	assert.Equal(t, []string{"/etc/gateway-runtime"}, templateFileAllowlist)
+	assert.Equal(t, []string{"/etc/gateway-runtime"}, config.TemplateFileAllowlist)
 
 	for _, path := range []string{"/secrets/gateway-runtime/template.json", "/etc/gateway-runtime-other/template.json", "/etc/passwd"} {
 		_, err := readTemplateFile(path)

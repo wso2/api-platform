@@ -72,12 +72,14 @@ type Log struct {
 
 // NewLog creates a new traffic-logging publisher and its configured sinks.
 //
-// It returns an error when a sink cannot be built. The caller must treat that as
-// fatal: continuing without the sink would leave traffic logging on stdout (or on
-// nothing at all), and the stdout path writes request and response bodies into the
-// container log, which is precisely what a file or http sink is configured to
-// avoid. config.Validate has already proven every configured sink is constructible,
-// so an error here means the environment changed during startup.
+// It returns an error when a sink cannot be built or the template cannot be used,
+// and the caller must stop startup. Falling back is never safe: without the sink,
+// lines would go to stdout and could put bodies in the container log; without the
+// template, the default line would be written, with fields the template leaves out.
+//
+// config.Validate has already checked the settings and that the template file can be
+// read, so a template error here is a mistake in the template's content, or a file
+// that changed during startup.
 //
 // collectorCfg holds the collector's capture settings. A nil value means nothing is
 // captured.
@@ -102,10 +104,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 		var err error
 		template, err = newLogTemplate(logCfg, collectorCfg, masked)
 		if err != nil {
-			// A template mistake must not stop API traffic, and the default line may
-			// carry fields the template leaves out, so no lines are written at all.
-			slog.Error(err.Error() + "; no traffic log lines will be written until the template is fixed and the gateway restarted")
-			return &Log{maskedHeaders: masked, globalProperties: newGlobalPropertyEvaluator(nil, masked, logCfg.MaxPayloadSize)}, nil
+			return nil, err
 		}
 	}
 

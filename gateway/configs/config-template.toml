@@ -1062,12 +1062,12 @@ response_body = false
 # or body is logged when the template reads it and [collector] captures it.
 #
 # A template that cannot be used (e.g. invalid JSON, a template_file that cannot
-# be read, or both template and template_file set) logs an ERROR at startup, and
-# no traffic log lines are written until it is fixed and the gateway
-# restarted. API traffic is not
-# affected. A "$ctx:" value with a mistake logs a WARNING at startup naming the
-# field, and that field is written as null. A misspelled key is ignored like any
-# unknown key, so if lines still look like the default line, check the key name.
+# be read, or both template and template_file set) stops the gateway at startup
+# with an error that names the setting and the problem, until it is fixed. A
+# "$ctx:" value with a mistake does not stop it: the gateway logs a WARNING at
+# startup naming the field, and that field is written as null. A misspelled key
+# is ignored like any unknown key, so if lines still look like the default line,
+# check the key name.
 template = ""
 # template = '''
 # {

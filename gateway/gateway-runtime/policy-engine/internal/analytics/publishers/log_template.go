@@ -163,8 +163,7 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.Co
 // read only here, so a change to it takes effect after a restart.
 func templateText(logCfg *config.TrafficLoggingConfig) (text, source string, err error) {
 	switch {
-	case logCfg.Template != "" && logCfg.TemplateFile != "":
-		return "", "", fmt.Errorf("%s, %s: both are set; set only one", inlineTemplateSetting, fileTemplateSetting)
+	// config.Validate has already rejected both settings being set, so the file wins here.
 	case logCfg.TemplateFile != "":
 		text, err = readTemplateFile(logCfg.TemplateFile)
 		return text, fileTemplateSetting, err
@@ -173,20 +172,11 @@ func templateText(logCfg *config.TrafficLoggingConfig) (text, source string, err
 	}
 }
 
-// templateFileRoot is the only directory a template_file may be in. A template is configuration,
-// not a secret, so /secrets/gateway-runtime is not allowed: a JSON secret file would otherwise be
-// a valid template whose values are written into every log line.
-const templateFileRoot = "/etc/gateway-runtime"
-
-// templateFileAllowlist is the directories readTemplateFile reads from. It is a variable only so
-// tests can use a temporary directory.
-var templateFileAllowlist = []string{templateFileRoot}
-
 // readTemplateFile returns the content of the template file at path, which must be inside
-// templateFileRoot and at most configinterpolate.DefaultMaxFileBytes long, the same limit as a
-// {{ file }} token. Unlike an inline template, the content is not interpolated.
+// config.TemplateFileRoot and at most configinterpolate.DefaultMaxFileBytes long, the same limit as
+// a {{ file }} token. Unlike an inline template, the content is not interpolated.
 func readTemplateFile(path string) (string, error) {
-	data, err := configinterpolate.ReadAllowedFile(path, templateFileAllowlist, configinterpolate.DefaultMaxFileBytes)
+	data, err := configinterpolate.ReadAllowedFile(path, config.TemplateFileAllowlist, configinterpolate.DefaultMaxFileBytes)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", fileTemplateSetting, err)
 	}
