@@ -146,6 +146,11 @@ func TestCloudSuite(t *testing.T) {
 	}
 
 	finalizer := cloudsteps.NewFinalizer()
+	// The starter hands the finalizer what it created, so the cleanup below removes it.
+	starter, err := cloudsteps.NewStarter(finalizer)
+	if err != nil {
+		t.Fatalf("creating the cloud run starter: %v", err)
+	}
 	// Cleanup runs after every runner has finished, also when a scenario failed or a runner
 	// panicked, and removes what the per-scenario cleanup left in the shared organisation.
 	t.Cleanup(func() {
@@ -164,6 +169,13 @@ func TestCloudSuite(t *testing.T) {
 		RepoRoot:    root,
 		FeatureRoot: dir,
 		Steps: func(topo *frameworkruntime.Topology) (frameworkruntime.StepRegistrar, error) {
+			// The organisation must hold what the scenarios rely on, such as a gateway, before
+			// any runner starts; the first runner prepares it and the others share the result.
+			prepare, cancelPrepare := context.WithTimeout(context.Background(), 20*time.Minute)
+			defer cancelPrepare()
+			if err := starter.Start(prepare, topo); err != nil {
+				return nil, fmt.Errorf("preparing the cloud organisation: %w", err)
+			}
 			timeout := topo.PropagationTimeout
 			if timeout <= 0 {
 				timeout = retry.PropagationCeiling
