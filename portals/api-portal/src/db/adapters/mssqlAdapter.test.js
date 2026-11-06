@@ -126,3 +126,18 @@ test('pool errors reach the hook, and poolStats reports the pool counters', () =
     assert.deepStrictEqual(seen, [err]);
     assert.deepStrictEqual(adapter.poolStats(), { max: 12, borrowed: 4, pending: 2 });
 });
+
+test('the pool waits longer than a connect attempt, so a hung connect fails as a connection error', () => {
+    const { buildConnectionConfig } = require(ADAPTER_PATH);
+    const { pool, connectionTimeout } = buildConnectionConfig({ database: { poolConnectionTimeoutMs: 30000 } });
+    assert.strictEqual(connectionTimeout, 30000);
+    assert.strictEqual(pool.acquireTimeoutMillis, 35000);
+    assert.strictEqual(pool.createTimeoutMillis, 35000);
+});
+
+test('without a configured connect timeout, the pool waits longer than the driver default', () => {
+    const { buildConnectionConfig } = require(ADAPTER_PATH);
+    const { pool } = buildConnectionConfig({ database: {} });
+    assert.strictEqual(pool.acquireTimeoutMillis, 20000);
+    assert.strictEqual(pool.createTimeoutMillis, 20000);
+});

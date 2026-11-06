@@ -27,8 +27,27 @@ const { isBinaryParam } = require('../paramTypes');
  * produces exactly that placeholder form for the mssql dialect, so binding
  * here just needs to name each incoming param `p1, p2, ...` in order.
  */
+// node-mssql's own connect timeout when none is configured.
+const MSSQL_DEFAULT_CONNECTION_TIMEOUT_MS = 15000;
+// How much longer the pool waits than a connect attempt may take (see poolTimeoutMs).
+const POOL_TIMEOUT_MARGIN_MS = 5000;
+
+/*
+ * The pool (tarn) times out its acquires and connection creates on its own clock,
+ * 30s by default, and starts that clock just before the driver starts its connect
+ * timer. Left at the default, a connect that hangs (a host that has gone dark rather
+ * than refusing) is cut off by tarn first, with a TimeoutError that carries no code
+ * and does not read as a connection failure, so the database check keeps counting
+ * those operations as healthy. Waiting a little longer than the connect timeout lets
+ * the driver's ConnectionError ETIMEOUT reach the caller instead.
+ */
+function poolTimeoutMs(connectionTimeoutMs) {
+    return (connectionTimeoutMs || MSSQL_DEFAULT_CONNECTION_TIMEOUT_MS) + POOL_TIMEOUT_MARGIN_MS;
+}
+
 function buildConnectionConfig(config) {
     const db = config.database;
+    const poolTimeout = poolTimeoutMs(db.poolConnectionTimeoutMs);
     // sslMode is shared with the postgres adapter's config.database.sslMode
     // (see ../dbSsl.js) — 'verify-full' here maps to encrypt+cert verification,
     // 'disable' to a plain, unencrypted connection.
@@ -43,7 +62,13 @@ function buildConnectionConfig(config) {
             encrypt: verifyFull,
             trustServerCertificate: !verifyFull,
         },
-        pool: { max: db.maxOpenConns, min: db.minOpenConns, idleTimeoutMillis: db.poolIdleTimeoutMs },
+        pool: {
+            max: db.maxOpenConns,
+            min: db.minOpenConns,
+            idleTimeoutMillis: db.poolIdleTimeoutMs,
+            acquireTimeoutMillis: poolTimeout,
+            createTimeoutMillis: poolTimeout,
+        },
         connectionTimeout: db.poolConnectionTimeoutMs,
         requestTimeout: db.poolRequestTimeoutMs,
     };
@@ -177,4 +202,4 @@ function createMssqlAdapter(config, hooks = {}) {
     return handle;
 }
 
-module.exports = { createMssqlAdapter };
+module.exports = { createMssqlAdapter, buildConnectionConfig };

@@ -82,7 +82,9 @@ class OutcomeWindow {
      * already records. A connection-class error only makes the database check ping
      * again at its next evaluation, so the outage and the recovery are both decided
      * from a fresh round trip. Any other error, such as a caller timing out in the pool
-     * queue, is ignored here: a busy pool is the saturation rule's to judge.
+     * queue, is ignored here: a busy pool is the saturation rule's to judge. (On SQL
+     * Server, a connect that hangs still reaches the caller as a connection failure,
+     * because the pool waits longer than the connect timeout; see mssqlAdapter.js.)
      */
     notePoolError(err) {
         if (isConnectionFailure(err)) this.lastPoolError = this.now();
