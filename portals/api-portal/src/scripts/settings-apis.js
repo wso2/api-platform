@@ -162,16 +162,6 @@
     document.getElementById('wz-vis-visible').classList.remove('active');
   });
 
-  /* ── production URL required when status is Published ── */
-  function syncProdRequiredMarker() {
-    var required = document.getElementById('wz-status').value === 'PUBLISHED';
-    document.getElementById('wz-prod-required').style.display = required ? '' : 'none';
-  }
-  document.getElementById('wz-status').addEventListener('change', function() {
-    syncProdRequiredMarker();
-    setFieldError('wz-prod', 'wz-prod-error', '');
-  });
-
   /* ── subscription policy chip input ── */
   function renderPolicyChips() {
     var container = document.getElementById('wz-policy-chips');
@@ -351,7 +341,7 @@
       setTags([]);
       document.getElementById('wz-handle').readOnly = false;
       /* MCP has no dropdown entry — its type is forced to 'Mcp' on save (wizardIsMcp). */
-      sel('wz-type', 'RestApi'); sel('wz-status','PUBLISHED');
+      sel('wz-type', ''); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
@@ -361,13 +351,11 @@
       setSelectedLabels(['default']);
     }
 
-    syncProdRequiredMarker();
-
     /* clear any leftover validation errors */
-    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-prod-error','wz-sandbox-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
+    ['wz-name-error','wz-version-error','wz-handle-error','wz-type-error','wz-desc-error','wz-prod-error','wz-sandbox-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
       var el = document.getElementById(eid); if (el) el.style.display = 'none';
     });
-    ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-sandbox','wz-tech-email','wz-biz-email'].forEach(function(fid) {
+    ['wz-name','wz-version','wz-handle','wz-type','wz-desc','wz-prod','wz-sandbox','wz-tech-email','wz-biz-email'].forEach(function(fid) {
       var el = document.getElementById(fid); if (el) el.classList.remove('cfg-form-input--error');
     });
 
@@ -847,17 +835,17 @@
       setFieldError('wz-handle', 'wz-handle-error', '');
     }
 
+    var typeMissing = !selectedApiType();
+    setFieldError('wz-type', 'wz-type-error', typeMissing ? 'API type is required.' : '');
+    if (typeMissing) ok = false;
+
     var allowWs = selectedApiType() === 'WS';
     var urlErrMsg = allowWs
       ? 'Enter a valid ws://, wss://, http://, or https:// URL.'
       : 'Enter a valid http:// or https:// URL.';
 
-    var status = document.getElementById('wz-status').value;
     var prodUrl = v('wz-prod');
-    if (status === 'PUBLISHED' && !prodUrl) {
-      setFieldError('wz-prod', 'wz-prod-error', 'Production URL is required to publish an API.');
-      ok = false;
-    } else if (prodUrl && !isValidHttpUrl(prodUrl, allowWs)) {
+    if (prodUrl && !isValidHttpUrl(prodUrl, allowWs)) {
       setFieldError('wz-prod', 'wz-prod-error', urlErrMsg);
       ok = false;
     } else {
@@ -1048,7 +1036,10 @@
   });
   /* The default badge shows the name's initials and the type's colour. */
   document.getElementById('wz-name').addEventListener('input', function() { if (!thumbnailChange.file) renderThumbnail(); });
-  document.getElementById('wz-type').addEventListener('change', function() { if (!thumbnailChange.file) renderThumbnail(); });
+  document.getElementById('wz-type').addEventListener('change', function() {
+    setFieldError('wz-type', 'wz-type-error', '');
+    if (!thumbnailChange.file) renderThumbnail();
+  });
 
   function updateSubtitle() {
     document.getElementById('cfg-wizard-subtitle').textContent =

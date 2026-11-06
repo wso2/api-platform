@@ -86,6 +86,28 @@ describe('Settings — API wizard Details and Spec steps', () => {
         cy.get('#wz-thumb-preview').should('have.text', 'PA');
     });
 
+    it('requires an API type on create and leaves the production URL optional', () => {
+        openSettings();
+        cy.get('#cfg-add-api-btn').click();
+        cy.get('label[for="wz-type"] .required').should('have.text', '*');
+        cy.get('label[for="wz-prod"] .required').should('not.exist');
+        cy.get('#wz-type').should(([select]) => expect(select.value).to.eq(''));
+        cy.get('#wz-type option:selected').should('have.text', 'Select a type');
+        cy.get('#wz-status').should('have.value', 'PUBLISHED');
+        cy.get('#wz-name').type('Type Wizard');
+        cy.get('#wz-version').type('v1.0');
+
+        cy.get('#cfg-wizard-next').click();
+        cy.get('#wz-type-error').scrollIntoView().should('be.visible').and('have.text', 'API type is required.');
+        cy.get('#wz-prod-error').should('not.be.visible');
+        cy.get('#cfg-wstep-0').should('be.visible');
+
+        cy.get('#wz-type').select('RestApi');
+        cy.get('#wz-type-error').should('not.be.visible');
+        cy.get('#cfg-wizard-next').click();
+        cy.get('#cfg-wstep-1').should('be.visible');
+    });
+
     it('saves a picked thumbnail, then replaces it, sending only the last choice', () => {
         const handle = seed('thumb');
 

@@ -55,6 +55,7 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#wz-name').type(`Wizard ${handle}`);
         cy.get('#wz-version').type('v1.0');
         cy.get('#wz-handle').clear().type(handle);
+        cy.get('#wz-type').select('RestApi');
         cy.get('#wz-prod').type('https://backend.example.invalid/pets');
         cy.get('#cfg-wizard-next').click();
         cy.get('#wz-spec-input').selectFile({ contents: Cypress.Buffer.from(SPEC), fileName: 'definition.json' }, { force: true });
