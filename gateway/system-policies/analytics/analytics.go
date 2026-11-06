@@ -761,6 +761,9 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 
 	populateGenericMetadata(analyticsMetadata, respCtx.SharedContext.Metadata)
 
+	// The model gateway's facts, on the one route that records them. See model_facts.go.
+	populateModelAnalyticsMetadata(analyticsMetadata, respCtx.SharedContext.Metadata)
+
 	// Capture the response content type for all API kinds. The Envoy access log does
 	// not carry response headers (no additional_response_headers_to_log is configured,
 	// to avoid an uncontrolled header source)
@@ -1022,6 +1025,8 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 				}
 			}
 		}
+		applyModelProvider(analyticsMetadata, ctx.SharedContext.Metadata)
+		applyModelResponseModel(analyticsMetadata, ctx.SharedContext.Metadata)
 	case policy.APIKindMCP:
 		if ctx.ResponseHeaders != nil && len(ctx.ResponseHeaders.GetAll()) > 0 {
 			if analyticsMetadata["mcp_session_id"] == nil {
@@ -1154,6 +1159,8 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 				}
 			}
 		}
+		applyModelProvider(analyticsMetadata, ctx.SharedContext.Metadata)
+		applyModelResponseModel(analyticsMetadata, ctx.SharedContext.Metadata)
 	case policy.APIKindMCP:
 		if ctx.ResponseHeaders != nil {
 			sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")

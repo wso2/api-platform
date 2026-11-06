@@ -135,6 +135,7 @@ type RouteMetadataEntry struct {
 	DefaultUpstreamCluster  string            `json:"default_upstream_cluster"`
 	UpstreamBasePath        string            `json:"upstream_base_path"`
 	UpstreamDefinitionPaths map[string]string `json:"upstream_definition_paths"`
+	UpstreamDefinitionURLs  map[string]string `json:"upstream_definition_urls,omitempty"`
 
 	// DefaultUpstream is this route's own compiled-in upstream (whichever slot it
 	// belongs to).

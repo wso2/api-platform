@@ -27,7 +27,9 @@
 //
 // Negotiate reads only request-side signals (API kind, request Content-Type, request Accept),
 // which are available at every point an error can be produced, including a router local reply.
-// The shape is resolved per request, not per deployment, and is not configurable.
+// The shape is resolved per request, not per deployment, and is not configurable — with one
+// exception: a route may name its own protocol's shape (Request.RouteFormat), which the
+// controller sets on routes whose kind does not fix their protocol.
 //
 // Adding a protocol means two edits: a ShapeID plus Renderer registered in NewRegistry, and a
 // branch in Negotiate. An unregistered ShapeID renders as ShapePassthrough rather than
@@ -58,6 +60,14 @@ const (
 	ShapeJSONRPCEventStream ShapeID = "jsonrpc-eventstream"
 	// ShapeXML is a plain XML error document, for a REST caller that asked for XML.
 	ShapeXML ShapeID = "xml"
+	// ShapeOpenAI, ShapeAnthropic and ShapeGemini are the error objects of the OpenAI
+	// API, the Anthropic Messages API and the Gemini API, for a model endpoint route
+	// that serves that format and opted into it with error_format. Unlike every shape
+	// above they are never chosen from the API kind or the request: see
+	// Request.RouteFormat.
+	ShapeOpenAI    ShapeID = "openai"
+	ShapeAnthropic ShapeID = "anthropic"
+	ShapeGemini    ShapeID = "gemini"
 
 	// ShapeSOAP11 and ShapeSOAP12 are declared so Negotiate can name them, but are NOT
 	// registered, so they render as passthrough.
@@ -85,6 +95,16 @@ type Request struct {
 	Accept      string // the request's Accept
 	// Transport is the wire protocol an Agent route serves. See format.Request.Transport.
 	Transport string
+	// RouteFormat is the error shape the route itself names — the controller's
+	// error_format — or "" for every route that names none, which is every route but a
+	// model endpoint's.
+	//
+	// It exists because the protocol of an LLM route is not a property of its kind. An
+	// LlmProxy and a model endpoint share APIKindLlmProxy, but only the endpoint promises
+	// errors in its inbound format: enabling a shape for the kind would rewrite the error
+	// bodies of every existing proxy on a GA product. So the route opts in, and only a
+	// value this package knows is honoured — an unknown one changes nothing.
+	RouteFormat string
 }
 
 // Renderer turns a gateway error into a body plus the content type describing it.
@@ -133,6 +153,9 @@ func NewRegistry() *Registry {
 			ShapeJSONRPC:            jsonRPCRenderer{},
 			ShapeJSONRPCEventStream: jsonRPCEventStreamRenderer{},
 			ShapeXML:                xmlRenderer{},
+			ShapeOpenAI:             openAIRenderer{},
+			ShapeAnthropic:          anthropicRenderer{},
+			ShapeGemini:             geminiRenderer{},
 		},
 	}
 }
@@ -161,6 +184,14 @@ func (r *Registry) Render(shape ShapeID, in RenderInput) (body []byte, contentTy
 // honouring Accept there would produce a body the client cannot parse. Only after that
 // do content-type and Accept get a say.
 func Negotiate(req Request) ShapeID {
+	// 0. A protocol the route names for itself. It outranks the kind because it is the
+	// more specific statement: the kind says what sort of API this is, the route says
+	// which wire protocol this one endpoint speaks. Accept is ignored for the same reason
+	// as an MCP route's — an OpenAI client parses OpenAI errors whatever it asked for.
+	if IsRouteFormat(req.RouteFormat) {
+		return ShapeID(req.RouteFormat)
+	}
+
 	// 1. Protocols fixed by API kind. These ignore Accept entirely.
 	switch req.APIKind {
 	case policy.APIKindAgent:
@@ -236,6 +267,20 @@ func Negotiate(req Request) ShapeID {
 	// BEFORE any policy migrates, or there is a window where migrated policies return empty
 	// bodies to REST callers.
 	return ShapeJSON
+}
+
+// routeFormats is the set of shapes a route may name with error_format. Closed and in code,
+// like supportedKinds: a route formats only in a shape this binary can render.
+var routeFormats = map[string]bool{
+	string(ShapeOpenAI):    true,
+	string(ShapeAnthropic): true,
+	string(ShapeGemini):    true,
+}
+
+// IsRouteFormat reports whether name is an error shape a route may opt into. The xDS
+// ingest uses it to drop an unknown value rather than carry it to every request.
+func IsRouteFormat(name string) bool {
+	return routeFormats[name]
 }
 
 // normalizeMediaType strips parameters and whitespace and lowercases, so
