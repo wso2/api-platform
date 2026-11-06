@@ -233,7 +233,8 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#wz-content-input').selectFile(invalidContentPackage(), { force: true });
         save();
 
-        cy.get('#wz-content-error').scrollIntoView().should('be.visible').and('contain', 'Unknown top-level entry in content ZIP: doc/');
+        cy.get('#wz-content-error').scrollIntoView().should('be.visible')
+            .and('have.text', 'doc/: unknown top-level entry\nweb/style.css: web/ holds only apiContent.md, api-content.hbs and images');
         cy.get('#wz-content-chip').should('contain', 'content.zip').and('contain', 'Not uploaded');
         cy.get('#wz-content-choose').scrollIntoView().should('be.visible').and('have.text', 'Choose another file');
         cy.get('#wz-content-remove').should('not.be.visible');

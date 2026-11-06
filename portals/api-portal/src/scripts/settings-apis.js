@@ -517,7 +517,9 @@
       });
       if (res.ok) return '';
       var err = await res.json().catch(function(){ return {}; });
-      return (err.errors && err.errors[0] && err.errors[0].message) || err.message || res.statusText;
+      /* A rejected package lists every entry the portal does not accept; show them all. */
+      var reasons = (err.errors || []).map(function(e) { return e && e.message; }).filter(Boolean);
+      return reasons.length ? reasons.join('\n') : (err.message || res.statusText);
     } catch (e) {
       return e.message;
     }
