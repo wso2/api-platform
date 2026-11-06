@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -92,7 +93,7 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
-	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway}
+	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway, notInSyntheticEnvironment}
 	if pin := strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)); pin != "" {
 		filters = append(filters, pinnedGateway(pin))
 	}
@@ -135,7 +136,12 @@ const regularGatewayKind = "regular"
 
 // syntheticGatewayName is the display name a suite run gives the managed gateways it creates:
 // "sgw" and the run's suffix and counter.
-var syntheticGatewayName = regexp.MustCompile(`^sgw-[a-z2-7]{8}-\d+$`)
+// A name cut to the length limit of a handle keeps its tail, so the prefix may be cut short and the
+// name may be padded with letters.
+var syntheticGatewayName = regexp.MustCompile(`^(?:s|sg|sgw|g|gw|w)?-?[a-z2-7]{8}-\d+x*$`)
+
+// syntheticEnvironmentName is the name a suite run gives the environments it creates.
+var syntheticEnvironmentName = regexp.MustCompile(`^(?:e|syn-env)-[a-z2-7]{8}-\d+$`)
 
 // regularGatewaysOnly rejects a gateway that is not of the regular kind. A listing that does not
 // say what kind a gateway is leaves it to the platform's own filter.
@@ -153,6 +159,16 @@ func notSyntheticGateway(item map[string]any) string {
 		if name, _ := item[field].(string); syntheticGatewayName.MatchString(strings.ToLower(strings.TrimSpace(name))) {
 			return "a synthetic gateway of a suite run"
 		}
+	}
+	return ""
+}
+
+// notInSyntheticEnvironment rejects a gateway of an environment that a suite run created for its
+// own scenario, whose gateways are not the shared one the scenarios deploy to.
+func notInSyntheticEnvironment(item map[string]any) string {
+	environment, _ := item["environment"].(string)
+	if syntheticEnvironmentName.MatchString(strings.ToLower(strings.TrimSpace(environment))) {
+		return "an environment of a suite run"
 	}
 	return ""
 }
@@ -297,6 +313,50 @@ var approvedCloudDataPlaneHost = regexp.MustCompile(
 	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
 )
 
+// cloudLocalDataPlaneEnv, when set to a true value, also approves gateway URLs on a .localhost
+// host over http or https and any port: the data plane of a cloud that runs on the developer's
+// machine. It is off by default, and no other destination is widened.
+const cloudLocalDataPlaneEnv = "CLOUD_IT_LOCAL_DATA_PLANE"
+
+// cloudLocalDataPlanePortEnv names the port the local data plane serves plain http on. The platform
+// reports a gateway as https://<host> with no port, which on a developer's machine reaches nothing, so
+// an approved local URL that carries no port is called on this one over http instead.
+const cloudLocalDataPlanePortEnv = "CLOUD_IT_LOCAL_DATA_PLANE_PORT"
+
+var approvedLocalDataPlaneHost = regexp.MustCompile(
+	`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$`,
+)
+
+func localDataPlaneEnabled() bool {
+	enabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(cloudLocalDataPlaneEnv)))
+	return err == nil && enabled
+}
+
+// approvedLocalDataPlaneTarget reports whether target is an http(s) URL on a named .localhost
+// host with no credentials. IP literals never match.
+func approvedLocalDataPlaneTarget(parsed *url.URL) bool {
+	if parsed.User != nil || parsed.Host == "" {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return approvedLocalDataPlaneHost.MatchString(strings.ToLower(parsed.Hostname()))
+}
+
+// localDataPlaneTarget sends an approved local URL that names no port to the local data plane's http
+// port, when CLOUD_IT_LOCAL_DATA_PLANE_PORT holds one. Any other URL is returned as it came.
+func localDataPlaneTarget(parsed *url.URL, target string) string {
+	port, err := strconv.Atoi(strings.TrimSpace(os.Getenv(cloudLocalDataPlanePortEnv)))
+	if err != nil || port < 1 || port > 65535 || parsed.Port() != "" {
+		return target
+	}
+	rewritten := *parsed
+	rewritten.Scheme = "http"
+	rewritten.Host = net.JoinHostPort(parsed.Hostname(), strconv.Itoa(port))
+	return rewritten.String()
+}
+
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
 	if s != nil && s.dataPlaneURLResolver != nil {
 		return s.dataPlaneURLResolver(ctx, target)
@@ -323,6 +383,9 @@ func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) 
 	parsed, err := url.Parse(target)
 	if err != nil {
 		return "", fmt.Errorf("invalid cloud data-plane URL %q: %w", target, err)
+	}
+	if localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed) {
+		return localDataPlaneTarget(parsed, target), nil
 	}
 	if parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 		return "", fmt.Errorf("cloud data-plane target must be an approved HTTPS URL, got %q", target)
@@ -478,17 +541,41 @@ func (s *Steps) verifyProjectDeleted(ctx context.Context) error {
 	return nil
 }
 
+// syntheticEnvironmentBase is the base of the names a suite run gives its environments. It is
+// short on purpose: the platform renders a gateway's service name from the environment name twice,
+// so every character of the environment's name is two taken from the handle of each gateway in it.
+const syntheticEnvironmentBase = "e"
+
+// createEnvironment creates an environment that is removed when the scenario ends.
 func (s *Steps) createEnvironment(ctx context.Context) error {
-	if err := generateResourceAndStore(ctx, "syn-env", keyEnvironmentName); err != nil {
+	return s.createEnvironmentScoped(ctx, cleanup.ScenarioScope)
+}
+
+// createRunnerEnvironment creates an environment that later scenarios of the runner keep using, so
+// it is removed when the runner ends.
+func (s *Steps) createRunnerEnvironment(ctx context.Context) error {
+	return s.createEnvironmentScoped(ctx, cleanup.RunnerScope)
+}
+
+func registerEnvironment(ctx context.Context, scope cleanup.Scope, id string) error {
+	resource := cleanup.Resource{
+		Kind: cleanup.KindEnvironment, ID: id, Actor: resourceActor, Description: "environment " + id,
+	}
+	if scope == cleanup.RunnerScope {
+		return cleanup.RegisterRunner(ctx, resource)
+	}
+	return cleanup.Register(ctx, resource)
+}
+
+func (s *Steps) createEnvironmentScoped(ctx context.Context, scope cleanup.Scope) error {
+	if err := generateResourceAndStore(ctx, syntheticEnvironmentBase, keyEnvironmentName); err != nil {
 		return err
 	}
 	id, err := requiredValue(ctx, keyEnvironmentName)
 	if err != nil {
 		return err
 	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindEnvironment, ID: id, Actor: resourceActor, Description: "environment " + id,
-	}); err != nil {
+	if err := registerEnvironment(ctx, scope, id); err != nil {
 		return fmt.Errorf("registering environment %q for cleanup: %w", id, err)
 	}
 	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/environments", map[string]any{
@@ -506,9 +593,7 @@ func (s *Steps) createEnvironment(ctx context.Context) error {
 	}
 	if createdID != id {
 		deregister(ctx, cleanup.KindEnvironment, id)
-		if registerErr := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindEnvironment, ID: createdID, Actor: resourceActor, Description: "environment " + createdID,
-		}); registerErr != nil {
+		if registerErr := registerEnvironment(ctx, scope, createdID); registerErr != nil {
 			return fmt.Errorf("registering environment %q for cleanup: %w", createdID, registerErr)
 		}
 		return fmt.Errorf("created APIP environment id = %q, want %q", createdID, id)
@@ -590,128 +675,6 @@ func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
 		}
 	}
 	return fmt.Errorf("APIP environment list contains no usable environment")
-}
-
-func (s *Steps) createManagedGateway(ctx context.Context) error {
-	environment, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	_, err = s.createManagedGatewayIn(ctx, environment)
-	return err
-}
-
-// createManagedGatewayIn creates a uniquely named managed gateway in an environment, registers it
-// for cleanup before the request, and keeps its id as the scenario's managed gateway. The platform
-// registers a gateway as "<environment>-<handle>" within 40 characters, so a name too long for the
-// environment is sent with a handle cut to fit.
-func (s *Steps) createManagedGatewayIn(ctx context.Context, environment string) (string, error) {
-	// "sgw", not "syn-gateway": a managed gateway's handle is bounded by the
-	// release label the control plane renders from it, which spends the
-	// environment name twice and leaves 15 characters in a "development"
-	// environment. Unique() adds 11 ("-<suffix8>-<n>"), so the base has to fit in
-	// the rest. A longer base is accepted at create time and then fails to apply,
-	// leaving a gateway that never becomes ready.
-	if err := generateResourceAndStore(ctx, "sgw", keyManagedGatewayID); err != nil {
-		return "", err
-	}
-	name, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return "", err
-	}
-	request := map[string]string{"displayName": name, "environment": environment}
-	handle := name
-	if budget := gatewayHandleBudget(environment); len(name) > budget {
-		handle = handleOfLength(name, budget)
-		request["handle"] = handle
-	}
-	// The managed-gateway API normally derives its registration id from the
-	// environment and handle. Keep that deterministic fallback registered so
-	// cleanup can still attempt deletion if a successful create has no decodable body.
-	cleanupID := environment + "-" + handle
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindGateway, ID: cleanupID, Actor: resourceActor, Description: "managed gateway " + cleanupID,
-	}); err != nil {
-		return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", request)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return "", responseError(resp)
-	}
-	id, err := stringField(resp, "id")
-	if err != nil {
-		return "", fmt.Errorf("creating APIP managed gateway: %w", err)
-	}
-	if id != cleanupID {
-		deregister(ctx, cleanup.KindGateway, cleanupID)
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
-		}); err != nil {
-			return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
-		}
-	}
-	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
-		return "", err
-	}
-	return id, tcontext.Set(ctx, keyManagedGatewayID, id)
-}
-
-func (s *Steps) getManagedGateway(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
-	}
-	got, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("retrieving APIP managed gateway: %w", err)
-	}
-	if got != id {
-		return fmt.Errorf("retrieved APIP gateway id = %q, want %q", got, id)
-	}
-	return nil
-}
-
-func (s *Steps) deleteManagedGateway(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodDelete, "/managed-gateways/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return responseError(resp)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		deregister(ctx, cleanup.KindGateway, id)
-	}
-	return tcontext.Set(ctx, keyGatewayDeleteStatus, fmt.Sprint(resp.StatusCode))
-}
-
-func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
-		if status := optionalValue(ctx, keyGatewayDeleteStatus); status != "" {
-			return fmt.Errorf("%w (the delete was answered %s)", err, status)
-		}
-		return err
-	}
-	deregister(ctx, cleanup.KindGateway, id)
-	return nil
 }
 
 func (s *Steps) awaitNotFound(ctx context.Context, path, what string) error {
