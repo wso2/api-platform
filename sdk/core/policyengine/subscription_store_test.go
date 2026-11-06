@@ -45,3 +45,30 @@ func TestSubscriptionStore_KeepsPlanConditions(t *testing.T) {
 		}
 	}
 }
+
+// Changing the conditions of a looked-up entry, or of the data the store was given, leaves the
+// stored conditions as they were.
+func TestSubscriptionStore_ConditionsAreCopied(t *testing.T) {
+	store := NewSubscriptionStore()
+	params := `{"limits":[{"count":10,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"reject"}`
+	subs := []SubscriptionData{{APIId: "api-1", ApplicationId: "app-1", SubscriptionToken: HashSubscriptionToken("tok"),
+		Status: "ACTIVE", Conditions: []SubscriptionCondition{{ID: "tool-calls", Type: "tool-call-count", Params: json.RawMessage(params)}}}}
+	store.ReplaceAll(subs)
+	subs[0].Conditions[0].Params[0] = 'x'
+
+	_, byToken := store.IsActiveByToken("api-1", HashSubscriptionToken("tok"))
+	byToken.Conditions[0].ID = "changed"
+	byToken.Conditions[0].Params[1] = 'x'
+	_, byApp := store.IsActiveByApplication("api-1", "app-1")
+	byApp.Conditions[0].Params[2] = 'x'
+
+	_, again := store.IsActiveByToken("api-1", HashSubscriptionToken("tok"))
+	if again.Conditions[0].ID != "tool-calls" || string(again.Conditions[0].Params) != params {
+		t.Fatalf("stored condition changed: %+v", again.Conditions[0])
+	}
+
+	store.ReplaceAll([]SubscriptionData{{APIId: "api-1", ApplicationId: "app-2", Status: "ACTIVE"}})
+	if _, e := store.IsActiveByApplication("api-1", "app-2"); e.Conditions != nil {
+		t.Fatalf("no conditions must stay nil, got %v", e.Conditions)
+	}
+}

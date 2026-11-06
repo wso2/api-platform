@@ -20,6 +20,7 @@ package policyengine
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"sync"
 )
 
@@ -98,7 +99,7 @@ func (s *SubscriptionStore) ReplaceAll(subs []SubscriptionData) {
 			BillingSubscriptionID: sub.BillingSubscriptionId,
 			SubscriptionID:        sub.SubscriptionId,
 			PlanID:                sub.PlanId,
-			Conditions:            sub.Conditions,
+			Conditions:            cloneConditions(sub.Conditions),
 		}
 
 		// Build token-based index
@@ -150,10 +151,10 @@ func (s *SubscriptionStore) IsActiveByApplication(apiID, applicationID string) (
 		return false, nil
 	}
 	entry, ok := apps[applicationID]
-	if !ok {
+	if !ok || entry == nil {
 		return false, nil
 	}
-	return entry != nil && entry.Status == "ACTIVE", entry
+	return entry.Status == "ACTIVE", entry.clone()
 }
 
 // IsActiveByToken checks if a subscription token is active for the given API.
@@ -175,8 +176,29 @@ func (s *SubscriptionStore) IsActiveByToken(apiID, token string) (bool, *Subscri
 		return false, nil
 	}
 	if entry.Status == "ACTIVE" {
-		e := *entry
-		return true, &e
+		return true, entry.clone()
 	}
 	return false, nil
+}
+
+// clone returns a copy of the entry whose conditions callers can change without touching the store.
+func (e *SubscriptionEntry) clone() *SubscriptionEntry {
+	c := *e
+	c.Conditions = cloneConditions(e.Conditions)
+	return &c
+}
+
+// cloneConditions copies the conditions and their params, keeping nil as nil.
+func cloneConditions(conditions []SubscriptionCondition) []SubscriptionCondition {
+	if conditions == nil {
+		return nil
+	}
+	out := make([]SubscriptionCondition, len(conditions))
+	for i, c := range conditions {
+		out[i] = c
+		if c.Params != nil {
+			out[i].Params = append(json.RawMessage(nil), c.Params...)
+		}
+	}
+	return out
 }
