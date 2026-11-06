@@ -144,6 +144,7 @@ const ZIP_REJECTION = {
     DOCS_DEPTH: 'docs/ allows one category folder',
     SECOND_METADATA: 'more than one metadata file',
     SECOND_DEFINITION: 'more than one definition file',
+    DUPLICATE: 'appears more than once',
 };
 
 const LANDING_PAGE_NAMES = new Set([
@@ -168,16 +169,24 @@ const isIgnoredPath = (segments) => segments.some((segment) => segment.startsWit
  * Sorts the files of a content ZIP (paths relative to the ZIP root, '/'-separated) into what the
  * portal keeps and what it rejects, by the content ZIP entry rules. Kind 'artifact' also takes the
  * metadata file and definition from the top level. Paths are reported as they appear in the ZIP.
+ * `folders` are the ZIP's folders, so an unknown top-level folder is rejected even when empty.
  */
-const classifyContentZip = (paths, kind) => {
-    const files = [...new Set(paths)].sort()
-        .map((zipPath) => ({ zipPath, segments: zipPath.split('/') }))
-        .filter(({ segments }) => !isIgnoredPath(segments));
+const classifyContentZip = (paths, kind, folders = []) => {
+    const seen = new Set();
+    const repeated = new Set();
+    for (const zipPath of paths) {
+        if (!isIgnoredPath(zipPath.split('/'))) {
+            (seen.has(zipPath) ? repeated : seen).add(zipPath);
+        }
+    }
+    const files = [...seen].sort().map((zipPath) => ({ zipPath, segments: zipPath.split('/') }));
+    const folderSegments = folders.map((folder) => folder.split('/')).filter((segments) => !isIgnoredPath(segments));
 
-    const first = files[0]?.segments[0];
+    const first = files[0]?.segments[0] ?? folderSegments[0]?.[0];
     const wrapped = first !== undefined
         && first !== constants.ARTIFACT_DIR.WEB && first !== constants.ARTIFACT_DIR.DOCS
-        && files.every(({ segments }) => segments.length > 1 && segments[0] === first);
+        && files.every(({ segments }) => segments.length > 1 && segments[0] === first)
+        && folderSegments.every(([top]) => top === first);
     const prefix = wrapped ? `${first}/` : '';
 
     const result = { items: [], metadataPath: null, definitionPath: null, rejected: [] };
@@ -191,7 +200,9 @@ const classifyContentZip = (paths, kind) => {
         const name = segments[segments.length - 1];
         const keep = (type) => result.items.push({ path: zipPath, type, fileName: name });
 
-        if (segments.length === 1) {
+        if (repeated.has(zipPath)) {
+            reject(zipPath, ZIP_REJECTION.DUPLICATE);
+        } else if (segments.length === 1) {
             const lower = name.toLowerCase();
             if (artifact && METADATA_NAMES.has(lower)) {
                 if (result.metadataPath) {
@@ -227,6 +238,13 @@ const classifyContentZip = (paths, kind) => {
                 reject(zipPath, ZIP_REJECTION.DOCS_DEPTH);
             }
         } else if (!foreignFolders.has(top)) {
+            foreignFolders.add(top);
+            reject(`${prefix}${top}/`, ZIP_REJECTION.UNKNOWN_TOP_LEVEL);
+        }
+    }
+    for (const segments of folderSegments) {
+        const top = wrapped ? segments[1] : segments[0];
+        if (top && top !== constants.ARTIFACT_DIR.WEB && top !== constants.ARTIFACT_DIR.DOCS && !foreignFolders.has(top)) {
             foreignFolders.add(top);
             reject(`${prefix}${top}/`, ZIP_REJECTION.UNKNOWN_TOP_LEVEL);
         }

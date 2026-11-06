@@ -819,7 +819,7 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
                     const entrySize = entry.size;
                     const entryDepth = entryPath.split(path.sep).length;
 
-                    if (!entryPath.includes('__MACOSX')) {
+                    if (!entryPath.split(/[\\/]/).includes('__MACOSX')) {
                         // Reject absolute paths, null bytes, and traversal sequences in entry names.
                         if (path.isAbsolute(entryPath) || entryPath.includes('..') || entryPath.includes('\0')) {
                             entry.autodrain();
@@ -855,13 +855,13 @@ const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {})
                                 , 'Archive entry exceeded the allowed size.'));
                         }
 
-                        const dirName = path.dirname(normalizedFilePath);
-                        fs.mkdirSync(dirName, { recursive: true });
                         if (entry.type === 'Directory') {
+                            fs.mkdirSync(normalizedFilePath, { recursive: true });
                             entry.autodrain();
                         } else {
+                            fs.mkdirSync(path.dirname(normalizedFilePath), { recursive: true });
                             extractedFiles.push(normalizedFilePath);
-                            streams.push(writeEntryWithLimit(entry, normalizedFilePath, maxFileSize, reject));
+                            streams.push(writeEntryWithLimit(entry, normalizedFilePath, maxFileSize));
                         }
                     } else {
                         entry.autodrain();

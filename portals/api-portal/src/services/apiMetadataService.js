@@ -1786,8 +1786,12 @@ async function readContentZip(zipFile, orgId, apiId, kind) {
             zipPath = tempZipPath;
         }
         const extracted = await util.unzipDirectory(zipPath, extractPath, { allowEmpty: true });
-        const zipPaths = extracted.map((file) => path.relative(extractPath, file).split(path.sep).join('/'));
-        const { items, metadataPath, definitionPath, rejected } = apiContentRules.classifyContentZip(zipPaths, kind);
+        const toZipPath = (file) => path.relative(extractPath, file).split(path.sep).join('/');
+        const folders = (await fs.readdir(extractPath, { recursive: true, withFileTypes: true }))
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => toZipPath(path.join(entry.parentPath, entry.name)));
+        const { items, metadataPath, definitionPath, rejected } =
+            apiContentRules.classifyContentZip(extracted.map(toZipPath), kind, folders);
         if (rejected.length) {
             throw new ValidationError('Content ZIP has entries the portal does not accept',
                 rejected.map((entry) => ({ message: `${entry.path}: ${entry.reason}` })));
@@ -1868,7 +1872,8 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         if (error instanceof ValidationError) {
             throw error;
         }
-        throw new ValidationError(`Invalid artifact zip file: ${error.message}`);
+        logger.warn('Artifact ZIP could not be read', { error: error.message, orgId, apiId });
+        throw new ValidationError('Invalid artifact zip file');
     }
 }
 

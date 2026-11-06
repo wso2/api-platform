@@ -29,11 +29,12 @@ Each path in the ZIP gets one outcome, from the first rule that matches:
 | Any path, when the ZIP breaks an extraction limit or holds an unsafe path | The whole upload is rejected |
 | The only top-level entry is one folder other than `web/` or `docs/` (for example `my-api/web/…`) | The ZIP is read from inside that folder. A lone `web/` or `docs/` is never a wrapper |
 | A part of the path starts with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or it is under `__MACOSX/` | Ignored |
+| The same path appears more than once | Rejected |
 | `web/apiContent.md` or `web/api-content.hbs` | The landing page. No other name is read |
 | `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) | An image |
 | `docs/<name>.md` | A document of category `Other` |
 | `docs/<Category>/<name>.md` | A document of that category |
-| Anything else, such as a misspelled `doc/`, `web/style.css`, `docs/guide.pdf` or `docs/HowTo/v1/a.md` | Rejected |
+| Anything else, such as a misspelled `doc/` (even when empty), `web/style.css`, `docs/guide.pdf` or `docs/HowTo/v1/a.md` | Rejected |
 
 The `.md` extension is lowercase. If any path is rejected, the whole upload is rejected with `400` and nothing is stored. The response lists every rejected path with its reason:
 

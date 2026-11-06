@@ -598,6 +598,24 @@ describe('API content assets', () => {
             expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(404);
         });
 
+        it('rejects a path that appears twice and keeps the current content', async () => {
+            const api = await createApi();
+            expect((await uploadContent('publisher', api.id, docsZip(['Kept.md']))).status).toBe(201);
+            const zip = createZip([{ name: 'docs/A.md', content: '# 1' }, { name: 'docs/A.md', content: '# 2' }]);
+            expect(rejectedEntries(await uploadContent('publisher', api.id, zip, { method: 'put' })))
+                .toEqual(['docs/A.md: appears more than once']);
+            expect((await getAsset(api.id, 'DOC_Other', 'Kept.md')).status).toBe(200);
+        });
+
+        it('rejects unknown empty folders and keeps the current content', async () => {
+            const api = await createApi();
+            expect((await uploadContent('publisher', api.id, docsZip(['Kept.md']))).status).toBe(201);
+            const zip = createZip([{ name: 'foo/', content: '' }, { name: 'bar/', content: '' }]);
+            expect(rejectedEntries(await uploadContent('publisher', api.id, zip, { method: 'put' })))
+                .toEqual(['bar/: unknown top-level entry', 'foo/: unknown top-level entry']);
+            expect((await getAsset(api.id, 'DOC_Other', 'Kept.md')).status).toBe(200);
+        });
+
         it('rejects the landing page under a name the portal does not read', async () => {
             const api = await createApi();
             const res = await uploadContent('publisher', api.id, createZip([{ name: 'web/api-content.md', content: '# x' }]));

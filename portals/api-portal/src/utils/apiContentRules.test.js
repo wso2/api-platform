@@ -186,6 +186,7 @@ describe('isMarkdownDocName', () => {
 });
 
 describe('classifyContentZip', () => {
+    const REPEATED = 'appears more than once';
     const UNKNOWN = 'unknown top-level entry';
     const WEB = 'web/ holds only apiContent.md, api-content.hbs and images';
     const NOT_MD = 'documents must be Markdown (.md)';
@@ -198,6 +199,37 @@ describe('classifyContentZip', () => {
 
     for (const kind of ['content', 'artifact']) {
         describe(`kind ${kind}`, () => {
+            test('a path that appears twice is rejected, once, and not kept', () => {
+                const paths = ['docs/A.md', 'docs/A.md', 'docs/B.md'];
+                assert.deepStrictEqual(rejected(paths, kind), [`docs/A.md: ${REPEATED}`]);
+                assert.deepStrictEqual(accepted(paths, kind), ['DOC_Other:B.md']);
+            });
+
+            test('an ignored path that appears twice stays ignored', () => {
+                assert.deepStrictEqual(rejected(['docs/A.md', '.gitkeep', '.gitkeep'], kind), []);
+            });
+
+            const folderRejections = (paths, folders) => classifyContentZip(paths, kind, folders).rejected
+                .map((r) => `${r.path}: ${r.reason}`);
+
+            test('an unknown empty folder is rejected beside known content', () => {
+                assert.deepStrictEqual(folderRejections(['docs/A.md'], ['doc', 'docs']), [`doc/: ${UNKNOWN}`]);
+            });
+
+            test('two empty folders are rejected, one empty folder is a wrapper', () => {
+                assert.deepStrictEqual(folderRejections([], ['a', 'b']), [`a/: ${UNKNOWN}`, `b/: ${UNKNOWN}`]);
+                assert.deepStrictEqual(folderRejections([], ['content']), []);
+            });
+
+            test('folders inside a wrapper are read from inside it', () => {
+                assert.deepStrictEqual(folderRejections(['w/docs/A.md'], ['w', 'w/docs', 'w/web', 'w/docs/HowTo']), []);
+                assert.deepStrictEqual(folderRejections(['w/docs/A.md'], ['w', 'w/docs', 'w/extra']), [`w/extra/: ${UNKNOWN}`]);
+            });
+
+            test('hidden folders and folders inside web/ and docs/ are not top-level entries', () => {
+                assert.deepStrictEqual(folderRejections(['docs/A.md'], ['docs', '.git', 'docs/HowTo', 'web', 'web/x']), []);
+            });
+
             test('row 2: a single wrapper folder is read from inside', () => {
                 assert.deepStrictEqual(accepted(['my-api/docs/A.md', 'my-api/web/apiContent.md'], kind),
                     ['DOC_Other:A.md', 'MARKETING:apiContent.md']);

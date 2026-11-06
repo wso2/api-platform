@@ -4543,13 +4543,14 @@ components:
         - If the only top-level entry is one folder other than `web/` or `docs/`, the ZIP is read from inside it.
         - A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
           ignored.
+        - A path that appears more than once is rejected.
         - `web/apiContent.md` and `web/api-content.hbs` are the landing page.
         - `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
           fills the slot named by its file name without the extension, unless `imageMetadata` names another;
           `api-icon.png` or `api-icon.jpg` is the thumbnail.
         - `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
           `DOC_<Category>`. The `.md` extension is lowercase.
-        - Anything else is rejected.
+        - Anything else is rejected, including an unknown top-level folder that is empty.
 
         If any path is rejected, the upload is rejected with `400` and nothing is stored; `errors` lists every rejected
         path, sorted, as `<path>: <reason>`. An upload with no content is accepted by `PUT` (it removes all content)

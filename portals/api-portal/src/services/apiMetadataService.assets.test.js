@@ -51,6 +51,7 @@ const apiFileDao = require('../dao/apiFileDao');
 const { createZip } = require('../../it/rest-api/support/zipBuilder');
 const {
     extractApiContentFromUploadedZip,
+    createAPIMetadata,
     createAPIContent,
     updateAPIContent,
     deleteAPIFile,
@@ -192,27 +193,88 @@ test('a ZIP that declares a ZIP64 count without a ZIP64 end record is rejected',
     await assert.rejects(readZip(asZip64(damagedZip(), 1, { locator: false })), { name: 'ValidationError', message: 'Invalid zip file' });
 });
 
-test('a ZIP rejected part-way is not read again once rejected, so the caller can remove it', async (t) => {
+test('a ZIP declaring a huge ZIP64 entry count is rejected without walking the count', async () => {
+    const before = process.memoryUsage().heapUsed;
+    await assert.rejects(readZip(asZip64(createZip([{ name: 'docs/A.md', content: '# A' }]), 4e9)),
+        { name: 'ValidationError', message: 'Invalid zip file' });
+    assert.ok(process.memoryUsage().heapUsed - before < 100 * 1024 * 1024);
+});
+
+test('a ZIP with a long archive comment is read', async () => {
+    const zip = Buffer.from(createZip([{ name: 'docs/A.md', content: '# A' }]));
+    const comment = Buffer.alloc(200, 'x');
+    zip.writeUInt16LE(comment.length, zip.length - 2);
+    assert.deepStrictEqual(names(await readZip(Buffer.concat([zip, comment]))), ['DOC_Other:A.md']);
+});
+
+test('a rejected ZIP leaves no stream open and writes nothing once it has rejected', async (t) => {
     const unzipper = require('unzipper');
     const util = require('../utils/util');
-    const openFile = unzipper.Open.file;
-    let settled = false;
-    let readsAfterSettle = 0;
-    t.mock.method(unzipper.Open, 'file', function (...args) {
-        if (settled) {
-            readsAfterSettle += 1;
-        }
-        return openFile.apply(this, args);
-    });
+    const spy = (owner, method) => {
+        const made = [];
+        const original = owner[method];
+        t.mock.method(owner, method, function (...args) {
+            const stream = original.apply(this, args);
+            made.push(stream);
+            return stream;
+        });
+        return made;
+    };
+    const reads = spy(fs, 'createReadStream');
+    const writes = spy(fs, 'createWriteStream');
+    const parsers = spy(unzipper, 'Parse');
     const dir = fs.mkdtempSync(path.join(tmpDir, 'slip-'));
     const zip = path.join(dir, 'content.zip');
-    fs.writeFileSync(zip, createZip([{ name: 'docs/A.md', content: '# A' }, { name: '../evil.txt', content: 'x' }]));
+    const out = path.join(dir, 'out');
+    fs.writeFileSync(zip, createZip([
+        { name: 'docs/A.md', content: Buffer.alloc(1024 * 1024, 'a') },
+        { name: '../evil.txt', content: 'x' },
+        { name: 'docs/B.md', content: '# B' },
+    ]));
 
-    await assert.rejects(util.unzipDirectory(zip, path.join(dir, 'out'), { allowEmpty: true }));
-    settled = true;
+    await assert.rejects(util.unzipDirectory(zip, out, { allowEmpty: true }));
+
+    assert.ok(reads.length && reads.every((stream) => stream.destroyed));
+    assert.ok(parsers.length && parsers.every((stream) => stream.destroyed));
+    assert.ok(writes.length && writes.every((stream) => stream.closed));
     fs.rmSync(dir, { recursive: true, force: true });
     await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.strictEqual(readsAfterSettle, 0);
+    assert.strictEqual(fs.existsSync(dir), false);
+});
+
+test('an entry over the size limit stops the extraction with no write left open', async (t) => {
+    const util = require('../utils/util');
+    const original = fs.createWriteStream;
+    const writes = [];
+    t.mock.method(fs, 'createWriteStream', function (...args) {
+        const stream = original.apply(this, args);
+        writes.push(stream);
+        return stream;
+    });
+    const dir = fs.mkdtempSync(path.join(tmpDir, 'big-'));
+    const zip = path.join(dir, 'content.zip');
+    fs.writeFileSync(zip, createZip([{ name: 'docs/A.md', content: Buffer.alloc(11 * 1024 * 1024, 'a') }]));
+    await assert.rejects(util.unzipDirectory(zip, path.join(dir, 'out'), { allowEmpty: true }));
+    assert.ok(writes.every((stream) => stream.closed));
+});
+
+test('a path that appears twice in a ZIP is rejected and names the path', async () => {
+    await assert.rejects(read([{ name: 'docs/A.md', content: '# 1' }, { name: 'docs/A.md', content: '# 2' }]),
+        rejectsWith(['docs/A.md: appears more than once']));
+});
+
+test('a name that only contains __MACOSX is kept', async () => {
+    assert.deepStrictEqual(names(await read([{ name: 'docs/my__MACOSXguide.md', content: '# G' }])), ['DOC_Other:my__MACOSXguide.md']);
+});
+
+test('unknown empty folders are rejected; one empty folder is an empty wrapper', async () => {
+    await assert.rejects(read([{ name: 'foo/', content: '' }, { name: 'bar/', content: '' }]),
+        rejectsWith(['bar/: unknown top-level entry', 'foo/: unknown top-level entry']));
+    await assert.rejects(read([{ name: 'docs/A.md', content: '# A' }, { name: 'doc/', content: '' }]),
+        rejectsWith(['doc/: unknown top-level entry']));
+    assert.deepStrictEqual(await read([{ name: 'content/', content: '' }]), []);
+    const wrapped = await read([{ name: 'w/', content: '' }, { name: 'w/docs/', content: '' }, { name: 'w/docs/A.md', content: '# A' }]);
+    assert.deepStrictEqual(names(wrapped), ['DOC_Other:A.md']);
 });
 
 test('a file that is not a ZIP is rejected naming the content field', async () => {
@@ -222,7 +284,7 @@ test('a file that is not a ZIP is rejected naming the content field', async () =
         { name: 'ValidationError', message: 'Missing required file: content' });
 });
 
-function call(handler, { body = {}, query = {}, content } = {}) {
+function call(handler, { body = {}, query = {}, content, files } = {}) {
     return new Promise((resolve) => {
         const res = {
             statusCode: 200,
@@ -233,7 +295,7 @@ function call(handler, { body = {}, query = {}, content } = {}) {
         };
         const req = {
             orgId: 'org-1', user: { sub: 'admin-1' }, params: { apiId: 'pets' }, query, body,
-            files: content ? { content: [content] } : {},
+            files: files ?? (content ? { content: [content] } : {}),
         };
         Promise.resolve(handler(req, res)).catch((error) => resolve({ status: 'THREW', body: error.message }));
     });
@@ -408,6 +470,21 @@ test('replace with a damaged ZIP answers 400 and clears nothing', async (t) => {
         assert.strictEqual(res.status, 400);
         assert.deepStrictEqual(res.body.errors, [{ message: 'Invalid zip file' }]);
     }
+    assert.strictEqual(cleared.mock.callCount(), 0);
+});
+
+test('an artifact that fails to extract answers 400 without naming a server path', async () => {
+    const buffer = createZip([{ name: 'web/', content: '' }, { name: 'web', content: 'x' }]);
+    const res = await call(createAPIMetadata, { files: { artifact: [{ originalname: 'api.zip', buffer }] } });
+    assert.strictEqual(res.status, 400);
+    assert.deepStrictEqual(res.body.errors, [{ message: 'Invalid artifact zip file' }]);
+});
+
+test('replace with only unknown empty folders answers 400 and clears nothing', async (t) => {
+    knownApi(t);
+    const cleared = t.mock.method(apiFileDao, 'deleteAllContent', async () => 3);
+    const res = await call(updateAPIContent, { content: zipUpload([{ name: 'foo/', content: '' }, { name: 'bar/', content: '' }]) });
+    assert.strictEqual(res.status, 400);
     assert.strictEqual(cleared.mock.callCount(), 0);
 });
 
