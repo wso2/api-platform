@@ -171,6 +171,8 @@ describe('API thumbnail in the save request', () => {
             const id = uniqueHandle('thumb');
             const plain = await create(id);
             const withThumbnail = await create(uniqueHandle('thumb')).attach('thumbnail', PNG_BYTES, 'logo.png');
+            expect(plain.status).toBe(201);
+            expect(withThumbnail.status).toBe(201);
             expect(Object.keys(withThumbnail.body).sort()).toEqual(Object.keys(plain.body).sort());
         });
     });

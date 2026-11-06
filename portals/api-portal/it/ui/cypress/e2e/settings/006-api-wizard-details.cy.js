@@ -88,7 +88,8 @@ describe('Settings — API wizard Details and Spec steps', () => {
         cy.get('#wz-thumb-preview').should('have.text', 'PA');
     });
 
-    it('requires an API type on create and leaves the production URL optional', () => {
+    it('requires an API type on create and saves an API with no production URL', () => {
+        const handle = `it-wizard-no-prod-${uid}`;
         openSettings();
         cy.get('#cfg-add-api-btn').click();
         cy.get('label[for="wz-type"] .required').should('have.text', '*');
@@ -98,6 +99,7 @@ describe('Settings — API wizard Details and Spec steps', () => {
         cy.get('#wz-status').should('have.value', 'PUBLISHED');
         cy.get('#wz-name').type('Type Wizard');
         cy.get('#wz-version').type('v1.0');
+        cy.get('#wz-handle').clear().type(handle);
 
         cy.get('#cfg-wizard-next').click();
         cy.get('#wz-type-error').scrollIntoView().should('be.visible').and('have.text', 'API type is required.');
@@ -108,6 +110,17 @@ describe('Settings — API wizard Details and Spec steps', () => {
         cy.get('#wz-type-error').should('not.be.visible');
         cy.get('#cfg-wizard-next').click();
         cy.get('#cfg-wstep-1').should('be.visible');
+
+        cy.get('#wz-spec-input').selectFile({ contents: Cypress.Buffer.from(SPEC), fileName: 'definition.json' }, { force: true });
+        cy.get('#cfg-wizard-next').click();
+        cy.get('#cfg-wstep-2').scrollIntoView().should('be.visible');
+        handles.push(handle);
+        cy.get('#cfg-wizard-next').click();
+        saved();
+        cy.apiRequest('GET', `/api/v0.9/apis/${handle}`).then(({ status, body }) => {
+            expect(status).to.eq(200);
+            expect(body.endPoints?.productionURL || '').to.eq('');
+        });
     });
 
     it('saves a picked thumbnail, then replaces it, sending only the last choice', () => {
