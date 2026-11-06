@@ -352,8 +352,7 @@ func (s *ProjectService) CountArtifactsByProject(handle, orgId string) (int, err
 		count func(orgUUID, projectUUID string) (int, error)
 	}{
 		{"REST APIs", func(orgUUID, projectUUID string) (int, error) {
-			apis, err := s.apiRepo.GetAPIsByProjectUUID(projectUUID, orgUUID)
-			return len(apis), err
+			return s.apiRepo.CountAPIsByOrganizationUUID(orgUUID, projectUUID, "")
 		}},
 		{"GraphQL APIs", func(orgUUID, projectUUID string) (int, error) {
 			return s.graphqlAPIRepo.CountByProject(orgUUID, projectUUID, "")

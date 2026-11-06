@@ -43,9 +43,9 @@ type countingRESTRepo struct {
 	calls []countCall
 }
 
-func (r *countingRESTRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error) {
+func (r *countingRESTRepo) CountAPIsByOrganizationUUID(orgUUID, projectUUID, _ string) (int, error) {
 	r.calls = append(r.calls, countCall{orgUUID, projectUUID})
-	return make([]*model.API, r.n), nil
+	return r.n, nil
 }
 
 type countingGraphQLRepo struct {
