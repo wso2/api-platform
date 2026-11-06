@@ -62,7 +62,8 @@ jobs:
       # skip rather than what to run means a new or unlisted folder still runs the
       # integration suite.
       # ui: the portals, the Platform API they call (and whose spec the Control Plane portal
-      # generates types from), the gateway and the framework code the UI suite starts and runs
+      # generates types from), the gateway, the shared common/ and httpkit/ modules the BFFs,
+      # Platform API and gateway build in, the framework code the UI suite starts and runs
       # on, and the UI suite itself. A gateway change can break a page without the integration
       # suite noticing. Not portals/cloud-plugins: the portals here only carry an empty slot for
       # it (src/cloud), so the UI suite never runs that code. Not docs (*.md).
@@ -82,13 +83,15 @@ jobs:
             exit 0
           fi
 
-          changed="$(git diff --name-only HEAD^1 HEAD)"
+          # --no-renames lists a moved file under both its old and new path, so moving a file
+          # out of a watched folder still counts as a change there.
+          changed="$(git diff --no-renames --name-only HEAD^1 HEAD)"
           echo "Changed files:"
           echo "$changed"
 
           backend_skip='^(portals/(ai-workspace|api-control-plane|cloud-plugins)/|tests/framework/suites/(ui|cloud)/|docs/)|\.md$'
           cloud_match='^(tests/framework/|\.github/workflows/platform-tests\.yml$)'
-          ui_match='^(portals/|platform-api/|gateway/|tests/framework/|\.github/workflows/platform-tests\.yml$)'
+          ui_match='^(portals/|platform-api/|gateway/|common/|httpkit/|tests/framework/|\.github/workflows/platform-tests\.yml$)'
 
           # Captured rather than piped into grep -q: under pipefail an early-exiting grep -q can
           # turn a match into a failed pipeline.
@@ -305,7 +308,7 @@ jobs:
 
       - name: API Control Plane BFF unit tests
         working-directory: portals/api-control-plane/bff
-        run: go test -count=1 ./...
+        run: GOWORK=off go test -count=1 ./...
 
       - name: Upload AI Workspace BFF unit coverage to Codecov
         if: always()
@@ -362,8 +365,12 @@ jobs:
           go-version: '1.26.10'
           cache-dependency-path: '**/go.sum'
 
+      # Built the way apim-saas's e2e image builds it (test/e2e/Dockerfile).
       - name: Compile the cloud suite
         working-directory: tests/framework
+        env:
+          CGO_ENABLED: "0"
+          GOWORK: "off"
         run: go test -c -o /dev/null ./suites/cloud
 
       - name: Cloud suite unit tests
