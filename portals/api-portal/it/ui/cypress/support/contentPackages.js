@@ -38,6 +38,7 @@ export const invalidContentPackage = () => ({
     contents: createZip([
         { name: 'docs/Guide.md', content: '# Guide' },
         { name: 'doc/Setup.md', content: '# Setup' },
+        { name: 'web/style.css', content: 'a{}' },
     ]),
     fileName: 'content.zip',
     mimeType: 'application/zip',

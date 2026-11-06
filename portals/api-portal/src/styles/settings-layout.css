@@ -3080,6 +3080,7 @@
 .cfg-assets-layout-nested { padding-left: 18px !important; }
 
 .cfg-assets-alert {
+  white-space: pre-line;
   margin: 0 0 14px;
   padding: 10px 14px;
   border-radius: 10px;
