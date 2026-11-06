@@ -141,15 +141,16 @@ func (unresolvableIdentity) DisplayIdentity(string) (string, error) {
 	return "", errors.New("user lookup failed")
 }
 
-func TestAuditServiceMasksTheUserInTheLine(t *testing.T) {
+func TestAuditServiceLineHidesTheInternalUserID(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		mask     bool
 		identity auditIdentity
+		wantBy   string
 		wantLog  string
 	}{
-		{"mask_sensitive_fields", true, staticIdentity{"user-1": "alice"}, ""},
-		{"identity lookup fails", false, unresolvableIdentity{}, "Failed to resolve the audit actor; masking it in the output"},
+		{"mask_sensitive_fields", true, staticIdentity{"user-1": "alice"}, "****", ""},
+		{"identity lookup fails", false, unresolvableIdentity{}, "", "Failed to resolve the audit actor; leaving it empty in the output"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &recordingAuditTable{}
@@ -180,8 +181,8 @@ func TestAuditServiceMasksTheUserInTheLine(t *testing.T) {
 			if err := json.Unmarshal(out, &line); err != nil {
 				t.Fatalf("output line is not one JSON object: %v: %q", err, out)
 			}
-			if line.PerformedBy != "****" {
-				t.Errorf("line performedBy = %q, want it masked", line.PerformedBy)
+			if line.PerformedBy != tc.wantBy {
+				t.Errorf("line performedBy = %q, want %q", line.PerformedBy, tc.wantBy)
 			}
 			if db.rows[0].performedBy != "user-1" {
 				t.Errorf("row performedBy = %q, want the internal user id", db.rows[0].performedBy)

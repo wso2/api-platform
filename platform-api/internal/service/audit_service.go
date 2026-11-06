@@ -172,12 +172,12 @@ func (s *AuditService) Record(action, resourceUUID, resourceType, orgUUID, perfo
 // actorIdentity returns the identity an output line shows for the internal
 // user id that the table keeps: the token's sub, or the username for file-based
 // users. The internal id must never leave the process, so a failed lookup
-// shows "****".
+// shows no user; the table row still holds the id.
 func (s *AuditService) actorIdentity(internalUserID string) string {
 	identity, err := s.identity.DisplayIdentity(internalUserID)
 	if err != nil {
-		s.logger.Warn("Failed to resolve the audit actor; masking it in the output", "error", err)
-		return auditMaskedValue
+		s.logger.Warn("Failed to resolve the audit actor; leaving it empty in the output", "error", err)
+		return ""
 	}
 	return identity
 }
