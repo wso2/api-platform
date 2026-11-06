@@ -354,17 +354,14 @@
               <span class="cfg-upload-icon"><i class="bi bi-file-earmark-arrow-up"></i></span>
               <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
               <span class="cfg-upload-hint">One file · up to 10 MB</span>
-              <input type="file" id="wz-spec-input" accept=".json,.yaml,.yml,.graphql,.gql,.wsdl,.xml" />
+              <input type="file" id="wz-spec-input" />
             </label>
             <p id="wz-spec-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;">A spec file is required to continue.</p>
             <div class="cfg-spec-formats" id="wz-spec-formats">
               <p class="cfg-assets-heading">Accepted formats</p>
               <table>
                 <tbody>
-                  <tr><td>OpenAPI</td><td><code>.json</code> <code>.yaml</code></td></tr>
-                  <tr><td>AsyncAPI</td><td><code>.json</code> <code>.yaml</code></td></tr>
-                  <tr><td>GraphQL SDL</td><td><code>.graphql</code></td></tr>
-                  <tr><td>WSDL</td><td><code>.wsdl</code> <code>.xml</code></td></tr>
+                  <tr><td id="wz-spec-format-name"></td><td id="wz-spec-format-exts"></td></tr>
                 </tbody>
               </table>
             </div>

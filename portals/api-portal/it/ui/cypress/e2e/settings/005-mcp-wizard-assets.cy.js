@@ -60,6 +60,7 @@ describe('Settings — MCP server wizard Assets step', () => {
         // The tools schema step keeps its own wording and has no API formats table.
         cy.get('#wz-spec-desc').should('contain', 'Upload the MCP tools schema that defines this server’s tools.');
         cy.get('#wz-spec-formats').should('not.be.visible');
+        cy.get('#wz-spec-input').should('have.attr', 'accept', '.json,.yaml,.yml');
         cy.get('#wz-spec-input').selectFile({ contents: Cypress.Buffer.from(TOOLS), fileName: 'definition.json' }, { force: true });
         cy.get('#wz-spec-chip').should('contain', 'Tools schema · uploaded when you save');
         cy.get('#cfg-wizard-next').click();

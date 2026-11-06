@@ -110,7 +110,7 @@ An image takes the slot named by its file name without the extension (`logo.png`
 In **Settings → APIs** (and **MCP Servers**), the wizard has three steps. Nothing is changed until you save.
 
 - **Details**: the API's details, including its thumbnail. Choose a PNG or JPEG to replace the thumbnail, or remove it. When creating an API, choose its type; it can't be changed later. The production and sandbox URLs are optional.
-- **Spec**: the API definition (the tools schema for an MCP server).
+- **Spec**: the API definition (the tools schema for an MCP server). The wizard accepts only the file types of the API type: `.json`, `.yaml` or `.yml` for REST, WebSocket, WebSub and MCP; `.graphql` or `.gql` for GraphQL; `.wsdl` or `.xml` for SOAP. Changing the type clears a chosen file that no longer fits.
 - **Assets**: add or remove documents. A new file with the same name as an existing document replaces it. To replace all of the API's content with a content ZIP instead, choose **Import content from ZIP**. When editing an existing API, the wizard asks for confirmation first.
 
 ## Landing Page (`web/`)

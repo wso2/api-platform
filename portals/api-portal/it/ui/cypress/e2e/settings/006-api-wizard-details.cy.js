@@ -188,7 +188,7 @@ describe('Settings — API wizard Details and Spec steps', () => {
         image(handle, 'api-icon.png').its('status').should('eq', 404);
     });
 
-    it('requires a spec on create and labels its format from the API type', () => {
+    it('requires a spec on create and accepts only the file types of the API type', () => {
         openSettings();
         cy.get('#cfg-add-api-btn').click();
         cy.get('#wz-name').type('Spec Wizard');
@@ -200,9 +200,17 @@ describe('Settings — API wizard Details and Spec steps', () => {
         cy.get('#wz-spec-desc').should('have.text', 'The contract that defines this API. Required.');
         cy.get('#wz-spec-onfile').should('not.be.visible');
         cy.get('#wz-spec-formats').should('be.visible').and('contain', 'Accepted formats');
+        cy.get('#wz-spec-format-name').should('have.text', 'GraphQL SDL');
+        cy.get('#wz-spec-format-exts').should('have.text', '.graphql .gql');
+        cy.get('#wz-spec-input').should('have.attr', 'accept', '.graphql,.gql');
         cy.get('#cfg-wizard-next').click();
         cy.get('#wz-spec-error').should('be.visible');
         cy.get('#cfg-wstep-1').should('be.visible');
+
+        cy.get('#wz-spec-input').selectFile({ contents: Cypress.Buffer.from(SPEC), fileName: 'definition.json' }, { force: true });
+        cy.get('#alertToast').should('have.class', 'error')
+            .find('.alert-toast-message').should('have.text', 'The GraphQL SDL spec must be a .graphql or .gql file.');
+        cy.get('#wz-spec-chip').should('not.be.visible');
 
         cy.get('#wz-spec-input').selectFile({ contents: Cypress.Buffer.from('type Query { ping: String }'), fileName: 'schema.graphql' }, { force: true });
         cy.get('#wz-spec-chip').scrollIntoView().should('be.visible').and('contain', 'schema.graphql').and('contain', 'GraphQL SDL · uploaded when you save');
@@ -210,6 +218,11 @@ describe('Settings — API wizard Details and Spec steps', () => {
         cy.get('#cfg-wizard-back-step').click();
         cy.get('#wz-type').select('WS');
         cy.get('#cfg-wizard-next').click();
+        cy.get('#wz-spec-chip').should('not.be.visible');
+        cy.get('#wz-spec-format-name').should('have.text', 'AsyncAPI');
+        cy.get('#wz-spec-format-exts').should('have.text', '.json .yaml .yml');
+        cy.get('#wz-spec-input').should('have.attr', 'accept', '.json,.yaml,.yml');
+        cy.get('#wz-spec-input').selectFile({ contents: Cypress.Buffer.from(SPEC), fileName: 'definition.json' }, { force: true });
         cy.get('#wz-spec-chip').should('contain', 'AsyncAPI · uploaded when you save');
 
         cy.get('#wz-spec-remove').click();
