@@ -1682,9 +1682,12 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 
 // validateWebhookConfig validates and fills defaults for the webhook receiver config.
 // It is a no-op when the webhook is disabled.
-// checkHealthKeys fails on a health setting still at its old place and on any key in
-// the database sub-table that is not a known setting, so neither a stale nor a misspelled
-// setting is silently ignored. Other unknown keys keep the loader's usual leniency.
+// checkHealthKeys fails on a health setting still at its old place and on any key in the
+// health table or its database sub-table that is not a known setting, so neither a stale
+// nor a misspelled setting is silently ignored; a misspelled allowed_clients would
+// otherwise leave the health endpoints open to every client. Removed health settings
+// stay accepted, with the warning warnRemovedConfigKeys gives. Other unknown keys keep
+// the loader's usual leniency.
 func checkHealthKeys(k *koanf.Koanf) error {
 	for _, key := range movedHealthKeys {
 		if k.Exists("health." + key) {
@@ -1692,10 +1695,23 @@ func checkHealthKeys(k *koanf.Koanf) error {
 				platformAPIConfigKey, key, platformAPIConfigKey, healthDatabaseKey, key)
 		}
 	}
-	known := koanfKeys(reflect.TypeFor[HealthDatabase]())
-	for _, key := range slices.Sorted(maps.Keys(k.Cut(healthDatabaseKey).Raw())) {
-		if !known[key] {
-			return fmt.Errorf("%s.%s: unknown key %q", platformAPIConfigKey, healthDatabaseKey, key)
+	knownHealth := koanfKeys(reflect.TypeFor[Health]())
+	for removed := range removedConfigKeys {
+		if key, ok := strings.CutPrefix(removed, "health."); ok {
+			knownHealth[key] = true
+		}
+	}
+	for _, table := range []struct {
+		path  string
+		known map[string]bool
+	}{
+		{"health", knownHealth},
+		{healthDatabaseKey, koanfKeys(reflect.TypeFor[HealthDatabase]())},
+	} {
+		for _, key := range slices.Sorted(maps.Keys(k.Cut(table.path).Raw())) {
+			if !table.known[key] {
+				return fmt.Errorf("%s.%s: unknown key %q", platformAPIConfigKey, table.path, key)
+			}
 		}
 	}
 	return nil

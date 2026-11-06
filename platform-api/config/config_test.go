@@ -1134,12 +1134,21 @@ func TestLoadConfig_Health_UnknownDatabaseKeyFails(t *testing.T) {
 	}
 }
 
-// The strict checks cover only the database sub-table and the moved keys: other unknown
-// keys elsewhere, including directly under [platform_api.health], are still ignored.
+// A misspelled key directly under [platform_api.health] fails too: a misspelled
+// allowed_clients would otherwise leave the health endpoints open to every client.
+func TestLoadConfig_Health_UnknownHealthKeyFails(t *testing.T) {
+	_, err := loadWithKeys(t, "\n[platform_api.health]\nallowed_client = \"10.0.0.0/8\"\n")
+	require.EqualError(t, err, `platform_api.health: unknown key "allowed_client"`)
+}
+
+// The strict checks cover only the health table, its database sub-table and the moved
+// keys: unknown keys elsewhere are still ignored, and removed health settings still load.
 func TestLoadConfig_Health_StrictChecksAreScoped(t *testing.T) {
 	_, err := loadWithKeys(t, `
 [platform_api.health]
-something_else = "x"
+cache_ttl = "3s"
+allowed_clients = "*"
+log_file = "/var/log/health.log"
 
 [platform_api.health.database]
 idle_period = "5s"

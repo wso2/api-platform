@@ -420,6 +420,23 @@ func TestDatabaseWaitStopsOnSignal(t *testing.T) {
 	}
 }
 
+// A shutdown signal that arrives while a successful check runs stops startup, instead of
+// waiting until the whole server has started.
+func TestDatabaseWaitStopsOnSignalDuringASuccessfulCheck(t *testing.T) {
+	stop := make(chan os.Signal, 1)
+	f := &fakeWait{healthy: []bool{true}}
+	w := f.newWait(time.Minute, stop)
+	evaluate := w.evaluate
+	w.evaluate = func() health.Result {
+		stop <- syscall.SIGTERM
+		return evaluate()
+	}
+
+	if err := w.run(); !errors.Is(err, ErrStartupInterrupted) {
+		t.Fatalf("run() = %v, want ErrStartupInterrupted", err)
+	}
+}
+
 func TestDatabaseWaitUsesRealClock(t *testing.T) {
 	w := newDatabaseWait(func() health.Result { return health.Result{} }, 30*time.Millisecond, nil, discardLogger())
 
@@ -834,6 +851,10 @@ func TestRedactDatabaseCause(t *testing.T) {
 		`cannot parse "server=db;user id=sa;Password='a b';"`:     `cannot parse "server=db;user id=sa;Password=xxxxx;"`,
 		`dial postgres://gw:s3cret@db:5432/gw failed`:             `dial postgres://gw:xxxxx@db:5432/gw failed`,
 		`sqlserver://sa:p%40ss@db:1433?database=gw: login failed`: `sqlserver://sa:xxxxx@db:1433?database=gw: login failed`,
+		`password = 'ab\'secret' connect_timeout=invalid`:         `password = xxxxx connect_timeout=invalid`,
+		`host=db password="ab\"secret" user=gw`:                   `host=db password=xxxxx user=gw`,
+		`server=db;Password='a''secret';user id=sa`:               `server=db;Password=xxxxx;user id=sa`,
+		`server=db;Password={a;b}}secret};user id=sa`:             `server=db;Password=xxxxx;user id=sa`,
 		`password authentication failed for user "gw" (28P01)`:    `password authentication failed for user "gw" (28P01)`,
 		`dial tcp 10.0.0.5:5432: connect: connection refused`:     `dial tcp 10.0.0.5:5432: connect: connection refused`,
 	} {

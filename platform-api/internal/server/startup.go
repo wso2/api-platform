@@ -422,7 +422,7 @@ func newDatabaseWait(evaluate func() health.Result, wait time.Duration, stop <-c
 // reachable is visible without debug logging.
 func (w *databaseWait) run() error {
 	if w.databaseUp() {
-		return nil
+		return w.interrupted()
 	}
 	if err := w.rejected(); err != nil {
 		return err
@@ -448,7 +448,7 @@ func (w *databaseWait) run() error {
 			w.refresh()
 		}
 		if w.databaseUp() {
-			return nil
+			return w.interrupted()
 		}
 		if err := w.rejected(); err != nil {
 			return err
@@ -457,6 +457,18 @@ func (w *databaseWait) run() error {
 			w.logger.Warn("database still not reachable", slog.String("cause", w.noteCause()))
 		}
 		interval = min(2*interval, startupRetryMax)
+	}
+}
+
+// interrupted returns ErrStartupInterrupted when a shutdown signal arrived while the database
+// was being checked, so a signal that comes during a successful check stops startup
+// instead of waiting until the whole server has started; otherwise nil.
+func (w *databaseWait) interrupted() error {
+	select {
+	case <-w.stop:
+		return ErrStartupInterrupted
+	default:
+		return nil
 	}
 }
 
@@ -495,8 +507,11 @@ func (w *databaseWait) noteCause() string {
 }
 
 var (
-	// passwordSetting matches a password key-value in a connection string.
-	passwordSetting = regexp.MustCompile(`(?i)(password|pwd)(\s*=\s*)('[^']*'|"[^"]*"|[^\s;]+)`)
+	// passwordSetting matches a password key-value in a connection string. A quoted
+	// value may contain backslash-escaped quotes (libpq) or doubled quotes (SQL Server),
+	// and SQL Server also accepts a {braced} value with doubled closing braces; each is
+	// matched to its real end so no part of the password is left behind.
+	passwordSetting = regexp.MustCompile(`(?i)(password|pwd)(\s*=\s*)('(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.|"")*"|\{(?:[^}]|\}\})*\}|[^\s;]+)`)
 	// urlUserinfoPassword matches the password in a URL's userinfo.
 	urlUserinfoPassword = regexp.MustCompile(`(://[^:/@\s]*:)[^@\s]*@`)
 )
