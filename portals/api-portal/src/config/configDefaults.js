@@ -109,10 +109,10 @@ const DEFAULTS = {
         name: 'api_portal',
         user: '',
         password: '',
-        // TLS: disable | verify-full. On SQL Server, verify-full maps to
+        // TLS: disable | require | verify-ca | verify-full (PostgreSQL). On SQL Server, verify-full maps to
         // encrypt + server-certificate verification (see db/adapters/mssqlAdapter.js).
         sslMode: 'disable',
-        sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-full
+        sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-ca / verify-full
         // Connection pool — PostgreSQL / MSSQL only. Same defaults both adapters
         // used before this was configurable.
         maxOpenConns: 50,  // matches platform-api's max_open_conns naming
