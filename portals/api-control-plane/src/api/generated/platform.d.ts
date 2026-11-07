@@ -4981,6 +4981,18 @@ export interface components {
              */
             projectId: string;
             upstream: components["schemas"]["Upstream"];
+            /**
+             * @description How the API's definition was produced: `scratch` when the user
+             *     started from a blank definition in the console, `contract` when it
+             *     came from an existing contract. Used only for feature-usage
+             *     analytics; it does not change how the API is created. Omit it
+             *     unless you are the console: the default, `contract`, is right for
+             *     any caller that supplies its own spec.
+             * @default contract
+             * @example contract
+             * @enum {string}
+             */
+            creationMethod: "scratch" | "contract";
         };
         /**
          * @description Multipart form for `POST /rest-apis/validate-openapi` and

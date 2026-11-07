@@ -180,6 +180,7 @@ func defaultConfig() *Server {
 			CleanupInterval: 10 * time.Minute,
 			RetentionPeriod: 1 * time.Hour,
 		},
+		FeatureUsage: defaultFeatureUsage(),
 		Webhook: Webhook{
 			Enabled:            false,
 			SignatureTolerance: 5 * time.Minute,
