@@ -18,6 +18,7 @@ import {
   ManagedPortalsPage,
   PORTAL_OPERATIONS,
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import { SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
 import {
   EntitlementsGate,
@@ -152,6 +153,23 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         slot: APP_GATE_SLOT,
         order: 10,
         render: (port) => <EntitlementsGate port={port} />,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    // The header's settings icon, which opens the WSO2 Cloud console's organization
+    // pages. Console-only: it is registered in this host and not in the AI Workspace
+    // one, so that portal's header is unchanged. Ordered after the trial badge, and
+    // the header lays its action slot out ahead of the theme switcher, so the icon
+    // sits between them.
+    id: 'settings',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'settings-button',
+        slot: HEADER_ACTIONS_SLOT,
+        order: 20,
+        render: () => <SettingsButton />,
       },
     ],
   }),
