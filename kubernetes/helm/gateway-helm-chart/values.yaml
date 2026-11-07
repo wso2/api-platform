@@ -674,6 +674,22 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
+    # Traffic logging. Absent by default, so no [traffic_logging] table is
+    # rendered. To write every line in your own JSON layout, set one of:
+    #   - template: the layout as a YAML string, for example a | block. A YAML
+    #     map would lose the key order.
+    #   - template_file: the path of a file holding the layout. It must be inside
+    #     /etc/gateway-runtime and at most 1 MiB. Mount a ConfigMap with the file
+    #     there through gateway.gatewayRuntime.deployment.extraVolumes and
+    #     extraVolumeMounts, for example at /etc/gateway-runtime/traffic-log.
+    # The rules and the $ctx: variables are described in
+    # gateway/configs/config-template.toml.
+    # traffic_logging:
+    #   enabled: true
+    #   exclude_fields: ["claims.email"]
+    #   template: |
+    #     {"status": "$ctx:response.status", "claims": "$ctx:auth.property"}
+
     # Gateway signing. The JWKS endpoint (/.well-known/jwks on every virtual
     # host) is on by default; set jwks_endpoint_enabled: false to free that path,
     # e.g. when an existing API already serves it. Left unset, no [signing] table

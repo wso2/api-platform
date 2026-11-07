@@ -21,6 +21,7 @@ package configinterpolate
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -175,4 +176,80 @@ func TestFileFunc_SymlinkEscapeRejected(t *testing.T) {
 	_, err := expandLeaf(t, `{{ file "`+link+`" }}`, Options{FileAllowlist: []string{root}})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is not in an allowed source directory")
+}
+
+func TestReadAllowedFile(t *testing.T) {
+	root := t.TempDir()
+	allow := []string{root}
+
+	t.Run("reads a file inside the allowlist as it is, without trimming", func(t *testing.T) {
+		p := writeSecret(t, root, "template.json", "{\"a\":1}\n")
+		got, err := ReadAllowedFile(p, allow, 0)
+		require.NoError(t, err)
+		assert.Equal(t, "{\"a\":1}\n", string(got))
+	})
+
+	t.Run("a file at the limit is read and one byte over is rejected", func(t *testing.T) {
+		p := writeSecret(t, root, "limit", strings.Repeat("A", 10))
+		got, err := ReadAllowedFile(p, allow, 10)
+		require.NoError(t, err)
+		assert.Len(t, got, 10)
+
+		p = writeSecret(t, root, "over", strings.Repeat("A", 11))
+		_, err = ReadAllowedFile(p, allow, 10)
+		require.ErrorContains(t, err, "exceeds the maximum allowed size")
+	})
+
+	t.Run("a limit of zero uses the default", func(t *testing.T) {
+		p := writeSecret(t, root, "default-limit", strings.Repeat("A", int(DefaultMaxFileBytes)))
+		got, err := ReadAllowedFile(p, allow, 0)
+		require.NoError(t, err)
+		assert.Len(t, got, int(DefaultMaxFileBytes))
+
+		p = writeSecret(t, root, "default-over", strings.Repeat("A", int(DefaultMaxFileBytes)+1))
+		_, err = ReadAllowedFile(p, allow, 0)
+		require.ErrorContains(t, err, "exceeds the maximum allowed size")
+	})
+
+	// Rejected paths: the error names the path, never the content, the allowlist or the limit.
+	outside := t.TempDir()
+	secret := writeSecret(t, outside, "secret.json", `{"token":"leaked-content"}`)
+	link := filepath.Join(root, "link.json")
+	require.NoError(t, os.Symlink(secret, link))
+	sibling := root + "-other"
+	require.NoError(t, os.MkdirAll(sibling, 0o755))
+	t.Cleanup(func() { os.RemoveAll(sibling) })
+	siblingFile := writeSecret(t, sibling, "x.json", `{"token":"leaked-content"}`)
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"outside the allowlist", secret, "is not in an allowed source directory"},
+		{"a .. escape", root + "/../" + filepath.Base(outside) + "/secret.json", "is not in an allowed source directory"},
+		{"a symlink inside pointing outside", link, "is not in an allowed source directory"},
+		{"a null byte", root + "/template.json\x00.txt", "is not in an allowed source directory"},
+		{"a directory sharing the allowlist's name as a prefix", siblingFile, "is not in an allowed source directory"},
+		{"a relative path", "template.json", "is not in an allowed source directory"},
+		{"a missing file", filepath.Join(root, "missing.json"), "is not found"},
+	}
+	for _, tt := range tests {
+		t.Run("rejects "+tt.name, func(t *testing.T) {
+			got, err := ReadAllowedFile(tt.path, allow, 10)
+			require.ErrorContains(t, err, tt.want)
+			assert.Nil(t, got)
+			assert.NotContains(t, err.Error(), "leaked-content")
+			// The message names the caller's path; apart from that it holds neither the allowlist nor the limit.
+			rest := strings.ReplaceAll(err.Error(), strconv.Quote(tt.path), "")
+			assert.NotContains(t, rest, root, "the allowlist is not named")
+			assert.NotRegexp(t, `\b10\b`, rest, "the limit is not named")
+		})
+	}
+
+	t.Run("an empty allowlist rejects every path", func(t *testing.T) {
+		p := writeSecret(t, root, "any.json", "x")
+		_, err := ReadAllowedFile(p, nil, 0)
+		require.Error(t, err)
+	})
 }

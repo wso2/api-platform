@@ -20,6 +20,7 @@ package publishers
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -102,7 +103,7 @@ func benchmarkLogPublisher(b *testing.B) *Log {
 			"status":  "$ctx:response.status",
 		},
 	}
-	l, err := NewLog(cfg)
+	l, err := NewLog(cfg, nil)
 	if err != nil {
 		b.Fatalf("NewLog: %v", err)
 	}
@@ -116,6 +117,75 @@ func benchmarkLogPublisher(b *testing.B) *Log {
 // after.
 func BenchmarkLog_Publish(b *testing.B) {
 	l := benchmarkLogPublisher(b)
+	event := benchmarkTrafficLogEvent()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		l.Publish(event)
+	}
+}
+
+// benchmarkTemplate is a template of about 15 fields: fixed values, nested objects, an array,
+// scalar variables, one masked header, the claims map and two latencies in milliseconds.
+const benchmarkTemplate = `{
+  "service": "orders",
+  "env": "prod",
+  "version": 1,
+  "http": {"method": "$ctx:request.method", "path": "$ctx:request.path", "status": "$ctx:response.status"},
+  "api": {"name": "$ctx:api.name", "version": "$ctx:api.version", "context": "$ctx:api.context"},
+  "requestId": "$ctx:request.id",
+  "user": "$ctx:auth.subject",
+  "auth": "$ctx:request.header['authorization']",
+  "traceId": "$ctx:request.header['x-request-id']",
+  "auth_prop": "$ctx:auth.property",
+  "durationMs": "$ctx:convertUnit(latencies.duration, 'ms')",
+  "backendMs": "$ctx:convertUnit(latencies.backendLatency, 'ms')",
+  "tags": ["gateway", "$ctx:api.name"]
+}`
+
+// BenchmarkLog_Publish_Template measures Log.Publish when a template writes the line, over the
+// same event as BenchmarkLog_Publish, with one claim excluded from the claims map.
+func BenchmarkLog_Publish_Template(b *testing.B) {
+	l, err := NewLog(&config.TrafficLoggingConfig{
+		Enabled:       true,
+		Outputs:       []string{config.TrafficLogSinkStdout},
+		MaskedHeaders: []string{"authorization", "x-api-key", "x-jwt-assertion"},
+		Template:      benchmarkTemplate,
+		ExcludeFields: []string{"auth_prop.tenant"},
+	}, &config.CollectorConfig{RequestHeaders: true})
+	if err != nil {
+		b.Fatalf("NewLog: %v", err)
+	}
+	useWriterSink(l, io.Discard)
+	event := benchmarkTrafficLogEvent()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		l.Publish(event)
+	}
+}
+
+// BenchmarkLog_Publish_TemplateMissingValues measures a template with fields that have no value:
+// one reads the request body while the collector does not capture it, and one reads a header the
+// request did not send.
+func BenchmarkLog_Publish_TemplateMissingValues(b *testing.B) {
+	// The startup WARNING about the body field would break up the benchmark's result line.
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.DiscardHandler))
+	l, err := NewLog(&config.TrafficLoggingConfig{
+		Enabled:       true,
+		Outputs:       []string{config.TrafficLogSinkStdout},
+		MaskedHeaders: []string{"authorization", "x-api-key", "x-jwt-assertion"},
+		Template: `{"service":"orders","method":"$ctx:request.method","status":"$ctx:response.status",` +
+			`"api":"$ctx:api.name","body":"$ctx:request.body","trace":"$ctx:request.header['x-trace-id']"}`,
+	}, &config.CollectorConfig{RequestHeaders: true})
+	slog.SetDefault(prev)
+	if err != nil {
+		b.Fatalf("NewLog: %v", err)
+	}
+	useWriterSink(l, io.Discard)
 	event := benchmarkTrafficLogEvent()
 
 	b.ReportAllocs()

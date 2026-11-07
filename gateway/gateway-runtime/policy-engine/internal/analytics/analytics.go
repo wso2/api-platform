@@ -174,7 +174,7 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 
 	// Traffic logging is a standalone consumer, independent of analytics.
 	if cfg.TrafficLogging.Enabled {
-		logPublisher, err := analytics_publisher.NewLog(&cfg.TrafficLogging)
+		logPublisher, err := analytics_publisher.NewLog(&cfg.TrafficLogging, &cfg.Collector)
 		if err != nil {
 			// Fail closed. Continuing without the configured sinks would leave
 			// traffic logging on stdout or on nothing at all, and the stdout path
@@ -183,8 +183,8 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 			// is a startup-time condition verified locally, so refusing to run is
 			// the correct outcome; config.Validate has already proven every sink
 			// is constructible, which makes this branch defensive rather than
-			// reachable in practice.
-			slog.Error("Failed to initialize traffic-logging sinks; refusing to start", "error", err)
+			// reachable in practice, except for a mistake in the template's content.
+			slog.Error("Failed to initialize traffic logging; refusing to start", "error", err)
 			panic(fmt.Sprintf("traffic logging configuration is unusable: %v", err))
 		}
 		publishers = append(publishers, logPublisher)

@@ -192,7 +192,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyRequestPayload].(string); ok && p != "" && dir.Request != nil && dir.Request.Payload {
-		tl.RequestBody = l.truncatePayload(p)
+		tl.RequestBody = truncatePayload(p, l.maxPayloadSize)
 	}
 
 	// Response flow
@@ -202,7 +202,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		}
 	}
 	if p, ok := event.Properties[dto.PropKeyResponsePayload].(string); ok && p != "" && dir.Response != nil && dir.Response.Payload {
-		tl.ResponseBody = l.truncatePayload(p)
+		tl.ResponseBody = truncatePayload(p, l.maxPayloadSize)
 	}
 
 	if len(dir.Properties) > 0 {

@@ -339,6 +339,9 @@ func TestShippedTemplateMatchesTrafficLogDefaults(t *testing.T) {
 	assert.Equal(t, []string{TrafficLogSinkStdout}, tl.Outputs,
 		"the template must ship the historical stdout-only behavior")
 	assert.Equal(t, DefaultTrafficLogShutdownTimeout, tl.ShutdownTimeout)
+	// Neither template setting is set, so the shipped config writes the default line.
+	assert.Empty(t, tl.Template)
+	assert.Empty(t, tl.TemplateFile)
 
 	// Path and Endpoint are deliberately empty in both: each is required only
 	// when its sink is selected, so the template must not quietly supply one.

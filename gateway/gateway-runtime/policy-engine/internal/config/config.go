@@ -121,6 +121,11 @@ type CollectorConfig struct {
 	// onto the collected event.
 	RequestBody  bool `koanf:"request_body"`
 	ResponseBody bool `koanf:"response_body"`
+	// RequestHeaders / ResponseHeaders are read only to warn about traffic log
+	// template fields that read headers the collector does not capture. The
+	// gateway-controller reads the same keys to switch header capture on.
+	RequestHeaders  bool `koanf:"request_headers"`
+	ResponseHeaders bool `koanf:"response_headers"`
 	// Server tunes the policy-engine ALS receiver (the gRPC server that ingests
 	// collected access logs). It is part of the collector transport and is
 	// configured under the shared [collector.server] section (the controller
@@ -408,6 +413,7 @@ type TrafficLoggingConfig struct {
 	// arbitrary depth into nested JSON objects (e.g. "requestHeaders.authorization",
 	// or "properties.claims.internal_debug" to reach into a nested object produced
 	// by a Properties $ctx: expression that evaluates to a CEL map wholesale).
+	// With a template, the paths name fields of the template line.
 	ExcludeFields []string `koanf:"exclude_fields"`
 	// Properties adds extra key->value pairs to the emitted line's top-level
 	// "properties" object. A value prefixed "$ctx:" is evaluated as a CEL
@@ -417,6 +423,11 @@ type TrafficLoggingConfig struct {
 	// generically for any authenticated request; other values are emitted as
 	// literal strings.
 	Properties map[string]string `koanf:"properties"`
+	// Template is an inline template (JSON text). Non-empty selects template lines.
+	Template string `koanf:"template"`
+	// TemplateFile is the path to a file holding the template. Non-empty selects
+	// template lines.
+	TemplateFile string `koanf:"template_file"`
 }
 
 // TrafficLogFileConfig configures the "file" traffic-log sink
@@ -1380,6 +1391,8 @@ func defaultConfig() *Config {
 		Collector: CollectorConfig{
 			RequestBody:      false,
 			ResponseBody:     false,
+			RequestHeaders:   false,
+			ResponseHeaders:  false,
 			Server:           defaultAccessLogsServiceConfig(),
 			CorrelationStore: defaultCorrelationStoreConfig(),
 		},
@@ -1399,6 +1412,8 @@ func defaultConfig() *Config {
 			ResponseBody:    false,
 			ExcludeFields:   []string{},
 			Properties:      map[string]string{},
+			Template:        "",
+			TemplateFile:    "",
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
@@ -2104,6 +2119,14 @@ func (c *Config) validateTrafficLoggingConfig() error {
 		if len(tl.Properties) > 0 {
 			slog.Warn("traffic_logging.properties is set but traffic_logging.enabled is false; it has no effect")
 		}
+		switch {
+		case tl.Template != "" && tl.TemplateFile != "":
+			slog.Warn("traffic_logging.template and traffic_logging.template_file are set but traffic_logging.enabled is false; the template has no effect")
+		case tl.Template != "":
+			slog.Warn("traffic_logging.template is set but traffic_logging.enabled is false; the template has no effect")
+		case tl.TemplateFile != "":
+			slog.Warn("traffic_logging.template_file is set but traffic_logging.enabled is false; the template has no effect")
+		}
 		return nil
 	}
 
@@ -2122,6 +2145,14 @@ func (c *Config) validateTrafficLoggingConfig() error {
 	// of use (see DefaultTrafficLogShutdownTimeout). Negative is still nonsense.
 	if tl.ShutdownTimeout < 0 {
 		return fmt.Errorf("traffic_logging.shutdown_timeout must not be negative, got %s", tl.ShutdownTimeout)
+	}
+
+	// A template that cannot be used stops startup, like any other invalid setting. It is checked
+	// before the sinks, so a rejected config does not first create a log file.
+	if tl.Template != "" || tl.TemplateFile != "" {
+		if err := validateTrafficLogTemplate(tl); err != nil {
+			return err
+		}
 	}
 
 	// Validate the effective sink set, not each section in isolation: a sink that
@@ -2147,6 +2178,38 @@ func (c *Config) validateTrafficLoggingConfig() error {
 		}
 	}
 
+	return nil
+}
+
+// TemplateFileRoot is the only directory a traffic_logging.template_file may be in. A template is
+// configuration, not a secret, so /secrets/gateway-runtime is not allowed: a JSON secret file would
+// otherwise be a valid template whose values are written into every log line.
+const TemplateFileRoot = "/etc/gateway-runtime"
+
+// TemplateFileAllowlist is the directories a template file is read from. It is a variable only so
+// tests can use a temporary directory.
+var TemplateFileAllowlist = []string{TemplateFileRoot}
+
+// The two template settings, as named in startup messages.
+const (
+	trafficLogTemplateSetting     = "traffic_logging.template"
+	trafficLogTemplateFileSetting = "traffic_logging.template_file"
+)
+
+// validateTrafficLogTemplate checks the template settings: only one of the two is set, and a
+// template file is inside TemplateFileRoot, can be read and is not too large. The template's
+// content is not checked here; the template parser checks it when the publisher is built. Each
+// message names the setting and never shows the file's content.
+func validateTrafficLogTemplate(tl TrafficLoggingConfig) error {
+	if tl.Template != "" && tl.TemplateFile != "" {
+		return fmt.Errorf("%s, %s: both are set; set only one", trafficLogTemplateSetting, trafficLogTemplateFileSetting)
+	}
+	if tl.TemplateFile != "" {
+		// The content is read again, and checked, when the publisher is built.
+		if _, err := configinterpolate.ReadAllowedFile(tl.TemplateFile, TemplateFileAllowlist, configinterpolate.DefaultMaxFileBytes); err != nil {
+			return fmt.Errorf("%s: %w", trafficLogTemplateFileSetting, err)
+		}
+	}
 	return nil
 }
 
