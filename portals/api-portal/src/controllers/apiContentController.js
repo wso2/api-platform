@@ -40,6 +40,21 @@ const yaml = require('../utils/yaml');
 const markdown = require('marked');
 const generateArray = (length) => Array.from({ length });
 
+// An MCP tools schema as { tools, resources, prompts }, from its stored JSON or YAML file.
+const parseMcpSchema = (schemaRow) => {
+    const content = schemaRow.file_content.toString(constants.CHARSET_UTF8);
+    const fileName = String(schemaRow.file_name || '').toLowerCase();
+    const parsed = fileName.endsWith('.yaml') || fileName.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
+    if (!Array.isArray(parsed)) {
+        return parsed;
+    }
+    return {
+        tools: parsed.filter(item => item.type === 'TOOL'),
+        resources: parsed.filter(item => item.type === 'RESOURCE'),
+        prompts: parsed.filter(item => item.type === 'PROMPT'),
+    };
+};
+
 const loadAPIs = async (req, res, next) => {
 
     const { orgName, viewName } = req.params;
@@ -308,23 +323,7 @@ const loadAPIContent = async (req, res, next) => {
                                 apiId
                             );
                             if (rawSchema) {
-                                const schemaString = rawSchema.file_content.toString(constants.CHARSET_UTF8);
-                                const schemaFileName = String(rawSchema.file_name || '').toLowerCase();
-                                let parsed;
-                                if (schemaFileName.endsWith('.yaml') || schemaFileName.endsWith('.yml')) {
-                                    parsed = yaml.load(schemaString);
-                                } else {
-                                    parsed = JSON.parse(schemaString);
-                                }
-                                if (Array.isArray(parsed)) {
-                                    schemaDefinition = {
-                                        tools: parsed.filter(item => item.type === 'TOOL'),
-                                        resources: parsed.filter(item => item.type === 'RESOURCE'),
-                                        prompts: parsed.filter(item => item.type === 'PROMPT'),
-                                    };
-                                } else {
-                                    schemaDefinition = parsed;
-                                }
+                                schemaDefinition = parseMcpSchema(rawSchema);
                             }
                         } catch (err) {
                             logger.error("Failed to load or parse schema definition", {
@@ -883,18 +882,10 @@ async function loadAPIMetaData(req, orgId, apiId, viewName) {
     if (metaData !== "") {
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
-        //replace image urls
-        // Use the handle (metaData.id), not the raw uuid — the /apis/{apiId}/assets
-        // endpoint resolves apiId via getIdExcludingType, which matches on `handle`.
-        // A uuid here never matches and the asset request 404s. This mirrors
-        // appendAPIImageURL (listing page), which already uses the handle.
-        // orgId is appended so the (public) image endpoint can resolve the view for
-        // anonymous visitors with no session — mirrors appendAPIImageURL and getOrgAsset.
+        // Image URLs use the handle (metaData.id), not the uuid: the asset routes resolve the handle.
         let images = metaData.apiImageMetadata;
         for (const key in images) {
-            let apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
-            images[key] = modifiedApiImageURL;
+            images[key] = util.apiImageUrl(orgId, metaData, images[key]);
         }
     }
     return metaData;
@@ -1208,6 +1199,7 @@ const loadAPIContentMd = async (req, res) => {
 
         // Load API definition
         let apiDefinition = null;
+        let definitionRow = null;
         let specHeading = 'OpenAPI Specification';
         const apiType = metaData?.type;
         try {
@@ -1222,8 +1214,8 @@ const loadAPIContentMd = async (req, res) => {
             const definitionDocType = apiType === constants.API_TYPE.MCP
                 ? constants.DOC_TYPES.SCHEMA_DEFINITION
                 : constants.DOC_TYPES.API_DEFINITION;
-            const raw = await apiFileDao.getDoc(definitionDocType, orgId, apiId, null);
-            if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
+            definitionRow = await apiFileDao.getDoc(definitionDocType, orgId, apiId, null);
+            if (definitionRow) apiDefinition = definitionRow.file_content.toString(constants.CHARSET_UTF8);
         } catch (defErr) {
             logger.warn('Could not load API definition for markdown', { orgId, apiId, error: defErr.message });
         }
@@ -1264,16 +1256,7 @@ const loadAPIContentMd = async (req, res) => {
         let schemaDefinition = null;
         if (apiType === constants.API_TYPE.MCP && apiDefinition) {
             try {
-                const parsed = JSON.parse(apiDefinition);
-                if (Array.isArray(parsed)) {
-                    schemaDefinition = {
-                        tools: parsed.filter(item => item.type === 'TOOL'),
-                        resources: parsed.filter(item => item.type === 'RESOURCE'),
-                        prompts: parsed.filter(item => item.type === 'PROMPT'),
-                    };
-                } else {
-                    schemaDefinition = parsed;
-                }
+                schemaDefinition = parseMcpSchema(definitionRow);
             } catch (parseErr) {
                 logger.warn('Could not parse MCP schema definition for markdown', { orgId, apiId, error: parseErr.message });
             }
