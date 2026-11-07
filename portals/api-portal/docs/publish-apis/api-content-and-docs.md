@@ -11,7 +11,7 @@ my-api-content.zip
 ├── web/                    # landing page and images (optional)
 │   ├── api-content.hbs     # landing page — Handlebars template
 │   │   OR
-│   ├── apiContent.md       # landing page — Markdown
+│   ├── api-content.md      # landing page — Markdown
 │   ├── api-icon.png        # API icon shown in the catalog card
 │   └── <other-images>      # images referenced from the landing page
 └── docs/                   # documentation pages (optional)
@@ -30,7 +30,7 @@ Each path in the ZIP gets one outcome, from the first rule that matches:
 | The only top-level entry is one folder other than `web/` or `docs/` (for example `my-api/web/…`) | The ZIP is read from inside that folder. A lone `web/` or `docs/` is never a wrapper |
 | A part of the path starts with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or it is under `__MACOSX/` | Ignored |
 | The same path appears more than once | Rejected |
-| `web/apiContent.md` or `web/api-content.hbs` | The landing page. No other name is read |
+| `web/api-content.md` or `web/api-content.hbs` | The landing page. No other name is read |
 | `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) | An image |
 | `docs/<name>.md` | A document of category `Other` |
 | `docs/<Category>/<name>.md` | A document of that category |
@@ -46,7 +46,7 @@ The `.md` extension is lowercase. If any path is rejected, the whole upload is r
   "errors": [
     { "message": "doc/: unknown top-level entry" },
     { "message": "docs/guide.pdf: documents must be Markdown (.md)" },
-    { "message": "web/style.css: web/ holds only apiContent.md, api-content.hbs and images" }
+    { "message": "web/style.css: web/ holds only api-content.md, api-content.hbs and images" }
   ]
 }
 ```
@@ -147,7 +147,7 @@ Available Handlebars variables:
 For simpler landing pages, a Markdown file works without any templating:
 
 ```markdown
-<!-- web/apiContent.md -->
+<!-- web/api-content.md -->
 ## Overview
 
 The Order API lets you create, retrieve, update, and cancel customer orders.

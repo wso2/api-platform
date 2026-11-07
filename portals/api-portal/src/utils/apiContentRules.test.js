@@ -167,7 +167,7 @@ describe('findDuplicateItems', () => {
         assert.deepStrictEqual(findDuplicateItems([
             { type: 'IMAGE', fileName: 'a.png', key: 'a' },
             { type: 'IMAGE', fileName: 'b.png', key: 'b' },
-            { type: 'MARKETING', fileName: 'apiContent.md' },
+            { type: 'MARKETING', fileName: 'api-content.md' },
         ]), []);
     });
 });
@@ -262,7 +262,7 @@ describe('isMarkdownDocName', () => {
 describe('classifyContentZip', () => {
     const REPEATED = 'appears more than once';
     const UNKNOWN = 'unknown top-level entry';
-    const WEB = 'web/ holds only apiContent.md, api-content.hbs and images';
+    const WEB = 'web/ holds only api-content.md, api-content.hbs and images';
     const NOT_MD = 'documents must be Markdown (.md)';
     const DEPTH = 'docs/ allows one category folder';
 
@@ -305,8 +305,8 @@ describe('classifyContentZip', () => {
             });
 
             test('row 2: a single wrapper folder is read from inside', () => {
-                assert.deepStrictEqual(accepted(['my-api/docs/A.md', 'my-api/web/apiContent.md'], kind),
-                    ['DOC_Other:A.md', 'MARKETING:apiContent.md']);
+                assert.deepStrictEqual(accepted(['my-api/docs/A.md', 'my-api/web/api-content.md'], kind),
+                    ['DOC_Other:A.md', 'MARKETING:api-content.md']);
                 assert.deepStrictEqual(classifyContentZip(['my-api/docs/A.md'], kind).items[0].path, 'my-api/docs/A.md');
             });
 
@@ -328,10 +328,10 @@ describe('classifyContentZip', () => {
             });
 
             test('row 4: the two landing page names, exactly', () => {
-                assert.deepStrictEqual(accepted(['web/apiContent.md', 'web/api-content.hbs'], kind),
-                    ['MARKETING:api-content.hbs', 'MARKETING:apiContent.md']);
-                assert.deepStrictEqual(rejected(['web/api-content.md', 'web/ApiContent.md'], kind),
-                    [`web/ApiContent.md: ${WEB}`, `web/api-content.md: ${WEB}`]);
+                assert.deepStrictEqual(accepted(['web/api-content.md', 'web/api-content.hbs'], kind),
+                    ['MARKETING:api-content.hbs', 'MARKETING:api-content.md']);
+                assert.deepStrictEqual(rejected(['web/apiContent.md', 'web/API-content.md'], kind),
+                    [`web/API-content.md: ${WEB}`, `web/apiContent.md: ${WEB}`]);
             });
 
             test('row 5: images by extension in any letter case', () => {

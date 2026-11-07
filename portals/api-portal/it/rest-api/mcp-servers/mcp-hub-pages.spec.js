@@ -46,7 +46,7 @@ const API_KEY_DEFINITION = JSON.stringify({
 });
 const CONTENT = [
     { name: 'web/api-icon.png', content: PNG_BYTES },
-    { name: 'web/apiContent.md', content: '# Weather MCP landing page' },
+    { name: 'web/api-content.md', content: '# Weather MCP landing page' },
     { name: 'docs/Guide.md', content: '# Guide' },
 ];
 

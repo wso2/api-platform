@@ -70,7 +70,7 @@ const docsZip = (names, folder = '') => createZip(names.map((name) => ({ name: `
 const link = (displayName, type = 'DOC_LINK') => [{ type, links: [{ displayName, url: 'https://example.com/guide' }] }];
 const getAsset = (handle, type, fileName, base = '/apis') =>
     client.as('publisher').get(`${base}/${handle}/assets?type=${type}&fileName=${encodeURIComponent(fileName)}`);
-const WEB_ONLY = 'web/ holds only apiContent.md, api-content.hbs and images';
+const WEB_ONLY = 'web/ holds only api-content.md, api-content.hbs and images';
 const rejectedEntries = (res) => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('COMMON_VALIDATION_ERROR');
@@ -544,7 +544,7 @@ describe('API content assets', () => {
 
     describe('one set of entry rules', () => {
         const validZip = (extra = []) => createZip([
-            { name: 'web/apiContent.md', content: '# Pets' },
+            { name: 'web/api-content.md', content: '# Pets' },
             { name: 'web/api-icon.png', content: PNG_BYTES },
             { name: 'docs/A.md', content: '# A' },
             { name: 'docs/How To/B.md', content: '# B' },
@@ -554,7 +554,7 @@ describe('API content assets', () => {
         it('stores each accepted entry as its row says', async () => {
             const api = await createApi();
             expect((await uploadContent('publisher', api.id, validZip(), { method: 'put' })).status).toBe(201);
-            expect((await getAsset(api.id, 'MARKETING', 'apiContent.md')).status).toBe(200);
+            expect((await getAsset(api.id, 'MARKETING', 'api-content.md')).status).toBe(200);
             expect((await getAsset(api.id, 'IMAGE', 'api-icon.png')).status).toBe(200);
             expect((await getAsset(api.id, 'DOC_Other', 'A.md')).status).toBe(200);
             expect((await getAsset(api.id, 'DOC_How To', 'B.md')).status).toBe(200);
@@ -618,8 +618,8 @@ describe('API content assets', () => {
 
         it('rejects the landing page under a name the portal does not read', async () => {
             const api = await createApi();
-            const res = await uploadContent('publisher', api.id, createZip([{ name: 'web/api-content.md', content: '# x' }]));
-            expect(rejectedEntries(res)).toEqual([`web/api-content.md: ${WEB_ONLY}`]);
+            const res = await uploadContent('publisher', api.id, createZip([{ name: 'web/apiContent.md', content: '# x' }]));
+            expect(rejectedEntries(res)).toEqual([`web/apiContent.md: ${WEB_ONLY}`]);
         });
     });
 

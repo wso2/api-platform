@@ -106,7 +106,7 @@ describe('Settings — MCP server wizard Assets step', () => {
         cy.get('#cfg-replace-content-confirm').should('be.visible').click();
         saved();
 
-        asset(handle, 'MARKETING', 'apiContent.md').its('status').should('eq', 200);
+        asset(handle, 'MARKETING', 'api-content.md').its('status').should('eq', 200);
         asset(handle, 'DOC_Other', 'Guide.md').its('status').should('eq', 200);
         asset(handle, 'SCHEMA_DEFINITION', 'definition.json').its('status').should('eq', 200);
     });

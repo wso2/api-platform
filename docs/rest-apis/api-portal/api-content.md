@@ -57,7 +57,7 @@ Each path in the ZIP gets one outcome, from the first rule that matches:
 - A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
   ignored.
 - A path that appears more than once is rejected.
-- `web/apiContent.md` and `web/api-content.hbs` are the landing page.
+- `web/api-content.md` and `web/api-content.hbs` are the landing page.
 - `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
   fills the slot named by its file name without the extension, unless `imageMetadata` names another;
   any image named `api-icon` is the thumbnail.
@@ -212,7 +212,7 @@ Each path in the ZIP gets one outcome, from the first rule that matches:
 - A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
   ignored.
 - A path that appears more than once is rejected.
-- `web/apiContent.md` and `web/api-content.hbs` are the landing page.
+- `web/api-content.md` and `web/api-content.hbs` are the landing page.
 - `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
   fills the slot named by its file name without the extension, unless `imageMetadata` names another;
   any image named `api-icon` is the thumbnail.

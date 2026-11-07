@@ -24,7 +24,7 @@ const PNG = '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890
 // A full content package: landing page, thumbnail and documents.
 export const contentPackage = () => ({
     contents: createZip([
-        { name: 'web/apiContent.md', content: '# Pets landing page' },
+        { name: 'web/api-content.md', content: '# Pets landing page' },
         { name: 'web/api-icon.png', content: Cypress.Buffer.from(PNG, 'hex') },
         { name: 'docs/Guide.md', content: '# Guide' },
         { name: 'docs/HowTo/Setup.md', content: '# Setup' },

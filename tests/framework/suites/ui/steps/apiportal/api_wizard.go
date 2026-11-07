@@ -97,7 +97,7 @@ func wizardZip(entries map[string]string) (playwright.InputFile, error) {
 
 func validWizardPackage() (playwright.InputFile, error) {
 	return wizardZip(map[string]string{
-		"web/apiContent.md":   "# Landing page\n",
+		"web/api-content.md":  "# Landing page\n",
 		"docs/Guide.md":       "# Guide\n",
 		"docs/HowTo/Setup.md": "# Setup\n",
 	})
@@ -372,7 +372,7 @@ func (u *Steps) wizardListsRejectedEntries(ctx context.Context) error {
 	if err := errorText.ToContainText("doc/: unknown top-level entry"); err != nil {
 		return err
 	}
-	if err := errorText.ToContainText("web/style.css: web/ holds only apiContent.md, api-content.hbs and images"); err != nil {
+	if err := errorText.ToContainText("web/style.css: web/ holds only api-content.md, api-content.hbs and images"); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#cfg-wizard-title")).ToHaveText("Edit API"); err != nil {

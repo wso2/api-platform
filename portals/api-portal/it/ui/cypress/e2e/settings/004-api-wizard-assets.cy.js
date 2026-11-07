@@ -163,7 +163,7 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#cfg-replace-content-modal').should('not.be.visible');
         saved();
 
-        asset(handle, 'MARKETING', 'apiContent.md').its('status').should('eq', 200);
+        asset(handle, 'MARKETING', 'api-content.md').its('status').should('eq', 200);
         asset(handle, 'IMAGE', 'api-icon.png').its('status').should('eq', 200);
         asset(handle, 'DOC_Other', 'Guide.md').its('status').should('eq', 200);
         asset(handle, 'DOC_HowTo', 'Setup.md').its('status').should('eq', 200);
@@ -191,7 +191,7 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#cfg-replace-content-modal').should('not.be.visible');
         cy.focused().should('have.id', 'cfg-wizard-next');
         asset(handle, 'DOC_Other', 'Old.md').its('status').should('eq', 200);
-        asset(handle, 'MARKETING', 'apiContent.md').its('status').should('eq', 404);
+        asset(handle, 'MARKETING', 'api-content.md').its('status').should('eq', 404);
 
         save();
         cy.get('#cfg-replace-content-confirm').should('have.text', 'Replace content').click();
@@ -206,7 +206,7 @@ describe('Settings — API wizard Assets step', () => {
         save();
         saved();
         asset(handle, 'DOC_Other', 'C.md').its('status').should('eq', 200);
-        asset(handle, 'MARKETING', 'apiContent.md').its('status').should('eq', 200);
+        asset(handle, 'MARKETING', 'api-content.md').its('status').should('eq', 200);
         asset(handle, 'IMAGE', 'api-icon.png').its('status').should('eq', 200);
     });
 
@@ -239,7 +239,7 @@ describe('Settings — API wizard Assets step', () => {
         save();
 
         cy.get('#wz-content-error').scrollIntoView().should('be.visible')
-            .and('have.text', 'doc/: unknown top-level entry\nweb/style.css: web/ holds only apiContent.md, api-content.hbs and images');
+            .and('have.text', 'doc/: unknown top-level entry\nweb/style.css: web/ holds only api-content.md, api-content.hbs and images');
         cy.get('#wz-content-chip').should('contain', 'content.zip').and('contain', 'Not uploaded');
         cy.get('#wz-content-choose').scrollIntoView().should('be.visible').and('have.text', 'Choose another file');
         cy.get('#wz-content-remove').should('not.be.visible');
@@ -253,7 +253,7 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#wz-content-error').should('not.be.visible');
         save();
         saved();
-        asset(handle, 'MARKETING', 'apiContent.md').its('status').should('eq', 200);
+        asset(handle, 'MARKETING', 'api-content.md').its('status').should('eq', 200);
         asset(handle, 'DOC_HowTo', 'Setup.md').its('status').should('eq', 200);
     });
 

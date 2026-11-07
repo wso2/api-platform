@@ -268,7 +268,7 @@ module.exports = {
     FILE_NAME: {
         MAIN: 'main.hbs',
         PAGE: 'page.hbs',
-        API_MD_CONTENT_FILE_NAME: 'apiContent.md',
+        API_MD_CONTENT_FILE_NAME: 'api-content.md',
         API_HBS_CONTENT_FILE_NAME: 'api-content.hbs',
         API_DOC_MD: 'api-doc.md',
         API_DOC_HBS: 'api-doc.hbs',

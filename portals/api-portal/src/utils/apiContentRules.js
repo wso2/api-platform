@@ -179,7 +179,7 @@ const ZIP_KIND = { CONTENT: 'content', ARTIFACT: 'artifact' };
 
 const ZIP_REJECTION = {
     UNKNOWN_TOP_LEVEL: 'unknown top-level entry',
-    WEB_FILE: 'web/ holds only apiContent.md, api-content.hbs and images',
+    WEB_FILE: 'web/ holds only api-content.md, api-content.hbs and images',
     NOT_MARKDOWN: 'documents must be Markdown (.md)',
     DOCS_DEPTH: 'docs/ allows one category folder',
     SECOND_METADATA: 'more than one metadata file',

@@ -74,8 +74,8 @@ test('a ZIP with only docs/ at the root is read as is, not as a wrapper', async 
 });
 
 test('a ZIP with only web/ at the root is read as is, not as a wrapper', async () => {
-    const items = await read([{ name: 'web/apiContent.md', content: '# Hi' }, { name: 'web/api-icon.png', content: 'png' }]);
-    assert.deepStrictEqual(names(items), ['IMAGE:api-icon.png', 'MARKETING:apiContent.md']);
+    const items = await read([{ name: 'web/api-content.md', content: '# Hi' }, { name: 'web/api-icon.png', content: 'png' }]);
+    assert.deepStrictEqual(names(items), ['IMAGE:api-icon.png', 'MARKETING:api-content.md']);
 });
 
 test('a single wrapper folder is unwrapped', async () => {
@@ -111,20 +111,20 @@ test('every entry the rules reject is listed, sorted, in one error', async () =>
     ]), rejectsWith([
         'docs/HowTo/v1/C.md: docs/ allows one category folder',
         'docs/guide.pdf: documents must be Markdown (.md)',
-        'web/about.html: web/ holds only apiContent.md, api-content.hbs and images',
-        'web/images/logo.png: web/ holds only apiContent.md, api-content.hbs and images',
-        'web/style.css: web/ holds only apiContent.md, api-content.hbs and images',
+        'web/about.html: web/ holds only api-content.md, api-content.hbs and images',
+        'web/images/logo.png: web/ holds only api-content.md, api-content.hbs and images',
+        'web/style.css: web/ holds only api-content.md, api-content.hbs and images',
     ]));
 });
 
 test('landing pages are read as text, images and documents as bytes', async () => {
     const items = await read([
-        { name: 'web/apiContent.md', content: '# Hi' },
+        { name: 'web/api-content.md', content: '# Hi' },
         { name: 'web/api-icon.png', content: 'png' },
         { name: 'docs/A.md', content: '# A' },
     ]);
     const byName = Object.fromEntries(items.map((item) => [item.fileName, item.content]));
-    assert.strictEqual(byName['apiContent.md'], '# Hi');
+    assert.strictEqual(byName['api-content.md'], '# Hi');
     assert.ok(Buffer.isBuffer(byName['api-icon.png']));
     assert.ok(Buffer.isBuffer(byName['A.md']));
 });
@@ -351,8 +351,8 @@ test('add rejects files the portal does not store with a 400 listing each, and s
         code: 'COMMON_VALIDATION_ERROR',
         message: 'Bad Request',
         errors: [
-            { message: 'web/app.js: web/ holds only apiContent.md, api-content.hbs and images' },
-            { message: 'web/style.css: web/ holds only apiContent.md, api-content.hbs and images' },
+            { message: 'web/app.js: web/ holds only api-content.md, api-content.hbs and images' },
+            { message: 'web/style.css: web/ holds only api-content.md, api-content.hbs and images' },
         ],
     });
     assert.strictEqual(stored.mock.callCount(), 0);
