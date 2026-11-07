@@ -46,7 +46,7 @@ import {
   type ApiCreationProgressStatus,
 } from './components/ApiCreationProgress';
 import { API_TYPES } from './uiConfig';
-import { ApiDesignerBanner } from './components/ApiDesignerBanner';
+// import { ApiDesignerBanner } from './components/ApiDesignerBanner';
 import type { ApiError } from '@/api/core/errors';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
@@ -571,7 +571,7 @@ const ApiCreationWizardContent = () => {
           </Stack>
         </Stack>
       </Box>
-      {step === 'apiType' && <ApiDesignerBanner />}
+      {/* {step === 'apiType' && <ApiDesignerBanner />} */}
     </Stack>
   );
 };

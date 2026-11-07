@@ -348,3 +348,24 @@ describe('ApiCreationWizard — a rejected create', () => {
     expect(screen.queryByLabelText(/Endpoint/)).not.toBeInTheDocument();
   });
 });
+
+describe('ApiCreationWizard — Back on the first step', () => {
+  it('is enabled and returns to the project overview', async () => {
+    const { user } = renderWithProviders(
+      <>
+        <ApiCreationWizard />
+        <LocationProbe />
+      </>,
+      { route, scope },
+    );
+
+    const back = screen.getByRole('button', { name: 'Back' });
+    expect(back).toBeEnabled();
+
+    await user.click(back);
+
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      routes.projectHome(scope.params.orgHandle, scope.params.projectHandler),
+    );
+  });
+});

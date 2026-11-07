@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { alpha, Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -51,7 +51,7 @@ import { LandingPageTab } from './components/LandingPageTab';
 import { PublicationLoadError } from './components/PublicationLoadError';
 import { PublicationVersionCard, type PublicationVersionTone } from './components/PublicationVersionCard';
 import { PublicationVersionToggle } from './components/PublicationVersionToggle';
-import { PublishActionsBar } from './components/PublishActionsBar';
+import { PublishActionsBar, PublishedActionsBar } from './components/PublishActionsBar';
 import { PublishedSpecificationTab } from './components/PublishedSpecificationTab';
 import { SpecificationTab } from './components/SpecificationTab';
 import { SubscriptionPlansTab } from './components/SubscriptionPlansTab';
@@ -312,7 +312,14 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   // Passed by the portal card that linked here; falls back to the handle on a
   // direct link or refresh, where there is no navigation state.
-  const portalName = (location.state as { portalName?: string } | null)?.portalName ?? apiPortalId;
+  const navState = location.state as {
+    portalName?: string;
+    /** 'all': select every document; 'default': select them all only when none is saved yet. */
+    documents?: 'all' | 'default';
+    /** Publish as soon as the page has loaded and the documents are selected. */
+    autoPublish?: boolean;
+  } | null;
+  const portalName = navState?.portalName ?? apiPortalId;
 
   const [tab, setTab] = useState<PublishTab>('details');
   // Which version the user picked; until they pick, the live version if there is one, else the draft.
@@ -405,7 +412,25 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   // A document deleted elsewhere is not listed but would still be submitted, so drop it quietly.
   // Read only while a selection is held; the Documentation tab shares this query.
   // Not while it is being read again: an older cached list may predate a document added since.
-  const documentsQuery = useAllApiDocuments(apiType, values.docIds.length > 0 ? apiHandler : undefined);
+  const [documentsPreselected, setDocumentsPreselected] = useState(navState?.documents === undefined);
+  const documentsQuery = useAllApiDocuments(
+    apiType,
+    values.docIds.length > 0 || (initialized && !documentsPreselected) ? apiHandler : undefined,
+  );
+  // Arriving from the portal card: every document is selected for publishing (once, never again after the user edits).
+  useEffect(() => {
+    if (documentsPreselected || !initialized || !documentsQuery.isSuccess || documentsQuery.isFetching) return;
+    // A list cut short can't be trusted to hold every document.
+    if (documentsQuery.data.list.length < documentsQuery.data.pagination.total) {
+      setDocumentsPreselected(true);
+      return;
+    }
+    if (navState?.documents === 'all' || values.docIds.length === 0) {
+      const ids = documentsQuery.data.list.map((doc) => doc.id);
+      setValues((current) => ({ ...current, docIds: [...new Set([...current.docIds, ...ids])] }));
+    }
+    setDocumentsPreselected(true);
+  }, [documentsPreselected, initialized, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, navState?.documents, values.docIds.length]);
   useEffect(() => {
     if (!initialized || !documentsQuery.isSuccess || documentsQuery.isFetching) return;
     // A list cut short can't tell a deleted document from one it never loaded.
@@ -418,6 +443,15 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const thumbnailUrl = useObjectUrl(thumbnail);
   const publishedThumbnailUrl = useObjectUrl(data.publishedThumbnail);
+
+  // "Publish" on the portal card: runs the normal publish once the page is seeded and its documents are selected.
+  const autoPublishStarted = useRef(false);
+  const publishHandlerRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  useEffect(() => {
+    if (!navState?.autoPublish || autoPublishStarted.current || !initialized || !documentsPreselected || busy) return;
+    autoPublishStarted.current = true;
+    void publishHandlerRef.current?.();
+  });
 
   if (data.isLoading) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
@@ -634,6 +668,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       backToPortalsList();
     });
 
+  // Latest publish handler, for the auto-publish effect above (which must run before the early returns).
+  publishHandlerRef.current = handlePublish;
+
   const confirmUnpublish = () => {
     setConfirmingUnpublish(false);
     return runAction('unpublishing', async () => {
@@ -841,6 +878,15 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
           {/* Reserves the bar's row while the published version is on screen, so the card doesn't resize. */}
           <Box sx={{ minHeight: ACTION_BAR_HEIGHT }}>
+            {showingPublished && isPublished && (
+              <PublishedActionsBar
+                canDeprecate={canDeprecate}
+                deprecating={pendingAction === 'deprecating'}
+                onDeprecate={() => setConfirmingDeprecate(true)}
+                onUnpublish={() => setConfirmingUnpublish(true)}
+                unpublishing={pendingAction === 'unpublishing'}
+              />
+            )}
             {!showingPublished && (
               <PublishActionsBar
                 canDeprecate={canDeprecate}

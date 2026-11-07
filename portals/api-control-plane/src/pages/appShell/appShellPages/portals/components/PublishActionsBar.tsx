@@ -218,3 +218,88 @@ export function PublishActionsBar({
     </Stack>
   );
 }
+
+export type PublishedActionsBarProps = {
+  /** Whether the live listing is in the published state — what enables Deprecate. */
+  canDeprecate: boolean;
+  deprecating: boolean;
+  onDeprecate: () => void;
+  onUnpublish: () => void;
+  unpublishing: boolean;
+};
+
+/**
+ * The action row under the Published version: a split button for the two things
+ * that act on the live listing. Unpublish is the main action; Deprecate sits
+ * behind the arrow and, like the draft's split button, is armed by picking it
+ * rather than fired. There is nothing to save or publish here, since this
+ * version can't be edited. Deprecate is disabled once the listing is already
+ * deprecated.
+ */
+export function PublishedActionsBar({
+  canDeprecate,
+  deprecating,
+  onDeprecate,
+  onUnpublish,
+  unpublishing,
+}: PublishedActionsBarProps) {
+  const intl = useIntl();
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [armed, setArmed] = useState<'unpublish' | 'deprecate'>('unpublish');
+  const busy = deprecating || unpublishing;
+  // Deprecate is unavailable once the listing is deprecated, so fall back to Unpublish.
+  const action = armed === 'deprecate' && canDeprecate ? 'deprecate' : 'unpublish';
+  const other = action === 'unpublish' ? 'deprecate' : 'unpublish';
+
+  return (
+    <Stack direction="row" sx={{ alignItems: 'stretch', justifyContent: 'flex-end' }}>
+      <ButtonGroup color={ACTION_COLOR[action]} disabled={busy} variant="contained">
+        <Button
+          onClick={action === 'unpublish' ? onUnpublish : onDeprecate}
+          startIcon={ACTION_ICON[action]}
+        >
+          {/* Both labels share one cell, so the button is always as wide as the longer. */}
+          <Box component="span" sx={{ display: 'inline-grid', textAlign: 'center' }}>
+            {(['unpublish', 'deprecate'] as const).map((label) => (
+              <Box
+                component="span"
+                key={label}
+                sx={{ gridArea: '1 / 1', visibility: label === action ? 'visible' : 'hidden' }}
+              >
+                <FormattedMessage {...messages[label]} />
+              </Box>
+            ))}
+          </Box>
+        </Button>
+        <Button
+          aria-label={intl.formatMessage(messages.moreActions)}
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+          sx={{ px: 0.5 }}
+        >
+          <ChevronDown size={16} />
+        </Button>
+      </ButtonGroup>
+
+      <Menu
+        anchorEl={menuAnchor}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        onClose={() => setMenuAnchor(null)}
+        open={Boolean(menuAnchor)}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+      >
+        <MenuItem
+          disabled={busy || (other === 'deprecate' && !canDeprecate)}
+          onClick={() => {
+            setMenuAnchor(null);
+            setArmed(other);
+          }}
+        >
+          <ListItemIcon>{ACTION_ICON[other]}</ListItemIcon>
+          <ListItemText>
+            <FormattedMessage {...messages[other]} />
+          </ListItemText>
+        </MenuItem>
+      </Menu>
+    </Stack>
+  );
+}
