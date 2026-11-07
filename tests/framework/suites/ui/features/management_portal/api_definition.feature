@@ -47,7 +47,7 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user enters "v1.0" as the "Version" in the Management Portal
     And the user enters "/${CTX:api}" as the "Context" in the Management Portal
     And the user enters "Pets imported in the console" as the "Description" in the Management Portal
-    And the user enters "http://testbench:3000" as the "Target URL" in the Management Portal
+    And the user enters "http://testbench:3000" as the "Endpoint" in the Management Portal
     And the REST API "${CTX:api}" created in the Management Portal is deleted after the scenario
     And the user clicks "Create" in the Management Portal
     Then the Management Portal shows "/pets/{petId}"
@@ -73,7 +73,7 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user enters "${CTX:api}" as the "Name" in the Management Portal
     And the user enters "v1.0" as the "Version" in the Management Portal
     And the user enters "/${CTX:api}" as the "Context" in the Management Portal
-    And the user enters "http://testbench:3000" as the "Target URL" in the Management Portal
+    And the user enters "http://testbench:3000" as the "Endpoint" in the Management Portal
     And the REST API "${CTX:api}" created in the Management Portal is deleted after the scenario
     And the user clicks "Create" in the Management Portal
     Then the Management Portal shows "/pets/{petId}"
