@@ -20,7 +20,10 @@ package main
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -975,4 +978,36 @@ func createTestStoredConfigMultipleOps(name, version, context string, apiPolicie
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 	}
+}
+
+func TestNewAuthentication(t *testing.T) {
+	t.Run("basic auth", func(t *testing.T) {
+		cfg := &config.Config{Controller: config.Controller{Auth: config.AuthConfig{
+			Basic: config.BasicAuth{Enabled: true, Users: []config.AuthUser{
+				{Username: "admin", Password: "admin123", Roles: []string{"admin"}},
+			}},
+		}}}
+
+		authConfig, middleware, err := newAuthentication(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+		require.NoError(t, err)
+		assert.True(t, authConfig.BasicAuth.Enabled)
+		require.NotNil(t, middleware)
+		rr := httptest.NewRecorder()
+		middleware(http.NotFoundHandler()).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, managementAPIBasePath+"/rest-apis", nil))
+		assert.Equal(t, http.StatusUnauthorized, rr.Code, "a request without credentials must be rejected")
+	})
+
+	t.Run("IDP without an audience is warned about; an unreachable key set fails", func(t *testing.T) {
+		cfg := &config.Config{Controller: config.Controller{Auth: config.AuthConfig{
+			IDP: config.IDPConfig{Enabled: true, JWKSURL: "https://idp.invalid/jwks", Issuer: "https://idp.invalid"},
+		}}}
+		var logs strings.Builder
+
+		_, middleware, err := newAuthentication(cfg, slog.New(slog.NewTextHandler(&logs, nil)))
+
+		assert.Contains(t, logs.String(), "no auth.idp.audience is configured")
+		require.ErrorContains(t, err, "failed to create auth middleware")
+		assert.Nil(t, middleware)
+	})
 }
