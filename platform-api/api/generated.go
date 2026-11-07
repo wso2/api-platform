@@ -2572,7 +2572,8 @@ type APIDocumentRequest struct {
 	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
 
 	// OtherTypeName Free-form qualifier used when `type` is `Other`. Stored and returned
-	// exactly as typed (no case conversion). Ignored for all other types.
+	// exactly as typed (no case conversion). Must not start with a dot or
+	// contain `..`, `/` or `\`. Ignored for all other types.
 	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
 
 	// Type Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,

@@ -5206,7 +5206,8 @@ export interface components {
             type: string;
             /**
              * @description Free-form qualifier used when `type` is `Other`. Stored and returned
-             *     exactly as typed (no case conversion). Ignored for all other types.
+             *     exactly as typed (no case conversion). Must not start with a dot or
+             *     contain `..`, `/` or `\`. Ignored for all other types.
              * @example FAQ
              */
             otherTypeName?: string;

@@ -181,14 +181,8 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 		return "", apperror.ValidationFailed.New("invalid document type")
 	}
 	if req.Type == constants.DocumentTypeOther {
-		trimmed := strings.TrimSpace(req.OtherTypeName)
-		if trimmed != "" {
-			if constants.ForbiddenOtherTypeNames[strings.ToLower(trimmed)] {
-				return "", apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
-			}
-			if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(trimmed) > maxName {
-				return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
- 			}
+		if err := validateOtherTypeName(strings.TrimSpace(req.OtherTypeName)); err != nil {
+			return "", err
 		}
 	}
 	req.Type = resolveStoredDocType(req.Type, req.OtherTypeName)
@@ -455,14 +449,8 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 			return apperror.ValidationFailed.New("invalid document type")
 		}
 		if newType == constants.DocumentTypeOther {
-			trimmed := strings.TrimSpace(req.OtherTypeName)
-			if trimmed != "" {
-				if constants.ForbiddenOtherTypeNames[strings.ToLower(trimmed)] {
-					return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
-				}
-				if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(trimmed) > maxName {
-					return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
-				}
+			if err := validateOtherTypeName(strings.TrimSpace(req.OtherTypeName)); err != nil {
+				return err
 			}
 		}
 		updatedDocument.Type = resolveStoredDocType(newType, req.OtherTypeName)
@@ -564,6 +552,24 @@ func validateDocFileName(name string) error {
 	}
 	if !isSafePathElement(name) || !strings.HasSuffix(name, ".md") {
 		return apperror.ValidationFailed.New("fileName must end in .md and must not start with a dot or contain '..'")
+	}
+	return nil
+}
+
+// validateOtherTypeName checks the name of an Other document's type, which becomes its folder
+// on the API Portal, so a saved name can be published. Empty means the default Other folder.
+func validateOtherTypeName(name string) error {
+	if name == "" {
+		return nil
+	}
+	if constants.ForbiddenOtherTypeNames[strings.ToLower(name)] {
+		return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
+	}
+	if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(name) > maxName {
+		return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
+	}
+	if !isSafePathElement(name) {
+		return apperror.ValidationFailed.New(`otherTypeName must not start with a dot or contain '..', '/' or '\'`)
 	}
 	return nil
 }
