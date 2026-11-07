@@ -160,25 +160,7 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 			slog.Any("error", err))
 	}
 
-	// Remove subscriptions for this API from the DB (subscriptions.api_id is not a FK).
-	// Guard nil to keep unit tests (that construct EventListener without NewEventListener) from panicking.
-	if l.db != nil {
-		if err := l.db.DeleteSubscriptionsForAPINotIn(entityID, nil); err != nil {
-			l.logger.Warn("Failed to delete subscriptions from database after API deletion",
-				slog.String("api_id", entityID),
-				slog.Any("error", err))
-		} else if l.subscriptionManager != nil {
-			// Refresh subscription xDS so policy engine drops tokens immediately.
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := l.subscriptionManager.UpdateSnapshot(ctx); err != nil {
-				l.logger.Warn("Failed to refresh subscription snapshot after API deletion",
-					slog.String("api_id", entityID),
-					slog.String("event_id", event.EventID),
-					slog.Any("error", err))
-			}
-		}
-	}
+	l.deleteSubscriptionsOf(entityID, event.EventID)
 
 	if existingConfig != nil && l.apiKeyXDSManager != nil {
 		apiName, apiVersion := extractAPINameVersion(existingConfig)
@@ -288,4 +270,29 @@ func extractAPINameVersion(cfg *models.StoredConfig) (string, string) {
 	}
 	// Use denormalized fields on StoredConfig
 	return cfg.DisplayName, cfg.Version
+}
+
+// deleteSubscriptionsOf removes a deleted artifact's subscriptions (subscriptions.api_id is not a FK)
+// and refreshes the subscription xDS so the policy engine drops their tokens.
+func (l *EventListener) deleteSubscriptionsOf(entityID, eventID string) {
+	if l.db == nil {
+		return
+	}
+	if err := l.db.DeleteSubscriptionsForAPINotIn(entityID, nil); err != nil {
+		l.logger.Warn("Failed to delete subscriptions from database after API deletion",
+			slog.String("api_id", entityID),
+			slog.Any("error", err))
+		return
+	}
+	if l.subscriptionManager == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := l.subscriptionManager.UpdateSnapshot(ctx); err != nil {
+		l.logger.Warn("Failed to refresh subscription snapshot after API deletion",
+			slog.String("api_id", entityID),
+			slog.String("event_id", eventID),
+			slog.Any("error", err))
+	}
 }

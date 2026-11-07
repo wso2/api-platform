@@ -74,11 +74,14 @@ func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error
 	return storage, nil
 }
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
-// previousSchemaVersion is the only older schema version this binary migrates
-// in place. Any other stored version is refused rather than skipped.
+// previousSchemaVersion is the oldest schema version this binary migrates in
+// place, through each later version. Any older stored version is refused.
 const previousSchemaVersion = 5
+
+// conditionsSchemaVersion is the version before subscription_plans.conditions.
+const conditionsSchemaVersion = 6
 
 // initSchema creates the database schema if it doesn't exist, migrates a
 // previous-version schema in place, and creates anything a current-version
@@ -99,11 +102,16 @@ func (s *SQLiteStorage) initSchema() error {
 			return fmt.Errorf("failed to create schema: %w", err)
 		}
 		s.logger.Info("Database schema initialized successfully")
-	case previousSchemaVersion:
+	case previousSchemaVersion, conditionsSchemaVersion:
 		s.logger.Info("Migrating database schema",
 			slog.Int("from_version", version), slog.Int("to_version", currentSchemaVersion))
-		if err := s.migrateSchemaV5ToV6(); err != nil {
-			return fmt.Errorf("failed to migrate schema from version %d to %d: %w", version, currentSchemaVersion, err)
+		if version == previousSchemaVersion {
+			if err := s.migrateSchemaV5ToV6(); err != nil {
+				return fmt.Errorf("failed to migrate schema from version %d to %d: %w", version, conditionsSchemaVersion, err)
+			}
+		}
+		if err := s.migrateSchemaV6ToV7(); err != nil {
+			return fmt.Errorf("failed to migrate schema from version %d to %d: %w", conditionsSchemaVersion, currentSchemaVersion, err)
 		}
 		s.logger.Info("Database schema migrated successfully")
 	case currentSchemaVersion:
@@ -148,6 +156,41 @@ func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	}
 	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`); err != nil {
 		return fmt.Errorf("failed to add certificates.key_algorithm column: %w", err)
+	}
+	if _, err := tx.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", conditionsSchemaVersion, err)
+	}
+	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", conditionsSchemaVersion)); err != nil {
+		return fmt.Errorf("failed to set schema version: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration: %w", err)
+	}
+	return nil
+}
+
+// migrateSchemaV6ToV7 adds the nullable subscription_plans.conditions column,
+// runs the schema to create anything else missing, and sets user_version to 7.
+func (s *SQLiteStorage) migrateSchemaV6ToV7() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin migration transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	// The table may already have the column: a version 5 database without the table gets it from
+	// the current schema in migrateSchemaV5ToV6.
+	var hasConditions int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('subscription_plans') WHERE name = 'conditions'`).Scan(&hasConditions); err != nil {
+		return fmt.Errorf("failed to read the subscription_plans columns: %w", err)
+	}
+	if hasConditions == 0 {
+		if _, err := tx.Exec(`ALTER TABLE subscription_plans ADD COLUMN conditions TEXT`); err != nil {
+			return fmt.Errorf("failed to add subscription_plans.conditions column: %w", err)
+		}
 	}
 	if _, err := tx.Exec(schemaSQL); err != nil {
 		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", currentSchemaVersion, err)

@@ -412,8 +412,7 @@ func (s *APIServer) ListAPIKeys(w http.ResponseWriter, r *http.Request, id strin
 	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
-// resolveAPIIDByHandle resolves an API identifier (deployment ID or handle) to the internal deployment ID.
-// It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
+// resolveAPIIDByHandle resolves a REST API or MCP proxy ID or handle to its internal deployment ID.
 // Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
 func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request, handle string, log *slog.Logger) (string, error) {
 	// First, try treating the input as a deployment ID.
@@ -430,27 +429,30 @@ func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request,
 			return "", fmt.Errorf("database error")
 		}
 	} else if cfgByID != nil {
-		if cfgByID.Kind != string(api.RestAPIKindRestApi) {
-			log.Warn("Configuration is not a REST API",
+		if !models.TakesSubscriptions(cfgByID.Kind) {
+			log.Warn("Configuration is not a REST API or MCP proxy",
 				slog.String("id", handle),
 				slog.String("kind", cfgByID.Kind))
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
-				Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
+				Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API or MCP proxy", handle),
 			})
 			return "", fmt.Errorf("invalid api kind")
 		}
 		return cfgByID.UUID, nil
 	}
 
-	// Fallback: resolve by handle (metadata.name)
+	// Fallback: resolve by handle (metadata.name).
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
+	if storage.IsNotFoundError(err) {
+		cfg, err = s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
+	}
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			log.Warn("API configuration not found", slog.String("handle_or_id", handle))
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
-				Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
+				Message: fmt.Sprintf("REST API or MCP proxy with identifier '%s' not found", handle),
 			})
 			return "", fmt.Errorf("api not found")
 		}
@@ -467,7 +469,7 @@ func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request,
 		log.Warn("API configuration not found", slog.String("handle_or_id", handle))
 		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
+			Message: fmt.Sprintf("REST API or MCP proxy with identifier '%s' not found", handle),
 		})
 		return "", fmt.Errorf("api not found")
 	}

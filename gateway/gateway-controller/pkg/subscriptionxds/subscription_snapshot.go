@@ -113,17 +113,18 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	}
 
 	// Map every identifier a subscription may be keyed by to the local (gateway) API
-	// UUID, for RestApi configs only. A bottom-up (DP->CP) synced API keeps its
+	// UUID, for the kinds that take subscriptions (REST APIs and MCP proxies). A
+	// bottom-up (DP->CP) synced API keeps its
 	// locally generated UUID and records the control-plane UUID as cp_artifact_id
 	localAPIIDs := make(map[string]string)
 	for _, cfg := range configs {
-		if cfg == nil || cfg.Kind != models.KindRestApi {
+		if cfg == nil || !models.TakesSubscriptions(cfg.Kind) {
 			continue
 		}
 		localAPIIDs[cfg.UUID] = cfg.UUID
 	}
 	for _, cfg := range configs {
-		if cfg == nil || cfg.Kind != models.KindRestApi || cfg.CPArtifactID == "" {
+		if cfg == nil || !models.TakesSubscriptions(cfg.Kind) || cfg.CPArtifactID == "" {
 			continue
 		}
 		if _, taken := localAPIIDs[cfg.CPArtifactID]; !taken {
@@ -136,7 +137,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	for apiID, list := range subsByAPI {
 		localAPIID, known := localAPIIDs[apiID]
 		if !known {
-			sm.logger.Warn("Skipping subscriptions for an API with no matching RestApi config",
+			sm.logger.Warn("Skipping subscriptions for an API with no matching REST API or MCP proxy config",
 				slog.String("api_id", apiID),
 				slog.Int("skipped_subscription_count", len(list)))
 			continue
@@ -149,6 +150,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 				APIId:             localAPIID,
 				SubscriptionToken: s.SubscriptionTokenHash,
 				Status:            string(s.Status),
+				SubscriptionId:    s.ID,
 			}
 			if s.ApplicationID != nil {
 				entry.ApplicationId = *s.ApplicationID
@@ -170,6 +172,8 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 				}
 				entry.StopOnQuotaReach = plan.StopOnQuotaReach
 				entry.PlanName = plan.PlanName
+				entry.PlanId = plan.ID
+				entry.Conditions = policyConditions(plan.EffectiveConditions())
 			}
 			if s.BillingCustomerID != nil {
 				entry.BillingCustomerId = s.BillingCustomerID
@@ -210,6 +214,15 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 }
 
 // createSubscriptionStateResource converts the state to an xDS resource.
+// policyConditions converts a plan's conditions to the policy engine's shape.
+func policyConditions(conditions []models.SubscriptionPlanCondition) []policyenginev1.SubscriptionCondition {
+	out := make([]policyenginev1.SubscriptionCondition, 0, len(conditions))
+	for _, c := range conditions {
+		out = append(out, policyenginev1.SubscriptionCondition{ID: c.ID, Type: c.Type, Params: c.Params})
+	}
+	return out
+}
+
 func createSubscriptionStateResource(state *policyenginev1.SubscriptionStateResource) (types.Resource, error) {
 	jsonBytes, err := json.Marshal(state)
 	if err != nil {

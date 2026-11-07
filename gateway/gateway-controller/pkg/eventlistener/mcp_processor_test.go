@@ -19,6 +19,8 @@
 package eventlistener
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -145,4 +147,54 @@ func TestHandleEvent_MCPDelete_RemovesLocalStateAndPolicy(t *testing.T) {
 
 	_, exists := runtimeStore.Get(runtimeKey)
 	assert.False(t, exists)
+}
+
+// Deleting an MCP proxy removes only its subscriptions and refreshes the subscription snapshot.
+func TestHandleEvent_MCPDelete_RemovesSubscriptions(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	cfg := testMCPStoredConfig("mcp-subs-id", "subs-mcp", "Subs MCP", "v1.0.0", models.StateDeployed, nil)
+	require.NoError(t, store.Add(cfg))
+	for _, sub := range []*models.Subscription{
+		{ID: "sub-mcp", APIID: cfg.UUID, SubscriptionToken: "mcp-token", Status: models.SubscriptionStatusActive},
+		{ID: "sub-other", APIID: "other-api", SubscriptionToken: "other-token", Status: models.SubscriptionStatusActive},
+	} {
+		require.NoError(t, db.SaveSubscription(sub))
+	}
+	snapshots := &mockSubscriptionSnapshotUpdater{}
+	listener := &EventListener{store: store, db: db, subscriptionManager: snapshots, logger: newTestLogger()}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeMCPProxy, Action: "DELETE", EntityID: cfg.UUID, EventID: "corr-mcp-subs",
+	})
+
+	left, err := db.ListSubscriptionsByAPI(cfg.UUID, "", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, left)
+	other, err := db.ListSubscriptionsByAPI("other-api", "", nil, nil)
+	require.NoError(t, err)
+	assert.Len(t, other, 1)
+	assert.Equal(t, 1, snapshots.callCount)
+}
+
+type failingSnapshotUpdater struct{ calls int }
+
+func (f *failingSnapshotUpdater) UpdateSnapshot(context.Context) error {
+	f.calls++
+	return errors.New("snapshot unavailable")
+}
+
+// A failed delete skips the snapshot refresh; a failed refresh is only logged.
+func TestDeleteSubscriptionsOf_Failures(t *testing.T) {
+	(&EventListener{logger: newTestLogger()}).deleteSubscriptionsOf("api-1", "evt")
+
+	closed := setupSQLiteDBForEventListenerTests(t)
+	snapshots := &mockSubscriptionSnapshotUpdater{}
+	require.NoError(t, closed.Close())
+	(&EventListener{db: closed, subscriptionManager: snapshots, logger: newTestLogger()}).deleteSubscriptionsOf("api-1", "evt")
+	assert.Zero(t, snapshots.callCount)
+
+	failing := &failingSnapshotUpdater{}
+	(&EventListener{db: setupSQLiteDBForEventListenerTests(t), subscriptionManager: failing, logger: newTestLogger()}).deleteSubscriptionsOf("api-1", "evt")
+	assert.Equal(t, 1, failing.calls)
 }

@@ -575,6 +575,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/mcp/mcp_resolver.feature
+      - name: mcp-subscriptions
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_subscriptions.feature
       # No version gate: a session surviving the gateway is behaviour every supported release
       # has, and the era a proxy declares is what these scenarios vary instead.
       - name: mcp-legacy-upstream

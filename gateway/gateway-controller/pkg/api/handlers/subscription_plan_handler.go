@@ -19,6 +19,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -54,6 +55,23 @@ func validateThrottleLimits(count *int, unit *string) error {
 	}
 }
 
+// requestConditions converts conditions from a request body and validates them.
+func requestConditions(in []api.SubscriptionPlanCondition) ([]models.SubscriptionPlanCondition, error) {
+	conditions := make([]models.SubscriptionPlanCondition, 0, len(in))
+	for _, c := range in {
+		params, err := json.Marshal(c.Params)
+		if err != nil {
+			return nil, fmt.Errorf("invalid condition params: %w", err)
+		}
+		id := ""
+		if c.Id != nil {
+			id = *c.Id
+		}
+		conditions = append(conditions, models.SubscriptionPlanCondition{ID: id, Type: string(c.Type), Params: params})
+	}
+	return models.NormalizeConditions(conditions)
+}
+
 // CreateSubscriptionPlan implements ServerInterface.CreateSubscriptionPlan (POST /subscription-plans)
 func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
 	log := middleware.GetLogger(r, s.logger)
@@ -83,6 +101,18 @@ func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 		return
+	}
+	var conditions []models.SubscriptionPlanCondition
+	if req.Conditions != nil {
+		if req.ThrottleLimitCount != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "send conditions or throttleLimitCount and throttleLimitUnit, not both"})
+			return
+		}
+		var err error
+		if conditions, err = requestConditions(*req.Conditions); err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			return
+		}
 	}
 
 	status := models.SubscriptionPlanStatusActive
@@ -116,6 +146,10 @@ func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 	}
 	if req.ExpiryTime != nil {
 		plan.ExpiryTime = req.ExpiryTime
+	}
+	if conditions != nil {
+		plan.Conditions = conditions
+		plan.SetThrottleLimitFromConditions()
 	}
 
 	if err := s.getSubscriptionResourceService().SaveSubscriptionPlan(plan, correlationID, log); err != nil {
@@ -231,6 +265,24 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 	// plan unlimited.
 	_, countSent := fields["throttleLimitCount"]
 	_, unitSent := fields["throttleLimitUnit"]
+	_, conditionsSent := fields["conditions"]
+	if conditionsSent && (countSent || unitSent) {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "send conditions or throttleLimitCount and throttleLimitUnit, not both"})
+		return
+	}
+	if conditionsSent {
+		if req.Conditions == nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "conditions must be an array; send [] for a plan with no conditions"})
+			return
+		}
+		conditions, err := requestConditions(*req.Conditions)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			return
+		}
+		updated.Conditions = conditions
+		updated.SetThrottleLimitFromConditions()
+	}
 	if countSent || unitSent {
 		countCleared := countSent && req.ThrottleLimitCount == nil
 		unitCleared := unitSent && (req.ThrottleLimitUnit == nil || *req.ThrottleLimitUnit == "")
@@ -258,6 +310,23 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 			updated.ThrottleLimitCount = &count
 			updated.ThrottleLimitUnit = unitStr
 		}
+		// A plan with conditions keeps them: the throttle limit replaces only its request-count condition.
+		if updated.Conditions != nil {
+			unit := ""
+			if updated.ThrottleLimitUnit != nil {
+				unit = *updated.ThrottleLimitUnit
+			}
+			stop := updated.StopOnQuotaReach
+			if req.StopOnQuotaReach != nil {
+				stop = *req.StopOnQuotaReach
+			}
+			updated.Conditions = models.WithThrottleLimit(updated.Conditions, updated.ThrottleLimitCount, unit, stop)
+		}
+	}
+
+	// stopOnQuotaReach alone also sets the request-count condition's onExceed, keeping its windows.
+	if req.StopOnQuotaReach != nil && !conditionsSent && !countSent && !unitSent && updated.Conditions != nil {
+		updated.Conditions = models.WithOnExceed(updated.Conditions, *req.StopOnQuotaReach)
 	}
 
 	// Omitted expiryTime stays unchanged; an explicit null removes it.
@@ -343,5 +412,16 @@ func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionP
 		st := api.SubscriptionPlanResponseStatus(plan.Status)
 		resp.Status = &st
 	}
+	conditions := make([]api.SubscriptionPlanCondition, 0)
+	for _, c := range plan.EffectiveConditions() {
+		var params map[string]interface{}
+		_ = json.Unmarshal(c.Params, &params)
+		if params == nil {
+			params = map[string]interface{}{}
+		}
+		id := c.ID
+		conditions = append(conditions, api.SubscriptionPlanCondition{Id: &id, Type: api.SubscriptionPlanConditionType(c.Type), Params: params})
+	}
+	resp.Conditions = &conditions
 	return resp
 }

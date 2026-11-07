@@ -1210,6 +1210,53 @@ Details of an API key
 |status|string|true|none|none|
 |message|string|true|none|none|
 
+## SubscriptionPlanCondition
+
+<a id="schemasubscriptionplancondition"></a>
+<a id="schema_SubscriptionPlanCondition"></a>
+<a id="tocSsubscriptionplancondition"></a>
+<a id="tocssubscriptionplancondition"></a>
+
+```json
+{
+  "id": "requests",
+  "type": "request-count",
+  "params": {
+    "limits": [
+      {
+        "count": 100,
+        "timeAmount": 1,
+        "timeUnit": "MINUTE"
+      }
+    ],
+    "onExceed": "reject"
+  }
+}
+
+```
+
+One condition of a subscription plan. A built-in condition (request-count, tool-call-count,
+token-count) has the id its type fixes (requests, tool-calls, tokens) and its limits as params:
+{"limits": [{"count", "timeAmount", "timeUnit"}], "onExceed", "tokenType"}, with timeUnit one of
+MINUTE, HOUR, DAY or MONTH. A custom condition has an id of its own and key-value pairs as params.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|none|
+|type|string|true|none|none|
+|params|object|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|request-count|
+|type|tool-call-count|
+|type|token-count|
+|type|custom|
+
 ## SubscriptionPlanCreateRequest
 
 <a id="schemasubscriptionplancreaterequest"></a>
@@ -1224,6 +1271,22 @@ Details of an API key
   "stopOnQuotaReach": true,
   "throttleLimitCount": 1000,
   "throttleLimitUnit": "Hour",
+  "conditions": [
+    {
+      "id": "requests",
+      "type": "request-count",
+      "params": {
+        "limits": [
+          {
+            "count": 100,
+            "timeAmount": 1,
+            "timeUnit": "MINUTE"
+          }
+        ],
+        "onExceed": "reject"
+      }
+    }
+  ],
   "expiryTime": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
 }
@@ -1239,6 +1302,7 @@ Details of an API key
 |stopOnQuotaReach|boolean|false|none|none|
 |throttleLimitCount|integer|false|none|none|
 |throttleLimitUnit|string|false|none|none|
+|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most<br>one condition of each built-in type (request-count, tool-call-count, token-count) and any<br>number of custom conditions. Send either conditions or the throttle limit fields, not both.|
 |expiryTime|string(date-time)|false|none|none|
 |status|string|false|none|none|
 
@@ -1267,6 +1331,22 @@ Details of an API key
   "stopOnQuotaReach": true,
   "throttleLimitCount": 0,
   "throttleLimitUnit": "Min",
+  "conditions": [
+    {
+      "id": "requests",
+      "type": "request-count",
+      "params": {
+        "limits": [
+          {
+            "count": 100,
+            "timeAmount": 1,
+            "timeUnit": "MINUTE"
+          }
+        ],
+        "onExceed": "reject"
+      }
+    }
+  ],
   "expiryTime": "2019-08-24T14:15:22Z",
   "status": "ACTIVE"
 }
@@ -1284,6 +1364,7 @@ Partial update. Fields that are omitted are left unchanged.
 |stopOnQuotaReach|boolean|false|none|none|
 |throttleLimitCount|integer¦null|false|none|Set together with throttleLimitUnit. Send an explicit null for both fields to remove the<br>limit, which makes the plan unlimited.|
 |throttleLimitUnit|string¦null|false|none|Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.|
+|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most<br>one condition of each built-in type (request-count, tool-call-count, token-count) and any<br>number of custom conditions. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or<br>the throttle limit fields, not both. The throttle limit fields alone change only the<br>request-count condition.|
 |expiryTime|string(date-time)¦null|false|none|Send an explicit null to remove the expiry time.|
 |status|string|false|none|none|
 
@@ -1313,6 +1394,22 @@ Partial update. Fields that are omitted are left unchanged.
   "stopOnQuotaReach": true,
   "throttleLimitCount": 0,
   "throttleLimitUnit": "string",
+  "conditions": [
+    {
+      "id": "requests",
+      "type": "request-count",
+      "params": {
+        "limits": [
+          {
+            "count": 100,
+            "timeAmount": 1,
+            "timeUnit": "MINUTE"
+          }
+        ],
+        "onExceed": "reject"
+      }
+    }
+  ],
   "expiryTime": "2019-08-24T14:15:22Z",
   "gatewayId": "string",
   "status": "ACTIVE",
@@ -1332,6 +1429,7 @@ Partial update. Fields that are omitted are left unchanged.
 |stopOnQuotaReach|boolean|false|none|none|
 |throttleLimitCount|integer|false|none|none|
 |throttleLimitUnit|string|false|none|none|
+|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions. A plan saved before conditions shows its throttle limit as a<br>request-count condition. The throttle limit fields are the plan's single limit, for<br>subscription-validation v1.|
 |expiryTime|string(date-time)|false|none|none|
 |gatewayId|string|false|none|none|
 |status|string|false|none|none|
@@ -1362,6 +1460,22 @@ Partial update. Fields that are omitted are left unchanged.
       "stopOnQuotaReach": true,
       "throttleLimitCount": 0,
       "throttleLimitUnit": "string",
+      "conditions": [
+        {
+          "id": "requests",
+          "type": "request-count",
+          "params": {
+            "limits": [
+              {
+                "count": 100,
+                "timeAmount": 1,
+                "timeUnit": "MINUTE"
+              }
+            ],
+            "onExceed": "reject"
+          }
+        }
+      ],
       "expiryTime": "2019-08-24T14:15:22Z",
       "gatewayId": "string",
       "status": "ACTIVE",
@@ -1771,6 +1885,7 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |policies|[[Policy](#schemapolicy)]|false|none|List of MCP Proxy level policies applied|
+|subscriptionPlans|[string]|false|none|Names of the subscription plans this MCP proxy offers. A subscription to the proxy must use one of them. When empty, any active plan can be used.|
 |faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request fails, over the error response. Applies to every operation.<br><br>Each entry is labelled with the source of the failure, so an entry that should see only some failures narrows with executionCondition.|
 |tools|[[MCPTool](#schemamcptool)]|false|none|none|
 |resources|[[MCPResource](#schemamcpresource)]|false|none|none|
