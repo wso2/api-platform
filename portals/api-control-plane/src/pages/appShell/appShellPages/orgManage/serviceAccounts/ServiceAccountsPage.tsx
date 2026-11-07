@@ -17,6 +17,7 @@
  */
 
 import { Fragment, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Button,
   Chip,
@@ -64,10 +65,12 @@ import {
 import { useApiScope } from '@/api/core/scope';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { ServiceAccountsIllustration } from '@/components/illustrations/ServiceAccountsIllustration';
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useFormatters } from '@/i18n/useFormatters';
 import { Can } from '@/permissions';
+import { routes } from '@/routes/paths';
 import { CredentialsDialog } from './components/CredentialsDialog';
 import { ServiceAccountFormDialog } from './components/ServiceAccountFormDialog';
 import { TestTokenDialog } from './components/TestTokenDialog';
@@ -146,7 +149,8 @@ const messages = defineMessages({
   columnLastUsed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.columnLastUsed',
     defaultMessage: 'Last token issued',
-    description: 'Column header. The server records when a token was last issued, not when one was last used.',
+    description:
+      'Column header. The server records when a token was last issued, not when one was last used.',
   },
   columnActions: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.columnActions',
@@ -312,18 +316,28 @@ export function ServiceAccountsPage() {
 
 function ServiceAccountList() {
   const intl = useIntl();
+  const navigate = useNavigate();
+  const { org } = useApiScope();
+  const openCreate = () => navigate(routes.serviceAccountCreate(org));
   const { notify } = useNotifications();
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
   const term = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
-  const accountsQuery = useServiceAccounts({ limit: PAGE_SIZE, offset, ...(term ? { query: term } : {}) });
+  const accountsQuery = useServiceAccounts({
+    limit: PAGE_SIZE,
+    offset,
+    ...(term ? { query: term } : {}),
+  });
   const rolesQuery = useRoles();
   const updateMutation = useUpdateServiceAccount();
   const regenerateMutation = useRegenerateServiceAccountSecret();
   const deleteMutation = useDeleteServiceAccount();
-  const [formTarget, setFormTarget] = useState<'create' | ServiceAccount | null>(null);
+  const [formTarget, setFormTarget] = useState<ServiceAccount | null>(null);
   const [credentials, setCredentials] = useState<ServiceAccountCredentials | null>(null);
-  const [tokenTarget, setTokenTarget] = useState<{ account: ServiceAccount; secret?: string } | null>(null);
+  const [tokenTarget, setTokenTarget] = useState<{
+    account: ServiceAccount;
+    secret?: string;
+  } | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
 
   // A delete (here or by another admin) can empty the page being shown; step
@@ -392,12 +406,21 @@ function ServiceAccountList() {
   const confirmMessages = confirm
     ? {
         delete: { body: messages.deleteBody, label: messages.delete, title: messages.deleteTitle },
-        disable: { body: messages.disableBody, label: messages.disable, title: messages.disableTitle },
-        regenerate: { body: messages.regenerateBody, label: messages.regenerate, title: messages.regenerateTitle },
+        disable: {
+          body: messages.disableBody,
+          label: messages.disable,
+          title: messages.disableTitle,
+        },
+        regenerate: {
+          body: messages.regenerateBody,
+          label: messages.regenerate,
+          title: messages.regenerateTitle,
+        },
       }[confirm.kind]
     : null;
 
-  const confirmBusy = updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending;
+  const confirmBusy =
+    updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending;
 
   // Rendered in every branch, under one key so React keeps it (and each open
   // dialog's state) when a list refetch reloads or fails.
@@ -405,8 +428,8 @@ function ServiceAccountList() {
     <Fragment key="dialogs">
       {formTarget !== null && (
         <ServiceAccountFormDialog
-          account={formTarget === 'create' ? null : formTarget}
-          key={formTarget === 'create' ? 'create' : formTarget.id}
+          account={formTarget}
+          key={formTarget.id}
           onClose={() => setFormTarget(null)}
           onCreated={(result) => {
             setFormTarget(null);
@@ -500,7 +523,7 @@ function ServiceAccountList() {
         </PageTitle.SubHeader>
         {!isFirstRun && (
           <PageTitle.Actions>
-            <Button onClick={() => setFormTarget('create')} startIcon={<Plus size={18} />} variant="contained">
+            <Button onClick={openCreate} startIcon={<Plus size={18} />} variant="contained">
               <FormattedMessage {...messages.create} />
             </Button>
           </PageTitle.Actions>
@@ -512,11 +535,12 @@ function ServiceAccountList() {
           actionIcon={<Plus size={18} />}
           actionLabel={intl.formatMessage(messages.create)}
           description={intl.formatMessage(messages.emptyBody)}
-          onAction={() => setFormTarget('create')}
+          illustration={<ServiceAccountsIllustration />}
+          onAction={openCreate}
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (
-        <Stack spacing={2.5}>
+        <Stack spacing={2.5} sx={{ mt: 2 }}>
           <SearchBar
             fullWidth
             onChange={(event) => {
@@ -646,9 +670,12 @@ function ServiceAccountRow({
             {account.displayName}
           </Link>
           <Tooltip
-            title={intl.formatMessage(copied ? messages.clientIdCopied : messages.copyClientIdTooltip, {
-              clientId: account.clientId,
-            })}
+            title={intl.formatMessage(
+              copied ? messages.clientIdCopied : messages.copyClientIdTooltip,
+              {
+                clientId: account.clientId,
+              },
+            )}
           >
             <IconButton
               aria-label={intl.formatMessage(messages.copyClientId, { name: account.displayName })}

@@ -24,6 +24,7 @@ import { ApiDesignerCanvasIllustration } from './ApiDesignerCanvasIllustration';
 import { DocumentsIllustration } from './DocumentsIllustration';
 import { PortalPublishIllustration } from './PortalPublishIllustration';
 import { ReadyToConnectIllustration } from './ReadyToConnectIllustration';
+import { ServiceAccountsIllustration } from './ServiceAccountsIllustration';
 
 type ObserverCallback = (entries: { contentRect: { width: number } }[]) => void;
 
