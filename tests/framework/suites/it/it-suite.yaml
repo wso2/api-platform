@@ -1023,6 +1023,21 @@ blocks:
         features:
           - features/ai-workspace/llm-providers/deploy.feature
         tags: "~@known-issue"
+      # Scenarios GENAPP (scenarios/GENAPP.yaml): application key mappings and associations. Runs on every
+      # platform-api database: the mappings and associations are the control plane's store.
+      - name: applications
+        features:
+          - features/management-portal/applications/key_mappings.feature
+          - features/management-portal/applications/associations.feature
+        tags: "gateway-version>=1.2.0;~@known-issue"
+      # GENAPP-001 and 003 read the key's application from analytics. Gateway 1.1.0 never puts it there:
+      # its api-key-auth policy (v1.0.3) does not publish it, and its controller pushes the key as it was
+      # before the mapping changed.
+      - name: applications-1.1.0
+        features:
+          - features/management-portal/applications/key_mappings.feature
+          - features/management-portal/applications/associations.feature
+        tags: "gateway-version<1.2.0;~@known-issue && ~@GENAPP-001 && ~@GENAPP-003"
 
   # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
   # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the
