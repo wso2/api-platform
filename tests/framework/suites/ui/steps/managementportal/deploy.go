@@ -245,8 +245,9 @@ func (s *Steps) closeDrawer(ctx context.Context) error {
 }
 
 // statusSettleTimeout outlasts the gateway's acknowledgement plus the console's next deployment
-// poll, which runs about 2, 5, 9.5, 16, 26 and 42 seconds after each action.
-const statusSettleTimeout = 45_000
+// poll, which runs about 2, 5, 9.5, 16, 26 and 42 seconds after each action. A later
+// acknowledgement is a slow gateway, not a settle the test should wait out.
+const statusSettleTimeout = 50_000
 
 // deploymentStatusBecomes reads the status bar of an expanded gateway card: Active for a
 // live deployment, Suspended for an undeployed one.
