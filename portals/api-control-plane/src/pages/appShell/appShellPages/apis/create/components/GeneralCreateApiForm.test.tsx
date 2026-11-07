@@ -64,6 +64,14 @@ beforeEach(() => {
 });
 
 describe('GeneralCreateApiForm — initial values', () => {
+  it('shows an example placeholder instead of pre-filled text in the description', () => {
+    renderForm({ displayName: 'Untitled API' });
+
+    const description = screen.getByLabelText(/Description/);
+    expect(description).toHaveValue('');
+    expect(description).toHaveAttribute('placeholder', expect.stringMatching(/^Ex: /));
+  });
+
   it('explains that the scratch backend is a placeholder until it is replaced', async () => {
     const { user } = renderForm({
       displayName: 'Untitled API',

@@ -788,6 +788,30 @@
     "defaultMessage": "Spectral rules passed",
     "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
   },
+  "apiControlPlane.components.DocumentsIllustration.added": {
+    "defaultMessage": "Added",
+    "description": "Badge on the sample document in the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.count": {
+    "defaultMessage": "2 documents",
+    "description": "Footer count in the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.sampleTitle": {
+    "defaultMessage": "Getting started",
+    "description": "Name of the sample document that drops into the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.subtitle": {
+    "defaultMessage": "Guides, samples and support",
+    "description": "Subheading of the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.title": {
+    "defaultMessage": "API documents",
+    "description": "Heading of the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.visible": {
+    "defaultMessage": "Visible to developers",
+    "description": "Footer of the animated documents preview."
+  },
   "apiControlPlane.components.ErrorFallback.action.goHome": {
     "defaultMessage": "Go to console home",
     "description": "Leaves the failing page for the console landing page. Escapes a page that fails every time it is opened."
@@ -3306,6 +3330,18 @@
     "defaultMessage": "Deprecated {time}",
     "description": "Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as \"2 days ago\"."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsIncomplete": {
+    "defaultMessage": "This API has too many documents to attach them all automatically. Pick the ones to publish on the Documentation tab.",
+    "description": "Shown when the API’s document list was cut short, so nothing was preselected and nothing was published automatically."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsLoadFailed": {
+    "defaultMessage": "The API’s documents could not be loaded, so they are not attached yet. Publishing is paused until they load.",
+    "description": "Shown when the portal card sent the user here to publish with every document, and listing them failed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsRetry": {
+    "defaultMessage": "Retry",
+    "description": "Button reloading the API’s documents after a failed load."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta": {
     "defaultMessage": "Edited {time}",
     "description": "Banner byline. {time} is a relative time such as \"5 minutes ago\"."
@@ -3572,6 +3608,14 @@
     "defaultMessage": "Go to Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.moreActions": {
+    "defaultMessage": "More publish options",
+    "description": "Accessible label for the arrow of the Publish split button, which opens its other action."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publish": {
+    "defaultMessage": "Publish",
+    "description": "Split button action publishing this API to this portal straight away, with all its documents attached and no subscription plan selected."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
     "defaultMessage": "Status",
     "description": "Row label for the API's publication status on this portal."
@@ -3636,6 +3680,14 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",
     "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesEmpty": {
+    "defaultMessage": "No resources to show. Fix the definition on the left to see them here.",
+    "description": "Shown in the resources pane when the definition can't be read or has no paths."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesTitle": {
+    "defaultMessage": "Resources",
+    "description": "Heading of the pane listing the definition's operations, beside the editor."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
     "defaultMessage": "Clear all"
