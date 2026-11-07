@@ -4172,8 +4172,6 @@ func TestMetadataFieldAwaitToleratesOnlyTheEarlierState(t *testing.T) {
 
 	require.NoError(t, metadataFieldAwait(unmapped, "applicationName", true, ""))
 	require.True(t, retry.IsTransient(metadataFieldAwait(&mapped, "applicationName", true, "")))
-	require.ErrorContains(t, metadataFieldAwait(unmapped, "applicationName", true, "x"), "takes a value unless")
-	require.ErrorContains(t, metadataFieldAwait(unmapped, "applicationName", false, ""), "takes a value unless")
 }
 
 func TestAnalyticsCompanyIDAssertions(t *testing.T) {

@@ -2591,6 +2591,10 @@ func (g *Gateway) sendUntilAnalyticsMetadata(ctx context.Context, method, path, 
 	if err != nil {
 		return err
 	}
+	// Checked before the first send: the request may change state.
+	if (no != "") == (wanted != "") {
+		return fmt.Errorf("an analytics metadata wait takes a value unless it waits for the field to be absent")
+	}
 	content, err := stepscommon.Expand(ctx, body.Content)
 	if err != nil {
 		return err
@@ -2623,9 +2627,6 @@ func (g *Gateway) sendUntilAnalyticsMetadata(ctx context.Context, method, path, 
 // wanted value (or is absent, when absent), tolerated while the event still shows the earlier
 // state, and an error for any other value, which the change cannot explain.
 func metadataFieldAwait(event *analyticsEvent, field string, absent bool, want string) error {
-	if absent == (want != "") {
-		return fmt.Errorf("an analytics metadata wait takes a value unless it waits for the field to be absent")
-	}
 	value, present := traverseJSON(event.Metadata, field)
 	got := fmt.Sprintf("%v", value)
 	switch {

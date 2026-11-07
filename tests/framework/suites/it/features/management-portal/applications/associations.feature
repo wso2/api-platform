@@ -130,7 +130,7 @@ Feature: LLM providers and LLM proxies are associated with applications
   # The response to adding associations should list the application's associations, as the listing
   # does. It lists none, though its pagination counts them: the service windows the list with
   # limit -1, which the pagination helper treats as an empty window (#4117).
-  @GENAPP-004 @known-issue @type:regression
+  @known-issue @type:regression
   Scenario: The response to associating a provider lists the application's associations
     When I send a "POST" request to the control plane at "/applications/${CTX:app}/associations" with body:
       """
@@ -144,7 +144,7 @@ Feature: LLM providers and LLM proxies are associated with applications
   # Adding an association the application already has should leave it listed once. On PostgreSQL it
   # answers 500: the repository skips the duplicate-key error inside its transaction, but PostgreSQL
   # has already aborted the transaction, so the commit fails (#4118).
-  @GENAPP-004 @known-issue @type:regression
+  @known-issue @type:regression
   Scenario: Adding a provider the application is already associated with keeps it listed once
     Given I send a "POST" request to the control plane at "/applications/${CTX:app}/associations" with body:
       """

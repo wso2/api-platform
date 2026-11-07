@@ -139,7 +139,7 @@ Feature: API keys are mapped to applications, and the gateway attributes their c
   # The response to adding mappings should list the application's mappings, as the listing does.
   # It lists none, though its pagination counts them: the service windows the list with limit -1,
   # which the pagination helper treats as an empty window (#4117).
-  @GENAPP-001 @known-issue @type:regression
+  @known-issue @type:regression
   Scenario: The response to mapping a key lists the application's mappings
     When I send a "POST" request to the control plane at "/applications/${CTX:app}/api-keys" with body:
       """
