@@ -988,6 +988,13 @@ blocks:
         features:
           - features/ai-workspace/llm-providers/deploy.feature
         tags: "~@known-issue"
+      # Scenarios GENAPP (scenarios/GENAPP.yaml): application key mappings and associations. Runs on every
+      # platform-api database: the mappings and associations are the control plane's store.
+      - name: applications
+        features:
+          - features/management-portal/applications/key_mappings.feature
+          - features/management-portal/applications/associations.feature
+        tags: "~@known-issue"
 
   # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
   # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the

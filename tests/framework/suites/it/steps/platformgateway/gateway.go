@@ -1190,6 +1190,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsResponseStatusForAPIContext)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until its analytics event has (no )?metadata field "([^"]*)"(?: with value "([^"]*)")? with body:$`,
+		g.sendUntilAnalyticsMetadata)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) AI context field "([^"]*)"(?: with value "([^"]*)")?$`,
 		g.analyticsAIContextField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
@@ -2570,6 +2572,72 @@ func (g *Gateway) analyticsCompanyID(ctx context.Context, path, mode, want strin
 		return err
 	}
 	return companyIDAssert(event, path, mode, resolved)
+}
+
+// sendUntilAnalyticsMetadata resends a data-plane request, which must answer 200, until the
+// latest analytics event for its path has the metadata field with the wanted value, or no longer
+// has it. It waits for a change that reaches the gateway asynchronously, such as an API key's
+// application mapping.
+func (g *Gateway) sendUntilAnalyticsMetadata(ctx context.Context, method, path, no, field, want string, body *godog.DocString) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	endpoint, err := g.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	wanted, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	content, err := stepscommon.Expand(ctx, body.Content)
+	if err != nil {
+		return err
+	}
+	headers := g.scenarioHeaders(ctx)
+	if headers["Content-Type"] == "" {
+		headers["Content-Type"] = "application/json"
+	}
+	method = strings.ToUpper(method)
+	return awaitState(ctx, fmt.Sprintf("waiting for %s %s to be recorded with metadata field %q", method, endpoint, field),
+		func(ctx context.Context) error {
+			resp, sendErr := g.funnel.Send(ctx, httpx.Request{
+				Method: method, URL: endpoint, Body: []byte(content), Headers: headers, Host: g.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return tolerated("the gateway did not answer: %v", sendErr)
+			}
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("expected 200 from %s %s, got %s", method, endpoint, describe(resp))
+			}
+			event, err := g.latestAnalyticsEvent(ctx, resolved)
+			if err != nil {
+				return err
+			}
+			return metadataFieldAwait(event, field, no != "", wanted)
+		})
+}
+
+// metadataFieldAwait judges one event for sendUntilAnalyticsMetadata: nil once the field has the
+// wanted value (or is absent, when absent), tolerated while the event still shows the earlier
+// state, and an error for any other value, which the change cannot explain.
+func metadataFieldAwait(event *analyticsEvent, field string, absent bool, want string) error {
+	if absent == (want != "") {
+		return fmt.Errorf("an analytics metadata wait takes a value unless it waits for the field to be absent")
+	}
+	value, present := traverseJSON(event.Metadata, field)
+	got := fmt.Sprintf("%v", value)
+	switch {
+	case absent && !present, !absent && present && got == want:
+		return nil
+	case absent:
+		return tolerated("the latest analytics event still has metadata field %q (%s)", field, got)
+	case !present:
+		return tolerated("the latest analytics event has no metadata field %q yet", field)
+	default:
+		return fmt.Errorf("the latest analytics event has metadata field %q %q, want %q", field, got, want)
+	}
 }
 
 // companyIDAssert checks an event's company id: "have" a given one, or "not have" one at all.

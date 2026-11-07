@@ -4159,6 +4159,23 @@ func TestResolveServiceURLAndStoreChoosesTheNetworkOfTheClient(t *testing.T) {
 	require.Error(t, gateway.resolveServiceURLAndStore(ctx, "unknown", " host", "/mcp", "x"))
 }
 
+func TestMetadataFieldAwaitToleratesOnlyTheEarlierState(t *testing.T) {
+	var mapped analyticsEvent
+	require.NoError(t, json.Unmarshal([]byte(`{"metadata":{"applicationName":"app-a"}}`), &mapped))
+	unmapped := &analyticsEvent{}
+
+	require.NoError(t, metadataFieldAwait(&mapped, "applicationName", false, "app-a"))
+	require.True(t, retry.IsTransient(metadataFieldAwait(unmapped, "applicationName", false, "app-a")))
+	err := metadataFieldAwait(&mapped, "applicationName", false, "app-b")
+	require.ErrorContains(t, err, `"app-a", want "app-b"`)
+	require.False(t, retry.IsTransient(err), "another application's name is not an in-between state")
+
+	require.NoError(t, metadataFieldAwait(unmapped, "applicationName", true, ""))
+	require.True(t, retry.IsTransient(metadataFieldAwait(&mapped, "applicationName", true, "")))
+	require.ErrorContains(t, metadataFieldAwait(unmapped, "applicationName", true, "x"), "takes a value unless")
+	require.ErrorContains(t, metadataFieldAwait(unmapped, "applicationName", false, ""), "takes a value unless")
+}
+
 func TestAnalyticsCompanyIDAssertions(t *testing.T) {
 	var paid analyticsEvent
 	require.NoError(t, json.Unmarshal([]byte(`{"company_id":"cus-1","metadata":{}}`), &paid))
