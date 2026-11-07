@@ -91,8 +91,8 @@ describe('GraphqlPublishPage', () => {
     });
 
     await user.click(screen.getByRole('button', { name: 'More publish options' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Go to Publish' }));
-    await user.click(screen.getByRole('button', { name: 'Go to Publish' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Configure & Publish' }));
+    await user.click(screen.getByRole('button', { name: 'Configure & Publish' }));
 
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${API}/publish/partner-portal`,

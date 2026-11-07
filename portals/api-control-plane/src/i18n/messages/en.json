@@ -3841,8 +3841,8 @@
     "defaultMessage": "Unlimited",
     "description": "Plan card value when the plan has no configured limit."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
-    "defaultMessage": "Go to Publish",
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.configureAndPublish": {
+    "defaultMessage": "Configure & Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.moreActions": {
