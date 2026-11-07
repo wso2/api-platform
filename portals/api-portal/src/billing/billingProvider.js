@@ -27,6 +27,9 @@
  *
  *   provider             the connector's name
  *   checkKeys()          checks the configuration's keys
+ *   reachesSetupApplication()
+ *                        whether the keys reach what setup made with the billing provider (the
+ *                        deployment can supply other keys later)
  *   catalog              createPlan, createFlatPrice, createUsagePrice, createUsageMeter, checkMeter,
  *                        priceMeter, the remove functions that undo them, and archivePart, which
  *                        takes a part of an API plan off sale

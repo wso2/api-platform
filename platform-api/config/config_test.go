@@ -461,6 +461,7 @@ func TestValidateAuthConfig(t *testing.T) {
 			if tt.auth.Authorization.Mode == "" {
 				tt.auth.Authorization.Mode = AuthzModeScope
 			}
+			tt.auth.ServiceAccount = defaultConfig().Auth.ServiceAccount
 			err := validateAuthConfig(&tt.auth)
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -541,9 +542,10 @@ func TestValidateAuthorizationConfig(t *testing.T) {
 func TestValidateAuthConfig_InternalTokenSkipValidation(t *testing.T) {
 	t.Run("no public key needed when validation is skipped", func(t *testing.T) {
 		auth := Auth{
-			Mode:          AuthModeInternalToken,
-			InternalToken: InternalToken{SkipValidation: true},
-			Authorization: Authorization{Mode: AuthzModeScope},
+			Mode:           AuthModeInternalToken,
+			InternalToken:  InternalToken{SkipValidation: true},
+			Authorization:  Authorization{Mode: AuthzModeScope},
+			ServiceAccount: defaultConfig().Auth.ServiceAccount,
 		}
 		assert.NoError(t, validateAuthConfig(&auth))
 	})
@@ -575,10 +577,11 @@ func TestValidateAuthConfig_InternalTokenSkipValidation(t *testing.T) {
 // lived under [auth.idp] and was unreachable.
 func TestValidateAuthConfig_RoleAuthorizationInInternalTokenMode(t *testing.T) {
 	auth := Auth{
-		Mode:          AuthModeInternalToken,
-		JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile},
-		Authorization: Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
-		ClaimMappings: ClaimMappings{Roles: "roles"},
+		Mode:           AuthModeInternalToken,
+		JWT:            JWT{PublicKeyFile: validJWTPublicKeyFile},
+		Authorization:  Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
+		ClaimMappings:  ClaimMappings{Roles: "roles"},
+		ServiceAccount: defaultConfig().Auth.ServiceAccount,
 	}
 	assert.NoError(t, validateAuthConfig(&auth))
 }
@@ -806,4 +809,22 @@ func TestJWT_EffectiveAlgorithm(t *testing.T) {
 	assert.Equal(t, JWTAlgorithmRS256, (&JWT{}).EffectiveAlgorithm())
 	assert.Equal(t, JWTAlgorithmRS256, (&JWT{Algorithm: JWTAlgorithmRS256}).EffectiveAlgorithm())
 	assert.Equal(t, "ML-DSA-65", (&JWT{Algorithm: "ML-DSA-65"}).EffectiveAlgorithm())
+}
+
+// A new organization gets a "default" project unless the deployment turns it off, including
+// through an env-interpolated string as a deployment's config.toml writes it.
+func TestLoadConfig_OrganizationsCreateDefaultProject(t *testing.T) {
+	cfg, err := loadWithKeys(t, "")
+	require.NoError(t, err)
+	assert.True(t, cfg.Organizations.CreateDefaultProject, "on by default")
+
+	cfg, err = loadWithKeys(t, "\n[platform_api.organizations]\ncreate_default_project = false\n")
+	require.NoError(t, err)
+	assert.False(t, cfg.Organizations.CreateDefaultProject)
+
+	t.Setenv("APIP_TEST_CREATE_DEFAULT_PROJECT", "false")
+	cfg, err = loadWithKeys(t, "\n[platform_api.organizations]\n"+
+		`create_default_project = '{{ env "APIP_TEST_CREATE_DEFAULT_PROJECT" "true" }}'`+"\n")
+	require.NoError(t, err)
+	assert.False(t, cfg.Organizations.CreateDefaultProject)
 }

@@ -16,7 +16,17 @@
  * under the License.
  */
 
-import { alpha, Box, Chip, Form, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import {
+  alpha,
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  Form,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
 import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -126,52 +136,96 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
               {/* The disabled card takes no pointer events (see below), so the
                   tooltip needs a plain element of its own to hang off. */}
               <Box sx={{ display: 'flex' }}>
-                <Form.CardButton
-                  alignItems="flex-start"
+                <Card
                   aria-disabled={disabled || undefined}
-                  disabled={disabled}
+                  aria-pressed={disabled ? undefined : selected}
                   onClick={disabled ? undefined : () => handleSelect(apiType)}
-                  selected={selected}
+                  onKeyDown={
+                    disabled
+                      ? undefined
+                      : (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            handleSelect(apiType);
+                          }
+                        }
+                  }
+                  role="button"
                   sx={(theme) => ({
-                    ...selectableCardSx(theme, { disabled, selected }),
+                    border: 1,
+                    cursor: 'pointer',
                     height: 142,
-                    justifyContent: 'space-between',
-                    p: 2,
                     width: CARD_WIDTH,
-                    '& > *': { width: '100%' },
+                    ...selectableCardSx(theme, { disabled, selected }),
+                    // Available cards read as raised, clickable surfaces; the
+                    // selected one keeps the recipe's primary highlight.
+                    ...(!disabled &&
+                      !selected && {
+                        '&:hover': { borderColor: 'text.secondary' },
+                        borderColor: alpha(
+                          theme.palette.text.primary,
+                          theme.palette.mode === 'dark' ? 0.55 : 0.5,
+                        ),
+                        boxShadow: theme.shadows[4],
+                      }),
                     ...(disabled && {
+                      // Dark surfaces swallow a transparent card; lift it with a
+                      // text-colour tint. Light mode keeps the recipe's flat look.
+                      ...(theme.palette.mode === 'dark' && {
+                        backgroundColor: alpha(theme.palette.text.primary, 0.04),
+                      }),
                       borderColor: alpha(
                         theme.palette.text.primary,
-                        theme.palette.mode === 'dark' ? 0.7 : 0.35,
+                        theme.palette.mode === 'dark' ? 0.85 : 0.3,
                       ),
                       cursor: 'default',
                       pointerEvents: 'none',
                     }),
                   })}
-                  tabIndex={disabled ? -1 : undefined}
-                  variant="outlined"
+                  tabIndex={disabled ? -1 : 0}
                 >
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
+                  <CardContent
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      height: '100%',
+                      justifyContent: 'space-between',
+                    }}
                   >
-                    {apiType.icon}
-                    {disabled ? (
-                      <Chip label={<FormattedMessage {...messages.comingSoon} />} size="small" />
-                    ) : null}
-                  </Stack>
-                  <Stack spacing={0.25} sx={{ textAlign: 'left' }}>
-                    <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{ alignItems: 'flex-start', justifyContent: 'space-between' }}
+                    >
+                      {apiType.icon}
+                      {disabled ? (
+                        <Chip
+                          label={<FormattedMessage {...messages.comingSoon} />}
+                          size="small"
+                          sx={(theme) => ({
+                            '& .MuiChip-label': { px: 0.75 },
+                            backgroundColor: alpha(
+                              theme.palette.text.primary,
+                              theme.palette.mode === 'dark' ? 0.2 : 0.04,
+                            ),
+                            border: 1,
+                            borderColor: alpha(theme.palette.text.primary, 0.25),
+                            fontSize: '0.65rem',
+                            height: 18,
+                          })}
+                        />
+                      ) : null}
+                    </Stack>
+                    <Stack spacing={0.25} sx={{ textAlign: 'left' }}>
                       <Form.Body sx={{ fontWeight: 700 }}>
                         <FormattedMessage {...apiType.title} />
                       </Form.Body>
+                      <Typography color="text.secondary" noWrap variant="caption">
+                        <FormattedMessage {...apiType.description} />
+                      </Typography>
                     </Stack>
-                    <Typography color="text.secondary" variant="caption">
-                      <FormattedMessage {...apiType.description} />
-                    </Typography>
-                  </Stack>
-                </Form.CardButton>
+                  </CardContent>
+                </Card>
               </Box>
             </Tooltip>
           );

@@ -45,8 +45,14 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		out["POLICY_HUB_BASE_URL"] = cfg.PolicyHub.BaseURL
 	}
 
+	// Address self-hosted gateways dial, shown in setup commands. Only emit it
+	// when configured so the SPA does not guess for gateways running elsewhere.
+	if cfg.Gateway.ControlPlaneHost != "" {
+		out["GATEWAY_CONTROL_PLANE_HOST"] = cfg.Gateway.ControlPlaneHost
+	}
+
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
-	// ProductActivation can call it (same-origin, via /proxy/billing/...)
+	// ProductActivation can call it (same-origin, via {proxy_prefix}/billing/...)
 	// without ever knowing the real billing service URL. Absent (defaults
 	// false client-side) for every deployment that doesn't configure one —
 	// every standalone deployment today.
@@ -76,6 +82,12 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		} else {
 			out["gatewayVersions"] = string(enc)
 		}
+	}
+
+	// disableFeatures is a deny-list: absent (nothing disabled) is the default,
+	// so every page stays on until a deployment names it.
+	if v, ok := runtimeValue(cfg.DisableFeatures); ok {
+		out["disableFeatures"] = v
 	}
 
 	// Only the [sanitize_html_docs] keys that are set; the SPA defaults the rest.

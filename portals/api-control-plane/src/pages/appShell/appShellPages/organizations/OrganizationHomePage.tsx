@@ -44,6 +44,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppPage } from '@/components/AppPage';
 import { useApiPortals } from '@/api/resources/apiPortals';
 import { useOrganization } from '@/api/resources/organizations';
+import { useGreetingName } from '@/hooks/useGreetingName';
 import { useGateways } from '@/api/resources/gateways';
 import { useDeleteProject, type Project } from '@/api/resources/projects';
 import { useGraphQLApiCounts } from '@/api/resources/graphqlApis';
@@ -80,7 +81,7 @@ const messages = defineMessages({
   bannerTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle',
     defaultMessage: 'Hello, {organizationName}',
-    description: '{organizationName} is the display name of the organization. Never translated.',
+    description: '{organizationName} is the name the user is greeted by: their own name where known, else the organization\'s display name. Never translated.',
   },
   developerPortalAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalAction',
@@ -126,15 +127,15 @@ const messages = defineMessages({
   },
   gatewayAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction',
-    defaultMessage: 'Connect a gateway',
+    defaultMessage: 'Connect an API gateway',
   },
   gatewayDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription',
-    defaultMessage: 'Run your APIs on a managed gateway or a self-hosted one.',
+    defaultMessage: 'Run your APIs on a managed API gateway or a self-hosted one.',
   },
   gatewayTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle',
-    defaultMessage: 'Gateways',
+    defaultMessage: 'API Gateways',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading',
@@ -323,6 +324,7 @@ function OrganizationHomePageContent() {
     return rest === undefined && graphql === undefined ? undefined : (rest ?? 0) + (graphql ?? 0);
   };
   const currentOrganization = organizationQuery.data || organization || organizations[0];
+  const greetingName = useGreetingName(currentOrganization?.displayName ?? '');
 
   const sortedProjects = useMemo(
     () =>
@@ -392,7 +394,7 @@ function OrganizationHomePageContent() {
                       WebkitTextFillColor: 'transparent',
                     })}
                   >
-                    {currentOrganization.displayName}
+                    {greetingName}
                   </Box>
                 ),
               }}
@@ -419,6 +421,11 @@ function OrganizationHomePageContent() {
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
+            {/* No `component` below: gateways are capped per hosting kind, and
+                this card commits to neither — it opens the page where the
+                choice is made and each kind is gated on its own quota. One
+                combined verdict here would either block a user who still has
+                room for the other kind, or promise room for a kind with none. */}
             <OverviewCard
               action={intl.formatMessage(messages.gatewayAction)}
               description={intl.formatMessage(messages.gatewayDescription)}
@@ -431,7 +438,6 @@ function OrganizationHomePageContent() {
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
               operationId="CreateGateway"
-              component="gateways"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>

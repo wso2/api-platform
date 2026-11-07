@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -39,6 +40,7 @@ const (
 	keyUserID        contextKey = "user_id"
 	keyUsername      contextKey = "username"
 	keyEmail         contextKey = "email"
+	keyDisplayName  contextKey = "display_name"
 	keyFirstName     contextKey = "first_name"
 	keyLastName      contextKey = "last_name"
 	keyOrganization  contextKey = "organization"
@@ -60,6 +62,8 @@ type CustomClaims struct {
 	Organization string `json:"organization"`
 	Scope        string `json:"scope"`
 	Username     string `json:"username"`
+	// ServiceAccountTokenVersion is set only on a service-account token.
+	ServiceAccountTokenVersion *int64 `json:"-"`
 	jwt.RegisteredClaims
 }
 
@@ -76,6 +80,10 @@ type AuthConfig struct {
 	// (PlatformClaimsMiddleware) and by the file-mode login endpoint when it
 	// signs tokens — one mapping shared by issuance and validation.
 	ClaimMappings ClaimMappings
+	// KeyMap, when set, replaces PublicKey/TokenIssuer: each token is verified
+	// with the key registered for its iss, and SA tokens are always verified,
+	// even under SkipValidation.
+	KeyMap *IssuerKeyMap
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
@@ -87,6 +95,9 @@ type ClaimMappings struct {
 	UserIDClaim       string
 	UsernameClaim     string
 	EmailClaim        string
+	// DisplayNameClaim names the claim carrying the user's human-readable name,
+	// stored for display only. Absent or empty in a token is not an error.
+	DisplayNameClaim string
 	ScopeClaim        string
 	RolesClaimPath    string
 	RoleScopeMap      map[string][]string
@@ -162,7 +173,12 @@ func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
 func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*http.Request, error) {
 	mapClaims := jwt.MapClaims{}
 
-	if config.SkipValidation {
+	if config.KeyMap != nil {
+		var err error
+		if mapClaims, err = verifyWithKeyMap(tokenString, config); err != nil {
+			return nil, err
+		}
+	} else if config.SkipValidation {
 		parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 		token, _, parseErr := parser.ParseUnverified(tokenString, mapClaims)
 		if parseErr != nil {
@@ -224,7 +240,14 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		JTI:          getStringClaim(mapClaims, "jti"),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject: sub,
+			Issuer:  getStringClaim(mapClaims, "iss"),
 		},
+	}
+	if iat, err := mapClaims.GetIssuedAt(); err == nil {
+		claimsObj.IssuedAt = iat
+	}
+	if v, ok := ServiceAccountTokenVersion(mapClaims); ok {
+		claimsObj.ServiceAccountTokenVersion = &v
 	}
 
 	platformRoles := resolvePlatformRoles(mapClaims, config.ClaimMappings.RolesClaimPath, config.ClaimMappings.RoleScopeMap)
@@ -233,6 +256,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, config.ClaimMappings.UserIDClaim))
 	ctx = context.WithValue(ctx, keyUsername, claimsObj.Username)
 	ctx = context.WithValue(ctx, keyEmail, claimsObj.Email)
+	ctx = context.WithValue(ctx, keyDisplayName, getStringClaim(mapClaims, config.ClaimMappings.DisplayNameClaim))
 	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
 	ctx = context.WithValue(ctx, keyLastName, getStringClaim(mapClaims, "lastName"))
 	ctx = context.WithValue(ctx, keyOrganization, org)
@@ -243,6 +267,24 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
 	ctx = context.WithValue(ctx, keyRoles, platformRoles)
 	return r.WithContext(ctx), nil
+}
+
+// verifyWithKeyMap verifies through the issuer map. Under SkipValidation a
+// token is decoded unverified unless it is an SA token, which the platform
+// mints itself and so always verifies.
+func verifyWithKeyMap(tokenString string, config AuthConfig) (jwt.MapClaims, error) {
+	if config.SkipValidation {
+		claims := jwt.MapClaims{}
+		if _, _, err := jwt.NewParser().ParseUnverified(tokenString, claims); err != nil {
+			return nil, fmt.Errorf("invalid JWT format: %v", err)
+		}
+		iss, _ := claims["iss"].(string)
+		sub, _ := claims["sub"].(string)
+		if !config.KeyMap.IsServiceAccountToken(iss, sub) {
+			return claims, nil
+		}
+	}
+	return config.KeyMap.verify(tokenString)
 }
 
 // PlatformClaimsMiddleware extracts platform-specific values from the AuthContext set by
@@ -283,6 +325,11 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			jti, _ := mapClaims["jti"].(string)
 
 			sub, _ := mapClaims["sub"].(string)
+			// Only the platform mints the service-account prefix.
+			if strings.HasPrefix(sub, constants.ServiceAccountSubPrefix) {
+				writeAuthError(w, "IdP token uses the reserved service-account subject prefix")
+				return
+			}
 			claimsObj := &CustomClaims{
 				Organization:     org,
 				Username:         username,
@@ -290,7 +337,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 				Scope:            scope,
 				Audience:         aud,
 				JTI:              jti,
-				RegisteredClaims: jwt.RegisteredClaims{Subject: sub},
+				RegisteredClaims: jwt.RegisteredClaims{Subject: sub, Issuer: getStringClaim(mapClaims, "iss")},
 			}
 
 			firstName := getStringClaim(mapClaims, "given_name")
@@ -308,6 +355,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			ctx = context.WithValue(ctx, keyUserID, userID)
 			ctx = context.WithValue(ctx, keyUsername, username)
 			ctx = context.WithValue(ctx, keyEmail, email)
+			ctx = context.WithValue(ctx, keyDisplayName, getStringClaim(mapClaims, claimNames.DisplayNameClaim))
 			ctx = context.WithValue(ctx, keyFirstName, firstName)
 			ctx = context.WithValue(ctx, keyLastName, lastName)
 			ctx = context.WithValue(ctx, keyOrganization, org)
@@ -530,6 +578,12 @@ func GetUsernameFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyUsername)
 }
 
+// GetDisplayNameFromRequest extracts the user's display name, read from the
+// configured display-name claim. ok is false when the token did not carry it.
+func GetDisplayNameFromRequest(r *http.Request) (string, bool) {
+	return getStringFromCtx(r, keyDisplayName)
+}
+
 // GetEmailFromRequest extracts the email from the request context.
 func GetEmailFromRequest(r *http.Request) (string, bool) {
 	return getStringFromCtx(r, keyEmail)
@@ -644,6 +698,11 @@ func WithOrgHandle(r *http.Request, orgHandle string) *http.Request {
 // WithUserID is a helper for tests to inject a user ID into the request context.
 func WithUserID(r *http.Request, id string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyUserID, id))
+}
+
+// WithDisplayName is a helper for tests to inject the display-name claim into the request context.
+func WithDisplayName(r *http.Request, name string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyDisplayName, name))
 }
 
 // WithScope is a helper for tests to inject a space-separated scope claim into

@@ -59,6 +59,11 @@ func defaultConfig() *Server {
 				"/health",
 				"/metrics",
 				"/api/portal/v0.9/auth/login",
+				// Public: the caller has no token yet, and a public key is public.
+				// Skip matching covers every child path, so nothing authenticated may
+				// live under these.
+				constants.APIBasePath + "/service-accounts/token",
+				constants.JWKSPath,
 				"/api/internal/v1/ws/gateways/connect",
 				"/api/internal/v1/apis",
 				"/api/internal/v1/llm-providers",
@@ -79,6 +84,17 @@ func defaultConfig() *Server {
 				Issuer:   "platform-api",
 				TokenTTL: time.Hour,
 			},
+			ServiceAccount: ServiceAccount{
+				// Off by default: on Postgres and SQL Server the tables must be
+				// provisioned first.
+				Enabled: false,
+				// Shorter than auth.jwt.token_ttl: a workload re-exchanges in a loop anyway.
+				TokenTTL: 15 * time.Minute,
+				Audience: "platform-api",
+				Revocation: ServiceAccountRevocation{
+					PollInterval: 5 * time.Second,
+				},
+			},
 			ClaimMappings: ClaimMappings{
 				Organization: "organization",
 				OrgName:      "org_name",
@@ -87,6 +103,7 @@ func defaultConfig() *Server {
 				Username:     "username",
 				Email:        "email",
 				Scope:        "scope",
+				DisplayName:  "name",
 				// Default to the flat "roles" claim — what Asgardeo and Entra ID
 				// emit, and what the file-mode login endpoint signs — so switching
 				// auth.authorization.mode to "role" needs no extra claim wiring.
@@ -168,6 +185,8 @@ func defaultConfig() *Server {
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Api-Portal-Signature",
+
+			LegacySharedSecret: false,
 		},
 		HTTPClient: HTTPClientConfig{
 			Pooling: HTTPClientPoolingConfig{
@@ -224,6 +243,18 @@ func defaultConfig() *Server {
 			MaxEntries:  512,
 			MaxBytes:    32 << 20, // 32 MiB — 512 entries cannot all be 1 MiB cards
 		},
+		// The allow list names only a gateway on this host, so a deployment that
+		// sets nothing reaches no other address.
+		GatewayRelay: GatewayRelay{
+			RequestTimeout:   30 * time.Second,
+			MaxRequestBytes:  2 << 20, // 2 MiB
+			MaxResponseBytes: 8 << 20, // 8 MiB
+			MaxConcurrent:    32,
+			MaxPending:       64,
+			Egress: GatewayRelayEgress{
+				AllowHosts: []string{"https://localhost:8443"},
+			},
+		},
 		// TEMP-READ-ONLY-MODE: remove with config/readonly.go. Off by default — the
 		// read-only (maintenance) mode is an explicit, operator-driven posture.
 		ReadOnly: ReadOnly{
@@ -233,6 +264,9 @@ func defaultConfig() *Server {
 		MCPServer: MCPServer{
 			Enabled:         false,
 			MaxRequestBytes: 1 << 20,
+		},
+		Organizations: Organizations{
+			CreateDefaultProject: true,
 		},
 	}
 }

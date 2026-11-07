@@ -23,6 +23,7 @@ import EnvironmentCard from './components/EnvironmentCard';
 import PipelineConnector from './components/PipelineConnector';
 import NoGatewayState from './components/NoGatewayState';
 import DeployDialog from './components/DeployDialog';
+import { NO_PERMISSION_TOOLTIP } from './permissions';
 import { undeletableBuildReasons } from './utils/status';
 import type { ApiOwnership, Build, Environment } from './types';
 
@@ -54,6 +55,12 @@ export type DeployPageProps = {
    * promote and stop are enabled only once the control plane is confirmed to own it.
    */
   ownership: ApiOwnership;
+  /** Whether the user holds a scope that deploys; Deploy and Promote are disabled otherwise. */
+  canDeploy: boolean;
+  /** Whether the user holds a scope that undeploys; every Stop is disabled otherwise. */
+  canUndeploy: boolean;
+  /** Whether the user holds a scope that deletes builds; every delete is disabled otherwise. */
+  canDeleteBuild: boolean;
   busy: boolean;
   /**
    * Deploys to `target`; `from` is set when this is a promotion. Every gateway
@@ -103,19 +110,27 @@ const DeployPage: FC<DeployPageProps> = ({
   apiEndpointUrl,
   takesEndpoint,
   ownership,
+  canDeploy,
+  canUndeploy,
+  canDeleteBuild,
   busy,
   onDeploy,
   onStopGateway,
   onDeleteBuild,
 }) => {
   const [dialog, setDialog] = useState<DialogState>(null);
-  // Why deploy, promote and stop are unavailable; undefined when they are allowed.
+  // Why deploy, promote and stop are unavailable for this API as a whole;
+  // undefined when they are allowed.
   const lockedReason = LOCKED_REASONS[ownership];
+  // Each action's own reason, with the user's scopes layered on: ownership locks
+  // every action, a missing scope only the one it governs.
+  const deployLockedReason = lockedReason ?? (canDeploy ? undefined : NO_PERMISSION_TOOLTIP);
+  const stopLockedReason = lockedReason ?? (canUndeploy ? undefined : NO_PERMISSION_TOOLTIP);
 
   // A dialog opened before the actions were locked must not stay usable.
   useEffect(() => {
-    if (lockedReason) setDialog(null);
-  }, [lockedReason]);
+    if (deployLockedReason) setDialog(null);
+  }, [deployLockedReason]);
 
   const target = dialog ? (environments[dialog.targetIndex] ?? null) : null;
   const source =
@@ -125,13 +140,16 @@ const DeployPage: FC<DeployPageProps> = ({
     gateways: { gatewayId: string; endpointUrl?: string }[],
     buildId?: string
   ) => {
-    if (target && !lockedReason) onDeploy(target, gateways, source, buildId);
+    if (target && !deployLockedReason) onDeploy(target, gateways, source, buildId);
     setDialog(null);
   };
 
   // Environments exist but none has a gateway, so there is nowhere to deploy yet.
   const hasNoGateways =
     environments.length > 0 && environments.every((environment) => environment.gateways.length === 0);
+  // Without any gateway, managed or self-hosted, a build has nowhere to go, so any
+  // stale builds are hidden along with the build area.
+  const showBuildArea = !hasNoGateways;
 
   return (
     <PageContent fullWidth>
@@ -152,31 +170,14 @@ const DeployPage: FC<DeployPageProps> = ({
       )}
 
       {hasNoGateways && !lockedReason ? (
-        <>
-          <NoGatewayState
-            apiName={apiName}
-            environments={environments.map((environment) => environment.name)}
-            onAddSelfHosted={onAddGateway}
-            onAddCloud={onAddCloudGateway}
-            provisioning={provisioning}
-            selfHostedPending={selfHostedPending}
-          />
-          {/* Builds belong to no gateway yet, so they can still be deleted to free a slot;
-              deploying stays off until a gateway is active. */}
-          {builds.length > 0 && (
-            <Box sx={{ maxWidth: 640, mx: 'auto', mt: 4 }}>
-              <BuildAreaCard
-                builds={builds}
-                targetEnvironment={environments[0]}
-                undeletableBuilds={undeletableBuildReasons(environments)}
-                busy={busy}
-                lockedReason="Add a gateway to deploy."
-                onDeployClick={() => undefined}
-                onDeleteBuild={onDeleteBuild}
-              />
-            </Box>
-          )}
-        </>
+        <NoGatewayState
+          apiName={apiName}
+          environments={environments.map((environment) => environment.name)}
+          onAddSelfHosted={onAddGateway}
+          onAddCloud={onAddCloudGateway}
+          provisioning={provisioning}
+          selfHostedPending={selfHostedPending}
+        />
       ) : environments.length === 0 ? (
         <Box
           sx={{
@@ -228,26 +229,30 @@ const DeployPage: FC<DeployPageProps> = ({
               minWidth: '100%',
             }}
           >
-            <BuildAreaCard
-              builds={builds}
-              targetEnvironment={environments[0]}
-              undeletableBuilds={undeletableBuildReasons(environments)}
-              busy={busy}
-              lockedReason={lockedReason}
-              onDeployClick={(buildId, createBuild) =>
-                setDialog({ targetIndex: 0, buildId, createBuild })
-              }
-              onDeleteBuild={onDeleteBuild}
-            />
+            {showBuildArea && (
+              <BuildAreaCard
+                builds={builds}
+                targetEnvironment={environments[0]}
+                undeletableBuilds={undeletableBuildReasons(environments)}
+                busy={busy}
+                lockedReason={deployLockedReason}
+                canDeleteBuild={canDeleteBuild}
+                onDeployClick={(buildId, createBuild) =>
+                  setDialog({ targetIndex: 0, buildId, createBuild })
+                }
+                onDeleteBuild={onDeleteBuild}
+              />
+            )}
 
             {environments.map((environment, index) => (
               <Fragment key={environment.name}>
-                <PipelineConnector />
+                {(showBuildArea || index > 0) && <PipelineConnector />}
                 <EnvironmentCard
                   environment={environment}
                   nextEnvironment={environments[index + 1]}
                   busy={busy}
-                  lockedReason={lockedReason}
+                  lockedReason={deployLockedReason}
+                  stopDisabledReason={stopLockedReason}
                   takesEndpoint={takesEndpoint}
                   onPromoteClick={() =>
                     setDialog({ targetIndex: index + 1, sourceIndex: index })

@@ -161,7 +161,7 @@ func (r *Receiver) handleAPIKeyGenerated(ctx context.Context, env *Envelope) err
 		return fmt.Errorf("%w: data.key (encrypted secret) is required for %s", ErrInvalidEnvelope, env.EventType)
 	}
 
-	plaintext, err := r.decryptor.Decrypt(d.Key)
+	plaintext, err := r.decryptorFor(ctx).Decrypt(d.Key)
 	if err != nil {
 		return err
 	}
@@ -208,7 +208,7 @@ func (r *Receiver) handleAPIKeyRegenerated(ctx context.Context, env *Envelope) e
 		return fmt.Errorf("%w: data.key (encrypted secret) is required for %s", ErrInvalidEnvelope, env.EventType)
 	}
 
-	plaintext, err := r.decryptor.Decrypt(d.Key)
+	plaintext, err := r.decryptorFor(ctx).Decrypt(d.Key)
 	if err != nil {
 		return err
 	}

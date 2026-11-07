@@ -169,6 +169,10 @@ const DEFAULTS = {
             orgHandle: '',
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
+            // Claim carrying the user's human-readable name (OIDC "name"), stored beside
+            // the user's IdP id; responses show it as createdBy/updatedBy. Optional: a
+            // token without it still works, and responses fall back to the IdP id.
+            displayName: 'name',
         },
         // Authorization — what a VERIFIED token may do. Deliberately outside both
         // auth.local and auth.idp: a token carries the same roles claim whether the
@@ -387,6 +391,10 @@ const DEFAULTS = {
             // paid plan is offered on an API. Lower it if Moesif refuses calls as too many (it
             // allows 500 management calls a minute).
             maxParallelPrices: 4,
+            // Moesif keys set for the whole portal instead of in billing setup. Both or neither;
+            // not allowed in multi-organization mode.
+            collectorApplicationId: '',
+            managementKey: '',
         },
         // Limits for calls to Stripe and Moesif.
         client: {

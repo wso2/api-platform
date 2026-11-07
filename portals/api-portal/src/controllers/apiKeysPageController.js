@@ -16,7 +16,7 @@
  * under the License.
  */
  
-const { renderTemplateWithView, resolveActor } = require('../utils/util');
+const { renderTemplateWithView, resolveActor, apiImageUrl } = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -53,7 +53,7 @@ const loadAPIApiKeys = async (req, res, next) => {
             const images = metaData.apiImageMetadata;
             if (images) {
                 for (const key in images) {
-                    images[key] = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}${images[key]}`;
+                    images[key] = apiImageUrl(orgId, metaData, images[key]);
                 }
             }
         } else {

@@ -50,6 +50,16 @@ const messages = defineMessages({
     defaultMessage: 'gateways',
     description: 'Plural noun for gateways, used inside the limit-reached sentence.',
   },
+  componentManagedGateways: {
+    id: 'apiControlPlane.hooks.useResourceLimits.componentManagedGateways',
+    defaultMessage: 'WSO2-managed gateways',
+    description: 'Plural noun for WSO2-managed gateways, used inside the limit-reached sentence.',
+  },
+  componentSelfHostedGateways: {
+    id: 'apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways',
+    defaultMessage: 'self-hosted gateways',
+    description: 'Plural noun for self-hosted gateways, used inside the limit-reached sentence.',
+  },
   componentPortals: {
     id: 'apiControlPlane.hooks.useResourceLimits.componentPortals',
     defaultMessage: 'portals',
@@ -66,7 +76,18 @@ const messages = defineMessages({
  * standalone and on-prem, where none of that exists. A supplier maps whatever
  * it knows onto these names before handing them over.
  */
-export type LimitedComponent = 'restApis' | 'gateways' | 'portals';
+export type LimitedComponent =
+  | 'restApis'
+  /**
+   * Any gateway, whatever its hosting — false only once no kind can be created.
+   * A surface offering the choice (Add Gateway) uses this; one committing to a
+   * kind uses that kind's own entry below, since a full managed quota says
+   * nothing about self-hosted room.
+   */
+  | 'gateways'
+  | 'managedGateways'
+  | 'selfHostedGateways'
+  | 'portals';
 
 /**
  * One component's entitlement, as a supplier reports it.
@@ -82,7 +103,7 @@ export interface ResourceLimit {
    * What to tell a user whose create action this limit has disabled.
    *
    * Supplied, because the portal cannot write it: naming the cap that actually
-   * binds ("the maximum of 10 Managed Interfaces") means naming a commercial
+   * binds ("the maximum of 10 APIs on the Free plan") means naming a commercial
    * concept this portal has no vocabulary for, and which differs between
    * deployments. Absent, `limitMessage` falls back to a generic sentence built
    * from `max` alone.
@@ -128,6 +149,8 @@ export type ResourceLimitSet = Partial<Record<LimitedComponent, ResourceLimit>>;
 const COMPONENT_LABELS: Record<LimitedComponent, (typeof messages)[keyof typeof messages]> = {
   restApis: messages.componentRestApis,
   gateways: messages.componentGateways,
+  managedGateways: messages.componentManagedGateways,
+  selfHostedGateways: messages.componentSelfHostedGateways,
   portals: messages.componentPortals,
 };
 

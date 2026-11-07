@@ -16,6 +16,13 @@
  * under the License.
  */
 
+import {
+  readAuthMode,
+  resolveAuthContract,
+  type AuthContract,
+  type AuthMode,
+} from './authContract';
+
 /**
  * One gateway release the Quick Start step can offer a download for, keyed by
  * `type` since the regular and event gateways ship as separate artifacts.
@@ -40,10 +47,16 @@ export type RuntimeConfig = {
   /**
    * "basic" — the BFF's file-based login against Platform API's own user
    * store (no external IdP). "oidc" — the BFF runs a confidential/PKCE code
-   * exchange against a configured external IdP. Either way, the browser
-   * never sees a token; the BFF holds the session server-side.
+   * exchange against a configured external IdP. "external" — no BFF: a
+   * gateway or auth proxy in front of the console handles sign-in and holds
+   * the session. In every mode the browser never sees a token.
    */
-  authMode: 'basic' | 'oidc';
+  authMode: AuthMode;
+  /**
+   * The sign-in, session and sign-out endpoints for `authMode`, with any
+   * per-deployment overrides applied (see `config/authContract.ts`).
+   */
+  authContract: AuthContract;
   /**
    * Per-deployment default locale (BCP 47, e.g. "en"). Falls through
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
@@ -61,9 +74,11 @@ export type RuntimeConfig = {
   apiPlatformHomePage: string;
   organizationApiUrl: string;
   /**
-   * Set when the BFF has a "billing" named upstream configured (cloud only).
+   * Set when the deployment has a "billing" route (cloud only): a named
+   * upstream on the BFF, or a route on the gateway in front of the console.
    * When true, ProductActivation calls it via the same-origin proxy
-   * (/proxy/billing/...) — the browser never learns the real billing URL.
+   * (`<platformApiBaseUrl>/billing/...`) — the browser never learns the real
+   * billing URL.
    */
   billingProxyEnabled: boolean;
   /**
@@ -73,9 +88,11 @@ export type RuntimeConfig = {
    */
   defaultOrgRegion: string;
   /**
-   * Set when the BFF has a "cloud" named upstream configured (cloud only).
-   * When true, cloud Insights extensions may call it via the same-origin
-   * proxy (/proxy/cloud/...) — the browser never learns the real cloud URL.
+   * Set when the deployment has a "cloud" route (cloud only): a named upstream
+   * on the BFF, or a route on the gateway in front of the console. When true,
+   * cloud Insights extensions may call it via the same-origin proxy
+   * (`<platformApiBaseUrl>/cloud/...`) — the browser never learns the real
+   * cloud URL.
    */
   cloudProxyEnabled: boolean;
   /**
@@ -138,6 +155,13 @@ export type RuntimeConfig = {
    * read as-is like every other field.
    */
   gatewayVersions: GatewayVersionEntry[];
+  /**
+   * Features this deployment hides, lower-cased (e.g. "metrics"). A deny-list:
+   * empty by default, so every feature is on until a name is listed. See
+   * `config/features.ts` for the names the console knows. Sourced from the BFF's
+   * `disable_features` config.
+   */
+  disableFeatures: string[];
   sanitizeHtmlDocsEnabled: boolean;
   sanitizeHtmlDocsAdditionalAllowedTags: string[];
   sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
@@ -179,6 +203,17 @@ type LegacyWindowConfig = Partial<{
   apiBaseUrl: string;
   baseUrl: string;
   authMode: string;
+  authLoginStyle: string;
+  authLoginUrl: string;
+  authCredentialsUrl: string;
+  authReturnParam: string;
+  authSessionUrl: string;
+  authSessionFormat: string;
+  authCheckSessionUrl: string;
+  authCheckSessionInterval: string | number;
+  authLogoutUrl: string;
+  authLogoutStyle: string;
+  authClaimMappings: string | Record<string, unknown>;
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
@@ -189,6 +224,7 @@ type LegacyWindowConfig = Partial<{
   toSServiceName: string;
   usersManagementApiUrl: string;
   gatewayVersions: string;
+  disableFeatures: string | string[];
   sanitizeHtmlDocsEnabled: boolean | string;
   sanitizeHtmlDocsAdditionalAllowedTags: string;
   sanitizeHtmlDocsAdditionalAllowedAttributes: string;
@@ -257,6 +293,16 @@ const parseJsonRecordOfStringArrays = (value: string | undefined): Record<string
   }
 };
 
+/** A JSON array, a comma-separated string, or a native array: lower-cased, blanks dropped. */
+const readFeatureList = (value: unknown): string[] =>
+  (Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : typeof value === 'string'
+      ? parseJsonStringArray(value)
+      : [])
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
+
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
 
 const readSanitizeHtmlDocsEnabled = (value: boolean | string | undefined) =>
@@ -264,9 +310,6 @@ const readSanitizeHtmlDocsEnabled = (value: boolean | string | undefined) =>
 
 const readDeploymentMode = (value: string | undefined): RuntimeConfig['deploymentMode'] =>
   value === 'cloud' ? 'cloud' : 'onprem';
-
-const readAuthMode = (value: string | undefined): RuntimeConfig['authMode'] =>
-  value === 'oidc' ? 'oidc' : 'basic';
 
 const normalizeBasePath = (value?: string) => {
   if (!value || value === '/') return '';
@@ -306,6 +349,10 @@ const hostFromUrl = (url: string) => {
   }
 };
 
+const resolvedAuthMode = readAuthMode(
+  fromWindow().authMode || fromWindow().AUTH_MODE || import.meta.env.VITE_AUTH_MODE,
+);
+
 export const runtimeConfig: RuntimeConfig = {
   appBasePath: normalizeBasePath(
     fromWindow().appBasePath ||
@@ -319,9 +366,22 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().baseUrl ||
     import.meta.env.VITE_API_BASE_URL ||
     '',
-  authMode: readAuthMode(
-    fromWindow().authMode || fromWindow().AUTH_MODE || import.meta.env.VITE_AUTH_MODE,
-  ),
+  authMode: resolvedAuthMode,
+  authContract: resolveAuthContract(resolvedAuthMode, {
+    loginStyle: fromWindow().authLoginStyle || import.meta.env.VITE_AUTH_LOGIN_STYLE,
+    loginUrl: fromWindow().authLoginUrl || import.meta.env.VITE_AUTH_LOGIN_URL,
+    credentialsUrl: fromWindow().authCredentialsUrl || import.meta.env.VITE_AUTH_CREDENTIALS_URL,
+    returnParam: fromWindow().authReturnParam || import.meta.env.VITE_AUTH_RETURN_PARAM,
+    sessionUrl: fromWindow().authSessionUrl || import.meta.env.VITE_AUTH_SESSION_URL,
+    sessionFormat: fromWindow().authSessionFormat || import.meta.env.VITE_AUTH_SESSION_FORMAT,
+    checkSessionUrl:
+      fromWindow().authCheckSessionUrl || import.meta.env.VITE_AUTH_CHECK_SESSION_URL,
+    checkSessionInterval:
+      fromWindow().authCheckSessionInterval || import.meta.env.VITE_AUTH_CHECK_SESSION_INTERVAL,
+    logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
+    logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
+    claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
+  }),
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
     fromWindow().defaultLocale ||
@@ -425,6 +485,9 @@ export const runtimeConfig: RuntimeConfig = {
     import.meta.env.VITE_USERS_MANAGEMENT_API_URL ||
     '',
   gatewayVersions: readGatewayVersions(fromWindow().gatewayVersions),
+  disableFeatures: readFeatureList(
+    fromWindow().disableFeatures ?? import.meta.env.VITE_DISABLE_FEATURES,
+  ),
   sanitizeHtmlDocsEnabled: readSanitizeHtmlDocsEnabled(
     fromWindow().sanitizeHtmlDocsEnabled ?? import.meta.env.VITE_SANITIZE_HTML_DOCS_ENABLED,
   ),

@@ -37,6 +37,7 @@ import dockerIconUrl from '@/assets/icons/docker.svg';
 import helmIconUrl from '@/assets/icons/helm.svg';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import type { GatewayVersionEntry } from '@/config/runtime';
 import { gatewayEndpoint } from '../utils/gatewayDisplay';
 import { environmentForGateway } from '../utils/gatewayEnvironments';
 import {
@@ -45,6 +46,7 @@ import {
   enterDirectoryCommand,
   helmInstallCommand,
   runtimeCheckCommand,
+  setupScriptCommand,
   setupTarget,
   startCommand,
   TOKEN_PLACEHOLDER,
@@ -158,17 +160,43 @@ const messages = defineMessages({
       '2. Run this command to start the gateway using the configs/keys.env file created in Step 2:',
     description: 'configs/keys.env is a file path — keep it exactly as written.',
   },
+  setupIntro: {
+    id: 'gateways.detail.GetStarted.setup.intro',
+    defaultMessage:
+      'Run the setup script. It creates the listener TLS certificate, the encryption key, and the api-platform.env file:',
+    description: 'api-platform.env is a file name — keep it exactly as written.',
+  },
+  startRunSetupScript: {
+    id: 'gateways.detail.GetStarted.start.runSetupScript',
+    defaultMessage:
+      '2. Run this command to start the gateway using the api-platform.env file:',
+    description: 'api-platform.env is a file name — keep it exactly as written.',
+  },
   stepConfigure: {
     id: 'gateways.detail.GetStarted.step.configure',
     defaultMessage: 'Step 2: Configure the Gateway',
+  },
+  stepConfigureAfterSetup: {
+    id: 'gateways.detail.GetStarted.step.configureAfterSetup',
+    defaultMessage: 'Step 3: Configure the Gateway',
+    description: 'Configure step heading for gateway releases that have a setup step before it.',
   },
   stepDownload: {
     id: 'gateways.detail.GetStarted.step.download',
     defaultMessage: 'Step 1: Download the Gateway',
   },
+  stepSetup: {
+    id: 'gateways.detail.GetStarted.step.setup',
+    defaultMessage: 'Step 2: Set up the Gateway',
+  },
   stepStart: {
     id: 'gateways.detail.GetStarted.step.start',
     defaultMessage: 'Step 3: Start the Gateway',
+  },
+  stepStartAfterSetup: {
+    id: 'gateways.detail.GetStarted.step.startAfterSetup',
+    defaultMessage: 'Step 4: Start the Gateway',
+    description: 'Start step heading for gateway releases that have a setup step before it.',
   },
   tabDocker: {
     id: 'gateways.detail.GetStarted.tab.docker',
@@ -326,6 +354,7 @@ export type GatewayGetStartedPanelProps = {
   controlPlaneHost: string;
   gateway: Gateway;
   gatewayId: string;
+  gatewayVersions: readonly GatewayVersionEntry[];
 };
 
 /**
@@ -341,6 +370,7 @@ export function GatewayGetStartedPanel({
   controlPlaneHost,
   gateway,
   gatewayId,
+  gatewayVersions,
 }: GatewayGetStartedPanelProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
@@ -350,7 +380,8 @@ export function GatewayGetStartedPanel({
   const [token, setToken] = useState<string>();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const target = setupTarget(gateway, controlPlaneHost);
+  const target = setupTarget(gateway, controlPlaneHost, gatewayVersions);
+  const hasSetupStep = target.flow === 'setupScript';
   const tokenValue = token ?? TOKEN_PLACEHOLDER;
   const environment = environmentForGateway(gateway);
   const activeTab = TABS.find((entry) => entry.value === tab) ?? TABS[0];
@@ -366,12 +397,16 @@ export function GatewayGetStartedPanel({
   };
 
   /**
-   * Step 2 is the same on every path: the same warning, the same button, and —
-   * once a token exists; the same env file. Only Kubernetes leaves out the
-   * file, because the token goes into the Helm command instead.
+   * The configure step is the same on every path: the same warning, the same
+   * button, and — once a token exists; the same env file. Only Kubernetes
+   * leaves out the file, because the token goes into the Helm command instead.
    */
-  const configureStep = (notice: MessageDescriptor, showEnvFile: boolean) => (
-    <SetupStep title={messages.stepConfigure}>
+  const configureStep = (
+    title: MessageDescriptor,
+    notice: MessageDescriptor,
+    showEnvFile: boolean,
+  ) => (
+    <SetupStep title={title}>
       <Typography color="text.secondary" variant="body2">
         <FormattedMessage {...notice} />
       </Typography>
@@ -469,7 +504,7 @@ export function GatewayGetStartedPanel({
 
           {tab === 'kubernetes' ? (
             <>
-              {configureStep(messages.tokenNoticeHelm, false)}
+              {configureStep(messages.stepConfigure, messages.tokenNoticeHelm, false)}
               <SetupStep title={messages.chartHeading}>
                 <Typography color="text.secondary" variant="body2">
                   <FormattedMessage {...messages.chartIntro} />
@@ -486,18 +521,52 @@ export function GatewayGetStartedPanel({
                 <CopyableCommand code={downloadCommand(target)} />
               </SetupStep>
 
-              {configureStep(messages.tokenNoticeCompose, true)}
+              {/* From 1.2 on, the archive's setup script writes the env file
+                  the configure step appends to. Every block runs from the
+                  download folder, as in the older flow, so each one works in
+                  a fresh terminal rather than only in the shell before it. */}
+              {hasSetupStep ? (
+                <>
+                  <SetupStep title={messages.stepSetup}>
+                    <Typography color="text.secondary" variant="body2">
+                      <FormattedMessage {...messages.setupIntro} />
+                    </Typography>
+                    <CopyableCommand code={setupScriptCommand(target)} />
+                  </SetupStep>
 
-              <SetupStep title={messages.stepStart}>
-                <Typography color="text.secondary" variant="body2">
-                  <FormattedMessage {...messages.startEnter} />
-                </Typography>
-                <CopyableCommand code={enterDirectoryCommand(target)} />
-                <Typography color="text.secondary" variant="body2">
-                  <FormattedMessage {...messages.startRun} />
-                </Typography>
-                <CopyableCommand code={startCommand()} />
-              </SetupStep>
+                  {configureStep(
+                    messages.stepConfigureAfterSetup,
+                    messages.tokenNoticeCompose,
+                    true,
+                  )}
+
+                  <SetupStep title={messages.stepStartAfterSetup}>
+                    <Typography color="text.secondary" variant="body2">
+                      <FormattedMessage {...messages.startEnter} />
+                    </Typography>
+                    <CopyableCommand code={enterDirectoryCommand(target)} />
+                    <Typography color="text.secondary" variant="body2">
+                      <FormattedMessage {...messages.startRunSetupScript} />
+                    </Typography>
+                    <CopyableCommand code={startCommand(target)} />
+                  </SetupStep>
+                </>
+              ) : (
+                <>
+                  {configureStep(messages.stepConfigure, messages.tokenNoticeCompose, true)}
+
+                  <SetupStep title={messages.stepStart}>
+                    <Typography color="text.secondary" variant="body2">
+                      <FormattedMessage {...messages.startEnter} />
+                    </Typography>
+                    <CopyableCommand code={enterDirectoryCommand(target)} />
+                    <Typography color="text.secondary" variant="body2">
+                      <FormattedMessage {...messages.startRun} />
+                    </Typography>
+                    <CopyableCommand code={startCommand(target)} />
+                  </SetupStep>
+                </>
+              )}
             </>
           )}
         </Stack>

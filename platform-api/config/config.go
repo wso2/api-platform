@@ -38,6 +38,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -135,8 +136,10 @@ type Server struct {
 	HTTPClient           HTTPClientConfig     `koanf:"http_client"`
 	APIPortalPublication APIPortalPublication `koanf:"api_portal_publication"`
 	AgentCardCache       AgentCardCache       `koanf:"agent_card_cache"`
+	GatewayRelay         GatewayRelay         `koanf:"gateway_relay"`
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 	MCPServer            MCPServer            `koanf:"mcp_server"`
+	Organizations        Organizations        `koanf:"organizations"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -216,6 +219,36 @@ type AgentCardCache struct {
 	// exhaustion vector for an organization with many passthrough Agent proxies.
 	// Zero or less means the cache holds nothing.
 	MaxBytes int64 `koanf:"max_bytes"`
+}
+
+// GatewayRelay configures POST /gateway-relay/invoke.
+// Its client is not the shared one: it never follows redirects, and Egress
+// decides which gateway addresses it may dial.
+type GatewayRelay struct {
+	// RequestTimeout runs from a test request's arrival to the end of the gateway
+	// call, so reading the request and the target lookup take from it; it must stay
+	// below server.timeouts.write.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// MaxRequestBytes bounds the decoded request body.
+	MaxRequestBytes int64 `koanf:"max_request_bytes"`
+	// MaxResponseBytes bounds the response body; a longer one is truncated, not failed.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
+	// MaxConcurrent calls run at once per replica, MaxPending more may wait; the
+	// rest get 503.
+	MaxConcurrent int `koanf:"max_concurrent"`
+	MaxPending    int `koanf:"max_pending"`
+	// CAFile is a PEM bundle to trust for gateway certificates. TLSSkipVerify
+	// disables verification, for development only; the two are exclusive.
+	CAFile        string `koanf:"ca_file"`
+	TLSSkipVerify bool   `koanf:"tls_skip_verify"`
+	// Egress decides which gateway addresses the relay may dial.
+	Egress GatewayRelayEgress `koanf:"egress"`
+}
+
+// GatewayRelayEgress is [gateway_relay.egress]: nothing is reachable unless an
+// AllowHosts entry ("[scheme://]host[:port]", "*" allowed in host) matches.
+type GatewayRelayEgress struct {
+	AllowHosts []string `koanf:"allow_hosts"`
 }
 
 // HTTPClientConfig configures the single shared outbound *http.Client used by every
@@ -391,6 +424,31 @@ type Auth struct {
 	// dot-separated path into a nested claim ("realm_access.org_id") — see
 	// resolveClaimPath in internal/middleware/auth.go.
 	ClaimMappings ClaimMappings `koanf:"claim_mappings"`
+	// ServiceAccount configures service-account token issue and verification.
+	ServiceAccount ServiceAccount `koanf:"service_account"`
+}
+
+// ServiceAccount groups the service-account settings.
+type ServiceAccount struct {
+	// Enabled false removes the routes, refuses every SA token and skips the
+	// startup checks. Accounts stay in the DB.
+	Enabled  bool          `koanf:"enabled"`
+	TokenTTL time.Duration `koanf:"token_ttl"`
+	// Audience is written to every SA token's aud and required back on it.
+	Audience   string                   `koanf:"audience"`
+	Revocation ServiceAccountRevocation `koanf:"revocation"`
+	// Signing is optional. With no keys, SA tokens are signed with auth.jwt.
+	Signing ServiceAccountSigning `koanf:"signing"`
+}
+
+// ServiceAccountRevocation tunes the revocation-watermark cache.
+type ServiceAccountRevocation struct {
+	PollInterval time.Duration `koanf:"poll_interval"`
+}
+
+// HasOwnKey reports whether SA tokens have their own signing keys.
+func (s *ServiceAccount) HasOwnKey() bool {
+	return len(s.Signing.Keys) > 0
 }
 
 // Authorization modes selectable via auth.authorization.mode.
@@ -428,6 +486,9 @@ type ClaimMappings struct {
 	Username     string `koanf:"username"`
 	Email        string `koanf:"email"`
 	Scope        string `koanf:"scope"`
+	// DisplayName is the claim holding the user's human-readable name, returned
+	// as createdBy/updatedBy in responses. Read only; never required.
+	DisplayName string `koanf:"display_name"`
 	Roles        string `koanf:"roles"`
 }
 
@@ -463,6 +524,11 @@ type Webhook struct {
 	MaxBodySize int64 `koanf:"max_body_size"`
 	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
 	SignatureHeader string `koanf:"signature_header"`
+	// LegacySharedSecret accepts a delivery that carries no secret_hash (a portal that
+	// predates it): it is verified against each retained portal secret of its organization,
+	// then the shared Secret. Off, such a delivery is rejected before any signature check.
+	// Default off; turn it on only while a portal that predates secret_hash is still in use.
+	LegacySharedSecret bool `koanf:"legacy_shared_secret"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -702,6 +768,12 @@ type Deployments struct {
 	TimeoutDuration int  `koanf:"timeout_duration"`
 }
 
+// Organizations configures how new organizations are set up.
+type Organizations struct {
+	// CreateDefaultProject creates a project named "default" with every new organization.
+	CreateDefaultProject bool `koanf:"create_default_project"`
+}
+
 // APIKey holds API key-specific configuration.
 type APIKey struct {
 	HashingAlgorithms []string `koanf:"hashing_algorithms"`
@@ -713,6 +785,9 @@ type Security struct {
 	// (secrets, subscription tokens, WebSub HMAC secrets).
 	EncryptionKey string `koanf:"encryption_key"`
 	APIKey        APIKey `koanf:"api_key"`
+	// WebhookSecretMaxVersions caps how many versions a webhook secret keeps
+	// during rotation. Values below 2 select the default (3).
+	WebhookSecretMaxVersions int `koanf:"webhook_secret_max_versions"`
 }
 
 // package-level singleton.
@@ -877,6 +952,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		cfg.APIPortalPublication.ListingRequestTimeout = cfg.APIPortalPublication.RequestTimeout
 	}
 	if err := validateAPIPortalPublicationConfig(&cfg.APIPortalPublication, cfg.Listeners.Timeouts.Write); err != nil {
+		return nil, err
+	}
+	if err := validateGatewayRelayConfig(&cfg.GatewayRelay, cfg.Listeners.Timeouts.Write); err != nil {
 		return nil, err
 	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
@@ -1052,6 +1130,39 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 	return nil
 }
 
+// validateGatewayRelayConfig rejects a relay without bounds, or one the server's
+// write timeout would cut off. allow_hosts is parsed when the relay is built.
+func validateGatewayRelayConfig(cfg *GatewayRelay, writeTimeout time.Duration) error {
+	if cfg.RequestTimeout <= 0 {
+		return fmt.Errorf("gateway_relay.request_timeout must be greater than zero (got %s)", cfg.RequestTimeout)
+	}
+	for _, f := range []struct {
+		name  string
+		value int64
+	}{
+		{"gateway_relay.max_request_bytes", cfg.MaxRequestBytes},
+		{"gateway_relay.max_response_bytes", cfg.MaxResponseBytes},
+		{"gateway_relay.max_concurrent", int64(cfg.MaxConcurrent)},
+	} {
+		if f.value <= 0 {
+			return fmt.Errorf("%s must be greater than zero (got %d)", f.name, f.value)
+		}
+	}
+	if cfg.MaxPending < 0 {
+		return fmt.Errorf("gateway_relay.max_pending must not be negative (got %d)", cfg.MaxPending)
+	}
+	if cfg.CAFile != "" && cfg.TLSSkipVerify {
+		return fmt.Errorf("gateway_relay.ca_file and gateway_relay.tls_skip_verify are mutually exclusive")
+	}
+	if writeTimeout > 0 && cfg.RequestTimeout >= writeTimeout {
+		return fmt.Errorf(
+			"gateway_relay.request_timeout (%s) must be shorter than server.timeouts.write (%s), or the response is cut off before the relay can report a failure",
+			cfg.RequestTimeout, writeTimeout,
+		)
+	}
+	return nil
+}
+
 // validateAuthConfig validates the selected auth mode and the section that mode
 // activates, plus the authorization section that applies in every mode. Modes
 // are mutually exclusive by construction: auth.mode is a single discriminator,
@@ -1065,6 +1176,10 @@ func validateAuthConfig(auth *Auth) error {
 	}
 
 	if err := validateAuthModeConfig(auth); err != nil {
+		return err
+	}
+
+	if err := validateServiceAccountConfig(auth); err != nil {
 		return err
 	}
 
@@ -1100,6 +1215,31 @@ func validateAuthModeConfig(auth *Auth) error {
 	default:
 		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeInternalToken, AuthModeFile, AuthModeIDP, auth.Mode)
 	}
+}
+
+// validateServiceAccountConfig checks [auth.service_account]. A half-configured
+// signing key or a shared issuer would surface as a 401 long after startup.
+func validateServiceAccountConfig(auth *Auth) error {
+	sa := &auth.ServiceAccount
+	if !sa.Enabled {
+		return nil
+	}
+	if sa.TokenTTL <= 0 {
+		return fmt.Errorf("auth.service_account.token_ttl must be a positive duration")
+	}
+	if strings.TrimSpace(sa.Audience) == "" {
+		return fmt.Errorf("auth.service_account.audience must not be blank")
+	}
+	// The jitter adds rand.N(poll_interval/2), which panics on zero.
+	if sa.Revocation.PollInterval <= 0 || sa.Revocation.PollInterval/2 == 0 {
+		return fmt.Errorf("auth.service_account.revocation.poll_interval must be a positive duration of at least 2ns")
+	}
+	// An account's roles are checked against this file; without it none can be created.
+	if strings.TrimSpace(auth.Authorization.RoleToScopeMapping) == "" {
+		return fmt.Errorf("auth.authorization.role_to_scope_mapping is required when service accounts are enabled")
+	}
+
+	return validateServiceAccountSigning(auth)
 }
 
 // ValidateAuthSkipPath rejects a skip-path entry that would widen the auth
@@ -1326,6 +1466,11 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 	for i, u := range cfg.Users {
 		if u.Username == "" {
 			return fmt.Errorf("auth.file.users[%d]: username is required (set it in config via {{ env }}/{{ file }})", i)
+		}
+		// The prefix is reserved for service-account subjects.
+		if strings.HasPrefix(u.Username, constants.ServiceAccountSubPrefix) {
+			return fmt.Errorf("auth.file.users[%d]: username must not start with %q (reserved for service accounts)",
+				i, constants.ServiceAccountSubPrefix)
 		}
 		if u.PasswordHash == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)

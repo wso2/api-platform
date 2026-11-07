@@ -17,6 +17,8 @@
 
 package service
 
+import "github.com/wso2/api-platform/platform-api/internal/repository"
+
 // passthroughIdentityRepo is a repository.UserIdentityMappingRepository test
 // double that returns the input identity unchanged (no real
 // user_idp_references table). It lets unit tests that assert exact
@@ -40,6 +42,20 @@ func (passthroughIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string
 	for _, id := range uuids {
 		if id != "" {
 			result[id] = id
+		}
+	}
+	return result, nil
+}
+
+func (passthroughIdentityRepo) GetOrCreateUUIDWithDisplayName(identity, _ string) (string, error) {
+	return identity, nil
+}
+
+func (passthroughIdentityRepo) GetIdentitiesByUUIDs(uuids []string) (map[string]repository.UserIdentity, error) {
+	result := make(map[string]repository.UserIdentity, len(uuids))
+	for _, id := range uuids {
+		if id != "" {
+			result[id] = repository.UserIdentity{IdpID: id}
 		}
 	}
 	return result, nil

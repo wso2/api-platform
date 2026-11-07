@@ -26,6 +26,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/a2aagent"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/aiworkspace"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/apicontrolplane"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/browser"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
@@ -50,6 +51,8 @@ func BuildSpec(component, version string) (builder.Spec, error) {
 		return apiportal.BuildSpec(version)
 	case "ai-workspace":
 		return aiworkspace.BuildSpec(version)
+	case "api-control-plane":
+		return apicontrolplane.BuildSpec(version)
 	default:
 		return builder.Spec{}, fmt.Errorf("catalog: no source builder for %q", component)
 	}
@@ -242,6 +245,7 @@ func All() []*components.Definition {
 		apiportal.APIPortalOtherOrg(),
 		apiportal.APIPortalMultiOrganization(),
 		aiworkspace.AIWorkspace(),
+		apicontrolplane.APIControlPlane(),
 		browser.Browser(),
 		cloudconsole.CloudConsole(),
 		testbench.Testbench(),

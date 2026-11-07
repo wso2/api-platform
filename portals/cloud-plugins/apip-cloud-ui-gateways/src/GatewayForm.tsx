@@ -69,6 +69,12 @@ export type GatewayFormProps = {
   gatewayVersions: GatewayVersionEntry[];
   /** Preselects the Hosting option when creating, e.g. from the empty state's buttons. */
   initialHosting?: GatewayHosting | null;
+  /**
+   * Hosting kinds this organization has no room for, each with the message
+   * explaining why. Each kind is capped separately, so one being full says
+   * nothing about the other — hence a map rather than one flag.
+   */
+  hostingBlocked?: Partial<Record<GatewayHosting, string>>;
   onBack: () => void;
   /** Returning a promise lets the form keep its submit button busy until the save settles. Unchanged: still the `/managed-gateways` path. */
   onSubmit: (input: GatewayInput) => void | Promise<void>;
@@ -77,7 +83,7 @@ export type GatewayFormProps = {
 };
 
 /** Shown before a name is typed, so the naming rule is known up front. */
-const NAME_HELPER_TEXT = 'The gateway handle is derived from this name and cannot be changed later.';
+const NAME_HELPER_TEXT = 'The API gateway handle is derived from this name and cannot be changed later.';
 
 /** A plausible local endpoint, shown pre-filled so the field reads as "edit this" rather than "write one from scratch". */
 const SAMPLE_SELF_HOSTED_URL = 'https://localhost:8443';
@@ -94,14 +100,14 @@ const HOSTING_OPTIONS: {
   {
     value: 'managed',
     icon: Cloud,
-    title: 'WSO2 managed (cloud)',
-    description: 'WSO2 runs, scales, and upgrades the gateway for you. No infrastructure to maintain.',
+    title: 'WSO2 managed API gateway (cloud)',
+    description: 'WSO2 runs, scales, and upgrades the API gateway for you. No infrastructure to maintain.',
   },
   {
     value: 'self-hosted',
     icon: Server,
-    title: 'Self-hosted',
-    description: 'Run the gateway on your own infrastructure and connect it to this control plane.',
+    title: 'Self-hosted API gateway',
+    description: 'Run the API gateway on your own infrastructure and connect it to this control plane.',
   },
 ];
 
@@ -113,6 +119,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
   gateways,
   gatewayVersions,
   initialHosting = null,
+  hostingBlocked,
   onBack,
   onSubmit,
   onSubmitSelfHosted,
@@ -123,9 +130,14 @@ const GatewayForm: FC<GatewayFormProps> = ({
   // nothing to choose, so the picker and its comparison table are left out
   // entirely rather than shown read-only; the fields below just reflect the
   // gateway's own hosting from the start.
-  const [hosting, setHosting] = useState<GatewayHosting | null>(
-    isEdit ? gateway!.hosting : initialHosting
-  );
+  // A kind whose quota is full must never arrive preselected — the form would
+  // open on a choice its own card refuses. An edit keeps its gateway's hosting
+  // regardless: a full quota does not stop editing what already exists.
+  const [hosting, setHosting] = useState<GatewayHosting | null>(() => {
+    if (isEdit) return gateway!.hosting;
+    if (initialHosting && hostingBlocked?.[initialHosting]) return null;
+    return initialHosting;
+  });
   const [showCompare, setShowCompare] = useState(false);
   const isSelfHosted = hosting === 'self-hosted';
 
@@ -239,7 +251,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
 
       <Stack spacing={2} mt={2}>
         <PageTitle>
-          <PageTitle.Header>{isEdit ? 'Edit Gateway' : 'Add Gateway'}</PageTitle.Header>
+          <PageTitle.Header>{isEdit ? 'Edit API Gateway' : 'Add API Gateway'}</PageTitle.Header>
         </PageTitle>
       </Stack>
 
@@ -268,9 +280,17 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   const step = ARROW_STEPS[event.key];
                   if (!step) return;
                   event.preventDefault();
-                  const current = HOSTING_OPTIONS.findIndex((option) => option.value === hosting);
                   const count = HOSTING_OPTIONS.length;
-                  const next = current === -1 ? (step > 0 ? 0 : count - 1) : (current + step + count) % count;
+                  const current = HOSTING_OPTIONS.findIndex((option) => option.value === hosting);
+                  // Step past any kind with no room rather than landing on a
+                  // card that cannot be chosen; stop if none is choosable.
+                  let next = current === -1 ? (step > 0 ? -1 : 0) : current;
+                  for (let tried = 0; tried < count; tried += 1) {
+                    next = (next + step + count) % count;
+                    if (!hostingBlocked?.[HOSTING_OPTIONS[next].value]) break;
+                    if (tried === count - 1) return;
+                  }
+                  if (hostingBlocked?.[HOSTING_OPTIONS[next].value]) return;
                   setHosting(HOSTING_OPTIONS[next].value);
                   event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
                 }}
@@ -283,6 +303,8 @@ const GatewayForm: FC<GatewayFormProps> = ({
                     description={option.description}
                     selected={hosting === option.value}
                     tabIndex={hosting === option.value || (hosting === null && index === 0) ? 0 : -1}
+                    disabled={Boolean(hostingBlocked?.[option.value])}
+                    disabledMessage={hostingBlocked?.[option.value]}
                     onClick={() => setHosting(option.value)}
                   />
                 ))}
@@ -296,7 +318,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                         Compare hosting options
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        See how WSO2 managed and self-hosted gateways differ.
+                        See how WSO2 managed and self-hosted API gateways differ.
                       </Typography>
                     </Box>
                     <IconButton onClick={() => setShowCompare(false)} aria-label="Close">
@@ -331,7 +353,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   <TextField
                     fullWidth
                     required
-                    placeholder="Enter gateway name"
+                    placeholder="Enter API gateway name"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     error={Boolean(nameError)}
@@ -373,7 +395,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   {typeVersions.length > 0 ? (
                     <Grid size={{ xs: 12 }}>
                       <FormControl fullWidth>
-                        <FormLabel required>Gateway Version</FormLabel>
+                        <FormLabel required>API Gateway Version</FormLabel>
                         <Select
                           value={version}
                           onChange={(event) => setVersion(event.target.value)}
@@ -409,15 +431,15 @@ const GatewayForm: FC<GatewayFormProps> = ({
                         placeholder={SAMPLE_SELF_HOSTED_URL}
                         value={url}
                         onChange={(event) => setUrl(event.target.value)}
-                        helperText="The endpoint this gateway will answer on. Change it to match your own infrastructure."
+                        helperText="The endpoint this API gateway will answer on. Change it to match your own infrastructure."
                       />
                     </FormControl>
                   </Grid>
 
                   <Grid size={{ xs: 12 }}>
                     <Alert severity="info">
-                      After you add the gateway, you get a registration token and setup commands to run it
-                      on your infrastructure. The gateway stays inactive until it connects to the control
+                      After you add the API gateway, you get a registration token and setup commands to run it
+                      on your infrastructure. The API gateway stays inactive until it connects to the control
                       plane.
                     </Alert>
                   </Grid>
@@ -429,8 +451,8 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   // Only a WSO2-managed gateway can be the environment's default, so
                   // there is no switch to offer; say why rather than leave it missing.
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Self-hosted gateways are never the default gateway of an environment. Select this
-                    gateway explicitly when you deploy to it.
+                    Self-hosted API gateways are never the default API gateway of an environment. Select this
+                    API gateway explicitly when you deploy to it.
                   </Typography>
                 ) : (
                   <FormControlLabel
@@ -448,7 +470,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                         onChange={(event) => setIsDefault(event.target.checked)}
                       />
                     }
-                    label="Default gateway for this environment"
+                    label="Default API gateway for this environment"
                   />
                 )}
               </Grid>
@@ -470,7 +492,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                 onClick={handleSubmit}
                 startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : undefined}
               >
-                {submitting ? (isEdit ? 'Saving…' : 'Adding…') : isEdit ? 'Save Changes' : 'Add Gateway'}
+                {submitting ? (isEdit ? 'Saving…' : 'Adding…') : isEdit ? 'Save Changes' : 'Add API Gateway'}
               </Button>
             </span>
           </Tooltip>

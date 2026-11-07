@@ -78,7 +78,7 @@ export default function AppLayout(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const extensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
-  const { logout } = useAppAuth();
+  const { logout, hasPermission } = useAppAuth();
   // [standalone] const { signOut } = useAuthContext();
 
   const {
@@ -162,8 +162,11 @@ export default function AppLayout(): JSX.Element {
       apiFetch: extensionApiFetch,
       resourceLimits,
       billing: { organization: getBillingOrganization },
+      // Without this the cloud plugins fall back to allowing every control
+      // (`permissionsOf` in each plugin), whatever the user's scopes.
+      permissions: { canAny: (scopes) => scopes.some(hasPermission) },
     }),
-    [currentOrganization, currentProject, navigate, notify, resourceLimits]
+    [currentOrganization, currentProject, hasPermission, navigate, notify, resourceLimits]
   );
 
   // The first-run wizard owns the whole viewport: a user with nothing set up yet

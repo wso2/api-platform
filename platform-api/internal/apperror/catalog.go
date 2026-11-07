@@ -79,6 +79,25 @@ var (
 	RESTAPIDeploymentValidationFailed = def(CodeRESTAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
 	RESTAPIAPIKeyNotFound             = def(CodeRESTAPIAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	RESTAPIAPIKeyForbidden            = def(CodeRESTAPIAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
+
+	// Invoking a REST API through a gateway. The messages never name the
+	// resolved address or which check refused a request; that goes to the log.
+	RESTAPIInvokeGatewayNotDeployed = def(CodeRESTAPIInvokeGatewayNotDeployed, http.StatusNotFound,
+		"This REST API is not deployed to the selected gateway.")
+	RESTAPIInvokeGatewayNoEndpoint = def(CodeRESTAPIInvokeGatewayNoEndpoint, http.StatusUnprocessableEntity,
+		"The selected gateway has no endpoint configured.")
+	RESTAPIInvokeGatewayUnsupportedScheme = def(CodeRESTAPIInvokeGatewayUnsupportedScheme, http.StatusUnprocessableEntity,
+		"The selected gateway's endpoint is not an http or https address.")
+	RESTAPIInvokeTargetNotAllowed = def(CodeRESTAPIInvokeTargetNotAllowed, http.StatusForbidden,
+		"This gateway cannot be reached from the control plane.")
+	RESTAPIInvokeRequestInvalid = def(CodeRESTAPIInvokeRequestInvalid, http.StatusBadRequest,
+		"This request cannot be sent as written.")
+	RESTAPIInvokeBusy = def(CodeRESTAPIInvokeBusy, http.StatusServiceUnavailable,
+		"Too many test requests are in flight; try again shortly.")
+	RESTAPIInvokeUpstreamTimeout = def(CodeRESTAPIInvokeUpstreamTimeout, http.StatusGatewayTimeout,
+		"The gateway did not respond in time.")
+	RESTAPIInvokeUpstreamUnreachable = def(CodeRESTAPIInvokeUpstreamUnreachable, http.StatusBadGateway,
+		"The gateway could not be reached.")
 )
 
 // LLM provider / proxy entries.
@@ -224,6 +243,23 @@ var (
 	SecretNotFound = def(CodeSecretNotFound, http.StatusNotFound, "The specified secret could not be found.")
 	SecretExists   = def(CodeSecretExists, http.StatusConflict, "A secret with this name already exists.")
 	SecretInUse    = def(CodeSecretInUse, http.StatusConflict, "The secret is in use and cannot be deleted.")
+)
+
+// Webhook secret entries.
+var (
+	WebhookSecretNotFound     = def(CodeWebhookSecretNotFound, http.StatusNotFound, "The specified webhook secret could not be found.")
+	WebhookSecretExists       = def(CodeWebhookSecretExists, http.StatusConflict, "A webhook secret with this id already exists.")
+	WebhookSecretVersionLimit = def(CodeWebhookSecretVersionLimit, http.StatusConflict, "The maximum number of secret versions is reached. Delete a version before rotating.")
+	WebhookSecretLastVersion  = def(CodeWebhookSecretLastVersion, http.StatusConflict, "The last remaining secret version cannot be deleted. Delete the webhook secret instead.")
+)
+
+// Service account entries.
+var (
+	ServiceAccountNotFound = def(CodeServiceAccountNotFound, http.StatusNotFound, "The specified service account could not be found.")
+	ServiceAccountExists   = def(CodeServiceAccountExists, http.StatusConflict, "A service account with this ID already exists.")
+	// Same body for a missing scope and an ungranted one, so it does not list the account's grants.
+	ServiceAccountInvalidScope = def(CodeServiceAccountInvalidScope, http.StatusBadRequest,
+		"The requested scope is missing, or is not granted to this service account.")
 )
 
 // Artifact entries — generic artifact-reference flows and the

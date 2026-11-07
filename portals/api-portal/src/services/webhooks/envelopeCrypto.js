@@ -25,6 +25,11 @@ const crypto = require('crypto');
 // internal/webhook/decryptor.go).
 const FIELD_KEY_INFO = 'api-portal-webhook-field-encryption-v1';
 
+// Domain label for the secret hash below. It keeps that hash from being a bare
+// SHA3-256 of the secret that could be confused with, or replayed as, any other
+// digest of the same value. Must stay byte-identical to the receiver's.
+const SECRET_HASH_LABEL = 'api-portal-webhook-secret-hash-v1';
+
 const KEY_BYTES = 32; // AES-256
 const IV_BYTES = 12; // 96-bit GCM nonce
 
@@ -52,6 +57,23 @@ function deriveFieldKey(secret) {
     return Buffer.from(
         crypto.hkdfSync('sha3-256', secret, Buffer.alloc(0), FIELD_KEY_INFO, KEY_BYTES)
     );
+}
+
+/**
+ * Hash of a subscriber's shared secret, sent with every signed delivery as
+ * `secret_hash`. It identifies WHICH secret signed and encrypted the
+ * delivery, so a receiver that holds several valid secrets (rotation) can pick the
+ * right one instead of trying each. It is a one-way identifier, not key material:
+ * the signing and encryption keys never derive from it.
+ *
+ * @param {string} secret — the subscriber's shared secret
+ * @returns {string} lowercase hex SHA3-256 of `SECRET_HASH_LABEL + ":" + secret`
+ */
+function secretHash(secret) {
+    if (!secret) {
+        throw new Error('A subscriber secret is required to hash it');
+    }
+    return crypto.createHash('sha3-256').update(`${SECRET_HASH_LABEL}:${secret}`, 'utf8').digest('hex');
 }
 
 /**
@@ -106,4 +128,8 @@ function decryptField(secret, envelope) {
     ]).toString('utf8');
 }
 
-module.exports = { deriveFieldKey, encryptField, decryptField, FIELD_KEY_INFO };
+// Reserved name under which a delivery's stored encrypted_fields records the hash of the secret
+// that sealed them. It is not a payload field: the worker removes it before the delivery is sent.
+const SEALED_WITH_KEY = '__sealed_with_secret_hash';
+
+module.exports = { deriveFieldKey, encryptField, decryptField, secretHash, FIELD_KEY_INFO, SECRET_HASH_LABEL, SEALED_WITH_KEY };

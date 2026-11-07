@@ -35,9 +35,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
-	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
@@ -152,59 +152,37 @@ func TestDecryptWebhookField(t *testing.T) {
 	require.Equal(t, plaintext, decrypted)
 }
 
-// claimsTable builds a two-column table from name/value pairs.
-func claimsTable(t *testing.T, pairs ...string) *godog.Table {
-	t.Helper()
-	type cell struct {
-		Value string `json:"value"`
-	}
-	type row struct {
-		Cells []cell `json:"cells"`
-	}
-	var rows []row
-	for i := 0; i+1 < len(pairs); i += 2 {
-		rows = append(rows, row{Cells: []cell{{pairs[i]}, {pairs[i+1]}}})
-	}
-	raw, err := json.Marshal(map[string]any{"rows": rows})
-	require.NoError(t, err)
-	var table godog.Table
-	require.NoError(t, json.Unmarshal(raw, &table))
-	return &table
-}
+func TestWithReplacedClaimKeepsHeaderAndSignature(t *testing.T) {
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"u","name":"Ada"}`))
+	token := "header." + payload + ".signature"
 
-func TestClaimsFromTableDecodesListsMapsAndQuotedStrings(t *testing.T) {
-	claims, err := claimsFromTable(context.Background(), claimsTable(t,
-		"sub", "ivy",
-		"org_id", `["acme"]`,
-		"org_map", `{"acme": {"id": "1"}}`,
-		"padded", `"default "`,
-		"org_name", "Acme Corp",
-	))
+	forged, err := withReplacedClaim(token, "name", "Mallory")
 	require.NoError(t, err)
-	require.Equal(t, "ivy", claims["sub"])
-	require.Equal(t, []any{"acme"}, claims["org_id"])
-	require.Equal(t, map[string]any{"acme": map[string]any{"id": "1"}}, claims["org_map"])
-	require.Equal(t, "default ", claims["padded"], "a quoted value keeps the space Gherkin would trim")
-	require.Equal(t, "Acme Corp", claims["org_name"])
-}
+	parts := strings.Split(forged, ".")
+	require.Len(t, parts, 3)
+	require.Equal(t, "header", parts[0])
+	require.Equal(t, "signature", parts[2])
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+	var claims map[string]any
+	require.NoError(t, json.Unmarshal(raw, &claims))
+	require.Equal(t, map[string]any{"sub": "u", "name": "Mallory"}, claims)
 
-func TestClaimsFromTableRejectsMalformedTables(t *testing.T) {
-	cases := map[string]*godog.Table{
-		"nil table":    nil,
-		"missing sub":  claimsTable(t, "org_id", "acme"),
-		"empty sub":    claimsTable(t, "sub", ""),
-		"empty name":   claimsTable(t, "sub", "u", " ", "value"),
-		"duplicate":    claimsTable(t, "sub", "u", "sub", "v"),
-		"invalid JSON": claimsTable(t, "sub", "u", "roles", "[unclosed"),
-		"wrong columns": func() *godog.Table {
-			table := claimsTable(t, "sub", "u")
-			table.Rows[0].Cells = table.Rows[0].Cells[:1]
-			return table
-		}(),
-	}
-	for name, table := range cases {
+	added, err := withReplacedClaim(token, "iss", "https://other")
+	require.NoError(t, err)
+	raw, err = base64.RawURLEncoding.DecodeString(strings.Split(added, ".")[1])
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &claims))
+	require.Equal(t, "https://other", claims["iss"], "a claim the token lacks is added")
+
+	for name, malformed := range map[string]string{
+		"not a JWS":       "only.two",
+		"bad base64":      "h.!!!.s",
+		"payload not map": "h." + base64.RawURLEncoding.EncodeToString([]byte(`[1]`)) + ".s",
+		"null payload":    "h." + base64.RawURLEncoding.EncodeToString([]byte(`null`)) + ".s",
+	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := claimsFromTable(context.Background(), table)
+			_, err := withReplacedClaim(malformed, "name", "x")
 			require.Error(t, err)
 		})
 	}
@@ -325,6 +303,13 @@ func TestAPIHasField(t *testing.T) {
 	require.ErrorContains(t, apiHasField(body, "api-1", "status", "PUBLISHED"), `with status "DEPRECATED"`)
 	require.ErrorContains(t, apiHasField(body, "api-1", "title", "x"), "want")
 	require.ErrorContains(t, apiHasField([]byte(`not json`), "api-1", "status", "x"), "decoding")
+}
+
+func TestFetchListedAPIRejectsAnUnknownListing(t *testing.T) {
+	_, _, err := (&Steps{}).fetchListedAPI(context.Background(), "LLM provider", "api-1")
+	require.ErrorContains(t, err, "unsupported API Portal listing")
+	require.Equal(t, "/apis/", listingCollections["API"])
+	require.Equal(t, "/mcp-servers/", listingCollections["MCP server"])
 }
 
 func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {
@@ -454,6 +439,58 @@ func billingFakes(t *testing.T, deliveryStatus int) *Steps {
 		topo:   &runtime.Topology{Block: &topology.ResolvedBlock{Name: "billing"}, Instances: set},
 		client: newPortalClient(),
 	}
+}
+
+func TestCreateApplicationWithTokenRemovesItWithTheSameToken(t *testing.T) {
+	type call struct{ method, path, auth, contentType string }
+	var calls []call
+	created := http.StatusCreated
+	pair := shared.APIPortalTLS()
+	cert, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+	require.NoError(t, err)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, call{r.Method, r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("Content-Type")})
+		if r.Method == http.MethodPost {
+			w.WriteHeader(created)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	address, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(address.Port())
+	require.NoError(t, err)
+	definition := &components.Definition{Name: portalService, Alias: portalService,
+		Endpoints: []components.Endpoint{{Name: "https", Port: 9543, Scheme: "https"}}}
+	inst, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{9543: port})
+	require.NoError(t, err)
+	set := components.NewSet()
+	require.NoError(t, set.Add(inst))
+	s := &Steps{topo: &runtime.Topology{Block: &topology.ResolvedBlock{Name: "apps"}, Instances: set}, client: newPortalClient()}
+
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(slog.Default())
+	require.NoError(t, cleanup.Install(ctx, reg))
+	require.NoError(t, tcontext.Set(ctx, "token", "user-token"))
+
+	require.NoError(t, s.createApplicationWithToken(ctx, portalService, "token", "appId"))
+	id, err := tcontext.ResolveString(ctx, "appId")
+	require.NoError(t, err)
+	require.Equal(t, []call{{http.MethodPost, apiPrefix + "/applications", "Bearer user-token", "application/json"}}, calls)
+	require.Len(t, reg.Pending(), 1)
+
+	require.NoError(t, reg.Sweep(ctx))
+	require.Len(t, calls, 2)
+	require.Equal(t, call{http.MethodDelete, apiPrefix + "/applications/" + id, "Bearer user-token", ""}, calls[1],
+		"an application is removed by the user who created it")
+
+	created = http.StatusForbidden
+	require.ErrorContains(t, s.createApplicationWithToken(ctx, portalService, "token", "other"), "403")
+	require.Empty(t, reg.Pending(), "a refused create registers nothing")
+	require.ErrorContains(t, s.createApplicationWithToken(ctx, portalService, "missing", "other"), "unavailable")
 }
 
 func TestPayCheckoutEndsTheSubscriptionAtCleanupEvenWhenStripesEventIsRefused(t *testing.T) {

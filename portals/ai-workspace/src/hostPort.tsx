@@ -110,6 +110,17 @@ export type BillingPort = {
   organization: () => Promise<BillingOrganization | null>;
 };
 
+/**
+ * The signed-in user's permissions as an extension reads them: whether the user
+ * holds at least one of `scopes` (an any-of list, as the Platform API's own
+ * accepted-scope lists are). The same question, and the same shape, as the API
+ * Control Plane's port, so a plugin written for both hosts gates its controls the
+ * same way in each. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   orgUuid?: string;
@@ -119,6 +130,11 @@ export type AIWorkspaceHostPort = {
   apiFetch: ApiFetch;
   resourceLimits: ResourceLimitsPort;
   billing: BillingPort;
+  /**
+   * Backed by `useAppAuth().hasPermission`, so the organization's read-only state
+   * already applies to write scopes, as it does for the workspace's own controls.
+   */
+  permissions: PermissionsPort;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

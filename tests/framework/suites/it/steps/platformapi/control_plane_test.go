@@ -26,24 +26,40 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/components"
+	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 )
 
 func TestArtifactPath(t *testing.T) {
@@ -59,6 +75,7 @@ func TestArtifactPath(t *testing.T) {
 		{name: "proxy", kind: "LlmProxy", handle: "proxy-1", want: "/llm-proxies/proxy-1"},
 		{name: "mcp", kind: "Mcp", handle: "mcp-1", want: "/mcp-proxies/mcp-1"},
 		{name: "rest api", kind: "RestApi", handle: "api-1", want: "/rest-apis/api-1"},
+		{name: "graphql api", kind: "GraphQLApi", handle: "gql-1", want: "/graphql-apis/gql-1"},
 		{name: "gateway agent is an agent proxy", kind: "Agent", handle: "agent-1", want: "/agent-proxies/agent-1"},
 		{name: "control-plane kind is not a gateway kind", kind: "AgentProxy", handle: "x", wantErr: true},
 		{name: "unknown kind", kind: "WebSubApi", handle: "x", wantErr: true},
@@ -75,6 +92,23 @@ func TestArtifactPath(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestCreateDeployableRejectsAnUnknownKind(t *testing.T) {
+	err := (&Steps{}).createDeployable(context.Background(), "AgentProxy", "x", "p", "/x")
+	require.ErrorContains(t, err, `unknown deployable kind "AgentProxy"`)
+}
+
+func TestDeployableBase(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	_, ok := deployableBase(ctx, "proxy-1")
+	require.False(t, ok, "a proxy created without a base provider has none")
+	require.NoError(t, tcontext.Set(ctx, keyDeployableBase+"proxy-1", "proxy-1-base"))
+	provider, ok := deployableBase(ctx, "proxy-1")
+	require.True(t, ok)
+	require.Equal(t, "proxy-1-base", provider)
+	_, ok = deployableBase(ctx, "proxy-2")
+	require.False(t, ok, "the base provider belongs to its own proxy")
 }
 
 func TestDeploymentStatusMatches(t *testing.T) {
@@ -204,6 +238,65 @@ func TestActorCredentials(t *testing.T) {
 		_, err := actorCredentials(who)
 		require.ErrorContains(t, err, "unknown control-plane actor", who)
 	}
+}
+
+func TestMultipartFormUploadsFixturesAndSendsTextFields(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.NoError(t, tcontext.Set(ctx, "project", "proj-1"))
+	table := formTable(t, [][]string{
+		{"projectId", "${CTX:project}"},
+		{"file", "@spec:petstore-v1.yaml"},
+		{"spec", "@generated-spec:2048"},
+	})
+	body, contentType, err := multipartForm(ctx, table)
+	require.NoError(t, err)
+	_, params, err := mime.ParseMediaType(contentType)
+	require.NoError(t, err)
+	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{"proj-1"}, form.Value["projectId"])
+	want, err := specs.Fixture("petstore-v1.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "petstore-v1.yaml", form.File["file"][0].Filename)
+	require.Equal(t, int64(len(want)), form.File["file"][0].Size)
+	require.Equal(t, int64(2048), form.File["spec"][0].Size)
+}
+
+func TestMultipartFormRejectsBadRowsAndUnknownFixtures(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	for name, rows := range map[string][][]string{
+		"no rows":         nil,
+		"one cell":        {{"file"}},
+		"unknown fixture": {{"file", "@spec:missing.yaml"}},
+		"no byte count":   {{"file", "@generated-spec:big"}},
+	} {
+		_, _, err := multipartForm(ctx, formTable(t, rows))
+		require.Error(t, err, name)
+	}
+}
+
+// formTable builds a step table from rows of cell values.
+func formTable(t *testing.T, rows [][]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	var built []row
+	for _, values := range rows {
+		var cells []cell
+		for _, value := range values {
+			cells = append(cells, cell{value})
+		}
+		built = append(built, row{Cells: cells})
+	}
+	raw, err := json.Marshal(map[string]any{"rows": built})
+	require.NoError(t, err)
+	var table godog.Table
+	require.NoError(t, json.Unmarshal(raw, &table))
+	return &table
 }
 
 // trackingContext returns a runner context with a fresh cleanup registry installed.
@@ -542,19 +635,26 @@ func TestInternalArtifactID(t *testing.T) {
 		{"artifactId":"uuid-rest","deploymentId":"dep-rest","kind":"RestApi"},
 		{"artifactId":"uuid-agent","deploymentId":"dep-agent","kind":"Agent"},
 		{"artifactId":"","deploymentId":"dep-blank","kind":"Agent"}]}`)}
-	got, err := internalArtifactID(listing, "dep-agent")
+	got, err := internalArtifactID(listing, internalArtifactKinds["Agent proxy"], "dep-agent")
 	require.NoError(t, err)
 	require.Equal(t, "uuid-agent", got)
+	got, err = internalArtifactID(listing, internalArtifactKinds["REST API"], "dep-rest")
+	require.NoError(t, err)
+	require.Equal(t, "uuid-rest", got)
 
-	_, err = internalArtifactID(listing, "dep-rest")
+	_, err = internalArtifactID(listing, "Agent", "dep-rest")
 	require.ErrorContains(t, err, "want Agent", "a control-plane AgentProxy must be listed in the gateway's vocabulary")
-	_, err = internalArtifactID(listing, "dep-blank")
+	_, err = internalArtifactID(listing, "RestApi", "dep-agent")
+	require.ErrorContains(t, err, "want RestApi")
+	_, err = internalArtifactID(listing, "", "dep-agent")
+	require.ErrorContains(t, err, "want ", "an unknown artifact name never matches a listed kind")
+	_, err = internalArtifactID(listing, "Agent", "dep-blank")
 	require.ErrorContains(t, err, "without an artifact id")
-	_, err = internalArtifactID(listing, "dep-missing")
+	_, err = internalArtifactID(listing, "Agent", "dep-missing")
 	require.ErrorContains(t, err, "does not include")
-	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusUnauthorized}, "dep-agent")
+	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusUnauthorized}, "Agent", "dep-agent")
 	require.Error(t, err)
-	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`[`)}, "dep-agent")
+	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`[`)}, "Agent", "dep-agent")
 	require.Error(t, err)
 }
 
@@ -686,7 +786,10 @@ func TestPublicationTypeAndPath(t *testing.T) {
 	apiType, err = publicationType("GraphQLApi")
 	require.NoError(t, err)
 	require.Equal(t, "graphql-api", apiType)
-	for _, kind := range []string{"Mcp", "LlmProvider", "", "restapi", "graphqlapi"} {
+	apiType, err = publicationType("Mcp")
+	require.NoError(t, err)
+	require.Equal(t, "mcp-proxy", apiType)
+	for _, kind := range []string{"LlmProvider", "", "restapi", "graphqlapi", "mcp"} {
 		_, err := publicationType(kind)
 		require.ErrorContains(t, err, "not supported", kind)
 	}
@@ -785,6 +888,18 @@ func TestMinimalDefinitionMatchesTheAPIKind(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "application/graphql", contentType)
 	require.Contains(t, string(body), "type Query")
+
+	body, contentType, err = minimalDefinition("Mcp", "weather")
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	var mcp struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	require.NoError(t, json.Unmarshal(body, &mcp))
+	require.Len(t, mcp.Tools, 1)
+	require.NotEmpty(t, mcp.Tools[0].Name)
 }
 
 func TestSelectedPlans(t *testing.T) {
@@ -952,7 +1067,7 @@ func TestCallHeaders(t *testing.T) {
 func TestCallTokenUsesTheCallsOwnBearer(t *testing.T) {
 	s := &Steps{}
 	for _, token := range []string{"", "garbage"} {
-		got, err := s.callToken(context.Background(), "https://unused.invalid", controlPlaneCall{bearer: &token}, actor.Credentials{})
+		got, err := s.callToken(context.Background(), "https://unused.invalid", controlPlaneCall{bearer: &token})
 		require.NoError(t, err)
 		require.Equal(t, token, got, "an own bearer is used as it is, even when empty, without a login")
 	}
@@ -1231,4 +1346,606 @@ func TestTrackMCPToolResultReportsAFailedUndo(t *testing.T) {
 			return nil, errors.New("unexpected call")
 		})
 	require.ErrorContains(t, err, "no cleanup is defined")
+}
+
+func TestDiscardCreateDeletesWithTheCreatorsTokenAndStillFails(t *testing.T) {
+	status := http.StatusNoContent
+	var deletes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.Equal(t, "Bearer org-b", r.Header.Get("Authorization"))
+		deletes = append(deletes, r.URL.Path)
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(server.Close)
+	s := &Steps{client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+	created := func(location string) *httpx.Response {
+		return &httpx.Response{StatusCode: http.StatusCreated, Headers: http.Header{"Location": {location}}}
+	}
+
+	err := s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created(apiBase+"/secrets/s1"))
+	require.ErrorContains(t, err, "cleanup cannot delete")
+	require.NotContains(t, err.Error(), "deleting it")
+	require.Equal(t, []string{apiBase + "/secrets/s1"}, deletes)
+
+	status = http.StatusInternalServerError
+	require.ErrorContains(t, s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created(apiBase+"/secrets/s2")), "deleting it as")
+
+	require.ErrorContains(t, s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created("")), "names no Location")
+	require.Len(t, deletes, 2)
+}
+
+func TestTokenFormSendsTheTableAndDefaultsTheGrant(t *testing.T) {
+	ctx, _ := trackingContext(t)
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set("clientId", "sa_default_x_abc123")
+
+	form, err := tokenForm(ctx, valuesTable(
+		[]string{"client_id", "${CTX:clientId}"},
+		[]string{"scope", ""},
+	))
+	require.NoError(t, err)
+	require.Equal(t, "sa_default_x_abc123", form.Get("client_id"))
+	require.Equal(t, clientCredentialsGrant, form.Get("grant_type"), "the grant defaults when the table omits it")
+	require.True(t, form.Has("scope"), "an empty cell is still sent")
+	require.Equal(t, "", form.Get("scope"))
+
+	form, err = tokenForm(ctx, valuesTable([]string{"grant_type", "password"}))
+	require.NoError(t, err)
+	require.Equal(t, "password", form.Get("grant_type"), "a grant the table names is kept")
+}
+
+func TestTokenFormRejectsMalformedTables(t *testing.T) {
+	ctx, _ := trackingContext(t)
+	for name, table := range map[string]*godog.Table{
+		"nil table":     nil,
+		"no rows":       valuesTable(),
+		"one cell":      valuesTable([]string{"client_id"}),
+		"three cells":   valuesTable([]string{"a", "b", "c"}),
+		"blank key":     valuesTable([]string{" ", "b"}),
+		"duplicate key": valuesTable([]string{"a", "1"}, []string{"a", "2"}),
+		"missing value": valuesTable([]string{"client_id", "${CTX:missing}"}),
+	} {
+		_, err := tokenForm(ctx, table)
+		require.Error(t, err, name)
+	}
+}
+
+func TestBasicClientCredentialsFormEncodesEachPart(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"sa_default_x_abc123", "apsa_0123456789abcdef"},
+		{"id:with:colons", "s e+c%r/e&t="},
+		{"sa_h\u00e9llo", "s\u00e9cret-\u4e16\u754c"},
+	} {
+		req, err := http.NewRequest(http.MethodPost, "https://cp/token", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", basicClientCredentials(pair[0], pair[1]))
+		rawID, rawSecret, ok := req.BasicAuth()
+		require.True(t, ok, pair[0])
+		id, err := url.QueryUnescape(rawID)
+		require.NoError(t, err)
+		secret, err := url.QueryUnescape(rawSecret)
+		require.NoError(t, err)
+		require.Equal(t, pair[0], id)
+		require.Equal(t, pair[1], secret)
+	}
+}
+
+func testJWT(t *testing.T, header, payload map[string]any) string {
+	t.Helper()
+	encode := func(value map[string]any) string {
+		raw, err := json.Marshal(value)
+		require.NoError(t, err)
+		return base64.RawURLEncoding.EncodeToString(raw)
+	}
+	return encode(header) + "." + encode(payload) + ".signature"
+}
+
+func rawJWT(header, payload string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(header)) + "." +
+		base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".signature"
+}
+
+func TestJWTSegmentDecodesHeaderAndPayload(t *testing.T) {
+	token := testJWT(t,
+		map[string]any{"alg": "RS256", "kid": "key-1"},
+		map[string]any{"azp": "client-1", "exp": 1761500000, "aud": []string{"a", "b"}})
+
+	header, err := jwtSegment(token, jwtHeaderSegment)
+	require.NoError(t, err)
+	require.Equal(t, "key-1", header["kid"])
+
+	payload, err := jwtSegment(token, jwtPayloadSegment)
+	require.NoError(t, err)
+	require.Equal(t, "client-1", payload["azp"])
+	exp, _ := traverse(payload, "exp")
+	require.Equal(t, "1761500000", renderValue(exp), "a number keeps its digits")
+	aud, _ := traverse(payload, "aud")
+	require.Equal(t, `["a","b"]`, renderValue(aud))
+}
+
+func TestJWTSegmentRejectsWhatIsNotACompactJWS(t *testing.T) {
+	for _, token := range []string{"", "garbage", "a.b", "a.b.c.d", "aaa.bbb.ccc"} {
+		_, err := jwtSegment(token, jwtPayloadSegment)
+		require.Error(t, err, token)
+	}
+	_, err := jwtSegment(rawJWT(`{"alg":"none"}`, "{}"), jwtPayloadSegment)
+	require.NoError(t, err)
+	for _, payload := range []string{"[]", "null", `"s"`} {
+		_, err := jwtSegment(rawJWT(`{"alg":"none"}`, payload), jwtPayloadSegment)
+		require.ErrorContains(t, err, "not a JSON object", payload)
+	}
+	for _, payload := range []string{`{} {}`, `{}x`, `{"a":1}{"b":2}`} {
+		_, err := jwtSegment(rawJWT(`{"alg":"none"}`, payload), jwtPayloadSegment)
+		require.ErrorContains(t, err, "not a JSON object", "trailing bytes: "+payload)
+	}
+	_, err = jwtSegment("e30.!!!.sig", jwtPayloadSegment)
+	require.ErrorContains(t, err, "not base64url")
+	_, err = jwtSegment(rawJWT(`{}`, `{}`), 2)
+	require.Error(t, err, "only the header and the payload can be decoded")
+}
+
+func TestJWTEntryStep(t *testing.T) {
+	token := testJWT(t,
+		map[string]any{"alg": "RS256", "kid": "AbC_-123"},
+		map[string]any{"azp": "client-1", "iss": "platform-api"})
+	body := func(value string) string { return `{"access_token":` + value + `}` }
+	s := &Steps{}
+
+	t.Run("passing checks", func(t *testing.T) {
+		ctx := publishedBody(t, []byte(body(`"`+token+`"`)))
+		local, _ := tcontext.LocalOf(ctx)
+		local.Set("clientId", "client-1")
+		require.NoError(t, s.jwtEntryIs(ctx, "access_token", "claim", "iss", "equal to", "platform-api"))
+		require.NoError(t, s.jwtEntryIs(ctx, "access_token", "header", "kid", "matching", "^[A-Za-z0-9_-]{8}$"))
+		require.NoError(t, s.jwtEntryIs(ctx, "access_token", "claim", "azp", "equal to", "${CTX:clientId}"))
+	})
+
+	t.Run("failing checks", func(t *testing.T) {
+		ctx := publishedBody(t, []byte(body(`"`+token+`"`)))
+		for name, call := range map[string]func() error{
+			"mismatch": func() error {
+				return s.jwtEntryIs(ctx, "access_token", "claim", "iss", "equal to", "someone-else")
+			},
+			"no match": func() error {
+				return s.jwtEntryIs(ctx, "access_token", "header", "kid", "matching", "^x+$")
+			},
+			"invalid pattern": func() error {
+				return s.jwtEntryIs(ctx, "access_token", "claim", "iss", "matching", "(")
+			},
+			"missing claim": func() error {
+				return s.jwtEntryIs(ctx, "access_token", "claim", "sub", "equal to", "x")
+			},
+			"blank name": func() error {
+				return s.jwtEntryIs(ctx, "access_token", "claim", " ", "equal to", "x")
+			},
+		} {
+			err := call()
+			require.Error(t, err, name)
+			require.NotContains(t, err.Error(), token, "%s: an error never carries the token", name)
+		}
+	})
+
+	t.Run("wrong inputs", func(t *testing.T) {
+		for name, ctx := range map[string]context.Context{
+			"field absent":      publishedBody(t, []byte(`{"other":"x"}`)),
+			"field not string":  publishedBody(t, []byte(body(`5`))),
+			"field blank":       publishedBody(t, []byte(body(`""`))),
+			"body not JSON":     publishedBody(t, []byte(`<html>`)),
+			"no response":       tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner")),
+			"field not a token": publishedBody(t, []byte(body(`"garbage"`))),
+		} {
+			require.Error(t, s.jwtEntryIs(ctx, "access_token", "claim", "iss", "equal to", "platform-api"), name)
+		}
+	})
+
+	t.Run("a missing field never prints the token held beside it", func(t *testing.T) {
+		ctx := publishedBody(t, []byte(`{"access_token":"`+token+`","refresh":"`+token+`"}`))
+		err := s.jwtEntryIs(ctx, "id_token", "claim", "iss", "equal to", "platform-api")
+		require.ErrorContains(t, err, "access_token", "the keys are named")
+		require.ErrorContains(t, err, "status 200")
+		require.NotContains(t, err.Error(), token)
+	})
+}
+
+func TestServiceAccountTemplatePreservesOmission(t *testing.T) {
+	ctx, _ := trackingContext(t)
+	s := &Steps{featureRoot: filepath.Join("..", "..")}
+	const template = "resources/templates/service-account.yaml"
+	render := func(rows ...[]string) (map[string]any, error) {
+		payload, err := s.renderJSONTemplate(ctx, template, valuesTable(rows...))
+		if err != nil {
+			return nil, err
+		}
+		var document map[string]any
+		require.NoError(t, json.Unmarshal(payload, &document))
+		return document, nil
+	}
+
+	document, err := render([]string{"displayName", "CI deployer"}, []string{"roles", `["ap_service_account"]`})
+	require.NoError(t, err)
+	require.Len(t, document, 2, "a field the table does not name stays absent")
+	require.Equal(t, []any{"ap_service_account"}, document["roles"])
+
+	document, err = render(
+		[]string{"displayName", "CI deployer"}, []string{"roles", `["ap_service_account"]`},
+		[]string{"description", "Reads APIs"}, []string{"status", "disabled"})
+	require.NoError(t, err)
+	require.Len(t, document, 4)
+	require.Equal(t, "disabled", document["status"])
+
+	document, err = render([]string{"displayName", "CI deployer"}, []string{"roles", `[]`})
+	require.NoError(t, err)
+	require.Equal(t, []any{}, document["roles"], "an empty list is an empty array, not null")
+
+	_, err = render([]string{"roles", `["ap_service_account"]`})
+	require.ErrorContains(t, err, `no value supplied for "displayName"`)
+	_, err = render([]string{"displayName", "CI deployer"})
+	require.Error(t, err)
+}
+
+func TestTrackControlPlaneResourceTracksServiceAccounts(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil,
+		created("/api/v0.9/service-accounts/ci-deployer")))
+	require.Equal(t, []string{"ci-deployer"}, pendingIDs(reg, platformServiceAccountKind))
+
+	for _, endpoint := range []string{
+		"https://cp:9243/api/v0.9/service-accounts/token",
+		"https://cp:9243/api/v0.9/service-accounts/ci-deployer/regenerate-secret",
+	} {
+		require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil,
+			&httpx.Response{StatusCode: http.StatusOK, URL: endpoint, Headers: http.Header{}}))
+	}
+	require.Equal(t, []string{"ci-deployer"}, pendingIDs(reg, platformServiceAccountKind), "only a 201 registers")
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusConflict, URL: "https://cp:9243/api/v0.9/service-accounts/ci-deployer"}))
+	require.Equal(t, []string{"ci-deployer"}, pendingIDs(reg, platformServiceAccountKind), "a refused delete keeps the record")
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp:9243/api/v0.9/service-accounts/ci-deployer"}))
+	require.Empty(t, pendingIDs(reg, platformServiceAccountKind))
+}
+
+// recordedRequest is what a fake control plane saw of one request.
+type recordedRequest struct {
+	method, path, rawPath, contentType string
+	body                               []byte
+	header                             http.Header
+	form                               url.Values
+	basicID, basicSecret               string
+	hasBasic                           bool
+}
+
+const controlPlaneLoginPath = "/api/portal/v0.9/auth/login"
+
+// fakeControlPlane serves handler over TLS as the block's platform-api and returns the steps
+// wired to it, along with the requests it recorded. It uses the control plane's generated
+// certificate and answers the sign-in with "token-of-<username>", so a signed-in call is
+// exercised end to end; the sign-in itself is not recorded.
+func fakeControlPlane(t *testing.T, handler http.HandlerFunc) (*Steps, *httptest.Server, func() []recordedRequest) {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []recordedRequest
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == controlPlaneLoginPath {
+			_ = r.ParseForm()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"token":"token-of-` + r.PostForm.Get("username") + `"}`))
+			return
+		}
+		record := recordedRequest{
+			method: r.Method, path: r.URL.Path, rawPath: r.URL.EscapedPath(),
+			contentType: r.Header.Get("Content-Type"), header: r.Header.Clone(),
+		}
+		if r.Method == http.MethodPost && strings.HasPrefix(record.contentType, formContentType) {
+			if err := r.ParseForm(); err == nil {
+				record.form = r.PostForm
+				record.body = []byte(r.PostForm.Encode())
+			}
+		} else if r.Body != nil {
+			record.body, _ = io.ReadAll(r.Body)
+		}
+		record.basicID, record.basicSecret, record.hasBasic = r.BasicAuth()
+		mu.Lock()
+		seen = append(seen, record)
+		mu.Unlock()
+		handler(w, r)
+	}))
+	crypto := shared.ControlPlaneCrypto()
+	certificate, err := tls.X509KeyPair(crypto["certs/cert.pem"], crypto["certs/key.pem"])
+	require.NoError(t, err)
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{certificate}}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
+	port := server.Listener.Addr().(*net.TCPAddr).Port
+	definition := &components.Definition{
+		Name:      "platform-api",
+		Alias:     "platform-api",
+		Endpoints: []components.Endpoint{{Name: "https", Port: 9243, Scheme: "https"}},
+	}
+	instance, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{9243: port})
+	require.NoError(t, err)
+	instances := components.NewSet()
+	require.NoError(t, instances.Add(instance))
+
+	client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second, InsecureSkipVerify: true})
+	s := &Steps{
+		topo:   &frameworkruntime.Topology{Instances: instances},
+		funnel: httpx.NewFunnel(client, 0, 0),
+		client: client,
+	}
+	return s, server, func() []recordedRequest {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]recordedRequest(nil), seen...)
+	}
+}
+
+func TestAnonymousControlPlaneRequests(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}
+
+	t.Run("form exchange", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		local, _ := tcontext.LocalOf(ctx)
+		local.Set("clientId", "sa_default_x_abc123")
+
+		require.NoError(t, s.exchangeServiceAccountCredentials(ctx, "", "", "", valuesTable(
+			[]string{"client_id", "${CTX:clientId}"}, []string{"client_secret", "apsa_s"}, []string{"scope", ""})))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, http.MethodPost, got[0].method)
+		require.Equal(t, apiBase+serviceAccountTokenPath, got[0].path)
+		require.Empty(t, got[0].header.Get("Authorization"), "no sign-in precedes a public call")
+		require.Equal(t, formContentType, got[0].contentType)
+		require.Equal(t, "sa_default_x_abc123", got[0].form.Get("client_id"))
+		require.Equal(t, "apsa_s", got[0].form.Get("client_secret"))
+		require.Equal(t, clientCredentialsGrant, got[0].form.Get("grant_type"))
+		require.True(t, got[0].form.Has("scope"))
+		resp, err := httpx.Published(ctx)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("basic exchange", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+
+		require.NoError(t, s.exchangeServiceAccountCredentials(ctx, " using HTTP Basic", "id:1", "s e+c%r", valuesTable(
+			[]string{"scope", "ap:project:read"})))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.True(t, got[0].hasBasic)
+		id, err := url.QueryUnescape(got[0].basicID)
+		require.NoError(t, err)
+		secret, err := url.QueryUnescape(got[0].basicSecret)
+		require.NoError(t, err)
+		require.Equal(t, "id:1", id)
+		require.Equal(t, "s e+c%r", secret)
+		require.False(t, got[0].form.Has("client_id"), "the form carries no client id")
+		require.Equal(t, "ap:project:read", got[0].form.Get("scope"))
+	})
+
+	t.Run("basic and form together", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+
+		require.NoError(t, s.exchangeServiceAccountCredentials(ctx, " using HTTP Basic", "id-1", "secret-1", valuesTable(
+			[]string{"client_id", "id-1"}, []string{"scope", "ap:project:read"})))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.True(t, got[0].hasBasic, "the server sees the Basic header")
+		require.Equal(t, "id-1", got[0].form.Get("client_id"), "and the form field")
+	})
+
+	t.Run("root route", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		local, _ := tcontext.LocalOf(ctx)
+		local.Set("etag", `"abc"`)
+
+		require.NoError(t, s.sendControlPlaneRoot(ctx, "get", "/.well-known/jwks", "If-None-Match", "${CTX:etag}"))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, http.MethodGet, got[0].method)
+		require.Equal(t, "/.well-known/jwks", got[0].path, "no management API prefix")
+		require.Empty(t, got[0].header.Get("Authorization"))
+		require.Equal(t, `"abc"`, got[0].header.Get("If-None-Match"))
+	})
+}
+
+func TestSignedInControlPlaneRequests(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}
+	const template = "resources/templates/service-account.yaml"
+	table := valuesTable([]string{"displayName", "CI deployer"}, []string{"roles", `["ap_service_account"]`})
+
+	t.Run("a plain call signs in as admin and uses the versioned API", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, s.sendControlPlaneStep(ctx, "get", "/service-accounts", "", "", "", "", nil))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, apiBase+"/service-accounts", got[0].path)
+		require.Equal(t, "Bearer token-of-"+actor.Administrator().Username, got[0].header.Get("Authorization"))
+		require.Empty(t, got[0].contentType, "a body-less call sends no content type")
+	})
+
+	t.Run("an Authorization override replaces the sign-in", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/projects", "", "", "Authorization", "Bearer sa-token", nil))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, []string{"Bearer sa-token"}, got[0].header.Values("Authorization"))
+	})
+
+	t.Run("a stored token replaces the sign-in", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, tcontext.Set(ctx, "userToken", "minted-token"))
+		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "", "userToken", "", "", nil))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, []string{"Bearer minted-token"}, got[0].header.Values("Authorization"))
+	})
+
+	t.Run("a token and an actor together, or a missing token, are rejected", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, tcontext.Set(ctx, "userToken", "minted-token"))
+		require.ErrorContains(t,
+			s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "publisher", "userToken", "", "", nil), "give one")
+		require.ErrorContains(t,
+			s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "", "missing", "", "", nil), "unavailable")
+		require.Empty(t, requests())
+	})
+
+	t.Run("create sends the rendered template as JSON", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		s.featureRoot = filepath.Join("..", "..")
+		ctx, _ := trackingContext(t)
+		require.NoError(t, s.createServiceAccountFromTemplate(ctx, template, "publisher", table))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, http.MethodPost, got[0].method)
+		require.Equal(t, apiBase+"/service-accounts", got[0].path)
+		require.Equal(t, "application/json", got[0].contentType)
+		require.Equal(t, "Bearer token-of-"+actor.Publisher().Username, got[0].header.Get("Authorization"))
+		require.JSONEq(t, `{"displayName":"CI deployer","roles":["ap_service_account"]}`, string(got[0].body))
+	})
+
+	t.Run("update puts to the path-escaped id", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		s.featureRoot = filepath.Join("..", "..")
+		ctx, _ := trackingContext(t)
+		local, _ := tcontext.LocalOf(ctx)
+		local.Set("id", "ci/deployer 1")
+		require.NoError(t, s.updateServiceAccountFromTemplate(ctx, "${CTX:id}", template, "", table))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, http.MethodPut, got[0].method)
+		require.Equal(t, apiBase+"/service-accounts/ci%2Fdeployer%201", got[0].rawPath, "the id is path-escaped")
+	})
+
+	t.Run("update needs an id", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		s.featureRoot = filepath.Join("..", "..")
+		ctx, _ := trackingContext(t)
+		require.ErrorContains(t, s.updateServiceAccountFromTemplate(ctx, "  ", template, "", table), "needs its id")
+		require.Empty(t, requests())
+	})
+
+	t.Run("without signing in sends no credentials but keeps the versioned API", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, s.sendControlPlaneUnauthenticated(ctx, "get", "/service-accounts"))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, apiBase+"/service-accounts", got[0].path)
+		require.Empty(t, got[0].header.Get("Authorization"))
+	})
+}
+
+// loginToken signs claims as the control plane's file-mode login would.
+func loginToken(t *testing.T, claims jwt.MapClaims) string {
+	t.Helper()
+	block, _ := pem.Decode(shared.ControlPlaneCrypto()[controlPlaneSigningKeyFile])
+	require.NotNil(t, block)
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+	require.NoError(t, err)
+	return signed
+}
+
+// verifiedClaims verifies token against the control plane's public key, as platform-api does.
+func verifiedClaims(t *testing.T, token string) jwt.MapClaims {
+	t.Helper()
+	block, _ := pem.Decode(shared.ControlPlaneCrypto()["keys/jwt_public.pem"])
+	require.NotNil(t, block)
+	public, err := x509.ParsePKIXPublicKey(block.Bytes)
+	require.NoError(t, err)
+	claims := jwt.MapClaims{}
+	_, err = jwt.ParseWithClaims(token, claims, func(*jwt.Token) (any, error) { return public, nil },
+		jwt.WithValidMethods([]string{"RS256"}))
+	require.NoError(t, err)
+	return claims
+}
+
+func TestSignUserTokenReplacesTheActorIdentity(t *testing.T) {
+	expiry := time.Now().Add(time.Hour).Unix()
+	login := loginToken(t, jwt.MapClaims{
+		"sub": "publisher", "username": "publisher", "iss": "platform-api", "exp": expiry,
+		"organization": "org-uuid", "org_handle": "default", "scope": "ap:rest_api:manage", "roles": []string{"ap_publisher"},
+	})
+	key := shared.ControlPlaneCrypto()[controlPlaneSigningKeyFile]
+	const sub = "8b5c3f0e-2c1d-4f6a-9e7b-0a1b2c3d4e5f"
+
+	t.Run("with a name", func(t *testing.T) {
+		token, err := signUserToken(login, map[string]any{"sub": sub, "name": "Ada Lovelace"}, key)
+		require.NoError(t, err)
+		claims := verifiedClaims(t, token)
+		require.Equal(t, sub, claims["sub"])
+		require.Equal(t, "Ada Lovelace", claims["name"])
+		require.NotContains(t, claims, "username", "the actor's username never reaches the minted token")
+		require.Equal(t, "platform-api", claims["iss"])
+		require.Equal(t, "org-uuid", claims["organization"])
+		require.Equal(t, "ap:rest_api:manage", claims["scope"])
+		require.Equal(t, []any{"ap_publisher"}, claims["roles"])
+		require.EqualValues(t, expiry, claims["exp"])
+	})
+
+	t.Run("without a name", func(t *testing.T) {
+		named := loginToken(t, jwt.MapClaims{"sub": "publisher", "name": "Publisher", "iss": "platform-api", "exp": expiry})
+		token, err := signUserToken(named, map[string]any{"sub": sub}, key)
+		require.NoError(t, err)
+		claims := verifiedClaims(t, token)
+		require.Equal(t, sub, claims["sub"])
+		require.NotContains(t, claims, "name", "a name the table omits is absent, not inherited")
+	})
+
+	t.Run("malformed input", func(t *testing.T) {
+		_, err := signUserToken("not-a-jwt", map[string]any{"sub": sub}, key)
+		require.ErrorContains(t, err, "decoding the control-plane login token")
+		_, err = signUserToken(login, map[string]any{"sub": sub}, []byte("not pem"))
+		require.ErrorContains(t, err, "not PEM")
+		_, err = signUserToken(login, map[string]any{"sub": sub}, shared.ControlPlaneCrypto()["keys/jwt_public.pem"])
+		require.ErrorContains(t, err, "parsing the control-plane signing key")
+	})
+}
+
+func TestMintUserTokenValidatesItsInput(t *testing.T) {
+	s, _, requests := fakeControlPlane(t, func(http.ResponseWriter, *http.Request) {})
+	ctx, _ := trackingContext(t)
+	claims := valuesTable([]string{"sub", "8b5c3f0e-2c1d-4f6a-9e7b-0a1b2c3d4e5f"})
+
+	require.ErrorContains(t, s.mintUserToken(ctx, " ", "publisher", claims), "stored as")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "publisher", valuesTable([]string{"name", "Ada"})), "sub")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "nobody", claims), "unknown control-plane actor")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "publisher", claims), "decoding the control-plane login token",
+		"the fake login's opaque token is not a JWT")
+	_, err := tcontext.ResolveString(ctx, "token")
+	require.Error(t, err, "nothing is stored when minting fails")
+	require.Empty(t, requests())
 }

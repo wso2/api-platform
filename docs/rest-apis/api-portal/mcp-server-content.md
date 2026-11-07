@@ -248,14 +248,9 @@ curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}
 
 Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
 
-### Authentication
-
-<aside class="warning">
-This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
-
-Required scopes (the token must carry at least one of): `dp:mcp_server_content:read`, `dp:mcp_server_content:manage`
-
-</aside>
+Image files (`type=IMAGE`) are publicly readable so that an MCP server's icon renders on the public
+listing and landing pages without a session. `orgId` says which organization's image is read.
+All other content types require a session: an anonymous request for a non-image type is rejected.
 
 <h3 id="get-an-mcp-server-content-file-parameters">Parameters</h3>
 
@@ -263,6 +258,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:r
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
+|orgId|query|string|false|Organization uuid of the image to read. Used only for `type=IMAGE`. In multi-organization mode, an `orgId` that names an existing organization selects it, even when the session belongs to another organization. An unknown `orgId` falls back to the session's organization, then to this instance's configured one. In single-organization mode it is ignored: the session's organization is used, or the configured one when there is no session.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses

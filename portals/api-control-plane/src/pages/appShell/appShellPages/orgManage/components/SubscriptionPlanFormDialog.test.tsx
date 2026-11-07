@@ -148,12 +148,18 @@ const filterNames = (price: HTMLElement) =>
     .map((row) => row.firstElementChild?.textContent);
 
 beforeEach(() => {
+  disabled.names = [];
   requests = recorder();
   resetHttpClient();
 });
 
-// The Paid plan switch is hidden while paid plans are "Coming soon" (see
-// PlanPricingSection), so the tests that turn it on are skipped until it returns.
+const disabled = vi.hoisted(() => ({ names: [] as string[] }));
+
+vi.mock('@/config/features', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/config/features')>()),
+  isFeatureDisabled: (name: string) => disabled.names.includes(name),
+}));
+
 describe('SubscriptionPlanFormDialog', () => {
   it('creates a plan with a handle slugified from the name', async () => {
     server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
@@ -270,12 +276,24 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(block).not.toBeChecked();
   });
 
-  it('shows Paid plan as coming soon, with no switch to turn it on', () => {
+  it('shows Paid plan as coming soon, with no switch, when paidplan is disabled', () => {
+    disabled.names = ['paidplan'];
     setup();
 
-    expect(screen.getByText('Paid plan')).toBeInTheDocument();
     expect(screen.getByText('Coming soon')).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: 'Paid plan' })).not.toBeInTheDocument();
+  });
+
+  it('shows no coming soon label by default', () => {
+    setup();
+
+    expect(screen.queryByText('Coming soon')).not.toBeInTheDocument();
+  });
+
+  it('offers a Paid plan switch, off for a new plan', () => {
+    setup();
+
+    expect(screen.getByRole('switch', { name: 'Paid plan' })).not.toBeChecked();
   });
 
   it('sends the picked expiry date as a full RFC3339 timestamp', async () => {
@@ -398,7 +416,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(requests.count()).toBe(0);
   });
 
-  it.skip('creates a flat rate plan with its pricing in the one request', async () => {
+  it('creates a flat rate plan with its pricing in the one request', async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -425,7 +443,7 @@ describe('SubscriptionPlanFormDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it.skip('says, once a new plan is made paid, that its pricing is final', async () => {
+  it('says, once a new plan is made paid, that its pricing is final', async () => {
     const { user } = setup();
 
     expect(
@@ -454,7 +472,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(JSON.parse(requests.last()!.body)).not.toHaveProperty('pricing');
   });
 
-  it.skip('starts a usage based plan with one price, which cannot be removed while it is the only one', async () => {
+  it('starts a usage based plan with one price, which cannot be removed while it is the only one', async () => {
     const { user } = setup();
 
     await user.type(screen.getByLabelText(/Plan name/), 'Gold Plan');
@@ -474,7 +492,7 @@ describe('SubscriptionPlanFormDialog', () => {
     ).toBeInTheDocument();
   });
 
-  it.skip('prices a usage based plan per unit, counted by the chosen meter and narrowed by its filters', async () => {
+  it('prices a usage based plan per unit, counted by the chosen meter and narrowed by its filters', async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -509,7 +527,7 @@ describe('SubscriptionPlanFormDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it.skip('prices the same meter twice with different filters, each price named by its meter and filters', { timeout: 15_000 }, async () => {
+  it('prices the same meter twice with different filters, each price named by its meter and filters', { timeout: 15_000 }, async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -576,7 +594,7 @@ describe('SubscriptionPlanFormDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it.skip("takes one value or several for a filter, as its operator reads, sent in the meter's order", async () => {
+  it("takes one value or several for a filter, as its operator reads, sent in the meter's order", async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -602,7 +620,7 @@ describe('SubscriptionPlanFormDialog', () => {
     ]);
   });
 
-  it.skip('does not save two prices of one meter that count the same requests', async () => {
+  it('does not save two prices of one meter that count the same requests', async () => {
     server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
     const { user } = setup();
 
@@ -631,7 +649,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(requests.count()).toBe(0);
   });
 
-  it.skip('counts every value of a filter left empty, and does not send it', async () => {
+  it('counts every value of a filter left empty, and does not send it', async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -662,7 +680,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(JSON.parse(requests.last()!.body).pricing.prices[0].filters).toEqual([]);
   });
 
-  it.skip('shows what the chosen meter counts, in its units, and a row for each of its filters, keeping a filter the new meter also has', async () => {
+  it('shows what the chosen meter counts, in its units, and a row for each of its filters, keeping a filter the new meter also has', async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -709,7 +727,7 @@ describe('SubscriptionPlanFormDialog', () => {
     });
   });
 
-  it.skip('offers every operator on any property, with typed values', async () => {
+  it('offers every operator on any property, with typed values', async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -750,7 +768,7 @@ describe('SubscriptionPlanFormDialog', () => {
     ]);
   });
 
-  it.skip('sets up to two comparisons on a property, each a whole number, and sends both', async () => {
+  it('sets up to two comparisons on a property, each a whole number, and sends both', async () => {
     const tokenMeter = aMeter({
       displayName: 'LLM input tokens',
       filterFields: [{ eventKey: 'metadata.aiTokenUsage.promptTokens', field: 'Prompt tokens' }],
@@ -817,7 +835,7 @@ describe('SubscriptionPlanFormDialog', () => {
     ]);
   });
 
-  it.skip('removes the second comparison on a property, offering it again', async () => {
+  it('removes the second comparison on a property, offering it again', async () => {
     const tokenMeter = aMeter({
       displayName: 'LLM input tokens',
       filterFields: [{ eventKey: 'metadata.aiTokenUsage.totalTokens', field: 'Total tokens' }],
@@ -854,7 +872,7 @@ describe('SubscriptionPlanFormDialog', () => {
     ).toHaveLength(9);
   });
 
-  it.skip('offers no filters on a meter that has none', async () => {
+  it('offers no filters on a meter that has none', async () => {
     const plain = aMeter({ displayName: 'All calls', filterFields: [], id: 'all-calls' });
     const { user } = setup({ meters: [plain] });
 
@@ -897,7 +915,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(
       screen.getByText("Pricing can't be updated once a plan is created."),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: 'Paid plan' })).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Paid plan' })).toBeDisabled();
     for (const name of ['Currency', 'Charge every', 'Pricing']) {
       const field = screen.getByRole('combobox', { name });
       expect(field.hasAttribute('disabled') || field.getAttribute('aria-disabled') === 'true').toBe(
@@ -913,7 +931,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(screen.queryByRole('button', { name: 'Add price' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove price 1' })).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Create a meter in Settings › Meters to charge for usage.'),
+      screen.queryByText('Create a meter in Manage › Meters to charge for usage.'),
     ).not.toBeInTheDocument();
     // The rest of the plan stays editable.
     expect(screen.getByLabelText(/Plan name/)).toBeEnabled();
@@ -938,7 +956,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(within(priceAt(2)).getByText('Successful calls · POST')).toBeInTheDocument();
   });
 
-  it.skip('keeps the prices of a new plan in the order they are added', async () => {
+  it('keeps the prices of a new plan in the order they are added', async () => {
     const { user } = setup();
 
     await chooseUsageBased(user);
@@ -956,13 +974,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(within(priceAt(2)).getByText('Successful calls · GET')).toBeInTheDocument();
   });
 
-  it('shows no Paid plan switch for a saved free plan', () => {
-    setup({ plan: aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' }) });
-    expect(screen.getByText('Paid plan')).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: 'Paid plan' })).not.toBeInTheDocument();
-  });
-
-  it.skip("keeps a free plan free: its Paid plan switch can't be turned on", async () => {
+  it("keeps a free plan free: its Paid plan switch can't be turned on", async () => {
     setup({ plan: aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' }) });
 
     expect(screen.getByRole('switch', { name: 'Paid plan' })).not.toBeChecked();
@@ -995,7 +1007,7 @@ describe('SubscriptionPlanFormDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it.skip('finds a meter by typing part of its name, the Platform API searching', async () => {
+  it('finds a meter by typing part of its name, the Platform API searching', async () => {
     const requests = recorder();
     const meters = [
       aMeter(),
@@ -1020,7 +1032,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(meter).toHaveValue('Meter 27');
   });
 
-  it.skip('does not save a usage price until a meter is chosen', async () => {
+  it('does not save a usage price until a meter is chosen', async () => {
     server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
     const { user } = setup();
 
@@ -1036,7 +1048,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(requests.count()).toBe(0);
   });
 
-  it.skip('finds a currency by typing part of its name', async () => {
+  it('finds a currency by typing part of its name', async () => {
     server.use(
       accepts('post', PLANS, aSubscriptionPlan({ id: 'gold-plan' }), { record: requests }),
     );
@@ -1061,7 +1073,7 @@ describe('SubscriptionPlanFormDialog', () => {
     });
   });
 
-  it.skip('does not save a flat rate plan without an amount, nor a usage based plan whose price has no meter', async () => {
+  it('does not save a flat rate plan without an amount, nor a usage based plan whose price has no meter', async () => {
     server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
     const { user } = setup();
 
@@ -1081,7 +1093,7 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(requests.count()).toBe(0);
   });
 
-  it.skip('shows the reason a new plan with pricing is refused, and sends nothing else', async () => {
+  it('shows the reason a new plan with pricing is refused, and sends nothing else', async () => {
     const message = 'Each tier of price 1 needs an upTo greater than the tier before it';
     server.use(failure('post', PLANS, 400, 'VALIDATION_FAILED', { message, record: requests }));
     const { user, onClose } = setup();

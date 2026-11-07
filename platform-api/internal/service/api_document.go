@@ -521,19 +521,23 @@ func (s *APIDocumentService) ValidateOpenAPISpec(specContent []byte) api.Validat
 
 // ExtractOperationsFromSpec extracts operations from an OpenAPI spec.
 // Returns nil if the spec has no paths; the caller creates a wildcard operation.
+// When the spec is invalid it returns apperror.ValidationFailed (so any caller
+// maps it to a 400) wrapping a *utils.SpecValidationError, which handlers can
+// extract via utils.HandleSpecValidationError to render the individual
+// {message, path} entries.
 func (s *APIDocumentService) ExtractOperationsFromSpec(specContent []byte) ([]api.Operation, error) {
 	sd, loadErr := utils.LoadSpecDocument(specContent)
 	if loadErr != nil {
 		s.slogger.Error("Failed to parse OpenAPI spec for operation extraction", "error", loadErr)
-		return nil, apperror.ValidationFailed.New("invalid OpenAPI specification")
+		return nil, apperror.ValidationFailed.Wrap(
+			&utils.SpecValidationError{Errors: []api.OpenAPIValidationError{{Message: loadErr.Error()}}},
+			"OpenAPI specification is not valid")
 	}
 
 	if result := utils.ValidateSpec(sd); !result.IsValid {
-		msg := "invalid OpenAPI specification"
-		if len(result.Errors) > 0 {
-			msg = result.Errors[0].Message
-		}
-		return nil, apperror.ValidationFailed.New(msg)
+		return nil, apperror.ValidationFailed.Wrap(
+			&utils.SpecValidationError{Errors: result.Errors},
+			"OpenAPI specification is not valid")
 	}
 
 	return extractOperations(sd), nil

@@ -22,6 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { useApiPublications } from '@/api/resources/apiPublications';
+import { PortalPublishIllustration } from '@/components/illustrations/PortalPublishIllustration';
 import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useExtensions } from '@/extensions';
 import { routes } from '@/routes/paths';
@@ -69,7 +70,7 @@ const messages = defineMessages({
   },
   emptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle',
-    defaultMessage: 'No Portals Available',
+    defaultMessage: 'Create your first portal',
     description: 'Shown when the organization has not registered any portal yet.',
   },
   emptyDescription: {
@@ -174,6 +175,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
             hasManagedPortalsExtension ? intl.formatMessage(messages.emptyAction) : undefined
           }
           description={intl.formatMessage(messages.emptyDescription)}
+          illustration={<PortalPublishIllustration />}
           onAction={
             hasManagedPortalsExtension
               ? () => navigate(routes.managedApiPortals(orgHandle))
