@@ -19,8 +19,7 @@ scenarios:
     title: Undeploy a deployed artifact; 200, the deployment becomes UNDEPLOYED and the gateway stops serving it.
     priority: P0
     ui:
-      status: known-issue
-      issue: https://github.com/wso2/api-platform/issues/3900
+      status: automated
       refs:
         - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
           scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
@@ -35,8 +34,7 @@ scenarios:
     title: Restore an undeployed deployment; it becomes DEPLOYED again and the gateway serves the same build.
     priority: P0
     ui:
-      status: known-issue
-      issue: https://github.com/wso2/api-platform/issues/3900
+      status: automated
       refs:
         - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
           scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
@@ -73,8 +71,7 @@ scenarios:
     title: Delete an undeployed deployment, then get and list; 204, get returns 404 and the list no longer has it. Includes REST APIs.
     priority: P1
     ui:
-      status: known-issue
-      issue: https://github.com/wso2/api-platform/issues/3900
+      status: automated
       refs:
         - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
           scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"

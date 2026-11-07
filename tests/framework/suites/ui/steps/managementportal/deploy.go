@@ -244,9 +244,9 @@ func (s *Steps) closeDrawer(ctx context.Context) error {
 	return s.expect.Locator(page.Locator(".MuiDrawer-root")).ToHaveCount(0)
 }
 
-// statusSettleTimeout outlasts the console's deployment poll, which backs off to one fetch
-// every 30 seconds after a few actions on the page, plus the gateway's acknowledgement.
-const statusSettleTimeout = 60_000
+// statusSettleTimeout outlasts the gateway's acknowledgement plus the console's deployment
+// poll, which restarts at two seconds after each action and backs off from there.
+const statusSettleTimeout = 30_000
 
 // deploymentStatusBecomes reads the status bar of an expanded gateway card: Active for a
 // live deployment, Suspended for an undeployed one.
