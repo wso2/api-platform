@@ -556,7 +556,7 @@ Feature: GraphQL API CRUD and connectivity
 
   # ==================== POLICY ENFORCEMENT ====================
   # jwt-auth against the "mock-jwks" issuer is covered separately in
-  # graphql_policies.feature, which runs in the mcp-policies block where the
+  # policies.feature, which runs in the mcp-policies block where the
   # mcp-jwt-auth.toml overlay registers that issuer. This block's platform-gateway
   # has no such overlay, so a jwt-auth scenario here would 500 on an unknown issuer.
 

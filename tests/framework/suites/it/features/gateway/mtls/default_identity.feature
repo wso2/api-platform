@@ -26,7 +26,7 @@ Feature: Presenting a default client certificate to backends
   definition names no tls.identity is presented the gateway identity with role default, else the
   HTTPS listener certificate. A tls.identity always wins. Only one identity holds role default,
   and uploading, rotating or deleting it takes effect without a redeploy. The scenarios with the
-  switch off are in mtls_default_identity_off.feature.
+  switch off are in default_identity_off.feature.
 
   The optional backend answers every request and reports the subject of whatever client
   certificate it was presented, or an empty subject. The required backend trusts the issuer of

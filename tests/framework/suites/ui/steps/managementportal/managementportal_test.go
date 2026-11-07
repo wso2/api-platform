@@ -81,3 +81,39 @@ func TestGeneratedHandlesAreControlPlaneHandlesAndExpandAsContextValues(t *testi
 
 	require.ErrorContains(t, generateHandle(context.Background(), "x", "k"), "without runner context")
 }
+
+func TestDeploymentStartedToastNamesTheDeployment(t *testing.T) {
+	match := deploymentStartedToast.FindStringSubmatch(`Deployment "it-gateway_2026-11-01_4" started.`)
+	require.Equal(t, []string{`Deployment "it-gateway_2026-11-01_4" started.`, "it-gateway_2026-11-01_4"}, match)
+	require.Nil(t, deploymentStartedToast.FindStringSubmatch(`Stopping "it-gateway_2026-11-01_4".`))
+}
+
+func TestEveryDeploymentConfirmationNamesTheDeployment(t *testing.T) {
+	for action, format := range confirmations {
+		require.Contains(t, format, `"%s"`, action)
+	}
+	require.Len(t, confirmations, 3)
+}
+
+func TestAttachOperationPolicyAppendsToTheMatchingOperationOnly(t *testing.T) {
+	api := map[string]any{"operations": []any{
+		map[string]any{"request": map[string]any{"method": "GET", "path": "/pets",
+			"policies": []any{map[string]any{"name": "existing"}}}},
+		map[string]any{"request": map[string]any{"method": "POST", "path": "/pets"}},
+	}}
+	require.NoError(t, attachOperationPolicy(api, "GET", "/pets", map[string]any{"name": "set-headers"}))
+	operations := api["operations"].([]any)
+	get := operations[0].(map[string]any)["request"].(map[string]any)
+	require.Equal(t, []any{map[string]any{"name": "existing"}, map[string]any{"name": "set-headers"}}, get["policies"])
+	require.NotContains(t, operations[1].(map[string]any)["request"], "policies")
+	require.ErrorContains(t, attachOperationPolicy(api, "GET", "/absent", map[string]any{}), "no operation GET /absent")
+	require.ErrorContains(t, attachOperationPolicy(map[string]any{}, "GET", "/pets", map[string]any{}), "no operation")
+}
+
+func TestPolicyLabelMatchesTheHandleOrTheHubDisplayName(t *testing.T) {
+	label := policyLabel("set-headers")
+	require.Regexp(t, label, "set-headers")
+	require.Regexp(t, label, "Set Headers")
+	require.NotRegexp(t, label, "Set Headers v2")
+	require.NotRegexp(t, label, "set-headers-extra")
+}

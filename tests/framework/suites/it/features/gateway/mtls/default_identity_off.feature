@@ -25,7 +25,7 @@ Feature: Not presenting a default client certificate while the switch is off
   With router.upstream.tls.present_default_identity off, no client certificate is presented to
   an HTTPS backend whose upstream definition names no tls.identity, even when a gateway identity
   with role default exists, and it stays that way across requests. The scenarios with the switch
-  on are in mtls_default_identity.feature.
+  on are in default_identity.feature.
 
   The optional backend answers every request and reports the subject of whatever client
   certificate it was presented, or an empty subject. The required backend trusts the issuer of

@@ -46,33 +46,33 @@ blocks:
     runners:
       - name: smoke
         features:
-          - features/apiportal_smoke.feature
+          - features/apiportal/smoke.feature
       - name: portal-access
         features:
-          - features/apiportal_access.feature
+          - features/apiportal/access.feature
       - name: file-based-login
         features:
-          - features/apiportal_file_based_login.feature
+          - features/apiportal/file_based_login.feature
       - name: views-labels
         features:
-          - features/apiportal_views_labels.feature
+          - features/apiportal/views_labels.feature
       - name: api-listing
         features:
-          - features/apiportal_api_listing.feature
+          - features/apiportal/api_listing.feature
       - name: mcp-listing
         features:
-          - features/apiportal_mcp_listing.feature
+          - features/apiportal/mcp_listing.feature
       - name: rest-api-details
         # Excludes the @known-issue scenario blocked on an API Portal document-render
         tags: "~@known-issue"
         features:
-          - features/apiportal_rest_api_details.feature
+          - features/apiportal/rest_api_details.feature
       - name: api-workflows
         features:
-          - features/apiportal_api_workflows.feature
+          - features/apiportal/api_workflows.feature
 
   # Key managers are portal-global resources, so the scenario that creates one
-  # keeps a dedicated stack and runs serialized. apiportal_applications.feature
+  # keeps a dedicated stack and runs serialized. apiportal/applications.feature
   # no longer creates any — it shares this stack only because both runners drive
   # the same portal; it could move to api-portal-core if that stack's parallelism
   # is ever worth the churn.
@@ -89,10 +89,10 @@ blocks:
     runners:
       - name: key-managers
         features:
-          - features/apiportal_key_managers.feature
+          - features/apiportal/key_managers.feature
       - name: applications
         features:
-          - features/apiportal_applications.feature
+          - features/apiportal/applications.feature
 
   # Billing is portal-wide, so its scenarios keep a dedicated stack and run one at a time. The
   # portal bills through the testbench's Stripe and Moesif services.
@@ -110,7 +110,7 @@ blocks:
     runners:
       - name: billing
         features:
-          - features/apiportal_billing.feature
+          - features/apiportal/billing.feature
 
   # Management Portal tenant isolation: the console against the real control plane, with a
   # second organization registered next to the default one, and the browser that drives it.
@@ -125,6 +125,31 @@ blocks:
       - name: tenant-isolation
         features:
           - features/management_portal/tenant_isolation.feature
+
+  # Management Portal deployment lifecycle and API definitions: the console against the real
+  # control plane and a real gateway, so each deployment's status follows the gateway's
+  # acknowledgement. platform-api trusts the testbench specs service and caps a definition at
+  # 64 KiB (overlays/platform-api-openapi-import.toml).
+  - name: management-portal-deploy
+    parallel: 2
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-openapi-import.toml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+      - name: testbench
+      - name: api-control-plane
+        dependsOn: [platform-api]
+      - name: browser
+    runners:
+      - name: deployment-lifecycle
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/deployment_lifecycle.feature
+      - name: api-definition
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/api_definition.feature
 
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai
@@ -143,49 +168,49 @@ blocks:
     runners:
       - name: smoke
         features:
-          - features/workspace_smoke.feature
+          - features/ai_workspace/smoke.feature
       - name: auth
         features:
-          - features/login.feature
+          - features/ai_workspace/login.feature
       - name: provider-proxy
         features:
-          - features/provider_proxy.feature
+          - features/ai_workspace/provider_proxy.feature
       - name: proxy-secrets
         features:
-          - features/llm_proxy_secret_management.feature
+          - features/ai_workspace/llm_proxy_secret_management.feature
       - name: provider-secrets
         features:
-          - features/provider_secret_management.feature
+          - features/ai_workspace/provider_secret_management.feature
       - name: mcp-proxy
         features:
-          - features/mcp_proxy.feature
+          - features/ai_workspace/mcp_proxy.feature
       - name: agent-proxy
         features:
-          - features/agent_proxy.feature
+          - features/ai_workspace/agent_proxy.feature
       - name: agent-proxy-configuration
         features:
-          - features/agent_proxy_configuration.feature
+          - features/ai_workspace/agent_proxy_configuration.feature
       - name: mcp-secrets
         features:
-          - features/mcp_secret_management.feature
+          - features/ai_workspace/mcp_secret_management.feature
       - name: mcp-secrets-update
         features:
-          - features/mcp_secret_management_update.feature
+          - features/ai_workspace/mcp_secret_management_update.feature
       - name: ai-gateway
         features:
-          - features/ai_gateway.feature
+          - features/ai_workspace/ai_gateway.feature
       - name: mcp-backend-connection-refetch
         features:
-          - features/mcp_backend_connection_refetch.feature
+          - features/ai_workspace/mcp_backend_connection_refetch.feature
       - name: genai-application
         features:
-          - features/genai_application.feature
+          - features/ai_workspace/genai_application.feature
       - name: custom-provider-template
         features:
-          - features/custom_provider_template.feature
+          - features/ai_workspace/custom_provider_template.feature
       - name: coverage-branches
         features:
-          - features/coverage_branches.feature
+          - features/ai_workspace/coverage_branches.feature
       # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), provider creation through the browser.
       - name: aiw-llm-provider-creation
         features:

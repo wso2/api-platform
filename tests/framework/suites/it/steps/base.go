@@ -298,7 +298,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
 	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
 		b.sendUntilStatusAt)
-	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" and it never returns status (\d+)$`,
+	sc.Step(`^I send a "([^"]*)" request to (?:the (first|second) gateway )?"([^"]*)" and it never returns status (\d+)$`,
 		b.sendNeverStatusAt)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) with body:$`,
 		b.sendUntilStatusWithBody)
@@ -636,7 +636,10 @@ func (b *Base) sendNeverStatusAt(ctx context.Context, method, ordinalWord, path 
 	if err != nil {
 		return err
 	}
-	url, err := b.gatewayURLAt(ordinalWord, resolved)
+	url, err := b.gatewayURL(resolved)
+	if ordinalWord != "" {
+		url, err = b.gatewayURLAt(ordinalWord, resolved)
+	}
 	if err != nil {
 		return err
 	}
