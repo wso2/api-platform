@@ -220,6 +220,8 @@ function createSqliteAdapter(config) {
             }
         }),
         close: async () => conn.close(),
+        // One synchronous connection: no pool to saturate.
+        poolStats: () => null,
     };
 }
 
