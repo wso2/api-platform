@@ -99,6 +99,11 @@ type Projects interface {
 
 	// ListProjects returns one page of an organization's projects, newest first, with the total (Read).
 	ListProjects(organizationID string, limit, offset int) ([]api.Project, int, error)
+
+	// CheckProjectDeletion reports whether DeleteProject would delete the project (Read):
+	// nil when it would, otherwise the refusal it would return. An unknown project is
+	// ProjectNotFound.
+	CheckProjectDeletion(handle, orgID string) error
 }
 
 // APIs exposes read-only lookups over the platform's REST APIs, scoped by
