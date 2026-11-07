@@ -198,25 +198,25 @@ blocks:
     runners:
       - name: claims
         features:
-          - features/apiportal_multi_organization_claims.feature
+          - features/apiportal/multi-organization/claims.feature
       - name: isolation
         features:
-          - features/apiportal_multi_organization_isolation.feature
+          - features/apiportal/multi-organization/isolation.feature
       - name: login
         features:
-          - features/apiportal_multi_organization_login.feature
+          - features/apiportal/multi-organization/login.feature
       - name: webhooks
         features:
-          - features/apiportal_multi_organization_webhooks.feature
+          - features/apiportal/multi-organization/webhooks.feature
       - name: publishing
         features:
-          - features/apiportal_multi_organization_publishing.feature
+          - features/apiportal/multi-organization/publishing.feature
       - name: portals
         features:
-          - features/apiportal_multi_organization_portals.feature
+          - features/apiportal/multi-organization/portals.feature
       - name: display-names
         features:
-          - features/apiportal_multi_organization_display_names.feature
+          - features/apiportal/multi-organization/display_names.feature
 
   - name: api-portal-foreign-org
     parallel: 1
@@ -249,7 +249,7 @@ blocks:
       - name: mtls-hostnames-required
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_hostnames_required.feature
+          - features/gateway/mtls/hostnames_required.feature
 
   - name: gateway-mtls-hostnames-all-connections
     parallel: 1
@@ -262,7 +262,7 @@ blocks:
       - name: mtls-hostnames-all-connections
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_hostnames_all_connections.feature
+          - features/gateway/mtls/hostnames_all_connections.feature
 
   - name: gateway-mtls-hostnames-all-connections-required
     parallel: 1
@@ -275,7 +275,7 @@ blocks:
       - name: mtls-hostnames-all-connections-required
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_hostnames_all_connections_required.feature
+          - features/gateway/mtls/hostnames_all_connections_required.feature
 
   # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
   # asks for a certificate, which is state of the whole gateway, so runners take turns.
@@ -292,31 +292,31 @@ blocks:
       - name: mtls-auth
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_auth.feature
+          - features/gateway/mtls/auth.feature
       - name: mtls-client-ca-pool
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_client_ca_pool.feature
+          - features/gateway/mtls/client_ca_pool.feature
       - name: mtls-pool-references
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_pool_references.feature
+          - features/gateway/mtls/pool_references.feature
       - name: mtls-listener
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_listener.feature
+          - features/gateway/mtls/listener.feature
       - name: mtls-header-relay
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_header_relay.feature
+          - features/gateway/mtls/header_relay.feature
       - name: mtls-outbound
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_outbound.feature
+          - features/gateway/mtls/outbound.feature
       - name: mtls-default-identity-off
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_default_identity_off.feature
+          - features/gateway/mtls/default_identity_off.feature
 
   # The relayed client certificate header is believed from any connection here, a gateway-wide
   # setting the other mutual TLS blocks must not see.
@@ -331,7 +331,7 @@ blocks:
       - name: mtls-header-bypass
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_header_bypass.feature
+          - features/gateway/mtls/header_bypass.feature
 
   # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
   # certificate gauges and its own JSON access log lines, so runners take turns. The overlay never
@@ -348,11 +348,11 @@ blocks:
       - name: mtls-observability
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_observability.feature
+          - features/gateway/mtls/observability.feature
       - name: mtls-default-identity-on
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_default_identity.feature
+          - features/gateway/mtls/default_identity.feature
 
   # The mutual TLS scenarios on a gateway with two controllers sharing one PostgreSQL
   # database. One serves the management API; the other alone feeds the runtime, so every
@@ -372,31 +372,31 @@ blocks:
       - name: mtls-auth
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_auth.feature
+          - features/gateway/mtls/auth.feature
       - name: mtls-client-ca-pool
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_client_ca_pool.feature
+          - features/gateway/mtls/client_ca_pool.feature
       - name: mtls-pool-references
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_pool_references.feature
+          - features/gateway/mtls/pool_references.feature
       - name: mtls-listener
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_listener.feature
+          - features/gateway/mtls/listener.feature
       - name: mtls-header-relay
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_header_relay.feature
+          - features/gateway/mtls/header_relay.feature
       - name: mtls-observability
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_observability.feature
+          - features/gateway/mtls/observability.feature
       - name: mtls-outbound
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_outbound.feature
+          - features/gateway/mtls/outbound.feature
 
   # Config dump asserts the gateway's total API count starts at zero, which no other runner
   # may be free to disturb - it needs a gateway to itself rather than gateway-core's shared one.
@@ -427,7 +427,7 @@ blocks:
       - name: mtls-hostnames
         tags: "gateway-version>1.2.0"
         features:
-          - features/mtls_hostnames.feature
+          - features/gateway/mtls/hostnames.feature
 
   - name: gateway-core
     parallel: 12
@@ -593,11 +593,11 @@ blocks:
       - name: graphql-deploy
         tags: "gateway-version>1.2.0"
         features:
-          - features/graphql_deploy.feature
+          - features/gateway/graphql/deploy.feature
       - name: graphql-api-keys
         tags: "gateway-version>1.2.0"
         features:
-          - features/graphql_api_keys.feature
+          - features/gateway/graphql/api_keys.feature
       - name: policy-engine-admin
         features:
           - features/gateway/core/policy_engine_admin.feature
@@ -618,6 +618,8 @@ blocks:
     components:
       - name: platform-api
         db: sqlite
+        # A 30s deployment timeout keeps the deployment-sync wait for a timed-out deployment short.
+        overlay: tests/framework/core/catalog/overlays/platform-api-deployment-timeout.toml
       - name: platform-gateway
         dependsOn: [platform-api]
         db:
@@ -637,6 +639,40 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/control-plane/dp_to_cp_reconnect.feature
+      # Deployment sync with a disconnected gateway.
+      - name: deployment-sync
+        tags: "~@known-issue"
+        features:
+          - features/management-portal/deployments/sync/deployment_sync.feature
+
+  # REST API definition import and update. platform-api trusts the testbench specs service, so
+  # a definition is imported over HTTPS, caps a definition at 64 KiB, and adds a user with no
+  # ap: scope (overlays/platform-api-openapi-import.toml). Stored definitions are per engine.
+  - name: rest-api-definition
+    parallel: 2
+    components:
+      - name: platform-api
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+        overlay: tests/framework/core/catalog/overlays/platform-api-openapi-import.toml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: api-definitions
+        tags: "~@known-issue"
+        features:
+          - features/management-portal/api-definitions/import.feature
+          - features/management-portal/api-definitions/update.feature
+          - features/management-portal/api-definitions/validate.feature
+          - features/management-portal/api-definitions/limits.feature
+          - features/management-portal/api-definitions/authz.feature
+      # A gateway-originated API needs gateway-to-control-plane sync, from gateway 1.2.0.
+      - name: api-definitions-read-only
+        tags: "gateway-version>=1.2.0;~@known-issue"
+        features:
+          - features/management-portal/api-definitions/update_read_only.feature
 
   - name: gateway-metrics
     parallel: 1
@@ -760,7 +796,7 @@ blocks:
       - name: graphql-policies
         tags: "gateway-version>1.2.0"
         features:
-          - features/graphql_policies.feature
+          - features/gateway/graphql/policies.feature
       - name: agent-analytics
         tags: "gateway-version>1.2.0"
         features:
@@ -780,7 +816,7 @@ blocks:
       - name: graphql-analytics
         tags: "gateway-version>1.2.0"
         features:
-          - features/graphql_analytics.feature
+          - features/gateway/graphql/analytics.feature
       - name: subscription-analytics
         features:
           - features/gateway/observability/subscription_analytics.feature
@@ -886,6 +922,20 @@ blocks:
       - name: platform-api-builds
         features:
           - features/management-portal/builds/build_lifecycle.feature
+      # Deployment lifecycle once per artifact kind. GraphQL deployments need a gateway newer
+      # than 1.2.0, so gateways up to 1.2.0 skip the @graphql Examples rows.
+      - name: deployment-lifecycle
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/management-portal/deployments/lifecycle/undeploy.feature
+          - features/management-portal/deployments/lifecycle/restore.feature
+          - features/management-portal/deployments/lifecycle/delete.feature
+      - name: deployment-lifecycle-1.2.0
+        tags: "gateway-version<=1.2.0;~@graphql"
+        features:
+          - features/management-portal/deployments/lifecycle/undeploy.feature
+          - features/management-portal/deployments/lifecycle/restore.feature
+          - features/management-portal/deployments/lifecycle/delete.feature
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
@@ -990,6 +1040,14 @@ blocks:
       - name: multigateway
         features:
           - features/management-portal/deployments/multigateway.feature
+      - name: deployment-list
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/management-portal/deployments/lifecycle/list.feature
+      - name: deployment-list-1.2.0
+        tags: "gateway-version<=1.2.0;~@graphql"
+        features:
+          - features/management-portal/deployments/lifecycle/list.feature
 
   # Control-plane tenant isolation: a second organization registered next to the default one,
   # with the second gateway connected to it. One runner at a time, so the window in which the

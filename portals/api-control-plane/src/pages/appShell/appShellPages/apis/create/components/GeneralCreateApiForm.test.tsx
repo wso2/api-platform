@@ -64,6 +64,14 @@ beforeEach(() => {
 });
 
 describe('GeneralCreateApiForm — initial values', () => {
+  it('shows an example placeholder instead of pre-filled text in the description', () => {
+    renderForm({ displayName: 'Untitled API' });
+
+    const description = screen.getByLabelText(/Description/);
+    expect(description).toHaveValue('');
+    expect(description).toHaveAttribute('placeholder', expect.stringMatching(/^Ex: /));
+  });
+
   it('explains that the scratch backend is a placeholder until it is replaced', async () => {
     const { user } = renderForm({
       displayName: 'Untitled API',
@@ -74,7 +82,7 @@ describe('GeneralCreateApiForm — initial values', () => {
       screen.getByText(/using https:\/\/example\.com as a placeholder backend/i),
     ).toBeInTheDocument();
 
-    const targetUrl = screen.getByLabelText(/Target URL/);
+    const targetUrl = screen.getByLabelText(/Endpoint/);
     await user.clear(targetUrl);
     await user.type(targetUrl, 'https://api.example.org');
 
@@ -92,7 +100,7 @@ describe('GeneralCreateApiForm — initial values', () => {
       upstream: { main: { url: 'https://example.com' } },
     });
 
-    const targetUrl = screen.getByLabelText(/Target URL/);
+    const targetUrl = screen.getByLabelText(/Endpoint/);
     await user.clear(targetUrl);
     await user.type(targetUrl, 'https://example.com');
 
@@ -124,7 +132,7 @@ describe('GeneralCreateApiForm — initial values', () => {
       { onUpstreamEdited },
     );
 
-    await user.type(screen.getByLabelText(/Target URL/), '/v1');
+    await user.type(screen.getByLabelText(/Endpoint/), '/v1');
 
     expect(onUpstreamEdited).toHaveBeenCalled();
   });

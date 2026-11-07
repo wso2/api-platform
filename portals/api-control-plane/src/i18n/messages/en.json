@@ -414,6 +414,9 @@
   "api.create.generalForm.description.label": {
     "defaultMessage": "Description"
   },
+  "api.create.generalForm.description.placeholder": {
+    "defaultMessage": "Ex: Manages customer orders and their fulfilment status."
+  },
   "api.create.generalForm.identifier.error.pattern": {
     "defaultMessage": "Use lowercase letters and numbers, separated by single hyphens."
   },
@@ -462,13 +465,13 @@
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
   "api.create.generalForm.targetUrl.error.required": {
-    "defaultMessage": "Enter a target URL."
+    "defaultMessage": "Enter an endpoint."
   },
   "api.create.generalForm.targetUrl.helper": {
     "defaultMessage": "The backend the gateway routes to."
   },
   "api.create.generalForm.targetUrl.label": {
-    "defaultMessage": "Target URL"
+    "defaultMessage": "Endpoint"
   },
   "api.create.generalForm.targetUrl.placeholder.notice": {
     "defaultMessage": "This API is using https://example.com as a placeholder backend. Replace it with your actual backend URL now, or update it before deploying."
@@ -785,6 +788,30 @@
     "defaultMessage": "Spectral rules passed",
     "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
   },
+  "apiControlPlane.components.DocumentsIllustration.added": {
+    "defaultMessage": "Added",
+    "description": "Badge on the sample document in the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.count": {
+    "defaultMessage": "2 documents",
+    "description": "Footer count in the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.sampleTitle": {
+    "defaultMessage": "Getting started",
+    "description": "Name of the sample document that drops into the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.subtitle": {
+    "defaultMessage": "Guides, samples and support",
+    "description": "Subheading of the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.title": {
+    "defaultMessage": "API documents",
+    "description": "Heading of the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.visible": {
+    "defaultMessage": "Visible to developers",
+    "description": "Footer of the animated documents preview."
+  },
   "apiControlPlane.components.ErrorFallback.action.goHome": {
     "defaultMessage": "Go to console home",
     "description": "Leaves the failing page for the console landing page. Escapes a page that fails every time it is opened."
@@ -941,10 +968,6 @@
     "defaultMessage": "WSO2-managed gateways",
     "description": "Plural noun for WSO2-managed gateways, used inside the limit-reached sentence."
   },
-  "apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways": {
-    "defaultMessage": "self-hosted gateways",
-    "description": "Plural noun for self-hosted gateways, used inside the limit-reached sentence."
-  },
   "apiControlPlane.hooks.useResourceLimits.componentPortals": {
     "defaultMessage": "portals",
     "description": "Plural noun for developer portals, used inside the limit-reached sentence."
@@ -952,6 +975,10 @@
   "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
     "defaultMessage": "APIs",
     "description": "Plural noun for APIs, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways": {
+    "defaultMessage": "self-hosted gateways",
+    "description": "Plural noun for self-hosted gateways, used inside the limit-reached sentence."
   },
   "apiControlPlane.hooks.useResourceLimits.limitReached": {
     "defaultMessage": "You cannot create more {component} because your organization has reached the maximum of {max}.",
@@ -3189,13 +3216,13 @@
     "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
-    "defaultMessage": "Connect a gateway"
+    "defaultMessage": "Connect an API gateway"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription": {
-    "defaultMessage": "Run your APIs on a managed gateway or a self-hosted one."
+    "defaultMessage": "Run your APIs on a managed API gateway or a self-hosted one."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle": {
-    "defaultMessage": "Gateways"
+    "defaultMessage": "API Gateways"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading": {
     "defaultMessage": "Loading organization"
@@ -3302,6 +3329,18 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerMeta": {
     "defaultMessage": "Deprecated {time}",
     "description": "Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as \"2 days ago\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsIncomplete": {
+    "defaultMessage": "This API has too many documents to attach them all automatically. Pick the ones to publish on the Documentation tab.",
+    "description": "Shown when the API’s document list was cut short, so nothing was preselected and nothing was published automatically."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsLoadFailed": {
+    "defaultMessage": "The API’s documents could not be loaded, so they are not attached yet. Publishing is paused until they load.",
+    "description": "Shown when the portal card sent the user here to publish with every document, and listing them failed."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsRetry": {
+    "defaultMessage": "Retry",
+    "description": "Button reloading the API’s documents after a failed load."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta": {
     "defaultMessage": "Edited {time}",
@@ -3569,6 +3608,14 @@
     "defaultMessage": "Go to Publish",
     "description": "Card action opening the publish flow for this API on this portal."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.moreActions": {
+    "defaultMessage": "More publish options",
+    "description": "Accessible label for the arrow of the Publish split button, which opens its other action."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publish": {
+    "defaultMessage": "Publish",
+    "description": "Split button action publishing this API to this portal straight away, with all its documents attached and no subscription plan selected."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
     "defaultMessage": "Status",
     "description": "Row label for the API's publication status on this portal."
@@ -3633,6 +3680,14 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",
     "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesEmpty": {
+    "defaultMessage": "No resources to show. Fix the definition on the left to see them here.",
+    "description": "Shown in the resources pane when the definition can't be read or has no paths."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesTitle": {
+    "defaultMessage": "Resources",
+    "description": "Heading of the pane listing the definition's operations, beside the editor."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
     "defaultMessage": "Clear all"

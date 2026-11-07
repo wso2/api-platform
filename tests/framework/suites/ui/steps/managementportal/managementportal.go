@@ -82,6 +82,8 @@ func (s *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the Management Portal shows "([^"]*)"$`, s.shows)
 	sc.Step(`^the Management Portal does not show "([^"]*)"$`, s.doesNotShow)
 	sc.Step(`^the Management Portal is not on a page under "([^"]*)"$`, s.notUnder)
+	s.registerDeploySteps(sc)
+	s.registerAPIDefinitionSteps(sc)
 }
 
 // generateHandle stores a unique name the control plane accepts as a handle: lowercase

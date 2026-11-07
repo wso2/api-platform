@@ -552,7 +552,45 @@ func (s *Steps) pipelineEnvironments(ctx context.Context) (map[string]bool, erro
 	if err != nil {
 		return nil, err
 	}
-	bound, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/projects/"+url.PathEscape(projectID)+"/deployment-pipeline", nil)
+	return pipelineEnvironmentsOf(ctx, projectID, func(ctx context.Context, path string) (*httpx.Response, error) {
+		return s.doAuthenticatedRaw(ctx, http.MethodGet, path, nil)
+	})
+}
+
+// pipelineGetter reads a path of the platform's API.
+type pipelineGetter func(ctx context.Context, path string) (*httpx.Response, error)
+
+// pipelineEnvironmentsOf reads the environments of the deployment pipeline a project is bound to
+// through get.
+func pipelineEnvironmentsOf(ctx context.Context, projectID string, get pipelineGetter) (map[string]bool, error) {
+	paths, err := pipelinePathsOf(ctx, projectID, get)
+	if err != nil {
+		return nil, err
+	}
+	return environmentsOf(paths), nil
+}
+
+// environmentsOf collects the environments a pipeline's promotion paths reach.
+func environmentsOf(paths []promotionPath) map[string]bool {
+	environments := map[string]bool{}
+	for _, path := range paths {
+		environments[path.SourceEnvironment] = true
+		for _, target := range path.TargetEnvironments {
+			environments[target] = true
+		}
+	}
+	return environments
+}
+
+// promotionPath is one step of a deployment pipeline: where a build is promoted from and to.
+type promotionPath struct {
+	SourceEnvironment  string   `json:"sourceEnvironment"`
+	TargetEnvironments []string `json:"targetEnvironments"`
+}
+
+// pipelinePathsOf reads the promotion paths of the deployment pipeline a project is bound to.
+func pipelinePathsOf(ctx context.Context, projectID string, get pipelineGetter) ([]promotionPath, error) {
+	bound, err := get(ctx, "/projects/"+url.PathEscape(projectID)+"/deployment-pipeline")
 	if err != nil {
 		return nil, err
 	}
@@ -563,7 +601,7 @@ func (s *Steps) pipelineEnvironments(ctx context.Context) (map[string]bool, erro
 	if err != nil {
 		return nil, fmt.Errorf("reading the project's deployment pipeline: %w", err)
 	}
-	listed, err := s.doAuthenticatedRaw(ctx, http.MethodGet, "/pipelines", nil)
+	listed, err := get(ctx, "/pipelines")
 	if err != nil {
 		return nil, err
 	}
@@ -572,28 +610,17 @@ func (s *Steps) pipelineEnvironments(ctx context.Context) (map[string]bool, erro
 	}
 	var document struct {
 		List []struct {
-			Name           string `json:"name"`
-			PromotionPaths []struct {
-				SourceEnvironment  string   `json:"sourceEnvironment"`
-				TargetEnvironments []string `json:"targetEnvironments"`
-			} `json:"promotionPaths"`
+			Name           string          `json:"name"`
+			PromotionPaths []promotionPath `json:"promotionPaths"`
 		} `json:"list"`
 	}
 	if err := json.Unmarshal(listed.Body, &document); err != nil {
 		return nil, fmt.Errorf("decoding deployment pipelines: %w", err)
 	}
 	for _, pipeline := range document.List {
-		if pipeline.Name != name {
-			continue
+		if pipeline.Name == name {
+			return pipeline.PromotionPaths, nil
 		}
-		environments := map[string]bool{}
-		for _, path := range pipeline.PromotionPaths {
-			environments[path.SourceEnvironment] = true
-			for _, target := range path.TargetEnvironments {
-				environments[target] = true
-			}
-		}
-		return environments, nil
 	}
 	return nil, fmt.Errorf("deployment pipeline %q is not listed", name)
 }
