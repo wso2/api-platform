@@ -552,14 +552,18 @@ const (
 	maxSpecFileNameLen   = 255
 )
 
-// validateDocFileName checks a document's file name; empty means the default <handle>.md. The
-// API Portal accepts only .md documents, so any other name would fail at publish.
+// validateDocFileName checks a document's file name against what the API Portal stores: a safe
+// path element ending in .md, the only document format its docs page opens. Empty means the
+// default <handle>.md. Saving and publishing both use it, so a saved name can be published.
 func validateDocFileName(name string) error {
+	if name == "" {
+		return nil
+	}
 	if len(name) > maxDocFileNameLen {
 		return apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
 	}
-	if name != "" && !strings.HasSuffix(name, ".md") {
-		return apperror.ValidationFailed.New("fileName must end in .md")
+	if !isSafePathElement(name) || !strings.HasSuffix(name, ".md") {
+		return apperror.ValidationFailed.New("fileName must end in .md and must not start with a dot or contain '..'")
 	}
 	return nil
 }
