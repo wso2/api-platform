@@ -18,7 +18,7 @@
 
 # Runs in the mcp-policies block, whose platform-gateway carries the
 # mcp-jwt-auth.toml overlay registering the "mock-jwks" issuer that jwt-auth
-# validates against. graphql_deploy.feature's own policy scenarios (set-headers,
+# validates against. deploy.feature's own policy scenarios (set-headers,
 # cors, basic-ratelimit) need no such overlay and stay in gateway-core.
 @graphql-policies
 Feature: GraphQL API policy enforcement requiring a registered JWT issuer

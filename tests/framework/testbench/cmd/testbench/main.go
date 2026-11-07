@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/faultinjection"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/interceptor"
@@ -49,6 +50,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
@@ -104,6 +106,7 @@ func services() ([]testbench.Service, error) {
 		return nil, fmt.Errorf("building oauth2 service: %w", err)
 	}
 	jevSvc := jev.New()
+	specsSvc := specs.New()
 	stripeSvc := stripe.New()
 	moesifSvc, err := moesif.New(stripeSvc)
 	if err != nil {
@@ -133,7 +136,9 @@ func services() ([]testbench.Service, error) {
 		mcpscripted.New(),
 		stripeSvc,
 		moesifSvc,
+		specsSvc,
 		aws.New(),
+		faultinjection.New(),
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))
@@ -141,6 +146,13 @@ func services() ([]testbench.Service, error) {
 			return nil, fmt.Errorf("building jev TLS service: %w", err)
 		}
 		services = append(services, jevTLS)
+	}
+	if cert, key := os.Getenv(specs.EnvTLSCert), os.Getenv(specs.EnvTLSKey); cert != "" || key != "" {
+		specsTLS, err := specsSvc.OverTLS([]byte(cert), []byte(key))
+		if err != nil {
+			return nil, fmt.Errorf("building specs TLS service: %w", err)
+		}
+		services = append(services, specsTLS)
 	}
 	return services, nil
 }
