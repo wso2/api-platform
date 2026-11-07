@@ -765,8 +765,7 @@ type Deployments struct {
 
 // Organizations configures how new organizations are set up.
 type Organizations struct {
-	// CreateDefaultProject creates a project named "default" with every new organization. A
-	// deployment that provisions an organization's projects itself turns it off.
+	// CreateDefaultProject creates a project named "default" with every new organization.
 	CreateDefaultProject bool `koanf:"create_default_project"`
 }
 

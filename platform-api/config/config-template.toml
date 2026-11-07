@@ -471,8 +471,7 @@ timeout_duration = 60   # seconds before a stuck deployment is timed out
 # Organizations — how a new organization is set up
 # ---------------------------------------------------------------------------
 [platform_api.organizations]
-create_default_project = true   # create a "default" project with every new organization; turn off
-                                # where the organization's projects are provisioned elsewhere
+create_default_project = true   # create a "default" project with every new organization
 
 # ---------------------------------------------------------------------------
 # API Portal publication — limits on the calls made to an API Portal

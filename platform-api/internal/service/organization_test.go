@@ -124,7 +124,7 @@ func TestOrganizationService_RegisterOrganization_CreatesTheDefaultProject(t *te
 	}
 }
 
-// A deployment that provisions an organization's projects itself turns the default project off.
+// With the setting off, a new organization has no default project.
 func TestOrganizationService_RegisterOrganization_SkipsTheDefaultProjectWhenOff(t *testing.T) {
 	svc, db, cleanup := setupOrganizationTestEnv(t)
 	t.Cleanup(cleanup)
