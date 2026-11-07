@@ -230,6 +230,18 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/graphql/api_keys.feature
+      - name: soap-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/soap/deploy.feature
+      - name: soap-wsdl
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/soap/wsdl.feature
+      - name: soap-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/soap/policies.feature
       - name: policy-engine-admin
         features:
           - features/gateway/core/policy_engine_admin.feature

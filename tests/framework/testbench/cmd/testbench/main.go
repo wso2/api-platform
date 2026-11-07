@@ -50,6 +50,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/soapbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
@@ -131,6 +132,7 @@ func services() ([]testbench.Service, error) {
 		oidcSvc,
 		guardian.New(),
 		graphqlbackend.New(),
+		soapbackend.New(),
 		opa.New(),
 		jevSvc,
 		mcpscripted.New(),
