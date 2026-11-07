@@ -170,10 +170,11 @@ test('rows in the earlier format are never served and are removed at startup', a
 
 test('new-format rows survive the startup cleanup (rolling deploy with replicas)', async () => {
     const first = newStore();
-    await call(first.set.bind(first), 'sid-1', futureSession());
+    const data = futureSession();
+    await call(first.set.bind(first), 'sid-1', data);
     newStore(); // a second replica starting up
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(await call(first.get.bind(first), 'sid-1'), futureSession());
+    assert.deepEqual(await call(first.get.bind(first), 'sid-1'), data);
 });
 
 test('destroy and touch address the hashed sid; expired rows are not served', async () => {
