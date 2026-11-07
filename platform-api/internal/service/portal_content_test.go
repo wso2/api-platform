@@ -101,12 +101,12 @@ func TestBuildContentArchive(t *testing.T) {
 		}
 	})
 
-	t.Run("adds the landing page as content/web/apiContent.md", func(t *testing.T) {
+	t.Run("adds the landing page as content/web/api-content.md", func(t *testing.T) {
 		content, err := buildContentArchive(nil, nil, &model.PublicationContent{ContentType: "text/markdown", Content: []byte("# Loans")}, defaultPublicationArchiveMaxBytes)
 		if err != nil || content == nil {
 			t.Fatalf("got %v, %v", content, err)
 		}
-		if files := readArchive(t, content.Archive); len(files) != 1 || files["content/web/apiContent.md"] != "# Loans" {
+		if files := readArchive(t, content.Archive); len(files) != 1 || files["content/web/api-content.md"] != "# Loans" {
 			t.Fatalf("unexpected archive layout: %v", files)
 		}
 	})
@@ -118,7 +118,7 @@ func TestBuildContentArchive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if files := readArchive(t, content.Archive); len(files) != 2 || files["content/web/api-icon.png"] == "" || files["content/web/apiContent.md"] == "" {
+		if files := readArchive(t, content.Archive); len(files) != 2 || files["content/web/api-icon.png"] == "" || files["content/web/api-content.md"] == "" {
 			t.Fatalf("unexpected archive layout: %v", files)
 		}
 	})
