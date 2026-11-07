@@ -909,19 +909,29 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 }
 
 // validateSubscriptionPlans ensures each plan handle exists in the organization and is ACTIVE.
-// It normalizes planHandles in place by trimming each element. Repository errors are returned
-// directly; ErrSubscriptionPlanNotFoundOrInactive is only returned when plan is nil or inactive.
 func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID string) error {
+	return validateSubscriptionPlanHandles(s.subscriptionPlanRepo, planHandles, orgUUID)
+}
+
+// validateSubscriptionPlanHandles ensures each plan handle exists in the organization and is
+// ACTIVE. It is shared by every artifact kind that carries subscriptionPlans.
+func validateSubscriptionPlanHandles(planRepo repository.SubscriptionPlanRepository, planHandles *[]string, orgUUID string) error {
 	if planHandles == nil || len(*planHandles) == 0 {
 		return nil
 	}
-	for i := range *planHandles {
-		(*planHandles)[i] = strings.TrimSpace((*planHandles)[i])
-		handle := (*planHandles)[i]
-		if handle == "" {
-			continue
+	if planRepo == nil {
+		return fmt.Errorf("cannot validate subscription plans: subscription plan repository unavailable")
+	}
+	// Blank handles are left out, as they were always skipped, rather than stored.
+	handles := make([]string, 0, len(*planHandles))
+	for _, h := range *planHandles {
+		if h = strings.TrimSpace(h); h != "" {
+			handles = append(handles, h)
 		}
-		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
+	}
+	*planHandles = handles
+	for _, handle := range handles {
+		plan, err := planRepo.GetByHandleAndOrg(handle, orgUUID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return apperror.ValidationFailed.Wrap(err, fmt.Sprintf(

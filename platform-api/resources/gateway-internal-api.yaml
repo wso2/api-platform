@@ -1644,6 +1644,31 @@ components:
     # Subscription Sync Schemas
     # ==========================================
 
+    GatewaySubscriptionPlanCondition:
+      type: object
+      description: One condition of a subscription plan.
+      required: [id, type, params]
+      properties:
+        id:
+          type: string
+          example: requests
+        type:
+          type: string
+          enum: [request-count, tool-call-count, token-count, custom]
+        params:
+          type: object
+          additionalProperties: true
+          description: >-
+            Built-in types: {limits: [{count, timeAmount, timeUnit}], onExceed, tokenType (token-count only)}.
+            Custom: the admin's key-value pairs.
+      example:
+        id: requests
+        type: request-count
+        params:
+          limits:
+            - { count: 100, timeAmount: 1, timeUnit: MINUTE }
+          onExceed: reject
+
     GatewaySubscriptionPlanInfo:
       type: object
       description: Subscription plan information for gateway sync
@@ -1660,10 +1685,21 @@ components:
           type: string
           format: uuid
           description: Unique identifier of the subscription plan
+        handle:
+          type: string
+          description: The plan's handle
+          example: "gold"
         planName:
           type: string
           description: Human-readable name of the plan
           example: "Gold Plan"
+        conditions:
+          type: array
+          description: >-
+            The plan's conditions. The throttle fields are the plan's single request limit, kept for gateways
+            that predate conditions.
+          items:
+            $ref: '#/components/schemas/GatewaySubscriptionPlanCondition'
         stopOnQuotaReach:
           type: boolean
           description: Whether to stop serving requests when quota is reached

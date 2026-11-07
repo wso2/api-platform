@@ -229,7 +229,7 @@ type SubscriptionPlanRepository interface {
 	// GetHandlesByIDs maps subscription_plan_uuid to handle, for reconstructing
 	// a subscriptionPlanIds response from stored mapping rows.
 	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
-	// CreateWithPricing inserts the plan, its limit and, for a paid plan (pricing not nil), its
+	// CreateWithPricing inserts the plan, its conditions and, for a paid plan (pricing not nil), its
 	// pricing, in one transaction. The plan is dated with the CreatedAt the caller sets, or now.
 	CreateWithPricing(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) error
 	// GetUsage returns what offers or uses the plan: the REST APIs listing its handle, the

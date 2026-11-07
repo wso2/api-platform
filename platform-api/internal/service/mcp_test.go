@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
@@ -251,3 +253,68 @@ func TestFetchServerInfoSuppliedURLWithStoredCredential(t *testing.T) {
 		assert.Equal(t, "stored-secret", h, "the proxy's stored credential must still be sent")
 	}
 }
+
+// An MCP proxy can offer only plans that exist in the organization and are active.
+func TestMCPProxyServiceRejectsUnknownOrInactivePlans(t *testing.T) {
+	plans := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold":    {Handle: "gold", Status: model.SubscriptionPlanStatusActive},
+		"retired": {Handle: "retired", Status: model.SubscriptionPlanStatusInactive},
+	}}
+	for _, handles := range [][]string{{"gold", "missing"}, {"retired"}} {
+		create := NewMCPProxyService(&mockMCPProxyRepository{}, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+		create.WithSubscriptionPlanRepository(plans)
+		request := validMCPProxyRequest()
+		request.SubscriptionPlans = &handles
+		if _, err := create.Create("org-1", "alice", request); !apperror.ValidationFailed.Is(err) {
+			t.Errorf("create with %v: err = %v, want a validation error", handles, err)
+		}
+
+		repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: "mcp-proxy-1"}}
+		update := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+		update.WithSubscriptionPlanRepository(plans)
+		if _, err := update.Update("org-1", "mcp-proxy-1", "alice", request); !apperror.ValidationFailed.Is(err) {
+			t.Errorf("update with %v: err = %v, want a validation error", handles, err)
+		}
+	}
+}
+
+// Plan handles are checked only when some are sent, so a service without a plan repository still
+// saves proxies that offer no plans.
+func TestValidateSubscriptionPlanHandles(t *testing.T) {
+	if err := validateSubscriptionPlanHandles(nil, nil, "org-1"); err != nil {
+		t.Fatalf("no plans: %v", err)
+	}
+	if err := validateSubscriptionPlanHandles(nil, &[]string{}, "org-1"); err != nil {
+		t.Fatalf("empty plans: %v", err)
+	}
+	if err := validateSubscriptionPlanHandles(nil, &[]string{"gold"}, "org-1"); err == nil {
+		t.Fatal("plans without a plan repository: want an error")
+	}
+	plans := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{"gold": {Handle: "gold", Status: model.SubscriptionPlanStatusActive}}}
+	handles := []string{" gold ", "", "  "}
+	if err := validateSubscriptionPlanHandles(plans, &handles, "org-1"); err != nil || len(handles) != 1 || handles[0] != "gold" {
+		t.Fatalf("err = %v, handles = %q; want the handle trimmed and the blank ones left out", err, handles)
+	}
+}
+
+// A gateway-originated proxy keeps its stored plans, so plans sent in an update aren't checked: an
+// update of its description isn't refused for a plan it can't change.
+func TestMCPProxyServiceUpdate_GatewayProxySkipsPlanCheck(t *testing.T) {
+	plans := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{"retired": {Handle: "retired", Status: model.SubscriptionPlanStatusInactive}}}
+	repo := &savingMCPProxyRepository{mockMCPProxyRepository: mockMCPProxyRepository{
+		getByHandleResult: &model.MCPProxy{Handle: "mcp-proxy-1", Origin: constants.OriginDP}}}
+	svc := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	svc.WithSubscriptionPlanRepository(plans)
+	request := validMCPProxyRequest()
+	request.SubscriptionPlans = &[]string{"retired"}
+	if _, err := svc.Update("org-1", "mcp-proxy-1", "alice", request); !errors.Is(err, errUpdateReached) {
+		t.Fatalf("err = %v, want the update to reach the repository", err)
+	}
+}
+
+var errUpdateReached = errors.New("update reached the repository")
+
+// savingMCPProxyRepository stops an update at the repository, so a test can tell it passed validation.
+type savingMCPProxyRepository struct{ mockMCPProxyRepository }
+
+func (m *savingMCPProxyRepository) Update(*model.MCPProxy) error { return errUpdateReached }

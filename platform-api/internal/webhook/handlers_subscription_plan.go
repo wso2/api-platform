@@ -42,6 +42,8 @@ type subscriptionPlanData struct {
 	DisplayName string                  `json:"display_name"`
 	Description string                  `json:"description"`
 	Limits      []subscriptionPlanLimit `json:"limits"`
+	// Conditions is absent from portals that predate conditions; their limits are used instead.
+	Conditions *[]model.SubscriptionPlanCondition `json:"conditions"`
 	// Pricing is the plan's pricing, or null for a free plan; it never changes.
 	Pricing *planPricingData `json:"pricing"`
 }
@@ -54,11 +56,11 @@ type subscriptionPlanLimit struct {
 	TimeAmount int    `json:"time_amount"`
 }
 
-// requestLimit maps the API Portal limits onto the single request limit a plan carries here: the
-// first finite REQUEST_COUNT limit with a supported time unit. Unlimited plans and other limit
-// types map to no limit. The Platform API counts per one time unit, so a limit over several
-// units ("1000 per 2 hours") is applied per unit, which is stricter, never looser.
-func requestLimit(limits []subscriptionPlanLimit) (*int, string) {
+// requestWindows maps the portal's REQUEST_COUNT limits to request-count windows. Unlimited, unsupported
+// and repeated-length limits are skipped.
+func requestWindows(limits []subscriptionPlanLimit) []model.ConditionWindow {
+	var windows []model.ConditionWindow
+	seen := map[string]bool{}
 	for _, l := range limits {
 		if !strings.EqualFold(l.LimitType, constants.LimitTypeRequestCount) || l.LimitCount < 1 {
 			continue
@@ -67,10 +69,32 @@ func requestLimit(limits []subscriptionPlanLimit) (*int, string) {
 		if !constants.ValidThrottleLimitUnits[unit] {
 			continue
 		}
-		count := l.LimitCount
-		return &count, unit
+		amount := l.TimeAmount
+		if amount < 1 {
+			amount = 1
+		}
+		key := windowKey(amount, unit)
+		// A plan holds at most ten windows; older portals sent more, so the rest are left out.
+		if seen[key] || len(windows) == 10 {
+			continue
+		}
+		seen[key] = true
+		windows = append(windows, model.ConditionWindow{Count: l.LimitCount, TimeAmount: amount, TimeUnit: unit})
 	}
-	return nil, ""
+	return windows
+}
+
+// windowKey names a window by its length, so 60 MINUTE and 1 HOUR match. Months match only months.
+func windowKey(amount int, unit string) string {
+	switch unit {
+	case "MINUTE":
+		return fmt.Sprintf("m%d", amount)
+	case "HOUR":
+		return fmt.Sprintf("m%d", amount*60)
+	case "DAY":
+		return fmt.Sprintf("m%d", amount*24*60)
+	}
+	return fmt.Sprintf("M%d", amount)
 }
 
 func (d *subscriptionPlanData) validateHandle() error {
@@ -101,8 +125,7 @@ func (r *Receiver) handleSubscriptionPlanUpserted(ctx context.Context, env *Enve
 			return err
 		}
 	}
-	limitCount, limitUnit := requestLimit(d.Limits)
-	_, err := r.plans.UpsertPlanFromWebhook(env.OrgID, d.Handle, name, limitCount, limitUnit, pricing, occurredAt(env))
+	_, err := r.plans.UpsertPlanFromWebhook(env.OrgID, d.Handle, name, d.Description, d.Conditions, requestWindows(d.Limits), pricing, occurredAt(env))
 	return err
 }
 

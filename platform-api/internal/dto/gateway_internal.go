@@ -17,7 +17,11 @@
 
 package dto
 
-import "time"
+import (
+	"time"
+
+	"github.com/wso2/api-platform/platform-api/internal/model"
+)
 
 // GatewayDeploymentInfo represents a single deployment for a gateway
 // Used to compare local gateway state with platform-api state
@@ -72,6 +76,8 @@ type GatewaySubscriptionPlanInfo struct {
 	CreatedAt          time.Time  `json:"createdAt"`
 	UpdatedAt          time.Time  `json:"updatedAt"`
 	Etag               string     `json:"etag"` // Deterministic UUIDv7 derived from id + updatedAt
+	// Conditions; the throttle fields above stay for older gateways.
+	Conditions []model.SubscriptionPlanCondition `json:"conditions"`
 }
 
 // GatewayHmacSecretInfo represents a single HMAC secret returned to the gateway-controller.

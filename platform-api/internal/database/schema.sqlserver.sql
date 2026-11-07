@@ -105,12 +105,13 @@ CREATE TABLE dbo.rest_apis (
 );
 
 -- Subscription plans table (organization-scoped rate/billing plans)
--- Throttling limits now live in subscription_plan_limits (one row per limit).
+-- A plan's limits are in subscription_plan_conditions.
 IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
     expiry_time DATETIME2(7),
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -122,23 +123,31 @@ CREATE TABLE dbo.subscription_plans (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, handle)
 );
+-- Adds the column to databases created by earlier releases.
+IF COL_LENGTH(N'dbo.subscription_plans', N'description') IS NULL
+ALTER TABLE dbo.subscription_plans ADD description VARCHAR(1023);
 
--- Subscription plan limits table (throttling limits for a plan).
-IF OBJECT_ID(N'dbo.subscription_plan_limits', N'U') IS NULL
-CREATE TABLE dbo.subscription_plan_limits (
+-- Subscription plan conditions (one row per condition, in sort_order). condition_type is
+-- request-count, tool-call-count, token-count or custom. params is JSON, for example
+-- {"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}.
+-- Replaces subscription_plan_limits; a plan with no rows here is read from that table if it exists.
+-- organization_uuid uses NO ACTION (multiple cascade paths); deleting an
+-- organization still removes these rows via subscription_plans.
+IF OBJECT_ID(N'dbo.subscription_plan_conditions', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_conditions (
     uuid VARCHAR(40) PRIMARY KEY,
     subscription_plan_uuid VARCHAR(40) NOT NULL,
-    limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
-    time_unit VARCHAR(20) NOT NULL,
-    time_amount INT NOT NULL DEFAULT 1,
-    limit_count BIGINT NOT NULL,
-    limit_count_unit VARCHAR(10),
-    stop_on_quota_reach SMALLINT NOT NULL DEFAULT 1,
-    -- Cleanup happens via the subscription_plan_uuid -> subscription_plans CASCADE edge
-    -- (plans themselves cascade from organizations).
+    organization_uuid VARCHAR(40) NOT NULL,
+    condition_id VARCHAR(63) NOT NULL,
+    condition_type VARCHAR(40) NOT NULL,
+    params VARBINARY(MAX) NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
-    UNIQUE(subscription_plan_uuid, limit_type, time_amount, time_unit)
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    UNIQUE(subscription_plan_uuid, condition_id)
 );
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_conditions_org' AND object_id = OBJECT_ID(N'dbo.subscription_plan_conditions'))
+CREATE INDEX idx_subscription_plan_conditions_org ON dbo.subscription_plan_conditions(organization_uuid, condition_id);
 
 -- API supported subscription plans (many-to-many): which subscription plans an API (artifact) offers.
 IF OBJECT_ID(N'dbo.artifact_subscription_plans', N'U') IS NULL
@@ -870,8 +879,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_o
 CREATE INDEX idx_subscription_plans_org    ON dbo.subscription_plans(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plans_status' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
 CREATE INDEX idx_subscription_plans_status ON dbo.subscription_plans(status);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
-CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(subscription_plan_uuid);
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_subscription_plans_plan' AND object_id = OBJECT_ID(N'dbo.artifact_subscription_plans'))
 CREATE INDEX idx_artifact_subscription_plans_plan ON dbo.artifact_subscription_plans(subscription_plan_uuid);

@@ -19,11 +19,13 @@ package service
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -137,12 +139,18 @@ func (s *SubscriptionPlanService) createPlan(orgUUID, actor string, plan *model.
 	if plan.Status == "" {
 		plan.Status = model.SubscriptionPlanStatusActive
 	}
-	if plan.ThrottleLimitUnit != "" && !constants.ValidThrottleLimitUnits[plan.ThrottleLimitUnit] {
-		return nil, apperror.ValidationFailed.New("Invalid throttle limit unit")
+	if err := checkPlanDescription(plan.Description); err != nil {
+		return nil, err
 	}
+	conditions, err := normalizeConditions(plan.Conditions)
+	if err != nil {
+		return nil, err
+	}
+	plan.Conditions = conditions
+	plan.SetLegacyLimit()
 
 	if err := s.planRepo.CreateWithPricing(plan, pricing); err != nil {
-		return nil, err
+		return nil, planStorageError(err)
 	}
 	if s.auditRepo != nil {
 		_ = s.auditRepo.Record("CREATE", plan.UUID, "subscription_plan", orgUUID, actor)
@@ -155,9 +163,10 @@ func (s *SubscriptionPlanService) createPlan(orgUUID, actor string, plan *model.
 		BillingPlan:        defaultBillingPlan,
 		StopOnQuotaReach:   plan.StopOnQuotaReach,
 		ThrottleLimitCount: plan.ThrottleLimitCount,
-		ThrottleLimitUnit:  plan.ThrottleLimitUnit,
+		ThrottleLimitUnit:  gatewayThrottleUnit(plan.ThrottleLimitUnit),
 		ExpiryTime:         plan.ExpiryTime,
 		Status:             string(plan.Status),
+		Conditions:         plan.Conditions,
 	})
 
 	return plan, nil
@@ -179,7 +188,7 @@ func (s *SubscriptionPlanService) GetPlan(handle, orgUUID string) (*model.Subscr
 }
 
 // GetUsage returns what offers or uses the plan: the REST APIs, publication drafts and publications
-// that offer it, and how many subscriptions use it. A plan in use keeps its name and limit and
+// that offer it, and how many subscriptions use it. A plan in use keeps its name and conditions and
 // cannot be deleted.
 func (s *SubscriptionPlanService) GetUsage(plan *model.SubscriptionPlan) (*model.SubscriptionPlanUsage, error) {
 	return s.planRepo.GetUsage(plan.UUID, plan.Handle, plan.OrganizationUUID)
@@ -202,10 +211,9 @@ func (s *SubscriptionPlanService) CountPlans(orgUUID, search, status string) (in
 	return s.planRepo.CountByOrganization(orgUUID, search, status)
 }
 
-// UpdatePlan updates a subscription plan through the REST API. A change made here is not sent to
-// the API Portals that have the plan, and they show its name and request limit. So the name and
-// limit can change only while nothing offers or uses the plan; the next publish that offers it then
-// brings each portal's copy up to date. Pricing never changes.
+// UpdatePlan updates a plan through the REST API. Changes aren't sent to API Portals, and subscribers
+// are already on the plan, so the name and conditions can change only while nothing offers or uses it.
+// The description, expiry and status can always change. Pricing never changes.
 func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
 	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
@@ -217,7 +225,11 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 	if existing == nil {
 		return nil, apperror.SubscriptionPlanNotFound.New()
 	}
-	if changesPortalValues(existing, update) {
+	conditions, err := updatedConditions(existing, update)
+	if err != nil {
+		return nil, err
+	}
+	if changesPortalValues(existing, update, conditions) {
 		usage, err := s.planRepo.GetUsage(existing.UUID, existing.Handle, orgUUID)
 		if err != nil {
 			return nil, err
@@ -226,52 +238,56 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 			return nil, apperror.SubscriptionPlanInUse.New(planEditInUseMessage(existing.Name))
 		}
 	}
-	return s.applyPlanUpdate(existing, orgUUID, actor, update)
+	return s.applyPlanUpdate(existing, orgUUID, actor, update, conditions)
 }
 
-// changesPortalValues reports whether update changes what an API Portal shows of the plan: its
-// name or its request limit. It compares the values, not which fields were sent, since a client
-// sends every field on each save. Names are compared without surrounding spaces, since a client
-// may trim the name it sends.
-func changesPortalValues(existing *model.SubscriptionPlan, update *model.SubscriptionPlanUpdate) bool {
+// changesPortalValues reports whether the update changes the name or conditions, which a plan in use
+// keeps. Values are compared, not which fields were sent; names ignore surrounding spaces.
+func changesPortalValues(existing *model.SubscriptionPlan, update *model.SubscriptionPlanUpdate, conditions []model.SubscriptionPlanCondition) bool {
 	if update.Name != nil && strings.TrimSpace(*update.Name) != strings.TrimSpace(existing.Name) {
 		return true
 	}
-	if update.ThrottleLimitCount != nil {
-		if existing.ThrottleLimitCount == nil || *existing.ThrottleLimitCount != *update.ThrottleLimitCount {
-			return true
-		}
-	} else if update.ClearLimit && existing.ThrottleLimitCount != nil {
-		return true
-	}
-	return update.ThrottleLimitUnit != nil && existing.ThrottleLimitCount != nil &&
-		*update.ThrottleLimitUnit != existing.ThrottleLimitUnit
+	return !sameConditions(existing.Conditions, conditions)
 }
 
-// applyPlanUpdate applies update to existing, saves it and tells the gateways.
-func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPlan, orgUUID, actor string, update *model.SubscriptionPlanUpdate) (*model.SubscriptionPlan, error) {
+// updatedConditions returns the plan's conditions after the update, normalized. An old plan read from
+// subscription_plan_limits equals the same limit sent as conditions, so saving it unchanged isn't a change.
+func updatedConditions(existing *model.SubscriptionPlan, update *model.SubscriptionPlanUpdate) ([]model.SubscriptionPlanCondition, error) {
+	current, err := normalizeConditions(existing.Conditions)
+	if err != nil {
+		// Keep a stored condition that no longer validates as it is.
+		current = existing.Conditions
+	}
+	existing.Conditions = current
+	switch {
+	case update.Conditions != nil:
+		return normalizeConditions(*update.Conditions)
+	case update.RequestLimit != nil:
+		return normalizeConditions(withRequestLimit(current, update.RequestLimit))
+	case update.ClearLimit:
+		return normalizeConditions(withRequestLimit(current, nil))
+	default:
+		return current, nil
+	}
+}
+
+// applyPlanUpdate saves the update with the given conditions and tells the gateways.
+func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPlan, orgUUID, actor string, update *model.SubscriptionPlanUpdate, conditions []model.SubscriptionPlanCondition) (*model.SubscriptionPlan, error) {
 	if update.Name != nil {
-		if *update.Name == "" {
+		name := strings.TrimSpace(*update.Name)
+		if name == "" {
 			return nil, apperror.ValidationFailed.New("name is required")
 		}
-		existing.Name = *update.Name
+		existing.Name = name
 	}
-	if update.StopOnQuotaReach != nil {
-		existing.StopOnQuotaReach = *update.StopOnQuotaReach
-	}
-	if update.ThrottleLimitCount != nil {
-		existing.ThrottleLimitCount = update.ThrottleLimitCount
-	} else if update.ClearLimit {
-		existing.ThrottleLimitCount = nil
-		existing.ThrottleLimitUnit = ""
-		existing.StopOnQuotaReach = true
-	}
-	if update.ThrottleLimitUnit != nil {
-		if !constants.ValidThrottleLimitUnits[*update.ThrottleLimitUnit] {
-			return nil, apperror.ValidationFailed.New("Invalid throttle limit unit")
+	if update.Description != nil {
+		existing.Description = strings.TrimSpace(*update.Description)
+		if err := checkPlanDescription(existing.Description); err != nil {
+			return nil, err
 		}
-		existing.ThrottleLimitUnit = *update.ThrottleLimitUnit
 	}
+	existing.Conditions = conditions
+	existing.SetLegacyLimit()
 	if update.ExpiryTime != nil {
 		existing.ExpiryTime = update.ExpiryTime
 	} else if update.ClearExpiryTime {
@@ -288,7 +304,7 @@ func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPl
 
 	existing.UpdatedBy = actor
 	if err := s.planRepo.Update(existing); err != nil {
-		return nil, err
+		return nil, planStorageError(err)
 	}
 	if s.auditRepo != nil {
 		_ = s.auditRepo.Record("UPDATE", existing.UUID, "subscription_plan", orgUUID, actor)
@@ -301,12 +317,59 @@ func (s *SubscriptionPlanService) applyPlanUpdate(existing *model.SubscriptionPl
 		BillingPlan:        defaultBillingPlan,
 		StopOnQuotaReach:   existing.StopOnQuotaReach,
 		ThrottleLimitCount: existing.ThrottleLimitCount,
-		ThrottleLimitUnit:  existing.ThrottleLimitUnit,
+		ThrottleLimitUnit:  gatewayThrottleUnit(existing.ThrottleLimitUnit),
 		ExpiryTime:         existing.ExpiryTime,
 		Status:             string(existing.Status),
+		Conditions:         existing.Conditions,
 	})
 
 	return existing, nil
+}
+
+// checkPlanDescription refuses a description longer than the column holds.
+func checkPlanDescription(description string) error {
+	if utf8.RuneCountInString(description) > model.MaxSubscriptionPlanDescriptionChars {
+		return apperror.ValidationFailed.New(fmt.Sprintf("description must be at most %d characters", model.MaxSubscriptionPlanDescriptionChars))
+	}
+	return nil
+}
+
+// truncateRunes cuts s to at most n characters.
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
+}
+
+// gatewayThrottleUnits maps platform-api time units to the names gateways use for a plan's throttle
+// unit (Min, Hour, Day, Month), which subscription-validation v1 reads.
+var gatewayThrottleUnits = map[string]string{
+	constants.ThrottleLimitUnitMinute: "Min",
+	constants.ThrottleLimitUnitHour:   "Hour",
+	constants.ThrottleLimitUnitDay:    "Day",
+	constants.ThrottleLimitUnitMonth:  "Month",
+}
+
+// gatewayThrottleUnit converts a time unit for gateways. Unknown values are passed through.
+func gatewayThrottleUnit(unit string) string {
+	if gw, ok := gatewayThrottleUnits[strings.ToUpper(unit)]; ok {
+		return gw
+	}
+	return unit
+}
+
+// planStorageError reports a database not yet upgraded for conditions with a clear message.
+func planStorageError(err error) error {
+	switch {
+	case errors.Is(err, repository.ErrPlanConditionsTableMissing):
+		return apperror.SubscriptionPlanConditionsUnsupported.Wrap(err,
+			"Only request limits can be saved until the database is upgraded for subscription plan conditions.").WithLogMessage(err.Error())
+	case errors.Is(err, repository.ErrPlanDescriptionColumnMissing):
+		return apperror.SubscriptionPlanConditionsUnsupported.Wrap(err,
+			"A plan description can be saved only after the database is upgraded for subscription plan conditions.").WithLogMessage(err.Error())
+	}
+	return err
 }
 
 // DeletePlan deletes a subscription plan through the REST API, only while nothing here offers or
@@ -330,7 +393,7 @@ func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) erro
 //   - the plan is removed from the REST APIs and artifact_subscription_plans rows that offer it;
 //   - the publication drafts and live publications that offer it are kept, showing it as deleted;
 //   - its subscriptions are kept, without a plan;
-//   - the plan is deleted, with its limits and pricing.
+//   - the plan is deleted, with its conditions and pricing.
 //
 // The gateways are then told the plan is deleted. DeletePlan calls it only once nothing uses the
 // plan, so there it deletes just the plan. DeletePlanFromWebhook calls it for a plan the API Portal
@@ -363,26 +426,23 @@ func planInUseMessage(name string) string {
 	return fmt.Sprintf("The plan %s is in use and can't be deleted.", name)
 }
 
-// planEditInUseMessage refuses a change to the name or limit of a plan in use, for example "The
-// plan Gold is in use. To change its name or limit, create a new plan."
+// planEditInUseMessage refuses a change to the name or conditions of a plan in use, for example "The
+// plan Gold is in use. To change its name or conditions, create a new plan."
 func planEditInUseMessage(name string) string {
-	return fmt.Sprintf("The plan %s is in use. To change its name or limit, create a new plan.", name)
+	return fmt.Sprintf("The plan %s is in use. To change its name or conditions, create a new plan.", name)
 }
 
-// UpsertPlanFromWebhook reconciles a plan created or changed in the API Portal. Both events carry
-// the plan's pricing (nil for a free plan), which the portal never changes.
-//   - When the organization does not have the plan, it is created with its pricing, in one
-//     transaction. It is dated occurredAt, when it was made in the API Portal, not when the event
-//     was processed, so that the portal's later deletion of it is not taken for the deletion of an
-//     older plan with the same handle.
-//   - Otherwise its pricing is checked against the stored one (reconcilePricing), and the name and
-//     request limit are applied when they differ, so an echo of a change made here changes nothing.
-//     The portal has no stop-on-quota or status setting, so those are left as they are.
+// UpsertPlanFromWebhook applies a plan created or changed in the API Portal.
+//   - A new plan is created with its pricing, dated when the portal made it, so a later deletion
+//     event isn't mistaken for the deletion of an older plan with the same handle.
+//   - An existing plan must keep its pricing (reconcilePricing); its name, description and conditions
+//     are updated when they differ, so an echo of a change made here changes nothing.
 //
-// Each meter the prices count with must already be here. Created and updated plans are sent to
-// the gateways as for REST changes. Webhook events carry no user, so the actor is empty, as for
-// applications.
-func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
+// Portals that predate conditions send only request limits (requestWindows); those change only the
+// request-count condition (portalConditions). Meters used by the prices must already exist here.
+func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, description string, conditions *[]model.SubscriptionPlanCondition, requestWindows []model.ConditionWindow, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
+	// A portal on SQLite may hold a longer description than the column; keep the plan in sync.
+	description = truncateRunes(strings.TrimSpace(description), model.MaxSubscriptionPlanDescriptionChars)
 	if pricing != nil {
 		if s.meterRepo == nil || s.pricingRepo == nil {
 			return nil, apperror.Internal.New().WithLogMessage("plan pricing storage is not configured")
@@ -397,13 +457,17 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name st
 		return nil, err
 	}
 	if existing == nil {
+		planConditions, err := portalConditions(nil, conditions, requestWindows)
+		if err != nil {
+			return nil, err
+		}
 		plan := &model.SubscriptionPlan{
-			Handle:             handle,
-			Name:               name,
-			StopOnQuotaReach:   true,
-			ThrottleLimitCount: limitCount,
-			ThrottleLimitUnit:  limitUnit,
-			CreatedAt:          occurredAt.UTC(),
+			Handle:              handle,
+			Name:                name,
+			Description:         description,
+			DescriptionOptional: true,
+			Conditions:          planConditions,
+			CreatedAt:           occurredAt.UTC(),
 		}
 		created, err := s.createPlan(orgUUID, "", plan, pricing)
 		if err == nil || !apperror.SubscriptionPlanExists.Is(err) {
@@ -418,29 +482,55 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name st
 		return nil, err
 	}
 
-	update := &model.SubscriptionPlanUpdate{}
+	current, err := updatedConditions(existing, &model.SubscriptionPlanUpdate{})
+	if err != nil {
+		return nil, err
+	}
+	planConditions, err := portalConditions(current, conditions, requestWindows)
+	if err != nil {
+		return nil, err
+	}
+	update := &model.SubscriptionPlanUpdate{Conditions: &planConditions}
 	changed := false
 	if existing.Name != name {
 		update.Name = &name
 		changed = true
 	}
-	switch {
-	case limitCount == nil:
-		if existing.ThrottleLimitCount != nil {
-			update.ClearLimit = true
-			changed = true
-		}
-	case existing.ThrottleLimitCount == nil || *existing.ThrottleLimitCount != *limitCount || existing.ThrottleLimitUnit != limitUnit:
-		update.ThrottleLimitCount = limitCount
-		update.ThrottleLimitUnit = &limitUnit
+	if existing.Description != description {
+		update.Description = &description
+		changed = true
+	}
+	if !sameConditions(current, planConditions) {
 		changed = true
 	}
 	if !changed {
 		return existing, nil
 	}
 	// The change comes from the portal itself, so UpdatePlan's rule that a plan in use keeps its
-	// name and limit does not apply.
-	return s.applyPlanUpdate(existing, orgUUID, "", update)
+	// name and conditions does not apply.
+	existing.DescriptionOptional = true
+	return s.applyPlanUpdate(existing, orgUUID, "", update, planConditions)
+}
+
+// portalConditions returns the conditions a portal event gives the plan: the event's conditions, or,
+// from an older portal, the current ones with only the request-count condition replaced by its limits
+// (keeping onExceed, which that portal can't set).
+func portalConditions(current []model.SubscriptionPlanCondition, conditions *[]model.SubscriptionPlanCondition, requestWindows []model.ConditionWindow) ([]model.SubscriptionPlanCondition, error) {
+	if conditions != nil {
+		return normalizeConditions(*conditions)
+	}
+	if len(requestWindows) == 0 {
+		return normalizeConditions(withRequestLimit(current, nil))
+	}
+	stopOnQuotaReach := true
+	if c := model.FindCondition(current, model.ConditionTypeRequestCount); c != nil {
+		var params model.ConditionLimits
+		if err := json.Unmarshal(c.Params, &params); err == nil {
+			stopOnQuotaReach = params.OnExceed != model.ConditionOnExceedAllow
+		}
+	}
+	requestLimit := model.NewRequestCountCondition(requestWindows, stopOnQuotaReach)
+	return normalizeConditions(withRequestLimit(current, &requestLimit))
 }
 
 // reconcilePricing accepts an event for a plan that is already here only when it carries the

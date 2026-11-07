@@ -1402,6 +1402,93 @@ func (e SubscriptionPlanStatus) Valid() bool {
 	}
 }
 
+// Defines values for SubscriptionPlanConditionType.
+const (
+	SubscriptionPlanConditionTypeCustom        SubscriptionPlanConditionType = "custom"
+	SubscriptionPlanConditionTypeRequestCount  SubscriptionPlanConditionType = "request-count"
+	SubscriptionPlanConditionTypeTokenCount    SubscriptionPlanConditionType = "token-count"
+	SubscriptionPlanConditionTypeToolCallCount SubscriptionPlanConditionType = "tool-call-count"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanConditionType enum.
+func (e SubscriptionPlanConditionType) Valid() bool {
+	switch e {
+	case SubscriptionPlanConditionTypeCustom:
+		return true
+	case SubscriptionPlanConditionTypeRequestCount:
+		return true
+	case SubscriptionPlanConditionTypeTokenCount:
+		return true
+	case SubscriptionPlanConditionTypeToolCallCount:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanConditionLimitsOnExceed.
+const (
+	SubscriptionPlanConditionOnExceedAllow  SubscriptionPlanConditionLimitsOnExceed = "allow"
+	SubscriptionPlanConditionOnExceedReject SubscriptionPlanConditionLimitsOnExceed = "reject"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanConditionLimitsOnExceed enum.
+func (e SubscriptionPlanConditionLimitsOnExceed) Valid() bool {
+	switch e {
+	case SubscriptionPlanConditionOnExceedAllow:
+		return true
+	case SubscriptionPlanConditionOnExceedReject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanConditionLimitsTokenType.
+const (
+	SubscriptionPlanConditionTokenTypeCompletion SubscriptionPlanConditionLimitsTokenType = "completion"
+	SubscriptionPlanConditionTokenTypePrompt     SubscriptionPlanConditionLimitsTokenType = "prompt"
+	SubscriptionPlanConditionTokenTypeTotal      SubscriptionPlanConditionLimitsTokenType = "total"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanConditionLimitsTokenType enum.
+func (e SubscriptionPlanConditionLimitsTokenType) Valid() bool {
+	switch e {
+	case SubscriptionPlanConditionTokenTypeCompletion:
+		return true
+	case SubscriptionPlanConditionTokenTypePrompt:
+		return true
+	case SubscriptionPlanConditionTokenTypeTotal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubscriptionPlanConditionWindowTimeUnit.
+const (
+	SubscriptionPlanConditionWindowDay    SubscriptionPlanConditionWindowTimeUnit = "DAY"
+	SubscriptionPlanConditionWindowHour   SubscriptionPlanConditionWindowTimeUnit = "HOUR"
+	SubscriptionPlanConditionWindowMinute SubscriptionPlanConditionWindowTimeUnit = "MINUTE"
+	SubscriptionPlanConditionWindowMonth  SubscriptionPlanConditionWindowTimeUnit = "MONTH"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanConditionWindowTimeUnit enum.
+func (e SubscriptionPlanConditionWindowTimeUnit) Valid() bool {
+	switch e {
+	case SubscriptionPlanConditionWindowDay:
+		return true
+	case SubscriptionPlanConditionWindowHour:
+		return true
+	case SubscriptionPlanConditionWindowMinute:
+		return true
+	case SubscriptionPlanConditionWindowMonth:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubscriptionPlanLimitLimitType.
 const (
 	BANDWIDTH       SubscriptionPlanLimitLimitType = "BANDWIDTH"
@@ -3389,6 +3476,12 @@ type CreateRESTAPIRequestLifeCycleStatus string
 
 // CreateSubscriptionPlanRequest defines model for CreateSubscriptionPlanRequest.
 type CreateSubscriptionPlanRequest struct {
+	// Conditions What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. Send either conditions or limits, not both.
+	Conditions *[]SubscriptionPlanCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+
+	// Description What the plan offers, in words for developers and subscribers. Optional.
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
 	// DisplayName Human-readable name for the subscription plan
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
@@ -3398,7 +3491,8 @@ type CreateSubscriptionPlanRequest struct {
 	// Id Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters; a longer one is refused with 400 "id must be at most 40 characters".
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Limits Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored.
+	// Limits Request limits, for clients that predate conditions; use conditions instead. Each limit is a window of the plan's request-count condition (only REQUEST_COUNT limits are accepted), and whether requests over the limit are blocked is taken from the first one.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
 
 	// Pricing Makes the plan paid. Optional; a plan created without it is free. Pricing is set only when a plan is created and cannot be updated afterwards, so a free plan cannot become paid later, nor a paid plan free.
@@ -4627,6 +4721,11 @@ type MCPProxy struct {
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this MCP proxy (e.g. Gold, Silver).
+	// When set, only these plans can be used when subscribing to the MCP proxy.
+	// Each plan must exist in the organization and be ACTIVE.
+	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// UpdatedAt Timestamp when the resource was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -6020,10 +6119,15 @@ type SubscriptionListResponse struct {
 
 // SubscriptionPlan defines model for SubscriptionPlan.
 type SubscriptionPlan struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	// Conditions What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. On update, an omitted conditions leaves them unchanged and [] removes them all. Send either conditions or limits, not both. A plan saved before conditions is returned with its request limit as a request-count condition.
+	Conditions *[]SubscriptionPlanCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	CreatedAt  *time.Time                   `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+
+	// Description What the plan offers, in words for developers and subscribers. Optional.
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// DisplayName Human-readable name for the subscription plan
 	DisplayName string `json:"displayName" yaml:"displayName"`
@@ -6034,7 +6138,8 @@ type SubscriptionPlan struct {
 	// Id Handle (slug) for the subscription plan
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Limits Throttling limits configured for the plan. Only one entry is currently supported and returned, even though the underlying storage allows multiple.
+	// Limits The windows of the plan's request-count condition, for clients that predate conditions; empty when the plan has none. On update, limits replace only the request-count condition and keep the plan's other conditions; [] removes it.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Limits *[]SubscriptionPlanLimit `json:"limits,omitempty" yaml:"limits,omitempty"`
 
 	// OrganizationId Handle (URL-friendly slug) of the organization this plan belongs to
@@ -6048,12 +6153,57 @@ type SubscriptionPlan struct {
 	// UpdatedBy User identifier of the user who last updated this resource. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
-	// Usage What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot be updated.
+	// Usage What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and conditions cannot be updated.
 	Usage *SubscriptionPlanUsage `json:"usage,omitempty" yaml:"usage,omitempty"`
 }
 
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
 type SubscriptionPlanStatus string
+
+// SubscriptionPlanCondition One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count) has the id its type fixes (requests, tool-calls, tokens), so the policy that enforces it finds it in every plan; params holds its limits. A custom condition has an id the admin gives it and key-value pairs as params, which a policy the customer writes reads.
+type SubscriptionPlanCondition struct {
+	// Id Required for a custom condition, unique in the plan and not one of the built-in ids. For a built-in condition it may be omitted; when sent, it must be the id the type fixes.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Params For a built-in type, a SubscriptionPlanConditionLimits object. For a custom condition, any JSON object of key-value pairs, at most 4096 bytes.
+	Params map[string]interface{}        `json:"params" yaml:"params"`
+	Type   SubscriptionPlanConditionType `json:"type" yaml:"type"`
+}
+
+// SubscriptionPlanConditionType defines model for SubscriptionPlanCondition.Type.
+type SubscriptionPlanConditionType string
+
+// SubscriptionPlanConditionLimits The params of a built-in condition: windows on the same counter, all of which must have room. No two windows may be the same length (60 MINUTE and 1 HOUR are the same window). A field not listed here is refused.
+type SubscriptionPlanConditionLimits struct {
+	Limits []SubscriptionPlanConditionWindow `json:"limits" yaml:"limits"`
+
+	// OnExceed What happens once a window is used up: reject the request (429), or let it through and mark it as overage.
+	OnExceed *SubscriptionPlanConditionLimitsOnExceed `json:"onExceed,omitempty" yaml:"onExceed,omitempty"`
+
+	// TokenType token-count only (default total). Refused for the other types.
+	TokenType *SubscriptionPlanConditionLimitsTokenType `json:"tokenType,omitempty" yaml:"tokenType,omitempty"`
+}
+
+// SubscriptionPlanConditionLimitsOnExceed What happens once a window is used up: reject the request (429), or let it through and mark it as overage.
+type SubscriptionPlanConditionLimitsOnExceed string
+
+// SubscriptionPlanConditionLimitsTokenType token-count only (default total). Refused for the other types.
+type SubscriptionPlanConditionLimitsTokenType string
+
+// SubscriptionPlanConditionWindow defines model for SubscriptionPlanConditionWindow.
+type SubscriptionPlanConditionWindow struct {
+	// Count The requests, tool calls or tokens allowed in the window.
+	Count int `json:"count" yaml:"count"`
+
+	// TimeAmount How many timeUnit the window lasts (2 with HOUR is per 2 hours).
+	TimeAmount *int `json:"timeAmount,omitempty" yaml:"timeAmount,omitempty"`
+
+	// TimeUnit A MONTH is a calendar month.
+	TimeUnit SubscriptionPlanConditionWindowTimeUnit `json:"timeUnit" yaml:"timeUnit"`
+}
+
+// SubscriptionPlanConditionWindowTimeUnit A MONTH is a calendar month.
+type SubscriptionPlanConditionWindowTimeUnit string
 
 // SubscriptionPlanIdList defines model for SubscriptionPlanIdList.
 type SubscriptionPlanIdList = []string
@@ -6160,6 +6310,9 @@ type SubscriptionPlanUsage struct {
 
 	// InUse Whether anything counted below offers or uses the plan.
 	InUse bool `json:"inUse" yaml:"inUse"`
+
+	// McpProxies How many MCP proxies list the plan in their configuration.
+	McpProxies *int `json:"mcpProxies,omitempty" yaml:"mcpProxies,omitempty"`
 
 	// Publications How many APIs offer the plan in a publication (each API once).
 	Publications int `json:"publications" yaml:"publications"`

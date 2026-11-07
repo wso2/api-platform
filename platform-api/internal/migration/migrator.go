@@ -114,7 +114,7 @@ var orderedResourceNames = []string{
 	"user_organization_mappings", // intentionally empty (§B.4) — no-op reporter
 	"projects",
 	"applications",
-	"subscription_plans", // + subscription_plan_limits child
+	"subscription_plans", // + subscription_plan_conditions child
 	"artifacts",          // base split; per-type rows follow
 	"rest_apis",
 	"llm_provider_templates",
