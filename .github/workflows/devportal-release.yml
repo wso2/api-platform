@@ -112,6 +112,25 @@ jobs:
             PLATFORM_API_VERSION="${PLATFORM_API_VERSION}" \
             AIW_VERSION="${AIW_VERSION}"
 
+      # The binary zip of the Platform API version this pack pins, as attached to that
+      # version's Platform API release, so both components' zips ship with this release.
+      # The API Portal binary zip itself was built by `make build-and-push-api-portal-multiarch`.
+      - name: Fetch Platform API binary zip
+        id: platform_api_binary
+        env:
+          GH_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+          PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
+        run: |
+          version="${PLATFORM_API_VERSION:-$(sed 's/-SNAPSHOT//' platform-api/VERSION | tr -d '[:space:]')}"
+          zip="wso2apip-platform-api-binary-${version}.zip"
+          if ! gh release download "platform-api/v${version}" --repo "${{ github.repository }}" \
+                 --pattern "${zip}" --dir portals/api-portal/target; then
+            echo "Error: ${zip} not found on the platform-api/v${version} release." >&2
+            echo "Release Platform API ${version} with the binary-zip workflow first." >&2
+            exit 1
+          fi
+          echo "zip=${zip}" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -132,7 +151,17 @@ jobs:
             ### Distribution
             The attached `wso2apip-api-portal-${{ steps.version.outputs.version }}.zip` contains the
             standalone API Portal + Platform API distribution (docker-compose and configs).
-          files: portals/api-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
+
+            ### Binary zips (build your own images)
+            - `wso2apip-api-portal-binary-${{ steps.version.outputs.version }}.zip`: the API Portal
+              source and the Dockerfile its image is built from.
+            - `${{ steps.platform_api_binary.outputs.zip }}`: the prebuilt Platform API binaries
+              (linux/amd64, linux/arm64) of the version this distribution pins, with its Dockerfile.
+          files: |
+            portals/api-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
+            portals/api-portal/target/wso2apip-api-portal-binary-${{ steps.version.outputs.version }}.zip
+            portals/api-portal/target/${{ steps.platform_api_binary.outputs.zip }}
+          fail_on_unmatched_files: true
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}

@@ -152,12 +152,10 @@ services:
       - platform-api-jwt-keys:/keys
 
   platform-api:
+    # Build it first with `make -C platform-api build` (from the repository root),
+    # which tags this image. Platform API's image is built from its binary zip in two
+    # steps (compile, then image), which a compose build: entry can't express.
     image: ghcr.io/wso2/api-platform/platform-api:latest
-    build:
-      context: ../../platform-api
-      dockerfile: Dockerfile
-      additional_contexts:
-        common: ../../common
     # Mounts the shipped default config (../../platform-api/config/config.toml)
     # so the APIP_CP_* env vars below actually take effect — {{ env }} / {{ file }}
     # tokens only resolve from a loaded config file, they are not read directly.

@@ -15,86 +15,47 @@
 # under the License.
 # -----------------------------------------------------------------------
 
-# Global build arguments
+# Platform API image.
+#
+# The only Dockerfile that defines the Platform API image. It compiles nothing: it
+# copies the prebuilt binary for the target CPU from the `bin` stage, plus the
+# schema files and resources the binary reads at runtime.
+#
+# Where the binary comes from:
+#   - In the binary zip (wso2apip-platform-api-binary-<version>.zip, built by
+#     `make binary`), the `bin` stage copies ./bin/, which holds
+#     linux-amd64/platform-api and linux-arm64/platform-api, so a plain
+#     `docker build .` there works. Our released images are built this way, from
+#     the zip, so they hold exactly the zipped binaries.
+#   - For builds from source (docker-bake.hcl, e.g. the coverage image), bake
+#     replaces the `bin` stage with the binary Dockerfile.build compiles
+#     (contexts bin = "target:compile").
+#
+# Changing the base image: edit the second FROM line. The binary is built with cgo,
+# so the base must be glibc-based (not Alpine/musl). The steps below use apt-get,
+# groupadd and useradd; replace them with your base's equivalents if it isn't
+# Debian/Ubuntu, and keep the user's UID 10001.
+
 ARG PORT=9243
 
-# Set EXPERIMENTAL=true to include the event-gateway plugin.
-# The resulting image should be tagged with a "-experimental" suffix.
-ARG EXPERIMENTAL=false
+# The prebuilt binaries: bin/linux-<arch>/platform-api from the build folder.
+FROM scratch AS bin
+COPY bin/ /
 
-# Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder
-ARG TARGETARCH
-
-# Build arguments for version information
-ARG VERSION=0.0.1-SNAPSHOT
-ARG GIT_COMMIT=unknown
-ARG EXPERIMENTAL=false
-ARG ENABLE_COVERAGE=false
-ARG COVERAGE_PACKAGES=""
-
-WORKDIR /build
-
-# CGO is required for mattn/go-sqlite3; install cross-compile toolchains.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    libsqlite3-dev \
-    && if [ "$TARGETARCH" = "amd64" ]; then \
-           apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
-       elif [ "$TARGETARCH" = "arm64" ]; then \
-           apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
-       fi \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy go mod files for dependencies (needed for go.mod replace directives)
-COPY --from=common go.mod go.sum /common/
-COPY --from=httpkit go.mod go.sum /httpkit/
-
-# Fetch dependencies before copying full source for better layer caching.
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY --from=common . /common
-COPY --from=httpkit . /httpkit
-COPY . ./
-
-RUN if [ "$TARGETARCH" = "amd64" ]; then \
-        export CC=x86_64-linux-gnu-gcc; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        export CC=aarch64-linux-gnu-gcc; \
-    else \
-        export CC=gcc; \
-    fi && \
-    BUILD_TAGS="" && \
-    if [ "$EXPERIMENTAL" = "true" ]; then BUILD_TAGS="-tags experimental"; fi && \
-    COVER_FLAGS="" && \
-    if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        COVER_FLAGS="-cover -covermode=atomic"; \
-        if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
-    fi && \
-    CGO_ENABLED=1 \
-    GOOS=linux \
-    GOARCH=${TARGETARCH} \
-    go build -a $COVER_FLAGS \
-        ${BUILD_TAGS} \
-        -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT}" \
-        -o platform-api ./cmd
-
-###########################
-# Runtime Stage           #
-###########################
 FROM ubuntu:24.04
 
+# Set by `docker buildx build --platform ...`: amd64 or arm64.
+ARG TARGETARCH
 ARG PORT
+# true for the experimental (event-gateway plugin) build; recorded as a label.
 ARG EXPERIMENTAL=false
-ARG ENABLE_COVERAGE=false
 ARG USERNAME=wso2
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
 
 LABEL org.opencontainers.image.experimental="${EXPERIMENTAL}"
 
+# Install runtime dependencies
 RUN apt-get update && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -102,15 +63,12 @@ RUN apt-get update && apt-get upgrade -y \
 
 WORKDIR /app
 
+# Create non-root user
 RUN groupadd -g $USER_UID appgroup && \
     useradd -u $USER_UID -g appgroup -s /bin/bash -m $USERNAME
 
-COPY --from=builder /build/platform-api .
-
-# Schema files, LLM provider templates and OpenAPI spec.
-# These are copied to the same relative locations the binary expects by default
-# (see config.defaultConfig), so no DB_SCHEMA_PATH / LLM_TEMPLATE_DEFINITIONS_PATH
-# env overrides are needed. Any of them can still be overridden via config.toml.
+# The binary for this CPU, and the files it reads at runtime
+COPY --from=bin /linux-${TARGETARCH}/platform-api ./platform-api
 COPY internal/database/schema.sql            ./internal/database/schema.sql
 COPY internal/database/schema.postgres.sql   ./internal/database/schema.postgres.sql
 COPY internal/database/schema.sqlserver.sql  ./internal/database/schema.sqlserver.sql
@@ -118,13 +76,10 @@ COPY internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.s
 COPY resources/default-llm-provider-templates ./resources/default-llm-provider-templates
 COPY resources/openapi.yaml                  ./resources/openapi.yaml
 
-RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:0" /coverage && chmod 775 /coverage; fi
-
-# Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
+# Used only by coverage-instrumented binaries (see Dockerfile.coverage).
 ENV GOCOVERDIR=/coverage
 
-# The data directory is owned by the root group with group perms matching the owner,
-# so OpenShift's arbitrary UID (always in GID 0) can write to it.
+# Create data directory, set ownership and OpenShift-compatible group permissions
 RUN mkdir -p /app/data /app/data/certs && \
     chown -R wso2:appgroup /app && \
     chgrp -R 0 /app && \
@@ -134,11 +89,6 @@ EXPOSE ${PORT}
 
 ENV LOG_LEVEL=INFO
 ENV PORT=${PORT}
-# Database driver, paths, and TLS cert dir are NOT baked as env vars: the binary's
-# compiled defaults (sqlite3 at ./data/api_platform.db, certs at ./data/certs,
-# schema/templates/openapi under the relative paths mirrored above) already resolve
-# correctly against WORKDIR /app. Override any of them in config.toml — e.g. set
-# [database] driver = "postgres" — without an env var silently shadowing the file.
 
 USER $USERNAME
 

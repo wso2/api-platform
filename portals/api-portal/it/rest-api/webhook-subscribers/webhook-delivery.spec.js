@@ -23,7 +23,7 @@
 const crypto = require('crypto');
 const client = require('../support/client');
 const db = require('../support/db');
-const { waitForEvent, waitForDelivery, sleep } = require('../support/wait-for');
+const { waitForEvent, waitForDelivery, sleep, poll } = require('../support/wait-for');
 const { createWebhookSubscriber, uniqueHandle } = require('../support/fixtures');
 const { createWebhookSink, resolveSinkUrl } = require('../support/webhook-sink');
 
@@ -128,10 +128,18 @@ describe('webhook delivery pipeline', () => {
         const event = await waitForEvent({ orgHandle: client.ORG_HANDLE, type: 'application.created', since });
         await waitForDelivery({ eventUuid: event.uuid });
 
-        // Match by the uuid captured from waitForEvent — filtering only by
-        // org+type could pick up an earlier application.created event from this suite.
-        const events = await db.findEvents({ orgUuid: (await db.findOrgUuidByHandle(client.ORG_HANDLE)), type: 'application.created' });
-        const finalEvent = events.find((e) => e.uuid === event.uuid);
+        // The worker marks the delivery terminal and then, in a separate statement,
+        // reconciles the event's status (src/dao/eventDao.js markDelivered ->
+        // reconcile). Poll until the event leaves its in-flight status instead of
+        // reading it once, which raced that second statement. Match by the uuid
+        // captured from waitForEvent — filtering only by org+type could pick up an
+        // earlier application.created event from this suite.
+        const orgUuid = await db.findOrgUuidByHandle(client.ORG_HANDLE);
+        const finalEvent = await poll(async () => {
+            const events = await db.findEvents({ orgUuid, type: 'application.created' });
+            const current = events.find((e) => e.uuid === event.uuid);
+            return current && (current.status === 'ALL_DELIVERED' || current.status === 'FAILED') ? current : undefined;
+        });
         expect(finalEvent.status).toBe('ALL_DELIVERED');
     });
 });

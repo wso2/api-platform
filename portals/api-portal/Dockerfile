@@ -17,60 +17,67 @@
 # --------------------------------------------------------------------
 
 # API Portal Dockerfile
-# Uses node:24-alpine. SQLite is node:sqlite, built into Node, so the production
-# dependencies are plain JavaScript and need no native build tools.
+#
+# Builds the API Portal image with a plain `docker build .`. This is the Dockerfile
+# for our released images, and `make binary` ships it in the binary zip
+# (wso2apip-api-portal-binary-<version>.zip) so customers can build their own image,
+# for example on a different base image. Release images are built from that zip.
+#
+# Changing the base image: edit both FROM lines. The base must provide Node.js 24,
+# and npm in the build stage. The steps below work on any Linux base with a POSIX
+# shell, including bases whose default user isn't root: each stage switches to root
+# for its setup steps, and the image still runs as UID 10001.
+#
+# The image's runtime contract, which the pack's docker-compose.yaml and the Helm
+# chart rely on: working directory /app, UID 10001, writable /app/data and /app/logs,
+# port 9543, base config at $APIP_AP_CONFIG_PATH, started with `node src/server.js`.
+# Keep it unchanged when editing this file.
+#
+# The integration tests' coverage image is built on top of this one by
+# Dockerfile.coverage; nothing here is specific to it.
 
-# Build stage — installs production dependencies
-FROM node:24-alpine AS builder
+# Build stage: installs the production dependencies. .npmrc sets ignore-scripts=true,
+# so no package's install scripts run.
+FROM node:24-alpine AS build
+# Build steps run as root; some base images (e.g. Red Hat's Node.js images) default
+# to a non-root user, which can't create /app or change ownership below.
+USER 0
 WORKDIR /app
-COPY package*.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci --omit=dev
 
-# Runtime stage
+# Runtime image
 FROM node:24-alpine
-
-ARG ENABLE_COVERAGE=false
-
-# Set the working directory inside the container
+# Root for the setup steps below; the image runs as UID 10001 (USER at the end).
+USER 0
 WORKDIR /app
 
-# Copy compiled node_modules from the builder stage
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=build /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY src ./src
+COPY database ./database
+COPY resources ./resources
 
-# Copy the rest of the application files
-COPY . .
-
-# Instrument browser scripts only for framework coverage builds. The instrumenter script
-# and istanbul-lib-instrument are both mounted in only for this step (via the external
-# coverage-scripts build context and a cache mount) so neither ever lands in an image layer.
-RUN --mount=type=bind,from=coverage-scripts,source=instrument-browser-coverage.js,target=/tmp/instrument-browser-coverage.js \
-    --mount=type=cache,target=/tmp/coverage-npm-cache \
-    if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        npm install istanbul-lib-instrument@6.0.3 --no-save --prefix /tmp/coverage-npm-cache && \
-        NODE_PATH=/tmp/coverage-npm-cache/node_modules node /tmp/instrument-browser-coverage.js src/scripts; \
-    fi
-
-# Remove the npm CLI bundled with the base image. The entrypoint runs node directly,
-# so npm/npx are never used at runtime (the coverage step above is the last use).
+# npm and npx are never used at runtime. This removes the copy the official node
+# image ships; on a base that keeps npm elsewhere it removes nothing.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
-# Expose the application port
+# The app writes its database to /app/data and optional log files to /app/logs.
+# Owned by UID 10001 and the root group, with group permissions matching the owner,
+# so OpenShift's arbitrary UID (always in GID 0) can write to them too. The TLS
+# certificate is bind-mounted read-only at /etc/api-portal/tls, never written here.
+RUN mkdir -p /app/data /app/logs \
+ && chown -R 10001:0 /app/data /app/logs \
+ && chmod -R g=u /app/data /app/logs
+
+# The base config file. Extra `--config <path>` arguments passed to the container
+# are layered on top of it, last wins.
+ENV APIP_AP_CONFIG_PATH=/app/configs/config.toml
+
 EXPOSE 9543
 
-# Create a non-root user with UID 10001 to satisfy Checkov CKV_CHOREO_1
-RUN addgroup -g 10001 appgroup && adduser -u 10001 -G appgroup -s /bin/sh -D -H appuser
+# Non-root UID/GID 10001 (satisfies Checkov CKV_CHOREO_1). Numeric, so no account
+# has to exist and the line works on any base image.
+USER 10001:10001
 
-# Pre-create the logs and data directories owned by the non-root user so the
-# app can write log files and its database. The TLS certificate is bind-mounted
-# read-only at /etc/api-portal/tls (generated host-side by setup.sh) — never
-# written to by the container. Both are owned by the root group with group perms
-# matching the owner, so OpenShift's arbitrary UID (always in GID 0) can write to them.
-RUN mkdir -p /app/logs /app/data && chown -R 10001:0 /app/logs /app/data && chmod -R g=u /app/logs /app/data
-RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown 10001:0 /coverage && chmod g=u /coverage; fi
-
-RUN chmod +x /app/docker-entrypoint.sh
-
-# Explicitly switch to UID 10001 instead of using "appuser"
-USER 10001
-
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["node", "src/server.js"]

@@ -32,7 +32,6 @@ func BuildSpec(version string) (builder.Spec, error) {
 		Coverage: builder.CoverageSpec{
 			Supported: true, Types: []builder.CoverageType{builder.NodeV8Coverage, builder.BrowserJSCoverage},
 			Include: []string{"src/**/*.js"}, OutputDir: "/coverage",
-			BuildArgs:   map[string]string{"ENABLE_COVERAGE": "true"},
 			Environment: map[string]string{"NODE_V8_COVERAGE": "/coverage"},
 			Browser: builder.BrowserCoverageSpec{
 				Supported:  true,
@@ -48,14 +47,18 @@ func BuildSpec(version string) (builder.Spec, error) {
 			Context:    "portals/api-portal",
 		}},
 		Plan: func(repoRoot, v string, coverage builder.CoverageSpec) ([]builder.Command, error) {
-			args := []string{"docker", "buildx", "build",
-				"--build-context", "coverage-scripts=../../tests/framework/tools",
-				"--tag",
-				"ghcr.io/wso2/api-platform/api-portal:" + v, "--load"}
+			tag := "ghcr.io/wso2/api-platform/api-portal:" + v
+			args := []string{"docker", "buildx", "build", "--tag", tag, "--load", "."}
 			if coverage.Supported {
-				args = append(args, builder.CoverageBuildArgs(coverage)...)
+				// The coverage image is the release image plus instrumented browser
+				// scripts and /coverage (Dockerfile.coverage). The bake file builds
+				// both in one run, so it works on any buildx driver.
+				args = []string{"docker", "buildx", "bake",
+					"-f", "docker-bake.coverage.hcl",
+					"--allow=fs.read=../../tests/framework/tools",
+					"--set", "coverage.tags=" + tag,
+					"--load", "coverage"}
 			}
-			args = append(args, ".")
 			return []builder.Command{{
 				Directory: filepath.Join(repoRoot, "portals/api-portal"),
 				Args:      args,
