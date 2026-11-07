@@ -162,24 +162,26 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
                     ...(!disabled &&
                       !selected && {
                         '&:hover': { borderColor: 'text.secondary' },
-                        borderColor: alpha(
-                          theme.palette.text.primary,
-                          theme.palette.mode === 'dark' ? 0.55 : 0.5,
-                        ),
+                        borderColor: alpha(theme.palette.text.primary, 0.5),
                         boxShadow: theme.shadows[4],
+                        // Dark only: a soft, slightly highlighted grey edge.
+                        // `applyStyles` keys off the active colour scheme;
+                        // `palette.mode` stays the default scheme's.
+                        ...theme.applyStyles('dark', {
+                          borderColor: alpha(theme.palette.common.white, 0.2),
+                        }),
                       }),
                     ...(disabled && {
-                      // Dark surfaces swallow a transparent card; lift it with a
-                      // text-colour tint. Light mode keeps the recipe's flat look.
-                      ...(theme.palette.mode === 'dark' && {
-                        backgroundColor: alpha(theme.palette.text.primary, 0.04),
-                      }),
-                      borderColor: alpha(
-                        theme.palette.text.primary,
-                        theme.palette.mode === 'dark' ? 0.85 : 0.3,
-                      ),
+                      borderColor: alpha(theme.palette.text.primary, 0.3),
                       cursor: 'default',
+                      opacity: 0.7,
                       pointerEvents: 'none',
+                      // Dark: a softer grey edge than the available cards, no
+                      // background tint.
+                      ...theme.applyStyles('dark', {
+                        borderColor: alpha(theme.palette.common.white, 0.12),
+                        opacity: 0.85,
+                      }),
                     }),
                   })}
                   tabIndex={disabled ? -1 : 0}
@@ -204,14 +206,17 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
                           size="small"
                           sx={(theme) => ({
                             '& .MuiChip-label': { px: 0.75 },
-                            backgroundColor: alpha(
-                              theme.palette.text.primary,
-                              theme.palette.mode === 'dark' ? 0.2 : 0.04,
-                            ),
+                            backgroundColor: alpha(theme.palette.text.primary, 0.04),
                             border: 1,
                             borderColor: alpha(theme.palette.text.primary, 0.25),
                             fontSize: '0.65rem',
                             height: 18,
+                            // Dark only; `palette.mode` doesn't follow the scheme.
+                            ...theme.applyStyles('dark', {
+                              backgroundColor: alpha(theme.palette.common.white, 0.1),
+                              borderColor: alpha(theme.palette.common.white, 0.2),
+                              opacity: 0.4,
+                            }),
                           })}
                         />
                       ) : null}
