@@ -53,9 +53,9 @@ const messages = defineMessages({
     defaultMessage: 'More publish options',
     description: 'Accessible label for the arrow of the Publish split button, which opens its other action.',
   },
-  goToPublish: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish',
-    defaultMessage: 'Go to Publish',
+  configureAndPublish: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.configureAndPublish',
+    defaultMessage: 'Configure & Publish',
     description: 'Card action opening the publish flow for this API on this portal.',
   },
   viewInPortal: {
@@ -135,7 +135,7 @@ function DetailRow({ children, label }: { children: ReactNode; label: ReactNode 
 /**
  * One API Portal, annotated with this API's own publication state: its status,
  * when it last changed, and whether a draft is waiting. The card itself is not
- * clickable; "Go to Publish" opens the flow.
+ * clickable; "Configure & Publish" opens the flow.
  */
 export function PortalPublicationCard({
   apiHandle,
@@ -163,7 +163,7 @@ export function PortalPublicationCard({
   const anchorRef = useRef<HTMLDivElement>(null);
 
   // Both open the publish page with every document selected (a saved selection is kept for
-  // "Go to Publish"). "Publish" also publishes once the page is ready, so the same checks and
+  // "Configure & Publish"). "Publish" also publishes once the page is ready, so the same checks and
   // saves apply; no subscription plan is selected either way.
   const runPublish = () => {
     if (!publishHref) return;
@@ -234,10 +234,10 @@ export function PortalPublicationCard({
               <Button
                 aria-describedby={nameId}
                 onClick={runPublish}
-                startIcon={<Megaphone size={16} />}
+                startIcon={mode === 'publish' && <Megaphone size={16} />}
                 sx={{ '&&': { flex: '1 1 auto', minWidth: 0 }, whiteSpace: 'nowrap' }}
               >
-                <FormattedMessage {...(mode === 'publish' ? messages.publish : messages.goToPublish)} />
+                <FormattedMessage {...(mode === 'publish' ? messages.publish : messages.configureAndPublish)} />
               </Button>
               <Button
                 aria-expanded={menuOpen}
@@ -259,7 +259,7 @@ export function PortalPublicationCard({
                   }}
                   selected={option === mode}
                 >
-                  <FormattedMessage {...(option === 'publish' ? messages.publish : messages.goToPublish)} />
+                  <FormattedMessage {...(option === 'publish' ? messages.publish : messages.configureAndPublish)} />
                 </MenuItem>
               ))}
             </Menu>

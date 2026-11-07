@@ -2388,7 +2388,7 @@ describe('PortalPublishPage — landing page', () => {
       expect(await screen.findByText('portals listing')).toBeInTheDocument();
     });
 
-    it('only selects the documents for "Go to Publish", leaving the publish to the user', async () => {
+    it('only selects the documents for "Configure & Publish", leaving the publish to the user', async () => {
       servePublicationState();
       const publishRequests = recorder();
       server.use(
@@ -2406,7 +2406,7 @@ describe('PortalPublishPage — landing page', () => {
       expect(publishRequests.count()).toBe(0);
     });
 
-    it('keeps a saved selection for "Go to Publish" instead of selecting everything', async () => {
+    it('keeps a saved selection for "Configure & Publish" instead of selecting everything', async () => {
       servePublicationState({
         draft: aPublicationDraftDetails({ documents: publicationSelections({ displayName: 'Getting started', id: 'guide' }) }),
       });
