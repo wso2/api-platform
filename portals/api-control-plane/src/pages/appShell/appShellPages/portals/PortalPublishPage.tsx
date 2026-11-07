@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { alpha, Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
+import { Alert, alpha, Box, Button, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 
@@ -170,6 +170,21 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftSavedDetailsOnly',
     defaultMessage: 'Details saved. The specification has an error and was not saved.',
   },
+  documentsLoadFailed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsLoadFailed',
+    defaultMessage: 'The API\u2019s documents could not be loaded, so they are not attached yet. Publishing is paused until they load.',
+    description: 'Shown when the portal card sent the user here to publish with every document, and listing them failed.',
+  },
+  documentsIncomplete: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsIncomplete',
+    defaultMessage: 'This API has too many documents to attach them all automatically. Pick the ones to publish on the Documentation tab.',
+    description: 'Shown when the API\u2019s document list was cut short, so nothing was preselected and nothing was published automatically.',
+  },
+  documentsRetry: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsRetry',
+    defaultMessage: 'Retry',
+    description: 'Button reloading the API\u2019s documents after a failed load.',
+  },
   published: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.published',
     defaultMessage: 'Published to {portalName}.',
@@ -312,14 +327,29 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   // Passed by the portal card that linked here; falls back to the handle on a
   // direct link or refresh, where there is no navigation state.
-  const navState = location.state as {
-    portalName?: string;
-    /** 'all': select every document; 'default': select them all only when none is saved yet. */
-    documents?: 'all' | 'default';
-    /** Publish as soon as the page has loaded and the documents are selected. */
-    autoPublish?: boolean;
-  } | null;
-  const portalName = navState?.portalName ?? apiPortalId;
+  // What the portal card asked for, read once: the router state is cleared right after (below), so a
+  // refresh or browser Back to this page never repeats the one-shot publish.
+  const [arrival] = useState(
+    () =>
+      location.state as {
+        portalName?: string;
+        /** 'all': select every document; 'default': select them all only when none is saved yet. */
+        documents?: 'all' | 'default';
+        /** Publish as soon as the page has loaded and the documents are selected. */
+        autoPublish?: boolean;
+      } | null,
+  );
+  const navState = arrival;
+  const portalName = navState?.portalName ?? (location.state as { portalName?: string } | null)?.portalName ?? apiPortalId;
+  useEffect(() => {
+    if (navState?.documents === undefined && !navState?.autoPublish) return;
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: { portalName: navState?.portalName },
+    });
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [tab, setTab] = useState<PublishTab>('details');
   // Which version the user picked; until they pick, the live version if there is one, else the draft.
@@ -417,20 +447,33 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     apiType,
     values.docIds.length > 0 || (initialized && !documentsPreselected) ? apiHandler : undefined,
   );
+  // The card's list could not be read, or was cut short: nothing is preselected, automatic publishing stays
+  // blocked, and the reason is shown with a retry (a cut-short list can't be completed by retrying, so that
+  // case only reports it and leaves the user to pick documents themselves).
+  const [documentsIncomplete, setDocumentsIncomplete] = useState(false);
+  const documentsFailed = !documentsPreselected && documentsQuery.isError;
   // Arriving from the portal card: every document is selected for publishing (once, never again after the user edits).
   useEffect(() => {
     if (documentsPreselected || !initialized || !documentsQuery.isSuccess || documentsQuery.isFetching) return;
     // A list cut short can't be trusted to hold every document.
     if (documentsQuery.data.list.length < documentsQuery.data.pagination.total) {
+      setDocumentsIncomplete(true);
       setDocumentsPreselected(true);
       return;
     }
     if (navState?.documents === 'all' || values.docIds.length === 0) {
       const ids = documentsQuery.data.list.map((doc) => doc.id);
-      setValues((current) => ({ ...current, docIds: [...new Set([...current.docIds, ...ids])] }));
+      setValues((current) => ({
+        ...current,
+        docIds: [...new Set([...current.docIds, ...ids])],
+        // Publishing straight from the card never carries a plan, even one the saved draft selected.
+        ...(navState?.autoPublish ? { subscriptionPlanIds: [] } : {}),
+      }));
+    } else if (navState?.autoPublish) {
+      setValues((current) => ({ ...current, subscriptionPlanIds: [] }));
     }
     setDocumentsPreselected(true);
-  }, [documentsPreselected, initialized, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, navState?.documents, values.docIds.length]);
+  }, [documentsPreselected, initialized, documentsQuery.data, documentsQuery.isFetching, documentsQuery.isSuccess, navState?.autoPublish, navState?.documents, values.docIds.length]);
   useEffect(() => {
     if (!initialized || !documentsQuery.isSuccess || documentsQuery.isFetching) return;
     // A list cut short can't tell a deleted document from one it never loaded.
@@ -448,7 +491,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const autoPublishStarted = useRef(false);
   const publishHandlerRef = useRef<(() => Promise<void>) | undefined>(undefined);
   useEffect(() => {
-    if (!navState?.autoPublish || autoPublishStarted.current || !initialized || !documentsPreselected || busy) return;
+    if (!navState?.autoPublish || autoPublishStarted.current || !initialized || !documentsPreselected || documentsIncomplete || busy) return;
     autoPublishStarted.current = true;
     void publishHandlerRef.current?.();
   });
@@ -500,6 +543,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       const sdlResult = definitionText.trim() === '' ? undefined : parseGraphQLSdl(definitionText);
       if (sdlResult && 'error' in sdlResult) {
         setDefinitionParseError(sdlResult.error);
+        setChosenView('draft');
         setTab('specification');
         return undefined;
       }
@@ -512,6 +556,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       setDefinitionParseError(
         result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
       );
+      setChosenView('draft');
       setTab('specification');
       return undefined;
     }
@@ -536,6 +581,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const saveDetails = async (): Promise<boolean> => {
     if (formInvalid) {
       touchAllFields();
+      setChosenView('draft');
       setTab('details');
       return false;
     }
@@ -661,7 +707,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       } catch (error) {
         // The message is already reported by the global snackbar; this only sends the user to
         // the definition when it is the one at fault.
-        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED') && definitionAtFault(error)) setTab('specification');
+        if (isErrorCode(error, 'PUBLICATION_VALIDATION_FAILED') && definitionAtFault(error)) {
+          setChosenView('draft');
+          setTab('specification');
+        }
         throw error;
       }
       notify(intl.formatMessage(messages.published, { portalName }), 'success');
@@ -843,6 +892,23 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
         </PageTitle>
 
         <Stack spacing={3} sx={{ flex: 1, minHeight: 0 }}>
+          {documentsFailed && (
+            <Alert
+              action={
+                <Button color="inherit" onClick={() => void documentsQuery.refetch()} size="small">
+                  <FormattedMessage {...messages.documentsRetry} />
+                </Button>
+              }
+              severity="error"
+            >
+              <FormattedMessage {...messages.documentsLoadFailed} />
+            </Alert>
+          )}
+          {documentsIncomplete && (
+            <Alert severity="warning">
+              <FormattedMessage {...messages.documentsIncomplete} />
+            </Alert>
+          )}
           <Stack
             alignItems="flex-end"
             direction="row"
@@ -895,6 +961,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
                 isPublished={isPublished}
                 onDeprecate={() => setConfirmingDeprecate(true)}
                 onPublish={handlePublish}
+                publishDisabled={!documentsPreselected}
                 onSaveDraft={handleSaveDraft}
                 onUnpublish={() => setConfirmingUnpublish(true)}
                 publishing={pendingAction === 'publishing'}

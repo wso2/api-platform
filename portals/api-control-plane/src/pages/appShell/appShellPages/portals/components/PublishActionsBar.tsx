@@ -73,6 +73,8 @@ export type PublishActionsBarProps = {
   deprecating: boolean;
   onDeprecate: () => void;
   onPublish: () => void;
+  /** Holds Publish back (not Save Draft), e.g. while the documents it should carry are still loading. */
+  publishDisabled?: boolean;
   onSaveDraft: () => void;
   onUnpublish: () => void;
   publishing: boolean;
@@ -117,6 +119,7 @@ export function PublishActionsBar({
   isPublished,
   onDeprecate,
   onPublish,
+  publishDisabled = false,
   onSaveDraft,
   onUnpublish,
   publishing,
@@ -166,7 +169,11 @@ export function PublishActionsBar({
       </Button>
 
       <ButtonGroup color={ACTION_COLOR[effectiveAction]} disabled={busy} variant="contained">
-        <Button onClick={run[effectiveAction]} startIcon={actionIcon(effectiveAction)}>
+        <Button
+          disabled={effectiveAction === 'publish' && publishDisabled}
+          onClick={run[effectiveAction]}
+          startIcon={actionIcon(effectiveAction)}
+        >
           {/* Every label shares one cell and only the current one shows, so the button is always as wide as the longest. */}
           <Box component="span" sx={{ display: 'inline-grid', textAlign: 'center' }}>
             {ACTION_LABELS.map((label) => (

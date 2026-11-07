@@ -2420,6 +2420,142 @@ describe('PortalPublishPage — landing page', () => {
       expect(documentBox('Getting started')).toBeChecked();
       expect(documentBox('Common questions')).not.toBeChecked();
     });
+
+    it('clears a plan the saved draft selected, since publishing from the card carries none', async () => {
+      const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
+      servePublicationState({
+        draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold') }),
+        plans: [gold],
+      });
+      const draftRequests = recorder();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all' });
+
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+      expect(JSON.parse(draftRequests.last()?.body ?? '{}').subscriptionPlanIds ?? []).toEqual([]);
+    });
+
+    it('holds Publish back until the documents are selected', async () => {
+      servePublicationState();
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      server.use(
+        mswHttp.get(apiUrl(DOCS_PATH), async () => {
+          await gate;
+          return HttpResponse.json({
+            count: 2,
+            list: TWO_DOCS,
+            pagination: { limit: 100, offset: 0, total: 2 },
+          });
+        }),
+      );
+
+      renderFromCard({ documents: 'default' });
+
+      await screen.findByDisplayValue('Loan Management Service');
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+      release();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    });
+
+    it('reports a failed document load with a retry, and publishes nothing meanwhile', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      let attempts = 0;
+      server.use(
+        mswHttp.get(apiUrl(DOCS_PATH), () => {
+          attempts += 1;
+          return attempts === 1
+            ? HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'boom' }, { status: 500 })
+            : HttpResponse.json({ count: 2, list: TWO_DOCS, pagination: { limit: 100, offset: 0, total: 2 } });
+        }),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      const { user } = renderFromCard({ autoPublish: true, documents: 'all' });
+
+      expect(await screen.findByText(/documents could not be loaded/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+      expect(publishRequests.count()).toBe(0);
+
+      await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+    });
+
+    it('does not publish automatically when the document list is cut short, and says so', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      server.use(
+        mswHttp.get(apiUrl(DOCS_PATH), ({ request }) => {
+          const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+          const list = Array.from({ length: 100 }, (_, i) => ({
+            contentType: 'text/markdown',
+            displayName: `Doc ${offset + i}`,
+            id: `doc-${offset + i}`,
+            type: 'HowTo',
+          }));
+          return HttpResponse.json({ count: list.length, list, pagination: { limit: 100, offset, total: 6000 } });
+        }),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all' });
+
+      expect(await screen.findByText(/too many documents to attach them all/, undefined, { timeout: 5000 })).toBeInTheDocument();
+      expect(publishRequests.count()).toBe(0);
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
+    });
+
+    it('consumes the one-shot state, so coming back to the page does not publish again', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all', portalName: 'Acme' });
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+      await screen.findByText('portals listing');
+
+      // Browser Back to the publish page: the entry's state was replaced when it was consumed.
+      window.history.back();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(publishRequests.count()).toBe(1);
+    });
+
+    it('shows the draft, not the live version, when an automatic publish fails validation', async () => {
+      servePublicationState({ publication: aPublication() });
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+          errors: [{ field: 'definition', message: 'A definition is required to publish this API' }],
+        }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all' });
+
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: 'Specification' })).toHaveAttribute('aria-selected', 'true'),
+      );
+      expect(screen.getByRole('button', { name: 'Draft' })).toHaveAttribute('aria-pressed', 'true');
+    });
   });
 
   describe('Published version actions', () => {
