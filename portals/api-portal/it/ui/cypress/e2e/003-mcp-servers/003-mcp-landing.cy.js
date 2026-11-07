@@ -26,11 +26,7 @@ describe('MCP server landing text on its page', () => {
         cy.login();
         cy.seedMcp({ name: `IT Landing MCP ${uid}` }).then((h) => {
             handle = h;
-            // A docs/ entry too: on main a ZIP holding only web/ is taken for a wrapper folder and rejected.
-            cy.uploadMcpContent(h, [
-                { name: 'web/apiContent.md', content: '# Weather MCP landing page' },
-                { name: 'docs/Guide.md', content: '# Guide' },
-            ]);
+            cy.uploadMcpContent(h, [{ name: 'web/apiContent.md', content: '# Weather MCP landing page' }]);
         });
     });
 

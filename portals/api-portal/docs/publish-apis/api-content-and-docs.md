@@ -53,7 +53,7 @@ The `.md` extension is lowercase. If any path is rejected, the whole upload is r
 
 The same rules apply to the `web/` and `docs/` content of a full API ZIP (the `artifact` field of `POST /apis` and `PUT /apis/{apiId}`). Its top level also holds the metadata file (`metadata.yaml`, `metadata.yml`, `api.yaml` or `mcp.yaml`) and the definition (`definition.yaml`, `definition.yml` or `definition.json`), one of each.
 
-Every image in `web/` fills the slot named by its file name without the extension: `api-icon.png` (or `.jpg`) is the thumbnail, and `banner.png` is `apiImageMetadata.banner` in a landing-page template.
+Every image in `web/` fills the slot named by its file name without the extension: any image named `api-icon` (for example `api-icon.png`) is the thumbnail, and `banner.png` is `apiImageMetadata.banner` in a landing-page template.
 
 ## Add, Replace or Delete API Content
 

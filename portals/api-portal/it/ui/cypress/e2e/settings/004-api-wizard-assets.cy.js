@@ -20,8 +20,8 @@
 // the API save); "Import content from ZIP" opens the import view, which replaces all content
 // with one ZIP (PUT /assets), asking first when the API already exists.
 
-import { contentPackage, invalidContentPackage } from '../../support/contentPackages';
-import { createZip } from '../../support/zip';
+const { contentPackage, invalidContentPackage } = require('../../support/contentPackages');
+const { createZip } = require('../../support/zip');
 
 describe('Settings — API wizard Assets step', () => {
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

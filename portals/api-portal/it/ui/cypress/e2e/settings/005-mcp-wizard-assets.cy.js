@@ -19,7 +19,7 @@
 // The MCP server wizard has the same Assets step as the API wizard, saving through
 // /mcp-servers and /mcp-servers/{id}/assets.
 
-import { contentPackage } from '../../support/contentPackages';
+const { contentPackage } = require('../../support/contentPackages');
 
 describe('Settings — MCP server wizard Assets step', () => {
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

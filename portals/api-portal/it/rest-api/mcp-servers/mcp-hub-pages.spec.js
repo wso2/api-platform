@@ -44,7 +44,6 @@ const API_KEY_DEFINITION = JSON.stringify({
     security: [{ ApiKeyAuth: [] }],
     paths: { '/ping': { get: { responses: { 200: { description: 'ok' } } } } },
 });
-// A docs/ entry too: on main a ZIP holding only web/ is taken for a wrapper folder and rejected.
 const CONTENT = [
     { name: 'web/api-icon.png', content: PNG_BYTES },
     { name: 'web/apiContent.md', content: '# Weather MCP landing page' },

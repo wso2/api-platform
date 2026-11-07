@@ -54,7 +54,7 @@ Each path in the ZIP gets one outcome, from the first rule that matches:
 - `web/apiContent.md` and `web/api-content.hbs` are the landing page.
 - `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
   fills the slot named by its file name without the extension, unless `imageMetadata` names another;
-  `api-icon.png` or `api-icon.jpg` is the thumbnail.
+  any image named `api-icon` is the thumbnail.
 - `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
   `DOC_<Category>`. The `.md` extension is lowercase.
 - Anything else is rejected, including an unknown top-level folder that is empty.
@@ -202,7 +202,7 @@ Each path in the ZIP gets one outcome, from the first rule that matches:
 - `web/apiContent.md` and `web/api-content.hbs` are the landing page.
 - `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
   fills the slot named by its file name without the extension, unless `imageMetadata` names another;
-  `api-icon.png` or `api-icon.jpg` is the thumbnail.
+  any image named `api-icon` is the thumbnail.
 - `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
   `DOC_<Category>`. The `.md` extension is lowercase.
 - Anything else is rejected, including an unknown top-level folder that is empty.
