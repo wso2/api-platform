@@ -59,6 +59,9 @@ const POLL_CAP_MS = 30_000;
  */
 const MAX_POLL_ROUNDS = 25;
 
+/** Each query's `dataUpdateCount` when its current transition was first seen. */
+const transitionStart = new WeakMap<object, number>();
+
 /**
  * Backing-off poll interval, used while any deployment is still settling.
  *
@@ -67,17 +70,24 @@ const MAX_POLL_ROUNDS = 25;
  * than polling for the life of the tab, and it pauses while the tab is hidden
  * (`refetchIntervalInBackground` is left at its default of false).
  *
- * The round count is approximated by `dataUpdateCount`, which also counts
- * fetches from before polling began. That errs toward backing off sooner, which
- * is the safe direction.
+ * Rounds count from the fetch that first saw the current transition, not over
+ * the query's lifetime: a lifetime count left the page polling every 30 seconds
+ * after a few actions, and not at all after 25 fetches, so a later Stop or
+ * Redeploy never settled on screen.
  */
 const pollWhileTransitioning = (
-  updateCount: number,
+  query: { state: { dataUpdateCount: number } },
   transitioning: boolean
 ): number | false => {
-  if (!transitioning) return false;
-  if (updateCount > MAX_POLL_ROUNDS) return false;
-  return Math.min(POLL_START_MS * POLL_FACTOR ** updateCount, POLL_CAP_MS);
+  if (!transitioning) {
+    transitionStart.delete(query);
+    return false;
+  }
+  const updateCount = query.state.dataUpdateCount;
+  if (!transitionStart.has(query)) transitionStart.set(query, updateCount);
+  const rounds = updateCount - transitionStart.get(query)!;
+  if (rounds > MAX_POLL_ROUNDS) return false;
+  return Math.min(POLL_START_MS * POLL_FACTOR ** rounds, POLL_CAP_MS);
 };
 
 /* -------------------------------------------------------------------------- */
@@ -102,7 +112,7 @@ export const useDeployments = (
     enabled: Boolean(org && restApiId),
     refetchInterval: (query) =>
       pollWhileTransitioning(
-        query.state.dataUpdateCount,
+        query,
         hasTransitioningDeployment(query.state.data?.list)
       ),
   });
@@ -121,7 +131,7 @@ export const useDeployment = (
     enabled: Boolean(org && restApiId && deploymentId),
     refetchInterval: (query) =>
       pollWhileTransitioning(
-        query.state.dataUpdateCount,
+        query,
         hasTransitioningDeployment(
           query.state.data ? [query.state.data] : undefined
         )

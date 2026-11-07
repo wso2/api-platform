@@ -49,8 +49,9 @@ import { restApiKeys } from '../restApis.queries';
  *
  * The polling interval itself is not exercised end to end. It backs off from
  * two seconds, so a faithful test would either sleep for real or fight fake
- * timers against MSW; the transition predicate it keys on is pure and is tested
- * directly instead.
+ * timers against MSW. Instead the transition predicate it keys on is tested
+ * directly, and the backoff is read from the query's own `refetchInterval`,
+ * with `setQueryData` standing in for each fetch.
  */
 
 const API_ID = 'pizza-shack';
@@ -307,6 +308,61 @@ describe('hasTransitioningDeployment — the predicate polling keys on', () => {
   it('is false for an empty or absent list, so nothing polls forever on no data', () => {
     expect(hasTransitioningDeployment([])).toBe(false);
     expect(hasTransitioningDeployment(undefined)).toBe(false);
+  });
+});
+
+describe('useDeployments — poll backoff', () => {
+  const renderPolledList = async () => {
+    server.use(collection(DEPLOYMENTS, [aDeployment({ status: 'DEPLOYED' })]));
+    const { result, queryClient, org } = renderApiHook(() => useDeployments(API_ID));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const query = queryClient
+      .getQueryCache()
+      .find({ queryKey: deploymentQueries.list(org, API_ID, {}).queryKey })!;
+    return {
+      fetchReturns: (status: 'DEPLOYED' | 'DEPLOYING' | 'UNDEPLOYING' | 'UNDEPLOYED') =>
+        queryClient.setQueryData(query.queryKey, {
+          ...result.current.data!,
+          list: [aDeployment({ status })],
+        }),
+      // The cache types options as plain `QueryOptions`; the observer's
+      // `refetchInterval` is there at runtime.
+      nextPoll: () =>
+        (
+          query.options as { refetchInterval: (q: typeof query) => number | false }
+        ).refetchInterval(query),
+    };
+  };
+
+  it('starts over at two seconds for each new transition, however many fetches came before', async () => {
+    // A page open for a while: far more settled fetches than the round limit.
+    const { fetchReturns, nextPoll } = await renderPolledList();
+    for (let i = 0; i < 30; i++) fetchReturns('DEPLOYED');
+    expect(nextPoll()).toBe(false);
+
+    fetchReturns('UNDEPLOYING');
+    expect(nextPoll()).toBe(2_000);
+    fetchReturns('UNDEPLOYING');
+    expect(nextPoll()).toBe(3_000);
+
+    fetchReturns('UNDEPLOYED');
+    expect(nextPoll()).toBe(false);
+
+    fetchReturns('DEPLOYING');
+    expect(nextPoll()).toBe(2_000);
+  });
+
+  it('caps the interval at thirty seconds and gives up on a transition that never settles', async () => {
+    const { fetchReturns, nextPoll } = await renderPolledList();
+    const intervals: (number | false)[] = [];
+    for (let i = 0; i < 27; i++) {
+      fetchReturns('DEPLOYING');
+      intervals.push(nextPoll());
+    }
+
+    expect(intervals[7]).toBe(30_000);
+    expect(intervals[25]).toBe(30_000);
+    expect(intervals[26]).toBe(false);
   });
 });
 

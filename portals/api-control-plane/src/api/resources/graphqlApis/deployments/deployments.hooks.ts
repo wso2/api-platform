@@ -47,13 +47,21 @@ const POLL_FACTOR = 1.5;
 const POLL_CAP_MS = 30_000;
 const MAX_POLL_ROUNDS = 25;
 
+const transitionStart = new WeakMap<object, number>();
+
 const pollWhileTransitioning = (
-  updateCount: number,
+  query: { state: { dataUpdateCount: number } },
   transitioning: boolean,
 ): number | false => {
-  if (!transitioning) return false;
-  if (updateCount > MAX_POLL_ROUNDS) return false;
-  return Math.min(POLL_START_MS * POLL_FACTOR ** updateCount, POLL_CAP_MS);
+  if (!transitioning) {
+    transitionStart.delete(query);
+    return false;
+  }
+  const updateCount = query.state.dataUpdateCount;
+  if (!transitionStart.has(query)) transitionStart.set(query, updateCount);
+  const rounds = updateCount - transitionStart.get(query)!;
+  if (rounds > MAX_POLL_ROUNDS) return false;
+  return Math.min(POLL_START_MS * POLL_FACTOR ** rounds, POLL_CAP_MS);
 };
 
 export const useDeployments = (
@@ -68,7 +76,7 @@ export const useDeployments = (
     enabled: Boolean(org && graphqlApiId),
     refetchInterval: (query) =>
       pollWhileTransitioning(
-        query.state.dataUpdateCount,
+        query,
         hasTransitioningDeployment(query.state.data?.list),
       ),
   });
@@ -86,7 +94,7 @@ export const useDeployment = (
     enabled: Boolean(org && graphqlApiId && deploymentId),
     refetchInterval: (query) =>
       pollWhileTransitioning(
-        query.state.dataUpdateCount,
+        query,
         hasTransitioningDeployment(query.state.data ? [query.state.data] : undefined),
       ),
   });
