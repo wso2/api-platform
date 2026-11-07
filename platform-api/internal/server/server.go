@@ -289,7 +289,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, graphqlAPIRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, cfg, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
@@ -435,8 +435,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
+	webhookSecretService := service.NewWebhookSecretService(repository.NewWebhookSecretRepo(db), secretVault, identityService, cfg.Security.WebhookSecretMaxVersions)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	apiPortalService.SetWebhookSecrets(webhookSecretService)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, &cfg.APIPortalPublication, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
@@ -501,6 +503,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	graphqlAPIService.SetSecretService(secretService)
 	graphqlAPIService.SetMaxSDLFetchBytes(cfg.OpenAPISpecMaxFetchBytes)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
+	webhookSecretHandler := handler.NewWebhookSecretHandler(webhookSecretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
 		Enabled:  cfg.Deployments.TimeoutEnabled,
@@ -516,6 +519,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	wsHandler.SetReadOnly(&cfg.ReadOnly)
 	internalGatewayHandler.SetReadOnly(&cfg.ReadOnly)
 	timeoutService.SetReadOnly(&cfg.ReadOnly)
+	webhookSecretService.SetReadOnly(&cfg.ReadOnly)
 	// TEMP-READ-ONLY-MODE: end
 
 	slogger.Info("Initialized all services and handlers successfully")
@@ -576,6 +580,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	graphqlAPIKeyHandler.RegisterRoutes(core)
 	graphqlAPIDeploymentHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
+	webhookSecretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.
 	// Plugins contribute routes, DB schema, and OpenAPI scopes at startup.
@@ -606,9 +611,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways:   gatewayService,
-		Projects:   projectService,
-		APIPortals: apiPortalService,
+		Gateways:       gatewayService,
+		Projects:       projectService,
+		APIPortals:     apiPortalService,
+		WebhookSecrets: webhookSecretService,
 		// Read-only lookups, so a plugin can tell a brand-new API from another
 		// version of an existing one — which no route answers on its own.
 		APIs: apiService,
@@ -782,6 +788,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize webhook receiver: %w", err)
 		}
+		webhookReceiver.SetPortalSecrets(webhookSecretService)
 		webhookReceiver.SetReadOnly(&cfg.ReadOnly) // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
 		webhookReceiver.RegisterRoutes(mux)
 		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath)

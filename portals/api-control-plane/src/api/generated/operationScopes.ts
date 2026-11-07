@@ -226,7 +226,12 @@ export type ApScope =
   | 'ap:subscription_plan:read'
   | 'ap:subscription_plan:update'
   | 'ap:thumbnail:manage'
-  | 'ap:thumbnail:read';
+  | 'ap:thumbnail:read'
+  | 'ap:webhook_secret:create'
+  | 'ap:webhook_secret:delete'
+  | 'ap:webhook_secret:manage'
+  | 'ap:webhook_secret:read'
+  | 'ap:webhook_secret:rotate';
 
 /**
  * The full scope catalog, for building test personas and for validating an
@@ -433,6 +438,11 @@ export const AP_SCOPES: readonly ApScope[] = [
   'ap:subscription_plan:update',
   'ap:thumbnail:manage',
   'ap:thumbnail:read',
+  'ap:webhook_secret:create',
+  'ap:webhook_secret:delete',
+  'ap:webhook_secret:manage',
+  'ap:webhook_secret:read',
+  'ap:webhook_secret:rotate',
 ];
 
 /**
@@ -547,6 +557,7 @@ export const OPERATION_SCOPES = {
   createServiceAccount: ['ap:service_account:manage'],
   CreateSubscription: ['ap:subscription:create', 'ap:subscription:manage'],
   CreateSubscriptionPlan: ['ap:subscription_plan:create', 'ap:subscription_plan:manage'],
+  createWebhookSecret: ['ap:webhook_secret:create', 'ap:webhook_secret:manage'],
   deleteAgentProxy: ['ap:agent_proxy:delete', 'ap:agent_proxy:manage'],
   deleteAgentProxyBuild: [
     'ap:agent_proxy:build:delete',
@@ -634,6 +645,8 @@ export const OPERATION_SCOPES = {
   deleteServiceAccount: ['ap:service_account:manage'],
   DeleteSubscription: ['ap:subscription:delete', 'ap:subscription:manage'],
   DeleteSubscriptionPlan: ['ap:subscription_plan:delete', 'ap:subscription_plan:manage'],
+  deleteWebhookSecret: ['ap:webhook_secret:delete', 'ap:webhook_secret:manage'],
+  deleteWebhookSecretVersion: ['ap:webhook_secret:delete', 'ap:webhook_secret:manage'],
   DeployAPI: [
     'ap:rest_api:deployment:create',
     'ap:rest_api:deployment:manage',
@@ -810,6 +823,7 @@ export const OPERATION_SCOPES = {
     'ap:subscription_plan:pricing:read',
     'ap:subscription_plan:read',
   ],
+  getWebhookSecret: ['ap:webhook_secret:manage', 'ap:webhook_secret:read'],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
   InvokeRESTAPIOnGateway: ['ap:rest_api:gateway:manage', 'ap:rest_api:manage'],
@@ -888,6 +902,7 @@ export const OPERATION_SCOPES = {
   ListSubscriptionPlans: ['ap:subscription_plan:manage', 'ap:subscription_plan:read'],
   ListSubscriptions: ['ap:subscription:manage', 'ap:subscription:read'],
   listUserAPIKeys: ['ap:api_key:all:manage', 'ap:api_key:read'],
+  listWebhookSecrets: ['ap:webhook_secret:manage', 'ap:webhook_secret:read'],
   publishGraphQLApiToApiPortal: ['ap:api_portal:graphql_api:manage'],
   publishMcpProxyToApiPortal: ['ap:api_portal:mcp_proxy:manage'],
   publishRestApiToApiPortal: ['ap:api_portal:rest_api:manage'],
@@ -955,6 +970,7 @@ export const OPERATION_SCOPES = {
   ],
   rotateGatewayToken: ['ap:gateway:manage', 'ap:gateway:token:create', 'ap:gateway:token:manage'],
   rotateSecret: ['ap:secret:manage', 'ap:secret:update'],
+  rotateWebhookSecret: ['ap:webhook_secret:manage', 'ap:webhook_secret:rotate'],
   saveApiPublicationDraft: ['ap:api_portal:draft:manage', 'ap:api_portal:draft:update'],
   saveApiPublicationDraftDefinition: ['ap:api_portal:draft:manage', 'ap:api_portal:draft:update'],
   saveApiPublicationDraftLandingPage: ['ap:api_portal:draft:manage', 'ap:api_portal:draft:update'],

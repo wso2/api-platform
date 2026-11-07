@@ -810,3 +810,21 @@ func TestJWT_EffectiveAlgorithm(t *testing.T) {
 	assert.Equal(t, JWTAlgorithmRS256, (&JWT{Algorithm: JWTAlgorithmRS256}).EffectiveAlgorithm())
 	assert.Equal(t, "ML-DSA-65", (&JWT{Algorithm: "ML-DSA-65"}).EffectiveAlgorithm())
 }
+
+// A new organization gets a "default" project unless the deployment turns it off, including
+// through an env-interpolated string as a deployment's config.toml writes it.
+func TestLoadConfig_OrganizationsCreateDefaultProject(t *testing.T) {
+	cfg, err := loadWithKeys(t, "")
+	require.NoError(t, err)
+	assert.True(t, cfg.Organizations.CreateDefaultProject, "on by default")
+
+	cfg, err = loadWithKeys(t, "\n[platform_api.organizations]\ncreate_default_project = false\n")
+	require.NoError(t, err)
+	assert.False(t, cfg.Organizations.CreateDefaultProject)
+
+	t.Setenv("APIP_TEST_CREATE_DEFAULT_PROJECT", "false")
+	cfg, err = loadWithKeys(t, "\n[platform_api.organizations]\n"+
+		`create_default_project = '{{ env "APIP_TEST_CREATE_DEFAULT_PROJECT" "true" }}'`+"\n")
+	require.NoError(t, err)
+	assert.False(t, cfg.Organizations.CreateDefaultProject)
+}

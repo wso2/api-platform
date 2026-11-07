@@ -185,14 +185,14 @@ const GraphqlCompliancePage = lazy(() =>
   ),
 );
 const GraphqlObservabilityMetricsPage = lazy(() =>
-  import(
-    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityMetricsPage'
-  ).then((m) => ({ default: m.GraphqlObservabilityMetricsPage })),
+  import('../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityMetricsPage').then(
+    (m) => ({ default: m.GraphqlObservabilityMetricsPage }),
+  ),
 );
 const GraphqlObservabilityLogsPage = lazy(() =>
-  import(
-    '../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityLogsPage'
-  ).then((m) => ({ default: m.GraphqlObservabilityLogsPage })),
+  import('../pages/appShell/appShellPages/graphqlApis/observability/GraphqlObservabilityLogsPage').then(
+    (m) => ({ default: m.GraphqlObservabilityLogsPage }),
+  ),
 );
 const AlertsPage = lazy(() =>
   import('../pages/appShell/appShellPages/observability/AlertsPage').then((m) => ({
@@ -253,6 +253,20 @@ const SubscriptionPlansPage = lazy(() =>
   import('../pages/appShell/appShellPages/orgManage/SubscriptionPlansPage').then((m) => ({
     default: m.SubscriptionPlansPage,
   })),
+);
+const CreateServiceAccountPage = lazy(() =>
+  import('../pages/appShell/appShellPages/orgManage/serviceAccounts/CreateServiceAccountPage').then(
+    (m) => ({
+      default: m.CreateServiceAccountPage,
+    }),
+  ),
+);
+const ServiceAccountCreatedPage = lazy(() =>
+  import('../pages/appShell/appShellPages/orgManage/serviceAccounts/ServiceAccountCreatedPage').then(
+    (m) => ({
+      default: m.ServiceAccountCreatedPage,
+    }),
+  ),
 );
 const ServiceAccountsPage = lazy(() =>
   import('../pages/appShell/appShellPages/orgManage/serviceAccounts/ServiceAccountsPage').then(
@@ -644,9 +658,31 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route
             path={routes.serviceAccounts()}
             element={
-              <AppPage>
-                <ServiceAccountsPage />
-              </AppPage>
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <ServiceAccountsPage />
+                </AppPage>
+              </FeatureGate>
+            }
+          />
+          <Route
+            path={routes.serviceAccountCreate()}
+            element={
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <CreateServiceAccountPage />
+                </AppPage>
+              </FeatureGate>
+            }
+          />
+          <Route
+            path={routes.serviceAccountCreated()}
+            element={
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <ServiceAccountCreatedPage />
+                </AppPage>
+              </FeatureGate>
             }
           />
           {extensionRoutes}

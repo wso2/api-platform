@@ -16,11 +16,24 @@
  * under the License.
  */
 
-import { Avatar, Box, Button, Card, Chip, chipClasses, Divider, Stack, Typography } from '@wso2/oxygen-ui';
-import { Circle, ExternalLink } from '@wso2/oxygen-ui-icons-react';
-import { useId, type ReactNode } from 'react';
+import {
+  Avatar,
+  Box,
+  Button,
+  ButtonGroup,
+  Card,
+  Chip,
+  chipClasses,
+  Divider,
+  Menu,
+  MenuItem,
+  Stack,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { ChevronDown, Circle, ExternalLink, Megaphone } from '@wso2/oxygen-ui-icons-react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
 import devportalLogoUrl from '@/assets/icons/devportal-logo.png';
@@ -29,9 +42,20 @@ import { hairline } from '@/theme/receipes';
 import { buildViewInPortalUrl, isListedOnPortal, publicationStatusMeta } from '../utils/publicationDisplay';
 
 const messages = defineMessages({
-  goToPublish: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish',
-    defaultMessage: 'Go to Publish',
+  publish: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publish',
+    defaultMessage: 'Publish',
+    description:
+      'Split button action publishing this API to this portal straight away, with all its documents attached and no subscription plan selected.',
+  },
+  moreActions: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.moreActions',
+    defaultMessage: 'More publish options',
+    description: 'Accessible label for the arrow of the Publish split button, which opens its other action.',
+  },
+  configureAndPublish: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.configureAndPublish',
+    defaultMessage: 'Configure & Publish',
     description: 'Card action opening the publish flow for this API on this portal.',
   },
   viewInPortal: {
@@ -93,6 +117,9 @@ function PortalAvatar() {
   );
 }
 
+/** What the split button does: publish straight away, or open the publish flow first. */
+type PublishMode = 'publish' | 'review';
+
 /** A label on the left, its value on the right. */
 function DetailRow({ children, label }: { children: ReactNode; label: ReactNode }) {
   return (
@@ -108,7 +135,7 @@ function DetailRow({ children, label }: { children: ReactNode; label: ReactNode 
 /**
  * One API Portal, annotated with this API's own publication state: its status,
  * when it last changed, and whether a draft is waiting. The card itself is not
- * clickable; "Go to Publish" opens the flow.
+ * clickable; "Configure & Publish" opens the flow.
  */
 export function PortalPublicationCard({
   apiHandle,
@@ -129,6 +156,25 @@ export function PortalPublicationCard({
 
   // Without an id there is no publish flow to open.
   const publishHref = publication.apiPortalId ? publishPath(publication.apiPortalId) : undefined;
+
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<PublishMode>('publish');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  // Both open the publish page with every document selected (a saved selection is kept for
+  // "Configure & Publish"). "Publish" also publishes once the page is ready, so the same checks and
+  // saves apply; no subscription plan is selected either way.
+  const runPublish = () => {
+    if (!publishHref) return;
+    navigate(publishHref, {
+      state: {
+        portalName: publication.apiPortalName,
+        documents: mode === 'publish' ? 'all' : 'default',
+        autoPublish: mode === 'publish',
+      },
+    });
+  };
 
   return (
     <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }} variant="outlined">
@@ -178,18 +224,45 @@ export function PortalPublicationCard({
 
         <Stack alignItems="center" direction="row" spacing={2}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Button
-              aria-describedby={nameId}
-              component={Link}
+            <ButtonGroup
               disabled={!publishHref}
-              fullWidth
+              ref={anchorRef}
               size="small"
-              state={{ portalName: publication.apiPortalName }}
-              to={publishHref ?? ''}
+              sx={{ display: 'flex', width: '100%' }}
               variant="contained"
             >
-              <FormattedMessage {...messages.goToPublish} />
-            </Button>
+              <Button
+                aria-describedby={nameId}
+                onClick={runPublish}
+                startIcon={mode === 'publish' && <Megaphone size={16} />}
+                sx={{ '&&': { flex: '1 1 auto', minWidth: 0 }, whiteSpace: 'nowrap' }}
+              >
+                <FormattedMessage {...(mode === 'publish' ? messages.publish : messages.configureAndPublish)} />
+              </Button>
+              <Button
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                aria-label={intl.formatMessage(messages.moreActions)}
+                onClick={() => setMenuOpen((open) => !open)}
+                sx={{ '&&': { flex: '0 0 40px', minWidth: 40, px: 0 } }}
+              >
+                <ChevronDown size={16} />
+              </Button>
+            </ButtonGroup>
+            <Menu anchorEl={anchorRef.current} onClose={() => setMenuOpen(false)} open={menuOpen}>
+              {(['publish', 'review'] as const).map((option) => (
+                <MenuItem
+                  key={option}
+                  onClick={() => {
+                    setMode(option);
+                    setMenuOpen(false);
+                  }}
+                  selected={option === mode}
+                >
+                  <FormattedMessage {...(option === 'publish' ? messages.publish : messages.configureAndPublish)} />
+                </MenuItem>
+              ))}
+            </Menu>
           </Box>
           <Button
             component="a"
