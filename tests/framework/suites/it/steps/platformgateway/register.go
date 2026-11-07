@@ -40,6 +40,7 @@ func Register(sc *godog.ScenarioContext, base Base, topo *runtime.Topology, funn
 	sc.Step(`^I restart the "([^"]*)" service$`, s.restartService)
 	sc.Step(`^I wait for the gateway controller health endpoint$`, s.waitForController)
 	sc.Step(`^the response should indicate healthy status$`, s.responseIndicatesHealthy)
+	sc.Step(`^the response should be a rate-limit rejection$`, s.responseIsRateLimitRejection)
 	sc.Step(`^the health check should report service "([^"]*)" as unhealthy$`, s.serviceUnhealthy)
 	sc.Step(`^all services should report healthy status$`, s.allServicesHealthy)
 	sc.Step(`^the resource creation response should indicate successful deployment$`, s.resourceCreationSucceeded)

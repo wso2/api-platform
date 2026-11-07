@@ -62,23 +62,39 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 	// The producing policy's own body is the first chance to author one — unless it also
 	// DESCRIBED the failure, in which case the body is a fallback for a gateway that cannot
 	// render one and this gateway renders instead. See faultformat.ShouldFormat.
+	//
+	// On an OpenAI route the body is reshaped instead (see faultformat.OpenAIPolicyBodyFault).
+	// As on the response path, that happens only when formatting, after the fault entries, and
+	// fills only the gaps in any re-description. An encoded body is kept.
+	var lifted *policy.FaultDetails
 	if immResp.Body != nil && immResp.Fault == nil {
-		ec.faultBodyAuthored = true
+		if fault, ok := ec.openAIPolicyBodyFault(immResp.Body); ok && !encodedBody(immResp.Headers) {
+			lifted = &fault
+		} else {
+			ec.faultBodyAuthored = true
+		}
 	}
 	// A rejection is the gateway's own error by construction, so provenance is settled.
 	ec.faultSource = sourceGateway
+
+	format := func(resp policy.ImmediateResponse) policy.ImmediateResponse {
+		if lifted != nil && !ec.faultBodyAuthored {
+			resp.Fault = withFallbackDetails(resp.Fault, *lifted)
+		}
+		return ec.formatFaultResponse(ctx, resp)
+	}
 
 	if !ec.faultPoliciesAvailable() {
 		// No chain to run — but formatting is a default, not a chain step, so it still
 		// applies. This is the case an MCP or SOAP API hits when the operator declared no
 		// fault policies at all, which is most of them.
-		return ec.formatFaultResponse(ctx, immResp)
+		return format(immResp)
 	}
 
 	faultCtx := ec.synthesizeFaultContexts(immResp)
 	out, ok := ec.executeFaultPolicies(ctx, faultCtx, originGateway, true)
 	if !ok {
-		return ec.formatFaultResponse(ctx, immResp)
+		return format(immResp)
 	}
 
 	// Header mutations were applied to the shared header set as the chain ran, appends
@@ -109,7 +125,7 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 	// Telemetry is read out of the results rather than the shared views, because unlike the
 	// status and body it is not something a later entry observes — it accumulates.
 	ec.foldFaultTelemetry(out.results, &immResp)
-	return ec.formatFaultResponse(ctx, immResp)
+	return format(immResp)
 }
 
 // runFaultPoliciesOnResponse applies the fault policies to a response already on its way to
@@ -268,12 +284,45 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 	if ec.faultBodyAuthored {
 		return
 	}
+	// The last such body is the one the client receives.
+	var authored policy.ResponseAction
 	for _, r := range results {
 		if faultformat.BodyAuthored(r.Action) && !faultformat.DescribedError(r.Action) {
-			ec.faultBodyAuthored = true
-			return
+			authored = r.Action
 		}
 	}
+	if authored == nil {
+		return
+	}
+	// On an OpenAI route the body is reshaped instead, unless it is encoded. The fault entries
+	// have already run, so it only fills gaps in any re-description of theirs.
+	if fault, ok := ec.openAIPolicyBodyFault(actionBody(authored)); ok && !actionEncoded(authored) {
+		ec.faultDeclared = withFallbackDetails(ec.faultDeclared, fault)
+	} else {
+		ec.faultBodyAuthored = true
+	}
+}
+
+// withFallbackDetails returns a copy of declared with its empty fields filled from fallback (the
+// guardrail block only as a whole), or fallback when declared is nil. declared is not modified.
+func withFallbackDetails(declared *policy.FaultDetails, fallback policy.FaultDetails) *policy.FaultDetails {
+	if declared == nil {
+		return &fallback
+	}
+	out := *declared
+	if out.Message == "" {
+		out.Message = fallback.Message
+	}
+	if out.Type == "" {
+		out.Type = fallback.Type
+	}
+	if out.Direction == "" {
+		out.Direction = fallback.Direction
+	}
+	if out.Guardrail == nil {
+		out.Guardrail = fallback.Guardrail
+	}
+	return &out
 }
 
 // noteUpstreamAuthoredBody records that the BACKEND decided the client's body.
@@ -286,12 +335,22 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 //
 // A backend cannot mark its body as a fallback the way a policy can, so bytes from upstream
 // are a decision and no bytes are no decision. A backend 502 with an empty body is still
-// rendered on a formatted kind.
+// rendered on a formatted kind — except on an OpenAI route, where the provider's error is kept
+// as sent, bodyless or not, and so is one whose provenance Envoy did not report.
 func (ec *PolicyExecutionContext) noteUpstreamAuthoredBody() {
-	if ec.faultBodyAuthored || ec.faultSource != sourceBackend {
+	if ec.faultBodyAuthored {
+		return
+	}
+	if ec.faultSource == sourceUnknown && ec.llmOpenAIErrors() {
+		ec.faultBodyAuthored = true
+		return
+	}
+	if ec.faultSource != sourceBackend {
 		return
 	}
 	if body := ec.responseBodyCtx; body != nil && body.ResponseBody != nil && len(body.ResponseBody.Content) > 0 {
+		ec.faultBodyAuthored = true
+	} else if ec.llmOpenAIErrors() {
 		ec.faultBodyAuthored = true
 	}
 }

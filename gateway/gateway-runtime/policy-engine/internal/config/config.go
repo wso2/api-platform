@@ -604,6 +604,8 @@ type PolicyEngine struct {
 	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	FaultPolicies  FaultPoliciesConfig  `koanf:"fault_policies"`
+	// LLMErrors is [policy_engine.llm_errors].
+	LLMErrors LLMErrorsConfig `koanf:"llm_errors"`
 	// HTTPClient configures the single shared outbound *http.Client built once at
 	// startup (see cmd/policy-engine/main.go) and injected into every policy
 	// instance via PolicyMetadata.SharedHTTPClient — see HTTPClientConfig's doc
@@ -650,6 +652,15 @@ type FaultPoliciesConfig struct {
 	//
 	// A failure is recognised by its status alone (>= 400).
 	HandleUpstreamFaults bool `koanf:"handle_upstream_faults"`
+}
+
+// LLMErrorsConfig is [policy_engine.llm_errors]: how gateway-produced errors on LlmProvider and
+// LlmProxy routes reach the client. Separate from fault_policies, which decides what reaches the
+// fault policies rather than what the client receives.
+type LLMErrorsConfig struct {
+	// EnableOpenAIFormat renders gateway-produced errors on LLM APIs in the OpenAI envelope.
+	// True by default (see defaultConfig); false sends errors as produced.
+	EnableOpenAIFormat bool `koanf:"enable_openai_format"`
 }
 
 // BodyConfig holds body-processing limits for one direction
@@ -1278,6 +1289,7 @@ func defaultCorrelationStoreConfig() CorrelationStoreConfig {
 func defaultConfig() *Config {
 	return &Config{
 		PolicyEngine: PolicyEngine{
+			LLMErrors: LLMErrorsConfig{EnableOpenAIFormat: true},
 			Server: ServerConfig{
 				Mode:        "",
 				ExtProcPort: 9001,

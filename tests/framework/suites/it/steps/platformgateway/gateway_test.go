@@ -4222,3 +4222,41 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	defer cancel()
 	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
 }
+
+// Releases up to 1.2.0 return policy bodies; later releases, source builds and unparseable
+// versions return the OpenAI envelope.
+func TestLLMErrorsUseOpenAIFormat(t *testing.T) {
+	for version, want := range map[string]bool{
+		"1.0.0":          false,
+		"1.1.0":          false,
+		"1.2.0":          false,
+		"v1.2.0":         false,
+		"1.2.0-SNAPSHOT": false,
+		"1.2.1":          true,
+		"1.3.0":          true,
+		"2.0.0":          true,
+		"2026.09.24":     true,
+		"latest":         true,
+		"":               true,
+		"1.2":            true,
+		"1.x.0":          true,
+	} {
+		require.Equal(t, want, llmErrorsUseOpenAIFormat(version), "version %q", version)
+	}
+}
+
+func TestRateLimitRejectionError(t *testing.T) {
+	envelope := []byte(`{"error":{"message":"Message throttled out","type":"rate_limit_error","param":null,"code":"900800"}}`)
+	ownBody := []byte(`{"error":"Too Many Requests","message":"Rate limit exceeded. Please try again later."}`)
+
+	require.NoError(t, rateLimitRejectionError("2026.09.24", envelope))
+	require.Error(t, rateLimitRejectionError("2026.09.24", ownBody), "a later release must return the envelope")
+	require.Error(t, rateLimitRejectionError("2026.09.24",
+		[]byte(`{"error":{"message":"x","type":"server_error","param":null,"code":null}}`)), "wrong type")
+	require.Error(t, rateLimitRejectionError("2026.09.24", []byte("not json")))
+	require.Error(t, rateLimitRejectionError("2026.09.24", nil))
+
+	require.NoError(t, rateLimitRejectionError("1.2.0", ownBody))
+	require.Error(t, rateLimitRejectionError("1.2.0", envelope), "1.2.0 returns the policy's own body")
+	require.Error(t, rateLimitRejectionError("1.2.0", nil))
+}

@@ -135,6 +135,23 @@ func (s KindSet) Enabled(kind policy.APIKind) bool {
 	return s[strings.ToLower(string(kind))]
 }
 
+// With returns a set holding this set's kinds plus kinds. The receiver is not modified.
+func (s KindSet) With(kinds ...policy.APIKind) KindSet {
+	out := make(KindSet, len(s)+len(kinds))
+	for k := range s {
+		out[k] = true
+	}
+	for _, k := range kinds {
+		if k != "" {
+			out[strings.ToLower(string(k))] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // Input is everything the decision depends on.
 type Input struct {
 	// FormatterEnabled reports whether synthesis is enabled for this API kind — see
@@ -157,7 +174,8 @@ type Input struct {
 	// Formatting is opt-in through this, and that is a compatibility decision: gateways
 	// released before the fault contract sent those errors unformatted, and a policy that
 	// predates the contract describes nothing. Rendering only what a policy described keeps
-	// every such response byte-for-byte what it was.
+	// every such response byte-for-byte what it was. The OpenAI shape is the exception: see
+	// ShouldFormat.
 	PolicyDescribed bool
 	// Status is the response status, used only to pick a JSON-RPC code.
 	Status int
@@ -189,6 +207,7 @@ type Input struct {
 //	Not described by a policy -> leave alone (see Input.PolicyDescribed)
 //	Fault described   -> render, whatever the body holds
 //	no Fault          -> the body stands, described or empty
+//	OpenAI shape      -> rendered even when not described
 //
 // A body accompanying a described fault is a FALLBACK for a gateway that cannot render, not a
 // decision — so omitting Fault is how a policy keeps its own body. A body written by a fault
@@ -219,18 +238,19 @@ func ShouldFormat(r *Registry, in Input) Decision {
 		return Decision{Reason: "body already authored by a policy"}
 	}
 
-	if !in.PolicyDescribed {
-		// Checked after authorship only so the log keeps naming an authored body as the
-		// reason when both apply; the outcome is the same either way.
-		return Decision{Reason: "no policy described the failure"}
-	}
-
 	shape := Negotiate(Request{
 		APIKind:     in.APIKind,
 		Transport:   in.Transport,
 		ContentType: in.ContentType,
 		Accept:      in.Accept,
 	})
+
+	if !in.PolicyDescribed && shape != ShapeOpenAI {
+		// Checked after authorship only so the log keeps naming an authored body as the
+		// reason when both apply; the outcome is the same either way.
+		// OpenAI is exempt: an OpenAI SDK can read nothing but its envelope.
+		return Decision{Reason: "no policy described the failure"}
+	}
 
 	body, contentType, ok := r.Render(shape, RenderInput{
 		Err:     in.Err,
