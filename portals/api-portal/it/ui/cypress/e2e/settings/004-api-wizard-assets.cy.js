@@ -238,8 +238,10 @@ describe('Settings — API wizard Assets step', () => {
         cy.get('#wz-content-input').selectFile(invalidContentPackage(), { force: true });
         save();
 
-        cy.get('#wz-content-error').scrollIntoView().should('be.visible')
-            .and('have.text', 'doc/: unknown top-level entry\nweb/style.css: web/ holds only api-content.md, api-content.hbs and images');
+        // Scroll only once the save has shown the error, so later re-rendering can't leave it clipped.
+        cy.get('#wz-content-error')
+            .should('have.text', 'doc/: unknown top-level entry\nweb/style.css: web/ holds only api-content.md, api-content.hbs and images')
+            .scrollIntoView().should('be.visible');
         cy.get('#wz-content-chip').should('contain', 'content.zip').and('contain', 'Not uploaded');
         cy.get('#wz-content-choose').scrollIntoView().should('be.visible').and('have.text', 'Choose another file');
         cy.get('#wz-content-remove').should('not.be.visible');
