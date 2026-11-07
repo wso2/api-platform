@@ -30,7 +30,11 @@ import {
   type DeploymentListResponse,
   type ListDeploymentsQuery,
 } from './deployments.endpoints';
-import { deploymentQueries, hasTransitioningDeployment } from './deployments.queries';
+import {
+  deploymentQueries,
+  hasTransitioningDeployment,
+  isTransitioning
+} from './deployments.queries';
 import { restApiKeys } from '../restApis.queries';
 
 /**
@@ -59,8 +63,16 @@ const POLL_CAP_MS = 30_000;
  */
 const MAX_POLL_ROUNDS = 25;
 
-/** Each query's `dataUpdateCount` when its current transition was first seen. */
-const transitionStart = new WeakMap<object, number>();
+/** Each query's current transitions, and its `dataUpdateCount` when first seen. */
+const transitionStart = new WeakMap<object, { key: string; count: number }>();
+
+/** Which deployments are mid-transition, and to what; each new action changes it. */
+const transitionKey = (deployments: readonly Deployment[] | undefined): string =>
+  (deployments ?? [])
+    .filter(isTransitioning)
+    .map((d) => `${d.deploymentId}:${d.status}`)
+    .sort()
+    .join();
 
 /**
  * Backing-off poll interval, used while any deployment is still settling.
@@ -70,22 +82,27 @@ const transitionStart = new WeakMap<object, number>();
  * than polling for the life of the tab, and it pauses while the tab is hidden
  * (`refetchIntervalInBackground` is left at its default of false).
  *
- * Rounds count from the fetch that first saw the current transition, not over
- * the query's lifetime: a lifetime count left the page polling every 30 seconds
- * after a few actions, and not at all after 25 fetches, so a later Stop or
- * Redeploy never settled on screen.
+ * Rounds count from the fetch that first saw the current set of transitions,
+ * not over the query's lifetime: a lifetime count left the page polling every
+ * 30 seconds after a few actions, and not at all after 25 fetches, so a later
+ * Stop or Redeploy never settled on screen. A new action restarts the count
+ * even while another gateway is still settling.
  */
 const pollWhileTransitioning = (
   query: { state: { dataUpdateCount: number } },
-  transitioning: boolean
+  key: string
 ): number | false => {
-  if (!transitioning) {
+  if (!key) {
     transitionStart.delete(query);
     return false;
   }
   const updateCount = query.state.dataUpdateCount;
-  if (!transitionStart.has(query)) transitionStart.set(query, updateCount);
-  const rounds = updateCount - transitionStart.get(query)!;
+  let start = transitionStart.get(query);
+  if (start?.key !== key) {
+    start = { key, count: updateCount };
+    transitionStart.set(query, start);
+  }
+  const rounds = updateCount - start.count;
   if (rounds > MAX_POLL_ROUNDS) return false;
   return Math.min(POLL_START_MS * POLL_FACTOR ** rounds, POLL_CAP_MS);
 };
@@ -111,10 +128,7 @@ export const useDeployments = (
     ...deploymentQueries.list(org!, restApiId!, filters),
     enabled: Boolean(org && restApiId),
     refetchInterval: (query) =>
-      pollWhileTransitioning(
-        query,
-        hasTransitioningDeployment(query.state.data?.list)
-      ),
+      pollWhileTransitioning(query, transitionKey(query.state.data?.list)),
   });
 };
 
@@ -132,9 +146,7 @@ export const useDeployment = (
     refetchInterval: (query) =>
       pollWhileTransitioning(
         query,
-        hasTransitioningDeployment(
-          query.state.data ? [query.state.data] : undefined
-        )
+        transitionKey(query.state.data ? [query.state.data] : undefined)
       ),
   });
 };

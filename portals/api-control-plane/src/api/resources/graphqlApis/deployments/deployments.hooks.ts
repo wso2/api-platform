@@ -30,7 +30,11 @@ import {
   type DeploymentListResponse,
   type ListDeploymentsQuery,
 } from './deployments.endpoints';
-import { deploymentQueries, hasTransitioningDeployment } from './deployments.queries';
+import {
+  deploymentQueries,
+  hasTransitioningDeployment,
+  isTransitioning,
+} from './deployments.queries';
 import { graphQLApiKeys } from '../graphqlApis.queries';
 
 /**
@@ -47,19 +51,30 @@ const POLL_FACTOR = 1.5;
 const POLL_CAP_MS = 30_000;
 const MAX_POLL_ROUNDS = 25;
 
-const transitionStart = new WeakMap<object, number>();
+const transitionStart = new WeakMap<object, { key: string; count: number }>();
+
+const transitionKey = (deployments: readonly Deployment[] | undefined): string =>
+  (deployments ?? [])
+    .filter(isTransitioning)
+    .map((d) => `${d.deploymentId}:${d.status}`)
+    .sort()
+    .join();
 
 const pollWhileTransitioning = (
   query: { state: { dataUpdateCount: number } },
-  transitioning: boolean,
+  key: string,
 ): number | false => {
-  if (!transitioning) {
+  if (!key) {
     transitionStart.delete(query);
     return false;
   }
   const updateCount = query.state.dataUpdateCount;
-  if (!transitionStart.has(query)) transitionStart.set(query, updateCount);
-  const rounds = updateCount - transitionStart.get(query)!;
+  let start = transitionStart.get(query);
+  if (start?.key !== key) {
+    start = { key, count: updateCount };
+    transitionStart.set(query, start);
+  }
+  const rounds = updateCount - start.count;
   if (rounds > MAX_POLL_ROUNDS) return false;
   return Math.min(POLL_START_MS * POLL_FACTOR ** rounds, POLL_CAP_MS);
 };
@@ -75,10 +90,7 @@ export const useDeployments = (
     ...deploymentQueries.list(org!, graphqlApiId!, filters),
     enabled: Boolean(org && graphqlApiId),
     refetchInterval: (query) =>
-      pollWhileTransitioning(
-        query,
-        hasTransitioningDeployment(query.state.data?.list),
-      ),
+      pollWhileTransitioning(query, transitionKey(query.state.data?.list)),
   });
 };
 
@@ -95,7 +107,7 @@ export const useDeployment = (
     refetchInterval: (query) =>
       pollWhileTransitioning(
         query,
-        hasTransitioningDeployment(query.state.data ? [query.state.data] : undefined),
+        transitionKey(query.state.data ? [query.state.data] : undefined),
       ),
   });
 };

@@ -320,10 +320,13 @@ describe('useDeployments — poll backoff', () => {
       .getQueryCache()
       .find({ queryKey: deploymentQueries.list(org, API_ID, {}).queryKey })!;
     return {
-      fetchReturns: (status: 'DEPLOYED' | 'DEPLOYING' | 'UNDEPLOYING' | 'UNDEPLOYED') =>
+      // One status per gateway's deployment.
+      fetchReturns: (...statuses: ('DEPLOYED' | 'DEPLOYING' | 'UNDEPLOYING' | 'UNDEPLOYED')[]) =>
         queryClient.setQueryData(query.queryKey, {
           ...result.current.data!,
-          list: [aDeployment({ status })],
+          list: statuses.map((status, i) =>
+            aDeployment({ deploymentId: `deployment-${i}`, status })
+          ),
         }),
       // The cache types options as plain `QueryOptions`; the observer's
       // `refetchInterval` is there at runtime.
@@ -363,6 +366,16 @@ describe('useDeployments — poll backoff', () => {
     expect(intervals[7]).toBe(30_000);
     expect(intervals[25]).toBe(30_000);
     expect(intervals[26]).toBe(false);
+  });
+
+  it('gives a new action its own budget while another gateway is still settling', async () => {
+    // One gateway stuck in DEPLOYING has used up its rounds.
+    const { fetchReturns, nextPoll } = await renderPolledList();
+    for (let i = 0; i < 27; i++) fetchReturns('DEPLOYING');
+    expect(nextPoll()).toBe(false);
+
+    fetchReturns('DEPLOYING', 'UNDEPLOYING');
+    expect(nextPoll()).toBe(2_000);
   });
 });
 
