@@ -1,0 +1,5 @@
+# The API Portal health endpoints answer loopback only. The framework waits for the portal
+# through its root page, which this list does not cover, so a block using this overlay still
+# boots while every health probe the suite sends from the host is refused.
+[api_portal.health]
+allowed_clients = ["127.0.0.1", "::1"]

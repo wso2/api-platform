@@ -1430,6 +1430,62 @@ func TestCloseSharedLogsReleasesEveryWriter(t *testing.T) {
 	require.Zero(t, remaining)
 }
 
+func TestDatabaseServerResolvesTheBlockServer(t *testing.T) {
+	postgres := &Container{}
+	block := &topology.ResolvedBlock{Name: "health"}
+
+	tests := []struct {
+		name    string
+		topo    *Topology
+		engine  components.DBType
+		want    *Container
+		wantErr string
+	}{
+		{name: "nil topology", topo: nil, engine: components.Postgres,
+			wantErr: "block has no provisioned storage"},
+		{name: "no storage", topo: &Topology{Block: block}, engine: components.Postgres,
+			wantErr: "block has no provisioned storage"},
+		{name: "no servers", topo: &Topology{Block: block, Storage: &Provisioned{}}, engine: components.Postgres,
+			wantErr: `no "postgres" database server is running in block "health"; it runs []`},
+		{name: "embedded engine has no server",
+			topo:    &Topology{Block: block, Storage: &Provisioned{Servers: map[components.DBType]*Container{components.Postgres: postgres}}},
+			engine:  components.SQLite,
+			wantErr: `no "sqlite" database server is running in block "health"; it runs [postgres]`},
+		{name: "nil server entry is not running",
+			topo: &Topology{Storage: &Provisioned{Servers: map[components.DBType]*Container{
+				components.Postgres: nil, components.SQLServer: {},
+			}}},
+			engine:  components.Postgres,
+			wantErr: `no "postgres" database server is running in block "<unknown>"; it runs [sqlserver]`},
+		{name: "running server",
+			topo:   &Topology{Block: block, Storage: &Provisioned{Servers: map[components.DBType]*Container{components.Postgres: postgres}}},
+			engine: components.Postgres, want: postgres},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := tt.topo.DatabaseServer(tt.engine)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, "runtime: "+tt.wantErr)
+				require.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			require.Same(t, tt.want, got)
+		})
+	}
+}
+
+func TestContainerLifecycleControlsRequireAContainer(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []*Container{nil, {}} {
+		require.EqualError(t, c.Halt(ctx), "runtime: no container to halt")
+		require.EqualError(t, c.Resume(ctx), "runtime: no container to resume")
+		require.EqualError(t, c.Pause(ctx), "runtime: no container to pause")
+		require.EqualError(t, c.Unpause(ctx), "runtime: no container to unpause")
+	}
+}
+
 func pipeNonblock(t *testing.T, f *os.File) bool {
 	t.Helper()
 	raw, err := f.SyscallConn()

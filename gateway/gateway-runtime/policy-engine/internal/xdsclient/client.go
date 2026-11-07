@@ -81,6 +81,16 @@ type Client struct {
 	subscriptionStateVersion string
 	routeConfigVersion       string
 	currentNonce             string
+	// disconnectedSince is when the connection to the controller was last lost; zero
+	// while connected. It is kept across failed reconnect attempts, so it marks the
+	// start of the whole outage.
+	disconnectedSince time.Time
+	// configReceived reports whether any configuration has ever been accepted from the
+	// controller. It is never reset: the last configuration keeps being served while
+	// the connection is down.
+	configReceived bool
+	// now is the clock used for connection state; replaceable in tests.
+	now func() time.Time
 
 	// resolvers is the frozen operation-resolver registry this runtime supports.
 	// Advertised in Node.Metadata on every discovery request so the control plane
@@ -111,10 +121,13 @@ func NewClient(config *Config, k *kernel.Kernel, reg *registry.PolicyRegistry, r
 		resolvers:        resolvers,
 		reconnectManager: NewReconnectManager(config),
 		state:            StateDisconnected,
-		ctx:              ctx,
-		cancel:           cancel,
-		stoppedCh:        make(chan struct{}),
-		reconnectCh:      make(chan struct{}, 1),
+		// The client starts without a connection.
+		disconnectedSince: time.Now(),
+		now:               time.Now,
+		ctx:               ctx,
+		cancel:            cancel,
+		stoppedCh:         make(chan struct{}),
+		reconnectCh:       make(chan struct{}, 1),
 	}, nil
 }
 
@@ -171,6 +184,29 @@ func (c *Client) GetPolicyChainVersion() string {
 	return c.policyChainVersion
 }
 
+// ConnectionStatus describes the client's connection to the controller.
+type ConnectionStatus struct {
+	State ClientState
+	// Connected reports whether the configuration stream is established.
+	Connected bool
+	// DisconnectedSince is when the connection was last lost; zero while connected.
+	DisconnectedSince time.Time
+	// ConfigReceived reports whether any configuration has ever been accepted.
+	ConfigReceived bool
+}
+
+// ConnectionStatus returns the current state of the connection to the controller.
+func (c *Client) ConnectionStatus() ConnectionStatus {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return ConnectionStatus{
+		State:             c.state,
+		Connected:         c.state == StateConnected,
+		DisconnectedSince: c.disconnectedSince,
+		ConfigReceived:    c.configReceived,
+	}
+}
+
 // IsHealthy reports whether the xDS client has received its first policy chain configuration.
 func (c *Client) IsHealthy() bool {
 	c.mu.RLock()
@@ -187,30 +223,24 @@ func (c *Client) setState(state ClientState) {
 		oldState := c.state
 		c.state = state
 
-		// Update metrics based on state
+		// Update metrics based on state. The active-connection gauge counts the
+		// established stream, so it moves only on entering or leaving Connected;
+		// otherwise every reconnect cycle would leave it one higher.
+		if oldState == StateConnected {
+			metrics.GRPCConnectionsActive.WithLabelValues("xds").Dec()
+			c.disconnectedSince = c.now()
+		}
 		switch state {
 		case StateConnected:
+			c.disconnectedSince = time.Time{}
 			metrics.XDSConnectionState.WithLabelValues("connected").Set(1)
 			metrics.GRPCConnectionsActive.WithLabelValues("xds").Inc()
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
-		case StateDisconnected, StateStopped:
+		case StateDisconnected, StateReconnecting, StateStopped:
 			metrics.XDSConnectionState.WithLabelValues("connected").Set(0)
-			metrics.GRPCConnectionsActive.WithLabelValues("xds").Dec()
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
-		case StateReconnecting:
-			metrics.XDSConnectionState.WithLabelValues("connected").Set(0)
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
-		default:
-			slog.InfoContext(c.ctx, "Client state changed",
-				"old_state", oldState,
-				"new_state", state)
 		}
+		slog.InfoContext(c.ctx, "Client state changed",
+			"old_state", oldState,
+			"new_state", state)
 	}
 }
 
@@ -288,14 +318,12 @@ func (c *Client) connectAndRun() error {
 	c.stream = stream
 	c.mu.Unlock()
 
-	c.setState(StateConnected)
-	c.reconnectManager.Reset()
-
-	// Record successful connection metrics
-	metrics.XDSUpdatesTotal.WithLabelValues("success", "xds").Inc()
-	metrics.ContextBuildDurationSeconds.WithLabelValues("xds_connection").Observe(time.Since(startTime).Seconds())
-
-	slog.InfoContext(c.ctx, "Connected to xDS server", "server", c.config.ServerAddress)
+	// Opening the stream does not mean the controller accepted it: a controller that
+	// rejects every stream still lets it open. The client counts as connected, and the
+	// reconnect backoff is reset, only once the first response arrives (see
+	// processStream), so a stream that is rejected every cycle neither restarts the
+	// outage clock nor redials at the minimum backoff.
+	slog.InfoContext(c.ctx, "Opened xDS stream", "server", c.config.ServerAddress)
 
 	// Send initial subscription request
 	if err := c.sendDiscoveryRequest("", ""); err != nil {
@@ -303,7 +331,16 @@ func (c *Client) connectAndRun() error {
 	}
 
 	// Process responses
-	return c.processStream(stream)
+	return c.processStream(stream, func() {
+		c.setState(StateConnected)
+		c.reconnectManager.Reset()
+
+		// Record successful connection metrics
+		metrics.XDSUpdatesTotal.WithLabelValues("success", "xds").Inc()
+		metrics.ContextBuildDurationSeconds.WithLabelValues("xds_connection").Observe(time.Since(startTime).Seconds())
+
+		slog.InfoContext(c.ctx, "Connected to xDS server", "server", c.config.ServerAddress)
+	})
 }
 
 // dial establishes a gRPC connection to the xDS server
@@ -326,6 +363,7 @@ func (c *Client) dial() (*grpc.ClientConn, error) {
 
 	// Add keepalive parameters
 	opts = append(opts,
+		grpc.WithKeepaliveParams(c.config.keepaliveParams()),
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxRecvMsgSize)),
 	)
@@ -519,7 +557,10 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 }
 
 // processStream processes incoming DiscoveryResponse messages
-func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient) error {
+// processStream reads responses until the stream ends. onFirstResponse, when not nil,
+// runs once, when the first response arrives: that is when the controller has
+// accepted the stream.
+func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient, onFirstResponse func()) error {
 	for {
 		// Receive response
 		resp, err := stream.Recv()
@@ -529,6 +570,10 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 		}
 		if err != nil {
 			return fmt.Errorf("error receiving from stream: %w", err)
+		}
+		if onFirstResponse != nil {
+			onFirstResponse()
+			onFirstResponse = nil
 		}
 
 		// Process response
@@ -579,6 +624,7 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			c.routeConfigVersion = resp.VersionInfo
 		}
 		c.currentNonce = resp.Nonce
+		c.configReceived = true
 		c.mu.Unlock()
 
 		// Send ACK for this specific resource type

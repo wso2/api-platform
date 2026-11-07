@@ -1,4 +1,4 @@
-# Database and administrator configuration for gateway-controller.
+# Database, administrator and health access configuration for gateway-controller.
 
 [controller.storage.postgres]
 host     = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST" "" }}'
@@ -42,3 +42,11 @@ enabled = true
 
 [api_key]
 api_keys_per_user_per_api = 3
+
+# Health endpoints answer only the listed clients. The framework calls them from the host,
+# so the definitions set these variables to the private ranges.
+[controller.health]
+allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'
+
+[router.health]
+allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "127.0.0.1,::1" }}'

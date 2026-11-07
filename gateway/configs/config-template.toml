@@ -674,6 +674,16 @@ path = ""
 level = "info"
 format = "text"
 
+# Health check behaviour. Every key is optional; the values shown are the defaults.
+# [policy_engine.health]
+# cache_ttl = "3s"        # how long an evaluated health result is reused
+#
+# [policy_engine.health.xds_connection]
+# grace = "5m"            # how long the controller link may be down before readiness fails
+#
+# [policy_engine.health.python_executor]
+# check_timeout = "2s"    # deadline for the Python executor check
+
 # Configures the single shared outbound *http.Client that the policy engine builds once at
 # startup and injects into every policy instance via PolicyMetadata.SharedHTTPClient (see
 # internal/config.HTTPClientConfig, which mirrors github.com/wso2/go-httpkit/httpclient.Config
