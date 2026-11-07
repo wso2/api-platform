@@ -113,7 +113,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	}
 
 	// Generate the default project ID before persisting any data, so a failure leaves nothing behind.
-	createDefaultProject := s.config == nil || s.config.Organizations.CreateDefaultProject
+	createDefaultProject := createsDefaultProject(s.config)
 	var projectID string
 	if createDefaultProject {
 		projectID, err = utils.GenerateUUID()
@@ -186,6 +186,12 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	}
 
 	return orgResponse, nil
+}
+
+// createsDefaultProject reports whether new organizations get a default project, which they do
+// unless the configuration turns it off.
+func createsDefaultProject(cfg *config.Server) bool {
+	return cfg == nil || cfg.Organizations.CreateDefaultProject
 }
 
 func containsStr(slice []string, val string) bool {

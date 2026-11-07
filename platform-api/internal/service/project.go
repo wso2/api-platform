@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -47,6 +48,7 @@ type ProjectService struct {
 	deletionGuards []ProjectDeletionGuard
 	auditRepo      repository.AuditRepository
 	identity       *IdentityService
+	config         *config.Server
 	slogger        *slog.Logger
 }
 
@@ -55,7 +57,7 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 	llmProxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
 	agentProxyRepo repository.AgentProxyRepository,
 	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
-	identity *IdentityService, slogger *slog.Logger) *ProjectService {
+	identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
 		projectRepo:    projectRepo,
 		orgRepo:        orgRepo,
@@ -67,6 +69,7 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 		appRepo:        appRepo,
 		auditRepo:      auditRepo,
 		identity:       identity,
+		config:         cfg,
 		slogger:        slogger,
 	}
 }
@@ -276,20 +279,49 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	if project == nil {
 		return apperror.ProjectNotFound.New()
 	}
+	if err := s.checkProjectDeletion(project, orgId); err != nil {
+		return err
+	}
 
-	projects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
+	if err := s.projectRepo.DeleteProject(project.ID); err != nil {
+		return err
+	}
+	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
+	return nil
+}
+
+// CheckProjectDeletion reports whether DeleteProject would delete the project: nil when it
+// would, otherwise the refusal it would return. An unknown project is ProjectNotFound.
+func (s *ProjectService) CheckProjectDeletion(handle, orgId string) error {
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return err
 	}
-	if len(projects) <= 1 {
-		return apperror.ValidationFailed.New("Organization must have at least one project")
+	if project == nil {
+		return apperror.ProjectNotFound.New()
+	}
+	return s.checkProjectDeletion(project, orgId)
+}
+
+// checkProjectDeletion refuses deleting a project that still holds artifacts or applications,
+// or that a plugin's deletion guard refuses. While new organizations get a default project, an
+// organization's last project is refused too.
+func (s *ProjectService) checkProjectDeletion(project *model.Project, orgId string) error {
+	if createsDefaultProject(s.config) {
+		projects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
+		if err != nil {
+			return err
+		}
+		if len(projects) <= 1 {
+			return apperror.ValidationFailed.New("Organization must have at least one project")
+		}
 	}
 
-	apis, err := s.apiRepo.GetAPIsByProjectUUID(project.ID, orgId)
+	apisCount, err := s.apiRepo.CountAPIsByOrganizationUUID(orgId, project.ID, "")
 	if err != nil {
 		return err
 	}
-	if len(apis) > 0 {
+	if apisCount > 0 {
 		return apperror.ValidationFailed.New("Project has associated APIs")
 	}
 
@@ -345,49 +377,7 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 			return err
 		}
 	}
-
-	if err := s.projectRepo.DeleteProject(project.ID); err != nil {
-		return err
-	}
-	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
 	return nil
-}
-
-// CountArtifactsByProject returns the number of artifacts in a project: its REST and
-// GraphQL APIs and its LLM, MCP and Agent proxies. Plugin-owned artifacts are not counted.
-func (s *ProjectService) CountArtifactsByProject(handle, orgId string) (int, error) {
-	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
-	if err != nil {
-		return 0, err
-	}
-	if project == nil {
-		return 0, apperror.ProjectNotFound.New()
-	}
-
-	counters := []struct {
-		kind  string
-		count func(orgUUID, projectUUID string) (int, error)
-	}{
-		{"REST APIs", func(orgUUID, projectUUID string) (int, error) {
-			return s.apiRepo.CountAPIsByOrganizationUUID(orgUUID, projectUUID, "")
-		}},
-		{"GraphQL APIs", func(orgUUID, projectUUID string) (int, error) {
-			return s.graphqlAPIRepo.CountByProject(orgUUID, projectUUID, "")
-		}},
-		{"LLM proxies", s.llmProxyRepo.CountByProject},
-		{"MCP proxies", s.mcpProxyRepo.CountByProject},
-		{"Agent proxies", s.agentProxyRepo.CountByProject},
-	}
-
-	total := 0
-	for _, c := range counters {
-		n, err := c.count(orgId, project.ID)
-		if err != nil {
-			return 0, fmt.Errorf("count %s: %w", c.kind, err)
-		}
-		total += n
-	}
-	return total, nil
 }
 
 func (s *ProjectService) apiToModel(project *api.Project) *model.Project {

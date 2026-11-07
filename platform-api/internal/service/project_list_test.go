@@ -59,7 +59,7 @@ func (noIdentityRepo) GetIdentitiesByUUIDs([]string) (map[string]repository.User
 func TestListProjects_PassesThePageAndReturnsTheTotal(t *testing.T) {
 	projects := &listProjectsRepo{}
 	svc := NewProjectService(projects, listProjectsOrgRepo{}, nil, nil, nil, nil, nil, nil, nil,
-		NewIdentityService(noIdentityRepo{}), nil)
+		NewIdentityService(noIdentityRepo{}), nil, nil)
 
 	items, total, err := svc.ListProjects("org-1", 5, 10)
 	require.NoError(t, err)
