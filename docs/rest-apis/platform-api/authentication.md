@@ -201,6 +201,10 @@ health and metrics probes, the file-mode login endpoint, and the internal gatewa
 authenticate with a gateway token instead). Setting this key **replaces** the built-in default
 list, so keep any entries you still need.
 
+Both health endpoints, `/health` (liveness) and `/ready` (readiness), bypass authentication. Instead,
+they answer every client by default. When `[platform_api.health] allowed_clients` lists IPs or CIDRs,
+they answer only those clients and return `403` to any other caller.
+
 ## Error Responses
 
 Authentication and authorization failures are deliberately uniform — the response never reveals
