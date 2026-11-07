@@ -61,8 +61,9 @@ export function OrganizationBootstrap() {
     // Not-found is the only answer that means "register it". Anything else — an
     // expired session, a denial, the platform being unreachable — says nothing about
     // whether the organization exists, and registering on those would turn a
-    // transient failure into a write attempt.
-    if (!isErrorCode(existing.error, ErrorCode.NOT_FOUND)) return;
+    // transient failure into a write attempt. The Platform API answers a missing
+    // organization with its domain code; the generic one is kept for older servers.
+    if (!isErrorCode(existing.error, ErrorCode.ORGANIZATION_NOT_FOUND, ErrorCode.NOT_FOUND)) return;
 
     started.current = true;
     bootstrap.mutate(
@@ -76,7 +77,7 @@ export function OrganizationBootstrap() {
           // A conflict is the other route having won, which is success. Re-read so
           // the rest of the console sees the organization, and leave `started` set so
           // this does not register again.
-          if (isErrorCode(error, ErrorCode.CONFLICT)) {
+          if (isErrorCode(error, ErrorCode.ORGANIZATION_EXISTS, ErrorCode.CONFLICT)) {
             void refetchExisting();
             return;
           }
