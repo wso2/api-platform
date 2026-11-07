@@ -58,9 +58,7 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
     Then the deployment status on gateway "it-gateway" becomes "Active"
     And the gateway answers 200 to a "GET" request to "/${CTX:api}/health"
 
-  # The console sends undeploy and restore without the gatewayId the control plane requires:
-  # https://github.com/wso2/api-platform/issues/3900
-  @DEPLC-001 @DEPLC-002 @DEPLC-005 @known-issue
+  @DEPLC-001 @DEPLC-002 @DEPLC-005
   Scenario: Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page
     Given I generate a unique handle from "deplc-ui-rest-actions-project" and store it as "project"
     And I generate a unique handle from "deplc-ui-rest-actions" and store it as "api"
@@ -139,9 +137,7 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
       {"query":"{ hello }"}
       """
 
-  # The console sends undeploy and restore without the gatewayId the control plane requires:
-  # https://github.com/wso2/api-platform/issues/3900
-  @DEPLC-001 @DEPLC-002 @DEPLC-005 @known-issue
+  @DEPLC-001 @DEPLC-002 @DEPLC-005
   Scenario: Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page
     Given I generate a unique handle from "deplc-ui-graphql-actions-project" and store it as "project"
     And I generate a unique handle from "deplc-ui-graphql-actions" and store it as "api"
