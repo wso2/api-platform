@@ -90,9 +90,9 @@ func TestLoadPortalContent(t *testing.T) {
 		}
 	})
 
-	t.Run("no selection means no content", func(t *testing.T) {
+	t.Run("no selection means an empty archive", func(t *testing.T) {
 		content, err := newContentService(docs).loadPortalContent(portalContentSource{ArtifactUUID: "artifact", OrgUUID: "org", DocHandles: nil})
-		if err != nil || content != nil {
+		if err != nil || content == nil || len(readArchive(t, content.Archive)) != 0 {
 			t.Fatalf("got %v, %v", content, err)
 		}
 	})
@@ -275,7 +275,9 @@ func TestPublish_PushesTheThumbnailWithoutDocuments(t *testing.T) {
 	}
 }
 
-func TestPublish_SkipsTheContentPushWithoutDocumentsOrThumbnail(t *testing.T) {
+// With nothing selected the portal still gets an (empty) archive, so content
+// unselected since the last publish is removed.
+func TestPublish_PushesAnEmptyArchiveWithoutDocumentsOrThumbnail(t *testing.T) {
 	var promoted bool
 	pub := &callLog{}
 	svc := newPublishDocsService(pub, nil, nil, &promoted)
@@ -283,8 +285,11 @@ func TestPublish_SkipsTheContentPushWithoutDocumentsOrThumbnail(t *testing.T) {
 	if _, _, err := svc.Publish(context.Background(), restAPITypeValue, "my-api", "my-portal", "org", "actor"); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
-	if got := strings.Join(pub.calls, ","); got != "listing" {
-		t.Fatalf("want only the listing push, got %s", got)
+	if got := strings.Join(pub.calls, ","); got != "listing,content" {
+		t.Fatalf("want the listing then its content, got %s", got)
+	}
+	if files := readArchive(t, pub.archive); len(files) != 0 {
+		t.Fatalf("want an empty archive, got %v", files)
 	}
 }
 
