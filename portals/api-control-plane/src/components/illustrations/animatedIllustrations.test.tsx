@@ -23,6 +23,7 @@ import { renderWithProviders, screen } from '@/test/utils';
 import { ApiDesignerCanvasIllustration } from './ApiDesignerCanvasIllustration';
 import { PortalPublishIllustration } from './PortalPublishIllustration';
 import { ReadyToConnectIllustration } from './ReadyToConnectIllustration';
+import { ServiceAccountsIllustration } from './ServiceAccountsIllustration';
 
 type ObserverCallback = (entries: { contentRect: { width: number } }[]) => void;
 

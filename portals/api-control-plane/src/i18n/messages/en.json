@@ -874,6 +874,34 @@
     "defaultMessage": "Backend",
     "description": "Title of the backend card in the \"Ready to connect\" preview. Noun."
   },
+  "apiControlPlane.components.ServiceAccountsIllustration.active": {
+    "defaultMessage": "Active",
+    "description": "Badge on the sample service account in the animated preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.clientId": {
+    "defaultMessage": "client id",
+    "description": "Label of the sample client ID line in the animated preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.expires": {
+    "defaultMessage": "expires in 1h",
+    "description": "Token lifetime shown in the animated service accounts preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.secret": {
+    "defaultMessage": "secret",
+    "description": "Label of the sample client secret line in the animated preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.subtitle": {
+    "defaultMessage": "Scripts, pipelines and tools",
+    "description": "Subheading of the animated service accounts preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.title": {
+    "defaultMessage": "Service accounts",
+    "description": "Heading of the animated service accounts preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.tokenIssued": {
+    "defaultMessage": "Token issued",
+    "description": "Footer of the animated service accounts preview."
+  },
   "apiControlPlane.components.StateViews.forbiddenDescription": {
     "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
     "description": "Explanation under the forbidden heading. Names who can fix it, and deliberately not which scope is missing — that is meaningless to the reader and tells a probing caller what to look for."
