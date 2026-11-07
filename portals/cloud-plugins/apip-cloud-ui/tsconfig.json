@@ -11,6 +11,7 @@
       "@wso2-enterprise/apip-cloud-ui-insights": ["../apip-cloud-ui-insights/src/index.ts"],
       "@wso2-enterprise/apip-cloud-ui-managed-portals": ["../apip-cloud-ui-managed-portals/src/index.ts"],
       "@wso2-enterprise/apip-cloud-ui-pipelines": ["../apip-cloud-ui-pipelines/src/index.ts"],
+      "@wso2-enterprise/apip-cloud-ui-settings": ["../apip-cloud-ui-settings/src/index.ts"],
       "@wso2-enterprise/apip-cloud-ui-trial-status": ["../apip-cloud-ui-trial-status/src/index.ts"],
       "@wso2-enterprise/apip-cloud-ui-user-profile": ["../apip-cloud-ui-user-profile/src/index.ts"],
       "@wso2/oxygen-ui": ["../../api-control-plane/node_modules/@wso2/oxygen-ui"],
