@@ -121,6 +121,12 @@ module.exports = {
             API_DEFINITION: 'Specification'
         }
     },
+    // Types the /assets endpoints may write or delete; API_DEFINITION and SCHEMA_DEFINITION are never content.
+    CONTENT_TYPES: {
+        FIXED: ['MARKETING', 'IMAGE'],
+        // Any category name, as an upload stores it from docs/<Folder>/; the match is exact, so no wildcards.
+        DOC_PATTERN: /^DOC_.+$/s,
+    },
     MIME_TYPES: {
         HTML: 'text/html',
         TEXT: 'text/plain',

@@ -70,6 +70,9 @@ blocks:
       - name: api-workflows
         features:
           - features/apiportal/api_workflows.feature
+      - name: api-wizard
+        features:
+          - features/apiportal/api_wizard.feature
 
   # Key managers are portal-global resources, so the scenario that creates one
   # keeps a dedicated stack and runs serialized. apiportal/applications.feature

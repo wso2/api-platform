@@ -44,6 +44,9 @@
                   </td>
                   <td>
                     <div class="cfg-api-cell">
+                      {{#if thumbnailUrl}}
+                      <img class="cfg-api-avatar cfg-api-avatar--img" src="{{thumbnailUrl}}" alt="">
+                      {{else}}
                       <span class="cfg-api-avatar
                         {{#if (eq apiType "GRAPHQL")}}cfg-api-avatar--graphql
                         {{else if (eq apiType "WS")}}cfg-api-avatar--ws
@@ -51,6 +54,7 @@
                         {{else if (eq apiType "Mcp")}}cfg-api-avatar--mcp
                         {{else if (eq apiType "WebSubApi")}}cfg-api-avatar--websub
                         {{else}}cfg-api-avatar--rest{{/if}}">{{firstTwoLetters apiName}}</span>
+                      {{/if}}
                       <div>
                         <div class="cfg-cell-name">{{apiName}}</div>
                         <div class="cfg-cell-context">/{{apiHandle}}</div>
@@ -128,7 +132,8 @@
           <a href="#" class="cfg-wizard-back" id="cfg-wizard-back-link">
             <i class="bi bi-arrow-left"></i> Back to Manage APIs
           </a>
-          <h2 class="cfg-panel-title" id="cfg-wizard-title" style="margin:14px 0 0;">Add API</h2>
+          <h2 class="cfg-panel-title" id="cfg-wizard-title" style="margin:14px 0 0;">Create API</h2>
+          <p class="cfg-wizard-subtitle" id="cfg-wizard-subtitle"></p>
 
           <!-- Stepper -->
           <div class="cfg-stepper">
@@ -141,20 +146,38 @@
             </div>
             <div class="cfg-step-connector"></div>
             <div class="cfg-step" data-step="2">
-              <span class="cfg-step-circle">3</span><span class="cfg-step-label">Documentation</span>
-            </div>
-            <div class="cfg-step-connector" id="cfg-step-connector-content" style="display:none;"></div>
-            <div class="cfg-step" data-step="3" id="cfg-step-content" style="display:none;">
-              <span class="cfg-step-circle">4</span><span class="cfg-step-label">Content</span>
+              <span class="cfg-step-circle">3</span><span class="cfg-step-label">Assets</span>
             </div>
           </div>
 
           <!-- Step 0: Details -->
           <div class="cfg-wizard-step" id="cfg-wstep-0" style="max-width:720px;">
-            <!-- GENERAL -->
-            <div class="cfg-form-section">
-              <p class="cfg-form-section-title">General</p>
+            <section class="cfg-form-card" id="wz-card-general">
+              <div class="cfg-form-card-head">
+                <h3 class="cfg-form-card-title">General</h3>
+                <p class="cfg-form-card-desc">How this <span class="wz-noun">API</span> is named and shown in the portal.</p>
+              </div>
               <div class="cfg-form-grid">
+                <div class="cfg-form-group cfg-form-group-full">
+                  <label for="wz-thumb-input">Thumbnail</label>
+                  <div class="cfg-thumb-row" id="wz-thumb-row">
+                    <span class="cfg-thumb-preview" id="wz-thumb-preview"></span>
+                    <span class="cfg-thumb-info">
+                      <span class="cfg-thumb-name" id="wz-thumb-name"></span>
+                      <span class="cfg-field-hint" id="wz-thumb-hint">PNG or JPG</span>
+                    </span>
+                    <span class="cfg-docs-tag" id="wz-thumb-tag" hidden></span>
+                    <button type="button" class="cfg-docs-undo" id="wz-thumb-undo" hidden>Undo</button>
+                    <label class="cfg-action-btn" title="Replace thumbnail" aria-label="Replace thumbnail">
+                      <i class="bi bi-upload"></i>
+                      <input type="file" id="wz-thumb-input" class="visually-hidden" accept=".png,.jpg,.jpeg" aria-label="Replace thumbnail" />
+                    </label>
+                    <button type="button" class="cfg-action-btn" id="wz-thumb-remove" title="Remove thumbnail" aria-label="Remove thumbnail">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                  <p id="wz-thumb-error" class="cfg-assets-error" role="alert" style="display:none;"></p>
+                </div>
                 <div class="cfg-form-group">
                   <label for="wz-name">Name <span class="required">*</span></label>
                   <input type="text" id="wz-name" class="cfg-form-input" placeholder="e.g. Reading-List-API" />
@@ -172,12 +195,14 @@
                   <p id="wz-handle-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group" id="wz-type-group">
-                  <label for="wz-type">API type</label>
+                  <label for="wz-type">API type <span class="required">*</span></label>
                   <select id="wz-type" class="cfg-form-input">
+                    <option value="" disabled>Select a type</option>
                     <option value="RestApi">REST</option>
                     <option value="WS">WebSocket</option>
                     <option value="GRAPHQL">GraphQL</option>
                   </select>
+                  <p id="wz-type-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
                 <div class="cfg-form-group">
                   <label>Agent visibility</label>
@@ -190,20 +215,28 @@
                     </button>
                   </div>
                 </div>
+                <div class="cfg-form-group">
+                  <label for="wz-status">Status</label>
+                  <select id="wz-status" class="cfg-form-input">
+                    <option value="PUBLISHED">Published</option>
+                    <option value="DEPRECATED">Deprecated</option>
+                  </select>
+                </div>
                 <div class="cfg-form-group cfg-form-group-full">
                   <label for="wz-desc">Description</label>
                   <textarea id="wz-desc" class="cfg-form-input" rows="3" placeholder="Describe what this API does in 1–2 sentences…"></textarea>
                   <p id="wz-desc-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
               </div>
-            </div>
-
-            <!-- ENDPOINTS -->
-            <div class="cfg-form-section">
-              <p class="cfg-form-section-title">Endpoints</p>
+            </section>
+            <section class="cfg-form-card">
+              <div class="cfg-form-card-head">
+                <h3 class="cfg-form-card-title">Endpoints</h3>
+                <p class="cfg-form-card-desc">Where consumers send requests.</p>
+              </div>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group">
-                  <label for="wz-prod">Production URL <span class="required" id="wz-prod-required" style="display:none;">*</span></label>
+                  <label for="wz-prod">Production URL</label>
                   <input type="text" id="wz-prod" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.example.com/booking" />
                   <p id="wz-prod-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
@@ -213,11 +246,12 @@
                   <p id="wz-sandbox-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
               </div>
-            </div>
-
-            <!-- LABELS & VISIBILITY -->
-            <div class="cfg-form-section">
-              <p class="cfg-form-section-title">Labels &amp; Visibility</p>
+            </section>
+            <section class="cfg-form-card">
+              <div class="cfg-form-card-head">
+                <h3 class="cfg-form-card-title">Labels and tags</h3>
+                <p class="cfg-form-card-desc">Labels decide which views list this <span class="wz-noun">API</span>. Tags help people find it in search.</p>
+              </div>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group cfg-form-group-full">
                   <label>Labels</label>
@@ -246,19 +280,13 @@
                   </div>
                   <p class="cfg-field-hint" id="wz-tags-hint">Free-text keywords for search and discovery. Press Enter or comma to add; Backspace removes the last tag.</p>
                 </div>
-                <div class="cfg-form-group">
-                  <label for="wz-status">Status</label>
-                  <select id="wz-status" class="cfg-form-input">
-                    <option value="PUBLISHED">Published</option>
-                    <option value="DEPRECATED">Deprecated</option>
-                  </select>
-                </div>
               </div>
-            </div>
-
-            <!-- OWNERSHIP -->
-            <div class="cfg-form-section">
-              <p class="cfg-form-section-title">Ownership</p>
+            </section>
+            <section class="cfg-form-card">
+              <div class="cfg-form-card-head">
+                <h3 class="cfg-form-card-title">Ownership</h3>
+                <p class="cfg-form-card-desc">Who consumers can contact about this <span class="wz-noun">API</span>.</p>
+              </div>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group">
                   <label for="wz-tech-owner">Technical owner</label>
@@ -279,11 +307,12 @@
                   <p id="wz-biz-email-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
               </div>
-            </div>
-
-            <!-- SUBSCRIPTION PLANS -->
-            <div class="cfg-form-section">
-              <p class="cfg-form-section-title">Applicable Subscription Plans</p>
+            </section>
+            <section class="cfg-form-card">
+              <div class="cfg-form-card-head">
+                <h3 class="cfg-form-card-title">Subscription plans</h3>
+                <p class="cfg-form-card-desc">Plans consumers can choose when they subscribe to this <span class="wz-noun">API</span>.</p>
+              </div>
               <div class="cfg-form-group cfg-form-group-full" style="position:relative;">
                 <label>Subscription plans</label>
                 <div class="cfg-chip-input-wrap" id="wz-policy-chip-wrap">
@@ -297,72 +326,108 @@
                 <p style="font-size:.844rem;color:#9aa3af;margin:6px 0 0;">No subscription plans yet. Create them under <strong>Subscription Plans</strong>.</p>
                 {{/unless}}
               </div>
-            </div>
+            </section>
           </div>
 
           <!-- Step 1: Spec -->
           <div class="cfg-wizard-step" id="cfg-wstep-1" style="display:none;">
-            <p class="cfg-wstep-desc">Upload the contract that defines this API. <span class="required">*</span> Required. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).</p>
-            <label class="cfg-upload-zone" id="wz-spec-zone">
-              <span class="cfg-upload-icon"><i class="bi bi-file-earmark-arrow-up"></i></span>
-              <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
-              <span class="cfg-upload-hint">Single spec file · up to 10 MB</span>
-              <input type="file" id="wz-spec-input" accept=".json,.yaml,.yml,.graphql,.gql,.wsdl,.xml" />
-            </label>
-            <p id="wz-spec-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;">A spec file is required to continue.</p>
-            <div id="wz-spec-onfile" style="display:none;" class="cfg-spec-onfile">
-              <i class="bi bi-check-circle-fill"></i>
-              <span>Existing spec on file — attach a new file above to replace it</span>
+            <p class="cfg-wstep-desc" id="wz-spec-desc"></p>
+            <div class="cfg-spec-current" id="wz-spec-onfile" style="display:none;">
+              <span class="cfg-spec-icon"><i class="bi bi-file-earmark-check"></i></span>
+              <div>
+                <div class="cfg-spec-name" id="wz-spec-current-title">Current spec</div>
+                <div class="cfg-spec-sub" id="wz-spec-current-sub">On file for this API</div>
+              </div>
+              <span class="cfg-docs-tag" id="wz-spec-replaced-tag" hidden>Will be replaced</span>
             </div>
             <div class="cfg-spec-chip" id="wz-spec-chip">
               <span class="cfg-spec-icon"><i class="bi bi-file-check"></i></span>
               <div>
                 <div class="cfg-spec-name" id="wz-spec-name"></div>
-                <div class="cfg-spec-sub">Spec uploaded</div>
+                <div class="cfg-spec-sub" id="wz-spec-sub"></div>
               </div>
-              <button type="button" class="cfg-action-btn" id="wz-spec-remove" style="margin-left:auto;">
+              <button type="button" class="cfg-action-btn" id="wz-spec-remove" style="margin-left:auto;" title="Remove" aria-label="Remove">
                 <i class="bi bi-x-lg"></i>
               </button>
             </div>
-          </div>
-
-          <!-- Step 2: Documentation -->
-          <div class="cfg-wizard-step" id="cfg-wstep-2" style="display:none;">
-            <p class="cfg-wstep-desc">Add guides or references to help developers use this API. You can upload multiple Markdown files (.md).</p>
-            <label class="cfg-upload-compact" id="wz-docs-zone">
-              <i class="bi bi-upload" style="color:#0277bd;font-size:1rem;flex:none;"></i>
-              <span style="font-size:.844rem;font-weight:600;color:#1a2433;">Drag &amp; drop or <span style="color:#1f6feb;">browse</span> to upload <span style="color:#9aa3af;font-weight:400;">— .md · multiple</span></span>
-              <input type="file" id="wz-docs-input" multiple accept=".md,.markdown" />
-            </label>
-            <div id="wz-existing-docs-list" class="cfg-docs-list"></div>
-            <div id="wz-docs-empty" class="cfg-docs-empty">No documents added yet.</div>
-            <div id="wz-docs-list" class="cfg-docs-list"></div>
-          </div>
-
-          <!-- Step 3: Content (landing page & assets) — edit mode only -->
-          <div class="cfg-wizard-step" id="cfg-wstep-3" style="display:none;">
-            <p class="cfg-wstep-desc">Upload a ZIP to set this API's developer-portal content. Include a <code>web/</code> folder for landing-page assets (Markdown, HTML, CSS, JS, images) and/or a <code>docs/</code> folder for downloadable documents. Files with a matching name are replaced; others are added. This uploads immediately when you click <strong>Upload content</strong> — it is independent of the <strong>Save changes</strong> button.</p>
-            <label class="cfg-upload-zone" id="wz-content-zone">
-              <span class="cfg-upload-icon"><i class="bi bi-file-earmark-zip"></i></span>
+            <label class="cfg-upload-zone" id="wz-spec-zone">
+              <span class="cfg-upload-icon"><i class="bi bi-file-earmark-arrow-up"></i></span>
               <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
-              <span class="cfg-upload-hint">Single ZIP file · up to 10 MB</span>
-              <input type="file" id="wz-content-input" accept=".zip" />
+              <span class="cfg-upload-hint">One file · up to 10 MB</span>
+              <input type="file" id="wz-spec-input" />
             </label>
-            <p id="wz-content-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;"></p>
-            <div class="cfg-spec-chip" id="wz-content-chip">
-              <span class="cfg-spec-icon"><i class="bi bi-file-earmark-zip-fill"></i></span>
-              <div>
-                <div class="cfg-spec-name" id="wz-content-name"></div>
-                <div class="cfg-spec-sub">Ready to upload</div>
+            <p id="wz-spec-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;">A spec file is required to continue.</p>
+            <div class="cfg-spec-formats" id="wz-spec-formats">
+              <p class="cfg-assets-heading">Accepted formats</p>
+              <table>
+                <tbody>
+                  <tr><td id="wz-spec-format-name"></td><td id="wz-spec-format-exts"></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Step 2: Assets -->
+          <div class="cfg-wizard-step" id="cfg-wstep-2" style="display:none;">
+            <div class="cfg-assets-panel" id="wz-assets-panel-docs">
+              <p class="cfg-wstep-desc" id="wz-assets-desc-docs" hidden>Add documents for this <span class="wz-noun">API</span>. You can change them later by editing the <span class="wz-noun">API</span>.</p>
+              <label class="cfg-upload-compact" id="wz-docs-zone">
+                <i class="bi bi-upload" style="color:#0277bd;font-size:1rem;flex:none;"></i>
+                <span style="font-size:.844rem;font-weight:600;color:#1a2433;">Drag &amp; drop or <span style="color:#1f6feb;">browse</span> to upload <span style="color:#9aa3af;font-weight:400;">— Markdown (.md) files</span></span>
+                <input type="file" id="wz-docs-input" accept=".md" multiple />
+              </label>
+              <div id="wz-existing-docs-section" hidden>
+                <p class="cfg-assets-heading">On this <span class="wz-noun">API</span></p>
+                <div id="wz-existing-docs-list" class="cfg-docs-list"></div>
               </div>
-              <button type="button" class="cfg-action-btn" id="wz-content-remove" style="margin-left:auto;">
-                <i class="bi bi-x-lg"></i>
+              <div id="wz-new-docs-section" hidden>
+                <p class="cfg-assets-heading">To upload</p>
+                <div id="wz-docs-list" class="cfg-docs-list"></div>
+              </div>
+              <p class="cfg-assets-summary" id="wz-docs-summary" aria-live="polite"></p>
+              <button type="button" class="cfg-link-btn" id="wz-assets-to-import">
+                <i class="bi bi-file-earmark-zip"></i> Import content from ZIP
               </button>
             </div>
-            <div class="d-flex align-items-center gap-3 mt-3">
-              <button type="button" class="cfg-btn-primary" id="wz-content-upload-btn" disabled>
-                <i class="bi bi-cloud-upload"></i> Upload content
+
+            <div class="cfg-assets-panel" id="wz-assets-panel-import" hidden>
+              <p id="wz-content-error" class="cfg-assets-alert" role="alert" style="display:none;"></p>
+              <button type="button" class="cfg-link-btn" id="wz-assets-to-docs">
+                <i class="bi bi-arrow-left"></i> Back to uploading documents
               </button>
+              <p class="cfg-assets-title">Import a content package</p>
+              <p class="cfg-wstep-desc" id="wz-assets-desc-import" hidden>Saving removes the current documents, landing page and thumbnail, and uses this ZIP’s content instead.</p>
+              <div class="cfg-assets-layout">
+                <p class="cfg-assets-heading">Expected ZIP layout</p>
+                <table>
+                  <tbody>
+                    <tr><td><code>web/</code></td><td></td></tr>
+                    <tr><td class="cfg-assets-layout-nested"><code>apiContent.md</code> or <code>.hbs</code></td><td>Landing page</td></tr>
+                    <tr><td class="cfg-assets-layout-nested"><code>api-icon.png</code> or <code>.jpg</code></td><td>Thumbnail</td></tr>
+                    <tr><td class="cfg-assets-layout-nested">other images</td><td>Used by the landing page</td></tr>
+                    <tr><td><code>docs/</code></td><td></td></tr>
+                    <tr><td class="cfg-assets-layout-nested"><code>&lt;file&gt;.md</code></td><td>Document, category Other</td></tr>
+                    <tr><td class="cfg-assets-layout-nested"><code>&lt;Category&gt;/&lt;file&gt;.md</code></td><td>Document in that category</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <label class="cfg-upload-zone" id="wz-content-zone">
+                <span class="cfg-upload-icon"><i class="bi bi-file-earmark-zip"></i></span>
+                <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
+                <span class="cfg-upload-hint">One .zip file · up to 10 MB</span>
+                <input type="file" id="wz-content-input" accept=".zip" />
+              </label>
+              <div class="cfg-spec-chip" id="wz-content-chip">
+                <span class="cfg-spec-icon"><i class="bi bi-file-earmark-zip-fill"></i></span>
+                <div>
+                  <div class="cfg-spec-name" id="wz-content-name"></div>
+                  <div class="cfg-spec-sub" id="wz-content-sub"></div>
+                </div>
+                <button type="button" class="cfg-link-btn" id="wz-content-choose" style="margin-left:auto;" hidden>Choose another file</button>
+                <button type="button" class="cfg-action-btn" id="wz-content-remove" style="margin-left:auto;" title="Remove" aria-label="Remove">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </div>
             </div>
           </div>
 
