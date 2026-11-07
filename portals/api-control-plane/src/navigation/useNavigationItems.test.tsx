@@ -198,7 +198,10 @@ describe('submenu children also follow GraphQL API scope, for the submenus that 
     const item = itemFor(atGraphqlApi(), routes.graphqlApi(ORG, PROJECT, GRAPHQL_API), 'develop');
 
     expect(item.children?.find((child) => child.id === 'develop-routing')).toBeUndefined();
-    expect(item.children?.map((child) => child.id)).toEqual(['develop-policies', 'develop-documents']);
+    expect(item.children?.map((child) => child.id)).toEqual([
+      'develop-policies',
+      'develop-documents',
+    ]);
   });
 
   it('links Test to the GraphQL test console, not a submenu, while a GraphQL API is in scope', () => {
@@ -431,11 +434,9 @@ describe('host-injected sidebar extensions', () => {
   };
 
   it('renders an extension with children as a disclosure, at the parent level', () => {
-    const items = itemsWithExtensions(
-      atOrg(),
-      `/organizations/${ORG}/observability/logs`,
-      [observabilityExtension],
-    );
+    const items = itemsWithExtensions(atOrg(), `/organizations/${ORG}/observability/logs`, [
+      observabilityExtension,
+    ]);
     const parent = items.find((entry) => entry.id === 'observability');
 
     // The built-in item of the same id gives way outside API scope, so the one
@@ -452,11 +453,9 @@ describe('host-injected sidebar extensions', () => {
   });
 
   it('hands the id back to the built-in item inside API scope', () => {
-    const items = itemsWithExtensions(
-      atApi(),
-      routes.api(ORG, PROJECT, API),
-      [observabilityExtension],
-    );
+    const items = itemsWithExtensions(atApi(), routes.api(ORG, PROJECT, API), [
+      observabilityExtension,
+    ]);
     const observability = items.filter((entry) => entry.id === 'observability');
 
     expect(observability).toHaveLength(1);
@@ -498,7 +497,9 @@ describe('host-injected sidebar extensions', () => {
     const items = itemsWithExtensions(atOrg(), routes.organizationHome(ORG), [unclaimed]);
 
     expect(items.filter((entry) => entry.id === 'observability')).toHaveLength(2);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('shares its id with a built-in item'));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('shares its id with a built-in item'),
+    );
     warn.mockRestore();
   });
 
@@ -531,7 +532,11 @@ describe('disableFeatures', () => {
     const ids = idsOf(withDisabled([], atApi(), atApiRoute));
 
     expect(ids).toEqual(
-      expect.arrayContaining(['observability-metrics', 'observability-logs', 'insights-compliance']),
+      expect.arrayContaining([
+        'observability-metrics',
+        'observability-logs',
+        'insights-compliance',
+      ]),
     );
   });
 
@@ -603,10 +608,35 @@ describe('permission-gated items', () => {
     expect(manageChildren(['ap:service_account:manage'])).toContain('manage-service-accounts');
   });
 
+  it('hides Service Accounts when the deployment disables the feature, even from an administrator', () => {
+    disabled.names = ['service-accounts'];
+    try {
+      expect(manageChildren(['ap:service_account:manage'])).not.toContain(
+        'manage-service-accounts',
+      );
+    } finally {
+      disabled.names = [];
+    }
+  });
+
+  it('hides Manage entirely when every page under it is disabled', () => {
+    disabled.names = ['subscription-plans', 'meters', 'service-accounts'];
+    try {
+      const manage = itemsAt(atOrg(), routes.organizationHome(ORG), [
+        'ap:service_account:manage',
+      ]).find((item) => item.id === 'manage');
+      expect(manage).toBeUndefined();
+    } finally {
+      disabled.names = [];
+    }
+  });
+
   describe('with Subscription Plans and Meters disabled', () => {
     const manageFor = (scopes: string[]) => {
       disabled.names = ['subscription-plans', 'meters'];
-      return itemsAt(atOrg(), routes.organizationHome(ORG), scopes).find((item) => item.id === 'manage');
+      return itemsAt(atOrg(), routes.organizationHome(ORG), scopes).find(
+        (item) => item.id === 'manage',
+      );
     };
 
     afterEach(() => {
@@ -682,10 +712,7 @@ describe('permission-gated sidebar extensions', () => {
   });
 });
 
-const itemIdsHoldingWith = (
-  granted: readonly string[],
-  extensions: ApiControlPlaneExtension[],
-) => {
+const itemIdsHoldingWith = (granted: readonly string[], extensions: ApiControlPlaneExtension[]) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[routes.organizationHome(ORG)]}>
       <PermissionContext.Provider value={permissionStateFor(granted)}>

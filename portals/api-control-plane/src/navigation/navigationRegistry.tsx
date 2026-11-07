@@ -587,6 +587,7 @@ export const navigationRegistry: NavigationDefinition[] = [
       },
       {
         icon: <UserRoundKey />,
+        disableKey: 'service-accounts',
         id: 'manage-service-accounts',
         label: 'Service Accounts',
         order: 2,

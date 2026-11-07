@@ -658,25 +658,31 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route
             path={routes.serviceAccounts()}
             element={
-              <AppPage>
-                <ServiceAccountsPage />
-              </AppPage>
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <ServiceAccountsPage />
+                </AppPage>
+              </FeatureGate>
             }
           />
           <Route
             path={routes.serviceAccountCreate()}
             element={
-              <AppPage>
-                <CreateServiceAccountPage />
-              </AppPage>
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <CreateServiceAccountPage />
+                </AppPage>
+              </FeatureGate>
             }
           />
           <Route
             path={routes.serviceAccountCreated()}
             element={
-              <AppPage>
-                <ServiceAccountCreatedPage />
-              </AppPage>
+              <FeatureGate features={['service-accounts']}>
+                <AppPage>
+                  <ServiceAccountCreatedPage />
+                </AppPage>
+              </FeatureGate>
             }
           />
           {extensionRoutes}
