@@ -26,7 +26,7 @@ function error(props) {
 }
 
 test('network failures are counted', () => {
-    for (const code of ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN']) {
+    for (const code of ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGAIN']) {
         assert.equal(isConnectionFailure(error({ code })), true, code);
     }
 });
@@ -35,6 +35,14 @@ test('an AggregateError from a multi-address connect is counted through its inne
     const err = new AggregateError([error({ code: 'ECONNREFUSED' }), error({ code: 'ECONNREFUSED' })], 'connect failed');
     assert.equal(isConnectionFailure(err), true);
     assert.equal(isConnectionFailure(new AggregateError([error({ code: '23505' })])), false);
+});
+
+test('an unreachable network or host is counted, directly and inside an AggregateError', () => {
+    for (const code of ['ENETUNREACH', 'EHOSTUNREACH']) {
+        assert.equal(isConnectionFailure(error({ code })), true, code);
+        assert.equal(isConnectionFailure(new AggregateError([error({ code }), error({ code })], 'connect failed')), true, code);
+        assert.equal(failureKind(error({ code })), 'unreachable', code);
+    }
 });
 
 test('PostgreSQL connection, authentication and shutdown states are counted', () => {

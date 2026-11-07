@@ -24,8 +24,12 @@
  * problem, not an outage.
  */
 
-// Socket and resolver failures, from Node itself or surfaced by any of the drivers.
-const NETWORK_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN']);
+// Socket, routing and resolver failures, from Node itself or surfaced by any of the
+// drivers. ENETUNREACH and EHOSTUNREACH are what a connect gets when the route to the
+// database host is gone, for example after its node fails.
+const NETWORK_CODES = new Set([
+    'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGAIN',
+]);
 
 // PostgreSQL SQLSTATEs: admin shutdown, crash shutdown, cannot connect now. Classes 08
 // (connection exception) and 28 (invalid authorization) are matched by prefix.

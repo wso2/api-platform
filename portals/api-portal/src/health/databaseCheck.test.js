@@ -302,3 +302,56 @@ test('a caller timing out in the pool queue neither counts as a failure nor forc
     assert.equal(await check(), null);
     assert.equal(state.pings, 1);
 });
+
+test('a pool connection error is checked at once, even with enough older successes for rule 1', async () => {
+    const { check, traffic, clock, state, window } = setup();
+    traffic(10);
+    assert.equal(await check(), null);
+    assert.equal(state.pings, 0, 'busy enough for rule 1, so no ping');
+
+    // The database restarts: the pool drops an idle connection and traffic stops.
+    clock.now += 3000;
+    window.notePoolError(refused());
+    state.pingResult = refused();
+    assert.equal(await check(), 'database unreachable', 'the older successes must not keep the check up');
+    assert.equal(state.pings, 1);
+});
+
+test('after a failed ping, successes from before it cannot outvote it', async () => {
+    const { check, traffic, clock, state, window } = setup();
+    traffic(10);
+    clock.now += 3000;
+    window.notePoolError(refused());
+    state.pingResult = refused();
+    assert.equal(await check(), 'database unreachable');
+
+    // One more failing query after the ping: with the older successes it would read 1 of 11.
+    clock.now += 3000;
+    traffic(0, 1);
+    assert.equal(await check(), 'database unreachable');
+
+    // The database is back: enough successes after the failed ping bring the check up.
+    clock.now += 1000;
+    traffic(5);
+    assert.equal(await check(), null);
+});
+
+test('a saturation that ended during an outage does not carry over to a later one', async () => {
+    const saturated = { max: 10, total: 10, idle: 0, waiting: 4 };
+    const drained = { max: 10, total: 0, idle: 0, waiting: 0 };
+    const { check, traffic, clock, state } = setup({ stats: saturated });
+    traffic(5);
+    assert.equal(await check(), null, 'saturation starts');
+
+    // The database goes down and the pool drains while it is down.
+    clock.now += 1000;
+    state.stats = drained;
+    traffic(0, 10);
+    assert.equal(await check(), 'database unreachable');
+
+    // It recovers and the pool saturates again: the wait limit starts afresh.
+    clock.now += 30000;
+    state.stats = saturated;
+    traffic(20);
+    assert.equal(await check(), null, 'a new saturation must wait out pool_wait_limit');
+});

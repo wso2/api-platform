@@ -422,7 +422,9 @@ deployment:
   # from an address in config.health.allowedClients (kubelet probes arrive from the
   # node's address). Both answer 503 while the database is unreachable: readiness
   # takes the pod out of service quickly, and liveness restarts it only after the
-  # outage has lasted failureThreshold x periodSeconds (2 minutes).
+  # outage has lasted failureThreshold x periodSeconds (2 minutes). With
+  # tls.certificateProvider=none the portal serves plain HTTP, and all three probes are
+  # rendered with scheme HTTP; any other probe setting is kept as given.
   livenessProbe:
     httpGet: { path: /health, port: http, scheme: HTTPS }
     periodSeconds: 10

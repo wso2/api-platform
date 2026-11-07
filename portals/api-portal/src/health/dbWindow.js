@@ -100,10 +100,15 @@ class OutcomeWindow {
         this.record({ ...options, failure: isConnectionFailure(err) ? failureKind(err) : null });
     }
 
-    /** Sums the outcomes still inside the window. */
-    snapshot() {
+    /**
+     * Sums the outcomes still inside the window. With `sinceMs`, only those recorded in
+     * that second or later count, so a decision can be made from what happened after a
+     * given moment alone.
+     */
+    snapshot({ sinceMs = null } = {}) {
         const nowMs = this.now();
-        const oldest = Math.floor(nowMs / BUCKET_MS) - this.size + 1;
+        let oldest = Math.floor(nowMs / BUCKET_MS) - this.size + 1;
+        if (sinceMs !== null) oldest = Math.max(oldest, Math.floor(sinceMs / BUCKET_MS));
         let attempts = 0;
         let failures = 0;
         for (const bucket of this.buckets) {

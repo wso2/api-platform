@@ -527,6 +527,12 @@ const HEALTH_DATABASE_KEYS = [
 // probe timeouts give up first.
 const SLOW_HEALTH_CHECK_TIMEOUT_MS = 5000;
 
+// Upper bounds. check_timeout becomes a timer, and Node clamps a timer above about 24.8
+// days to 1ms, which would time out every ping at once. failure_window is kept in
+// one-second buckets allocated at startup, so it is bounded like the Go components'.
+const MAX_HEALTH_CHECK_TIMEOUT_MS = 60 * 1000;
+const MAX_HEALTH_FAILURE_WINDOW_MS = 60 * 60 * 1000;
+
 /**
  * Fail-closed startup check for [api_portal.health] and [api_portal.health.database],
  * with the same rules as the Go components' health settings. An invalid value aborts
@@ -559,7 +565,7 @@ function validateHealthConfig(cfg, databaseKeys) {
 
     const duration = (table, field, key) => {
         const ms = parseDuration(table[field]);
-        if (!(ms > 0)) {
+        if (!(ms > 0) || !Number.isFinite(ms)) {
             fatal(`${key} must be a positive duration such as "3s" or "500ms", got ${JSON.stringify(table[field])}.`);
         }
         table[`${field}Ms`] = ms;
@@ -581,6 +587,18 @@ function validateHealthConfig(cfg, databaseKeys) {
     ratio('poolSaturation', 'api_portal.health.database.pool_saturation');
     if (!Number.isInteger(database.minAttempts) || database.minAttempts < 1) {
         fatal(`api_portal.health.database.min_attempts must be a whole number of at least 1, got ${JSON.stringify(database.minAttempts)}.`);
+    }
+    if (checkTimeout > MAX_HEALTH_CHECK_TIMEOUT_MS) {
+        fatal(
+            `api_portal.health.database.check_timeout must be at most ${formatDuration(MAX_HEALTH_CHECK_TIMEOUT_MS)}, ` +
+            `got ${formatDuration(checkTimeout)}.`
+        );
+    }
+    if (failureWindow > MAX_HEALTH_FAILURE_WINDOW_MS) {
+        fatal(
+            `api_portal.health.database.failure_window must be at most ${formatDuration(MAX_HEALTH_FAILURE_WINDOW_MS)}, ` +
+            `got ${formatDuration(failureWindow)}.`
+        );
     }
     if (failureWindow < cacheTtl) {
         fatal(

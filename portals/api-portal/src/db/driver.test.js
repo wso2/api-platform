@@ -248,6 +248,27 @@ test('a health ping that outlasts its timeout is rejected as timed out, and its 
     assert.ok(snap.lastPing);
 });
 
+test('a new health ping does not start another query while a timed-out one still runs', async () => {
+    const adapter = fakeAdapter();
+    let finish;
+    let queries = 0;
+    adapter.query = () => {
+        queries += 1;
+        return new Promise((resolve) => { finish = resolve; });
+    };
+    const { db } = loadDriver({ adapter });
+
+    await assert.rejects(db.healthPing({ timeoutMs: 10 }), (err) => err.timedOut === true);
+    await assert.rejects(db.healthPing({ timeoutMs: 10 }), (err) => err.timedOut === true);
+    assert.equal(queries, 1, 'the second ping must not start a query while the first still runs');
+
+    finish([]);
+    await new Promise((resolve) => setImmediate(resolve));
+    adapter.query = async () => { queries += 1; return []; };
+    await db.healthPing({ timeoutMs: 1000 });
+    assert.equal(queries, 2, 'once the first query settles, the next ping runs again');
+});
+
 test('pool errors reported by the adapter are noted for the health check, not counted', () => {
     const { db, hooks } = loadDriver();
     hooks().onPoolError(new Error('Connection terminated unexpectedly'));

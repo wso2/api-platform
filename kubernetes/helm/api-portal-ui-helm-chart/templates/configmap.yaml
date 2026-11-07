@@ -53,6 +53,9 @@ data:
     check_timeout = {{ $dbHealth.checkTimeout | quote }}
     failure_window = {{ $dbHealth.failureWindow | quote }}
     failure_ratio = {{ $dbHealth.failureRatio | float64 }}
+    {{- if ne (float64 $dbHealth.minAttempts) (float64 (int $dbHealth.minAttempts)) }}
+    {{- fail (printf "config.health.database.minAttempts must be a whole number (got %v)" $dbHealth.minAttempts) }}
+    {{- end }}
     min_attempts = {{ $dbHealth.minAttempts | int }}
     idle_period = {{ $dbHealth.idlePeriod | quote }}
     pool_saturation = {{ $dbHealth.poolSaturation | float64 }}

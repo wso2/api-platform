@@ -53,10 +53,16 @@ function isSaturated(stats, ratio) {
  *      bounded by `checkTimeout`, and that result decides. It does so even while the
  *      portal uses the database, since traffic too thin for rule 1 cannot show an outage
  *      or a recovery, and a decision left standing would never expire.
- *   3. Between those pings the last decided state stands; with none yet, or once the
- *      pool has raised a connection error since the last ping, rule 2 applies.
+ *   3. Between those pings the last decided state stands; with none yet, rule 2
+ *      applies.
  *   4. An up result is turned down once the pool has stayed saturated for
  *      `poolWaitLimit`.
+ *
+ * Two signals take precedence over older traffic. Once the pool has raised a connection
+ * error since the last ping, the check pings at once, whatever rule 1 would say from
+ * outcomes that may predate the error. And while a failed ping is what took the check
+ * down, rule 1 counts only the outcomes recorded since that ping, so successes from
+ * before the outage cannot outvote it.
  *
  * So a busy instance never adds health queries, and any other adds at most one per
  * `idlePeriod`. The check resolves to null when up, or to a fixed reason when down;
@@ -80,15 +86,23 @@ function createDatabaseCheck({ window, ping, poolStats, settings, now = Date.now
 
     async function decide(nowMs) {
         const snap = window.snapshot();
-        if (snap.attempts >= settings.minAttempts) {
-            const down = snap.failures / snap.attempts >= settings.failureRatio;
-            return { up: !down, reason: down ? reasonFor(snap.lastFailureKind) : null };
-        }
-        const quiet = (last) => last === null || nowMs - last >= settings.idlePeriodMs;
         // A connection error the pool raised since the last ping means the decided
-        // state may be stale either way, so it is checked again at once.
+        // state, and the outcomes rule 1 would judge, may be stale, so it is checked
+        // again at once.
         const poolErrorSincePing = snap.lastPoolError !== null &&
             (snap.lastPing === null || snap.lastPoolError > snap.lastPing);
+        // While a failed ping keeps the check down, only what happened since it counts.
+        const failedPingAt = decided && !decided.up ? decided.failedPingAt ?? null : null;
+        if (!poolErrorSincePing) {
+            const counted = failedPingAt === null ? snap : window.snapshot({ sinceMs: failedPingAt });
+            if (counted.attempts >= settings.minAttempts) {
+                const down = counted.failures / counted.attempts >= settings.failureRatio;
+                return down
+                    ? { up: false, reason: reasonFor(snap.lastFailureKind), failedPingAt }
+                    : { up: true, reason: null };
+            }
+        }
+        const quiet = (last) => last === null || nowMs - last >= settings.idlePeriodMs;
         if (decided && !quiet(snap.lastPing) && !poolErrorSincePing) {
             return decided;
         }
@@ -96,21 +110,31 @@ function createDatabaseCheck({ window, ping, poolStats, settings, now = Date.now
             await ping({ timeoutMs: settings.checkTimeoutMs });
             return { up: true, reason: null };
         } catch (err) {
-            return { up: false, reason: err?.timedOut ? timedOut : reasonFor(failureKind(err)) };
+            return {
+                up: false,
+                reason: err?.timedOut ? timedOut : reasonFor(failureKind(err)),
+                failedPingAt: nowMs,
+            };
         }
     }
 
     return async function databaseCheck() {
         decided = await decide(now());
+        // The pool is sampled on every evaluation, down or up, so a saturation that
+        // ended during an outage does not leave a stale start time behind.
+        const nowMs = now();
+        const saturated = isSaturated(poolStats(), settings.poolSaturation);
+        if (!saturated) {
+            saturatedSince = null;
+        } else if (saturatedSince === null) {
+            saturatedSince = nowMs;
+        }
         if (!decided.up) {
             return decided.reason;
         }
-        const nowMs = now();
-        if (!isSaturated(poolStats(), settings.poolSaturation)) {
-            saturatedSince = null;
+        if (!saturated) {
             return null;
         }
-        if (saturatedSince === null) saturatedSince = nowMs;
         return nowMs - saturatedSince >= settings.poolWaitLimitMs ? POOL_EXHAUSTED : null;
     };
 }

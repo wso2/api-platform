@@ -203,8 +203,8 @@ allowed_clients = ["*"]
 # cannot be opened); SQL errors and slow queries do not. Not registered in design
 # mode, which has no database.
 [api_portal.health.database]
-check_timeout = "2s"            # bound on the check's own SELECT 1 round trip
-failure_window = "30s"          # how far back query outcomes count; >= cache_ttl
+check_timeout = "2s"            # bound on the check's own SELECT 1 round trip; <= 1m
+failure_window = "30s"          # how far back query outcomes count; >= cache_ttl, <= 1h
 failure_ratio = 0.5             # down when failures / attempts reaches this (0 < r <= 1)
 min_attempts = 5                # attempts in the window needed before the ratio decides
 idle_period = "10s"             # with too few queries to decide, the check runs its own

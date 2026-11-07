@@ -111,3 +111,18 @@ test('a window shorter than a bucket still keeps one bucket', () => {
     win.recordSuccess();
     assert.equal(win.snapshot().attempts, 1);
 });
+
+test('a snapshot since a moment counts only the outcomes from that second on', () => {
+    const { clock, win } = setup();
+    win.recordSuccess();
+    win.recordSuccess();
+    clock.now += 2000;
+    const since = clock.now;
+    win.recordError(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+    clock.now += 1000;
+
+    const all = win.snapshot();
+    const recent = win.snapshot({ sinceMs: since });
+    assert.deepStrictEqual([all.attempts, all.failures], [3, 1]);
+    assert.deepStrictEqual([recent.attempts, recent.failures], [1, 1]);
+});

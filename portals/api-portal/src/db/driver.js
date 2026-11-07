@@ -210,13 +210,27 @@ function observeTransaction(fn) {
     );
 }
 
+// The health ping's SELECT 1 while it is still running, even after the ping itself
+// timed out; null otherwise.
+let inflightPing = null;
+
 /**
  * The health check's own round trip: SELECT 1 straight through the adapter, outside
  * any ambient transaction, recorded as a ping so it never counts as application
  * activity or as an attempt (only its time is kept). When it outlasts `timeoutMs` it
  * is rejected with `timedOut` set; its late outcome, if any, is then ignored.
+ *
+ * At most one SELECT 1 runs at a time. A ping that timed out keeps its pooled
+ * connection until its query settles, so against a database that stopped answering,
+ * a new query per ping would pile up connections until the pool is full. While an
+ * earlier one is still running, the ping is reported as timed out without starting
+ * another.
  */
 function healthPing({ timeoutMs } = {}) {
+    if (inflightPing) {
+        outcomes.record({ failure: 'timeout', ping: true });
+        return Promise.reject(Object.assign(new Error('database health ping still in flight'), { timedOut: true }));
+    }
     return new Promise((resolve, reject) => {
         let settled = false;
         let timer;
@@ -240,6 +254,11 @@ function healthPing({ timeoutMs } = {}) {
         } catch (err) {
             pending = Promise.reject(err);
         }
+        inflightPing = pending;
+        const release = () => {
+            if (inflightPing === pending) inflightPing = null;
+        };
+        pending.then(release, release);
         pending.then(
             () => settle(() => outcomes.recordSuccess({ ping: true }), resolve),
             (err) => settle(() => outcomes.recordError(err, { ping: true }), () => reject(err))
