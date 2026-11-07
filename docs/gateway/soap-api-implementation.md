@@ -197,12 +197,20 @@ backend. On GET, a successful service description is rewritten on its way back.
   — Fault shapes, codes, escaping, negotiation and the kernel path.
 - Storage/schema, registry dispatch and the role map are covered by the existing
   table-list, `TestRegistryKindsMatchDispatch` and auth-config tests.
+- Integration tests in `tests/framework` (`gateway-core` block, source builds only), against
+  the testbench `soap-backend` (port 3027):
+  - `gateway/soap/deploy.feature`: create, update, labels, validation, list and get; SOAP 1.1 and 1.2
+    invocation; backend Faults passed through; the trailing-slash upstream path;
+    `deploymentState`.
+  - `gateway/soap/wsdl.feature`: addresses rewritten to the requested authority, an ISO-8859-1 WSDL,
+    a WSDL with a DOCTYPE refused with 502, and a non-WSDL GET passed through.
+  - `gateway/soap/policies.feature`: `api-key-auth` and `basic-ratelimit` rejections as SOAP 1.1 and
+    1.2 Faults, on the WSDL route too, with a templated rate-limit parameter.
 
 ## 7. Known limitations / follow-ups
 
 - Router failures and not-yet-migrated policies are not rendered as Faults by default; a
   `faultPolicies` entry (e.g. `error-response-formatter` preset `soap11`) covers them.
-- Integration tests under `tests/framework` (CRUD, invoke POST/`?wsdl`, auth on GET).
 - `policy.APIKindSoapApi` is new in sdk/core: the policy engine and the analytics system
   policy build against it through the workspace until their `go.mod` moves to the SDK release
   that adds it.

@@ -4089,6 +4089,7 @@ func TestCleanupKindForResource(t *testing.T) {
 		"MCP proxy":   cleanup.KindMCPProxy,
 		"LLM proxy":   cleanup.KindLLMProxy,
 		"GraphQL API": cleanup.KindGraphQLAPI,
+		"SOAP API":    cleanup.KindSoapAPI,
 	} {
 		got, err := CleanupKindForResource(kind)
 		require.NoError(t, err, kind)

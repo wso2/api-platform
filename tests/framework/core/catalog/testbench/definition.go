@@ -47,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/soapbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
@@ -149,6 +150,7 @@ func Testbench() *components.Definition {
 			{Name: "oidc", Port: oidc.Port, Scheme: "https", AwaitListening: true},
 			{Name: "guardian", Port: guardian.Port, Scheme: "http", AwaitListening: true},
 			{Name: "graphql-backend", Port: graphqlbackend.Port, Scheme: "http", AwaitListening: true},
+			{Name: "soap-backend", Port: soapbackend.Port, Scheme: "http", AwaitListening: true},
 			{Name: "opa", Port: opa.Port, Scheme: "http", AwaitListening: true},
 			// jev is STATEFUL and partitioned per scenario: it records the TypeSafe Jev calls a
 			// policy makes, addressed as http://testbench:3019/<partition>/<mode>. See

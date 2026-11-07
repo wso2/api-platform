@@ -1,0 +1,5 @@
+apiVersion: ${VALUE:apiVersion}
+kind: SoapApi
+metadata:
+  name: ${VALUE:name}
+spec: {}
