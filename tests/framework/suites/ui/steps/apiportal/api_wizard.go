@@ -122,34 +122,39 @@ func (u *Steps) wizardItem(ctx context.Context) (string, error) {
 }
 
 // startWizard opens the create wizard from the given settings panel and fills the Details step.
-func (u *Steps) startWizard(ctx context.Context, panel, addButton, prefix string) (playwright.Page, string, error) {
+// Cleanup is registered before anything is created, so a failure at any later step can't leak the
+// resource; deleting one that was never created is a 404, which the deleter accepts.
+func (u *Steps) startWizard(ctx context.Context, panel, addButton, prefix string, kind cleanup.Kind) (playwright.Page, error) {
 	generated, err := unique.Unique(ctx, prefix)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	id := wizardHandle(generated)
+	if err := cleanup.Register(ctx, cleanup.Resource{Kind: kind, ID: id, Actor: u.topo.Admin.Username}); err != nil {
+		return nil, fmt.Errorf("registering %s for cleanup: %w", id, err)
+	}
 	if err := tcontext.Set(ctx, keyAPIPortalWizardItem, id); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	page, err := u.openSettings(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if err := page.Locator(`.cfg-nav-item[data-panel="` + panel + `"]`).Click(); err != nil {
-		return nil, "", fmt.Errorf("opening the %s panel: %w", panel, err)
+		return nil, fmt.Errorf("opening the %s panel: %w", panel, err)
 	}
 	if err := page.Locator(addButton).Click(); err != nil {
-		return nil, "", fmt.Errorf("opening the wizard: %w", err)
+		return nil, fmt.Errorf("opening the wizard: %w", err)
 	}
 	for selector, value := range map[string]string{
 		"#wz-name": "IT Wizard " + id, "#wz-version": "v1.0", "#wz-handle": id,
 		"#wz-prod": "https://backend.example.invalid/" + id,
 	} {
 		if err := page.Locator(selector).Fill(value); err != nil {
-			return nil, "", fmt.Errorf("filling %s: %w", selector, err)
+			return nil, fmt.Errorf("filling %s: %w", selector, err)
 		}
 	}
-	return page, id, nil
+	return page, nil
 }
 
 // wizardToSpec picks the thumbnail and API type on Details and moves to the Spec step, checking
@@ -205,12 +210,8 @@ func (u *Steps) wizardSaved(page playwright.Page) error {
 		playwright.LocatorAssertionsToBeHiddenOptions{Timeout: playwright.Float(wizardSaveTimeout)})
 }
 
-func (u *Steps) registerWizardCleanup(ctx context.Context, kind cleanup.Kind, id string) error {
-	return cleanup.Register(ctx, cleanup.Resource{Kind: kind, ID: id, Actor: u.topo.Admin.Username})
-}
-
 func (u *Steps) createWizardAPI(ctx context.Context) error {
-	page, id, err := u.startWizard(ctx, "cfg-apis", "#cfg-add-api-btn", "api-wizard")
+	page, err := u.startWizard(ctx, "cfg-apis", "#cfg-add-api-btn", "api-wizard", KindAPIPortalAPI)
 	if err != nil {
 		return err
 	}
@@ -234,10 +235,7 @@ func (u *Steps) createWizardAPI(ctx context.Context) error {
 	if err := page.Locator(wizardNext).Click(); err != nil {
 		return err
 	}
-	if err := u.wizardSaved(page); err != nil {
-		return err
-	}
-	return u.registerWizardCleanup(ctx, KindAPIPortalAPI, id)
+	return u.wizardSaved(page)
 }
 
 func (u *Steps) wizardRowThumbnail(ctx context.Context) error {
@@ -339,7 +337,7 @@ func (u *Steps) wizardShowsNewThumbnailAndDocs(ctx context.Context) error {
 }
 
 func (u *Steps) createWizardAPIWithRejectedPackage(ctx context.Context) error {
-	page, id, err := u.startWizard(ctx, "cfg-apis", "#cfg-add-api-btn", "api-wizard-import")
+	page, err := u.startWizard(ctx, "cfg-apis", "#cfg-add-api-btn", "api-wizard-import", KindAPIPortalAPI)
 	if err != nil {
 		return err
 	}
@@ -362,10 +360,7 @@ func (u *Steps) createWizardAPIWithRejectedPackage(ctx context.Context) error {
 	if err := page.Locator(wizardNext).Click(); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(page.Locator("#wz-content-chip")).ToContainText("Not uploaded"); err != nil {
-		return err
-	}
-	return u.registerWizardCleanup(ctx, KindAPIPortalAPI, id)
+	return u.expect.Locator(page.Locator("#wz-content-chip")).ToContainText("Not uploaded")
 }
 
 func (u *Steps) wizardListsRejectedEntries(ctx context.Context) error {
@@ -461,7 +456,7 @@ func (u *Steps) confirmWizardImport(ctx context.Context) error {
 }
 
 func (u *Steps) createWizardMCP(ctx context.Context) error {
-	page, id, err := u.startWizard(ctx, "cfg-mcps", "#cfg-add-mcp-btn", "mcp-wizard")
+	page, err := u.startWizard(ctx, "cfg-mcps", "#cfg-add-mcp-btn", "mcp-wizard", KindAPIPortalMCP)
 	if err != nil {
 		return err
 	}
@@ -482,8 +477,5 @@ func (u *Steps) createWizardMCP(ctx context.Context) error {
 	if err := page.Locator(wizardNext).Click(); err != nil {
 		return err
 	}
-	if err := u.wizardSaved(page); err != nil {
-		return err
-	}
-	return u.registerWizardCleanup(ctx, KindAPIPortalMCP, id)
+	return u.wizardSaved(page)
 }
