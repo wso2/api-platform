@@ -152,7 +152,7 @@ describe('CreateServiceAccountPage', () => {
           `/organizations/${ORG}/service-accounts/created`,
         ),
       );
-      expect(peekCredentials()?.clientSecret).toBe(SECRET);
+      expect(peekCredentials(ORG)?.clientSecret).toBe(SECRET);
       clearCredentials();
     },
     FORM_TIMEOUT,

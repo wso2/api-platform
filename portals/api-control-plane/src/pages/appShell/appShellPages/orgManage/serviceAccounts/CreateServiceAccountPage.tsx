@@ -54,94 +54,151 @@ import { DEFAULT_ROLE } from './components/RolePicker';
 import { SectionLabel } from './components/ServiceAccountEditParts';
 import { holdCredentials } from './createdCredentials';
 
-const P =
-  'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage';
-
 const messages = defineMessages({
-  back: { id: `${P}.back`, defaultMessage: 'Service accounts' },
-  title: { id: `${P}.title`, defaultMessage: 'New service account' },
+  back: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.back',
+    defaultMessage: 'Service accounts',
+  },
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.title',
+    defaultMessage: 'New service account',
+  },
   subtitle: {
-    id: `${P}.subtitle`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.subtitle',
     defaultMessage:
       'An identity for a script, pipeline or tool. You get a client ID and secret once it is created.',
   },
-  details: { id: `${P}.details`, defaultMessage: 'Details' },
-  displayName: { id: `${P}.displayName`, defaultMessage: 'Display name' },
+  details: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.details',
+    defaultMessage: 'Details',
+  },
+  displayName: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.displayName',
+    defaultMessage: 'Display name',
+  },
   displayNamePlaceholder: {
-    id: `${P}.displayNamePlaceholder`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.displayNamePlaceholder',
     defaultMessage: 'e.g. billing-sync-pipeline',
   },
-  description: { id: `${P}.description`, defaultMessage: 'Description' },
+  description: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.description',
+    defaultMessage: 'Description',
+  },
   descriptionPlaceholder: {
-    id: `${P}.descriptionPlaceholder`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.descriptionPlaceholder',
     defaultMessage: 'What the account is for, who owns it',
   },
-  roles: { id: `${P}.roles`, defaultMessage: 'Roles' },
-  rolesHint: { id: `${P}.rolesHint`, defaultMessage: 'Select one or more. Scopes are combined.' },
-  rolesRequired: { id: `${P}.rolesRequired`, defaultMessage: 'Select at least one role.' },
-  rolesLoading: { id: `${P}.rolesLoading`, defaultMessage: 'Loading roles' },
+  roles: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roles',
+    defaultMessage: 'Roles',
+  },
+  rolesHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesHint',
+    defaultMessage: 'Select one or more. Scopes are combined.',
+  },
+  rolesRequired: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesRequired',
+    defaultMessage: 'Select at least one role.',
+  },
+  rolesLoading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesLoading',
+    defaultMessage: 'Loading roles',
+  },
   rolesFailed: {
-    id: `${P}.rolesFailed`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesFailed',
     defaultMessage: 'Could not load the roles. Go back and try again.',
   },
   rolesNone: {
-    id: `${P}.rolesNone`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesNone',
     defaultMessage: 'No roles are defined. Add one to the role-to-scope mapping on the server.',
   },
   scopeCount: {
-    id: `${P}.scopeCount`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.scopeCount',
     defaultMessage: '{count, plural, one {# scope} other {# scopes}}',
   },
-  showScopes: { id: `${P}.showScopes`, defaultMessage: 'Show scopes of {role}' },
-  summary: { id: `${P}.summary`, defaultMessage: 'Summary' },
-  summaryName: { id: `${P}.summaryName`, defaultMessage: 'Name' },
-  summaryRoles: { id: `${P}.summaryRoles`, defaultMessage: 'Roles' },
-  summaryNoRoles: { id: `${P}.summaryNoRoles`, defaultMessage: 'None selected' },
+  showScopes: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.showScopes',
+    defaultMessage: 'Show scopes of {role}',
+  },
+  summary: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summary',
+    defaultMessage: 'Summary',
+  },
+  summaryName: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryName',
+    defaultMessage: 'Name',
+  },
+  summaryRoles: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryRoles',
+    defaultMessage: 'Roles',
+  },
+  summaryNoRoles: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryNoRoles',
+    defaultMessage: 'None selected',
+  },
   scopesGranted: {
-    id: `${P}.scopesGranted`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.scopesGranted',
     defaultMessage: '{count, plural, one {scope granted} other {scopes granted}}',
   },
-  afterTitle: { id: `${P}.afterTitle`, defaultMessage: 'After you create it' },
+  afterTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.afterTitle',
+    defaultMessage: 'After you create it',
+  },
   afterBody: {
-    id: `${P}.afterBody`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.afterBody',
     defaultMessage:
       'You’ll save the secret, then can get a test token on the same page. The secret is shown once.',
   },
-  cancel: { id: `${P}.cancel`, defaultMessage: 'Cancel' },
-  create: { id: `${P}.create`, defaultMessage: 'Create service account' },
-  creating: { id: `${P}.creating`, defaultMessage: 'Creating…' },
-  required: { id: `${P}.required`, defaultMessage: 'Required.' },
+  cancel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.cancel',
+    defaultMessage: 'Cancel',
+  },
+  create: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.create',
+    defaultMessage: 'Create service account',
+  },
+  creating: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.creating',
+    defaultMessage: 'Creating…',
+  },
+  required: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.required',
+    defaultMessage: 'Required.',
+  },
   tooLong: {
-    id: `${P}.tooLong`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.tooLong',
     defaultMessage: 'Too long: the limit is {max} bytes, and some characters take more than one.',
   },
-  created: { id: `${P}.created`, defaultMessage: 'Created "{name}".' },
+  created: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.created',
+    defaultMessage: 'Created "{name}".',
+  },
   createFailed: {
-    id: `${P}.createFailed`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.createFailed',
     defaultMessage: 'Could not create the service account.',
   },
   forbiddenTitle: {
-    id: `${P}.forbiddenTitle`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.forbiddenTitle',
     defaultMessage: 'Service accounts are managed by administrators',
   },
   forbiddenBody: {
-    id: `${P}.forbiddenBody`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.forbiddenBody',
     defaultMessage: 'Ask an organization administrator if you need a service account.',
   },
   roleServiceAccount: {
-    id: `${P}.roleServiceAccount`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleServiceAccount',
     defaultMessage: 'Read access for automated integrations.',
   },
   roleDeployer: {
-    id: `${P}.roleDeployer`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleDeployer',
     defaultMessage: 'Build and deploy APIs, proxies and pipelines.',
   },
   roleSubscriptions: {
-    id: `${P}.roleSubscriptions`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleSubscriptions',
     defaultMessage: 'Manage applications and subscriptions.',
   },
   roleAdmin: {
-    id: `${P}.roleAdmin`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleAdmin',
     defaultMessage: 'Full control, including users and roles. Use sparingly.',
   },
 });
@@ -193,7 +250,7 @@ export function CreateServiceAccountPage() {
 function CreateForm() {
   const intl = useIntl();
   const navigate = useNavigate();
-  const { org } = useApiScope();
+  const { org, orgId } = useApiScope();
   const { notify } = useNotifications();
   const rolesQuery = useRoles();
   const createMutation = useCreateServiceAccount();
@@ -261,7 +318,7 @@ function CreateForm() {
           notify(error.message || intl.formatMessage(messages.createFailed), 'error'),
         onSuccess: (result) => {
           notify(intl.formatMessage(messages.created, { name }), 'success');
-          holdCredentials(result);
+          holdCredentials(result, orgId ?? '');
           navigate(routes.serviceAccountCreated(org));
         },
       },
@@ -364,6 +421,7 @@ function CreateForm() {
   return (
     <Box sx={{ maxWidth: 1080, mx: 'auto', width: '100%' }}>
       <Button
+        disabled={pending}
         onClick={goBack}
         size="small"
         startIcon={<ArrowLeft size={16} />}

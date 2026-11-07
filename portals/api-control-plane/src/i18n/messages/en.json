@@ -2723,6 +2723,215 @@
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.edit": {
     "defaultMessage": "Update usage limits and availability for this plan."
   },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.afterBody": {
+    "defaultMessage": "You’ll save the secret, then can get a test token on the same page. The secret is shown once."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.afterTitle": {
+    "defaultMessage": "After you create it"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.back": {
+    "defaultMessage": "Service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.create": {
+    "defaultMessage": "Create service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.createFailed": {
+    "defaultMessage": "Could not create the service account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.created": {
+    "defaultMessage": "Created \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.creating": {
+    "defaultMessage": "Creating…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.description": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.descriptionPlaceholder": {
+    "defaultMessage": "What the account is for, who owns it"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.details": {
+    "defaultMessage": "Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.displayName": {
+    "defaultMessage": "Display name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.displayNamePlaceholder": {
+    "defaultMessage": "e.g. billing-sync-pipeline"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.forbiddenBody": {
+    "defaultMessage": "Ask an organization administrator if you need a service account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.forbiddenTitle": {
+    "defaultMessage": "Service accounts are managed by administrators"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.required": {
+    "defaultMessage": "Required."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleAdmin": {
+    "defaultMessage": "Full control, including users and roles. Use sparingly."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleDeployer": {
+    "defaultMessage": "Build and deploy APIs, proxies and pipelines."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleServiceAccount": {
+    "defaultMessage": "Read access for automated integrations."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleSubscriptions": {
+    "defaultMessage": "Manage applications and subscriptions."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roles": {
+    "defaultMessage": "Roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesFailed": {
+    "defaultMessage": "Could not load the roles. Go back and try again."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesHint": {
+    "defaultMessage": "Select one or more. Scopes are combined."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesLoading": {
+    "defaultMessage": "Loading roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesNone": {
+    "defaultMessage": "No roles are defined. Add one to the role-to-scope mapping on the server."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesRequired": {
+    "defaultMessage": "Select at least one role."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.scopeCount": {
+    "defaultMessage": "{count, plural, one {# scope} other {# scopes}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.scopesGranted": {
+    "defaultMessage": "{count, plural, one {scope granted} other {scopes granted}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.showScopes": {
+    "defaultMessage": "Show scopes of {role}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.subtitle": {
+    "defaultMessage": "An identity for a script, pipeline or tool. You get a client ID and secret once it is created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summary": {
+    "defaultMessage": "Summary"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryName": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryNoRoles": {
+    "defaultMessage": "None selected"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryRoles": {
+    "defaultMessage": "Roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.title": {
+    "defaultMessage": "New service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.tooLong": {
+    "defaultMessage": "Too long: the limit is {max} bytes, and some characters take more than one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.accessToken": {
+    "defaultMessage": "Access token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.clientId": {
+    "defaultMessage": "Client ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.clientSecret": {
+    "defaultMessage": "Client secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copied": {
+    "defaultMessage": "Copied"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copyEnv": {
+    "defaultMessage": "Copy both as .env"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copyLabel": {
+    "defaultMessage": "Copy {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbGetToken": {
+    "defaultMessage": "Get token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbLabel": {
+    "defaultMessage": "Breadcrumb"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbList": {
+    "defaultMessage": "Service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.done": {
+    "defaultMessage": "Done"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.exampleHint": {
+    "defaultMessage": "Set PLATFORM_API_URL to the API Platform address and CLIENT_SECRET from your secret store. The secret is never written into this example.",
+    "description": "PLATFORM_API_URL and CLIENT_SECRET are shell variable names — do not translate."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.exampleTitle": {
+    "defaultMessage": "Get an access token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.expired": {
+    "defaultMessage": "Expired"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.expiresIn": {
+    "defaultMessage": "Expires in {minutes}:{seconds}",
+    "description": "Countdown to token expiry, e.g. \"Expires in 14:52\". {seconds} is always two digits."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.failed": {
+    "defaultMessage": "Could not get a token. Try again in a moment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getAnother": {
+    "defaultMessage": "Get another"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getToken": {
+    "defaultMessage": "Get token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getting": {
+    "defaultMessage": "Getting token…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.hideLabel": {
+    "defaultMessage": "Hide {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.rejected": {
+    "defaultMessage": "Could not get a token. Check the secret, and that the account is enabled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.retry": {
+    "defaultMessage": "Retry"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.revokeNote": {
+    "defaultMessage": "This token cannot be revoked on its own. Disabling the account or regenerating its secret stops it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.rolesFailed": {
+    "defaultMessage": "Could not load the roles, so the token's scopes are unknown. Retry without leaving this page, so the secret stays on screen."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.scopeFailed": {
+    "defaultMessage": "The account's roles do not grant the requested scopes. Save the secret before you leave this page, then check the role-to-scope mapping."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.scopesInToken": {
+    "defaultMessage": "{count, plural, one {scope in this token} other {scopes in this token}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.showLabel": {
+    "defaultMessage": "Show {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.testBody": {
+    "defaultMessage": "Check the credentials work. Uses the secret above, so there’s nothing to paste. Getting a token updates “Last token issued” and is logged."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.testTitle": {
+    "defaultMessage": "Get a test token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.title": {
+    "defaultMessage": "Service account created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.useIt": {
+    "defaultMessage": "Use it"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.warningBody": {
+    "defaultMessage": "Store it in your secret manager. If it is lost, regenerate it — which breaks anything still using the old one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.warningTitle": {
+    "defaultMessage": "The secret will not be shown again"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.works": {
+    "defaultMessage": "The credentials work. Token issued just now, and “Last token issued” is updated."
+  },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.actionFailed": {
     "defaultMessage": "The action could not be completed."
   },

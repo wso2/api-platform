@@ -26,7 +26,7 @@ import { aServiceAccount, aRole, apiUrl, collection, failure } from '@/test/msw'
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
-import { clearCredentials, holdCredentials, peekCredentials } from './createdCredentials';
+import { clearCredentials, hasHeldCredentials, holdCredentials } from './createdCredentials';
 import { ServiceAccountCreatedPage } from './ServiceAccountCreatedPage';
 
 const ORG = 'api-platform-demo';
@@ -65,7 +65,7 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('shows the credentials, masking the secret until it is revealed', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     const { user } = renderPage();
 
     expect(
@@ -84,7 +84,7 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('gets a test token with the held secret, then another', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     let issued = 0;
     server.use(
       http.post(apiUrl('/service-accounts/token'), () => {
@@ -114,7 +114,7 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('says so when the server rejects the credentials', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     server.use(failure('post', '/service-accounts/token', 401, 'UNAUTHORIZED'));
     const { user } = renderPage();
 
@@ -125,17 +125,17 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('forgets the secret and returns to the list on Done', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     const { user } = renderPage();
 
     await user.click(await screen.findByRole('button', { name: 'Done' }));
 
     expect(screen.getByTestId('location')).not.toHaveTextContent('created');
-    expect(peekCredentials()).toBeNull();
+    expect(hasHeldCredentials()).toBe(false);
   });
 
   it('copies both values as .env and shows a tick', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     const { user } = renderPage();
     const write = vi.spyOn(navigator.clipboard, 'writeText');
 
@@ -146,7 +146,7 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('copies the curl example', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     const { user } = renderPage();
     const write = vi.spyOn(navigator.clipboard, 'writeText');
 
@@ -157,7 +157,7 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('will not ask for a token while the roles failed to load', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     server.use(failure('get', '/roles', 500, 'INTERNAL_ERROR'));
     renderPage();
 
@@ -166,7 +166,7 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('blames the scopes, not the secret, when the server refuses them', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     server.use(failure('post', '/service-accounts/token', 400, 'SERVICE_ACCOUNT_INVALID_SCOPE'));
     const { user } = renderPage();
 
@@ -177,12 +177,41 @@ describe('ServiceAccountCreatedPage', () => {
   });
 
   it('drops the held secret when the page is left without pressing Done', async () => {
-    holdCredentials(credentials);
+    holdCredentials(credentials, ORG);
     const { unmount } = renderPage();
     await screen.findByRole('heading', { name: /Service account created/ });
 
     unmount();
 
-    expect(peekCredentials()).toBeNull();
+    expect(hasHeldCredentials()).toBe(false);
+  });
+
+  it('retries loading the roles in place, keeping the secret on screen', async () => {
+    holdCredentials(credentials, ORG);
+    let calls = 0;
+    server.use(
+      http.get(apiUrl('/roles'), () =>
+        ++calls === 1
+          ? HttpResponse.json({ message: 'boom' }, { status: 500 })
+          : HttpResponse.json({
+              list: [aRole()],
+              pagination: { limit: 20, offset: 0, total: 1 },
+            }),
+      ),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Get token' })).toBeEnabled());
+    expect(screen.getByLabelText('Client ID')).toHaveTextContent(account.clientId);
+  });
+
+  it('refuses a secret issued for another organization and drops it', async () => {
+    holdCredentials(credentials, 'some-other-org');
+    renderPage();
+
+    await waitFor(() => expect(screen.getByTestId('location')).not.toHaveTextContent('created'));
+    expect(hasHeldCredentials()).toBe(false);
   });
 });

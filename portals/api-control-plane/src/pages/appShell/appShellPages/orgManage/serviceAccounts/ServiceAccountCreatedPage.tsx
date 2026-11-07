@@ -56,82 +56,149 @@ import { useCopy } from './components/useCopy';
 import { clearCredentials, peekCredentials } from './createdCredentials';
 import { tokenRequestCurl, tokenUseCurl } from './serviceAccountCurl';
 
-const P =
-  'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage';
-
 const messages = defineMessages({
-  title: { id: `${P}.title`, defaultMessage: 'Service account created' },
-  warningTitle: { id: `${P}.warningTitle`, defaultMessage: 'The secret will not be shown again' },
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.title',
+    defaultMessage: 'Service account created',
+  },
+  warningTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.warningTitle',
+    defaultMessage: 'The secret will not be shown again',
+  },
   warningBody: {
-    id: `${P}.warningBody`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.warningBody',
     defaultMessage:
       'Store it in your secret manager. If it is lost, regenerate it — which breaks anything still using the old one.',
   },
-  clientId: { id: `${P}.clientId`, defaultMessage: 'Client ID' },
-  clientSecret: { id: `${P}.clientSecret`, defaultMessage: 'Client secret' },
-  copied: { id: `${P}.copied`, defaultMessage: 'Copied' },
-  copyLabel: { id: `${P}.copyLabel`, defaultMessage: 'Copy {label}' },
-  showLabel: { id: `${P}.showLabel`, defaultMessage: 'Show {label}' },
-  hideLabel: { id: `${P}.hideLabel`, defaultMessage: 'Hide {label}' },
-  copyEnv: { id: `${P}.copyEnv`, defaultMessage: 'Copy both as .env' },
-  exampleTitle: { id: `${P}.exampleTitle`, defaultMessage: 'Get an access token' },
+  clientId: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.clientId',
+    defaultMessage: 'Client ID',
+  },
+  clientSecret: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.clientSecret',
+    defaultMessage: 'Client secret',
+  },
+  copied: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copied',
+    defaultMessage: 'Copied',
+  },
+  copyLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copyLabel',
+    defaultMessage: 'Copy {label}',
+  },
+  showLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.showLabel',
+    defaultMessage: 'Show {label}',
+  },
+  hideLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.hideLabel',
+    defaultMessage: 'Hide {label}',
+  },
+  copyEnv: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copyEnv',
+    defaultMessage: 'Copy both as .env',
+  },
+  exampleTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.exampleTitle',
+    defaultMessage: 'Get an access token',
+  },
   exampleHint: {
-    id: `${P}.exampleHint`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.exampleHint',
     defaultMessage:
       'Set PLATFORM_API_URL to the API Platform address and CLIENT_SECRET from your secret store. The secret is never written into this example.',
     description: 'PLATFORM_API_URL and CLIENT_SECRET are shell variable names — do not translate.',
   },
-  testTitle: { id: `${P}.testTitle`, defaultMessage: 'Get a test token' },
+  testTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.testTitle',
+    defaultMessage: 'Get a test token',
+  },
   testBody: {
-    id: `${P}.testBody`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.testBody',
     defaultMessage:
       'Check the credentials work. Uses the secret above, so there’s nothing to paste. Getting a token updates “Last token issued” and is logged.',
   },
-  crumbList: { id: `${P}.crumbList`, defaultMessage: 'Service accounts' },
-  crumbGetToken: { id: `${P}.crumbGetToken`, defaultMessage: 'Get token' },
-  crumbLabel: { id: `${P}.crumbLabel`, defaultMessage: 'Breadcrumb' },
-  getToken: { id: `${P}.getToken`, defaultMessage: 'Get token' },
-  getAnother: { id: `${P}.getAnother`, defaultMessage: 'Get another' },
-  getting: { id: `${P}.getting`, defaultMessage: 'Getting token…' },
+  crumbList: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbList',
+    defaultMessage: 'Service accounts',
+  },
+  crumbGetToken: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbGetToken',
+    defaultMessage: 'Get token',
+  },
+  crumbLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbLabel',
+    defaultMessage: 'Breadcrumb',
+  },
+  retry: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.retry',
+    defaultMessage: 'Retry',
+  },
+  getToken: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getToken',
+    defaultMessage: 'Get token',
+  },
+  getAnother: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getAnother',
+    defaultMessage: 'Get another',
+  },
+  getting: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getting',
+    defaultMessage: 'Getting token…',
+  },
   works: {
-    id: `${P}.works`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.works',
     defaultMessage:
       'The credentials work. Token issued just now, and “Last token issued” is updated.',
   },
-  accessToken: { id: `${P}.accessToken`, defaultMessage: 'Access token' },
+  accessToken: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.accessToken',
+    defaultMessage: 'Access token',
+  },
   expiresIn: {
-    id: `${P}.expiresIn`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.expiresIn',
     defaultMessage: 'Expires in {minutes}:{seconds}',
     description:
       'Countdown to token expiry, e.g. "Expires in 14:52". {seconds} is always two digits.',
   },
-  expired: { id: `${P}.expired`, defaultMessage: 'Expired' },
+  expired: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.expired',
+    defaultMessage: 'Expired',
+  },
   scopesInToken: {
-    id: `${P}.scopesInToken`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.scopesInToken',
     defaultMessage: '{count, plural, one {scope in this token} other {scopes in this token}}',
   },
-  useIt: { id: `${P}.useIt`, defaultMessage: 'Use it' },
+  useIt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.useIt',
+    defaultMessage: 'Use it',
+  },
   revokeNote: {
-    id: `${P}.revokeNote`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.revokeNote',
     defaultMessage:
       'This token cannot be revoked on its own. Disabling the account or regenerating its secret stops it.',
   },
   rejected: {
-    id: `${P}.rejected`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.rejected',
     defaultMessage: 'Could not get a token. Check the secret, and that the account is enabled.',
   },
-  failed: { id: `${P}.failed`, defaultMessage: 'Could not get a token. Try again in a moment.' },
+  failed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.failed',
+    defaultMessage: 'Could not get a token. Try again in a moment.',
+  },
   scopeFailed: {
-    id: `${P}.scopeFailed`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.scopeFailed',
     defaultMessage:
-      "The account's roles do not grant the requested scopes. Reload the page and try again.",
+      "The account's roles do not grant the requested scopes. Save the secret before you leave this page, then check the role-to-scope mapping.",
   },
   rolesFailed: {
-    id: `${P}.rolesFailed`,
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.rolesFailed',
     defaultMessage:
-      "Could not load the roles, so the token's scopes are unknown. Reload the page and try again.",
+      "Could not load the roles, so the token's scopes are unknown. Retry without leaving this page, so the secret stays on screen.",
   },
-  done: { id: `${P}.done`, defaultMessage: 'Done' },
+  done: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.done',
+    defaultMessage: 'Done',
+  },
 });
 
 const mono = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } as const;
@@ -234,20 +301,26 @@ type Issued = ServiceAccountTokenResponse & { expiresAt: number };
 export function ServiceAccountCreatedPage() {
   const { org } = useApiScope();
   return (
-    <Can do="createServiceAccount" fallback={<Navigate replace to={routes.serviceAccounts(org)} />}>
+    <Can do="createServiceAccount" fallback={<ForgetAndLeave to={routes.serviceAccounts(org)} />}>
       <CreatedView key={org} />
     </Can>
   );
 }
 
+/** Leaves for the list, dropping any held secret first so a later visit cannot show it. */
+function ForgetAndLeave({ to }: { to: string }) {
+  useEffect(() => clearCredentials(), []);
+  return <Navigate replace to={to} />;
+}
+
 function CreatedView() {
   const intl = useIntl();
   const navigate = useNavigate();
-  const { org } = useApiScope();
+  const { org, orgId } = useApiScope();
   const listHref = routes.serviceAccounts(org);
 
   // Read once; the module copy is dropped when the page goes away.
-  const [credentials] = useState(peekCredentials);
+  const [credentials] = useState(() => peekCredentials(orgId ?? ''));
   useEffect(() => clearCredentials, []);
 
   const rolesQuery = useRoles();
@@ -269,7 +342,7 @@ function CreatedView() {
   }, [issued]);
 
   // A reload or a direct visit has no secret to show; the list is the only sensible place.
-  if (!credentials) return <Navigate replace to={listHref} />;
+  if (!credentials) return <ForgetAndLeave to={listHref} />;
 
   const { clientId, clientSecret, serviceAccount } = credentials;
   const scopes = scopesOfRoles(rolesOf(serviceAccount), rolesQuery.data?.list ?? []);
@@ -433,7 +506,19 @@ function CreatedView() {
               </Stack>
 
               {rolesQuery.isError && (
-                <Alert severity="error">
+                <Alert
+                  action={
+                    <Button
+                      color="inherit"
+                      disabled={rolesQuery.isFetching}
+                      onClick={() => void rolesQuery.refetch()}
+                      size="small"
+                    >
+                      <FormattedMessage {...messages.retry} />
+                    </Button>
+                  }
+                  severity="error"
+                >
                   <FormattedMessage {...messages.rolesFailed} />
                 </Alert>
               )}
