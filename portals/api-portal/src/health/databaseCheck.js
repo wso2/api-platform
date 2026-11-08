@@ -21,6 +21,7 @@ const { formatDuration } = require('./duration');
 const { failureKind } = require('./dbFailure');
 
 const UNREACHABLE = 'database unreachable';
+// A warning, not a failure: a saturated pool is load, and the database still answers.
 const POOL_EXHAUSTED = 'database connection pool exhausted';
 
 /**
@@ -55,8 +56,10 @@ function isSaturated(stats, ratio) {
  *      or a recovery, and a decision left standing would never expire.
  *   3. Between those pings the last decided state stands; with none yet, rule 2
  *      applies.
- *   4. An up result is turned down once the pool has stayed saturated for
- *      `poolWaitLimit`.
+ *   4. An up result carries a pool-exhaustion warning once the pool has stayed
+ *      saturated for `poolWaitLimit`. It never turns the check down: a full pool on a
+ *      healthy database is load, and taking busy instances out of service would only
+ *      push that load onto the others.
  *
  * Two signals take precedence over older traffic. Once the pool has raised a connection
  * error since the last ping, the check pings at once, whatever rule 1 would say from
@@ -65,8 +68,8 @@ function isSaturated(stats, ratio) {
  * before the outage cannot outvote it.
  *
  * So a busy instance never adds health queries, and any other adds at most one per
- * `idlePeriod`. The check resolves to null when up, or to a fixed reason when down;
- * driver text never appears in it.
+ * `idlePeriod`. The check resolves to null when up, to `{ warning }` when up with a
+ * saturated pool, or to a fixed reason when down; driver text never appears in it.
  *
  * @param {object} deps
  * @param {{ snapshot: Function }} deps.window   the driver's outcome window
@@ -135,7 +138,7 @@ function createDatabaseCheck({ window, ping, poolStats, settings, now = Date.now
         if (!saturated) {
             return null;
         }
-        return nowMs - saturatedSince >= settings.poolWaitLimitMs ? POOL_EXHAUSTED : null;
+        return nowMs - saturatedSince >= settings.poolWaitLimitMs ? { warning: POOL_EXHAUSTED } : null;
     };
 }
 

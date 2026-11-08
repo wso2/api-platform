@@ -250,7 +250,10 @@ function healthPing({ timeoutMs } = {}) {
         }
         let pending;
         try {
-            pending = Promise.resolve(adapter.query('SELECT 1', []));
+            // An adapter with its own health ping bounds or unblocks it (see the adapters).
+            pending = Promise.resolve(typeof adapter.healthPing === 'function'
+                ? adapter.healthPing({ timeoutMs })
+                : adapter.query('SELECT 1', []));
         } catch (err) {
             pending = Promise.reject(err);
         }

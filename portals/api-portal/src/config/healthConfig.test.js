@@ -178,6 +178,8 @@ const REFUSED = [
         /failure_window \(5s\) must not be shorter than api_portal\.health\.cache_ttl \(10s\)/],
     ['an idle_period longer than failure_window', '[api_portal.health.database]\nidle_period = "1m"\n',
         /idle_period \(1m0s\) must not be longer than api_portal\.health\.database\.failure_window \(30s\)/],
+    ['a misspelt health key', '[api_portal.health]\nallowed_client = "10.0.0.0/8"\n',
+        /api_portal\.health: unknown key "allowed_client"/],
     ['a misspelt database key', '[api_portal.health.database]\nfaliure_ratio = 0.5\n',
         /api_portal\.health\.database: unknown key "faliure_ratio"/],
     ['a camelCase database key', '[api_portal.health.database]\ncheckTimeout = "2s"\n',

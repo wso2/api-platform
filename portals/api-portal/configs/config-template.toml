@@ -211,8 +211,8 @@ idle_period = "10s"             # with too few queries to decide, the check runs
                                 # SELECT 1 (at most one per idle_period); <= failure_window
 pool_saturation = 0.9           # PostgreSQL / MSSQL: share of the pool in use, with callers
                                 # waiting, that counts as saturated (0 < r <= 1)
-pool_wait_limit = "5s"          # saturation lasting this long reports the database down
-                                # ("database connection pool exhausted")
+pool_wait_limit = "5s"          # saturation lasting this long adds a warning to the check
+                                # ("database connection pool exhausted"); never fails it
 # SQLite serialises every statement behind one lock, so the check's own SELECT 1
 # waits behind a long-running statement and reports a timeout if it outlasts
 # check_timeout.

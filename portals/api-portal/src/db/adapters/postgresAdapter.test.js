@@ -100,3 +100,24 @@ test('poolStats reports the configured maximum and the live counters', async (t)
     t.after(() => adapter.close());
     assert.deepStrictEqual(adapter.poolStats(), { max: 7, total: 0, idle: 0, waiting: 0 });
 });
+
+test('the health ping bounds its query on the connection, and pooled connections use keepalive', async (t) => {
+    const { Pool } = require('pg');
+    const originalQuery = Pool.prototype.query;
+    const queries = [];
+    let options;
+    Pool.prototype.query = function query(config) {
+        options = this.options;
+        queries.push(config);
+        return Promise.resolve({ rows: [{ '?column?': 1 }] });
+    };
+    t.after(() => { Pool.prototype.query = originalQuery; });
+
+    const adapter = loadAdapter();
+    t.after(() => adapter.close());
+    await adapter.healthPing({ timeoutMs: 2000 });
+
+    assert.deepStrictEqual(queries, [{ text: 'SELECT 1', query_timeout: 2000 }]);
+    assert.equal(options.keepAlive, true);
+    assert.ok(options.keepAliveInitialDelayMillis > 0);
+});

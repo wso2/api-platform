@@ -26,6 +26,9 @@ const { isBinaryParam } = require('../paramTypes');
  *
  * `hooks.onPoolError(err)` receives every error the pool raises about an idle client.
  */
+// How long a pooled connection may sit silent before TCP keepalive probes it.
+const KEEP_ALIVE_INITIAL_DELAY_MS = 10000;
+
 function createPostgresAdapter(config, hooks = {}) {
     const poolConfig = {
         user: config.database.user,
@@ -37,6 +40,10 @@ function createPostgresAdapter(config, hooks = {}) {
         min: config.database.minOpenConns,
         idleTimeoutMillis: config.database.poolIdleTimeoutMs,
         connectionTimeoutMillis: config.database.poolConnectionTimeoutMs,
+        // TCP keepalive on every pooled connection, so one the network has silently
+        // dropped is found and closed in about a minute instead of the OS default of hours.
+        keepAlive: true,
+        keepAliveInitialDelayMillis: KEEP_ALIVE_INITIAL_DELAY_MS,
     };
 
     // buildDbSsl() reads config.database.sslMode/sslRootCert and fails closed
@@ -114,6 +121,13 @@ function createPostgresAdapter(config, hooks = {}) {
             client.release();
         }
     };
+
+    // The health check's SELECT 1, bounded on the connection itself. Without a query
+    // timeout, a ping on a connection that has silently died (a network black hole) or
+    // to a database that stopped answering would not settle for many minutes, and the
+    // driver allows only one ping in flight. On timeout the pool discards the connection.
+    handle.healthPing = ({ timeoutMs } = {}) =>
+        pool.query(timeoutMs > 0 ? { text: 'SELECT 1', query_timeout: timeoutMs } : 'SELECT 1');
 
     handle.close = async () => pool.end();
 

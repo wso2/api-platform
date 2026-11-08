@@ -88,7 +88,7 @@ config:
       minAttempts: 5             # attempts in the window needed before the ratio decides
       idlePeriod: 10s            # at most one own SELECT 1 per period (<= failureWindow)
       poolSaturation: 0.9        # postgres/mssql: share of the pool in use, callers waiting
-      poolWaitLimit: 5s          # saturation lasting this long reports the database down
+      poolWaitLimit: 5s          # saturation lasting this long adds a warning; never fails the check
 
   # --- Database (the portal's OWN store, separate from the Platform API's) ---
   database:

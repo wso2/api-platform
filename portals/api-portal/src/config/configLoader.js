@@ -70,10 +70,18 @@ try {
 // key can be rejected under the name the operator actually typed (see
 // validateHealthConfig below).
 const healthDatabaseKeys = new Set();
+// Keys written directly under [api_portal.health], captured the same way. A misspelled
+// allowed_clients would otherwise be ignored and leave the endpoints open to everyone.
+const healthKeys = new Set();
 
 function collectHealthDatabaseKeys(parsed) {
-    const table = parsed?.api_portal?.health?.database;
-    if (table !== null && typeof table === 'object' && !Array.isArray(table)) {
+    const isTable = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    const health = parsed?.api_portal?.health;
+    if (isTable(health)) {
+        for (const key of Object.keys(health)) healthKeys.add(key);
+    }
+    const table = health?.database;
+    if (isTable(table)) {
         for (const key of Object.keys(table)) healthDatabaseKeys.add(key);
     }
 }
@@ -517,6 +525,9 @@ function validateDatabasePoolConfig(database) {
 
 validateDatabasePoolConfig(config.database);
 
+// The keys [api_portal.health] accepts, in their config.toml spelling.
+const HEALTH_KEYS = ['cache_ttl', 'allowed_clients', 'database'];
+
 // The keys [api_portal.health.database] accepts, in their config.toml spelling.
 const HEALTH_DATABASE_KEYS = [
     'check_timeout', 'failure_window', 'failure_ratio', 'min_attempts',
@@ -537,19 +548,24 @@ const MAX_HEALTH_FAILURE_WINDOW_MS = 60 * 60 * 1000;
  * Fail-closed startup check for [api_portal.health] and [api_portal.health.database],
  * with the same rules as the Go components' health settings. An invalid value aborts
  * startup rather than serving a health answer computed from a setting the operator did
- * not mean; so does an unknown key in the database table, which would otherwise be
+ * not mean; so does an unknown key in the health table or its database table, which would otherwise be
  * ignored and leave its default in force.
  *
  * Each duration gains a parsed millisecond twin (cacheTtlMs, checkTimeoutMs, ...), and
  * allowedClients is normalized to an array, accepting a comma-separated string so the
  * list can come from a single env var.
  */
-function validateHealthConfig(cfg, databaseKeys) {
+function validateHealthConfig(cfg, databaseKeys, keys = new Set()) {
     const fatal = (message) => {
         process.stderr.write(`[FATAL] ${message} Refusing to start with an invalid health setting.\n`);
         process.exit(1);
     };
 
+    for (const key of keys) {
+        if (!HEALTH_KEYS.includes(key)) {
+            fatal(`api_portal.health: unknown key "${key}". Known keys: ${HEALTH_KEYS.join(', ')}.`);
+        }
+    }
     for (const key of databaseKeys) {
         if (!HEALTH_DATABASE_KEYS.includes(key)) {
             fatal(`api_portal.health.database: unknown key "${key}". Known keys: ${HEALTH_DATABASE_KEYS.join(', ')}.`);
@@ -636,7 +652,7 @@ function validateHealthConfig(cfg, databaseKeys) {
     health.allowedClients = entries;
 }
 
-validateHealthConfig(config, healthDatabaseKeys);
+validateHealthConfig(config, healthDatabaseKeys, healthKeys);
 
 /**
  * Resolves organization.handle and fails closed when it is missing or unusable.

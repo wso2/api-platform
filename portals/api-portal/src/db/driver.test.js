@@ -235,6 +235,16 @@ test('a failed health ping is rejected with the driver error and not counted', a
     assert.ok(db.outcomeWindow.snapshot().lastPing);
 });
 
+test('the health ping uses the adapter\'s own ping when it has one, passing the timeout', async () => {
+    const adapter = fakeAdapter();
+    const seen = [];
+    adapter.healthPing = async (opts) => { seen.push(opts); return []; };
+    const { db } = loadDriver({ adapter });
+    await db.healthPing({ timeoutMs: 1500 });
+    assert.deepStrictEqual(seen, [{ timeoutMs: 1500 }]);
+    assert.deepStrictEqual(adapter.calls, [], 'the generic SELECT 1 is not used');
+});
+
 test('a health ping that outlasts its timeout is rejected as timed out, and its late outcome is ignored', async () => {
     const adapter = fakeAdapter();
     let finish;

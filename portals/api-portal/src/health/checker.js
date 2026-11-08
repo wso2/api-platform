@@ -35,8 +35,10 @@ function formatTime(ms) {
  * evaluation is running wait for that evaluation instead of starting another, so the
  * probe rate never multiplies the work done by the checks.
  *
- * A check is an async function that resolves to nothing when its dependency is up, or
- * to a short, safe reason string when it is down. Each runs under its own timeout.
+ * A check is an async function that resolves to nothing when its dependency is up, to
+ * a short, safe reason string when it is down, or to `{ warning }` when it is up but
+ * under strain worth reporting. A warning never makes the result unhealthy. Each check
+ * runs under its own timeout.
  */
 class HealthChecker {
     constructor({ cacheTtlMs, now = Date.now, transitionLogger = createTransitionLogger() } = {}) {
@@ -57,7 +59,8 @@ class HealthChecker {
 
     /**
      * Resolves to `{ healthy, status: 'ok' | 'unhealthy', timestamp, checks }`, where
-     * each check is `{ status: 'up' }` or `{ status: 'down', error, since }`.
+     * each check is `{ status: 'up' }`, `{ status: 'up', warning }` or
+     * `{ status: 'down', error, since }`.
      */
     evaluate() {
         if (this.cached && this.now() - this.cached.evaluatedAtMs < this.cacheTtlMs) {
@@ -81,10 +84,11 @@ class HealthChecker {
         let healthy = true;
         names.forEach((name, i) => {
             const reason = reasons[i];
-            if (!reason) {
+            if (!reason || typeof reason === 'object') {
                 this.since.delete(name);
-                observed[name] = { status: 'up' };
-                checks[name] = { status: 'up' };
+                const warning = reason?.warning;
+                observed[name] = warning ? { status: 'up', warning } : { status: 'up' };
+                checks[name] = warning ? { status: 'up', warning } : { status: 'up' };
                 return;
             }
             healthy = false;
@@ -105,7 +109,10 @@ class HealthChecker {
         return result;
     }
 
-    /** Runs one check and resolves to its failure reason, or null when it is up. */
+    /**
+     * Runs one check and resolves to its failure reason, to `{ warning }` when it is up
+     * with a warning, or to null when it is simply up.
+     */
     async runOne({ fn, timeoutMs }) {
         let timer;
         const attempt = Promise.resolve()

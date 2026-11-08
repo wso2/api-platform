@@ -28,6 +28,7 @@ function recordingLogger() {
         lines,
         error: (message, meta) => lines.push({ level: 'error', message, meta }),
         info: (message, meta) => lines.push({ level: 'info', message, meta }),
+        warn: (message, meta) => lines.push({ level: 'warn', message, meta }),
     };
 }
 
@@ -49,6 +50,32 @@ test('logs one line when a check goes down and one when it recovers', () => {
         { level: 'error', message: 'health check failed', meta: { check: 'database', reason: 'database unreachable' } },
         { level: 'info', message: 'health check recovered', meta: { check: 'database', down_for: '1m5s' } },
     ]);
+});
+
+test('a warning is logged once when it appears and once when it clears', () => {
+    const logger = recordingLogger();
+    const transitions = createTransitionLogger({ logger });
+    const warned = { status: 'up', warning: 'database connection pool exhausted' };
+
+    transitions.observe({ database: up }, 0);
+    transitions.observe({ database: warned }, 1000);
+    transitions.observe({ database: warned }, 4000);
+    transitions.observe({ database: up }, 7000);
+
+    assert.deepStrictEqual(logger.lines, [
+        { level: 'warn', message: 'health check warning', meta: { check: 'database', warning: 'database connection pool exhausted' } },
+        { level: 'info', message: 'health check warning cleared', meta: { check: 'database' } },
+    ]);
+});
+
+test('a warned check that goes down logs its failure, not a cleared warning', () => {
+    const logger = recordingLogger();
+    const transitions = createTransitionLogger({ logger });
+
+    transitions.observe({ database: { status: 'up', warning: 'database connection pool exhausted' } }, 0);
+    transitions.observe({ database: down('database unreachable', 1000) }, 1000);
+
+    assert.deepStrictEqual(logger.lines.map((l) => l.message), ['health check warning', 'health check failed']);
 });
 
 test('a check that starts down is logged once, and the outage is timed from its since', () => {

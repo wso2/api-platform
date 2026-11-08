@@ -220,8 +220,9 @@ every key below with `api-portal-ui.`.
   `config.health.database.*` tunes the database check, which judges the database by the
   outcomes of the portal's own queries and, when they are too few to decide from, runs its
   own `SELECT 1` at most once per `idlePeriod`: `checkTimeout`, `failureWindow`, `failureRatio`, `minAttempts`, `idlePeriod`,
-  and the pool-exhaustion rule (`poolSaturation`, `poolWaitLimit`). Health events go to
-  stdout: one line when a check starts failing and one when it recovers.
+  and the pool-exhaustion warning (`poolSaturation`, `poolWaitLimit`), which is reported
+  on the check without failing it. Health events go to stdout: one line when a check starts
+  failing and one when it recovers, and likewise when a warning appears and clears.
 - `config.platformApi.baseUrl` / `insecure` — the Platform API endpoint (derived under the
   umbrella) and dev-only TLS skip.
 - `config.auth.*` — `publicKeyPath` for the mounted Platform API key, `claimMappings`, and

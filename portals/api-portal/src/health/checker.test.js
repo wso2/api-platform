@@ -30,6 +30,7 @@ function setup({ cacheTtlMs = 3000 } = {}) {
     const logger = {
         error: (message, meta) => lines.push({ message, meta }),
         info: (message, meta) => lines.push({ message, meta }),
+        warn: (message, meta) => lines.push({ message, meta }),
     };
     const checker = new HealthChecker({
         cacheTtlMs,
@@ -57,6 +58,17 @@ test('a check reporting a reason is down, and the result is unhealthy', async ()
     assert.deepStrictEqual(result.checks, {
         database: { status: 'down', error: 'database unreachable', since: '2026-10-29T09:12:01Z' },
         other: { status: 'up' },
+    });
+});
+
+test('a check reporting a warning stays up and the result stays healthy', async () => {
+    const { checker } = setup();
+    checker.register('database', async () => ({ warning: 'database connection pool exhausted' }));
+    const result = await checker.evaluate();
+    assert.equal(result.healthy, true);
+    assert.equal(result.status, 'ok');
+    assert.deepStrictEqual(result.checks, {
+        database: { status: 'up', warning: 'database connection pool exhausted' },
     });
 });
 

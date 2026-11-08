@@ -199,7 +199,7 @@ test('isSaturated applies the pg and mssql rules and skips unusable pools', () =
     assert.equal(isSaturated({ max: 10 }, 0.9), false);
 });
 
-test('a saturated pool takes the check down only after the wait limit', async () => {
+test('a saturated pool warns after the wait limit, without taking the check down', async () => {
     const saturated = { max: 10, total: 10, idle: 0, waiting: 4 };
     const { check, traffic, clock, state } = setup({ stats: saturated });
     traffic(5);
@@ -211,9 +211,9 @@ test('a saturated pool takes the check down only after the wait limit', async ()
 
     clock.now += 2000;
     traffic(5);
-    assert.equal(await check(), 'database connection pool exhausted');
+    assert.deepStrictEqual(await check(), { warning: 'database connection pool exhausted' });
 
-    // Recovery: the pool drains and the check comes back up at once.
+    // The pool drains and the warning clears at once.
     state.stats = { max: 10, total: 4, idle: 4, waiting: 0 };
     clock.now += 1000;
     traffic(5);

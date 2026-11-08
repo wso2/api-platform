@@ -23,7 +23,9 @@ const { formatDuration } = require('./duration');
  * Turns health results into log lines, one per change of state: a check going down is
  * logged once at error level, and its recovery once at info level. Nothing is logged
  * while a check stays in the same state, so a long outage produces exactly two lines.
- * Only the safe failure reason a check reports is ever logged.
+ * A warning on a check that is up is logged the same way: once at warn level when it
+ * appears, and once at info level when it clears. Only the safe reason or warning a
+ * check reports is ever logged.
  *
  * `logger` defaults to the portal logger, loaded on first use so this module can be
  * required without resolving the portal config.
@@ -31,12 +33,15 @@ const { formatDuration } = require('./duration');
 function createTransitionLogger({ logger } = {}) {
     // When each check that is currently down started failing, in epoch milliseconds.
     const failingSince = new Map();
+    // The checks that are up but currently carry a warning.
+    const warned = new Set();
     const log = () => logger || require('../config/logger');
 
     return {
         /**
          * Records one completed evaluation. `checks` maps a check name to
-         * `{ status: 'up' | 'down', error?, sinceMs? }`; `nowMs` is the evaluation time.
+         * `{ status: 'up' | 'down', error?, sinceMs?, warning? }`; `nowMs` is the
+         * evaluation time.
          */
         observe(checks, nowMs) {
             for (const name of Object.keys(checks).sort()) {
@@ -49,6 +54,15 @@ function createTransitionLogger({ logger } = {}) {
                     const downFor = Math.round((nowMs - failingSince.get(name)) / 1000) * 1000;
                     failingSince.delete(name);
                     log().info('health check recovered', { check: name, down_for: formatDuration(downFor) });
+                }
+                const warning = check.status === 'up' ? check.warning : undefined;
+                if (warning && !warned.has(name)) {
+                    warned.add(name);
+                    log().warn('health check warning', { check: name, warning });
+                } else if (!warning && warned.has(name)) {
+                    warned.delete(name);
+                    // A check that went down has just logged its failure instead.
+                    if (check.status === 'up') log().info('health check warning cleared', { check: name });
                 }
             }
         },
