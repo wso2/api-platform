@@ -40,6 +40,8 @@ func TestNewDefaultConfig(t *testing.T) {
 	assert.Empty(t, config.TLSCertPath)
 	assert.Empty(t, config.TLSKeyPath)
 	assert.Empty(t, config.TLSCAPath)
+	assert.Equal(t, DefaultKeepaliveTime, config.KeepaliveTime)
+	assert.Equal(t, DefaultKeepaliveTimeout, config.KeepaliveTimeout)
 }
 
 // TestValidate_ValidConfig tests validation with valid config
@@ -284,4 +286,37 @@ func TestValidate_TLSDisabledWithPaths(t *testing.T) {
 
 	err := config.Validate()
 	assert.NoError(t, err)
+}
+
+// TestValidate_NegativeKeepalive tests validation fails with negative keepalive settings
+func TestValidate_NegativeKeepalive(t *testing.T) {
+	config := NewDefaultConfig("localhost:18000")
+	config.KeepaliveTime = -time.Second
+	assert.EqualError(t, config.Validate(), "keepalive time must not be negative")
+
+	config = NewDefaultConfig("localhost:18000")
+	config.KeepaliveTimeout = -time.Second
+	assert.EqualError(t, config.Validate(), "keepalive timeout must not be negative")
+}
+
+// TestKeepaliveParams_DefaultsForUnsetValues tests that unset keepalive settings use
+// the defaults and that pings are allowed without an active stream
+func TestKeepaliveParams_DefaultsForUnsetValues(t *testing.T) {
+	params := (&Config{}).keepaliveParams()
+	assert.Equal(t, DefaultKeepaliveTime, params.Time)
+	assert.Equal(t, DefaultKeepaliveTimeout, params.Timeout)
+	assert.True(t, params.PermitWithoutStream)
+
+	params = (&Config{KeepaliveTime: 20 * time.Second, KeepaliveTimeout: time.Second}).keepaliveParams()
+	assert.Equal(t, 20*time.Second, params.Time)
+	assert.Equal(t, time.Second, params.Timeout)
+}
+
+// TestDefaultKeepaliveTime_PermittedByController guards the relationship with the
+// controller's policy xDS server, whose keepalive enforcement policy closes a
+// connection that pings more often than every 5s. A shorter default would make the
+// controller drop healthy connections.
+func TestDefaultKeepaliveTime_PermittedByController(t *testing.T) {
+	const controllerMinPingInterval = 5 * time.Second
+	assert.GreaterOrEqual(t, DefaultKeepaliveTime, controllerMinPingInterval)
 }

@@ -68,7 +68,10 @@ type Base struct {
 	// separate from funnel because that client verifies peers as the Platform API; both
 	// publish into the same scenario response slot.
 	gatewayTLSFunnel *httpx.Funnel
-	featureRoot      string
+	// portalFunnel carries requests to the API Portal, which serves its own certificate. It
+	// publishes into the same scenario response slot as funnel.
+	portalFunnel *httpx.Funnel
+	featureRoot  string
 }
 
 // FeatureRoot returns the root directory containing suite feature assets.
@@ -142,10 +145,17 @@ func newSuite(
 	if len(featureRoot) > 0 {
 		root = featureRoot[0]
 	}
+	portalClient := httpx.NewClient(httpx.Options{
+		Timeout:         30 * time.Second,
+		MaxRetries:      3,
+		RetryDelay:      2 * time.Second,
+		TLSClientConfig: shared.APIPortalClientTLS(),
+	})
 	base := &Base{
 		topo:             topo,
 		funnel:           httpx.NewFunnel(client, 3, 2*time.Second),
 		gatewayTLSFunnel: httpx.NewFunnel(gatewayTLSClient, 3, 2*time.Second),
+		portalFunnel:     httpx.NewFunnel(portalClient, 3, 2*time.Second),
 		featureRoot:      root,
 	}
 	stepscommon.ConfigureExpansion()
@@ -187,6 +197,7 @@ func gatewayListenerTLSConfig(pem []byte) (*tls.Config, error) {
 // Register binds shared and product-specific Gherkin steps.
 func (s *Suite) Register(sc *godog.ScenarioContext) {
 	s.registerBaseSteps(sc)
+	s.registerHealthSteps(sc)
 	platformgateway.Register(sc, s.Base, s.topo, s.funnel)
 	trackPortalPlan := apiportal.Register(sc, s.topo, s.funnel.Client())
 	platformapi.Register(sc, s.topo, s.funnel, s.featureRoot, trackPortalPlan)
@@ -226,6 +237,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response body should contain "([^"]*)"$`, b.responseContains)
 	sc.Step(`^the response body should not contain "([^"]*)"$`, b.responseNotContains)
 	sc.Step(`^the response body should match pattern "([^"]*)"$`, b.responseMatchesPattern)
+	sc.Step(`^the response should have arrived within (\d+(?:\.\d+)?) seconds$`, b.responseArrivedWithin)
 	sc.Step(`^the response should contain Prometheus metrics$`, b.responseContainsPrometheusMetrics)
 	sc.Step(`^the response should contain metric "([^"]*)"$`, b.responseContainsMetric)
 	sc.Step(`^the response header "([^"]*)" should be "([^"]*)"$`, b.responseHeaderEquals)
@@ -340,6 +352,24 @@ func (b *Base) responseClientError(ctx context.Context) error {
 	}
 	if resp.StatusCode < 400 || resp.StatusCode >= 500 {
 		return fmt.Errorf("expected a client error response, got %s", resp.Describe())
+	}
+	return nil
+}
+
+// responseArrivedWithin verifies that the published response, body included, took no longer
+// than the given number of seconds.
+func (b *Base) responseArrivedWithin(ctx context.Context, value string) error {
+	seconds, err := parseSeconds(value)
+	if err != nil {
+		return err
+	}
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	limit := time.Duration(seconds * float64(time.Second))
+	if resp.Elapsed > limit {
+		return fmt.Errorf("the response took %s, longer than %s: %s", resp.Elapsed, limit, resp.Describe())
 	}
 	return nil
 }
