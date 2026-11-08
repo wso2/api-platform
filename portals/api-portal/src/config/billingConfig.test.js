@@ -36,6 +36,7 @@ const { spawnSync } = require('node:child_process');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 
+// The role mapping is named by its absolute path: the child runs outside the project (see boot).
 const BASE_CONFIG = `
 [api_portal.security]
 encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -44,6 +45,9 @@ session_secret = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba98765432
 [api_portal.organization]
 handle = "default"
 portal_id = "test-portal"
+
+[api_portal.auth.authorization]
+role_to_scope_mapping = ${JSON.stringify(path.join(PROJECT_ROOT, 'resources', 'role-to-scope-mapping.yaml'))}
 `;
 
 let tmpDir;
@@ -75,7 +79,9 @@ function boot(overlay, variables = {}) {
     const env = { PATH: process.env.PATH, HOME: process.env.HOME, ...variables };
     // Keeps the child's coverage in the parent run's report.
     if (process.env.NODE_V8_COVERAGE) env.NODE_V8_COVERAGE = process.env.NODE_V8_COVERAGE;
-    const result = spawnSync(process.execPath, [runner, ...args], { cwd: PROJECT_ROOT, encoding: 'utf8', env });
+    // Runs in the fixtures directory: the loader reads api-platform.env from the working directory,
+    // and a developer's copy in the project could set the values these tests check.
+    const result = spawnSync(process.execPath, [runner, ...args], { cwd: tmpDir, encoding: 'utf8', env });
     const line = result.stdout.split('\n').find((l) => l.startsWith(SETTINGS));
     return {
         status: result.status,
