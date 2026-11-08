@@ -355,3 +355,24 @@ test('a saturation that ended during an outage does not carry over to a later on
     traffic(20);
     assert.equal(await check(), null, 'a new saturation must wait out pool_wait_limit');
 });
+
+test('successes recorded before a failed ping finished cannot reverse it', async () => {
+    const clock = { now: 1_000_400 };
+    const window = new OutcomeWindow({ windowMs: SETTINGS.failureWindowMs, now: () => clock.now });
+    // The ping runs for 1.5s; meanwhile the portal records successes, then the ping fails.
+    const ping = async () => {
+        for (let i = 0; i < 6; i++) window.recordSuccess();
+        clock.now += 1500;
+        const err = refused();
+        window.recordError(err, { ping: true });
+        throw err;
+    };
+    const check = createDatabaseCheck({ window, ping, poolStats: () => null, settings: SETTINGS, now: () => clock.now });
+
+    window.notePoolError(refused());
+    assert.equal(await check(), 'database unreachable');
+
+    // The next evaluation must not count those successes as a recovery.
+    clock.now += 3000;
+    assert.equal(await check(), 'database unreachable');
+});

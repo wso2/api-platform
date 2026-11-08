@@ -94,10 +94,15 @@ function createDatabaseCheck({ window, ping, poolStats, settings, now = Date.now
         // again at once.
         const poolErrorSincePing = snap.lastPoolError !== null &&
             (snap.lastPing === null || snap.lastPoolError > snap.lastPing);
-        // While a failed ping keeps the check down, only what happened since it counts.
+        // While a failed ping keeps the check down, only what happened after it counts:
+        // outcomes from the seconds after the one the ping failed in. The window counts in
+        // whole seconds, so that second itself is left out, as it can hold successes
+        // recorded before the ping failed.
         const failedPingAt = decided && !decided.up ? decided.failedPingAt ?? null : null;
         if (!poolErrorSincePing) {
-            const counted = failedPingAt === null ? snap : window.snapshot({ sinceMs: failedPingAt });
+            const counted = failedPingAt === null
+                ? snap
+                : window.snapshot({ sinceMs: (Math.floor(failedPingAt / 1000) + 1) * 1000 });
             if (counted.attempts >= settings.minAttempts) {
                 const down = counted.failures / counted.attempts >= settings.failureRatio;
                 return down
@@ -116,7 +121,9 @@ function createDatabaseCheck({ window, ping, poolStats, settings, now = Date.now
             return {
                 up: false,
                 reason: err?.timedOut ? timedOut : reasonFor(failureKind(err)),
-                failedPingAt: nowMs,
+                // When the ping finished, not when it started: outcomes recorded while it
+                // was still running do not show a recovery from its failure.
+                failedPingAt: now(),
             };
         }
     }

@@ -49,8 +49,9 @@ services:
     ports:
       - "9543:9543"
     healthcheck:
-      # The portal image has node but no curl.
-      test: ["CMD-SHELL", "node -e \"require('https').get({host:'localhost',port:9543,path:'/ready',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      # The portal image has node but no curl. /health, because the pinned image predates
+      # /ready; in a current portal both run the same checks.
+      test: ["CMD-SHELL", "node -e \"require('https').get({host:'localhost',port:9543,path:'/health',rejectUnauthorized:false},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
       start_period: 20s
