@@ -39,7 +39,7 @@ const POLL_MS = 4000;
  * (`/projects/{p}/apis/{a}/deployments`), the call the Deploy page reads, so the
  * Overview and the Deploy page cannot disagree.
  *
- * Cloud only: the route exists only behind the cloud pipeline. Elsewhere the
+ * Cloud only (`cloudProxyEnabled`): the route exists only behind the cloud pipeline. Elsewhere the
  * query is disabled (`data` stays undefined) and the caller keeps the platform's
  * own deployment list. Gateways with no deployment (`NOT_DEPLOYED`) are left out.
  */
@@ -49,8 +49,9 @@ export function useCloudDeployments(
   apiHandle: string | undefined,
 ) {
   const { org } = useApiScope();
-  const enabled =
-    runtimeConfig.deploymentMode === 'cloud' && Boolean(org && projectHandle && apiHandle);
+  // `cloudProxyEnabled` is on when the server has the cloud upstream configured, which
+  // is what puts the pipeline route behind it; a standalone console has neither.
+  const enabled = runtimeConfig.cloudProxyEnabled && Boolean(org && projectHandle && apiHandle);
 
   return useQuery({
     queryKey: ['cloud-artifact-deployments', org, projectHandle, kind, apiHandle],
