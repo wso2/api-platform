@@ -324,11 +324,18 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 // exp with a still-valid refresh token must reach proxyHandler's refresh
 // logic, not be rejected here before it gets the chance.
 func (s *Server) tokensFromCookie(r *http.Request) (access, refresh string, ok bool) {
-	c, err := r.Cookie(s.cfg.Session.Cookie.Name)
-	if err != nil || c.Value == "" {
+	var b strings.Builder
+	for i := 0; i < sessionMaxChunks; i++ {
+		c, err := r.Cookie(s.sessionChunkName(i))
+		if err != nil || c.Value == "" {
+			break
+		}
+		b.WriteString(c.Value)
+	}
+	if b.Len() == 0 {
 		return "", "", false
 	}
-	access = c.Value
+	access = b.String()
 	if rc, err := r.Cookie(s.refreshCookieName()); err == nil {
 		refresh = rc.Value
 	}

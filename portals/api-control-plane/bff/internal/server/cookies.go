@@ -18,9 +18,39 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// sessionChunkSize bounds each session cookie's value. Browsers drop a cookie whose
+// name and value pass ~4096 bytes, and an access token carrying every scope of a
+// broad role (the cloud Admin holds 135 ap:* scopes, ~5.6 KB) does not fit in one.
+// sessionMaxChunks bounds the cookies a session can take.
+const (
+	sessionChunkSize = 3500
+	sessionMaxChunks = 4
+)
+
+// sessionChunkName names the i-th session cookie: the first keeps the configured
+// name, so a token that fits stays one cookie exactly as before; later ones add ".<i>".
+func (s *Server) sessionChunkName(i int) string {
+	if i == 0 {
+		return s.cfg.Session.Cookie.Name
+	}
+	return s.cfg.Session.Cookie.Name + "." + strconv.Itoa(i)
+}
+
+// splitToken cuts token into values of at most sessionChunkSize bytes. A JWT is
+// ASCII, so a byte boundary never splits a character.
+func splitToken(token string) []string {
+	var chunks []string
+	for len(token) > sessionChunkSize {
+		chunks = append(chunks, token[:sessionChunkSize])
+		token = token[sessionChunkSize:]
+	}
+	return append(chunks, token)
+}
 
 // defaultRefreshCookieSuffix is appended (or replaces "_session") to form the
 // companion HttpOnly cookie that carries the OIDC refresh token. With the
@@ -49,8 +79,8 @@ func (s *Server) refreshCookieName() string {
 	return name + defaultRefreshCookieSuffix
 }
 
-// setSessionCookie writes the access-token session cookie as a bare JWT
-// (unchanged from the pre-envelope design). When refresh is non-empty it also
+// setSessionCookie writes the access token across the session cookies (one
+// cookie when it fits, see sessionChunkName). When refresh is non-empty it also
 // writes the companion refresh cookie; when refresh is empty the refresh
 // cookie is cleared so a file-based login cannot leave a stale OIDC refresh.
 func (s *Server) setSessionCookie(w http.ResponseWriter, access, refresh string, absExpiry time.Time) {
@@ -60,15 +90,26 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, access, refresh string,
 			maxAge = int(d.Seconds())
 		}
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     s.cfg.Session.Cookie.Name,
-		Value:    access,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.cfg.Session.Cookie.Secure,
-		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
-		MaxAge:   maxAge,
-	})
+	chunks := splitToken(access)
+	if len(chunks) > sessionMaxChunks {
+		// Too large for any browser to send back: write nothing rather than a
+		// token cut short, so the caller lands on sign-in instead of a broken session.
+		chunks = nil
+	}
+	for i, chunk := range chunks {
+		http.SetCookie(w, &http.Cookie{
+			Name:     s.sessionChunkName(i),
+			Value:    chunk,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   s.cfg.Session.Cookie.Secure,
+			SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
+			MaxAge:   maxAge,
+		})
+	}
+	// A shorter token than the last one leaves chunks behind; clear them so a
+	// read never joins a stale tail onto the new token.
+	s.clearSessionChunks(w, len(chunks))
 	if refresh != "" {
 		http.SetCookie(w, &http.Cookie{
 			Name:     s.refreshCookieName(),
@@ -97,16 +138,23 @@ func (s *Server) clearRefreshCookie(w http.ResponseWriter) {
 }
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     s.cfg.Session.Cookie.Name,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.cfg.Session.Cookie.Secure,
-		SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
-		MaxAge:   -1,
-	})
+	s.clearSessionChunks(w, 0)
 	s.clearRefreshCookie(w)
+}
+
+// clearSessionChunks expires the session cookies from chunk index from on.
+func (s *Server) clearSessionChunks(w http.ResponseWriter, from int) {
+	for i := from; i < sessionMaxChunks; i++ {
+		http.SetCookie(w, &http.Cookie{
+			Name:     s.sessionChunkName(i),
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   s.cfg.Session.Cookie.Secure,
+			SameSite: sameSite(s.cfg.Session.Cookie.SameSite),
+			MaxAge:   -1,
+		})
+	}
 }
 
 // setTxCookie writes the short-lived OIDC login-transaction cookie.

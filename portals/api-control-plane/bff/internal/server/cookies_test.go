@@ -240,3 +240,101 @@ func TestRefreshByToken_CookieFallbackSingleFlight(t *testing.T) {
 		t.Fatalf("token endpoint calls = %d, want 1 (single-flight)", got)
 	}
 }
+
+// liveCookies returns the cookies a response sets (not the ones it expires).
+func liveCookies(res *http.Response) []*http.Cookie {
+	var out []*http.Cookie
+	for _, c := range res.Cookies() {
+		if c.MaxAge >= 0 && c.Value != "" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// A token with every scope of a broad role passes a browser's ~4 KB per-cookie
+// limit: it must be split across cookies that each fit, and read back whole.
+func TestSetSessionCookie_LargeTokenSplitsAndReadsBack(t *testing.T) {
+	cfg := newTestConfig("https://unused.example.com")
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	scopes := strings.Repeat("ap:rest_api:deployment:undeploy ", 180) // ~5.8 KB
+	access := makeJWT(map[string]any{"sub": "u1", "scope": scopes, "exp": time.Now().Add(time.Hour).Unix()})
+	rec := httptest.NewRecorder()
+	srv.setSessionCookie(rec, access, "r", time.Now().Add(time.Hour))
+
+	live := liveCookies(rec.Result())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	sessionCookies := 0
+	for _, c := range live {
+		if len(c.Name)+len(c.Value) > 4000 {
+			t.Errorf("cookie %s is %d bytes, over the browser limit", c.Name, len(c.Name)+len(c.Value))
+		}
+		if strings.HasPrefix(c.Name, cfg.Session.Cookie.Name) {
+			sessionCookies++
+		}
+		req.AddCookie(c)
+	}
+	if sessionCookies < 2 {
+		t.Fatalf("session cookies = %d, want the token split across at least 2", sessionCookies)
+	}
+	a, r, ok := srv.tokensFromCookie(req)
+	if !ok || a != access || r != "r" {
+		t.Fatalf("tokensFromCookie did not rebuild the token (ok=%v, len %d want %d)", ok, len(a), len(access))
+	}
+}
+
+// A small token keeps the single, unchanged session cookie, and replacing a
+// split token with a small one expires the leftover chunks.
+func TestSetSessionCookie_SmallTokenOneCookieClearsOldChunks(t *testing.T) {
+	cfg := newTestConfig("https://unused.example.com")
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	access := makeJWT(map[string]any{"sub": "u1", "exp": time.Now().Add(time.Hour).Unix()})
+	rec := httptest.NewRecorder()
+	srv.setSessionCookie(rec, access, "", time.Now().Add(time.Hour))
+
+	expired := map[string]bool{}
+	var live []*http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.MaxAge < 0 {
+			expired[c.Name] = true
+		} else {
+			live = append(live, c)
+		}
+	}
+	if len(live) != 1 || live[0].Name != cfg.Session.Cookie.Name || live[0].Value != access {
+		t.Fatalf("live cookies = %v, want only the bare session cookie", live)
+	}
+	for i := 1; i < sessionMaxChunks; i++ {
+		if !expired[srv.sessionChunkName(i)] {
+			t.Errorf("chunk %s not expired", srv.sessionChunkName(i))
+		}
+	}
+}
+
+// A missing middle chunk must not yield a token built from the parts around it.
+func TestTokensFromCookie_StopsAtMissingChunk(t *testing.T) {
+	cfg := newTestConfig("https://unused.example.com")
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: srv.sessionChunkName(0), Value: "aaa"})
+	req.AddCookie(&http.Cookie{Name: srv.sessionChunkName(2), Value: "ccc"})
+	a, _, ok := srv.tokensFromCookie(req)
+	if !ok || a != "aaa" {
+		t.Fatalf("tokensFromCookie = (%q, %v), want only the leading chunk", a, ok)
+	}
+}
