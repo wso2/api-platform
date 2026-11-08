@@ -34,6 +34,7 @@ import { ApiOverviewHeader } from '../../apis/overview/ApiOverviewHeader';
 import { deployedGateways as deployedGatewaysOf } from '../../test/utils/deployedGateways';
 import { GraphqlOverviewTab } from './GraphqlOverviewTab';
 import { GraphqlProgressBanner } from './GraphqlProgressBanner';
+import { useCloudDeployments } from '../../apis/overview/useCloudDeployments';
 
 const messages = defineMessages({
   notFound: {
@@ -74,7 +75,14 @@ function GraphqlApiDetailPageContent() {
   // The API's own gateway associations, as REST's overview reads them —
   // scoped to the API, so this needs no organization-wide gateway access.
   const gatewaysQuery = useGraphQLApiGateways(graphqlApiHandler);
-  const deploymentsQuery = useDeployments(graphqlApiHandler);
+  const platformDeploymentsQuery = useDeployments(graphqlApiHandler);
+  // In cloud the pipeline's per-gateway state is the truth, as on the Deploy page; it
+  // replaces the platform's own deployment list. Undefined elsewhere.
+  const cloudDeployments = useCloudDeployments('GraphQLApi', params.projectHandler, graphqlApiHandler).data;
+  const deploymentsQuery = useMemo(
+    () => ({ data: { list: cloudDeployments ?? platformDeploymentsQuery.data?.list ?? [] } }),
+    [cloudDeployments, platformDeploymentsQuery.data],
+  );
 
   // Deployed here, most recently deployed first — the same rule the Test
   // page applies, so the two never disagree on where the API runs.
