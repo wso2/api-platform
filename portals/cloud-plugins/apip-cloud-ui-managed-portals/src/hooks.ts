@@ -29,6 +29,7 @@ type Notifier = { notify: (message: string, severity: 'success' | 'info' | 'erro
  */
 const awaitingOutcome = new WeakMap<PortalPort, Set<string>>();
 
+/** The set of portals awaiting their change outcome for this port. */
 function awaiting(port: PortalPort): Set<string> {
   let ids = awaitingOutcome.get(port);
   if (!ids) {
@@ -58,6 +59,7 @@ function notifyUpdated(host: Notifier, port: PortalPort, portal: ManagedPortal) 
   host.notify(`Portal "${portal.name}" updated`, 'success');
 }
 
+/** `s` with its first character lowercased, to continue a sentence. */
 function lowerFirst(s: string): string {
   return s.charAt(0).toLowerCase() + s.slice(1);
 }
