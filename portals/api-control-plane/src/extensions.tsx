@@ -187,6 +187,17 @@ export const PAGE_GRAPHQL_API_DEPLOY_SLOT = 'page.graphqlApiDeploy';
 export const HEADER_ACTIONS_SLOT = 'header.actions';
 
 /**
+ * Slot for an entry that replaces the header's built-in sidebar-collapse
+ * toggle, rendered in its place at the far left of the header, before the
+ * brand logo. Consumed directly by `AppHeader` (via `useSlot`) — same
+ * arrangement as `HEADER_ACTIONS_SLOT`. A deployment that registers nothing
+ * here keeps the built-in toggle; one that does loses the header's own way to
+ * collapse the sidebar, so it must leave another one in place (the sidebar's
+ * own `Sidebar.CollapseToggle` already does, in this portal).
+ */
+export const HEADER_START_SLOT = 'header.start';
+
+/**
  * Slot for a headless, host-mounted policy hook, rendered on every in-shell
  * route.
  *
