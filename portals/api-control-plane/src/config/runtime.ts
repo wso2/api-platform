@@ -41,7 +41,18 @@ export type GatewayVersionEntry = {
   channel: 'STS' | 'LTS';
 };
 
+/** The WSO2 Cloud platform switcher's config (`cloudShell` in the runtime config). */
+export type CloudShellConfig = {
+  platformUrls?: Record<string, string | undefined>;
+  /** Comma-separated platform ids shown as "Coming soon". */
+  comingSoonPlatforms?: string;
+};
+
 export type RuntimeConfig = {
+  /** The WSO2 Cloud console's origin; the switcher's Manage links point at it. */
+  cloudConsoleUrl: string;
+  /** Platform URLs for the switcher. Empty when the deployment sets none. */
+  cloudShell: CloudShellConfig;
   appBasePath: string;
   apiBaseUrl: string;
   /**
@@ -168,6 +179,8 @@ export type RuntimeConfig = {
 };
 
 type LegacyWindowConfig = Partial<{
+  cloudConsoleUrl: string;
+  cloudShell: CloudShellConfig;
   API_BASE_URL: string;
   API_PLATFORM_HOME_PAGE: string;
   AUTH_MODE: string;
@@ -330,6 +343,20 @@ const readGatewayVersions = (value?: string): GatewayVersionEntry[] => {
   }
 };
 
+// cloudShell arrives as a native object (window config is a JS literal), but
+// tolerate a JSON string; anything else yields an empty config.
+const readCloudShell = (value: unknown): CloudShellConfig => {
+  let v = value;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return {};
+    }
+  }
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as CloudShellConfig) : {};
+};
+
 // VITE_ override wins so a local platform-api can be targeted in dev even when the
 // runtime config injects a hosted "connect" gateway URL.
 const resolvedPlatformApiBaseUrl =
@@ -354,6 +381,8 @@ const resolvedAuthMode = readAuthMode(
 );
 
 export const runtimeConfig: RuntimeConfig = {
+  cloudConsoleUrl: fromWindow().cloudConsoleUrl || import.meta.env.VITE_CLOUD_CONSOLE_URL || '',
+  cloudShell: readCloudShell(fromWindow().cloudShell),
   appBasePath: normalizeBasePath(
     fromWindow().appBasePath ||
       import.meta.env.VITE_APP_BASE_PATH ||

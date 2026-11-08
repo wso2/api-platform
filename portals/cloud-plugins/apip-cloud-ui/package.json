@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@wso2-enterprise/apip-cloud-ui-app-switcher": "file:../apip-cloud-ui-app-switcher",
     "@wso2-enterprise/apip-cloud-ui-deploy": "file:../apip-cloud-ui-deploy",
     "@wso2-enterprise/apip-cloud-ui-entitlements": "file:../apip-cloud-ui-entitlements",
     "@wso2-enterprise/apip-cloud-ui-environments-new": "file:../apip-cloud-ui-environments-new",
