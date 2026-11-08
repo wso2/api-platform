@@ -88,8 +88,15 @@ function GraphqlApiDetailPageContent() {
   // page applies, so the two never disagree on where the API runs.
   const deployedGateways = useMemo(
     (): Gateway[] =>
-      deployedGatewaysOf(gatewaysQuery.data?.list ?? [], deploymentsQuery.data?.list ?? []),
-    [gatewaysQuery.data, deploymentsQuery.data],
+      deployedGatewaysOf(
+        // With pipeline data, the pipeline alone decides: a gateway's own
+        // `isDeployed` flag must not keep it listed once the pipeline says it is not.
+        (gatewaysQuery.data?.list ?? []).map((gateway) =>
+          cloudDeployments ? { ...gateway, isDeployed: false } : gateway,
+        ),
+        deploymentsQuery.data?.list ?? [],
+      ),
+    [gatewaysQuery.data, deploymentsQuery.data, cloudDeployments],
   );
 
   if (!graphqlApiHandler || apiQuery.error) {

@@ -352,27 +352,57 @@ describe('GraphqlApiDetailPage deployed gateways in cloud', () => {
 
   it('follows the pipeline: not deployed there hides the panel despite a platform record', async () => {
     serve([platformDeployment]);
-    const pipelineCalls = recorder();
+    // Hold the pipeline's answer so the platform's record is seen first: the
+    // panel must appear, then go once the pipeline answers.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     server.use(
-      resource(
-        PIPELINE,
-        {
+      http.get(apiUrl(PIPELINE), async () => {
+        await held;
+        return HttpResponse.json({
           list: [
             { environment: 'development', gateways: [{ gatewayId: 'edge-gateway', status: 'NOT_DEPLOYED' }] },
           ],
-        },
-        { record: pipelineCalls },
-      ),
+        });
+      }),
     );
 
     renderPage();
 
-    await screen.findByRole('heading', { name: 'Countries GraphQL API' });
-    // Both sources have answered before the absence means anything: until the
-    // pipeline does, the platform's record would show the panel.
-    await waitFor(() => expect(pipelineCalls.count()).toBe(1));
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(screen.queryByText('Deployed gateways')).not.toBeInTheDocument();
+    expect(await screen.findByText('Deployed gateways')).toBeInTheDocument();
+    release();
+    await waitFor(() => expect(screen.queryByText('Deployed gateways')).not.toBeInTheDocument());
+  });
+
+  it('ignores a gateway’s own isDeployed flag once the pipeline answers', async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
+      collection('/graphql-apis/:graphqlApiId/gateways', [{ ...gateway, isDeployed: true }]),
+      // No platform deployment record: only the gateway's own flag keeps it listed.
+      collection('/graphql-apis/:graphqlApiId/deployments', []),
+      collection('/me/api-keys', []),
+      http.get(apiUrl(PIPELINE), async () => {
+        await held;
+        return HttpResponse.json({
+          list: [
+            { environment: 'development', gateways: [{ gatewayId: 'edge-gateway', status: 'NOT_DEPLOYED' }] },
+          ],
+        });
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('Deployed gateways')).toBeInTheDocument();
+    release();
+    await waitFor(() => expect(screen.queryByText('Deployed gateways')).not.toBeInTheDocument());
   });
 
   it('keeps the platform list when the pipeline call is refused', async () => {
