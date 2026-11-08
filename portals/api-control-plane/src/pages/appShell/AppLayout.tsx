@@ -149,6 +149,7 @@ export default function AppLayout() {
     // so a cloud control disables under the conditions a built-in one does.
     permissions: { canAny: (scopes) => scopes.some(hasScope) },
     user: auth.user ? { email: auth.user.email, name: auth.user.name } : undefined,
+    signOut: auth.logout,
   };
 
   return (

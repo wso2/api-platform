@@ -187,6 +187,17 @@ export const PAGE_GRAPHQL_API_DEPLOY_SLOT = 'page.graphqlApiDeploy';
 export const HEADER_ACTIONS_SLOT = 'header.actions';
 
 /**
+ * Slot for an entry at the start of the app header, before the brand — where a
+ * deployment puts a control that frames the whole console rather than acts on a
+ * page (the first case being cloud's platform switcher). Same arrangement as
+ * `HEADER_ACTIONS_SLOT`: consumed directly by `AppHeader` (via `useSlot`), the
+ * entry is an `ApiControlPlaneHeaderAction` and only its `render` is used.
+ *
+ * A deployment that registers nothing here leaves the header exactly as it was.
+ */
+export const HEADER_START_SLOT = 'header.start';
+
+/**
  * Slot for a headless, host-mounted policy hook, rendered on every in-shell
  * route.
  *

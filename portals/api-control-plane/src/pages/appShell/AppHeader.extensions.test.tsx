@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ExtensionsProvider,
   HEADER_ACTIONS_SLOT,
+  HEADER_START_SLOT,
   type ApiControlPlaneHeaderAction,
 } from '../../extensions';
 import { NO_RESOURCE_LIMITS, PortProvider, type CloudHostPort } from '../../hostPort';
@@ -73,6 +74,33 @@ describe('AppHeader cloud extensions', () => {
     renderHeader([headerEntry]);
 
     expect(await screen.findByText('Trial ends in 14 days')).toBeInTheDocument();
+  });
+
+  it('renders an entry registered against the header start slot before the brand', async () => {
+    renderHeader([
+      { id: 'platform-switcher', slot: HEADER_START_SLOT, order: 10, render: () => <span>Switcher</span> },
+    ]);
+
+    const switcher = await screen.findByText('Switcher');
+    const brand = screen.getByLabelText('Go to organization overview');
+    // DOCUMENT_POSITION_FOLLOWING: the brand comes after the switcher.
+    expect(switcher.compareDocumentPosition(brand) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps the header start slot empty when nothing registers against it', () => {
+    renderHeader([headerEntry]);
+
+    expect(screen.queryByText('Switcher')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /toggle|collapse|expand|menu/i })).toBeInTheDocument();
+  });
+
+  it('hides the sidebar toggle when an entry fills the header start slot', async () => {
+    renderHeader([
+      { id: 'platform-switcher', slot: HEADER_START_SLOT, order: 10, render: () => <span>Switcher</span> },
+    ]);
+
+    await screen.findByText('Switcher');
+    expect(screen.queryByRole('button', { name: /toggle|collapse|expand|menu/i })).not.toBeInTheDocument();
   });
 
   it('ignores an entry registered against another slot', () => {
