@@ -34,8 +34,12 @@ export interface ManagedPortalChange {
   selfSignup?: boolean;
 }
 
-/** The last background change, when it failed. */
-export interface ManagedPortalChangeError extends ManagedPortalChange {
+/**
+ * The last background change, when it failed. `op` is absent for a change
+ * kind this UI does not know; the failure still counts.
+ */
+export interface ManagedPortalChangeError extends Omit<ManagedPortalChange, 'op'> {
+  op?: ManagedPortalChangeOp;
   /** What failed and what state the portal was left in, for the user. */
   message: string;
   /** ISO timestamp of the failure. */

@@ -186,10 +186,22 @@ function changeFromWire(w: WirePortal['change']): ManagedPortalChange | undefine
   return { op, loginEnvironment: w?.loginEnvironment, selfSignup: w?.selfSignup };
 }
 
+/** Message for a failed change the backend sent without one. */
+export const CHANGE_FAILED_FALLBACK_MESSAGE = 'The last change to this portal did not complete. Try it again.';
+
+/**
+ * Any lastChangeError means the last change failed, so it is kept even when
+ * its kind is unknown to this UI or its message is empty.
+ */
 function changeErrorFromWire(w: WirePortal['lastChangeError']): ManagedPortalChangeError | undefined {
-  const op = normalizeChangeOp(w?.op);
-  if (!op || !w?.message) return undefined;
-  return { op, loginEnvironment: w.loginEnvironment, selfSignup: w.selfSignup, message: w.message, at: w.at };
+  if (!w) return undefined;
+  return {
+    op: normalizeChangeOp(w.op),
+    loginEnvironment: w.loginEnvironment,
+    selfSignup: w.selfSignup,
+    message: w.message?.trim() || CHANGE_FAILED_FALLBACK_MESSAGE,
+    at: w.at,
+  };
 }
 
 // `name` is the value loginEnvironment expects; other response fields are ignored.
