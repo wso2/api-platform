@@ -82,6 +82,12 @@ export type RuntimeConfig = {
    */
   billingProxyEnabled: boolean;
   /**
+   * Same-origin path of billing's user API, for a deployment that routes it
+   * apart from the console's proxy (e.g. "/_api/billing/api/v1"). Empty means
+   * `<platformApiBaseUrl>/billing`. Read only when `billingProxyEnabled` is set.
+   */
+  billingBaseUrl: string;
+  /**
    * Region recorded on an organization this console registers. Only read when the
    * platform does not have the organization yet, which the provisioning flow
    * normally gets to first.
@@ -174,6 +180,8 @@ type LegacyWindowConfig = Partial<{
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  BILLING_BASE_URL: string;
+  billingBaseUrl: string;
   DEFAULT_ORG_REGION: string;
   defaultOrgRegion: string;
   CLOUD_PROXY_ENABLED: string;
@@ -411,6 +419,11 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().billingProxyEnabled ||
       import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
+  billingBaseUrl:
+    fromWindow().BILLING_BASE_URL ||
+    fromWindow().billingBaseUrl ||
+    import.meta.env.VITE_BILLING_BASE_URL ||
+    '',
   defaultOrgRegion:
     fromWindow().DEFAULT_ORG_REGION ||
     fromWindow().defaultOrgRegion ||

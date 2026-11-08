@@ -186,6 +186,14 @@ describe('runtimeConfig', () => {
     expect(runtimeConfig.billingProxyEnabled).toBe(false);
   });
 
+  it('reads billingBaseUrl from runtime config, empty when absent', async () => {
+    expect((await loadRuntimeConfig()).billingBaseUrl).toBe('');
+
+    window.__RUNTIME_CONFIG__ = { billingBaseUrl: '/_api/billing/api/v1' };
+
+    expect((await loadRuntimeConfig()).billingBaseUrl).toBe('/_api/billing/api/v1');
+  });
+
   it('cloudProxyEnabled defaults to false when absent', async () => {
     const runtimeConfig = await loadRuntimeConfig();
 

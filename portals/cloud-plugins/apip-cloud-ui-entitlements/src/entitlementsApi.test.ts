@@ -66,6 +66,27 @@ describe('fetchEntitlementSummary', () => {
       '/proxy/billing-entitlement/summary?product=api-platform',
     ],
     [{ platformApiBaseUrl: '//[' }, '/proxy/billing-entitlement/summary?product=api-platform'],
+    // A deployment that routes the Entitlement API apart from the proxy.
+    [
+      {
+        platformApiBaseUrl: '/api-management/proxy',
+        billingEntitlementBaseUrl: '/_api/entitlement/api/v1/',
+      },
+      '/_api/entitlement/api/v1/summary?product=api-platform',
+    ],
+    [
+      { BILLING_ENTITLEMENT_BASE_URL: '/_api/entitlement/api/v1' },
+      '/_api/entitlement/api/v1/summary?product=api-platform',
+    ],
+    // Only a same-origin path is taken; anything else keeps the proxy route.
+    [
+      { platformApiBaseUrl: '/proxy', billingEntitlementBaseUrl: 'https://billing.example.com/v1' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [
+      { platformApiBaseUrl: '/proxy', billingEntitlementBaseUrl: '//billing.example.com' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
   ])('reads the summary under the proxy base for %j', async (config, expected) => {
     stubRuntimeConfig(config);
     const fetchMock = vi.fn().mockResolvedValue(okResponse({ products: [] }));
