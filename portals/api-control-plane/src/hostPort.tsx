@@ -184,6 +184,11 @@ export type CloudHostPort = {
   permissions: PermissionsPort;
   /** The signed-in user, from the session the host already holds. */
   user?: { name?: string; email?: string };
+  /**
+   * Ends the signed-in session. Optional: a deployment's header controls (the platform
+   * switcher's account menu) call it, and one that never does needs nothing from it.
+   */
+  signOut?: () => void;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

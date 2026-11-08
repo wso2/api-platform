@@ -26,7 +26,11 @@ import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
 import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
 import { useAuth } from '@/contexts/auth/AuthProvider';
-import { HEADER_ACTIONS_SLOT, type ApiControlPlaneHeaderAction } from '@/extensions';
+import {
+  HEADER_ACTIONS_SLOT,
+  HEADER_START_SLOT,
+  type ApiControlPlaneHeaderAction,
+} from '@/extensions';
 import { usePort } from '@/hostPort';
 import { routes } from '@/routes/paths';
 import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
@@ -68,6 +72,7 @@ export function AppHeader() {
   const brandLogo = useBrandLogo();
   // Cloud-only entries; empty in a standalone console, which registers none.
   const headerActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_ACTIONS_SLOT);
+  const headerStart = useSlot<ApiControlPlaneHeaderAction>(HEADER_START_SLOT);
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
@@ -91,7 +96,16 @@ export function AppHeader() {
     // the content. Portalled surfaces (menus, modals, tooltips) sit higher
     // still and are unaffected.
     <Header sx={{ position: 'relative', zIndex: 'appBar' }}>
-      <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
+      {/* A host that fills the header start (the WSO2 Cloud platform switcher) takes
+          this place over, so the sidebar toggle is not shown next to it. */}
+      {headerStart.length === 0 && <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />}
+      {headerStart.length > 0 && (
+        // A host control that throws must not take the shell down with it: drop it and keep
+        // the brand and sign-out. Reset on navigation so it can recover.
+        <ErrorBoundary fallback={() => null} resetKeys={[location.pathname]}>
+          <HeaderExtensionActions entries={headerStart} />
+        </ErrorBoundary>
+      )}
       <Header.Brand
         aria-label={intl.formatMessage({
           id: 'appShell.header.brand.aria',
