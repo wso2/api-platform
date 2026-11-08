@@ -197,6 +197,12 @@ const HostingTab: FC<{
       color: 'text.primary',
       border: 1,
       borderColor: selected ? 'primary.main' : 'divider',
+      // The panel below draws the shared bottom edge. An unselected tab leaves it
+      // to the panel's accent border, and the selected tab sits above its
+      // neighbour so the overlapping seam keeps the accent colour in both themes.
+      borderBottomColor: selected ? 'primary.main' : 'transparent',
+      position: 'relative',
+      zIndex: selected ? 1 : 0,
       borderRadius: '10px 10px 0 0',
       bgcolor: selected ? 'action.selected' : 'transparent',
     }}
@@ -479,7 +485,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
   // configure or delete again. Each action is also wrapped so its tooltip can say
   // why it is disabled — a disabled button fires no events.
   const renderActions = (gateway: Gateway) => (
-    <>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
       <WhenWritable port={port} allowed={canUpdate}>
         <IconButton
           size="small"
@@ -517,7 +523,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
           </IconButton>
         </span>
       </Tooltip>
-    </>
+    </div>
   );
 
   return (
@@ -565,7 +571,7 @@ const GatewaysList: FC<GatewaysListProps> = ({
               <HostingTab
                 icon={<Server size={20} />}
                 title="Self-hosted API gateways"
-                description="Running on your infrastructure, connected to this control plane."
+                description="Running on your own infrastructure."
                 active={selfHostedSummary.active}
                 inactive={selfHostedSummary.inactive}
                 selected={activeHosting === 'self-hosted'}
@@ -580,6 +586,8 @@ const GatewaysList: FC<GatewaysListProps> = ({
                 borderColor: 'primary.main',
                 borderRadius: '0 0 10px 10px',
                 mt: '-1px',
+                position: 'relative',
+                zIndex: 0,
               }}
             >
               <TextField
