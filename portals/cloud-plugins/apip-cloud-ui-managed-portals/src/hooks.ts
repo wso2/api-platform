@@ -10,12 +10,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { usePortalFeature } from './portContext';
+import { isBeingChanged } from './utils/change';
 import type {
   CreateManagedPortalInput,
   ManagedPortal,
   OrgEnvironment,
   UpdateManagedPortalInput,
 } from './types';
+
+type Notifier = { notify: (message: string, severity: 'success' | 'info' | 'error') => void };
+
+/**
+ * A change that runs in the background answers with the portal pending: it has
+ * started, not finished, so the user is told that much; the list reports how
+ * it ended (see useManagedPortalList).
+ */
+function notifyUpdated(host: Notifier, portal: ManagedPortal) {
+  if (portal.status === 'pending') {
+    host.notify(`Updating portal "${portal.name}". This can take a minute.`, 'info');
+    return;
+  }
+  host.notify(`Portal "${portal.name}" updated`, 'success');
+}
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -49,7 +65,7 @@ export function useManagedPortal(id: string) {
     async (input: UpdateManagedPortalInput) => {
       try {
         const updated = await port.update(id, input);
-        host.notify(`Portal "${updated.name}" updated`, 'success');
+        notifyUpdated(host, updated);
         setPortal(updated);
         return updated;
       } catch (err) {
@@ -157,6 +173,38 @@ export function useManagedPortalList() {
     return () => window.clearInterval(id);
   }, [hasPending, silentRefetch]);
 
+  // Portals whose background change was running when last listed. When one
+  // settles, the portal is read for how the change ended, since saving it only
+  // said it had started; a failed change leaves its message there.
+  const changing = useRef(new Set<string>());
+  useEffect(() => {
+    const settled: ManagedPortal[] = [];
+    for (const p of portals) {
+      if (isBeingChanged(p)) {
+        changing.current.add(p.id);
+      } else if (changing.current.delete(p.id)) {
+        settled.push(p);
+      }
+    }
+    for (const id of [...changing.current]) {
+      if (!portals.some((p) => p.id === id)) changing.current.delete(id);
+    }
+    for (const p of settled) {
+      port
+        .get(p.id)
+        .then((full) => {
+          if (full.lastChangeError) {
+            host.notify(`Portal "${full.name}": ${full.lastChangeError.message}`, 'error');
+          } else {
+            host.notify(`Portal "${full.name}" updated`, 'success');
+          }
+        })
+        .catch(() => {
+          // The list still shows the portal's state; the next read reports it.
+        });
+    }
+  }, [portals, port, host]);
+
   const create = useCallback(
     async (input: CreateManagedPortalInput) => {
       try {
@@ -182,7 +230,7 @@ export function useManagedPortalList() {
     async (id: string, input: UpdateManagedPortalInput) => {
       try {
         const portal = await port.update(id, input);
-        host.notify(`Portal "${portal.name}" updated`, 'success');
+        notifyUpdated(host, portal);
         await refetch();
         return portal;
       } catch (err) {

@@ -64,3 +64,46 @@ describe('ManagedPortalsList permissions', () => {
     expect(isDisabled(screen.getByRole('button', { name: 'Delete Developers' }))).toBe(false);
   });
 });
+
+const renderPortals = (portals: ManagedPortal[]) =>
+  render(
+    <PortalFeatureProvider value={{ port: createMockPortalPort(portals), host }}>
+      <ManagedPortalsList canCreate canUpdate canDelete onCreate={() => {}} onEdit={() => {}} />
+    </PortalFeatureProvider>
+  );
+
+describe('ManagedPortalsList background changes', () => {
+  it('names the change a pending portal is running instead of reading as created', async () => {
+    renderPortals([
+      { ...portal, status: 'pending', change: { op: 'loginEnvironment', loginEnvironment: 'staging' } },
+    ]);
+
+    expect(await screen.findByText('Moving sign-in to staging...')).toBeTruthy();
+    expect(screen.queryByText('Creating portal...')).toBeNull();
+  });
+
+  it('still reads a pending portal without a change as being created', async () => {
+    renderPortals([{ ...portal, status: 'pending' }]);
+
+    expect(await screen.findByText('Creating portal...')).toBeTruthy();
+  });
+
+  it('shows a failed change with its message and keeps the portal editable', async () => {
+    renderPortals([
+      {
+        ...portal,
+        status: 'failed',
+        lastChangeError: {
+          op: 'loginEnvironment',
+          loginEnvironment: 'staging',
+          message: 'Moving the sign-in to "staging" stopped part-way. Change the login environment again to finish it.',
+        },
+      },
+    ]);
+
+    expect(await screen.findByText('Update failed')).toBeTruthy();
+    expect(screen.getByText(/stopped part-way/)).toBeTruthy();
+    expect(screen.queryByText('Creation failed')).toBeNull();
+    expect(isDisabled(screen.getByRole('button', { name: 'Edit Developers' }))).toBe(false);
+  });
+});
