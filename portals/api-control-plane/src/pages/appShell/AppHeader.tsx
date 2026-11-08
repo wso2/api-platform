@@ -99,7 +99,13 @@ export function AppHeader() {
       {/* A host that fills the header start (the WSO2 Cloud platform switcher) takes
           this place over, so the sidebar toggle is not shown next to it. */}
       {headerStart.length === 0 && <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />}
-      {headerStart.length > 0 && <HeaderExtensionActions entries={headerStart} />}
+      {headerStart.length > 0 && (
+        // A host control that throws must not take the shell down with it: drop it and keep
+        // the brand and sign-out. Reset on navigation so it can recover.
+        <ErrorBoundary fallback={() => null} resetKeys={[location.pathname]}>
+          <HeaderExtensionActions entries={headerStart} />
+        </ErrorBoundary>
+      )}
       <Header.Brand
         aria-label={intl.formatMessage({
           id: 'appShell.header.brand.aria',

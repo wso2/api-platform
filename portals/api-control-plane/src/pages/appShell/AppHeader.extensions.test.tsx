@@ -103,6 +103,21 @@ describe('AppHeader cloud extensions', () => {
     expect(screen.queryByRole('button', { name: /toggle|collapse|expand|menu/i })).not.toBeInTheDocument();
   });
 
+  it('keeps the brand when an entry in the header start slot throws while rendering', async () => {
+    renderHeader([
+      {
+        id: 'broken-switcher',
+        slot: HEADER_START_SLOT,
+        order: 10,
+        render: () => {
+          throw new Error('boom');
+        },
+      },
+    ]);
+
+    expect(await screen.findByLabelText('Go to organization overview')).toBeInTheDocument();
+  });
+
   it('ignores an entry registered against another slot', () => {
     renderHeader([{ ...headerEntry, slot: 'sidebar.organization' }]);
 
