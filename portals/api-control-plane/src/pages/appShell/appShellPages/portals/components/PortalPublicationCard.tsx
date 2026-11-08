@@ -28,6 +28,7 @@ import {
   Menu,
   MenuItem,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, Circle, ExternalLink, Megaphone } from '@wso2/oxygen-ui-icons-react';
@@ -76,6 +77,11 @@ type PortalPublicationCardProps = {
   publication: PublicationSummaryItem;
   /** This API's publish page for a portal; the API kind decides where that lives. */
   publishPath: (apiPortalId: string) => string;
+  /**
+   * Set when the caller may not publish this kind of API: the publish buttons
+   * are disabled and this explains why.
+   */
+  publishDeniedTooltip?: string;
 };
 
 const AVATAR_SIZE = 72;
@@ -142,6 +148,7 @@ export function PortalPublicationCard({
   orgHandle,
   publication,
   publishPath,
+  publishDeniedTooltip,
 }: PortalPublicationCardProps) {
   const intl = useIntl();
   const { relativeTime } = useFormatters();
@@ -223,47 +230,49 @@ export function PortalPublicationCard({
         </Box>
 
         <Stack alignItems="center" direction="row" spacing={2}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <ButtonGroup
-              disabled={!publishHref}
-              ref={anchorRef}
-              size="small"
-              sx={{ display: 'flex', width: '100%' }}
-              variant="contained"
-            >
-              <Button
-                aria-describedby={nameId}
-                onClick={runPublish}
-                startIcon={mode === 'publish' && <Megaphone size={16} />}
-                sx={{ '&&': { flex: '1 1 auto', minWidth: 0 }, whiteSpace: 'nowrap' }}
+          <Tooltip title={publishDeniedTooltip ?? ''}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <ButtonGroup
+                disabled={!publishHref || publishDeniedTooltip !== undefined}
+                ref={anchorRef}
+                size="small"
+                sx={{ display: 'flex', width: '100%' }}
+                variant="contained"
               >
-                <FormattedMessage {...(mode === 'publish' ? messages.publish : messages.configureAndPublish)} />
-              </Button>
-              <Button
-                aria-expanded={menuOpen}
-                aria-haspopup="menu"
-                aria-label={intl.formatMessage(messages.moreActions)}
-                onClick={() => setMenuOpen((open) => !open)}
-                sx={{ '&&': { flex: '0 0 40px', minWidth: 40, px: 0 } }}
-              >
-                <ChevronDown size={16} />
-              </Button>
-            </ButtonGroup>
-            <Menu anchorEl={anchorRef.current} onClose={() => setMenuOpen(false)} open={menuOpen}>
-              {(['publish', 'review'] as const).map((option) => (
-                <MenuItem
-                  key={option}
-                  onClick={() => {
-                    setMode(option);
-                    setMenuOpen(false);
-                  }}
-                  selected={option === mode}
+                <Button
+                  aria-describedby={nameId}
+                  onClick={runPublish}
+                  startIcon={mode === 'publish' && <Megaphone size={16} />}
+                  sx={{ '&&': { flex: '1 1 auto', minWidth: 0 }, whiteSpace: 'nowrap' }}
                 >
-                  <FormattedMessage {...(option === 'publish' ? messages.publish : messages.configureAndPublish)} />
-                </MenuItem>
-              ))}
-            </Menu>
-          </Box>
+                  <FormattedMessage {...(mode === 'publish' ? messages.publish : messages.configureAndPublish)} />
+                </Button>
+                <Button
+                  aria-expanded={menuOpen}
+                  aria-haspopup="menu"
+                  aria-label={intl.formatMessage(messages.moreActions)}
+                  onClick={() => setMenuOpen((open) => !open)}
+                  sx={{ '&&': { flex: '0 0 40px', minWidth: 40, px: 0 } }}
+                >
+                  <ChevronDown size={16} />
+                </Button>
+              </ButtonGroup>
+              <Menu anchorEl={anchorRef.current} onClose={() => setMenuOpen(false)} open={menuOpen}>
+                {(['publish', 'review'] as const).map((option) => (
+                  <MenuItem
+                    key={option}
+                    onClick={() => {
+                      setMode(option);
+                      setMenuOpen(false);
+                    }}
+                    selected={option === mode}
+                  >
+                    <FormattedMessage {...(option === 'publish' ? messages.publish : messages.configureAndPublish)} />
+                  </MenuItem>
+                ))}
+              </Menu>
+            </Box>
+          </Tooltip>
           <Button
             component="a"
             disabled={!viewInPortalHref}

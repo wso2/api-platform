@@ -43,6 +43,7 @@ import { useAllApiDocuments } from '@/api/resources/apiDocuments';
 import { useAllSubscriptionPlans } from '@/api/resources/subscriptionPlans';
 import { LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { useCan } from '@/permissions';
 import { parseGraphQLSdl } from '../apis/create/utils/graphqlSchema';
 import { parseSpecText } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
@@ -324,6 +325,14 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const { apiHandle: apiHandler, apiType } = target;
   const isGraphQL = target.definitionKind === 'graphql';
   const defaultFormat: DefinitionFormat = isGraphQL ? 'graphql' : 'json';
+  // Publish, unpublish and deprecate share one scope per API kind; saving the
+  // draft has its own. Without them the page is a read-only view of the
+  // publication: no action bar, and no auto-publish from the portal card.
+  // Both kinds are asked unconditionally (hooks), then the target's is used.
+  const canManageRest = useCan('publishRestApiToApiPortal');
+  const canManageGraphQL = useCan('publishGraphQLApiToApiPortal');
+  const canManagePublication = isGraphQL ? canManageGraphQL : canManageRest;
+  const canSaveDraftPermission = useCan('saveApiPublicationDraft');
 
   // Passed by the portal card that linked here; falls back to the handle on a
   // direct link or refresh, where there is no navigation state.
@@ -491,7 +500,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const autoPublishStarted = useRef(false);
   const publishHandlerRef = useRef<(() => Promise<void>) | undefined>(undefined);
   useEffect(() => {
-    if (!navState?.autoPublish || autoPublishStarted.current || !initialized || !documentsPreselected || documentsIncomplete || busy) return;
+    if (!navState?.autoPublish || !canManagePublication || autoPublishStarted.current || !initialized || !documentsPreselected || documentsIncomplete || busy) return;
     autoPublishStarted.current = true;
     void publishHandlerRef.current?.();
   });
@@ -944,7 +953,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
           {/* Reserves the bar's row while the published version is on screen, so the card doesn't resize. */}
           <Box sx={{ minHeight: ACTION_BAR_HEIGHT }}>
-            {showingPublished && isPublished && (
+            {canManagePublication && showingPublished && isPublished && (
               <PublishedActionsBar
                 canDeprecate={canDeprecate}
                 deprecating={pendingAction === 'deprecating'}
@@ -953,10 +962,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
                 unpublishing={pendingAction === 'unpublishing'}
               />
             )}
-            {!showingPublished && (
+            {canManagePublication && !showingPublished && (
               <PublishActionsBar
                 canDeprecate={canDeprecate}
-                canSaveDraft={hasUnsavedChanges}
+                canSaveDraft={hasUnsavedChanges && canSaveDraftPermission}
                 deprecating={pendingAction === 'deprecating'}
                 isPublished={isPublished}
                 onDeprecate={() => setConfirmingDeprecate(true)}

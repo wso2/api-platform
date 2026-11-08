@@ -30,6 +30,7 @@ import { ErrorState, LoadingState } from '@/components/StateViews';
 import { useCan } from '@/permissions/useCan';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { PAGE_GRAPHQL_API_DEPLOY_SLOT } from '@/extensions';
 import { ApiOverviewHeader } from '../../apis/overview/ApiOverviewHeader';
 import { deployedGateways as deployedGatewaysOf } from '../../test/utils/deployedGateways';
 import { GraphqlOverviewTab } from './GraphqlOverviewTab';
@@ -120,6 +121,7 @@ function GraphqlApiDetailPageContent() {
         banner={<GraphqlProgressBanner deployed={deployedGateways.length > 0} />}
         canEdit={canEdit}
         deployOperation="DeployGraphQLAPI"
+        deploySlot={PAGE_GRAPHQL_API_DEPLOY_SLOT}
         deployPath={deployPath}
         editPath={editPath}
       />

@@ -49,7 +49,10 @@ const messages = defineMessages({
  */
 export function ApiCard({ api, onOpen, onDelete }: ApiCardProps) {
   const intl = useIntl();
-  const canDelete = useCan('DeleteRESTAPI');
+  // Deleted through its own kind's endpoint, under that kind's scopes.
+  const canDeleteRest = useCan('DeleteRESTAPI');
+  const canDeleteGraphQL = useCan('DeleteGraphQLAPI');
+  const canDelete = api.apiType === 'graphql' ? canDeleteGraphQL : canDeleteRest;
   const updated = api.updatedAt || api.createdAt;
 
   return (

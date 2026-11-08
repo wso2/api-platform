@@ -22,6 +22,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { GRAPHQL_API_TYPE, useApiPublications } from '@/api/resources/apiPublications';
 import { routes } from '@/routes/paths';
+import { useCan } from '@/permissions';
 import {
   ProgressStepper,
   progressStepMessages,
@@ -44,6 +45,8 @@ const LIST_LIMIT = 100;
 export function GraphqlProgressBanner({ deployed }: { deployed: boolean }) {
   const { orgHandle = '', projectHandler = '', graphqlApiHandler = '' } = useParams();
   const navigate = useNavigate();
+  // The Publish step links to publishing only for a user who may publish.
+  const canPublish = useCan('publishGraphQLApiToApiPortal');
   const intl = useIntl();
 
   const publicationsQuery = useApiPublications(GRAPHQL_API_TYPE, graphqlApiHandler || undefined, {
@@ -84,8 +87,9 @@ export function GraphqlProgressBanner({ deployed }: { deployed: boolean }) {
       label: intl.formatMessage(progressStepMessages.stepPublish),
       Icon: Globe,
       complete: published,
-      onClick: () =>
-        navigate(routes.graphqlApiPublish(orgHandle, projectHandler, graphqlApiHandler)),
+      onClick: canPublish
+        ? () => navigate(routes.graphqlApiPublish(orgHandle, projectHandler, graphqlApiHandler))
+        : undefined,
     },
   ];
 

@@ -30,7 +30,12 @@ import SelfHostedSetupDrawer from './components/SelfHostedSetupDrawer';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { isSettling } from './utils/status';
 import type { CloudHostPort, GatewayVersionEntry } from './hostPort';
-import { API_DEPLOYMENT_OPERATIONS, ARTIFACT_READ_OPERATIONS, permissionsOf } from './permissions';
+import {
+  API_DEPLOYMENT_OPERATIONS,
+  ARTIFACT_READ_OPERATIONS,
+  GATEWAY_CREATE_OPERATIONS,
+  permissionsOf,
+} from './permissions';
 import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployFeatureProps = {
@@ -81,6 +86,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const canDeploy = permissions.canAny(API_DEPLOYMENT_OPERATIONS.DeployApi);
   const canUndeploy = permissions.canAny(API_DEPLOYMENT_OPERATIONS.UndeployApi);
   const canDeleteBuild = permissions.canAny(API_DEPLOYMENT_OPERATIONS.DeleteApiBuild);
+  const canAddGateway = permissions.canAny(GATEWAY_CREATE_OPERATIONS);
   // The gateway type this artifact kind deploys to: AI artifacts need AI gateways.
   const gatewayType = gatewayTypeForKind(kind);
   // Identifies the artifact this page is showing. A create that was started for another
@@ -521,6 +527,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       canDeploy={canDeploy}
       canUndeploy={canUndeploy}
       canDeleteBuild={canDeleteBuild}
+      canAddGateway={canAddGateway}
       busy={busy}
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
