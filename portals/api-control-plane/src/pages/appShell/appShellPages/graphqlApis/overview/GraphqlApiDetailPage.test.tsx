@@ -18,9 +18,10 @@
 
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
+import { runtimeConfig } from '@/config/runtime';
 import { resetHttpClient } from '@/api/core/http';
 import {
   accepts,
@@ -29,6 +30,7 @@ import {
   aGraphQLApiDetail,
   apiUrl,
   collection,
+  failure,
   recorder,
   resource,
   type DeploymentFixture,
@@ -300,5 +302,85 @@ describe('GraphqlApiDetailPage', () => {
     renderPage();
 
     expect(await screen.findByText('GraphQL API not found')).toBeInTheDocument();
+  });
+});
+
+describe('GraphqlApiDetailPage deployed gateways in cloud', () => {
+  const PIPELINE = `/projects/${PROJECT}/apis/${API}/deployments`;
+  const original = runtimeConfig.cloudProxyEnabled;
+  const platformDeployment = aDeployment({
+    deploymentId: 'deployment-1',
+    gatewayId: 'edge-gateway',
+    name: 'Edge_Gateway_2026-01-01_1',
+    status: 'DEPLOYED',
+  });
+
+  const serve = (platformDeployments: DeploymentFixture[]) =>
+    server.use(
+      resource('/graphql-apis/:graphqlApiId', api),
+      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
+      collection('/graphql-apis/:graphqlApiId/gateways', [gateway]),
+      collection('/graphql-apis/:graphqlApiId/deployments', platformDeployments),
+      collection('/me/api-keys', []),
+    );
+
+  beforeEach(() => {
+    runtimeConfig.cloudProxyEnabled = true;
+  });
+
+  afterEach(() => {
+    runtimeConfig.cloudProxyEnabled = original;
+  });
+
+  it('follows the pipeline: deployed there shows the panel even with no platform record', async () => {
+    serve([]);
+    server.use(
+      resource(PIPELINE, {
+        list: [
+          {
+            environment: 'development',
+            gateways: [{ gatewayId: 'edge-gateway', deploymentId: 'd-1', status: 'DEPLOYED' }],
+          },
+        ],
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText('Deployed gateways')).toBeInTheDocument();
+  });
+
+  it('follows the pipeline: not deployed there hides the panel despite a platform record', async () => {
+    serve([platformDeployment]);
+    const pipelineCalls = recorder();
+    server.use(
+      resource(
+        PIPELINE,
+        {
+          list: [
+            { environment: 'development', gateways: [{ gatewayId: 'edge-gateway', status: 'NOT_DEPLOYED' }] },
+          ],
+        },
+        { record: pipelineCalls },
+      ),
+    );
+
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Countries GraphQL API' });
+    // Both sources have answered before the absence means anything: until the
+    // pipeline does, the platform's record would show the panel.
+    await waitFor(() => expect(pipelineCalls.count()).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(screen.queryByText('Deployed gateways')).not.toBeInTheDocument();
+  });
+
+  it('keeps the platform list when the pipeline call is refused', async () => {
+    serve([platformDeployment]);
+    server.use(failure('get', PIPELINE, 403, 'FORBIDDEN'));
+
+    renderPage();
+
+    expect(await screen.findByText('Deployed gateways')).toBeInTheDocument();
   });
 });
