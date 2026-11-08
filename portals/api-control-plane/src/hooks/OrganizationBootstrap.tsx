@@ -43,6 +43,13 @@ import { useAuth } from '../contexts/auth/AuthProvider';
  * Renders nothing, and never blocks the console — the organization may simply be
  * arriving by the other route.
  */
+
+/**
+ * How many times registration is attempted for one organization before the console
+ * stops. A conflict spends them all, because that answer is final.
+ */
+const MAX_REGISTRATION_ATTEMPTS = 3;
+
 export function OrganizationBootstrap() {
   const { isAuthenticated, user } = useAuth();
   const handle = user?.org?.handle;
@@ -52,11 +59,15 @@ export function OrganizationBootstrap() {
   // too, so nothing is read until the lookup has actually answered.
   const existing = useOrganization(isAuthenticated ? handle : undefined);
   const bootstrap = useBootstrapOrganization();
-  const started = useRef(false);
+  // Keyed on the handle rather than held as a plain flag, so a session that moves to
+  // another organization can still register that one. `tries` is what stops a platform
+  // that is failing from turning into an unbounded request loop: the effect re-runs
+  // whenever the mutation settles, and the lookup still answers not-found.
+  const attempt = useRef<{ handle: string; tries: number; inFlight: boolean } | null>(null);
   const refetchExisting = existing.refetch;
 
   useEffect(() => {
-    if (!isAuthenticated || !handle || started.current) return;
+    if (!isAuthenticated || !handle) return;
     if (existing.isPending || existing.data) return;
     // Not-found is the only answer that means "register it". Anything else — an
     // expired session, a denial, the platform being unreachable — says nothing about
@@ -65,7 +76,15 @@ export function OrganizationBootstrap() {
     // organization with its domain code; the generic one is kept for older servers.
     if (!isErrorCode(existing.error, ErrorCode.ORGANIZATION_NOT_FOUND, ErrorCode.NOT_FOUND)) return;
 
-    started.current = true;
+    const record =
+      attempt.current && attempt.current.handle === handle
+        ? attempt.current
+        : { handle, tries: 0, inFlight: false };
+    attempt.current = record;
+    if (record.inFlight || record.tries >= MAX_REGISTRATION_ATTEMPTS) return;
+
+    record.inFlight = true;
+    record.tries += 1;
     bootstrap.mutate(
       {
         id: handle,
@@ -73,16 +92,21 @@ export function OrganizationBootstrap() {
         region: runtimeConfig.defaultOrgRegion,
       },
       {
+        onSuccess: () => {
+          record.inFlight = false;
+        },
         onError: (error) => {
-          // A conflict is the other route having won, which is success. Re-read so
-          // the rest of the console sees the organization, and leave `started` set so
-          // this does not register again.
+          record.inFlight = false;
+          // A conflict is the other route having won, which is success. Re-read so the
+          // rest of the console sees the organization, and spend the remaining attempts
+          // so this does not register again.
           if (isErrorCode(error, ErrorCode.ORGANIZATION_EXISTS, ErrorCode.CONFLICT)) {
+            record.tries = MAX_REGISTRATION_ATTEMPTS;
             void refetchExisting();
             return;
           }
-          // Anything else may be transient; allow a later attempt.
-          started.current = false;
+          // Anything else may be transient, so another attempt is allowed until the
+          // ceiling is reached.
         },
       },
     );

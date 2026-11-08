@@ -25,9 +25,10 @@ import { OrganizationBootstrap } from './OrganizationBootstrap';
 const mutate = vi.fn();
 const refetch = vi.fn();
 let lookup: { isPending: boolean; data?: unknown; error?: unknown };
+let auth: { isAuthenticated: boolean; user?: { org?: { handle?: string; name?: string } } };
 
 vi.mock('../contexts/auth/AuthProvider', () => ({
-  useAuth: () => ({ isAuthenticated: true, user: { org: { handle: 'acme', name: 'Acme' } } }),
+  useAuth: () => auth,
 }));
 
 vi.mock('../api/resources/organizations', () => ({
@@ -42,7 +43,16 @@ describe('OrganizationBootstrap', () => {
   beforeEach(() => {
     mutate.mockReset();
     refetch.mockReset();
+    auth = { isAuthenticated: true, user: { org: { handle: 'acme', name: 'Acme' } } };
   });
+
+  // Each render hands the effect a new mutation object, which is what makes it run
+  // again -- the same thing that happens in the console when a mutation settles.
+  const settleWith = (error: unknown, rerender: (ui: React.ReactElement) => void) => {
+    const { onError } = mutate.mock.calls[mutate.mock.calls.length - 1][1];
+    onError(error);
+    rerender(<OrganizationBootstrap />);
+  };
 
   it.each(['ORGANIZATION_NOT_FOUND', 'NOT_FOUND'])(
     'registers the organization when the lookup answers %s',
@@ -85,4 +95,40 @@ describe('OrganizationBootstrap', () => {
       expect(refetch).toHaveBeenCalledTimes(1);
     },
   );
+
+  it.each(['ORGANIZATION_EXISTS', 'CONFLICT'])(
+    'does not register again after %s',
+    (code) => {
+      lookup = { isPending: false, error: httpError(404, 'ORGANIZATION_NOT_FOUND') };
+      const { rerender } = render(<OrganizationBootstrap />);
+
+      settleWith(httpError(409, code), rerender);
+      rerender(<OrganizationBootstrap />);
+
+      expect(mutate).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('stops registering once the attempts are spent', () => {
+    lookup = { isPending: false, error: httpError(404, 'ORGANIZATION_NOT_FOUND') };
+    const { rerender } = render(<OrganizationBootstrap />);
+
+    for (let i = 0; i < 6; i += 1) settleWith(httpError(500, 'INTERNAL_ERROR'), rerender);
+
+    expect(mutate).toHaveBeenCalledTimes(3);
+  });
+
+  it('registers the next organization when the session moves to another one', () => {
+    lookup = { isPending: false, error: httpError(404, 'ORGANIZATION_NOT_FOUND') };
+    const { rerender } = render(<OrganizationBootstrap />);
+
+    const { onSuccess } = mutate.mock.calls[0][1];
+    onSuccess({ id: 'acme' });
+
+    auth = { isAuthenticated: true, user: { org: { handle: 'globex', name: 'Globex' } } };
+    rerender(<OrganizationBootstrap />);
+
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate.mock.calls[1][0]).toMatchObject({ id: 'globex', displayName: 'Globex' });
+  });
 });
