@@ -135,8 +135,8 @@ xor
 |status|string|true|none|Always "error" for error responses.|
 |code|string|true|none|Machine-readable SCREAMING_SNAKE_CASE catalog code.|
 |message|string|true|none|Human-readable error message.|
-|errors|[object]|false|none|Optional per-field validation errors.|
-|» field|string|true|none|none|
+|errors|[object]|false|none|Optional details, one per problem. `field` names the request field when the problem is about one.|
+|» field|string|false|none|none|
 |» message|string|true|none|none|
 
 ##### Enumerated Values

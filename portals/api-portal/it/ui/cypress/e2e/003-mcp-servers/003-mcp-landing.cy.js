@@ -16,7 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// An MCP server's landing text (web/apiContent.md) shows on its page, like an API's.
+// An MCP server's landing text (web/api-content.md) shows on its page, like an API's.
 
 describe('MCP server landing text on its page', () => {
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -26,11 +26,7 @@ describe('MCP server landing text on its page', () => {
         cy.login();
         cy.seedMcp({ name: `IT Landing MCP ${uid}` }).then((h) => {
             handle = h;
-            // A docs/ entry too: on main a ZIP holding only web/ is taken for a wrapper folder and rejected.
-            cy.uploadMcpContent(h, [
-                { name: 'web/apiContent.md', content: '# Weather MCP landing page' },
-                { name: 'docs/Guide.md', content: '# Guide' },
-            ]);
+            cy.uploadMcpContent(h, [{ name: 'web/api-content.md', content: '# Weather MCP landing page' }]);
         });
     });
 
@@ -43,7 +39,7 @@ describe('MCP server landing text on its page', () => {
         cy.on('uncaught:exception', () => false);
     });
 
-    it('shows the text from apiContent.md', () => {
+    it('shows the text from api-content.md', () => {
         cy.login();
         cy.visitPortal(`/mcp/${handle}`);
         cy.get('.api-md-content').should('contain', 'Weather MCP landing page');

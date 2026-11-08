@@ -40,11 +40,7 @@ describe('MCP server thumbnail on the MCP Hub pages', () => {
         cy.login();
         cy.seedMcp({ name: MCP_NAME }).then((h) => {
             handle = h;
-            // A docs/ entry too: on main a ZIP holding only web/ is taken for a wrapper folder and rejected.
-            cy.uploadMcpContent(h, [
-                { name: 'web/api-icon.png', content: PNG },
-                { name: 'docs/Guide.md', content: '# Guide' },
-            ]);
+            cy.uploadMcpContent(h, [{ name: 'web/api-icon.png', content: PNG }]);
         });
     });
 

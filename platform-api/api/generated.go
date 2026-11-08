@@ -2559,7 +2559,8 @@ type APIDocumentMetadata struct {
 type APIDocumentRequest struct {
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// FileName File name to associate with the content. Defaults to `{handle}.md`.
+	// FileName File name to associate with the content. Must end in `.md`, and must not start with a dot
+	// or contain `..`. Defaults to `{handle}.md`.
 	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
 
 	// Id URL-safe document handle. On create: optional, server-generated from
@@ -2571,7 +2572,8 @@ type APIDocumentRequest struct {
 	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
 
 	// OtherTypeName Free-form qualifier used when `type` is `Other`. Stored and returned
-	// exactly as typed (no case conversion). Ignored for all other types.
+	// exactly as typed (no case conversion). Must not start with a dot or
+	// contain `..`, `/` or `\`. Ignored for all other types.
 	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
 
 	// Type Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
