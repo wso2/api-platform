@@ -221,8 +221,9 @@
       <p class="cfg-field-hint">UUID linking this plan to an external billing or quota system.</p>
     </div>
     {{!-- Pricing is given only when a plan is created. settings-plans.js disables this fieldset when a
-          saved plan is edited, so its pricing shows read-only. --}}
-    <fieldset class="cfg-form-group cfg-fieldset" id="pol-pricing-fields" data-billing-ready="{{#if billingConfiguration}}true{{/if}}" style="margin-bottom:24px;padding-top:16px;border-top:1px solid #e5e9ef;">
+          saved plan is edited, so its pricing shows read-only. Hidden, not left out, when Settings hides
+          monetization: settings-plans.js binds to its fields at load. --}}
+    <fieldset class="cfg-form-group cfg-fieldset" id="pol-pricing-fields" data-billing-ready="{{#if billingConfiguration}}true{{/if}}" style="margin-bottom:24px;padding-top:16px;border-top:1px solid #e5e9ef;"{{#unless showMonetization}} hidden{{/unless}}>
       <label style="display:flex;align-items:center;gap:8px;margin:0;">
         <input type="checkbox" id="pol-paid" />
         <span>Paid plan</span>
@@ -359,6 +360,7 @@
   </div>
 </div>
 
+{{#if showMonetization}}
 {{> cfg-billing-form}}
 
 <!-- Remove Billing modal -->
@@ -470,6 +472,7 @@
     </div>
   </div>
 </div>
+{{/if}}
 
 <!-- Add / Edit Key Manager modal -->
 <div class="cfg-modal-overlay" id="cfg-km-modal" style="display:none;">

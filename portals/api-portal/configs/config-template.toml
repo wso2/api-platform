@@ -505,6 +505,12 @@ tls_skip_verify = false
 # security.encryption_key. Stripe sends payment events to server.base_url, so set
 # it to the portal's public address.
 
+[api_portal.monetization]
+# true hides the Monetization section of Settings (Billing, Meters, Usage &
+# Revenue) and the Paid plan option of the plan dialog. Only Settings changes:
+# billing already set up keeps working, and the REST API is unchanged.
+disabled = false
+
 [api_portal.billing.stripe]
 base_url = "https://api.stripe.com"
 api_version = "2024-06-20"
