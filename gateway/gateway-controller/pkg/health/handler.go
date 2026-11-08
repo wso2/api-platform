@@ -38,9 +38,10 @@ var forbiddenBody = []byte(`{"status":"forbidden"}`)
 // checkBody is the JSON form of one check. Error and Since are left out while the check
 // is up.
 type checkBody struct {
-	Status CheckStatus `json:"status"`
-	Error  string      `json:"error,omitempty"`
-	Since  string      `json:"since,omitempty"`
+	Status  CheckStatus `json:"status"`
+	Error   string      `json:"error,omitempty"`
+	Since   string      `json:"since,omitempty"`
+	Warning string      `json:"warning,omitempty"`
 }
 
 // StatusCode returns the HTTP status for a result: 200 when healthy, 503 otherwise.
@@ -60,7 +61,7 @@ func RenderBody(res Result) ([]byte, error) {
 		Checks:    make(map[string]checkBody, len(res.Checks)),
 	}
 	for name, chk := range res.Checks {
-		cb := checkBody{Status: chk.Status, Error: chk.Error}
+		cb := checkBody{Status: chk.Status, Error: chk.Error, Warning: chk.Warning}
 		if !chk.Since.IsZero() {
 			cb.Since = formatTime(chk.Since)
 		}

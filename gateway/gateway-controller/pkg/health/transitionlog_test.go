@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -329,4 +330,40 @@ func TestTransitionSkipsUnloggedChecks(t *testing.T) {
 	assert.Equal(t, 1, countContaining(lines, "check=database"))
 	assert.NotContains(t, logs.debug.String(), "check=startup")
 	assert.NotContains(t, c.logger.failingSince, "startup")
+}
+
+// A warning keeps the check up and the result healthy, is shown on the check, and is
+// logged once when it appears and once when it clears.
+func TestWarningKeepsTheCheckUpAndIsLoggedOnChange(t *testing.T) {
+	var l logCapture
+	c, clk := newTestChecker(l.options())
+	var warn atomic.Bool
+	warn.Store(true)
+	c.Register("database", func(context.Context) error {
+		if warn.Load() {
+			return fmt.Errorf("%w: 9 of 10 connections in use", Warning("database connection pool exhausted"))
+		}
+		return nil
+	})
+
+	res := c.Evaluate()
+	assert.True(t, res.Healthy)
+	assert.Equal(t, StatusUp, res.Checks["database"].Status)
+	assert.Equal(t, "database connection pool exhausted", res.Checks["database"].Warning)
+	body, err := RenderBody(res)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"database":{"status":"up","warning":"database connection pool exhausted"}`)
+
+	clk.Advance(10 * time.Second)
+	c.Evaluate()
+	warn.Store(false)
+	clk.Advance(10 * time.Second)
+	res = c.Evaluate()
+	assert.Empty(t, res.Checks["database"].Warning)
+
+	lines := l.healthLines()
+	require.Len(t, lines, 2, "one line when the warning appears and one when it clears")
+	assert.Contains(t, lines[0], "level=WARN")
+	assert.Contains(t, lines[0], `msg="health check warning" check=database warning="database connection pool exhausted"`)
+	assert.Contains(t, lines[1], `msg="health check warning cleared" check=database`)
 }

@@ -367,6 +367,9 @@ components:
           type: string
           format: date-time
           description: When the check started failing; present only when down
+        warning:
+          type: string
+          description: Generic note on a check that is up but under strain, such as an exhausted connection pool; present only while it applies, and never makes the check down
 
     XDSSyncStatusResponse:
       type: object

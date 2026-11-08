@@ -124,9 +124,11 @@ type databasePool interface {
 	Stats() sql.DBStats
 }
 
-// errPoolExhausted is the reason reported when the connection pool has stayed saturated
-// for longer than the configured limit.
-var errPoolExhausted = health.Reason("database connection pool exhausted")
+// errPoolExhausted is the warning reported when the connection pool has stayed saturated
+// for longer than the configured limit. It is a warning, not a failure: a full pool on a
+// healthy database is load, and taking busy controllers out of service would only push
+// that load onto the others.
+var errPoolExhausted = health.Warning("database connection pool exhausted")
 
 // databaseCheck is the health check of the controller's storage database. It decides
 // from the outcomes of the controller's own database operations, recorded in window by
@@ -140,8 +142,9 @@ var errPoolExhausted = health.Reason("database connection pool exhausted")
 //     an outage or a recovery, and a decision left standing would never expire.
 //  3. Between those pings the last decided state stands; with none yet, the check pings.
 //
-// A database that is up is still reported down once the main pool has stayed saturated,
-// with callers waiting for a connection, for pool_wait_limit.
+// A database that is up carries a pool-exhaustion warning, without being reported down,
+// once the main pool has stayed saturated, with callers waiting for a connection, for
+// pool_wait_limit.
 type databaseCheck struct {
 	pool     databasePool
 	window   *observe.Window

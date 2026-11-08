@@ -37,6 +37,16 @@ type Reason string
 // Error returns the reason text.
 func (r Reason) Error() string { return string(r) }
 
+// Warning is returned by a check (directly or wrapped) whose dependency is up but under
+// strain worth reporting, such as a saturated connection pool. The check stays up and
+// the result stays healthy; the warning text is shown on the check and logged once when
+// it appears and once when it clears. Like a Reason, the text must be fixed and written
+// by the check author.
+type Warning string
+
+// Error returns the warning text.
+func (w Warning) Error() string { return string(w) }
+
 // safeReason maps a check error to text that may leave the process: the check's own
 // Reason, a timeout message, or a generic failure. The raw error text is never returned,
 // since it can carry connection strings, hostnames or credentials.

@@ -27,13 +27,16 @@ import (
 // transitionLogger turns check results into log lines, one per state change: a check
 // that goes down is logged once as failed, and once as recovered when it comes back up.
 // Nothing is logged while a check stays in the same state, so an outage of any length
-// adds two lines. It is not safe for concurrent use; the Checker calls it with its lock
+// adds two lines. A warning on a check that is up is logged the same way: once when it
+// appears and once when it clears. It is not safe for concurrent use; the Checker calls it with its lock
 // held.
 type transitionLogger struct {
 	health *slog.Logger
 	debug  *slog.Logger
 	// failingSince holds, for each check that is currently down, when it went down.
 	failingSince map[string]time.Time
+	// warned holds the checks that are up but currently carry a warning.
+	warned map[string]bool
 }
 
 func newTransitionLogger(health, debug *slog.Logger) *transitionLogger {
@@ -41,6 +44,7 @@ func newTransitionLogger(health, debug *slog.Logger) *transitionLogger {
 		health:       health,
 		debug:        debug,
 		failingSince: make(map[string]time.Time),
+		warned:       make(map[string]bool),
 	}
 }
 
@@ -79,8 +83,29 @@ func (t *transitionLogger) observe(res Result, now time.Time) {
 			)
 			delete(t.failingSince, name)
 		}
+
+		warning := ""
+		if chk.Status == StatusUp {
+			warning = chk.Warning
+		}
+		switch {
+		case warning != "" && !t.warned[name]:
+			t.warned[name] = true
+			t.health.Warn("health check warning", "check", name, "warning", warning)
+		case warning == "" && t.warned[name]:
+			delete(t.warned, name)
+			// A check that went down has just logged its failure instead.
+			if chk.Status == StatusUp {
+				t.health.Info("health check warning cleared", "check", name)
+			}
+		}
 	}
 
+	for name := range t.warned {
+		if _, ok := res.Checks[name]; !ok {
+			delete(t.warned, name)
+		}
+	}
 	for name := range t.failingSince {
 		if _, ok := res.Checks[name]; !ok {
 			delete(t.failingSince, name)

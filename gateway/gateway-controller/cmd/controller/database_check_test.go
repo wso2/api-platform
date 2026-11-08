@@ -266,7 +266,7 @@ func TestDatabaseCheckPoolExhaustion(t *testing.T) {
 	assert.NoError(t, f.evaluate(), "a burst shorter than the wait limit")
 	f.clk.Advance(time.Second)
 	f.pool.wait(1)
-	assert.Equal(t, errPoolExhausted, f.evaluate())
+	assert.Equal(t, errPoolExhausted, f.evaluate(), "a warning, not a failure (see health.Warning)")
 	f.pool.wait(1)
 	assert.EqualError(t, f.evaluate(), "database connection pool exhausted")
 

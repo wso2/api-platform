@@ -78,6 +78,9 @@ type CheckResult struct {
 	Error string
 	// Since is when the current failure started. Zero when the check is up.
 	Since time.Time
+	// Warning is the safe warning text of a check that is up but under strain. Empty
+	// otherwise.
+	Warning string
 	// cause is the raw check error, kept for debug logging only. It is never rendered.
 	cause error
 	// unlogged marks a check registered with RegisterUnlogged; the health logger skips it.
@@ -302,11 +305,12 @@ func (c *Checker) buildResult(started time.Time, outcomes map[string]outcome, re
 	}
 	for name, o := range outcomes {
 		err := o.err
-		if err == nil {
+		var warning Warning
+		if err == nil || errors.As(err, &warning) {
 			if record {
 				delete(c.since, name)
 			}
-			res.Checks[name] = CheckResult{Status: StatusUp, unlogged: c.unlogged[name]}
+			res.Checks[name] = CheckResult{Status: StatusUp, Warning: string(warning), unlogged: c.unlogged[name]}
 			continue
 		}
 		since, failing := c.since[name]

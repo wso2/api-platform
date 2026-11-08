@@ -351,10 +351,11 @@ allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # operations, so it adds no database calls while traffic flows. When there are fewer than
 # min_attempts operations in the window, it pings the database itself, at most once per
 # idle_period. It fails when at least failure_ratio of the operations in the last
-# failure_window lost their connection (once min_attempts were made), or when at least
+# failure_window lost their connection (once min_attempts were made). When at least
 # pool_saturation of the connection pool has stayed in use, with callers waiting for a
-# connection, for pool_wait_limit. Every key is optional; the
-# values shown are the defaults. During startup_wait the cause is logged at WARN; a
+# connection, for pool_wait_limit, the check carries a "database connection pool
+# exhausted" warning but stays up: a full pool is load, not an outage. Every key is
+# optional; the values shown are the defaults. During startup_wait the cause is logged at WARN; a
 # rejected login, a PostgreSQL database that does not exist or an untrusted server
 # certificate ends startup at once instead of waiting. SQL Server reports a missing
 # database the same way as one still recovering after a restart, so startup waits.
@@ -366,7 +367,7 @@ allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 # min_attempts    = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
 # idle_period     = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # with too few operations to decide, the check pings once per period
 # pool_saturation = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_SATURATION" "0.9" }}'  # share of the connection pool in use that counts as saturated
-# pool_wait_limit = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated
+# pool_wait_limit = '{{ env "APIP_GW_CONTROLLER_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated before the warning
 
 [controller.metrics]
 enabled = false
