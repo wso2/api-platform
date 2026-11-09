@@ -102,7 +102,7 @@ type keyOps struct {
 	Rotate func(parentID, keyName string, req api.APIKeyRegenerationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
 	// Update installs a caller-supplied key value under an existing name —
 	// the external-key-injection operation behind PUT .../{apiKeyName}. It is
-	// the second half of the rotate tool; see rotateIsInjection in mcp_management_tools.go
+	// the second half of the rotate tool; see rotateIsInjection in mcp_management_apikeys.go
 	// for how a call is routed to it rather than to Rotate.
 	Update func(parentID, keyName string, req api.APIKeyCreationRequest, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
 	Revoke func(parentID, keyName string, caller *commonmodels.AuthContext, correlationID string, log *slog.Logger) (any, error)
@@ -332,14 +332,14 @@ func (h *McpHandler) resolveKind(raw string, class kindClass) (*kindOps, error) 
 	case class == classRoutable && !ops.Routable:
 		return nil, fmt.Errorf(
 			"kind %q is a supporting configuration, not a routable resource; "+
-				"use wso2_apip_gw_apply_config or wso2_apip_gw_delete_config for it. "+
-				"wso2_apip_gw_deploy_api and wso2_apip_gw_undeploy_api accept: %s",
+				"use "+toolApplyConfig+" or "+toolDeleteConfig+" for it. "+
+				toolDeployAPI+" and "+toolUndeployAPI+" accept: %s",
 			kind, strings.Join(h.kindsInClass(classRoutable), ", "))
 	case class == classConfig && ops.Routable:
 		return nil, fmt.Errorf(
 			"kind %q is a routable resource, not a supporting configuration; "+
-				"use wso2_apip_gw_deploy_api or wso2_apip_gw_undeploy_api for it. "+
-				"wso2_apip_gw_apply_config and wso2_apip_gw_delete_config accept: %s",
+				"use "+toolDeployAPI+" or "+toolUndeployAPI+" for it. "+
+				toolApplyConfig+" and "+toolDeleteConfig+" accept: %s",
 			kind, strings.Join(h.kindsInClass(classConfig), ", "))
 	}
 	return ops, nil

@@ -107,7 +107,7 @@ func resolveCertAction(rawAction string) (certAction, error) {
 	canonical, ok := certActionAliases[normalizeToolWord(rawAction)]
 	if !ok {
 		return certAction{}, fmt.Errorf(
-			"unknown action %q; wso2_apip_gw_manage_certificates accepts: list, apply, update, delete, reload",
+			"unknown action %q; "+toolManageCertificates+" accepts: list, apply, update, delete, reload",
 			rawAction)
 	}
 	return certActions[canonical], nil
@@ -173,13 +173,13 @@ func resolveSubscriptionAction(rawType, rawAction, id string) (subAction, error)
 	resourceType, ok := subTypeAliases[normalizeToolWord(rawType)]
 	if !ok {
 		return subAction{}, fmt.Errorf(
-			"unknown type %q; wso2_apip_gw_manage_subscriptions accepts: %s, %s",
+			"unknown type %q; "+toolManageSubscriptions+" accepts: %s, %s",
 			rawType, subTypeSubscription, subTypePlan)
 	}
 	action, ok := subActionAliases[normalizeToolWord(rawAction)]
 	if !ok {
 		return subAction{}, fmt.Errorf(
-			"unknown action %q; wso2_apip_gw_manage_subscriptions accepts: list, get, apply, delete",
+			"unknown action %q; "+toolManageSubscriptions+" accepts: list, get, apply, delete",
 			rawAction)
 	}
 
@@ -327,13 +327,13 @@ func (h *McpHandler) MCPBaselineRoles() []string {
 // call. ok=false means the call could not be mapped.
 func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]string, bool) {
 	switch tool {
-	case "wso2_apip_gw_deploy_api", "wso2_apip_gw_apply_config":
+	case toolDeployAPI, toolApplyConfig:
 		var in deployInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
 		}
 		class := classRoutable
-		if tool == "wso2_apip_gw_apply_config" {
+		if tool == toolApplyConfig {
 			class = classConfig
 		}
 		ops, err := h.resolveKind(in.Kind, class)
@@ -345,13 +345,13 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return []string{routeKey(http.MethodPost, ops, false)}, true
 
-	case "wso2_apip_gw_undeploy_api", "wso2_apip_gw_delete_config":
+	case toolUndeployAPI, toolDeleteConfig:
 		var in deleteInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
 		}
 		class := classRoutable
-		if tool == "wso2_apip_gw_delete_config" {
+		if tool == toolDeleteConfig {
 			class = classConfig
 		}
 		ops, err := h.resolveKind(in.Kind, class)
@@ -360,7 +360,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return []string{routeKey(http.MethodDelete, ops, true)}, true
 
-	case "wso2_apip_gw_get_resource":
+	case toolGetResource:
 		var in getInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
@@ -371,7 +371,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return []string{routeKey(http.MethodGet, ops, true)}, true
 
-	case "wso2_apip_gw_list_resources":
+	case toolListResources:
 		var in listInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
@@ -391,21 +391,21 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return keys, true
 
-	case "wso2_apip_gw_issue_api_key":
+	case toolIssueAPIKey:
 		var in issueKeyInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
 		}
 		return h.keyRouteKeysFor(in.Kind, http.MethodPost, "")
 
-	case "wso2_apip_gw_list_api_keys":
+	case toolListAPIKeys:
 		var in listKeysInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
 		}
 		return h.keyRouteKeysFor(in.Kind, http.MethodGet, "")
 
-	case "wso2_apip_gw_rotate_api_key":
+	case toolRotateAPIKey:
 		var in rotateKeyInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
@@ -417,7 +417,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return h.keyRouteKeysFor(in.Kind, http.MethodPost, "/{apiKeyName}/regenerate")
 
-	case "wso2_apip_gw_revoke_api_key":
+	case toolRevokeAPIKey:
 		var in revokeKeyInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
@@ -426,7 +426,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 
 	// The action-dispatched tools resolve through the same functions their
 	// handlers call, so the key authorized is the key that executes.
-	case "wso2_apip_gw_manage_certificates":
+	case toolManageCertificates:
 		var in manageCertificatesInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
@@ -437,7 +437,7 @@ func (h *McpHandler) routeKeysForCall(tool string, args json.RawMessage) ([]stri
 		}
 		return []string{op.RouteKey}, true
 
-	case "wso2_apip_gw_manage_subscriptions":
+	case toolManageSubscriptions:
 		var in manageSubscriptionsInput
 		if err := json.Unmarshal(args, &in); err != nil {
 			return nil, false
