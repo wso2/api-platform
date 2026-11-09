@@ -29,9 +29,8 @@ import (
 )
 
 const (
-	testOrgUUID   = "8f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b"
-	testActorUUID = "internal-user-1"
-	testAPIUUID   = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+	testOrgUUID = "8f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b"
+	testAPIUUID = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 )
 
 const testURI = "https://platform-api.example.com/api/v0.9/rest-apis"
@@ -52,7 +51,7 @@ func validCreation() Occurrence {
 	return Occurrence{
 		Feature:      FeatureCreateRESTAPI,
 		OrgUUID:      testOrgUUID,
-		ActorUUID:    testActorUUID,
+		ActorSubject: testUserUUID,
 		OccurrenceID: testAPIUUID,
 		Invocation:   validInvocation(),
 		Dimensions: map[string]any{

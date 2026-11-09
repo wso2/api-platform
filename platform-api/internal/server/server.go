@@ -90,7 +90,12 @@ func validateServerConfig(cfg *config.Server) error {
 	// settings may be unset; they take their defaults rather than leaving the database
 	// check with no time to answer.
 	config.ApplyHealthDefaults(&cfg.Health)
-	return config.ValidateHealth(&cfg.Health)
+	if err := config.ValidateHealth(&cfg.Health); err != nil {
+		return err
+	}
+	// The same applies to feature usage: without this, a code-built config
+	// would reach the reporter without the loader's queue and worker limits.
+	return config.ValidateFeatureUsage(&cfg.FeatureUsage)
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies
@@ -952,7 +957,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// comes before the success markers below, so a failure here still stops
 	// the plugins and releases what startServing acquired.
 	featureUsage, err := featureusage.NewFromConfig(cfg.FeatureUsage,
-		service.NewFeatureUsageAttributor(orgRepo, identityService), slogger)
+		service.NewFeatureUsageAttributor(orgRepo), slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
 	}
@@ -1246,6 +1251,11 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 	}, nil
 }
 
+// featureUsageShutdownTimeout bounds how long shutdown waits for queued feature
+// usage events, out of the 10s shutdown deadline. Usage reporting is best
+// effort; the plugins shut down after it and keep the rest.
+const featureUsageShutdownTimeout = 3 * time.Second
+
 // Start switches the listeners bound during startup to the full API and blocks until
 // a listener fails or a shutdown signal arrives, then shuts everything down.
 func (s *Server) Start() error {
@@ -1267,11 +1277,15 @@ func (s *Server) Start() error {
 		defer shutdownCancel()
 		s.listeners.shutdown(shutdownCtx)
 		// After the listeners: no request can record usage any more, so what is
-		// queued is everything left to deliver, bounded by the shutdown deadline.
+		// queued is everything left to deliver. It gets only part of what is
+		// left of the shutdown deadline, so a stalled collector cannot leave the
+		// plugins below none.
 		if s.featureUsage != nil {
-			if err := s.featureUsage.Close(shutdownCtx); err != nil {
+			usageCtx, usageCancel := context.WithTimeout(shutdownCtx, featureUsageShutdownTimeout)
+			if err := s.featureUsage.Close(usageCtx); err != nil {
 				s.logger.Warn("Feature usage reporter shutdown", "error", err)
 			}
+			usageCancel()
 		}
 		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {

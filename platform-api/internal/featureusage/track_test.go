@@ -63,7 +63,7 @@ func TestTrackReportsASuccessfulCall(t *testing.T) {
 	serveTracked(t, rep, func(w http.ResponseWriter, r *http.Request) {
 		call := CallFrom(r.Context())
 		call.SetOrganization(testOrgUUID)
-		call.SetActor(testActorUUID)
+		call.SetActor(testUserUUID)
 		call.SetHasSandboxUpstream(true)
 		call.SetResource(testAPIUUID)
 		w.WriteHeader(http.StatusCreated)
@@ -74,7 +74,7 @@ func TestTrackReportsASuccessfulCall(t *testing.T) {
 		t.Fatalf("recorded %d occurrences, want 1", len(got))
 	}
 	o := got[0]
-	if o.Feature != FeatureCreateRESTAPI || o.OrgUUID != testOrgUUID || o.ActorUUID != testActorUUID ||
+	if o.Feature != FeatureCreateRESTAPI || o.OrgUUID != testOrgUUID || o.ActorSubject != testUserUUID ||
 		o.OccurrenceID != testAPIUUID {
 		t.Errorf("unexpected occurrence: %+v", o)
 	}

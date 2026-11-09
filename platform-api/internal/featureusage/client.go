@@ -85,17 +85,21 @@ type collectorClient struct {
 	attemptTimeout time.Duration
 }
 
-// send posts payload and returns how many requests it made — every one,
-// including the extra request a 401 triggers, so a drop log reports what was
-// actually sent. The retry budget (maxAttempts) is counted separately.
+// send posts payload and returns how many collector requests it made — every
+// one, including the extra request a 401 triggers, but not an attempt that
+// failed before a request went out (a token failure), so a drop log reports
+// what was actually sent. The retry budget (maxAttempts) is counted
+// separately and advances for every attempt.
 func (c *collectorClient) send(ctx context.Context, payload []byte) (int, error) {
 	requests := 0
 	attempts := 0
 	retriedUnauthorized := false
 	for {
-		requests++
 		attempts++
-		err := c.attempt(ctx, payload)
+		requested, err := c.attempt(ctx, payload)
+		if requested {
+			requests++
+		}
 		if err == nil {
 			return requests, nil
 		}
@@ -121,38 +125,39 @@ func (c *collectorClient) send(ctx context.Context, payload []byte) (int, error)
 // attempt makes one delivery attempt. Fetching a token (when the cached one
 // has expired) and posting the event each get their own attemptTimeout, so a
 // slow token endpoint cannot eat the collector request's budget; both stay
-// within ctx, the delivery's overall deadline.
-func (c *collectorClient) attempt(ctx context.Context, payload []byte) error {
+// within ctx, the delivery's overall deadline. requested reports whether a
+// request to the collector was initiated.
+func (c *collectorClient) attempt(ctx context.Context, payload []byte) (requested bool, err error) {
 	tokenCtx, cancelToken := context.WithTimeout(ctx, c.attemptTimeout)
 	token, err := c.tokens.Token(tokenCtx)
 	cancelToken()
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, c.attemptTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.eventsURL, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("build collector request: %w", err)
+		return false, fmt.Errorf("build collector request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return &transportError{kind: transportErrorKind(err)}
+		return true, &transportError{kind: transportErrorKind(err)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrainBytes))
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
+		return true, nil
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		c.tokens.Invalidate(token)
 	}
-	return &statusError{status: resp.StatusCode}
+	return true, &statusError{status: resp.StatusCode}
 }
 
 // transportError is a failure to get any HTTP answer. It is always retryable.

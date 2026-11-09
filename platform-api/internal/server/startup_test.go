@@ -885,3 +885,31 @@ func TestValidateServerConfigAppliesHealthDefaults(t *testing.T) {
 		t.Fatalf("validateServerConfig() = %v, want a failure_window error", err)
 	}
 }
+
+// A config built in code (platform.WithConfig) gets the loader's feature-usage
+// limits, so an oversized queue is rejected before the reporter is built.
+func TestValidateServerConfigAppliesFeatureUsageLimits(t *testing.T) {
+	cfg := &config.Server{}
+	cfg.FeatureUsage = config.FeatureUsage{
+		Enabled:        true,
+		CollectorURL:   "http://collector.example",
+		Token:          config.FeatureUsageToken{TokenURL: "http://idp.example/token", ClientID: "id", ClientSecret: "s3cr3t-value"},
+		QueueSize:      1 << 30,
+		Workers:        2,
+		RequestTimeout: time.Second,
+		MaxAttempts:    3,
+		OverallTimeout: 10 * time.Second,
+	}
+	err := validateServerConfig(cfg)
+	if err == nil || !strings.Contains(err.Error(), "feature_usage.queue_size") {
+		t.Fatalf("validateServerConfig() = %v, want a feature_usage.queue_size error", err)
+	}
+	if strings.Contains(err.Error(), "s3cr3t-value") {
+		t.Error("the validation error must not echo the client secret")
+	}
+
+	// Left off, the section is not checked.
+	if err := validateServerConfig(&config.Server{}); err != nil {
+		t.Fatalf("validateServerConfig() with reporting off = %v, want nil", err)
+	}
+}

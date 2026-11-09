@@ -38,7 +38,7 @@ import (
 type Call struct {
 	mu           sync.Mutex
 	orgUUID      string
-	actorUUID    string
+	actorSubject string
 	resourceUUID string
 	dimensions   map[string]any
 }
@@ -57,9 +57,11 @@ func (c *Call) SetOrganization(orgUUID string) {
 	c.set(func() { c.orgUUID = orgUUID })
 }
 
-// SetActor records the platform's internal UUID for the acting user.
-func (c *Call) SetActor(actorUUID string) {
-	c.set(func() { c.actorUUID = actorUUID })
+// SetActor records the acting user's identity-provider subject, as the
+// request authenticated it. It is read from the request, not looked up, so
+// recording it never delays the response.
+func (c *Call) SetActor(subject string) {
+	c.set(func() { c.actorSubject = subject })
 }
 
 // SetResource records the UUID of what a successful call created. It seeds
@@ -101,7 +103,7 @@ func (c *Call) occurrence(feature string, inv Invocation) (Occurrence, bool) {
 	return Occurrence{
 		Feature:      feature,
 		OrgUUID:      c.orgUUID,
-		ActorUUID:    c.actorUUID,
+		ActorSubject: c.actorSubject,
 		OccurrenceID: occurrenceID,
 		Invocation:   inv,
 		Dimensions:   maps.Clone(c.dimensions),

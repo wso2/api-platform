@@ -41,10 +41,12 @@ type Occurrence struct {
 	// OrgUUID is the platform organization UUID. It is mapped to Moesif's
 	// company_id when the event is sent.
 	OrgUUID string
-	// ActorUUID is the platform's internal UUID for the acting user. It is
-	// mapped to Moesif's user_id when the event is sent, and the user is left
-	// out unless that mapping yields a UUID. Empty for a system occurrence.
-	ActorUUID string
+	// ActorSubject is the acting user's identity-provider subject, as the
+	// request authenticated it (in WSO2 Cloud, the Thunder user ID). It is
+	// sent as Moesif's user_id only if it is a UUID, so a service account
+	// ("sa:..."), an email-shaped or a federated numeric subject never is.
+	// Empty for a system occurrence.
+	ActorSubject string
 	// OccurrenceID identifies this occurrence: the UUID of what a successful
 	// call created, or a random ID for a failed one. It is never sent as is:
 	// it is hashed together with the feature code into transaction_id, which
@@ -83,7 +85,7 @@ type validatedEvent struct {
 	feature       *Feature
 	invocation    Invocation
 	orgUUID       string
-	actorUUID     string
+	actorSubject  string
 	transactionID string
 	metadata      map[string]any
 }
@@ -167,7 +169,7 @@ func validate(tax *Taxonomy, enabled map[string]bool, o Occurrence, now time.Tim
 		feature:       feature,
 		invocation:    invocation,
 		orgUUID:       o.OrgUUID,
-		actorUUID:     o.ActorUUID,
+		actorSubject:  o.ActorSubject,
 		transactionID: uuid.NewSHA1(transactionNamespace, []byte(feature.Code+"\x00"+o.OccurrenceID)).String(),
 		metadata:      metadata,
 	}, nil

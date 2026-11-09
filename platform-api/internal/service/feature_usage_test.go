@@ -35,11 +35,6 @@ func (r featureUsageOrgRepo) GetOrganizationByUUID(string) (*model.Organization,
 	return r.org, r.err
 }
 
-// unmappedIdentityRepo knows no user, like a write made without an identity.
-type unmappedIdentityRepo struct{ passthroughIdentityRepo }
-
-func (unmappedIdentityRepo) GetSubByUUID(string) (string, bool, error) { return "", false, nil }
-
 func TestFeatureUsageAttributorCompanyID(t *testing.T) {
 	const platformUUID = "11111111-2222-4333-8444-555555555555"
 	const idpUUID = "b3e1c2d4-7f6a-4e5b-9c8d-0a1b2c3d4e5f"
@@ -61,21 +56,10 @@ func TestFeatureUsageAttributorCompanyID(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := NewFeatureUsageAttributor(tc.repo, newTestIdentityService()).CompanyID(platformUUID)
+			got, err := NewFeatureUsageAttributor(tc.repo).CompanyID(platformUUID)
 			if (err != nil) != tc.wantErr || got != tc.want {
 				t.Errorf("CompanyID = %q, %v; want %q (error %v)", got, err, tc.want, tc.wantErr)
 			}
 		})
-	}
-}
-
-func TestFeatureUsageAttributorUserID(t *testing.T) {
-	mapped := NewFeatureUsageAttributor(featureUsageOrgRepo{}, newTestIdentityService())
-	if got, err := mapped.UserID("0193e7a2-4c5d-7e6f-8a9b-0c1d2e3f4a5b"); err != nil || got != "0193e7a2-4c5d-7e6f-8a9b-0c1d2e3f4a5b" {
-		t.Errorf("UserID = %q, %v; want the subject", got, err)
-	}
-	unmapped := NewFeatureUsageAttributor(featureUsageOrgRepo{}, NewIdentityService(unmappedIdentityRepo{}))
-	if got, err := unmapped.UserID("ghost"); err != nil || got != "" {
-		t.Errorf("UserID for an unmapped user = %q, %v; want no user", got, err)
 	}
 }

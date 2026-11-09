@@ -60,12 +60,10 @@ func (b *syncBuffer) String() string {
 
 type fakeAttributor struct {
 	companyID string
-	userID    string
 	err       error
 }
 
 func (a fakeAttributor) CompanyID(string) (string, error) { return a.companyID, a.err }
-func (a fakeAttributor) UserID(string) (string, error)    { return a.userID, nil }
 
 // fakeTokens hands out "token-1", "token-2", ... and counts fetches.
 type fakeTokens struct {
@@ -183,7 +181,7 @@ func (p *testPublisher) flush(t *testing.T) {
 }
 
 func TestPublisherSendsAnAPIEvent(t *testing.T) {
-	p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID, userID: testUserUUID}, []int{http.StatusCreated}, nil)
+	p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID}, []int{http.StatusCreated}, nil)
 	p.Record(validCreation())
 	p.flush(t)
 
@@ -259,8 +257,10 @@ func TestPublisherSendsAFailedCall(t *testing.T) {
 func TestPublisherLeavesOutAUserThatIsNotAUUID(t *testing.T) {
 	for _, subject := range []string{"alice@example.com", "sa:acme:ci-bot:" + testUserUUID, "113246589012", ""} {
 		t.Run(subject, func(t *testing.T) {
-			p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID, userID: subject}, []int{http.StatusOK}, nil)
-			p.Record(validCreation())
+			p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID}, []int{http.StatusOK}, nil)
+			o := validCreation()
+			o.ActorSubject = subject
+			p.Record(o)
 			p.flush(t)
 			requests := p.collector.recorded()
 			if len(requests) != 1 {
@@ -320,7 +320,7 @@ func TestPublisherGivesUpAfterMaxAttempts(t *testing.T) {
 // A 4xx is Moesif's or the gateway's verdict: retrying repeats it. Its body may
 // quote what was sent, so it is never logged.
 func TestPublisherDoesNotRetryOrLogARejection(t *testing.T) {
-	p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID, userID: testUserUUID}, []int{http.StatusBadRequest}, nil)
+	p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID}, []int{http.StatusBadRequest}, nil)
 	p.collector.respBody = `{"error":"bad user_id ` + testUserUUID + `"}`
 	p.Record(validCreation())
 	p.flush(t)
@@ -388,6 +388,7 @@ func TestRecordNeverBlocksWhenTheQueueIsFull(t *testing.T) {
 		p.Record(validCreation())
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
+		close(p.collector.hold) // release the held request so the server cleanup can finish
 		t.Fatalf("Record blocked for %s with a stalled collector", elapsed)
 	}
 	if !strings.Contains(p.logs.String(), "delivery queue is full") {
@@ -459,22 +460,32 @@ var _ TokenSource = (*fakeTokens)(nil)
 var _ TokenSource = (*clientCredentialsTokenSource)(nil)
 
 // blockingAttributor stalls every lookup until release is closed, like a
-// database query that never returns.
-type blockingAttributor struct{ release chan struct{} }
+// database query that never returns. started is closed when the first lookup
+// begins.
+type blockingAttributor struct {
+	started, release chan struct{}
+	once             *sync.Once
+}
 
 func (a blockingAttributor) CompanyID(string) (string, error) {
+	a.once.Do(func() { close(a.started) })
 	<-a.release
 	return testCompanyUUID, nil
 }
-func (a blockingAttributor) UserID(string) (string, error) { return "", nil }
 
 func TestCloseReturnsByItsDeadlineWhenALookupStalls(t *testing.T) {
-	release := make(chan struct{})
-	p := newTestPublisher(t, blockingAttributor{release: release}, []int{http.StatusOK}, nil)
-	defer close(release) // let the stuck worker finish after the test
+	attributor := blockingAttributor{started: make(chan struct{}), release: make(chan struct{}), once: &sync.Once{}}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(attributor.release) }) }
+	p := newTestPublisher(t, attributor, []int{http.StatusOK}, nil)
+	t.Cleanup(release) // never leave the worker stuck if the test fails early
 	p.Record(validCreation())
 	p.Record(validCreation())
-	time.Sleep(20 * time.Millisecond) // let a worker pick one up and block
+	select {
+	case <-attributor.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no worker started the identity lookup")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -485,7 +496,18 @@ func TestCloseReturnsByItsDeadlineWhenALookupStalls(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("Close waited %s for a stalled lookup; it must return by its deadline", elapsed)
 	}
+
+	// Let the stalled lookup finish and the worker exit, then check that
+	// neither the cut-short delivery nor the queued one went out late.
+	release()
+	exited := make(chan struct{})
+	go func() { p.workers.Wait(); close(exited) }()
+	select {
+	case <-exited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the worker did not exit after its lookup returned")
+	}
 	if n := len(p.collector.recorded()); n != 0 {
-		t.Errorf("collector got %d requests from a delivery cut short", n)
+		t.Errorf("collector got %d requests from deliveries cut short by shutdown", n)
 	}
 }

@@ -74,6 +74,44 @@ func TestSendCountsEveryRequestButNotThe401RetryAgainstTheBudget(t *testing.T) {
 	}
 }
 
+// flakyTokens fails the first `failures` fetches with a retryable error, like
+// an IdP that is briefly unavailable, then hands out a token.
+type flakyTokens struct {
+	failures int
+	fetches  atomic.Int32
+}
+
+func (f *flakyTokens) Token(context.Context) (string, error) {
+	if int(f.fetches.Add(1)) <= f.failures {
+		return "", &tokenError{msg: "token endpoint unavailable", retryable: true}
+	}
+	return "token", nil
+}
+func (*flakyTokens) Invalidate(string) {}
+
+// An attempt whose token fetch fails uses up the retry budget but sends no
+// collector request, so it is not counted as one.
+func TestATokenFailureCountsAgainstTheBudgetButNotAsARequest(t *testing.T) {
+	t.Run("recovers within the budget", func(t *testing.T) {
+		c, calls := newTestClient(t, &flakyTokens{failures: 1}, 2, time.Second, 0, http.StatusOK)
+		requests, err := c.send(context.Background(), []byte(`{}`))
+		if err != nil || requests != 1 || calls.Load() != 1 {
+			t.Fatalf("send = (%d, %v), collector saw %d; want one request and success", requests, err, calls.Load())
+		}
+	})
+	t.Run("budget spent on token failures", func(t *testing.T) {
+		tokens := &flakyTokens{failures: 10}
+		c, calls := newTestClient(t, tokens, 2, time.Second, 0, http.StatusOK)
+		requests, err := c.send(context.Background(), []byte(`{}`))
+		if err == nil || requests != 0 || calls.Load() != 0 {
+			t.Fatalf("send = (%d, %v), collector saw %d; want no request and a failure", requests, err, calls.Load())
+		}
+		if n := tokens.fetches.Load(); n != 2 {
+			t.Errorf("token fetched %d times, want max_attempts = 2", n)
+		}
+	})
+}
+
 // slowTokens takes delay to hand out a token, like a slow IdP.
 type slowTokens struct{ delay time.Duration }
 

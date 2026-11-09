@@ -74,14 +74,14 @@ type wantEvent struct {
 	status  int
 	method  featureusage.CreationMethod
 	sandbox any    // true/false, or nil when the call failed before it was known
-	actor   string // the caller, resolved before any validation
+	actor   string // the caller's subject, read before any validation
 }
 
 // assertEvent checks the single reported occurrence against want.
 func assertEvent(t *testing.T, env *oaEnv, want wantEvent, before time.Time) {
 	t.Helper()
 	o := env.usage.onlyOccurrence(t)
-	if o.Feature != featureusage.FeatureCreateRESTAPI || o.OrgUUID != oaOrg || o.ActorUUID != want.actor {
+	if o.Feature != featureusage.FeatureCreateRESTAPI || o.OrgUUID != oaOrg || o.ActorSubject != want.actor {
 		t.Errorf("unexpected occurrence: %+v", o)
 	}
 	if o.Dimensions["creation_method"] != string(want.method) {
@@ -126,7 +126,7 @@ func TestImportOpenAPI_ReportsACreationWithTheDeclaredMethod(t *testing.T) {
 			if code := importWithMethod(t, env, declared); code != http.StatusCreated {
 				t.Fatalf("status = %d, want 201", code)
 			}
-			assertEvent(t, env, wantEvent{importPath, http.StatusCreated, want, false, "internal-alice"}, before)
+			assertEvent(t, env, wantEvent{importPath, http.StatusCreated, want, false, "alice"}, before)
 		})
 	}
 }
@@ -144,7 +144,7 @@ func TestImportOpenAPI_ReportsARejectedCreationMethod(t *testing.T) {
 	if env.apiRepo.createdID != "" {
 		t.Error("an API was created despite the invalid creationMethod")
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, featureusage.CreationMethodContract, false, "internal-alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, featureusage.CreationMethodContract, false, "alice"}, before)
 }
 
 // A scratch import that fails validation is still reported as scratch, and
@@ -163,7 +163,7 @@ func TestImportOpenAPI_ReportsARejectedScratchImportAsScratch(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "displayName is required") {
 		t.Errorf("the validation error changed: %s", rec.Body.String())
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, featureusage.CreationMethodScratch, false, "internal-alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, featureusage.CreationMethodScratch, false, "alice"}, before)
 }
 
 // Both problems present: the field check still answers first, as before.
@@ -191,7 +191,7 @@ func TestImportOpenAPI_ReportsARollbackAsAFailure(t *testing.T) {
 	if code := importWithMethod(t, env, "scratch"); code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", code)
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusInternalServerError, featureusage.CreationMethodScratch, false, "internal-alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusInternalServerError, featureusage.CreationMethodScratch, false, "alice"}, before)
 }
 
 func TestImportOpenAPI_ReportsAFailedCreate(t *testing.T) {
@@ -208,7 +208,7 @@ func TestImportOpenAPI_ReportsAFailedCreate(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusNotFound, featureusage.CreationMethodContract, false, "internal-alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusNotFound, featureusage.CreationMethodContract, false, "alice"}, before)
 }
 
 // A call with no organization cannot be attributed and is not reported.
@@ -249,7 +249,7 @@ func TestCreateAPI_ReportsAContractCreation(t *testing.T) {
 				t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
 			}
 			// The query string is never part of the reported call.
-			assertEvent(t, env, wantEvent{createPath, http.StatusCreated, featureusage.CreationMethodContract, tc.sandbox, "internal-alice"}, before)
+			assertEvent(t, env, wantEvent{createPath, http.StatusCreated, featureusage.CreationMethodContract, tc.sandbox, "alice"}, before)
 		})
 	}
 }
@@ -261,9 +261,9 @@ func TestCreateAPI_ReportsFailures(t *testing.T) {
 		sandbox any
 		actor   string
 	}{
-		"unknown project":   {createJSON("no-such-project", oaMainUpstream), http.StatusNotFound, false, "internal-alice"},
-		"missing upstream":  {createJSON(oaProjectHand, `{"main":{}}`), http.StatusBadRequest, false, "internal-alice"},
-		"malformed request": {`{"displayName":`, http.StatusBadRequest, nil, "internal-alice"},
+		"unknown project":   {createJSON("no-such-project", oaMainUpstream), http.StatusNotFound, false, "alice"},
+		"missing upstream":  {createJSON(oaProjectHand, `{"main":{}}`), http.StatusBadRequest, false, "alice"},
+		"malformed request": {`{"displayName":`, http.StatusBadRequest, nil, "alice"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

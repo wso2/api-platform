@@ -76,15 +76,12 @@ func (h *APIHandler) trackCreation(next http.Handler) http.Handler {
 }
 
 // attributeCall records the caller on a tracked call before any validation, so
-// a rejected request is attributed too. Best effort, and only while the call
-// is tracked: a failed lookup leaves the event without a user and changes
-// nothing about the response, which still comes from the checks that follow.
-func (h *APIHandler) attributeCall(r *http.Request, usage *featureusage.Call) {
-	if usage == nil {
-		return
-	}
-	if actor, err := h.identity.InternalUserID(r); err == nil {
-		usage.SetActor(actor)
+// a rejected request is attributed too. The identity-provider subject is read
+// from the authenticated request, with no lookup, so it never delays the
+// response; a request without one leaves the event without a user.
+func attributeCall(r *http.Request, usage *featureusage.Call) {
+	if subject, ok := middleware.GetActorIdentityFromRequest(r); ok {
+		usage.SetActor(subject)
 	}
 }
 
@@ -106,7 +103,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	// Feature usage: this call is reported whatever its outcome (trackCreation).
 	usage := featureusage.CallFrom(r.Context())
 	usage.SetOrganization(orgId)
-	h.attributeCall(r, usage)
+	attributeCall(r, usage)
 
 	var req api.CreateRESTAPIRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -139,7 +136,6 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	usage.SetActor(createdBy)
 	apiResponse, artifactUUID, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create API in org %s", orgId))
@@ -372,7 +368,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	// Feature usage: this call is reported whatever its outcome (trackCreation).
 	usage := featureusage.CallFrom(r.Context())
 	usage.SetOrganization(orgId)
-	h.attributeCall(r, usage)
+	attributeCall(r, usage)
 
 	maxBytes := h.getOpenAPISpecMaxBytes()
 	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
@@ -445,7 +441,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	usage.SetActor(createdBy)
 
 	createReq := &api.CreateRESTAPIRequest{
 		Id:          req.Id,

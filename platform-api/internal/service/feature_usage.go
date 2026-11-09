@@ -21,23 +21,21 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
-// featureUsageAttributor maps platform identifiers onto the keys WSO2 Cloud's
-// other Moesif publishers use, so one organization or user is one Moesif
+// featureUsageAttributor maps the platform organization onto the key WSO2
+// Cloud's other Moesif publishers use, so one organization is one Moesif
 // record whichever service reported it.
 type featureUsageAttributor struct {
-	orgRepo  repository.OrganizationRepository
-	identity *IdentityService
+	orgRepo repository.OrganizationRepository
 }
 
 // NewFeatureUsageAttributor returns the featureusage.Attributor backed by the
-// organization repository and the identity mapping.
-func NewFeatureUsageAttributor(orgRepo repository.OrganizationRepository, identity *IdentityService) featureusage.Attributor {
-	return &featureUsageAttributor{orgRepo: orgRepo, identity: identity}
+// organization repository.
+func NewFeatureUsageAttributor(orgRepo repository.OrganizationRepository) featureusage.Attributor {
+	return &featureUsageAttributor{orgRepo: orgRepo}
 }
 
 // CompanyID returns the identity provider's organization UUID — the WSO2 Cloud
@@ -56,19 +54,4 @@ func (a *featureUsageAttributor) CompanyID(orgUUID string) (string, error) {
 		return ref, nil
 	}
 	return org.ID, nil
-}
-
-// UserID returns the acting user's identity-provider subject (in WSO2 Cloud,
-// the Thunder user ID). A user with no mapping returns "". The reporter sends
-// the value only if it is a UUID, so a service account ("sa:..." subject), an
-// email-shaped subject or a federated numeric subject is never sent.
-func (a *featureUsageAttributor) UserID(actorUUID string) (string, error) {
-	sub, err := a.identity.SubForUUID(actorUUID)
-	if err != nil {
-		return "", err
-	}
-	if sub == constants.DeletedUser {
-		return "", nil
-	}
-	return sub, nil
 }

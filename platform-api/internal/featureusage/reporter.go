@@ -63,16 +63,14 @@ type Reporter interface {
 	Close(ctx context.Context) error
 }
 
-// Attributor maps platform identifiers onto the keys Moesif uses, so one
-// organization or user is one Moesif record whichever WSO2 Cloud service
-// reported it. It is called on a background worker, never on the request.
+// Attributor maps the platform organization onto the key Moesif uses, so one
+// organization is one Moesif record whichever WSO2 Cloud service reported it.
+// It is called on a background worker, never on the request. The user needs
+// no mapping: the occurrence carries the identity-provider subject itself.
 type Attributor interface {
 	// CompanyID returns the organization's Moesif company_id: its identity
 	// provider organization UUID, or the platform UUID when it has none.
 	CompanyID(orgUUID string) (string, error)
-	// UserID returns the acting user's identity-provider subject, or "" when
-	// there is none. The reporter sends it only if it is a UUID.
-	UserID(actorUUID string) (string, error)
 }
 
 // noop is the Reporter used when reporting is disabled.
@@ -297,7 +295,7 @@ func (p *Publisher) deliver(event *validatedEvent) {
 
 // render maps the event's identifiers to Moesif's keys and builds the body.
 // company_id is required, so an organization that does not map to a UUID
-// drops the event; a user that does not map to one is simply left out — an
+// drops the event; a user whose subject is not a UUID is simply left out — an
 // unattributed event is acceptable, an identifying one is not.
 func (p *Publisher) render(event *validatedEvent) ([]byte, error) {
 	companyID, err := p.attributor.CompanyID(event.orgUUID)
@@ -309,14 +307,8 @@ func (p *Publisher) render(event *validatedEvent) ([]byte, error) {
 	}
 
 	userID := ""
-	if event.actorUUID != "" {
-		resolved, err := p.attributor.UserID(event.actorUUID)
-		if err != nil {
-			p.logger.Debug("Could not resolve the acting user; reporting without one",
-				slog.String("party", logParty), slog.String("featureCode", event.feature.Code))
-		} else if canonicalUUID(resolved) {
-			userID = resolved
-		}
+	if canonicalUUID(event.actorSubject) {
+		userID = event.actorSubject
 	}
 
 	inv := event.invocation

@@ -107,7 +107,7 @@ func (wr *wiring) config(collectorURL string) config.FeatureUsage {
 func deliverOne(t *testing.T, cfg config.FeatureUsage) string {
 	t.Helper()
 	logs := &syncBuffer{}
-	reporter, err := NewFromConfig(cfg, fakeAttributor{companyID: testCompanyUUID, userID: testUserUUID},
+	reporter, err := NewFromConfig(cfg, fakeAttributor{companyID: testCompanyUUID},
 		slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	if err != nil {
 		t.Fatal(err)

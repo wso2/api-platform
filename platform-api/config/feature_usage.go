@@ -95,6 +95,13 @@ func (c *FeatureUsage) Configured() bool {
 		strings.TrimSpace(c.Token.ClientID) != "" || strings.TrimSpace(c.Token.ClientSecret) != ""
 }
 
+// ValidateFeatureUsage applies the config loader's feature-usage checks to a
+// config built in code, such as one passed to the platform package's
+// WithConfig, which never goes through the loader.
+func ValidateFeatureUsage(c *FeatureUsage) error {
+	return validateFeatureUsageConfig(c)
+}
+
 // validateFeatureUsageConfig checks the settings only when reporting is
 // enabled and a collector is being configured; a disabled or unconfigured
 // section may be left at its empty defaults.
