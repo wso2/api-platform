@@ -346,6 +346,8 @@ func buildDeploymentRequest(ctx context.Context, values map[string]string) (map[
 // requestDeployment asks for a deployment through the project and environment route and publishes
 // the response without requiring success, so a scenario can assert on a refusal.
 func (s *Steps) requestDeployment(ctx context.Context, table *godog.Table) error {
+	// The targets of an earlier request must not answer for this one if it creates none.
+	tcontext.Remove(ctx, keyDeployedTargets)
 	values, err := tableValues(table)
 	if err != nil {
 		return err

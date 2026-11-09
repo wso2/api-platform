@@ -992,6 +992,8 @@ func TestRequestDeploymentRecordsWhatWasDeployed(t *testing.T) {
 	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
 	kept, _ := requiredValue(ctx, keyDeploymentID)
 	require.Equal(t, "unchanged", kept, "a refused request records nothing")
+	_, err = recordedTargets(ctx)
+	require.ErrorContains(t, err, "no deployment has been requested", "the targets of an earlier request do not answer for a refused one")
 }
 
 func TestDeploymentAssertionsRequireTheActiveGateway(t *testing.T) {
@@ -2103,6 +2105,7 @@ func TestFindActiveGatewayHonoursAPinnedGateway(t *testing.T) {
 	steps, ctx := gatewayChoiceStub(t, []map[string]any{
 		listedGateway("dev-first", "development", nil),
 		listedGateway("dev-pinned", "development", nil),
+		listedGateway("dev-operator", "development", map[string]any{"displayName": "frontend-1"}),
 	}, nil)
 
 	t.Setenv(cloudGatewayPinEnv, " dev-pinned ")
@@ -2110,6 +2113,12 @@ func TestFindActiveGatewayHonoursAPinnedGateway(t *testing.T) {
 	id, err := tcontext.ResolveString(ctx, keyGatewayID)
 	require.NoError(t, err)
 	require.Equal(t, "dev-pinned", id)
+
+	t.Setenv(cloudGatewayPinEnv, "dev-operator")
+	require.NoError(t, steps.findActiveGateway(ctx), "a gateway the operator names is taken even if its name looks like a suite run's")
+	id, err = tcontext.ResolveString(ctx, keyGatewayID)
+	require.NoError(t, err)
+	require.Equal(t, "dev-operator", id)
 
 	t.Setenv(cloudGatewayPinEnv, "dev-missing")
 	err = steps.findActiveGateway(ctx)
@@ -3562,6 +3571,15 @@ func TestMakeGatewayDefaultRegistersTheReturnBeforeTheChange(t *testing.T) {
 	require.Equal(t, "development-held", held)
 	require.Equal(t, kindDefaultRestore.Name, registry.Pending()[0].Kind.Name)
 	require.Less(t, kindDefaultRestore.Order, cleanup.KindGateway.Order, "the default goes back before any gateway is deleted")
+	handedBack := 0
+	require.NoError(t, registry.RegisterDeleter(kindDefaultRestore, func(context.Context, cleanup.Resource) error {
+		handedBack++
+		return nil
+	}))
+	require.NoError(t, registry.SweepRunner(ctx))
+	require.Zero(t, handedBack, "the default is not left to the end of the runner")
+	require.NoError(t, registry.Sweep(ctx))
+	require.Equal(t, 1, handedBack, "the default goes back when the scenario ends, however it ends")
 
 	local.Set(keyManagedGatewayID, "development-held")
 	require.ErrorContains(t, steps.makeGatewayDefault(ctx), "already the default")
@@ -3647,6 +3665,22 @@ func TestEnsureEnvironmentGatewayUsesTheOneTheEnvironmentLists(t *testing.T) {
 	require.Equal(t, "e-1-default", id)
 	require.False(t, posted, "no gateway is built beside the one the platform provisioned")
 	require.Empty(t, registry.Pending())
+}
+
+func TestEnsureEnvironmentGatewayReportsAListingThatNeverWorked(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var posted bool
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posted = true
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"code": "internal_error"})
+	})
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := steps.ensureEnvironmentGateway(ctx, "e-1")
+	require.ErrorContains(t, err, `listing the gateways of environment "e-1"`)
+	require.False(t, posted, "no gateway is built because the listing failed")
 }
 
 func TestEnsureRunnerEnvironmentsKeepsWhatTheRunnerHolds(t *testing.T) {
@@ -3801,7 +3835,7 @@ func TestDeleteProjectThroughCloudAPISendsOneRequestAndNeverFails(t *testing.T) 
 		}))
 
 		client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
-		err := deleteProjectThroughCloudAPI(context.Background(), client, server.URL+platformAPIRoute, "console-token", "syn-project-1")
+		err := deleteProjectThroughCloudAPI(context.Background(), client, server.URL+platformAPIRoute, "console-token", "syn-project-1", projectDeleteTimeout)
 		server.Close()
 
 		require.NoError(t, err, "status %d", status)

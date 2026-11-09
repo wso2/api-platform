@@ -1003,7 +1003,7 @@ func updateBodyOf(document map[string]any) map[string]any {
 
 // makeGatewayDefault hands the default of the gateway's environment to the gateway, keeping the
 // gateway that held it so the default can be handed back, and registers that handing back for the
-// end of the runner before anything changes. The response of the change is published.
+// end of the scenario before anything changes. The response of the change is published.
 func (s *Steps) makeGatewayDefault(ctx context.Context) error {
 	id, environment, err := currentGateway(ctx)
 	if err != nil {
@@ -1020,7 +1020,7 @@ func (s *Steps) makeGatewayDefault(ctx context.Context) error {
 	if previous == id {
 		return fmt.Errorf("gateway %q is already the default of environment %q", id, environment)
 	}
-	if err := cleanup.RegisterRunner(ctx, cleanup.Resource{
+	if err := cleanup.Register(ctx, cleanup.Resource{
 		Kind: kindDefaultRestore, ID: previous, Actor: resourceActor, Description: "default gateway of " + environment + " back to " + previous,
 	}); err != nil {
 		return fmt.Errorf("registering the return of the default to %q: %w", previous, err)
@@ -1053,7 +1053,7 @@ func (s *Steps) assertGatewayIsDefault(ctx context.Context) error {
 }
 
 // handDefaultBack marks the gateway that held the default before makeGatewayDefault as the default
-// again, and no longer leaves that to the end of the runner.
+// again, and no longer leaves that to the end of the scenario.
 func (s *Steps) handDefaultBack(ctx context.Context) error {
 	previous, err := requiredValue(ctx, keyDefaultGatewayID)
 	if err != nil {

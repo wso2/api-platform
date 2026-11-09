@@ -470,12 +470,16 @@ func regularGatewayOf(items []map[string]any, environment string) string {
 // provision any.
 func (s *Steps) ensureEnvironmentGateway(ctx context.Context, environment string) (string, error) {
 	var found string
+	var listErr error
+	listed := false
 	_ = retry.Await(ctx, retry.Options{Timeout: baseGatewayWait, Interval: 5 * time.Second},
 		func(ctx context.Context) (string, error) {
 			items, err := s.fetchGatewayList(ctx, "")
 			if err != nil {
+				listErr = err
 				return "", err
 			}
+			listed = true
 			found = regularGatewayOf(items, environment)
 			return found, nil
 		},
@@ -483,6 +487,9 @@ func (s *Steps) ensureEnvironmentGateway(ctx context.Context, environment string
 		"waiting for environment "+environment+" to list a gateway")
 	if found != "" {
 		return found, nil
+	}
+	if !listed {
+		return "", fmt.Errorf("listing the gateways of environment %q: %w", environment, listErr)
 	}
 	budget, err := s.probeHandleBudget(ctx, environment)
 	if err != nil {

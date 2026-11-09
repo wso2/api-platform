@@ -80,7 +80,8 @@ func (s *Steps) findDefaultProject(ctx context.Context) error {
 //
 // Only a regular gateway that the platform accepts a deployment to is chosen: one whose
 // environment is in the deployment pipeline of the project the scenario found, that no suite run
-// created for itself, and, when CLOUD_GATEWAY_ID names one, only that gateway.
+// created for itself, and, when CLOUD_GATEWAY_ID names one, only that gateway, whatever its name
+// looks like.
 func (s *Steps) findActiveGateway(ctx context.Context) error {
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways?functionalityType="+url.QueryEscape(regularGatewayKind), nil)
 	if err != nil {
@@ -93,10 +94,7 @@ func (s *Steps) findActiveGateway(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding APIP gateways: %w", err)
 	}
-	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway, notInSyntheticEnvironment}
-	if pin := strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)); pin != "" {
-		filters = append(filters, pinnedGateway(pin))
-	}
+	filters := gatewayFilters(strings.TrimSpace(os.Getenv(cloudGatewayPinEnv)))
 	if projectID, resolveErr := tcontext.ResolveString(ctx, keyProjectID); resolveErr == nil && strings.TrimSpace(projectID) != "" {
 		environments, err := s.pipelineEnvironments(ctx)
 		if err != nil {
@@ -171,6 +169,18 @@ func notInSyntheticEnvironment(item map[string]any) string {
 		return "an environment of a suite run"
 	}
 	return ""
+}
+
+// gatewayFilters returns the filters that choose a gateway to deploy to. A gateway the operator
+// names through CLOUD_GATEWAY_ID is their explicit choice, so it is taken as named: the names that
+// mark a suite run's own gateways and environments can look like an operator's, and only an
+// unpinned run has to tell them apart.
+func gatewayFilters(pin string) []gatewayFilter {
+	filters := []gatewayFilter{regularGatewaysOnly}
+	if pin != "" {
+		return append(filters, pinnedGateway(pin))
+	}
+	return append(filters, notSyntheticGateway, notInSyntheticEnvironment)
 }
 
 // pinnedGateway rejects every gateway but the one a run was told to use.
@@ -619,8 +629,12 @@ func (s *Steps) deleteEnvironmentUntilGone(ctx context.Context, id string) error
 	return nil
 }
 
+// environmentDeletionTimeout bounds how long an environment is retried until it is gone: its
+// gateways are removed first.
+const environmentDeletionTimeout = 5 * time.Minute
+
 func (s *Steps) awaitEnvironmentNotFound(ctx context.Context, id string) error {
-	return retry.Await(ctx, retry.Options{Timeout: 2 * time.Minute, Interval: 3 * time.Second},
+	return retry.Await(ctx, retry.Options{Timeout: environmentDeletionTimeout, Interval: 3 * time.Second},
 		func(ctx context.Context) (*httpx.Response, error) {
 			return s.doAuthenticatedRaw(ctx, http.MethodDelete, "/environments/"+url.PathEscape(id), nil)
 		}, func(resp *httpx.Response) bool {

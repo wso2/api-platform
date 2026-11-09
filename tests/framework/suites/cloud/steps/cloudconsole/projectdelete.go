@@ -69,16 +69,16 @@ func projectDeleter(topo *frameworkruntime.Topology, client *httpx.Client) clean
 		if err != nil {
 			return err
 		}
-		return deleteProjectThroughCloudAPI(ctx, client, base, bearer, resource.ID)
+		return deleteProjectThroughCloudAPI(ctx, client, base, bearer, resource.ID, projectDeleteTimeout)
 	}
 }
 
 // deleteProjectThroughCloudAPI asks the cloud API to delete one project and does not wait for the
 // project to be gone: the request is accepted at once and the project's removal, and its record
 // in the APIP platform API, are the cloud's concern rather than the APIP's. An absent project
-// counts as deleted. A delete the cloud API refuses or cannot take within projectDeleteTimeout is
+// counts as deleted. A delete the cloud API refuses or cannot take within timeout is
 // logged and not reported as a failure, so it never fails a scenario or holds up the next runner.
-func deleteProjectThroughCloudAPI(ctx context.Context, client *httpx.Client, platformAPIBase, bearer, id string) error {
+func deleteProjectThroughCloudAPI(ctx context.Context, client *httpx.Client, platformAPIBase, bearer, id string, timeout time.Duration) error {
 	logger := slog.Default()
 	base, err := coreProjectsBase(platformAPIBase)
 	if err != nil {
@@ -86,7 +86,7 @@ func deleteProjectThroughCloudAPI(ctx context.Context, client *httpx.Client, pla
 		return nil
 	}
 	target := base + "/projects/" + url.PathEscape(id)
-	err = retry.Await(ctx, retry.Options{Timeout: projectDeleteTimeout, Interval: projectDeleteInterval},
+	err = retry.Await(ctx, retry.Options{Timeout: timeout, Interval: projectDeleteInterval},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, err := client.Do(ctx, httpx.Request{
 				Method:  http.MethodDelete,

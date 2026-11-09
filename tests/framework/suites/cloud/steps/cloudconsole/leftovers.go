@@ -64,6 +64,7 @@ var finalizerCollections = []struct {
 }{
 	{collection: secretsCollection, idFields: []string{"id", "handle"}},
 	{collection: managedGatewaysCollection, idFields: []string{"id"}},
+	// Each project is retried for finalizerDeleteTimeout, so the budget holds several of them.
 	{collection: "/projects", idFields: []string{"id"}, budget: projectDeleteTimeout},
 	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
 	{collection: environmentsCollection, idFields: []string{"name"}, wait: true},
@@ -189,7 +190,7 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 			},
 			Delete: func(ctx context.Context, id string) error {
 				if entry.collection == "/projects" {
-					return deleteProjectThroughCloudAPI(ctx, client, base, token, id)
+					return deleteProjectThroughCloudAPI(ctx, client, base, token, id, finalizerDeleteTimeout)
 				}
 				return deleteLeftover(ctx, client, base, token, entry.collection, id, entry.wait)
 			},

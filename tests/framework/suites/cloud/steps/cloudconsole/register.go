@@ -368,7 +368,7 @@ func deleteCloudResource(ctx context.Context, client *httpx.Client, base, bearer
 		}
 		return responseError(resp)
 	}
-	return retry.Await(ctx, retry.Options{Timeout: 2 * time.Minute, Interval: 3 * time.Second},
+	return retry.Await(ctx, retry.Options{Timeout: environmentDeletionTimeout, Interval: 3 * time.Second},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, err := deleteOne(ctx)
 			if err != nil {
