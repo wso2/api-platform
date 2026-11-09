@@ -325,15 +325,16 @@ func (db *DB) addMissingSQLiteColumns() error {
 	return nil
 }
 
-// HasTable reports whether the table exists, read from the database catalog. An error means the
-// check itself failed, not that the table is missing. table must be a fixed name, never user input.
+// HasTable reports whether the table exists, resolving its unqualified name as a query does (the
+// PostgreSQL search path; SQL Server's default schema, then dbo). An error means the check itself
+// failed, not that the table is missing. table must be a fixed name, never user input.
 func (db *DB) HasTable(table string) (bool, error) {
 	query := `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`
 	switch {
 	case isPostgresDriver(db.driver):
-		query = `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?`
+		query = `SELECT CASE WHEN to_regclass(CAST(? AS text)) IS NULL THEN 0 ELSE 1 END`
 	case isSQLServerDriver(db.driver):
-		query = `SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME = ?`
+		query = `SELECT CASE WHEN OBJECT_ID(?, 'U') IS NULL THEN 0 ELSE 1 END`
 	}
 	var n int
 	if err := db.QueryRow(db.Rebind(query), table).Scan(&n); err != nil {
@@ -342,15 +343,17 @@ func (db *DB) HasTable(table string) (bool, error) {
 	return n > 0, nil
 }
 
-// HasColumn reports whether the column exists, read from the database catalog. An error means the
-// check itself failed. table and column must be fixed names, never user input.
+// HasColumn reports whether the column exists on the table its unqualified name resolves to, as in
+// HasTable. An error means the check itself failed. table and column must be fixed names, never user
+// input.
 func (db *DB) HasColumn(table, column string) (bool, error) {
 	query := `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`
 	switch {
 	case isPostgresDriver(db.driver):
-		query = `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`
+		query = `SELECT COUNT(*) FROM pg_attribute
+			WHERE attrelid = to_regclass(CAST(? AS text)) AND attname = ? AND attnum > 0 AND NOT attisdropped`
 	case isSQLServerDriver(db.driver):
-		query = `SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME = ? AND COLUMN_NAME = ?`
+		query = `SELECT CASE WHEN COL_LENGTH(?, ?) IS NULL THEN 0 ELSE 1 END`
 	}
 	var n int
 	if err := db.QueryRow(db.Rebind(query), table, column).Scan(&n); err != nil {

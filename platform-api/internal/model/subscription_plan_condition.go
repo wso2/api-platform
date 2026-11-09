@@ -20,6 +20,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 )
 
 // Condition types. A plan has at most one condition of each built-in type.
@@ -142,13 +143,13 @@ func (p *SubscriptionPlan) SetLegacyLimit() {
 
 // WindowKey names a window by its length, so 60 MINUTE and 1 HOUR match. Months match only months.
 func WindowKey(amount int, unit string) string {
-	switch unit {
-	case "MINUTE":
-		return fmt.Sprintf("m%d", amount)
-	case "HOUR":
-		return fmt.Sprintf("m%d", amount*60)
-	case "DAY":
-		return fmt.Sprintf("m%d", amount*24*60)
+	minutes := map[string]int{"MINUTE": 1, "HOUR": 60, "DAY": 24 * 60}[unit]
+	if minutes == 0 {
+		return fmt.Sprintf("M%d", amount)
 	}
-	return fmt.Sprintf("M%d", amount)
+	// A length in minutes past the int range can't equal any other window: keep it apart.
+	if amount > math.MaxInt/minutes || amount < math.MinInt/minutes {
+		return fmt.Sprintf("%s%d", unit, amount)
+	}
+	return fmt.Sprintf("m%d", amount*minutes)
 }

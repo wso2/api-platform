@@ -929,6 +929,10 @@ func validateSubscriptionPlanHandles(planRepo repository.SubscriptionPlanReposit
 			handles = append(handles, h)
 		}
 	}
+	// A list of only blanks would be stored empty, which offers every plan: refuse it instead.
+	if len(handles) == 0 {
+		return apperror.ValidationFailed.New("subscriptionPlans must name at least one plan; leave it out to offer every active plan")
+	}
 	*planHandles = handles
 	for _, handle := range handles {
 		plan, err := planRepo.GetByHandleAndOrg(handle, orgUUID)

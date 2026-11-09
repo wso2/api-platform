@@ -242,7 +242,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		Conditions:  []model.SubscriptionPlanCondition{},
 	}
 	if len(req.Conditions) > 0 {
-		if len(req.Limits) > 0 {
+		// Sent at all, even as [], limits can't come with conditions.
+		if req.Limits != nil {
 			return apperror.ValidationFailed.New("send conditions or limits, not both")
 		}
 		conditions, err := decodeConditions(req.Conditions)
@@ -447,7 +448,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		ClearExpiryTime: req.ExpiryTime == nil && string(presence.ExpiryTime) == "null",
 	}
 	if presence.Conditions != nil {
-		if req.Limits != nil && len(*req.Limits) > 0 {
+		// Sent at all, even as [], limits can't come with conditions.
+		if req.Limits != nil {
 			return apperror.ValidationFailed.New("send conditions or limits, not both")
 		}
 		conditions, err := decodeConditions(presence.Conditions)

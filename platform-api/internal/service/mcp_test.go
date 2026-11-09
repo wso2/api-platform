@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -294,6 +295,11 @@ func TestValidateSubscriptionPlanHandles(t *testing.T) {
 	handles := []string{" gold ", "", "  "}
 	if err := validateSubscriptionPlanHandles(plans, &handles, "org-1"); err != nil || len(handles) != 1 || handles[0] != "gold" {
 		t.Fatalf("err = %v, handles = %q; want the handle trimmed and the blank ones left out", err, handles)
+	}
+	// Only blanks would be stored as an empty list, which offers every plan.
+	blanks := []string{" ", ""}
+	if err := validateSubscriptionPlanHandles(plans, &blanks, "org-1"); err == nil || !strings.Contains(err.Error(), "at least one plan") {
+		t.Fatalf("only blank handles: err = %v, want a validation error", err)
 	}
 }
 

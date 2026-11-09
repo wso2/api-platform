@@ -116,13 +116,14 @@ func TestPlanHandler_CreateRefusesBadConditions(t *testing.T) {
 	for name, body := range map[string]string{
 		"conditions and limits": `{"id":"p1","displayName":"P1","conditions":[{"type":"custom","id":"a","params":{}}],` +
 			`"limits":[{"limitCount":1,"timeUnit":"MINUTE"}]}`,
-		"conditions null":            `{"id":"p2","displayName":"P2","conditions":null}`,
-		"conditions not an array":    `{"id":"p3","displayName":"P3","conditions":{"type":"custom"}}`,
-		"two request-count":          `{"id":"p4","displayName":"P4","conditions":[{"type":"request-count","params":{"limits":[{"count":1,"timeUnit":"MINUTE"}]}},{"type":"request-count","params":{"limits":[{"count":2,"timeUnit":"HOUR"}]}}]}`,
-		"bandwidth":                  `{"id":"p5","displayName":"P5","conditions":[{"type":"bandwidth","params":{"limits":[{"count":1,"timeUnit":"MINUTE"}]}}]}`,
-		"overlapping windows":        `{"id":"p6","displayName":"P6","conditions":[{"type":"request-count","params":{"limits":[{"count":1,"timeAmount":60,"timeUnit":"MINUTE"},{"count":2,"timeUnit":"HOUR"}]}}]}`,
-		"custom without an id":       `{"id":"p7","displayName":"P7","conditions":[{"type":"custom","params":{"k":"v"}}]}`,
-		"invalid first legacy limit": `{"id":"p8","displayName":"P8","limits":[{"limitCount":1,"timeUnit":"WEEK"}]}`,
+		"conditions and empty limits": `{"id":"p9","displayName":"P9","conditions":[{"type":"custom","id":"a","params":{}}],"limits":[]}`,
+		"conditions null":             `{"id":"p2","displayName":"P2","conditions":null}`,
+		"conditions not an array":     `{"id":"p3","displayName":"P3","conditions":{"type":"custom"}}`,
+		"two request-count":           `{"id":"p4","displayName":"P4","conditions":[{"type":"request-count","params":{"limits":[{"count":1,"timeUnit":"MINUTE"}]}},{"type":"request-count","params":{"limits":[{"count":2,"timeUnit":"HOUR"}]}}]}`,
+		"bandwidth":                   `{"id":"p5","displayName":"P5","conditions":[{"type":"bandwidth","params":{"limits":[{"count":1,"timeUnit":"MINUTE"}]}}]}`,
+		"overlapping windows":         `{"id":"p6","displayName":"P6","conditions":[{"type":"request-count","params":{"limits":[{"count":1,"timeAmount":60,"timeUnit":"MINUTE"},{"count":2,"timeUnit":"HOUR"}]}}]}`,
+		"custom without an id":        `{"id":"p7","displayName":"P7","conditions":[{"type":"custom","params":{"k":"v"}}]}`,
+		"invalid first legacy limit":  `{"id":"p8","displayName":"P8","limits":[{"limitCount":1,"timeUnit":"WEEK"}]}`,
 	} {
 		rec := planRequest(t, h, http.MethodPost, planITPath, body)
 		if rec.Code != http.StatusBadRequest {

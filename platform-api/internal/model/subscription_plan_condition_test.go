@@ -17,7 +17,10 @@
 
 package model
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestNewRequestCountCondition(t *testing.T) {
 	windows := []ConditionWindow{{Count: 100, TimeAmount: 1, TimeUnit: "MINUTE"}}
@@ -115,5 +118,10 @@ func TestWindowKey(t *testing.T) {
 	}
 	if WindowKey(1, "MONTH") == WindowKey(30, "DAY") || WindowKey(1, "MONTH") != "M1" {
 		t.Errorf("months should match only months, got %q", WindowKey(1, "MONTH"))
+	}
+	// A length past the int range in minutes doesn't wrap onto a short window.
+	huge := math.MaxInt/60 + 2
+	if WindowKey(huge, "HOUR") == WindowKey(1, "HOUR") || WindowKey(huge, "HOUR") == WindowKey(huge, "DAY") {
+		t.Errorf("an overflowing window matched another: %q", WindowKey(huge, "HOUR"))
 	}
 }
