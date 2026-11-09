@@ -37,6 +37,13 @@ describe('fetchConsent', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('calls the resolved proxy base it is given', async () => {
+    const fetchMock = respond(200, { optoutOfEmails: false, consentStatus: 'Confirmed' });
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchConsent('/_api/api-management');
+    expect(fetchMock.mock.calls[0][0]).toBe('/_api/api-management/marketing-consent/marketing-consent');
+  });
+
   it.each(['No Opt-in', 'Unconfirmed', 'Confirmed', 'Unsubscribed'])('accepts %s', async (status) => {
     vi.stubGlobal('fetch', respond(200, { optoutOfEmails: false, consentStatus: status }));
     expect((await fetchConsent())?.consentStatus).toBe(status);
@@ -96,6 +103,25 @@ describe('recordConsent', () => {
       expect(init.headers['Content-Type']).toBe('application/json');
     }
   );
+
+  it('calls the resolved proxy base it is given', async () => {
+    const fetchMock = respond(202);
+    vi.stubGlobal('fetch', fetchMock);
+    await recordConsent('Confirmed', '/_api/api-management');
+    expect(fetchMock.mock.calls[0][0]).toBe('/_api/api-management/marketing-consent/marketing-consent');
+  });
+
+  it('bounds the request with a timeout signal', async () => {
+    const fetchMock = respond(202);
+    vi.stubGlobal('fetch', fetchMock);
+    await recordConsent('Confirmed');
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('answers false when the request times out', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('timeout', 'TimeoutError')));
+    expect(await recordConsent('Confirmed')).toBe(false);
+  });
 
   it.each([200, 400, 403, 404, 502])('does not count %i as accepted', async (status) => {
     vi.stubGlobal('fetch', respond(status, { error: 'x' }));

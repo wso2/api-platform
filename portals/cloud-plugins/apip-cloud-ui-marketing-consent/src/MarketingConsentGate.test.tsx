@@ -167,6 +167,54 @@ describe('MarketingConsentGate', () => {
     expect(window.sessionStorage.getItem('apip.marketingConsent.asked')).toBe('1');
   });
 
+  it('does not open when a slow read returns after the session was already marked asked', async () => {
+    let answerRead!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            answerRead = resolve;
+          })
+      )
+    );
+    render(<MarketingConsentGate port={{}} />);
+    // Another instance answers and marks the session while this read is in flight.
+    window.sessionStorage.setItem('apip.marketingConsent.asked', '1');
+    answerRead(new Response(JSON.stringify(NEVER_ANSWERED), { status: 200 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it("calls the host console's resolved proxy base for both the read and the save", async () => {
+    const fetchMock = stubConsent(NEVER_ANSWERED);
+    render(<MarketingConsentGate port={{}} proxyBase="/_api/api-management" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const urls = fetchMock.mock.calls.map(([url]) => url);
+    expect(urls).toEqual(Array(2).fill('/_api/api-management/marketing-consent/marketing-consent'));
+  });
+
+  it('unlocks the dialog with an error when a save stalls and times out, so the person can retry', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) =>
+        init?.method === 'POST'
+          ? Promise.reject(new DOMException('timeout', 'TimeoutError'))
+          : Promise.resolve(new Response(JSON.stringify(NEVER_ANSWERED), { status: 200 }))
+      )
+    );
+    render(<MarketingConsentGate port={{}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("couldn't save");
+    expect(screen.getByRole('button', { name: 'Subscribe' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'No thanks' })).toBeEnabled();
+    // And it can still be dismissed.
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
   it('works when the host supplies no notify', async () => {
     stubConsent(NEVER_ANSWERED);
     render(<MarketingConsentGate port={{}} />);

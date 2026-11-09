@@ -49,20 +49,30 @@ const isSameOriginPath = (path: string): boolean => {
 /**
  * The same-origin path this console's named upstreams sit under: `/proxy` behind
  * the BFF, `/api-management/proxy` behind a gateway that serves the console under
- * a path. Same rule as the entitlements plugin.
+ * a path.
+ *
+ * `resolved` is the base the host console already resolved (its
+ * `runtimeConfig.platformApiBaseUrl`, where a build-time `VITE_PLATFORM_API_BASE_URL`
+ * outranks the window keys). It is preferred so this plugin always agrees with the
+ * console's own calls; the window keys remain the fallback for a host that passes
+ * nothing. Only a same-origin path counts: an absolute URL points straight at a
+ * Platform API, which has no consent route, so that and an unset value fall back
+ * to the BFF's default `/proxy`.
  */
-export function proxyBase(): string {
+export function proxyBase(resolved?: string): string {
   const config = fromWindow();
-  const base = (config.PLATFORM_API_BASE_URL || config.platformApiBaseUrl || '')
+  const base = (resolved || config.PLATFORM_API_BASE_URL || config.platformApiBaseUrl || '')
     .trim()
     .replace(/\/+$/, '');
   return isSameOriginPath(base) ? base : '/proxy';
 }
 
 /**
- * Where the `marketing-consent` named upstream is reached. The BFF swaps the
- * `{proxy}/marketing-consent` prefix for the upstream URL (the internal gateway's
- * marketing-consent endpoint) and injects the signed-in person's own access token,
- * so neither the gateway address nor a token ever reaches the browser.
+ * Where the `marketing-consent` named upstream is reached. The BFF (or, in the
+ * console's `external` mode, the control-plane gateway) swaps the
+ * `{proxy}/marketing-consent` prefix for the internal consent endpoint and injects
+ * the signed-in person's own access token, so neither the endpoint's address nor a
+ * token ever reaches the browser.
  */
-export const consentUrl = (): string => `${proxyBase()}/marketing-consent/marketing-consent`;
+export const consentUrl = (resolvedProxyBase?: string): string =>
+  `${proxyBase(resolvedProxyBase)}/marketing-consent/marketing-consent`;

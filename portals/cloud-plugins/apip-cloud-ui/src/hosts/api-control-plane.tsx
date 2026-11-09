@@ -193,7 +193,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'marketing-consent-gate',
         slot: APP_GATE_SLOT,
         order: 20,
-        render: (port) => <MarketingConsentGate port={port} />,
+        render: (port) => (
+          <MarketingConsentGate port={port} proxyBase={runtimeConfig.platformApiBaseUrl} />
+        ),
       },
     ],
   }),

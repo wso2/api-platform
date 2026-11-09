@@ -27,6 +27,10 @@ const CSRF_HEADER_VALUE = 'api-control-plane';
 // to allow up to 12 seconds.
 const READ_TIMEOUT_MS = 15_000;
 
+// The write answers 202 before delivery to Pardot, so it is quick; the bound only
+// keeps a stalled request from leaving the dialog locked.
+const WRITE_TIMEOUT_MS = 15_000;
+
 const KNOWN_STATUSES: readonly ConsentStatus[] = [
   'No Opt-in',
   'Unconfirmed',
@@ -41,9 +45,9 @@ const KNOWN_STATUSES: readonly ConsentStatus[] = [
  * must not get in the way of the console, and an unknown answer is not a reason to
  * ask.
  */
-export async function fetchConsent(): Promise<ConsentRecord | null> {
+export async function fetchConsent(proxyBase?: string): Promise<ConsentRecord | null> {
   try {
-    const response = await fetch(consentUrl(), {
+    const response = await fetch(consentUrl(proxyBase), {
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { Accept: 'application/json' },
@@ -61,11 +65,15 @@ export async function fetchConsent(): Promise<ConsentRecord | null> {
 
 /**
  * Records the person's decision. `202` means accepted, not delivered, and the call
- * is safe to retry. Resolves whether it was accepted.
+ * is safe to retry. Resolves whether it was accepted; a refusal, a network failure
+ * and a timeout all answer false, so the caller can offer a retry.
  */
-export async function recordConsent(status: SettableConsentStatus): Promise<boolean> {
+export async function recordConsent(
+  status: SettableConsentStatus,
+  proxyBase?: string
+): Promise<boolean> {
   try {
-    const response = await fetch(consentUrl(), {
+    const response = await fetch(consentUrl(proxyBase), {
       method: 'POST',
       credentials: 'same-origin',
       headers: {
@@ -74,6 +82,7 @@ export async function recordConsent(status: SettableConsentStatus): Promise<bool
         [CSRF_HEADER]: CSRF_HEADER_VALUE,
       },
       body: JSON.stringify({ consentstatus: status }),
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
     });
     return response.status === 202;
   } catch {

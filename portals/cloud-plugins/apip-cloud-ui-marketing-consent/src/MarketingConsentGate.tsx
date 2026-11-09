@@ -49,7 +49,14 @@ const PILL = { borderRadius: 999, px: 3, textTransform: 'none' } as const;
  * Never blocks anything: a failed read shows nothing, closing it (Esc or a click
  * outside) postpones it for the session, and a failed save keeps the dialog open so the person can retry.
  */
-export default function MarketingConsentGate({ port }: { port: MarketingConsentHostPort }) {
+export default function MarketingConsentGate({
+  port,
+  proxyBase,
+}: {
+  port: MarketingConsentHostPort;
+  /** The host console's resolved proxy base, so consent calls agree with its own. */
+  proxyBase?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState<SettableConsentStatus | null>(null);
   const [failed, setFailed] = useState(false);
@@ -57,18 +64,20 @@ export default function MarketingConsentGate({ port }: { port: MarketingConsentH
   useEffect(() => {
     if (wasAsked()) return;
     let cancelled = false;
-    void fetchConsent().then((record) => {
-      if (!cancelled && shouldPrompt(record)) setOpen(true);
+    void fetchConsent(proxyBase).then((record) => {
+      // Recheck the marker: a gate that remounted while a save was pending can see
+      // this read return after the save marked the session, with a stale `No Opt-in`.
+      if (!cancelled && !wasAsked() && shouldPrompt(record)) setOpen(true);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [proxyBase]);
 
   const answer = async (status: SettableConsentStatus) => {
     setSaving(status);
     setFailed(false);
-    const accepted = await recordConsent(status);
+    const accepted = await recordConsent(status, proxyBase);
     setSaving(null);
     if (!accepted) {
       setFailed(true);

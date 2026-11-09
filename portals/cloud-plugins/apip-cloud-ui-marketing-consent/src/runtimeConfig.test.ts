@@ -54,10 +54,38 @@ describe('proxyBase', () => {
   });
 });
 
+describe('proxyBase with the base the console resolved', () => {
+  it('prefers the base the host console resolved over the window keys', () => {
+    win.__RUNTIME_CONFIG__ = { platformApiBaseUrl: '/from-window' };
+    expect(proxyBase('/_api/api-management/')).toBe('/_api/api-management');
+  });
+
+  it('covers a deployment that only sets the build-time override (neither window key)', () => {
+    expect(proxyBase('/_api/api-management')).toBe('/_api/api-management');
+  });
+
+  it.each([
+    ['an absolute URL', 'https://platform.example.com'],
+    ['a protocol-relative URL', '//evil.example.com'],
+  ])('refuses %s and uses /proxy, as the console ignores its window keys once it has resolved one', (_label, value) => {
+    win.config = { PLATFORM_API_BASE_URL: '/gw' };
+    expect(proxyBase(value)).toBe('/proxy');
+  });
+
+  it('falls back to the window keys when the host passes an empty base', () => {
+    win.config = { PLATFORM_API_BASE_URL: '/gw' };
+    expect(proxyBase('')).toBe('/gw');
+  });
+});
+
 describe('consentUrl', () => {
   it('sits under the marketing-consent route of the proxy base', () => {
     expect(consentUrl()).toBe('/proxy/marketing-consent/marketing-consent');
     win.__RUNTIME_CONFIG__ = { platformApiBaseUrl: '/_api/api-management' };
     expect(consentUrl()).toBe('/_api/api-management/marketing-consent/marketing-consent');
+  });
+
+  it('uses the resolved base when given one', () => {
+    expect(consentUrl('/gw')).toBe('/gw/marketing-consent/marketing-consent');
   });
 });
