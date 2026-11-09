@@ -225,7 +225,7 @@ func TestUpsertPlanFromWebhook_IgnoresTheLock(t *testing.T) {
 	}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	windows := []model.ConditionWindow{{Count: 2000, TimeAmount: 1, TimeUnit: "MINUTE"}}
+	windows := model.LegacyLimitWindows{Requests: []model.ConditionWindow{{Count: 2000, TimeAmount: 1, TimeUnit: "MINUTE"}}}
 	if _, err := svc.UpsertPlanFromWebhook("org-1", "partner", "Partner Plus", "", nil, windows, nil, time.Now()); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}

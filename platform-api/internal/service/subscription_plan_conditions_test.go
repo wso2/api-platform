@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -41,6 +42,7 @@ func TestNormalizeConditions_StoredForm(t *testing.T) {
 	got, err := normalizeConditions([]model.SubscriptionPlanCondition{
 		condition("", "request-count", `{"limits":[{"count":100,"timeUnit":"minute"},{"count":10000,"timeAmount":1,"timeUnit":"DAY"}]}`),
 		condition("tokens", " token-count ", `{"limits":[{"count":5000,"timeUnit":"HOUR"}],"onExceed":"allow"}`),
+		condition("", "event-count", `{"limits":[{"count":50,"timeAmount":0,"timeUnit":"minute"}]}`),
 		condition("ip-ranges", "custom", `{ "zone": "eu", "cidr": "10.0.0.0/8", "limit": 50 }`),
 		condition("promo", "custom", `{}`),
 	})
@@ -50,6 +52,7 @@ func TestNormalizeConditions_StoredForm(t *testing.T) {
 	want := []model.SubscriptionPlanCondition{
 		condition("requests", "request-count", `{"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"},{"count":10000,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"reject"}`),
 		condition("tokens", "token-count", `{"limits":[{"count":5000,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"allow","tokenType":"total"}`),
+		condition("events", "event-count", `{"limits":[{"count":50,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`),
 		condition("ip-ranges", "custom", `{"cidr":"10.0.0.0/8","limit":50,"zone":"eu"}`),
 		condition("promo", "custom", `{}`),
 	}
@@ -68,10 +71,18 @@ func TestNormalizeConditions_Refusals(t *testing.T) {
 		conditions []model.SubscriptionPlanCondition
 		message    string
 	}{
-		{"unknown type", []model.SubscriptionPlanCondition{condition("", "bandwidth", limit)}, "type must be one of"},
+		{"unknown type", []model.SubscriptionPlanCondition{condition("", "bandwidth", limit)}, "type must be one of request-count, tool-call-count, token-count, event-count or custom"},
 		{"no type", []model.SubscriptionPlanCondition{condition("x", "", `{}`)}, "type is required"},
 		{"two of one built-in type", []model.SubscriptionPlanCondition{condition("", "request-count", limit), condition("", "request-count", limit)}, "only one request-count"},
 		{"another id for a built-in type", []model.SubscriptionPlanCondition{condition("api-calls", "request-count", limit)}, "the id of a request-count condition is requests"},
+		{"two event-count", []model.SubscriptionPlanCondition{condition("", "event-count", limit), condition("events", "event-count", limit)}, "only one event-count"},
+		{"another id for event-count", []model.SubscriptionPlanCondition{condition("messages", "event-count", limit)}, "the id of a event-count condition is events"},
+		{"tokenType on event-count", []model.SubscriptionPlanCondition{condition("", "event-count", `{"limits":[{"count":1,"timeUnit":"DAY"}],"tokenType":"total"}`)}, "token-count conditions only"},
+		{"event-count windows of the same length", []model.SubscriptionPlanCondition{condition("", "event-count",
+			`{"limits":[{"count":100,"timeAmount":24,"timeUnit":"HOUR"},{"count":200,"timeUnit":"DAY"}]}`)}, "window of its own length"},
+		{"too many event-count windows", []model.SubscriptionPlanCondition{condition("", "event-count", `{"limits":[`+
+			strings.TrimSuffix(strings.Repeat(`{"count":1,"timeUnit":"MONTH"},`, 11), ",")+`]}`)}, "at most 10 limits"},
+		{"custom with the event-count id", []model.SubscriptionPlanCondition{condition("events", "custom", `{}`)}, "id of a built-in condition"},
 		{"no limits", []model.SubscriptionPlanCondition{condition("", "tool-call-count", `{"limits":[]}`)}, "at least one limit"},
 		{"no params", []model.SubscriptionPlanCondition{condition("", "tool-call-count", ``)}, "params with at least one limit"},
 		{"zero count", []model.SubscriptionPlanCondition{condition("", "request-count", `{"limits":[{"count":0,"timeUnit":"MINUTE"}]}`)}, "count must be at least 1"},
@@ -120,7 +131,7 @@ func TestPortalConditions_LimitsOnlyChangeTheRequestCondition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := portalConditions(current, nil, []model.ConditionWindow{{Count: 500, TimeAmount: 1, TimeUnit: "HOUR"}})
+	got, err := portalConditions(current, nil, model.LegacyLimitWindows{Requests: []model.ConditionWindow{{Count: 500, TimeAmount: 1, TimeUnit: "HOUR"}}})
 	if err != nil {
 		t.Fatalf("portalConditions: %v", err)
 	}
@@ -129,15 +140,67 @@ func TestPortalConditions_LimitsOnlyChangeTheRequestCondition(t *testing.T) {
 		t.Fatalf("conditions = %+v, want the new soft request limit and the tool-call condition", got)
 	}
 
-	cleared, err := portalConditions(current, nil, nil)
+	cleared, err := portalConditions(current, nil, model.LegacyLimitWindows{})
 	if err != nil || len(cleared) != 1 || cleared[0].Type != model.ConditionTypeToolCallCount {
 		t.Fatalf("no request limits: %+v, %v; want only the tool-call condition", cleared, err)
 	}
 
 	sent := []model.SubscriptionPlanCondition{condition("promo", "custom", `{"until":"2026-12-31"}`)}
-	replaced, err := portalConditions(current, &sent, []model.ConditionWindow{{Count: 1, TimeAmount: 1, TimeUnit: "DAY"}})
+	replaced, err := portalConditions(current, &sent, model.LegacyLimitWindows{Requests: []model.ConditionWindow{{Count: 1, TimeAmount: 1, TimeUnit: "DAY"}}})
 	if err != nil || len(replaced) != 1 || replaced[0].ID != "promo" {
 		t.Fatalf("sent conditions: %+v, %v; want them as they are", replaced, err)
+	}
+}
+
+// A portal that predates conditions sends request and event limits: they set the request-count and
+// event-count conditions, each keeping its onExceed, and keep the other conditions. A type with no
+// limits loses its condition.
+func TestPortalConditions_LimitsSetRequestAndEventConditions(t *testing.T) {
+	current, err := normalizeConditions([]model.SubscriptionPlanCondition{
+		condition("", "tool-call-count", `{"limits":[{"count":10,"timeUnit":"MINUTE"}]}`),
+		condition("", "event-count", `{"limits":[{"count":100,"timeUnit":"MINUTE"}],"onExceed":"allow"}`),
+		condition("promo", "custom", `{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := portalConditions(current, nil, model.LegacyLimitWindows{
+		Requests: []model.ConditionWindow{{Count: 500, TimeAmount: 1, TimeUnit: "HOUR"}},
+		Events:   []model.ConditionWindow{{Count: 50, TimeAmount: 1, TimeUnit: "MINUTE"}, {Count: 900, TimeAmount: 1, TimeUnit: "DAY"}},
+	})
+	if err != nil {
+		t.Fatalf("portalConditions: %v", err)
+	}
+	want := []model.SubscriptionPlanCondition{
+		condition("requests", "request-count", `{"limits":[{"count":500,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"reject"}`),
+		current[0],
+		condition("events", "event-count", `{"limits":[{"count":50,"timeAmount":1,"timeUnit":"MINUTE"},{"count":900,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"allow"}`),
+		current[2],
+	}
+	if !sameConditions(got, want) {
+		t.Fatalf("conditions = %+v, want %+v", got, want)
+	}
+
+	// Event limits on a plan without an event-count condition add one, which blocks.
+	added, err := portalConditions(current[:1], nil, model.LegacyLimitWindows{Events: []model.ConditionWindow{{Count: 7, TimeAmount: 1, TimeUnit: "DAY"}}})
+	if err != nil || len(added) != 2 || added[0].ID != "events" ||
+		string(added[0].Params) != `{"limits":[{"count":7,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"reject"}` {
+		t.Fatalf("added: %+v, %v; want a new event-count condition first", added, err)
+	}
+
+	// Only request limits: the event-count condition is removed.
+	onlyRequests, err := portalConditions(current, nil, model.LegacyLimitWindows{Requests: []model.ConditionWindow{{Count: 1, TimeAmount: 1, TimeUnit: "DAY"}}})
+	if err != nil || len(onlyRequests) != 3 || model.FindCondition(onlyRequests, model.ConditionTypeEventCount) != nil ||
+		model.FindCondition(onlyRequests, model.ConditionTypeRequestCount) == nil {
+		t.Fatalf("only request limits: %+v, %v; want no event-count condition", onlyRequests, err)
+	}
+
+	// Sent conditions are taken as they are, event-count included.
+	sent := []model.SubscriptionPlanCondition{condition("", "event-count", `{"limits":[{"count":3,"timeUnit":"HOUR"}]}`)}
+	replaced, err := portalConditions(current, &sent, model.LegacyLimitWindows{})
+	if err != nil || len(replaced) != 1 || replaced[0].ID != "events" {
+		t.Fatalf("sent conditions: %+v, %v; want the event-count condition", replaced, err)
 	}
 }
 
@@ -155,6 +218,25 @@ func TestPortalLimits_EveryRequestWindow(t *testing.T) {
 	}
 	if limits := portalLimits(&model.SubscriptionPlan{}); limits == nil || len(limits) != 0 {
 		t.Fatalf("a plan with no request-count condition: %+v, want an empty list", limits)
+	}
+}
+
+// A portal copy gets the event-count windows as EVENT_COUNT limits, next to the REQUEST_COUNT ones.
+func TestPortalLimits_EventWindows(t *testing.T) {
+	plan := &model.SubscriptionPlan{Conditions: []model.SubscriptionPlanCondition{
+		condition("events", "event-count", `{"limits":[{"count":60,"timeAmount":1,"timeUnit":"MINUTE"},{"count":5000,"timeAmount":2,"timeUnit":"DAY"}],"onExceed":"allow"}`),
+		condition("requests", "request-count", `{"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`),
+	}}
+	got := portalLimits(plan)
+	want := []portalPlanLimit{{LimitType: "REQUEST_COUNT", LimitCount: 100, TimeUnit: "MINUTE", TimeAmount: 1},
+		{LimitType: "EVENT_COUNT", LimitCount: 60, TimeUnit: "MINUTE", TimeAmount: 1},
+		{LimitType: "EVENT_COUNT", LimitCount: 5000, TimeUnit: "DAY", TimeAmount: 2}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("portal limits = %+v, want %+v", got, want)
+	}
+	onlyEvents := &model.SubscriptionPlan{Conditions: plan.Conditions[:1]}
+	if limits := portalLimits(onlyEvents); len(limits) != 2 || limits[0].LimitType != "EVENT_COUNT" {
+		t.Fatalf("a plan with only event-count: %+v, want its two EVENT_COUNT limits", limits)
 	}
 }
 

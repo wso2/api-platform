@@ -28,6 +28,7 @@ const (
 	ConditionTypeRequestCount  = "request-count"
 	ConditionTypeToolCallCount = "tool-call-count"
 	ConditionTypeTokenCount    = "token-count"
+	ConditionTypeEventCount    = "event-count"
 	ConditionTypeCustom        = "custom"
 )
 
@@ -36,6 +37,7 @@ const (
 	ConditionIDRequests  = "requests"
 	ConditionIDToolCalls = "tool-calls"
 	ConditionIDTokens    = "tokens"
+	ConditionIDEvents    = "events"
 )
 
 // BuiltInConditionIDs maps each built-in condition type to its fixed ID.
@@ -43,6 +45,7 @@ var BuiltInConditionIDs = map[string]string{
 	ConditionTypeRequestCount:  ConditionIDRequests,
 	ConditionTypeToolCallCount: ConditionIDToolCalls,
 	ConditionTypeTokenCount:    ConditionIDTokens,
+	ConditionTypeEventCount:    ConditionIDEvents,
 }
 
 // What happens when a window is used up: reject the request, or allow it as overage.
@@ -79,17 +82,30 @@ type ConditionWindow struct {
 	TimeUnit   string `json:"timeUnit"`
 }
 
+// LegacyLimitWindows are the windows an API Portal's limits give a plan: its REQUEST_COUNT limits are
+// the request-count windows and its EVENT_COUNT limits the event-count windows.
+type LegacyLimitWindows struct {
+	Requests []ConditionWindow
+	Events   []ConditionWindow
+}
+
 // legacyLimitUnits are the units older gateways and subscription-validation v1 understand.
 var legacyLimitUnits = map[string]bool{"MINUTE": true, "HOUR": true, "DAY": true, "MONTH": true}
 
 // NewRequestCountCondition builds a request-count condition. stopOnQuotaReach false makes it a soft limit.
 func NewRequestCountCondition(windows []ConditionWindow, stopOnQuotaReach bool) SubscriptionPlanCondition {
+	return NewLimitCondition(ConditionTypeRequestCount, windows, stopOnQuotaReach)
+}
+
+// NewLimitCondition builds a built-in condition of the given type (not token-count, which needs a
+// tokenType) with these windows. stopOnQuotaReach false makes it a soft limit.
+func NewLimitCondition(conditionType string, windows []ConditionWindow, stopOnQuotaReach bool) SubscriptionPlanCondition {
 	onExceed := ConditionOnExceedReject
 	if !stopOnQuotaReach {
 		onExceed = ConditionOnExceedAllow
 	}
 	params, _ := json.Marshal(ConditionLimits{Limits: windows, OnExceed: onExceed})
-	return SubscriptionPlanCondition{ID: ConditionIDRequests, Type: ConditionTypeRequestCount, Params: params}
+	return SubscriptionPlanCondition{ID: BuiltInConditionIDs[conditionType], Type: conditionType, Params: params}
 }
 
 // FindCondition returns the first condition of the given type, or nil.

@@ -1405,6 +1405,7 @@ func (e SubscriptionPlanStatus) Valid() bool {
 // Defines values for SubscriptionPlanConditionType.
 const (
 	SubscriptionPlanConditionTypeCustom        SubscriptionPlanConditionType = "custom"
+	SubscriptionPlanConditionTypeEventCount    SubscriptionPlanConditionType = "event-count"
 	SubscriptionPlanConditionTypeRequestCount  SubscriptionPlanConditionType = "request-count"
 	SubscriptionPlanConditionTypeTokenCount    SubscriptionPlanConditionType = "token-count"
 	SubscriptionPlanConditionTypeToolCallCount SubscriptionPlanConditionType = "tool-call-count"
@@ -1414,6 +1415,8 @@ const (
 func (e SubscriptionPlanConditionType) Valid() bool {
 	switch e {
 	case SubscriptionPlanConditionTypeCustom:
+		return true
+	case SubscriptionPlanConditionTypeEventCount:
 		return true
 	case SubscriptionPlanConditionTypeRequestCount:
 		return true
@@ -3478,7 +3481,7 @@ type CreateRESTAPIRequestLifeCycleStatus string
 
 // CreateSubscriptionPlanRequest defines model for CreateSubscriptionPlanRequest.
 type CreateSubscriptionPlanRequest struct {
-	// Conditions What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. Send either conditions or limits, not both.
+	// Conditions What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count, event-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. Send either conditions or limits, not both.
 	Conditions *[]SubscriptionPlanCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
 	// Description What the plan offers, in words for developers and subscribers. Optional.
@@ -6121,7 +6124,7 @@ type SubscriptionListResponse struct {
 
 // SubscriptionPlan defines model for SubscriptionPlan.
 type SubscriptionPlan struct {
-	// Conditions What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. On update, an omitted conditions leaves them unchanged and [] removes them all. Send either conditions or limits, not both. A plan saved before conditions is returned with its request limit as a request-count condition.
+	// Conditions What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count, event-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. On update, an omitted conditions leaves them unchanged and [] removes them all. Send either conditions or limits, not both. A plan saved before conditions is returned with its request limit as a request-count condition.
 	Conditions *[]SubscriptionPlanCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 	CreatedAt  *time.Time                   `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
@@ -6162,7 +6165,7 @@ type SubscriptionPlan struct {
 // SubscriptionPlanStatus defines model for SubscriptionPlan.Status.
 type SubscriptionPlanStatus string
 
-// SubscriptionPlanCondition One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count) has the id its type fixes (requests, tool-calls, tokens), so the policy that enforces it finds it in every plan; params holds its limits. A custom condition has an id the admin gives it and key-value pairs as params, which a policy the customer writes reads.
+// SubscriptionPlanCondition One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count, event-count) has the id its type fixes (requests, tool-calls, tokens, events), so the policy that enforces it finds it in every plan; params holds its limits. A custom condition has an id the admin gives it and key-value pairs as params, which a policy the customer writes reads. event-count counts the events (WebSocket messages, WebSub deliveries) of async APIs; no policy enforces it yet.
 type SubscriptionPlanCondition struct {
 	// Id Required for a custom condition, unique in the plan and not one of the built-in ids. For a built-in condition it may be omitted; when sent, it must be the id the type fixes.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
@@ -6194,7 +6197,7 @@ type SubscriptionPlanConditionLimitsTokenType string
 
 // SubscriptionPlanConditionWindow defines model for SubscriptionPlanConditionWindow.
 type SubscriptionPlanConditionWindow struct {
-	// Count The requests, tool calls or tokens allowed in the window.
+	// Count The requests, tool calls, tokens or events allowed in the window.
 	Count int `json:"count" yaml:"count"`
 
 	// TimeAmount How many timeUnit the window lasts (2 with HOUR is per 2 hours).

@@ -53,7 +53,8 @@ func normalizeConditions(conditions []model.SubscriptionPlanCondition) ([]model.
 		c.ID = strings.TrimSpace(c.ID)
 		var err error
 		switch c.Type {
-		case model.ConditionTypeRequestCount, model.ConditionTypeToolCallCount, model.ConditionTypeTokenCount:
+		case model.ConditionTypeRequestCount, model.ConditionTypeToolCallCount, model.ConditionTypeTokenCount,
+			model.ConditionTypeEventCount:
 			id := model.BuiltInConditionIDs[c.Type]
 			if c.ID != "" && c.ID != id {
 				return nil, apperror.ValidationFailed.New(fmt.Sprintf("%s: the id of a %s condition is %s", field, c.Type, id))
@@ -79,7 +80,7 @@ func normalizeConditions(conditions []model.SubscriptionPlanCondition) ([]model.
 			return nil, apperror.ValidationFailed.New(fmt.Sprintf("%s: type is required", field))
 		default:
 			return nil, apperror.ValidationFailed.New(fmt.Sprintf(
-				"%s: type must be one of request-count, tool-call-count, token-count or custom", field))
+				"%s: type must be one of request-count, tool-call-count, token-count, event-count or custom", field))
 		}
 		if err != nil {
 			return nil, err
@@ -207,20 +208,26 @@ func sameConditions(a, b []model.SubscriptionPlanCondition) bool {
 // withRequestLimit replaces the request-count condition with requestLimit, or removes it when nil, and
 // keeps the other conditions. Used when a client sends the old "limits" field.
 func withRequestLimit(conditions []model.SubscriptionPlanCondition, requestLimit *model.SubscriptionPlanCondition) []model.SubscriptionPlanCondition {
+	return withLimitCondition(conditions, model.ConditionTypeRequestCount, requestLimit)
+}
+
+// withLimitCondition replaces the condition of the given built-in type with limit, or removes it when
+// nil, and keeps the other conditions. A new one is put first.
+func withLimitCondition(conditions []model.SubscriptionPlanCondition, conditionType string, limit *model.SubscriptionPlanCondition) []model.SubscriptionPlanCondition {
 	out := make([]model.SubscriptionPlanCondition, 0, len(conditions)+1)
 	replaced := false
 	for _, c := range conditions {
-		if c.Type != model.ConditionTypeRequestCount {
+		if c.Type != conditionType {
 			out = append(out, c)
 			continue
 		}
-		if requestLimit != nil && !replaced {
-			out = append(out, *requestLimit)
+		if limit != nil && !replaced {
+			out = append(out, *limit)
 			replaced = true
 		}
 	}
-	if requestLimit != nil && !replaced {
-		out = append([]model.SubscriptionPlanCondition{*requestLimit}, out...)
+	if limit != nil && !replaced {
+		out = append([]model.SubscriptionPlanCondition{*limit}, out...)
 	}
 	return out
 }

@@ -76,6 +76,28 @@ func TestPortalCopyDiffers(t *testing.T) {
 		}
 	}
 
+	// A portal that lists the request and event limits in another order, in other case, with an absent
+	// time amount or time unit (per one MINUTE), holds the same limits.
+	withEvents := &model.SubscriptionPlan{Name: "Gold", Conditions: []model.SubscriptionPlanCondition{*requestLimit(100, "MINUTE"),
+		condition("events", "event-count", `{"limits":[{"count":60,"timeAmount":1,"timeUnit":"MINUTE"},{"count":900,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"reject"}`)}}
+	portalCopy := &portalListedPlan{DisplayName: "Gold", Limits: []portalPlanLimit{
+		{LimitType: "event_count", LimitCount: 900, TimeUnit: "day"},
+		{LimitType: "REQUEST_COUNT", LimitCount: 100, TimeUnit: "MINUTE", TimeAmount: 1},
+		{LimitType: "EVENT_COUNT", LimitCount: 60},
+	}}
+	if portalCopyDiffers(withEvents, portalCopy) {
+		t.Error("a portal copy listing the same request and event limits should match")
+	}
+	portalCopy.Limits = portalCopy.Limits[1:]
+	if !portalCopyDiffers(withEvents, portalCopy) {
+		t.Error("a portal copy missing an event limit should be sent again")
+	}
+	portalCopy.Limits = []portalPlanLimit{{LimitType: "REQUEST_COUNT", LimitCount: 100, TimeUnit: "MINUTE", TimeAmount: 1},
+		{LimitType: "REQUEST_COUNT", LimitCount: 60, TimeUnit: "MINUTE", TimeAmount: 1}, {LimitType: "REQUEST_COUNT", LimitCount: 900, TimeUnit: "DAY", TimeAmount: 1}}
+	if !portalCopyDiffers(withEvents, portalCopy) {
+		t.Error("event windows listed as request limits should be sent again")
+	}
+
 	stored := &model.SubscriptionPlan{Name: "Gold", Conditions: invalid}
 	if !portalCopyDiffers(stored, &portalListedPlan{DisplayName: "Gold", Limits: []portalPlanLimit{}, Conditions: &same}) {
 		t.Error("a stored plan whose conditions don't validate should be sent again")
@@ -206,7 +228,7 @@ func TestUpdatePlan_KeepsAStoredConditionThatNoLongerValidates(t *testing.T) {
 // plans made through the REST API may not.
 func TestPlanService_PortalPlansMayDropTheDescription(t *testing.T) {
 	svc, repo := newPlanTestService()
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", "From the portal", nil, nil, nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", "From the portal", nil, model.LegacyLimitWindows{}, nil, planEventT0); err != nil {
 		t.Fatal(err)
 	}
 	if !repo.plans["silver"].DescriptionOptional {

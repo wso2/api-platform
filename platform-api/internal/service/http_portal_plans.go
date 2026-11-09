@@ -324,10 +324,17 @@ func toPortalPlan(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanP
 	return out
 }
 
-// portalLimits sends every request-count window to the portal, so its copy stays complete.
+// portalLimits sends every request-count window as a REQUEST_COUNT limit and every event-count window
+// as an EVENT_COUNT limit, so the copy of a portal that predates conditions stays complete.
 func portalLimits(plan *model.SubscriptionPlan) []portalPlanLimit {
 	limits := []portalPlanLimit{}
-	c := model.FindCondition(plan.Conditions, model.ConditionTypeRequestCount)
+	limits = appendPortalLimits(limits, plan, model.ConditionTypeRequestCount, constants.LimitTypeRequestCount)
+	return appendPortalLimits(limits, plan, model.ConditionTypeEventCount, constants.LimitTypeEventCount)
+}
+
+// appendPortalLimits adds the windows of the plan's condition of conditionType as limits of limitType.
+func appendPortalLimits(limits []portalPlanLimit, plan *model.SubscriptionPlan, conditionType, limitType string) []portalPlanLimit {
+	c := model.FindCondition(plan.Conditions, conditionType)
 	if c == nil {
 		return limits
 	}
@@ -341,7 +348,7 @@ func portalLimits(plan *model.SubscriptionPlan) []portalPlanLimit {
 			amount = 1
 		}
 		limits = append(limits, portalPlanLimit{
-			LimitType:  constants.LimitTypeRequestCount,
+			LimitType:  limitType,
 			LimitCount: w.Count,
 			TimeUnit:   w.TimeUnit,
 			TimeAmount: amount,
@@ -378,13 +385,22 @@ func portalConditionList(plan *model.SubscriptionPlan) []model.SubscriptionPlanC
 }
 
 // sameLimits reports whether a portal copy's limits are want, ignoring order and the case of
-// the codes.
+// the codes. A limit with no time unit is per MINUTE and one with no time amount is per one unit, as
+// when the portal's limits are read (limitWindows).
 func sameLimits(want, got []portalPlanLimit) bool {
 	if len(want) != len(got) {
 		return false
 	}
 	key := func(l portalPlanLimit) string {
-		return fmt.Sprintf("%s|%d|%s|%d", strings.ToUpper(l.LimitType), l.LimitCount, strings.ToUpper(l.TimeUnit), l.TimeAmount)
+		unit := strings.ToUpper(strings.TrimSpace(l.TimeUnit))
+		if unit == "" {
+			unit = constants.ThrottleLimitUnitMinute
+		}
+		amount := l.TimeAmount
+		if amount < 1 {
+			amount = 1
+		}
+		return fmt.Sprintf("%s|%d|%s|%d", strings.ToUpper(strings.TrimSpace(l.LimitType)), l.LimitCount, unit, amount)
 	}
 	keys := make(map[string]int, len(want))
 	for _, l := range want {

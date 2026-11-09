@@ -97,8 +97,9 @@ func (f *webhookPlanRepo) DeleteWithReferences(uuid, _, _ string) (bool, error) 
 var planEventT0 = time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)
 
 // win is the one request window count per unit, as a portal that predates conditions sends a limit.
-func win(count int, unit string) []model.ConditionWindow {
-	return []model.ConditionWindow{{Count: count, TimeAmount: 1, TimeUnit: unit}}
+// win is a portal event's limits with one REQUEST_COUNT limit.
+func win(count int, unit string) model.LegacyLimitWindows {
+	return model.LegacyLimitWindows{Requests: []model.ConditionWindow{{Count: count, TimeAmount: 1, TimeUnit: unit}}}
 }
 
 func TestUpsertPlanFromWebhook_CreatesMissingPlan(t *testing.T) {
@@ -177,7 +178,7 @@ func TestUpsertPlanFromWebhook_ClearsRemovedLimit(t *testing.T) {
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, model.LegacyLimitWindows{}, nil, planEventT0); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	if got := repo.plans["gold"]; got.ThrottleLimitCount != nil || got.ThrottleLimitUnit != "" {
@@ -240,7 +241,7 @@ func TestDeletePlanFromWebhook_DeletesACopyCreatedFromAnEarlierEvent(t *testing.
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}, now: planEventT0.Add(5 * time.Second)}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, model.LegacyLimitWindows{}, nil, planEventT0); err != nil {
 		t.Fatalf("created event: %v", err)
 	}
 	if got := repo.plans["gold"]; got == nil || !got.CreatedAt.Equal(planEventT0) {
@@ -296,7 +297,7 @@ func TestUpsertPlanFromWebhook_NeedsEveryMeter(t *testing.T) {
 		BillingPeriod: "MONTH", Prices: []model.SubscriptionPlanPrice{
 			{MeterHandle: "tokens", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, Filters: []model.PriceFilter{}}}}
 
-	_, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, pricing, planEventT0)
+	_, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, model.LegacyLimitWindows{}, pricing, planEventT0)
 	if !apperror.ValidationFailed.Is(err) || repo.creates != 0 {
 		t.Fatalf("err = %v, creates = %d; want a refusal and nothing stored", err, repo.creates)
 	}
@@ -306,19 +307,19 @@ func TestUpsertPlanFromWebhook_NeedsEveryMeter(t *testing.T) {
 // accepted, and other pricing or none is refused, storing nothing.
 func TestUpsertPlanFromWebhook_APaidPlanHereKeepsItsPricing(t *testing.T) {
 	svc, repo, pricing := newPricedPlanService()
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, flatPricing("10.00"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, model.LegacyLimitWindows{}, flatPricing("10.00"), planEventT0); err != nil {
 		t.Fatalf("first delivery: %v", err)
 	}
 	pricing.pricing["uuid-gold"] = repo.pricing
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", "", nil, nil, flatPricing("10"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", "", nil, model.LegacyLimitWindows{}, flatPricing("10"), planEventT0); err != nil {
 		t.Fatalf("the same pricing again must be accepted: %v", err)
 	}
 	if repo.plans["gold"].Name != "Gold Plus" {
 		t.Errorf("name = %q, want the update applied", repo.plans["gold"].Name)
 	}
 	for name, other := range map[string]*model.SubscriptionPlanPricing{"other pricing": flatPricing("20.00"), "no pricing": nil} {
-		if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, other, planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
+		if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, model.LegacyLimitWindows{}, other, planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
 			t.Errorf("%s: got %v, want the pricing-locked conflict", name, err)
 		}
 	}
@@ -332,7 +333,7 @@ func TestUpsertPlanFromWebhook_APaidPlanHereKeepsItsPricing(t *testing.T) {
 // handle: it is refused and stays free.
 func TestUpsertPlanFromWebhook_AnUpdateRecoversAMissedCreatedEvent(t *testing.T) {
 	svc, repo, pricing := newPricedPlanService()
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, flatPricing("10.00"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, model.LegacyLimitWindows{}, flatPricing("10.00"), planEventT0); err != nil {
 		t.Fatalf("an update as the first event: %v", err)
 	}
 	if repo.creates != 1 || repo.pricing == nil || *repo.pricing.FlatAmount != "10.00" {
@@ -340,7 +341,7 @@ func TestUpsertPlanFromWebhook_AnUpdateRecoversAMissedCreatedEvent(t *testing.T)
 	}
 
 	repo.plans["silver"] = &model.SubscriptionPlan{UUID: "uuid-silver", Handle: "silver", Name: "Silver"}
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", "", nil, nil, flatPricing("5.00"), planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", "", nil, model.LegacyLimitWindows{}, flatPricing("5.00"), planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
 		t.Errorf("pricing for a free plan here: got %v, want the pricing-locked conflict", err)
 	}
 	if pricing.pricing["uuid-silver"] != nil || repo.plans["silver"].Name != "Silver" {
@@ -375,7 +376,7 @@ func TestUpsertPlanFromWebhook_RefusesInvalidConditions(t *testing.T) {
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 	conditions := []model.SubscriptionPlanCondition{{Type: "bandwidth", Params: []byte(`{}`)}}
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", &conditions, nil, nil, planEventT0); !apperror.ValidationFailed.Is(err) {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", &conditions, model.LegacyLimitWindows{}, nil, planEventT0); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("err = %v, want a validation error", err)
 	}
 	if repo.creates != 0 {
@@ -383,7 +384,7 @@ func TestUpsertPlanFromWebhook_RefusesInvalidConditions(t *testing.T) {
 	}
 
 	repo.plans["gold"] = &model.SubscriptionPlan{UUID: "u1", Handle: "gold", Name: "Gold"}
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", &conditions, nil, nil, planEventT0); !apperror.ValidationFailed.Is(err) {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", &conditions, model.LegacyLimitWindows{}, nil, planEventT0); !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("existing plan: err = %v, want a validation error", err)
 	}
 	if repo.updates != 0 {
@@ -435,7 +436,7 @@ func TestUpsertPlanFromWebhook_TruncatesAnOverlongDescription(t *testing.T) {
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", strings.Repeat("é", 2000), nil, nil, nil, planEventT0)
+	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", strings.Repeat("é", 2000), nil, model.LegacyLimitWindows{}, nil, planEventT0)
 	if err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
