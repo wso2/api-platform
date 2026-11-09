@@ -25,9 +25,9 @@
  - Confirmed that this PR doesn't commit any keys, passwords, tokens, usernames, or other secrets? yes/no
 
 ## Database changes
-> Required only if this PR changes Platform API database scripts (`platform-api/internal/database/*.sql` or `platform-api/plugins/*/schema/*.sql`). If it doesn't, leave this unchecked; the `Platform API DB Change Check` workflow only enforces it when those files change.
+> Required only if this PR changes a `.sql` file under `platform-api/internal/database/` or `platform-api/plugins/<plugin>/schema/`, including subdirectories. If it doesn't, leave this unchecked; the `Platform API DB Change Check` workflow only enforces it when those files change.
 
- - [ ] I have applied the same table/column changes to the API Platform SaaS (Bijira Cloud) databases in all relevant environments (dev, staging, production) and regions (US, EU).
+ - [ ] I have applied the same table, column, and index changes to the API Platform SaaS (Bijira Cloud) databases in all relevant environments (dev, staging, production) and regions (US, EU).
 
 ## Samples
 > Provide high-level details about the samples related to this feature

@@ -23,9 +23,11 @@ jobs:
         with:
           script: |
             const DB_SCRIPT_PATTERN = /^platform-api\/(internal\/database|plugins\/[^/]+\/schema)\/.*\.sql$/;
-            // Any ticked checkbox inside the "## Database changes" section of the PR description.
+            // The SaaS attestation must be ticked inside the "## Database changes" section of the PR description.
             const SECTION = /^##\s+Database changes\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m;
-            const TICKED = /^\s*[-*]\s+\[[xX]\]\s+\S/m;
+            const TICKED = /^\s*[-*]\s+\[[xX]\]\s+.*API Platform SaaS \(Bijira Cloud\)/m;
+            // GitHub's "list pull request files" API returns at most 3000 files.
+            const MAX_LISTED_FILES = 3000;
             const isConfirmed = (body) => {
               const section = SECTION.exec(body || '');
               return !!section && TICKED.test(section[1]);
@@ -37,6 +39,14 @@ jobs:
               pull_number: context.payload.pull_request.number,
               per_page: 100,
             });
+
+            if (files.length >= MAX_LISTED_FILES) {
+              core.setFailed(
+                `This PR changes ${MAX_LISTED_FILES}+ files, so the file list may be truncated and Platform API database ` +
+                'script changes cannot be ruled out. Split the PR, or have a maintainer verify the SaaS databases and override this check.'
+              );
+              return;
+            }
 
             const changed = files
               .flatMap(f => [f.filename, f.previous_filename])
@@ -52,7 +62,7 @@ jobs:
 
             if (!isConfirmed(process.env.PR_BODY)) {
               core.setFailed(
-                'This PR changes Platform API database scripts. Apply the same table/column changes ' +
+                'This PR changes Platform API database scripts. Apply the same table, column, and index changes ' +
                 'to the API Platform SaaS (Bijira Cloud) databases in all environments and regions, ' +
                 'then tick the "Database changes" checkbox in the PR description.'
               );
