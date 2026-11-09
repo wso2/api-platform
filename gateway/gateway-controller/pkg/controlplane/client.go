@@ -958,6 +958,7 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 
 	resourceService := c.getSubscriptionResourceService()
 
+	// A kind that can't be listed is skipped, so the other kind still syncs.
 	var subscribableCfgs []*models.StoredConfig
 	for _, kind := range []string{models.KindRestApi, models.KindMcp} {
 		cfgs, err := c.db.GetAllConfigsByKind(kind)
@@ -967,7 +968,7 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 				slog.String("kind", kind),
 				slog.Any("error", err),
 			)
-			return
+			continue
 		}
 		subscribableCfgs = append(subscribableCfgs, cfgs...)
 	}

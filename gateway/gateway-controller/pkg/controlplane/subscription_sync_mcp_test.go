@@ -103,17 +103,17 @@ func TestClient_syncSubscriptionsForExistingAPIs_CoversMCPProxies(t *testing.T) 
 	assert.Equal(t, "sub-kept", kept[0].ID)
 }
 
-type mcpListFailingStorage struct{ storage.Storage }
+type restListFailingStorage struct{ storage.Storage }
 
-func (s mcpListFailingStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error) {
-	if kind == models.KindMcp {
+func (s restListFailingStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error) {
+	if kind == models.KindRestApi {
 		return nil, errors.New("database unavailable")
 	}
 	return s.Storage.GetAllConfigsByKind(kind)
 }
 
-// When the configs can't be listed, the sync stops before asking the control plane.
-func TestClient_syncSubscriptionsForExistingAPIs_StopsWhenConfigsCantBeListed(t *testing.T) {
+// When one kind can't be listed, the other kind still syncs.
+func TestClient_syncSubscriptionsForExistingAPIs_SkipsKindThatCantBeListed(t *testing.T) {
 	metrics.Init()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := storage.NewStorage(storage.BackendConfig{
@@ -121,16 +121,20 @@ func TestClient_syncSubscriptionsForExistingAPIs_StopsWhenConfigsCantBeListed(t 
 	}, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
+	saveTestMCPProxy(t, db, "mcp-listed", "", "listed-mcp")
 
-	requests := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++ }))
+	var fetched []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetched = append(fetched, r.URL.Path)
+		http.NotFound(w, r)
+	}))
 	defer srv.Close()
 
 	client := &Client{
-		logger: logger, db: mcpListFailingStorage{db}, eventHub: &mockControlPlaneEventHub{}, gatewayID: "test-gateway",
+		logger: logger, db: restListFailingStorage{db}, eventHub: &mockControlPlaneEventHub{}, gatewayID: "test-gateway",
 		ctx: context.Background(), state: &ConnectionState{}, stopChan: make(chan struct{}),
 		apiUtilsService: utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, srv.Client(), logger),
 	}
 	client.syncSubscriptionsForExistingAPIs("test-gateway")
-	assert.Zero(t, requests)
+	assert.Equal(t, []string{"/apis/mcp-listed/subscriptions"}, fetched)
 }

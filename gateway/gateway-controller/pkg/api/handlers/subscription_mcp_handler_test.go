@@ -119,7 +119,7 @@ func TestMCPSubscription_PlanMustBeOffered(t *testing.T) {
 	code, body := postSubscription(t, server, "application/json",
 		[]byte(`{"apiId":"docs-mcp","subscriptionToken":"mcp-token-s","subscriptionPlanId":"plan-silver"}`))
 	require.Equal(t, http.StatusBadRequest, code)
-	assert.Contains(t, errorMessage(t, body), `"Silver" is not enabled for this API`)
+	assert.Contains(t, errorMessage(t, body), `"Silver" is not enabled for this API or MCP proxy`)
 
 	code, _ = createSubscriptionViaHandler(t, server, api.SubscriptionCreateRequest{
 		ApiId: "docs-mcp", SubscriptionToken: "mcp-token-g", SubscriptionPlanId: ptr("plan-gold"), ExternalRefId: ptr("mcp-sub-g"),

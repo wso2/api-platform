@@ -117,7 +117,7 @@ func TestSQLite_UpgradeFromV6AddsPlanConditions(t *testing.T) {
 }
 
 // A conditions column that can't be read fails the read of that plan, rather than reading it as no
-// conditions.
+// conditions; the plan list skips it and returns the others.
 func TestSubscriptionPlan_UnreadableConditionsColumn(t *testing.T) {
 	store := setupTestStorage(t)
 	defer store.db.Close()
@@ -127,6 +127,9 @@ func TestSubscriptionPlan_UnreadableConditionsColumn(t *testing.T) {
 
 	_, err = store.GetSubscriptionPlanByID("p-bad", "")
 	assert.ErrorContains(t, err, "unreadable conditions")
-	_, err = store.ListSubscriptionPlans("")
-	assert.ErrorContains(t, err, "unreadable conditions")
+	assert.NilError(t, store.SaveSubscriptionPlan(&models.SubscriptionPlan{ID: "p-good", PlanName: "Good", Status: models.SubscriptionPlanStatusActive}))
+	plans, err := store.ListSubscriptionPlans("")
+	assert.NilError(t, err)
+	assert.Equal(t, len(plans), 1)
+	assert.Equal(t, plans[0].ID, "p-good")
 }

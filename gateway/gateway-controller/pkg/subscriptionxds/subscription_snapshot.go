@@ -213,7 +213,6 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	return nil
 }
 
-// createSubscriptionStateResource converts the state to an xDS resource.
 // policyConditions converts a plan's conditions to the policy engine's shape.
 func policyConditions(conditions []models.SubscriptionPlanCondition) []policyenginev1.SubscriptionCondition {
 	out := make([]policyenginev1.SubscriptionCondition, 0, len(conditions))
@@ -223,6 +222,7 @@ func policyConditions(conditions []models.SubscriptionPlanCondition) []policyeng
 	return out
 }
 
+// createSubscriptionStateResource converts the state to an xDS resource.
 func createSubscriptionStateResource(state *policyenginev1.SubscriptionStateResource) (types.Resource, error) {
 	jsonBytes, err := json.Marshal(state)
 	if err != nil {

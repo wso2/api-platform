@@ -3189,7 +3189,10 @@ func (s *sqlStore) ListSubscriptionPlans(gatewayID string) ([]*models.Subscripti
 		}
 		var err error
 		if plan.Conditions, err = parseConditionsColumn(conditions); err != nil {
-			return nil, fmt.Errorf("subscription plan %s: %w", plan.ID, err)
+			// One bad row shouldn't hide every other plan; reading it by ID still fails.
+			s.logger.Warn("Skipping subscription plan with unreadable conditions",
+				slog.String("plan_id", plan.ID), slog.Any("error", err))
+			continue
 		}
 		list = append(list, plan)
 	}

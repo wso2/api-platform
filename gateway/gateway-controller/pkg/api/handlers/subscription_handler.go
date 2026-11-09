@@ -387,7 +387,7 @@ func (s *APIServer) validateSubscriptionPlanForAPI(w http.ResponseWriter, planID
 		if !enabled {
 			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
-				Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
+				Message: fmt.Sprintf("Subscription plan %q is not enabled for this API or MCP proxy", plan.PlanName),
 			})
 			return false
 		}
