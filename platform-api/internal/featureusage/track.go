@@ -166,7 +166,13 @@ func Track(reporter func() Reporter, feature string, dimensions map[string]any, 
 		if status == 0 {
 			status = http.StatusOK // nothing written: net/http sends 200
 		}
-		if o, ok := call.occurrence(feature, InvocationFromRequest(r, status, started)); ok {
+		// A request that matched no route pattern has no template to report,
+		// and its raw path is never sent instead.
+		inv, ok := InvocationFromRequest(r, status, started)
+		if !ok {
+			return
+		}
+		if o, ok := call.occurrence(feature, inv); ok {
 			rep.Record(o)
 		}
 	})

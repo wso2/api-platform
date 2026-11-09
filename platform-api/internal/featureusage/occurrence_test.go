@@ -322,7 +322,10 @@ func TestInvocationFromRequest(t *testing.T) {
 	var got Invocation
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/v0.9/rest-apis/{restApiId}/x", func(w http.ResponseWriter, r *http.Request) {
-		got = InvocationFromRequest(r, http.StatusCreated, started)
+		var ok bool
+		if got, ok = InvocationFromRequest(r, http.StatusCreated, started); !ok {
+			t.Error("a request matched by a route pattern must be reportable")
+		}
 	})
 
 	const wantURI = "https://platform-api/api/v0.9/rest-apis/{restApiId}/x"
@@ -349,5 +352,14 @@ func TestInvocationFromRequest(t *testing.T) {
 				t.Errorf("a request-derived invocation failed validation: %v", err)
 			}
 		})
+	}
+}
+
+// A request that matched no route pattern is not reported: its raw path may
+// carry values, so it is never sent in place of a template.
+func TestInvocationFromRequestWithoutARoutePattern(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/api/v0.9/rest-apis/orders-api-by-alice/x", nil)
+	if inv, ok := InvocationFromRequest(r, http.StatusCreated, time.Now()); ok || inv.URI != "" {
+		t.Fatalf("InvocationFromRequest = %+v, %v; want nothing for a request with no route pattern", inv, ok)
 	}
 }

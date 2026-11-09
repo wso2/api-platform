@@ -216,3 +216,22 @@ func TestTrackRecordsTheFinalStatusNotAnInformationalOne(t *testing.T) {
 		t.Fatalf("got %+v, want one event with status 201 identified by the created API", got)
 	}
 }
+
+// A tracked handler served without a ServeMux has no route template, so the
+// call is served but not reported, and its raw path never reaches an event.
+func TestTrackSkipsARequestWithoutARoutePattern(t *testing.T) {
+	rep := &capture{}
+	handler := Track(func() Reporter { return rep }, FeatureCreateRESTAPI, nil,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			CallFrom(r.Context()).SetOrganization(testOrgUUID)
+			w.WriteHeader(http.StatusCreated)
+		}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v0.9/rest-apis/orders-api-by-alice", nil))
+	if rec.Code != http.StatusCreated {
+		t.Errorf("status = %d, want the handler's 201", rec.Code)
+	}
+	if n := len(rep.all()); n != 0 {
+		t.Fatalf("recorded %d occurrences for a request with no route pattern", n)
+	}
+}

@@ -782,10 +782,16 @@ audience = ""
 # The token is a Platform IdP client-credentials token; the proxy's jwt-auth
 # checks its signature, issuer and expiry.
 #
-# WSO2 Cloud example:
+# WSO2 Cloud example — replace the matching keys in each of the two tables
+# below; the token keys belong to [platform_api.feature_usage.token], not to
+# [platform_api.feature_usage]:
+#
+#   [platform_api.feature_usage]
 #   enabled       = '{{ env "MOESIF_ENABLED" "false" }}'   # the release binding sets MOESIF_ENABLED=true
 #   environment   = '{{ env "MOESIF_ENVIRONMENT" "production" }}'   # set per environment, e.g. staging
 #   collector_url = '{{ env "MOESIF_EVENTS_API_URL" "" }}'
+#
+#   [platform_api.feature_usage.token]
 #   token_url     = '{{ env "PLATFORM_IDP_TOKEN_URL" "" }}'
 #   client_id     = '{{ env "PLATFORM_IDP_CLIENT_ID" "" }}'
 #   client_secret = '{{ file "/secrets/platform-api/platform-idp-client-secret" }}'

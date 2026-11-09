@@ -61,18 +61,26 @@ var allowedVerbs = map[string]bool{
 // The path is the route pattern the request matched (so a path parameter
 // appears as its template, e.g. {restApiId}, never as a value) and the query
 // is dropped. started is when the handler began serving r.
-func InvocationFromRequest(r *http.Request, status int, started time.Time) Invocation {
+//
+// ok is false when r matched no route pattern (it did not go through a
+// ServeMux): the request's own path may carry values, so it is never sent in
+// place of a template and the call is not reported.
+func InvocationFromRequest(r *http.Request, status int, started time.Time) (inv Invocation, ok bool) {
+	path, ok := routePath(r)
+	if !ok {
+		return Invocation{}, false
+	}
 	return Invocation{
 		Method:      r.Method,
-		URI:         reportedOrigin + routePath(r),
+		URI:         reportedOrigin + path,
 		Status:      status,
 		RequestTime: started,
-	}
+	}, true
 }
 
-// routePath returns the path of the route pattern r matched, falling back to
-// the request path for a request that did not go through a ServeMux.
-func routePath(r *http.Request) string {
+// routePath returns the path of the route pattern r matched, or false when it
+// matched none.
+func routePath(r *http.Request) (string, bool) {
 	pattern := r.Pattern
 	if i := strings.IndexByte(pattern, ' '); i >= 0 {
 		pattern = pattern[i+1:] // drop the "POST " method prefix
@@ -81,9 +89,9 @@ func routePath(r *http.Request) string {
 		pattern = pattern[i:] // drop a host prefix
 	}
 	if strings.HasPrefix(pattern, "/") {
-		return pattern
+		return pattern, true
 	}
-	return r.URL.Path
+	return "", false
 }
 
 // normalize checks inv and returns it ready to send: an upper-case verb, a
