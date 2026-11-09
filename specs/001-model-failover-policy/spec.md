@@ -923,8 +923,37 @@ though the routing policy keeps nominating it, and that load spreads across the 
   failover silently stops `x-target-upstream` taking effect for cluster selection on that
   operation. For model/provider steering this is intended (FR-052 supplies the replacement path).
   For a policy steering to an arbitrary upstream definition, no replacement path exists today. The
-  system MUST NOT leave this silent: it MUST at minimum warn at generation time, and SHOULD reject
-  a policy combination known to depend on header steering.
+  system MUST NOT leave this silent: it MUST at minimum warn at generation time.
+- **FR-053a** *(resolves the "SHOULD reject" of FR-053, decided 2026-11-09)*: The platform MUST NOT
+  reject the combination. The replacement path does exist and needs **no change to this feature**:
+  `BuildProviderClusterMap` already keys its map by **upstream definition name**, not by provider —
+  `clusters[def.Name]` for every definition, plus `""` for the primary — and `Target.Provider` is
+  already that same name. Measured: an `LlmProxy` with `additionalProviders[{as: chosen}]` resolved
+  a steered `Target{Model: gpt-4o, Provider: chosen}` to that upstream's cluster, for a
+  `(provider, model)` pair the control plane never configured as a group.
+
+  So a header-steering policy composes the moment it also writes the cross-policy
+  `selected_provider` key (FR-023b) — which is the half of the pair every other steering policy in
+  `wso2/gateway-controllers` already writes, and which `dynamic-endpoint` and
+  `interceptor-service`'s `DynamicEndpoint` reply do not. That is a change to those policies, not
+  to failover, and rejecting the combination now would have to be removed the moment either adopts
+  the channel.
+
+  Writing `selected_provider` is independently correct for those policies regardless of failover:
+  without it, pairing one with any routing policy is a last-one-wins race over `UpstreamName`
+  (`policy-engine internal/kernel/translator.go:378`) that leaves `selected_provider` naming the
+  LOSER, so an `openai-to-*` transformer — which gates on exactly that key — can send one vendor's
+  request format to a different vendor's cluster.
+
+  **Not fixed here**, deliberately: those policies are outside this feature's scope and each needs
+  its own release. Until then the generation-time warning of FR-053 is the whole mitigation, and a
+  caller gets a working request served by the configured chain rather than an error.
+- **FR-052a**: The published ranking needs **no new vocabulary** for upstream-definition steering.
+  `{model, provider}` already addresses any upstream definition, because `provider` IS the
+  definition name. A provider-only selection on an API with **no model** remains unexpressible — a
+  `Target` requires a model (`Valid()`), and model-and-provider identity is load-bearing in
+  `Key()`, `groupName()` and `selectChain()` — and is deliberately left so: that is model failover
+  attached to an API with no models, which FR-050 already defines as a silent no-op.
 
 #### Model-keyed fallback chains
 

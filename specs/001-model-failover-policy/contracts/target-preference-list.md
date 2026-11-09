@@ -161,9 +161,19 @@ rest. Adopting the ordered list is what would carry the draw order, and it has n
 ### Steering that this contract does not cover
 
 `dynamic-endpoint` (v1.0.1) and `interceptor-service`'s `DynamicEndpoint` reply steer to an
-arbitrary **upstream definition**, not to a model or provider. A ranking cannot express that, so
-these do not compose with failover: attaching both leaves their steering inert because failover owns
-the route's one cluster specifier. See T024u2/T024u3.
+arbitrary **upstream definition**. That turned out NOT to be a vocabulary problem: a ranking already
+addresses any upstream definition, because `provider` IS the definition name —
+`BuildProviderClusterMap` keys its map by `def.Name` for every definition plus `""` for the primary,
+and on an `LlmProxy` the `additionalProviders[].as` alias becomes exactly such a name. Measured: a
+steered `Target{Model: gpt-4o, Provider: chosen}` resolved to that upstream's cluster for a pair the
+control plane never configured as a group.
+
+What is missing is only that these two write **no** `selected_provider` — they return `UpstreamName`
+alone, which the engine resolves *after* the whole chain, into a channel the route no longer consults
+once failover owns its cluster specifier. One line in each policy closes it, needing no change to
+this contract or to `model-failover`. Not done here: different policies, different releases
+(T024u8). Until then, attaching both deploys and leaves the steering inert, with a generation-time
+warning as the only signal. Decision recorded as FR-053a / FR-052a.
 
 No routing policy is *required* to change for failover to function (FR-023).
 
