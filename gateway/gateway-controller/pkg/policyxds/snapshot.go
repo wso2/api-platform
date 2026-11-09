@@ -62,6 +62,11 @@ type SnapshotManager struct {
 	nodeID            string
 	mu                sync.RWMutex
 	translator        *Translator
+
+	// gatewayConfigs are gateway-owned runtime configs (the JWKS route) that
+	// belong in every snapshot whatever is deployed. They are not in the
+	// runtime store, which holds deployed resources only.
+	gatewayConfigs []*models.RuntimeDeployConfig
 }
 
 // NewSnapshotManager creates a new policy snapshot manager with LinearCaches for custom type URLs.
@@ -92,6 +97,15 @@ func NewSnapshotManager(logger *slog.Logger) *SnapshotManager {
 // SetRuntimeStore sets the RuntimeConfigStore for the new API path.
 func (sm *SnapshotManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
 	sm.runtimeStore = store
+}
+
+// SetGatewayRuntimeConfigs sets the gateway-owned runtime configs included in
+// every snapshot alongside the deployed ones. Set once at startup, before the
+// first UpdateSnapshot.
+func (sm *SnapshotManager) SetGatewayRuntimeConfigs(rdcs ...*models.RuntimeDeployConfig) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.gatewayConfigs = rdcs
 }
 
 // SetConfigStore sets the ConfigStore for translating WebSubApi configs to EventChannelConfig resources.
@@ -130,7 +144,9 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		return nil
 	}
 
-	rdcs := sm.runtimeStore.GetAll()
+	deployed := sm.runtimeStore.GetAll()
+	rdcs := make([]*models.RuntimeDeployConfig, 0, len(deployed)+len(sm.gatewayConfigs))
+	rdcs = append(append(rdcs, deployed...), sm.gatewayConfigs...)
 
 	sm.logger.Info("Updating policy snapshot",
 		slog.Int("rdc_count", len(rdcs)),

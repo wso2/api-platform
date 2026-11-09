@@ -34,7 +34,8 @@
  */
 
 const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
-const { jwtVerify, createRemoteJWKSet } = require('jose');
+const { jwtVerify } = require('jose');
+const { getJwksResolver } = require('../utils/jwksResolver');
 
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
@@ -57,9 +58,9 @@ const sharedKeyAuth = require('./sharedKeyAuth');
 // past USER_UUID_CACHE_MAX_ENTRIES rather than tracking per-entry recency.
 const USER_UUID_CACHE_TTL_MS = 5 * 60 * 1000;
 const USER_UUID_CACHE_MAX_ENTRIES = 5000;
-const userUuidCache = new Map(); // sub -> { uuid, expiresAt }
+const userUuidCache = new Map(); // sub -> { uuid, displayName, expiresAt }
 const orgMappingCache = new Map(); // `${userUuid}:${orgId}` -> expiresAt
-const pendingUserUuidLookups = new Map(); // sub -> in-flight resolveUuid() promise
+const pendingUserUuidLookups = new Map(); // `${sub}\0${displayName}` -> in-flight resolveReference() promise
 
 function getCached(cache, key) {
     const entry = cache.get(key);
@@ -77,6 +78,15 @@ function setCached(cache, key, entry, maxEntries) {
 }
 
 /**
+ * The configured display-name claim from a decoded token, or undefined.
+ * Never required: the claim is for display only.
+ */
+function displayNameClaim(decoded) {
+    const claim = config.auth.claimMappings?.displayName;
+    return claim && decoded ? getNestedClaim(decoded, claim) : undefined;
+}
+
+/**
  * Resolves the durable user_idp_references uuid for this sub claim, and
  * records that the user has been seen in the current org (if known). This
  * uuid — not the raw sub — is what flows into created_by/updated_by columns.
@@ -86,28 +96,39 @@ function setCached(cache, key, entry, maxEntries) {
  * authentication for an otherwise valid token/session. A resource write made
  * with the resulting undefined userId will fail at that write with a clear
  * validation error instead of taking down login.
+ *
+ * displayName is the configured display-name claim, if the token carried one. It
+ * is stored on the reference row for display only; when absent nothing about the
+ * lookup changes. A name the cache has not seen for this sub costs one more
+ * lookup, which stores it; the cache records a name only once it is saved, so a
+ * failed save is retried on the next request.
  */
-async function resolveUserUuid(req, sub) {
+async function resolveUserUuid(req, sub, displayName) {
     if (!sub) return undefined;
 
-    let userUuid = getCached(userUuidCache, sub)?.uuid;
-    if (userUuid === undefined) {
-        let pending = pendingUserUuidLookups.get(sub);
+    const name = userIdpReferenceDao.normalizeDisplayName(displayName);
+    const cached = getCached(userUuidCache, sub);
+    let userUuid = cached?.uuid;
+    if (userUuid === undefined || (name && cached.displayName !== name)) {
+        const pendingKey = `${sub}\0${name}`;
+        let pending = pendingUserUuidLookups.get(pendingKey);
         if (!pending) {
-            pending = userIdpReferenceDao.resolveUuid(sub).finally(() => {
-                pendingUserUuidLookups.delete(sub);
+            pending = userIdpReferenceDao.resolveReference(sub, name).finally(() => {
+                pendingUserUuidLookups.delete(pendingKey);
             });
-            pendingUserUuidLookups.set(sub, pending);
+            pendingUserUuidLookups.set(pendingKey, pending);
         }
+        let displayNameSaved;
         try {
-            userUuid = await pending;
+            ({ uuid: userUuid, displayNameSaved } = await pending);
         } catch (err) {
             logger.error('Failed to resolve user identity reference; continuing without one', {
                 error: err.message, operation: 'resolveUserUuid',
             });
             return undefined;
         }
-        setCached(userUuidCache, sub, { uuid: userUuid }, USER_UUID_CACHE_MAX_ENTRIES);
+        const knownName = name && displayNameSaved ? name : cached?.displayName;
+        setCached(userUuidCache, sub, { uuid: userUuid, displayName: knownName }, USER_UUID_CACHE_MAX_ENTRIES);
     }
 
     if (req.orgId) {
@@ -127,23 +148,6 @@ async function resolveUserUuid(req, sub) {
     return userUuid;
 }
 
-// Key sets for per-organization issuers (multi-organization mode), reused across requests so
-// each organization's JWKS is fetched once and then refreshed by jose on key-id misses
-// rather than on every call. Bounded: the issuer an entry is keyed from arrives in an
-// unverified token, so a caller could otherwise grow this without limit by varying it.
-const ORG_JWKS_CACHE_MAX_ENTRIES = 1000;
-const orgJwksCache = new Map(); // jwksUrl -> createRemoteJWKSet()
-
-function orgJwks(jwksUrl) {
-    let jwks = orgJwksCache.get(jwksUrl);
-    if (!jwks) {
-        if (orgJwksCache.size >= ORG_JWKS_CACHE_MAX_ENTRIES) orgJwksCache.clear();
-        jwks = createRemoteJWKSet(new URL(jwksUrl));
-        orgJwksCache.set(jwksUrl, jwks);
-    }
-    return jwks;
-}
-
 /**
  * Multi-organization mode: when the token names a per-organization issuer
  * (orgIssuer.js), the key set and exact issuer to verify it against, plus the
@@ -158,8 +162,11 @@ function perOrgVerification(token) {
 
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
+        // Multi-org mode: route per-org issuers to their own JWKS URL; everything
+        // else goes to the config-driven URL. getJwksResolver caches per URL, so
+        // both paths reuse keys across requests and bound their total entries.
         const perOrg = perOrgVerification(token);
-        const jwks = perOrg ? orgJwks(perOrg.jwksUrl) : await createRemoteJWKSet(new URL(jwksURL));
+        const jwks = getJwksResolver(perOrg ? perOrg.jwksUrl : jwksURL);
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
         if (perOrg) jwtVerifyOptions.issuer = perOrg.issuer;
         else if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
@@ -427,7 +434,7 @@ async function authResolver(req, res, next) {
             }
             const orgErr = await resolveScopedOrg(req, orgHandle, 'platform-jwt session');
             if (orgErr) return next(orgErr);
-            const userUuid = await resolveUserUuid(req, req.user[constants.USER_ID]);
+            const userUuid = await resolveUserUuid(req, req.user[constants.USER_ID], req.user.displayName);
             req.auth = {
                 mode: 'platform-jwt',
                 preauthorized: false,
@@ -469,7 +476,7 @@ async function authResolver(req, res, next) {
                 : await resolveMissingOrgClaim(req);
             if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
-            const userUuid = await resolveUserUuid(req, rawSub);
+            const userUuid = await resolveUserUuid(req, rawSub, req.user.displayName);
             req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',
@@ -525,7 +532,7 @@ async function authResolver(req, res, next) {
                 if (orgErr) return next(orgErr);
             }
             const rawSub = decoded[constants.USER_ID];
-            const userUuid = await resolveUserUuid(req, rawSub);
+            const userUuid = await resolveUserUuid(req, rawSub, displayNameClaim(decoded));
             req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',

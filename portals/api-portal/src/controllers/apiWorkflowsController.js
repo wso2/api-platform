@@ -130,7 +130,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             const themedLayout = styleContent
                 ? rewriteViewStyles(dbLayout, orgId, viewName)
                 : dbLayout;
-            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
+            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent, orgId);
         } else {
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/api-workflows', viewName);
         }
@@ -215,7 +215,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             const themedLayout = styleContent
                 ? rewriteViewStyles(dbLayout, orgId, viewName)
                 : dbLayout;
-            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
+            html = await renderGivenTemplate(templateResponse, themedLayout, templateContent, orgId);
         } else {
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/api-workflows/detail', viewName);
         }

@@ -17,57 +17,72 @@
  */
 
 import type { ReactNode } from 'react';
-import { Box, Button, ColorSchemeSVG, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import { FormattedMessage } from 'react-intl';
 import { Link } from 'react-router-dom';
 
-/**
- * The roadworks barricade, drawn through Oxygen's `ColorSchemeSVG` so its fills
- * and strokes resolve to theme colours rather than hard-coded hex — the console
- * has a light/dark toggle, and a fixed-colour illustration would go muddy in
- * dark mode.
- */
-function BarricadeIllustration() {
+const HOURGLASS_STYLES = `
+.cs-sand{fill:#ff6a2b;transform-box:fill-box;transform-origin:50% 100%}
+.cs-sand-top{animation:cs-top 3s ease-in infinite}
+.cs-sand-bot{animation:cs-bot 3s ease-in infinite}
+.cs-stream{fill:#ff7a3d;animation:cs-stream 3s linear infinite}
+.cs-glass{fill:none;stroke:currentColor;stroke-opacity:.55;stroke-width:2.5;stroke-linecap:round}
+.cs-cap{fill:currentColor;fill-opacity:.2;stroke:currentColor;stroke-opacity:.45;stroke-width:1.5}
+.cs-hourglass{overflow:visible;animation:cs-flip 3s cubic-bezier(.6,0,.3,1) infinite}
+.cs-glow{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,#ff6a2b33 0%,transparent 65%);animation:cs-glow 3.5s ease-in-out infinite}
+.cs-art{animation:cs-rise .6s ease-out both}
+.cs-bar span{animation:cs-bar 1.8s ease-in-out infinite}
+@keyframes cs-flip{0%,88%{transform:rotate(0)}100%{transform:rotate(180deg)}}
+@keyframes cs-top{0%{transform:scaleY(1)}85%,100%{transform:scaleY(0)}}
+@keyframes cs-bot{0%{transform:scaleY(0)}85%,100%{transform:scaleY(1)}}
+@keyframes cs-stream{0%,84%{opacity:1}86%,100%{opacity:0}}
+@keyframes cs-glow{0%,100%{opacity:.45;transform:scale(.92)}50%{opacity:.9;transform:scale(1.05)}}
+@keyframes cs-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes cs-bar{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+@media (prefers-reduced-motion:reduce){.cs-page *{animation:none!important}}
+`;
+
+/** Animated hourglass: the sand drains, then the glass flips and repeats. */
+function HourglassIllustration() {
   return (
-    <ColorSchemeSVG width={268} height={210} viewBox="0 0 268 210">
-      {/* Soft blob behind the barricade. */}
-      <path
-        fill="surface"
-        d="M46 92c-14-42 18-84 66-88 44-4 68 16 102 22 30 6 52 30 50 62-2 34-26 52-58 62-36 12-70 20-104 8C64 146 56 122 46 92Z"
-      />
-
-      {/* Two angled boards, each with its own diagonal stripes. */}
-      <g stroke="border" strokeWidth="1.5" fill="background">
-        <path d="M56 62h84l-14 46H42Z" />
-        <path d="M146 62h84l-14 46h-84Z" />
-      </g>
-      <g fill="warning">
-        <path d="M74 64h26l-14 42H60Z" />
-        <path d="M112 64h24l-14 42H98Z" />
-        <path d="M158 64h26l-14 42h-26Z" />
-        <path d="M198 64h22l-14 42h-22Z" />
-      </g>
-      <g stroke="border" strokeWidth="1.5" fill="none">
-        <path d="M56 62h84l-14 46H42Z" />
-        <path d="M146 62h84l-14 46h-84Z" />
-      </g>
-
-      {/* Legs and the ground line they stand on. */}
-      <g stroke="border" strokeWidth="1.5" strokeLinecap="round">
-        <path d="M92 108v56M186 108v56" />
-        <path d="M42 164h96M158 164h72" />
-      </g>
-
-      {/* Warning lamps, one at each end. */}
-      <g fill="warning">
-        <circle cx="66" cy="48" r="5" />
-        <circle cx="222" cy="48" r="5" />
-      </g>
-      <g stroke="warning" strokeWidth="1.5" strokeLinecap="round">
-        <path d="M58 36l-4-6M66 34v-7M74 36l4-6" />
-        <path d="M214 36l-4-6M222 34v-7M230 36l4-6" />
-      </g>
-    </ColorSchemeSVG>
+    <Box
+      aria-hidden="true"
+      className="cs-art"
+      sx={{
+        alignItems: 'center',
+        color: 'text.primary',
+        display: 'flex',
+        height: { xs: 180, sm: 220 },
+        justifyContent: 'center',
+        position: 'relative',
+        width: { xs: 180, sm: 220 },
+      }}
+    >
+      <div className="cs-glow" />
+      <svg className="cs-hourglass" width="110" height="160" viewBox="0 0 100 150">
+        <defs>
+          <clipPath id="csTopGlass">
+            <path d="M18 14 H82 C82 44 56 60 52 73 H48 C44 60 18 44 18 14Z" />
+          </clipPath>
+          <clipPath id="csBotGlass">
+            <path d="M48 77 H52 C56 90 82 106 82 136 H18 C18 106 44 90 48 77Z" />
+          </clipPath>
+        </defs>
+        <g clipPath="url(#csTopGlass)">
+          <rect className="cs-sand cs-sand-top" x="0" y="34" width="100" height="40" />
+        </g>
+        <g clipPath="url(#csBotGlass)">
+          <rect className="cs-sand cs-sand-bot" x="0" y="96" width="100" height="40" />
+        </g>
+        <rect className="cs-stream" x="49" y="72" width="2" height="60" rx="1" />
+        <path
+          className="cs-glass"
+          d="M18 14 C18 44 44 60 48 75 C44 90 18 106 18 136 M82 14 C82 44 56 60 52 75 C56 90 82 106 82 136"
+        />
+        <rect className="cs-cap" x="8" y="4" width="84" height="10" rx="4" />
+        <rect className="cs-cap" x="8" y="136" width="84" height="10" rx="4" />
+      </svg>
+    </Box>
   );
 }
 
@@ -93,6 +108,7 @@ export type ComingSoonProps = {
 export function ComingSoon({ action, detail, feature }: ComingSoonProps) {
   return (
     <Box
+      className="cs-page"
       sx={{
         alignItems: 'center',
         display: 'flex',
@@ -104,8 +120,9 @@ export function ComingSoon({ action, detail, feature }: ComingSoonProps) {
         py: 6,
       }}
     >
+      <style>{HOURGLASS_STYLES}</style>
       <Stack alignItems="center" spacing={1} sx={{ maxWidth: 520 }}>
-        <BarricadeIllustration />
+        <HourglassIllustration />
         <Typography sx={{ fontWeight: 700, pt: 1 }} variant="h4">
           <FormattedMessage id="components.comingSoon.title" defaultMessage="Coming Soon" />
         </Typography>
@@ -116,6 +133,26 @@ export function ComingSoon({ action, detail, feature }: ComingSoonProps) {
             values={{ feature }}
           />
         </Typography>
+        <Box
+          className="cs-bar"
+          sx={{
+            bgcolor: 'action.hover',
+            borderRadius: '2px',
+            height: 4,
+            mt: 1.5,
+            overflow: 'hidden',
+            width: 220,
+            '& span': {
+              background: 'linear-gradient(90deg, transparent, #ff7a3d, transparent)',
+              borderRadius: '2px',
+              display: 'block',
+              height: '100%',
+              width: '40%',
+            },
+          }}
+        >
+          <span />
+        </Box>
         {detail && (
           <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
             {detail}

@@ -9,10 +9,12 @@
 
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   FormLabel,
   Grid,
   MenuItem,
@@ -20,6 +22,7 @@ import {
   PageTitle,
   Select,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -29,6 +32,7 @@ import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { useManagedPortal, useOrgEnvironments } from './hooks';
 import type { ManagedPortal, UpdateManagedPortalInput } from './types';
 import { validatePortalName } from './utils/name';
+import { SELF_SIGNUP_HINT } from './utils/selfSignup';
 
 export type ManagedPortalEditProps = {
   portalId: string;
@@ -99,6 +103,9 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
   const [name, setName] = useState(portal.name);
   const [description, setDescription] = useState(portal.description ?? '');
   const [loginEnvironment, setLoginEnvironment] = useState(portal.loginEnvironment ?? '');
+  // Portals created before the setting existed allow sign-up.
+  const currentSelfSignup = portal.selfSignup ?? true;
+  const [selfSignup, setSelfSignup] = useState(currentSelfSignup);
   const [submitting, setSubmitting] = useState(false);
 
   const nameError = useMemo(() => validatePortalName(name), [name]);
@@ -109,15 +116,18 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
   const trimmedName = name.trim();
   const trimmedDescription = description.trim();
   const trimmedLogin = loginEnvironment.trim();
+  const loginChanged = trimmedLogin !== (portal.loginEnvironment ?? '');
+  const selfSignupChanged = selfSignup !== currentSelfSignup;
+  // Each runs as its own background change, so the server takes one per save.
+  const changesConflict = loginChanged && selfSignupChanged;
 
   const hasChanges = useMemo(() => {
     if (trimmedName !== portal.name) return true;
     if (trimmedDescription !== (portal.description ?? '')) return true;
-    if (trimmedLogin !== (portal.loginEnvironment ?? '')) return true;
-    return false;
-  }, [portal, trimmedName, trimmedDescription, trimmedLogin]);
+    return loginChanged || selfSignupChanged;
+  }, [portal, trimmedName, trimmedDescription, loginChanged, selfSignupChanged]);
 
-  const canSubmit = !missingRequired && !nameError && hasChanges && !submitting;
+  const canSubmit = !missingRequired && !nameError && hasChanges && !changesConflict && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -126,7 +136,8 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
       const patch: UpdateManagedPortalInput = {
         ...(trimmedName !== portal.name ? { name: trimmedName } : {}),
         ...(trimmedDescription !== (portal.description ?? '') ? { description: trimmedDescription } : {}),
-        ...(trimmedLogin !== (portal.loginEnvironment ?? '') ? { loginEnvironment: trimmedLogin } : {}),
+        ...(loginChanged ? { loginEnvironment: trimmedLogin } : {}),
+        ...(selfSignupChanged ? { selfSignup } : {}),
       };
       if (Object.keys(patch).length === 0) {
         onSaved();
@@ -152,6 +163,13 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
           <PageTitle.Header>Edit Portal</PageTitle.Header>
         </PageTitle>
       </Stack>
+
+      {portal.lastChangeError && (
+        <Alert severity="error" sx={{ mt: 2, maxWidth: 820 }}>
+          {portal.lastChangeError.message}
+          {portal.lastChangeError.at && ` (${new Date(portal.lastChangeError.at).toLocaleString()})`}
+        </Alert>
+      )}
 
       <Box sx={{ mt: 2, maxWidth: 820 }}>
         <Grid container spacing={2}>
@@ -231,6 +249,27 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
               </FormControl>
             </Grid>
           ) : null}
+          <Grid size={{ xs: 12 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={selfSignup}
+                  onChange={(event) => setSelfSignup(event.target.checked)}
+                  disabled={submitting}
+                />
+              }
+              label={
+                <Tooltip title={SELF_SIGNUP_HINT} arrow placement="top-start">
+                  <span>Allow self sign-up</span>
+                </Tooltip>
+              }
+            />
+            {changesConflict && (
+              <Typography variant="caption" color="error" component="p">
+                Save the login environment and self sign-up changes separately.
+              </Typography>
+            )}
+          </Grid>
         </Grid>
 
         <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>

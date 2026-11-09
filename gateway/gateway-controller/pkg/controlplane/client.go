@@ -4345,6 +4345,13 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 	} else {
 		existing.SubscriptionPlanID = nil
 	}
+	// Billing IDs are set only when sent; an update without them keeps the stored ones.
+	if payload.BillingCustomerID != "" {
+		existing.BillingCustomerID = &payload.BillingCustomerID
+	}
+	if payload.BillingSubscriptionID != "" {
+		existing.BillingSubscriptionID = &payload.BillingSubscriptionID
+	}
 	existing.Status = models.SubscriptionStatus(payload.Status)
 	if err := resourceService.UpdateSubscription(existing, updatedEvent.CorrelationID, logger); err != nil {
 		logger.Error("Failed to update subscription from subscription.updated event",

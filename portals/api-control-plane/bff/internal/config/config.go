@@ -28,6 +28,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,13 +53,97 @@ type Config struct {
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 	PolicyHub    PolicyHubConfig    `koanf:"policy_hub"`
+	// GatewayVersions is the catalog of self-hosted-gateway releases the SPA's
+	// Quick Start "download the gateway" step offers, one entry per gateway
+	// type. Top-level (a sibling of PolicyHub, not nested under ControlPlane)
+	// because it is a public, static catalog the browser reads verbatim —
+	// unrelated to the control_plane upstream's connection settings — exactly
+	// like PolicyHub sits beside ControlPlane rather than inside it. Mirrors
+	// AI Workspace's `GatewayVersionEntry` shape (its own
+	// PLATFORM_GATEWAY_VERSIONS, hardcoded in that SPA's config.env.ts) plus a
+	// `type` discriminator, since this BFF serves both "regular" and "event"
+	// gateway types rather than AI Workspace's single "ai" type.
+	GatewayVersions []GatewayVersionEntry `koanf:"gateway_versions"`
+	// Gateway is what a self-hosted gateway's setup instructions need from this
+	// deployment ([api_control_plane.gateway]). Mirrors AI Workspace's own
+	// [ai_workspace.gateway] table.
+	Gateway GatewayConfig `koanf:"gateway"`
+
+	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
+
+	// DisableFeatures names the console features this deployment hides, e.g.
+	// ["metrics", "meters"]. Each hidden feature leaves the sidebar and its page
+	// answers "not found". Empty or unset leaves every feature on. Passed to the
+	// SPA as-is, like [sanitize_html_docs]: a TOML array, a JSON array string or
+	// a comma-separated string (so an env var can carry it); the SPA ignores
+	// names it does not know.
+	DisableFeatures any `koanf:"disable_features"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
+}
+
+// GatewayVersionEntry is one [[gateway_versions]] entry: the release of one
+// self-hosted gateway type that the SPA's Quick Start download step may offer.
+// Field names match the TS contract declared in
+// portals/cloud-plugins/apip-cloud-ui-gateways/src/hostPort.ts (koanf tags
+// read the TOML's snake_case keys; json tags are the camelCase names that
+// contract — and the SPA's JSON.parse of the runtime config — expect).
+type GatewayVersionEntry struct {
+	// Type is "regular" or "event" for this BFF (AI Workspace owns "ai").
+	Type    string `koanf:"type" json:"type"`
+	Version string `koanf:"version" json:"version"`
+	// LatestVersion is the release tag, e.g. "v1.2.0". Defaults to
+	// "v"+Version client-side when omitted.
+	LatestVersion string `koanf:"latest_version" json:"latestVersion,omitempty"`
+	// DistVersion is the zip/folder version, when it differs from Version.
+	DistVersion string `koanf:"dist_version" json:"distVersion,omitempty"`
+	// Channel is "STS" or "LTS".
+	Channel string `koanf:"channel" json:"channel"`
+}
+
+// GatewayConfig is [api_control_plane.gateway].
+type GatewayConfig struct {
+	// ControlPlaneHost is the self-hosted gateway controller's control-plane
+	// address, `host[:port][/path]` without a scheme, shown in setup commands.
+	// It varies by environment; empty means unset and uses a fallback or
+	// placeholder.
+	ControlPlaneHost string `koanf:"controlplane_host"`
+}
+
+// controlPlaneHostPattern validates the `host[:port][/path]` format before the
+// value is used in shell and Helm commands. The port, when present, is
+// captured so validControlPlaneHost can range-check it.
+var controlPlaneHostPattern = regexp.MustCompile(
+	`^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::([0-9]{1,5}))?(?:/[A-Za-z0-9._~-]+)*$`)
+
+// validControlPlaneHost reports whether host matches controlPlaneHostPattern
+// and any port it carries is a usable TCP port (1-65535).
+func validControlPlaneHost(host string) bool {
+	m := controlPlaneHostPattern.FindStringSubmatch(host)
+	if m == nil {
+		return false
+	}
+	if m[1] == "" {
+		return true
+	}
+	port, err := strconv.Atoi(m[1])
+	return err == nil && port >= 1 && port <= 65535
 }
 
 // PolicyHubConfig configures the public catalog called directly by the browser.
 type PolicyHubConfig struct {
 	BaseURL string `koanf:"base_url"`
+}
+
+// SanitizeHTMLDocsConfig is the optional [sanitize_html_docs] section, passed
+// to the SPA as-is; the SPA parses the values and ignores anything malformed.
+// Each key may be a string (tags as a JSON array or comma-separated list,
+// attributes as a JSON object) or the native TOML bool, array or table.
+// Attribute names are camelCase hast property names (className, dataDocId).
+type SanitizeHTMLDocsConfig struct {
+	Enabled                     any `koanf:"enabled"`
+	AdditionalAllowedTags       any `koanf:"additional_allowed_tags"`
+	AdditionalAllowedAttributes any `koanf:"additional_allowed_attributes"`
 }
 
 // ServerConfig is [api_control_plane.server]: two independent listeners,
@@ -234,6 +321,12 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+	// Resource is the RFC 8707 resource indicator sent on /oauth2/authorize. An
+	// IdP that scopes tokens per resource server (WSO2 Thunder) only puts that
+	// server's scopes into the token and sets aud to it; without the parameter
+	// such an IdP issues no product scope at all. Empty sends no parameter, which
+	// is what every other IdP wants.
+	Resource string `koanf:"resource"`
 }
 
 // ClaimMappingConfig is [api_control_plane.auth.claim_mappings]: which claim
@@ -254,6 +347,10 @@ type ClaimMappingConfig struct {
 	// Picture is the claim holding the user's avatar URL. Left unset it reads the
 	// standard OIDC "picture" claim.
 	Picture string `koanf:"picture"`
+	// DisplayName is the claim holding the user's human-readable name, shown in
+	// the UI ahead of Username. Left unset it reads the standard OIDC "name"
+	// claim; a token without it falls back to Username, email, then sub.
+	DisplayName string `koanf:"display_name"`
 }
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request,
@@ -265,31 +362,94 @@ type ClaimMappingConfig struct {
 const CSRFHeaderName = "X-Requested-By"
 
 // defaultOIDCScopes requests every ap:* permission Platform API authorizes
-// against, so a logged-in user's access token carries them all. The IDP must
-// have these scopes registered and granted to the user, otherwise it drops the
-// ungranted ones. Override with the [auth.oidc] scope config key to request a
-// narrower set — a deployment against an IdP that cannot grant this many scopes
-// (or any ap:* scope at all) MUST override this rather than silently losing
-// access to scope-gated features.
+// against, so a logged-in user's access token carries them all: the scopes
+// platform-api/resources/openapi.yaml declares under securitySchemes (200 as of
+// 0.9.0), regenerated from that file when it changes. The IDP must have these
+// scopes registered and granted to the user, otherwise it drops the ungranted
+// ones. Override with the [auth.oidc] scope key (APIP_ACP_AUTH_OIDC_SCOPE) to
+// request a different set: a deployment against an IdP that cannot grant this
+// many scopes (or any ap:* scope at all) MUST override this rather than silently
+// losing access to scope-gated features, and a deployment whose Platform API
+// compiles a plugin in adds the plugin's own scopes the same way (the cloud
+// extension's ap:environment:*, ap:pipeline:*, ap:deployment:* and
+// ap:organization:delete). An empty override keeps this default (see
+// normalize), which is what lets the shipped config.toml carry an env token.
 //
 // offline_access is required: without it most IDPs issue no refresh token, so
 // the BFF cannot silently renew the access token and the user is logged out the
 // moment it expires. Keep it in any override.
 const defaultOIDCScopes = "openid profile email offline_access" +
-	" ap:organization:read ap:organization:manage ap:organization:subscription:read" +
-	" ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage" +
-	" ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage" +
-	" ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
-	" ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage" +
-	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
-	" ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import" +
-	" ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage" +
-	" ap:rest_api:build:read ap:rest_api:build:create ap:rest_api:build:delete ap:rest_api:build:manage" +
-	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
-	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
-	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
-	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
-	" ap:docs:read ap:docs:manage ap:thumbnail:read ap:thumbnail:manage"
+	" ap:agent_proxy:api_key:create ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage" +
+	" ap:agent_proxy:api_key:read ap:agent_proxy:api_key:update ap:agent_proxy:build:create" +
+	" ap:agent_proxy:build:delete ap:agent_proxy:build:manage ap:agent_proxy:build:read" +
+	" ap:agent_proxy:create ap:agent_proxy:delete ap:agent_proxy:deployment:create" +
+	" ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage" +
+	" ap:agent_proxy:deployment:read ap:agent_proxy:deployment:restore" +
+	" ap:agent_proxy:deployment:undeploy ap:agent_proxy:manage ap:agent_proxy:read" +
+	" ap:agent_proxy:update" +
+	" ap:api_key:all:manage ap:api_key:read" +
+	" ap:api_portal:create ap:api_portal:delete ap:api_portal:draft:manage ap:api_portal:draft:read" +
+	" ap:api_portal:draft:update ap:api_portal:graphql_api:manage ap:api_portal:manage" +
+	" ap:api_portal:mcp_proxy:manage ap:api_portal:publication:read ap:api_portal:read" +
+	" ap:api_portal:rest_api:manage" +
+	" ap:api_portal:update" +
+	" ap:api_publication:read" +
+	" ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
+	" ap:application:api_key:read ap:application:association:api_key:read" +
+	" ap:application:association:create ap:application:association:delete" +
+	" ap:application:association:manage ap:application:association:read ap:application:create" +
+	" ap:application:delete ap:application:manage ap:application:read ap:application:update" +
+	" ap:docs:manage ap:docs:read" +
+	" ap:gateway:create ap:gateway:delete ap:gateway:manage ap:gateway:manifest:read ap:gateway:read" +
+	" ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:token:read" +
+	" ap:gateway:update" +
+	" ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage" +
+	" ap:gateway_custom_policy:read" +
+	" ap:graphql_api:api_key:create ap:graphql_api:api_key:delete ap:graphql_api:api_key:manage" +
+	" ap:graphql_api:api_key:update ap:graphql_api:build:create ap:graphql_api:build:delete" +
+	" ap:graphql_api:build:manage ap:graphql_api:build:read ap:graphql_api:create" +
+	" ap:graphql_api:delete ap:graphql_api:deployment:create ap:graphql_api:deployment:delete" +
+	" ap:graphql_api:deployment:manage ap:graphql_api:deployment:read" +
+	" ap:graphql_api:deployment:restore ap:graphql_api:deployment:undeploy" +
+	" ap:graphql_api:gateway:create ap:graphql_api:gateway:manage ap:graphql_api:gateway:read" +
+	" ap:graphql_api:manage ap:graphql_api:read ap:graphql_api:update" +
+	" ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage" +
+	" ap:llm_provider:api_key:read ap:llm_provider:build:create ap:llm_provider:build:delete" +
+	" ap:llm_provider:build:manage ap:llm_provider:build:read ap:llm_provider:create" +
+	" ap:llm_provider:delete ap:llm_provider:deployment:create ap:llm_provider:deployment:delete" +
+	" ap:llm_provider:deployment:manage ap:llm_provider:deployment:read" +
+	" ap:llm_provider:deployment:restore ap:llm_provider:deployment:undeploy ap:llm_provider:manage" +
+	" ap:llm_provider:read ap:llm_provider:update" +
+	" ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage" +
+	" ap:llm_proxy:api_key:read ap:llm_proxy:build:create ap:llm_proxy:build:delete" +
+	" ap:llm_proxy:build:manage ap:llm_proxy:build:read ap:llm_proxy:create ap:llm_proxy:delete" +
+	" ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage" +
+	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:restore ap:llm_proxy:deployment:undeploy" +
+	" ap:llm_proxy:manage ap:llm_proxy:read ap:llm_proxy:update" +
+	" ap:llm_template:create ap:llm_template:delete ap:llm_template:manage ap:llm_template:read" +
+	" ap:llm_template:update" +
+	" ap:mcp_proxy:build:create ap:mcp_proxy:build:delete ap:mcp_proxy:build:manage" +
+	" ap:mcp_proxy:build:read ap:mcp_proxy:create ap:mcp_proxy:delete ap:mcp_proxy:deployment:create" +
+	" ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:read" +
+	" ap:mcp_proxy:deployment:restore ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:manage" +
+	" ap:mcp_proxy:read ap:mcp_proxy:update" +
+	" ap:meter:create ap:meter:delete ap:meter:manage ap:meter:read ap:meter:update" +
+	" ap:organization:create ap:organization:manage ap:organization:read" +
+	" ap:project:create ap:project:delete ap:project:manage ap:project:read ap:project:update" +
+	" ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
+	" ap:rest_api:api_key:update ap:rest_api:build:create ap:rest_api:build:delete" +
+	" ap:rest_api:build:manage ap:rest_api:build:read ap:rest_api:create ap:rest_api:delete" +
+	" ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage" +
+	" ap:rest_api:deployment:read ap:rest_api:deployment:restore ap:rest_api:deployment:undeploy" +
+	" ap:rest_api:gateway:create ap:rest_api:gateway:manage ap:rest_api:gateway:read" +
+	" ap:rest_api:manage ap:rest_api:read ap:rest_api:update" +
+	" ap:secret:create ap:secret:delete ap:secret:manage ap:secret:read ap:secret:update" +
+	" ap:service_account:manage ap:service_account:read" +
+	" ap:subscription:create ap:subscription:delete ap:subscription:manage ap:subscription:read" +
+	" ap:subscription:update" +
+	" ap:subscription_plan:create ap:subscription_plan:delete ap:subscription_plan:manage" +
+	" ap:subscription_plan:pricing:read ap:subscription_plan:read ap:subscription_plan:update" +
+	" ap:thumbnail:manage ap:thumbnail:read"
 
 // Load resolves configuration from one or more config.toml files. At least one
 // path is required and each must exist and parse — there is no default path and
@@ -307,12 +467,22 @@ func Load(paths ...string) (*Config, error) {
 	}
 
 	cfg := defaultConfig()
+	// A catalog written in the config replaces the built-in one outright. Left in place, the
+	// decoder would merge each [[gateway_versions]] entry onto the default entry at the same
+	// index, so an override that omits a field (latest_version, say) would silently inherit
+	// another release's value, and the built-in entries could never be dropped.
+	if k.Exists("gateway_versions") {
+		cfg.GatewayVersions = nil
+	}
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
 			Result:           cfg,
-			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				commaSeparatedStringToSliceHook,
+			),
 		},
 	}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -325,6 +495,21 @@ func Load(paths ...string) (*Config, error) {
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg)
 	return cfg, nil
+}
+
+// commaSeparatedStringToSliceHook supports comma-separated strings for []string
+// values, trimming entries and dropping blanks.
+func commaSeparatedStringToSliceHook(from, to reflect.Type, data any) (any, error) {
+	if from.Kind() != reflect.String || to.Kind() != reflect.Slice || to.Elem().Kind() != reflect.String {
+		return data, nil
+	}
+	out := []string{}
+	for entry := range strings.SplitSeq(data.(string), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			out = append(out, entry)
+		}
+	}
+	return out, nil
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config
@@ -341,6 +526,7 @@ func (c *Config) normalize() {
 	if c.PolicyHub.BaseURL == "" {
 		c.PolicyHub.BaseURL = defaultPolicyHubBaseURL
 	}
+	c.Gateway.ControlPlaneHost = strings.TrimRight(strings.TrimSpace(c.Gateway.ControlPlaneHost), "/")
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
@@ -360,6 +546,50 @@ func (c *Config) normalize() {
 	if c.Auth.OIDC.ClientAuthMethod == "" {
 		c.Auth.OIDC.ClientAuthMethod = "client_secret_post"
 	}
+	// An empty scope key (the shipped config.toml's env token with its variable
+	// unset) keeps the built-in default rather than requesting no scope at all.
+	if strings.TrimSpace(c.Auth.OIDC.Scopes) == "" {
+		c.Auth.OIDC.Scopes = defaultOIDCScopes
+	}
+	c.Auth.OIDC.Resource = strings.TrimSpace(c.Auth.OIDC.Resource)
+}
+
+// oidcScopeOverrideWarnings reports what a [auth.oidc] scope override
+// (APIP_ACP_AUTH_OIDC_SCOPE) drops from the built-in default. An override
+// REPLACES defaultOIDCScopes rather than adding to it, so an operator who sets
+// only a plugin's own scopes (the cloud extension's ap:environment:* and the like)
+// silently stops requesting every base ap:* scope, and the console then hides the
+// features that need them. Not an error: an IdP that cannot grant the full list
+// is a legitimate reason to narrow it. Empty for the default itself.
+func oidcScopeOverrideWarnings(scopes string) []string {
+	if scopes == defaultOIDCScopes {
+		return nil
+	}
+	requested := make(map[string]bool)
+	for _, s := range strings.Fields(scopes) {
+		requested[s] = true
+	}
+	var warnings []string
+	if !requested["offline_access"] {
+		warnings = append(warnings, "[auth.oidc] scope override omits offline_access: most IdPs then issue no "+
+			"refresh token, so users are signed out when the access token expires.")
+	}
+	missing, total := 0, 0
+	for _, s := range strings.Fields(defaultOIDCScopes) {
+		if !strings.HasPrefix(s, "ap:") {
+			continue
+		}
+		total++
+		if !requested[s] {
+			missing++
+		}
+	}
+	if missing > 0 {
+		warnings = append(warnings, fmt.Sprintf("[auth.oidc] scope override replaces the built-in default and "+
+			"omits %d of its %d ap:* scopes; features gated on them are hidden. To add a plugin's scopes, "+
+			"set the full default list plus the plugin's (see defaultOIDCScopes).", missing, total))
+	}
+	return warnings
 }
 
 // validate fails startup on any value that would otherwise surface as a
@@ -378,6 +608,10 @@ func (c *Config) validate() error {
 	// to start rather than serve a UI in which nothing is permitted.
 	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
 		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
+	}
+	if v, ok := runtimeValue(c.SanitizeHTMLDocs.Enabled); ok && strings.EqualFold(strings.TrimSpace(v), "false") {
+		slog.Warn("[sanitize_html_docs] enabled = false: raw HTML in API documents is rendered unsanitized. " +
+			"Keep sanitization on unless every document author is trusted.")
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")
@@ -403,6 +637,11 @@ func (c *Config) validate() error {
 	if c.Session.Cookie.SameSite == "none" && !c.Session.Cookie.Secure {
 		return fmt.Errorf("[session.cookie] same_site = \"none\" requires secure = true (browsers reject SameSite=None cookies without Secure)")
 	}
+	if c.Auth.OIDC.Enabled {
+		for _, w := range oidcScopeOverrideWarnings(c.Auth.OIDC.Scopes) {
+			slog.Warn(w)
+		}
+	}
 	if !c.Session.Cookie.Secure {
 		slog.Warn("[session.cookie] secure = false — the session cookie will be sent over plain HTTP. " +
 			"This is expected for local development only; set secure = true for any deployment reachable over a network.")
@@ -415,6 +654,20 @@ func (c *Config) validate() error {
 		if err := validateAbsoluteURL("[policy_hub] base_url", c.PolicyHub.BaseURL); err != nil {
 			return err
 		}
+	}
+	for i, gv := range c.GatewayVersions {
+		if gv.Type != "regular" && gv.Type != "event" && gv.Type != "ai" {
+			return fmt.Errorf("[[gateway_versions]] entry %d has invalid type %q: must be \"regular\", \"event\", or \"ai\"", i, gv.Type)
+		}
+		if gv.Version == "" {
+			return fmt.Errorf("[[gateway_versions]] entry %d is missing version", i)
+		}
+		if gv.Channel != "STS" && gv.Channel != "LTS" {
+			return fmt.Errorf("[[gateway_versions]] entry %d has invalid channel %q: must be \"STS\" or \"LTS\"", i, gv.Channel)
+		}
+	}
+	if h := c.Gateway.ControlPlaneHost; h != "" && !validControlPlaneHost(h) {
+		return fmt.Errorf("[gateway] controlplane_host %q is invalid: must be host[:port][/path] with no scheme, e.g. \"cp.example.com:443\"", h)
 	}
 	seen := map[string]bool{}
 	for _, u := range c.ControlPlane.Upstreams {

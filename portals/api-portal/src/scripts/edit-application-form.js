@@ -150,6 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRF-Token': window.apiPortalApi.csrfToken(),
                 },
                 body: JSON.stringify(data),
             });

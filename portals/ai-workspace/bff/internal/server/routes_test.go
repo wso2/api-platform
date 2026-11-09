@@ -19,10 +19,13 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/paths"
+	"ai-workspace-bff/internal/proxy"
 )
 
 // routesTestServer builds a Server wired only far enough to exercise routes(): the
@@ -183,21 +186,70 @@ func oidcRoutesTestServer(t *testing.T, redirectURL string) *Server {
 	return s
 }
 
-// An unconfigured Moesif hop must answer for itself. Left to the catch-all
-// /proxy/ handler, a Moesif call would be forwarded to the control plane as
-// /moesif/... and come back 404 from there — indistinguishable from a bad path,
-// and the reason this was confusing to debug in a real deployment.
+// An unconfigured analytics hop must answer for itself, on every prefix it
+// accepts. Left to the catch-all /proxy/ handler, the call would be forwarded to
+// the control plane as /cloud/... and come back 404 from there — indistinguishable
+// from a bad path, and the reason this was confusing to debug in a real deployment.
+//
+// The paths are the ones real consumers call: the Insights plugin in this repo
+// asks for <base>/proxy/cloud/analytics/id-token, apim-saas for
+// <base>/proxy/moesif/..., so dropping either prefix fails here rather than in a
+// deployed cloud console.
 func TestRoutesMoesifHopReportsMissingConfig(t *testing.T) {
-	s := routesTestServer(t) // no moesif_url, so s.moesifProxy stays nil
+	for _, path := range []string{
+		"/ai-workspace/proxy/cloud/analytics/id-token",
+		"/ai-workspace/proxy/moesif/analytics/id-token",
+	} {
+		t.Run(path, func(t *testing.T) {
+			s := routesTestServer(t) // no moesif_url, so s.moesifProxies stays empty
 
-	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/moesif/id_token", nil)
-	rec := httptest.NewRecorder()
-	s.handler.ServeHTTP(rec, req)
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			s.handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503 (not a 404 from the control plane)", rec.Code)
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503 (not a 404 from the control plane)", rec.Code)
+			}
+			if !strings.Contains(rec.Body.String(), "MOESIF_NOT_CONFIGURED") {
+				t.Errorf("body = %q, want the MOESIF_NOT_CONFIGURED code", rec.Body.String())
+			}
+		})
 	}
-	if !strings.Contains(rec.Body.String(), "MOESIF_NOT_CONFIGURED") {
-		t.Errorf("body = %q, want the MOESIF_NOT_CONFIGURED code", rec.Body.String())
+}
+
+// Every accepted prefix must reach the same upstream path: these are aliases for
+// one upstream, so /proxy/cloud/analytics/id-token and
+// /proxy/moesif/analytics/id-token have to arrive identically. Driven through the
+// proxy directly rather than the mux, since the strip prefix — not the session
+// plumbing — is what this pins.
+func TestAnalyticsHopPrefixesStripToTheSameUpstreamPath(t *testing.T) {
+	var gotPath string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	target, err := url.Parse(upstream.URL + "/cloud")
+	if err != nil {
+		t.Fatalf("parse upstream: %v", err)
+	}
+
+	for _, hop := range AnalyticsHopPrefixes {
+		t.Run(hop, func(t *testing.T) {
+			gotPath = ""
+			rp := proxy.ReverseProxy(target, paths.Base+paths.Proxy+hop, upstream.Client().Transport)
+
+			req := httptest.NewRequest(http.MethodGet, paths.Base+paths.Proxy+hop+"/analytics/id-token", nil)
+			rec := httptest.NewRecorder()
+			rp.ServeHTTP(rec, proxy.WithToken(req, "tok"))
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			if gotPath != "/cloud/analytics/id-token" {
+				t.Errorf("upstream path = %q, want /cloud/analytics/id-token", gotPath)
+			}
+		})
 	}
 }

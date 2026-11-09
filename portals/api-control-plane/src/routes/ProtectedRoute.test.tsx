@@ -60,4 +60,11 @@ describe('ProtectedRoute', () => {
     renderGuard(authStatePresets.unauthenticated());
     expect(screen.getByText('Login Page')).toBeInTheDocument();
   });
+
+  it('shows the server error, not the sign-in page, while the session endpoint is unavailable', () => {
+    renderGuard(authStatePresets.unavailable());
+    expect(screen.getByText('Server error')).toBeInTheDocument();
+    expect(screen.queryByText('Login Page')).not.toBeInTheDocument();
+    expect(screen.queryByText('Protected content')).not.toBeInTheDocument();
+  });
 });

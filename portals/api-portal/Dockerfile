@@ -17,16 +17,12 @@
 # --------------------------------------------------------------------
 
 # API Portal Dockerfile
-# Uses node:24-alpine (musl libc) — better-sqlite3 compiles its native binding against musl
-# just as well as glibc (verified). Build tools (python3, make, g++) are installed only in
-# the builder stage and are not carried into the runtime image.
+# Uses node:24-alpine. SQLite is node:sqlite, built into Node, so the production
+# dependencies are plain JavaScript and need no native build tools.
 
-# Build stage — installs production dependencies (including native build of better-sqlite3)
+# Build stage — installs production dependencies
 FROM node:24-alpine AS builder
 WORKDIR /app
-# Install native build tools required by better-sqlite3's node-gyp compilation.
-# python3 is needed by node-gyp; make and g++ compile the C++ binding.
-RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci --omit=dev
 
@@ -53,6 +49,10 @@ RUN --mount=type=bind,from=coverage-scripts,source=instrument-browser-coverage.j
         npm install istanbul-lib-instrument@6.0.3 --no-save --prefix /tmp/coverage-npm-cache && \
         NODE_PATH=/tmp/coverage-npm-cache/node_modules node /tmp/instrument-browser-coverage.js src/scripts; \
     fi
+
+# Remove the npm CLI bundled with the base image. The entrypoint runs node directly,
+# so npm/npx are never used at runtime (the coverage step above is the last use).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Expose the application port
 EXPOSE 9543

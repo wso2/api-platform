@@ -17,12 +17,25 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Box, Button, CircularProgress, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, CircularProgress, PageContent, PageTitle } from '@wso2/oxygen-ui';
 import GatewayForm from './GatewayForm';
+import GatewayOverview from './components/GatewayOverview';
 import GatewaysList from './GatewaysList';
+import UnexpectedErrorState from './components/UnexpectedErrorState';
 import { createGatewaysClient } from './gatewaysApi';
+import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
+import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
-import type { Environment, Gateway, GatewayInput, GatewayType } from './types';
+import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
+import { hostingBlocked } from './utils/limits';
+import type {
+  Environment,
+  Gateway,
+  GatewayHosting,
+  GatewayInput,
+  GatewayType,
+  SelfHostedGatewayInput,
+} from './types';
 
 export type GatewaysFeatureProps = {
   port: AIWorkspaceHostPort;
@@ -40,8 +53,10 @@ export type GatewaysFeatureProps = {
  * The extension's `render(port)` result: a self-contained list/create/edit flow
  * that switches view with local state rather than nested routes (so the plugin
  * never depends on the host's router instance — the same shape as the pipelines
- * feature). It owns the data: it loads `/managed-gateways` and `/environments`
- * through the host-injected `apiFetch` and feeds the presentational list/form.
+ * feature). It owns the data: it loads `/managed-gateways`,
+ * `/self-hosted-gateways` (see `selfHostedGatewaysApi`) and `/environments`
+ * through the host-injected `apiFetch` and feeds the
+ * presentational list/form.
  */
 /**
  * How often the list re-reads gateway status while a gateway is still coming up.
@@ -52,11 +67,44 @@ export type GatewaysFeatureProps = {
 const STATUS_POLL_INTERVAL_MS = 5000;
 
 const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
-  const { apiFetch, notify } = port;
+  const { apiFetch, notify, resourceLimits } = port;
+  const permissions = permissionsOf(port);
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
+  const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
 
-  const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused.
+  const canList = permissions.canAny(GATEWAY_OPERATIONS.ListManagedGateways);
+  const canReadEnvironments = permissions.canAny(GATEWAY_OPERATIONS.ListEnvironments);
+  // A gateway is created into an environment, so the form needs the list to
+  // offer one: without it Add Gateway could only open a form that cannot be
+  // submitted.
+  const canCreate =
+    permissions.canAny(GATEWAY_OPERATIONS.CreateManagedGateway) && canReadEnvironments;
+  const canUpdate = permissions.canAny(GATEWAY_OPERATIONS.UpdateManagedGateway);
+  const canManageTokens = permissions.canAny(GATEWAY_OPERATIONS.CreateGatewayToken);
+  const canDelete = permissions.canAny(GATEWAY_OPERATIONS.DeleteManagedGateway);
+  const canReadConfiguration = permissions.canAny(GATEWAY_OPERATIONS.GetManagedGatewayConfiguration);
+  const canWriteConfiguration = permissions.canAny(
+    GATEWAY_OPERATIONS.UpdateManagedGatewayConfiguration
+  );
+
+  // The hosting the empty state's button asked for; null when Add Gateway was used.
+  const [initialHosting, setInitialHosting] = useState<GatewayHosting | null>(null);
+  const [view, setView] = useState<'list' | 'create' | 'edit' | 'view'>('list');
   const [editingGatewayId, setEditingGatewayId] = useState<string | null>(null);
+  const [viewingGatewayId, setViewingGatewayId] = useState<string | null>(null);
+  // The token minted with a just-registered gateway, handed to its setup view; null otherwise.
+  const [setupToken, setSetupToken] = useState<string | null>(null);
+  // A create or edit form opened before its scope was lost (a token refresh can
+  // drop one mid-session) goes back to the list rather than staying submittable.
+  const formPermitted = view === 'edit' ? canUpdate : view === 'create' ? canCreate : true;
+  useEffect(() => {
+    if (formPermitted) return;
+    setView('list');
+    setEditingGatewayId(null);
+  }, [formPermitted]);
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,19 +122,46 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   // replace the list with an error page, so it only ever writes fresh data.
   const load = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!canList) {
+        if (!silent) setLoading(false);
+        return;
+      }
       const seq = ++loadSeqRef.current;
       if (!silent) {
         setLoading(true);
         setError(null);
       }
       try {
-        const [gatewayList, environmentList] = await Promise.all([
+        // The two kinds of gateway come from different resources, so one failing must not hide
+        // the other: each list is read on its own and only a failure of both is an error.
+        const [managedResult, selfHostedResult, environmentResult] = await Promise.allSettled([
           client.listGateways(gatewayTypes),
-          client.listEnvironments(),
+          selfHostedClient.listGateways(gatewayTypes),
+          // Only asked for when the user may read environments: without them the
+          // list shows a gateway's raw environment id, which beats a 403 for the page.
+          canReadEnvironments ? client.listEnvironments() : Promise.resolve<Environment[]>([]),
         ]);
         if (seq !== loadSeqRef.current) return;
-        setGateways(gatewayList);
-        setEnvironments(environmentList);
+        if (environmentResult.status === 'rejected') throw environmentResult.reason;
+        if (managedResult.status === 'rejected' && selfHostedResult.status === 'rejected') {
+          throw managedResult.reason;
+        }
+        // A list that failed keeps what was last loaded for its kind, rather than emptying it.
+        setGateways((previous) => [
+          ...(managedResult.status === 'fulfilled'
+            ? managedResult.value
+            : previous.filter((gateway) => gateway.hosting === 'managed')),
+          ...(selfHostedResult.status === 'fulfilled'
+            ? selfHostedResult.value
+            : previous.filter((gateway) => gateway.hosting === 'self-hosted')),
+        ]);
+        setEnvironments(environmentResult.value);
+        if (!silent && (managedResult.status === 'rejected' || selfHostedResult.status === 'rejected')) {
+          notify(
+            `${managedResult.status === 'rejected' ? 'WSO2 managed' : 'Self-hosted'} gateways could not be loaded.`,
+            'warning'
+          );
+        }
         // Any load that reaches fresh data clears a previous failure.
         setError(null);
       } catch (loadError) {
@@ -100,7 +175,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         if (!silent && seq === loadSeqRef.current) setLoading(false);
       }
     },
-    [client, gatewayTypes]
+    [canList, canReadEnvironments, client, selfHostedClient, gatewayTypes, notify]
   );
 
   useEffect(() => {
@@ -118,10 +193,10 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   );
 
   // Poll only while there is something to wait for: a gateway that is not yet
-  // active. Once they are all active the interval is torn down, so a settled
-  // list costs nothing. Creating another gateway makes this true again and the
-  // poll restarts. Deliberately keyed on the boolean, not on `gateways`, so a
-  // poll's own result does not reset the interval.
+  // active, or one still being deleted. Once they are all active the interval is
+  // torn down, so a settled list costs nothing. Creating another gateway makes
+  // this true again and the poll restarts. Deliberately keyed on the boolean, not
+  // on `gateways`, so a poll's own result does not reset the interval.
   const awaitingStatus = visibleGateways.some((gateway) => gateway.status !== 'active');
 
   useEffect(() => {
@@ -146,6 +221,9 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         } else {
           await client.createGateway(input);
           notify(`Gateway "${input.name}" created.`, 'success');
+          // A create consumes quota; an edit does not.
+          resourceLimits?.refresh();
+          port.resources?.invalidate('gateways');
         }
         await load();
         return true;
@@ -159,7 +237,50 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         submittingRef.current = false;
       }
     },
-    [client, load, notify]
+    [client, load, notify, port, resourceLimits]
+  );
+
+  /**
+   * The self-hosted path, mirroring `submitGateway` but against
+   * `selfHostedClient` (`/self-hosted-gateways`). A freshly created gateway opens
+   * on its setup steps with the registration token minted for it; reconfiguring
+   * there revokes that one.
+   */
+  const submitSelfHostedGateway = useCallback(
+    async (input: SelfHostedGatewayInput, gatewayId?: string): Promise<'saved' | 'opened' | 'failed'> => {
+      if (submittingRef.current) return 'failed';
+      submittingRef.current = true;
+      try {
+        if (gatewayId) {
+          await selfHostedClient.updateGateway(gatewayId, input);
+          notify(`Gateway "${input.name}" updated.`, 'success');
+          await load();
+          return 'saved';
+        }
+        const { gateway: created, token } = await selfHostedClient.createGateway(input);
+        notify(`Self-hosted gateway "${input.name}" registered.`, 'success');
+        await load();
+        // Open the new gateway's setup steps with the token minted for it, so the
+        // administrator can connect it straight away instead of generating another one.
+        setViewingGatewayId(created.id);
+        setSetupToken(token);
+        setView('view');
+        setEditingGatewayId(null);
+        // A self-hosted gateway consumes the same quota as a managed one.
+        resourceLimits?.refresh();
+        port.resources?.invalidate('gateways');
+        return 'opened';
+      } catch (submitError) {
+        notify(
+          submitError instanceof Error ? submitError.message : 'Unable to save the gateway.',
+          'error'
+        );
+        return 'failed';
+      } finally {
+        submittingRef.current = false;
+      }
+    },
+    [selfHostedClient, load, notify, port, resourceLimits]
   );
 
   const removeGateway = useCallback(
@@ -169,9 +290,30 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       if (deletingRef.current) return;
       deletingRef.current = true;
       try {
-        await client.deleteGateway(id);
-        notify(`Gateway "${name}" deleted.`, 'success');
+        // A gateway torn down in the background stays listed as deleting, and the
+        // status poll drops it once it is gone.
+        const target = gateways.find((candidate) => candidate.id === id);
+        let deletionPending = false;
+        if (target?.hosting === 'self-hosted') {
+          await selfHostedClient.deleteGateway(id);
+          notify(`Gateway "${name}" deleted.`, 'success');
+        } else {
+          const { pending } = await client.deleteGateway(id);
+          deletionPending = pending;
+          if (pending) {
+            notify(`Gateway "${name}" is being deleted.`, 'info');
+          } else {
+            notify(`Gateway "${name}" deleted.`, 'success');
+          }
+        }
+        // Drop the row now: if the reload of its kind fails, that kind keeps what was last loaded,
+        // and the deleted gateway would otherwise stay listed.
+        if (!deletionPending) setGateways((previous) => previous.filter((gateway) => gateway.id !== id));
         await load();
+        // Frees quota. Fired when pending too — teardown is already under way.
+        resourceLimits?.refresh();
+        // The host caches gateway counts and cannot see this write.
+        port.resources?.invalidate('gateways');
       } catch (deleteError) {
         notify(
           deleteError instanceof Error ? deleteError.message : 'Unable to delete the gateway.',
@@ -181,12 +323,23 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         deletingRef.current = false;
       }
     },
-    [client, load, notify]
+    [client, selfHostedClient, gateways, load, notify, port, resourceLimits]
   );
+
+  if (!canList) {
+    return (
+      <PageContent fullWidth>
+        <PageTitle sx={{ mb: 3 }}>
+          <PageTitle.Header>Gateways</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view gateways.</Alert>
+      </PageContent>
+    );
+  }
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+      <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 8, width: '100%' }}>
         <CircularProgress />
       </Box>
     );
@@ -194,23 +347,11 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
 
   if (error) {
     return (
-      <Box
-        sx={{
-          border: '1px dashed',
-          borderColor: 'divider',
-          borderRadius: 1.5,
-          py: 6,
-          px: 3,
-          textAlign: 'center',
-        }}
-      >
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-        <Button variant="outlined" size="small" onClick={() => void load()}>
-          Retry
-        </Button>
-      </Box>
+      <UnexpectedErrorState
+        description="We couldn't load your gateways. This is usually temporary - try again in a moment."
+        detail={error}
+        onRetry={() => void load()}
+      />
     );
   }
 
@@ -224,17 +365,67 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         types={gatewayTypes}
         gateways={visibleGateways}
         environments={environments}
+        gatewayVersions={port.gatewayVersions}
+        initialHosting={initialHosting}
+        hostingBlocked={hostingBlocked(port)}
         onBack={() => {
           setView('list');
           setEditingGatewayId(null);
         }}
         onSubmit={async (input) => {
+          // Rechecked here, not only when the form opened: the scope can be lost
+          // while it is open, before the effect above has closed it.
+          if (!formPermitted) return;
           const saved = await submitGateway(input, view === 'edit' ? editingGatewayId ?? undefined : undefined);
           if (saved) {
             setView('list');
             setEditingGatewayId(null);
           }
         }}
+        onSubmitSelfHosted={async (input) => {
+          if (!formPermitted) return;
+          const saved = await submitSelfHostedGateway(
+            input,
+            view === 'edit' ? editingGatewayId ?? undefined : undefined
+          );
+          if (saved === 'saved') {
+            setView('list');
+            setEditingGatewayId(null);
+          }
+        }}
+      />
+    );
+  }
+
+  // A viewed gateway that is gone (deleted elsewhere, or a stale link) falls
+  // through to the list below rather than rendering an overview for nothing.
+  const viewedGateway =
+    view === 'view' ? visibleGateways.find((gateway) => gateway.id === viewingGatewayId) : undefined;
+  if (viewedGateway) {
+    const environmentNames = new Map(environments.map((environment) => [environment.id, environment.name]));
+    return (
+      <GatewayOverview
+        key={viewedGateway.id}
+        gateway={viewedGateway}
+        initialRegistrationToken={setupToken}
+        environmentNames={environmentNames}
+        controlPlaneHost={port.controlPlaneHost ?? CONTROL_PLANE_HOST_PLACEHOLDER}
+        gatewayVersions={port.gatewayVersions}
+        onBack={() => {
+          setView('list');
+          setViewingGatewayId(null);
+          setSetupToken(null);
+        }}
+        onEditClick={(gatewayId) => {
+          setEditingGatewayId(gatewayId);
+          setView('edit');
+        }}
+        onHasActiveRegistrationToken={selfHostedClient.hasActiveToken}
+        onGenerateRegistrationToken={selfHostedClient.generateToken}
+        onReconfigureRegistrationToken={selfHostedClient.reconfigureToken}
+        notify={notify}
+        canManageTokens={canManageTokens}
+        canEdit={canUpdate}
       />
     );
   }
@@ -244,10 +435,24 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       gateways={visibleGateways}
       environments={environments}
       port={port}
-      onAddClick={() => setView('create')}
+      canCreate={canCreate}
+      canUpdate={canUpdate}
+      canDelete={canDelete}
+      canReadConfiguration={canReadConfiguration}
+      canWriteConfiguration={canWriteConfiguration}
+      onAddClick={(hosting) => {
+        setInitialHosting(hosting ?? null);
+        setView('create');
+      }}
       onEditClick={(gatewayId) => {
         setEditingGatewayId(gatewayId);
         setView('edit');
+      }}
+      onViewClick={(gatewayId) => {
+        // The token belongs to the gateway just registered, not to whichever one is opened next.
+        setSetupToken(null);
+        setViewingGatewayId(gatewayId);
+        setView('view');
       }}
       onDelete={removeGateway}
     />

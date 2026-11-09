@@ -1,6 +1,6 @@
 # Stage 1: Build the Go application
 # Using Debian-based image for better cross-compilation support
-FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
@@ -79,7 +79,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     fi
 
 # Stage: debug (select with --target debug; NOT part of the default build)
-FROM golang:1.26.5-bookworm AS debug
+FROM golang:1.26.10-bookworm AS debug
 WORKDIR /app
 
 RUN --mount=type=cache,target=/go/pkg/mod \

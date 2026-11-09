@@ -68,7 +68,8 @@ services:
       - ./.certs:/app/data/certs:ro
       - ./.certs:/etc/platform-api/keys:ro
     healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      # The platform-api image does not ship curl; check that the HTTPS listener accepts connections.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9243"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -128,7 +129,7 @@ services:
   # because its org_handle names another organization. See
   # rest-api/auth/foreign-org-login.spec.js.
   #
-  # Unlike the SQLite variant (where two better-sqlite3 writers would contend on one
+  # Unlike the SQLite variant (where two portal processes writing would contend on one
   # file) this shares the `api_portal` database with the instance above — two portals,
   # two organizations, one database, which is the deployment shape the organization
   # pin exists for. Safe because the schema comes from postgres's initdb, not from a
@@ -231,10 +232,7 @@ services:
       - ./configs:/it-configs:ro
     networks:
       - it-api-portal-network
-    # better-sqlite3 (an optionalDependency used only by the SQLite variant) is the
-    # sole reason this image would need a native build toolchain — skip it here with
-    # --omit=optional so the Postgres run needs no apk add python3/make/g++.
-    command: ["sh", "-c", "npm install --no-audit --no-fund --omit=optional && npm test"]
+    command: ["sh", "-c", "npm install --no-audit --no-fund && npm test"]
 
 networks:
   it-api-portal-network:

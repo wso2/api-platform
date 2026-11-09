@@ -119,6 +119,7 @@ import {
   extractSecretHandle,
 } from '../../../../apis/secretApis';
 import type { AgentCardTabState } from './AgentProxyCardTab';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 type TabPanelProps = {
   children: React.ReactNode;
@@ -342,7 +343,15 @@ function AgentProxyOverviewContent(): React.JSX.Element {
     useState<UserAPIKey | null>(null);
   const [isDeletingApiKey, setIsDeletingApiKey] = useState(false);
 
-  const isReadOnlyAgentProxy = Boolean(agentProxy?.readOnly);
+  // Whether the artifact itself was created from a gateway, which owns its
+  // runtime configuration. Kept separate from the flag below because only this
+  // one is true of the artifact: the gateway-managed banners and warnings speak
+  // about the gateway, and must not appear merely because the organization has
+  // gone read-only.
+  const isGatewayManagedAgentProxy = Boolean(agentProxy?.readOnly);
+  // Everything that only disables a control reads this one: an organization
+  // that may not write at all disables the same controls the gateway does.
+  const isReadOnlyAgentProxy = useOrgReadOnly() || isGatewayManagedAgentProxy;
   const isConnectionDisabled = isReadOnlyAgentProxy || !canUpdateAgentProxy;
 
   // The provider owns the fetch; this seeds the editable copies of everything
@@ -1519,7 +1528,7 @@ function AgentProxyOverviewContent(): React.JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={1}>
-              {isReadOnlyAgentProxy && (
+              {isGatewayManagedAgentProxy && (
                 <GatewayArtifactReadOnlyBanner message="Agent Card configuration is managed by the gateway that created this agent proxy and is read-only here." />
               )}
               <AgentProxyCardTab
@@ -1536,7 +1545,7 @@ function AgentProxyOverviewContent(): React.JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={2}>
-              {isReadOnlyAgentProxy && (
+              {isGatewayManagedAgentProxy && (
                 <GatewayArtifactReadOnlyBanner message="Guardrails & policies are managed by the gateway that created this agent proxy and are read-only here." />
               )}
               <AgentProxyGuardrailsTab
@@ -1547,7 +1556,7 @@ function AgentProxyOverviewContent(): React.JSX.Element {
             </TabPanel>
 
             <TabPanel value={tabIndex} index={3}>
-              {isReadOnlyAgentProxy && (
+              {isGatewayManagedAgentProxy && (
                 <GatewayArtifactReadOnlyBanner message="Backend connection is managed by the gateway that created this agent proxy and is read-only here." />
               )}
               <Stack spacing={2} sx={{ maxWidth: 640 }}>
@@ -1822,7 +1831,7 @@ function AgentProxyOverviewContent(): React.JSX.Element {
       >
         <DialogTitle>Delete Agent Proxy</DialogTitle>
         <DialogContent>
-          {isReadOnlyAgentProxy ? (
+          {isGatewayManagedAgentProxy ? (
             <GatewayArtifactDeleteWarning
               artifactType="Agent Proxy"
               artifactName={agentProxy.displayName}

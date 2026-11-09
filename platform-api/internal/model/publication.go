@@ -65,6 +65,11 @@ type Publication struct {
 	SubscriptionPlanIds []string `json:"subscriptionPlanIds"`
 	DocIds              []string `json:"docIds"`
 
+	// SubscriptionPlans and Documents carry the same selections with the stored
+	// display name and a Deleted flag; the id lists above include deleted entries.
+	SubscriptionPlans []PublicationSelection `json:"subscriptionPlans"`
+	Documents         []PublicationSelection `json:"documents"`
+
 	HasThumbnail   bool `json:"hasThumbnail"`
 	HasLandingPage bool `json:"hasLandingPage"`
 
@@ -81,6 +86,18 @@ type Publication struct {
 	CreatedAt   time.Time `json:"createdAt" db:"created_at"`
 	UpdatedBy   string    `json:"updatedBy,omitempty" db:"updated_by"`
 	UpdatedAt   time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// PublicationSelection is one subscription plan or document selected by a
+// publication row. Handle and DisplayName are copies stored with the
+// selection; UUID points at the source row, which may no longer exist. Edited
+// reports that the source row changed after the selection was last stored.
+type PublicationSelection struct {
+	UUID        string `json:"-"`
+	Handle      string `json:"id"`
+	DisplayName string `json:"displayName"`
+	Deleted     bool   `json:"deleted"`
+	Edited      bool   `json:"edited"`
 }
 
 // PublicationStatusRow is one api_publications row for one artifact, reduced

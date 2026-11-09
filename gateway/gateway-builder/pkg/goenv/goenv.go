@@ -38,7 +38,7 @@ const gotoolchainKey = "GOTOOLCHAIN"
 // "auto" to let `go` transparently download and switch to the required version.
 //
 // An explicit operator override (any GOTOOLCHAIN value other than the empty
-// string or "local", e.g. a pinned "go1.26.6") is respected and left untouched.
+// string or "local", e.g. a pinned "go1.26.10") is respected and left untouched.
 //
 // Callers should pass exec.Cmd.Environ() (after setting Cmd.Dir) rather than
 // os.Environ(), so the PWD entry os/exec derives from Cmd.Dir is preserved —

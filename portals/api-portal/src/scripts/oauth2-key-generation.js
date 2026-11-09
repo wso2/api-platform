@@ -27,7 +27,10 @@ async function addClientId(kmId, keyType, appId, orgId, keyManager) {
     try {
         const response = await fetch(apiPortalApi.root(`/applications/${appId}/generate-keys`), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': window.apiPortalApi.csrfToken(),
+            },
             body: JSON.stringify({ keyManager: kmId, type: keyType, consumerKey }),
         });
         const data = await response.json();
@@ -132,6 +135,7 @@ async function removeApplicationKeys(applicationId, keyMappingId, keyType, keyMa
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRF-Token': window.apiPortalApi.csrfToken(),
             },
         });
 
@@ -323,6 +327,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRF-Token': window.apiPortalApi.csrfToken(),
             },
             body: JSON.stringify({
                 "consumerSecret": clientSecret,

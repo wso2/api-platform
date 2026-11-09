@@ -21,7 +21,7 @@ const fs = require('fs');
 const marked = require('marked');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
-const { CustomError, NotFoundError, ValidationError } = require('../utils/errors/customErrors');
+const { CustomError, NotFoundError, ValidationError, ConflictError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
@@ -32,6 +32,10 @@ const db = require('../db/driver');
 const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
+const billingVisibility = require('../services/billing/billingVisibility');
+const { currentRequest } = require('./requestContext');
+const { pageAccess } = require('./pageAccess');
+const billingConfigurationDao = require('../dao/billingConfigurationDao');
 const filePrefix = '/src/defaultContent/';
 
 // Function to load and convert markdown file to HTML
@@ -219,6 +223,28 @@ async function resolveAiEnabled(orgId, viewName) {
     }
 }
 
+/**
+ * Whether the organization sells paid plans, that is, has a billing configuration. The sidebar shows
+ * the Billing pages (Invoices and Usage) only then.
+ */
+async function resolveBillingEnabled(orgId) {
+    if (!orgId) return false;
+    try {
+        return Boolean(await billingConfigurationDao.get(orgId));
+    } catch (err) {
+        logger.warn('Could not resolve whether billing is enabled; hiding billing pages', { orgId, error: err.message });
+        return false;
+    }
+}
+
+/**
+ * What the user of the page being rendered may do (utils/pageAccess), so that the page shows only
+ * the account actions the REST API will allow. Nothing for a page rendered outside a request.
+ */
+async function resolvePageAccess() {
+    return pageAccess(currentRequest());
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
@@ -284,7 +310,9 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
     const slots = {};
     const flags = artifactFlags();
     const aiEnabled = await resolveAiEnabled(orgId, viewName);
-    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
+    const billingEnabled = await resolveBillingEnabled(orgId);
+    const access = await resolvePageAccess();
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, billingEnabled, access, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -341,7 +369,9 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     const slots = {};
     const flags = artifactFlags();
     const aiEnabled = await resolveAiEnabled(orgId, viewName);
-    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
+    const billingEnabled = await resolveBillingEnabled(orgId);
+    const access = await resolvePageAccess();
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, billingEnabled, access, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -402,17 +432,20 @@ async function renderMarkdownTemplateFromAPI(templateContent, orgId, filePath, v
     return Handlebars.compile(pageSource)(templateContent);
 }
 
-async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
+/** orgId, when given, decides whether the sidebar shows the subscriber's Billing pages. */
+async function renderGivenTemplate(templatePage, layoutPage, templateContent, orgId) {
 
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
     const slots = {};
     const flags = artifactFlags();
-    // No org/view is threaded through here (applications, settings, api-workflows), so
+    // No view is threaded through here (applications, settings, api-workflows), so
     // the per-view AI toggle can't be resolved. Default to enabled rather than leaving
     // it undefined, which would silently hide AI affordances on those pages — none of
     // them gate on it today, and a falsy default would make that a trap later.
-    const enrichedContent = { ...flags, aiEnabled: true, ...templateContent, slots };
+    const billingEnabled = await resolveBillingEnabled(orgId);
+    const access = await resolvePageAccess();
+    const enrichedContent = { ...flags, aiEnabled: true, ...templateContent, billingEnabled, access, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -470,12 +503,14 @@ function handleError(res, error) {
             message: 'Conflict',
             errors: [{ message: 'A record with these values already exists.' }],
         });
+    } else if (error instanceof ConflictError) {
+        return sendError(res, 409, 'Conflict', { code: 'CONFLICT', errors: error.errors });
     } else if (error instanceof ValidationError) {
         return res.status(400).json({
             status: 'error',
             code: 'COMMON_VALIDATION_ERROR',
             message: 'Bad Request',
-            errors: [{ message: error.message }],
+            errors: error.errors || [{ message: error.message }],
         });
     } else if (error instanceof NotFoundError) {
         return res.status(404).json({
@@ -485,7 +520,7 @@ function handleError(res, error) {
             errors: [],
         });
     } else if (error instanceof CustomError) {
-        const code = HTTP_CODE_TO_CATALOG[error.statusCode] || 'INTERNAL_SERVER_ERROR';
+        const code = error.catalogCode || HTTP_CODE_TO_CATALOG[error.statusCode] || 'INTERNAL_SERVER_ERROR';
         return res.status(error.statusCode).json({
             status: 'error',
             code,
@@ -664,10 +699,53 @@ function readDirTree(rootDir, baseDir = '') {
     return out;
 }
 
-const unzipDirectory = async (zipPath, extractPath) => {
+const ZIP_END_RECORD = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+const ZIP_END_RECORD_SIZE = 22;
+const ZIP_MAX_COMMENT_SIZE = 0xFFFF;
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50;
+const ZIP64_LOCATOR_SIZE = 20;
+const ZIP64_RECORD_SIGNATURE = 0x06064b50;
+const ZIP64_RECORD_SIZE = 56;
+
+/**
+ * The entry count an archive declares, or null if it has no valid end record. Only the end records
+ * are read, because the count is attacker-controlled: walking the central directory allocates per
+ * declared entry, which a few hundred bytes can make exhaust the heap.
+ */
+const readDeclaredEntryCount = async (zipPath) => {
+    const file = await fs.promises.open(zipPath);
+    try {
+        const { size } = await file.stat();
+        const tail = Buffer.alloc(Math.min(size, ZIP_END_RECORD_SIZE + ZIP_MAX_COMMENT_SIZE));
+        await file.read(tail, 0, tail.length, size - tail.length);
+        const end = tail.lastIndexOf(ZIP_END_RECORD);
+        if (end < 0 || end + ZIP_END_RECORD_SIZE > tail.length) {
+            return null;
+        }
+        const count = tail.readUInt16LE(end + 10);
+        if (count !== 0xFFFF) {
+            return count;
+        }
+        const locator = end - ZIP64_LOCATOR_SIZE;
+        if (locator < 0 || tail.readUInt32LE(locator) !== ZIP64_LOCATOR_SIGNATURE) {
+            return null;
+        }
+        const record = Buffer.alloc(ZIP64_RECORD_SIZE);
+        const { bytesRead } = await file.read(record, 0, record.length, tail.readBigUInt64LE(locator + 8));
+        if (bytesRead < record.length || record.readUInt32LE(0) !== ZIP64_RECORD_SIGNATURE) {
+            return null;
+        }
+        return Number(record.readBigUInt64LE(32));
+    } finally {
+        await file.close();
+    }
+};
+
+const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {}) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
     }
+    const listed = await readDeclaredEntryCount(zipPath).catch(() => null);
     const extractedFiles = [];
     // Archive-extraction limits (config-sourced, with safe defaults).
     const maxFileSize = config.uploads?.maxBytes || 10485760;      // per-entry byte ceiling
@@ -676,47 +754,76 @@ const unzipDirectory = async (zipPath, extractPath) => {
     const maxEntries = config.uploads?.maxZipEntries || 500;        // entry-count guard
     let totalExtractedSize = 0; // Total extracted data size (measured from bytes actually read)
     let entryCount = 0;
+    let entriesRead = 0;
+
+    const writers = new Map(); // open write stream -> the entry feeding it
+    const streams = [];
+    const source = fs.createReadStream(zipPath);
+    const parser = unzipper.Parse();
+    let failure = null;
+    let settleFailure;
+
+    // Stops on the first rejection and settles only once no write is open, because the caller
+    // removes the extraction folder as soon as this rejects.
+    const fail = (err) => {
+        if (failure) {
+            return;
+        }
+        failure = err;
+        source.unpipe(parser);
+        source.destroy();
+        parser.destroy();
+        for (const [out, entry] of writers) {
+            entry.unpipe(out);
+            entry.destroy();
+            out.destroy();
+        }
+        Promise.all(streams).then(() => settleFailure(err));
+    };
 
     // Streams each entry to disk, capping on bytes actually read rather than the
-    // declared header size. Rejects the outer promise on the first violation.
-    const writeEntryWithLimit = (entry, destPath, perEntryLimit, reject) => new Promise((resolveWrite, rejectWrite) => {
+    // declared header size. Fails the extraction on the first violation.
+    const writeEntryWithLimit = (entry, destPath, perEntryLimit) => new Promise((resolveWrite) => {
         let bytesWritten = 0;
         const out = fs.createWriteStream(destPath);
+        writers.set(out, entry);
         entry.on('data', chunk => {
             bytesWritten += chunk.length;
             if (bytesWritten > perEntryLimit || totalExtractedSize + bytesWritten > maxTotalSize) {
-                entry.unpipe(out);
-                out.destroy();
-                entry.destroy();
-                const limitErr = new CustomError(400, 'Error unzipping directory',
-                    'Archive entry exceeded the allowed size.');
-                rejectWrite(limitErr);
-                return reject(limitErr);
+                fail(new CustomError(400, 'Error unzipping directory', 'Archive entry exceeded the allowed size.'));
             }
         });
-        out.on('error', rejectWrite);
+        out.on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
         out.on('finish', () => {
             totalExtractedSize += bytesWritten;
+        });
+        out.on('close', () => {
+            writers.delete(out);
             resolveWrite();
         });
         entry.pipe(out);
     });
 
-    await new Promise((resolve, reject) => {
-        const streams = [];
-        fs.createReadStream(zipPath)
-            .pipe(unzipper.Parse())
+    return new Promise((resolve, reject) => {
+        settleFailure = reject;
+        source.on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
+        source.pipe(parser)
             .on('entry', entry => {
+                if (failure) {
+                    entry.autodrain();
+                    return;
+                }
+                entriesRead += 1;
                 try {
                     const entryPath = entry.path;
                     const entrySize = entry.size;
                     const entryDepth = entryPath.split(path.sep).length;
 
-                    if (!entryPath.includes('__MACOSX')) {
+                    if (!entryPath.split(/[\\/]/).includes('__MACOSX')) {
                         // Reject absolute paths, null bytes, and traversal sequences in entry names.
                         if (path.isAbsolute(entryPath) || entryPath.includes('..') || entryPath.includes('\0')) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'File access outside working directory detected.'));
                         }
 
@@ -728,7 +835,7 @@ const unzipDirectory = async (zipPath, extractPath) => {
                         if (normalizedFilePath !== path.resolve(extractPath)
                             && !normalizedFilePath.startsWith(rootWithSep)) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'File access outside working directory detected.'));
                         }
 
@@ -736,7 +843,7 @@ const unzipDirectory = async (zipPath, extractPath) => {
                         entryCount += 1;
                         if (entryCount > maxEntries) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'Archive exceeded the maximum entry count.'));
                         }
 
@@ -744,17 +851,17 @@ const unzipDirectory = async (zipPath, extractPath) => {
                         if ((entryDepth > maxDepth) || (entrySize > maxFileSize)
                             || (totalExtractedSize + entrySize > maxTotalSize)) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'Archive entry exceeded the allowed size.'));
                         }
 
-                        const dirName = path.dirname(normalizedFilePath);
-                        fs.mkdirSync(dirName, { recursive: true });
                         if (entry.type === 'Directory') {
+                            fs.mkdirSync(normalizedFilePath, { recursive: true });
                             entry.autodrain();
                         } else {
+                            fs.mkdirSync(path.dirname(normalizedFilePath), { recursive: true });
                             extractedFiles.push(normalizedFilePath);
-                            streams.push(writeEntryWithLimit(entry, normalizedFilePath, maxFileSize, reject));
+                            streams.push(writeEntryWithLimit(entry, normalizedFilePath, maxFileSize));
                         }
                     } else {
                         entry.autodrain();
@@ -762,22 +869,21 @@ const unzipDirectory = async (zipPath, extractPath) => {
                 } catch (err) {
                     logger.error("Error processing entry", { error: err.message, stack: err.stack });
                     entry.autodrain();
-                    reject(new Error('Error processing entry.'));
+                    fail(new Error('Error processing entry.'));
                 }
             })
             .on('close', async () => {
-                try {
-                    await Promise.all(streams); // Wait for all files to finish writing
-                    extractedFiles.length > 0 ? resolve() : reject(new Error('No files were extracted'));
-                } catch (err) {
-                    reject(new Error(`Unzip failed: ${err.message}`));
+                await Promise.all(streams); // Wait for all files to finish writing
+                if (failure) {
+                    return;
                 }
+                // An archive whose central directory lists entries the stream never read is damaged, not empty.
+                if (listed !== entriesRead) {
+                    return reject(new CustomError(400, 'Error unzipping directory', 'The archive is damaged.'));
+                }
+                extractedFiles.length > 0 || allowEmpty ? resolve(extractedFiles) : reject(new Error('No files were extracted'));
             })
-            .on('error', err => {
-                reject(new Error(`Unzip failed: ${err.message}`));
-            });
-    }).catch((err) => {
-        throw err;
+            .on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
     });
 }
 
@@ -831,30 +937,6 @@ const retrieveContentType = (fileName, fileType) => {
     return constants.MIME_TYPES.TEXT;
 };
 
-const getAPIFileContent = (directory) => {
-    let files = [];
-    const filenames = fs.readdirSync(directory);
-    filenames.forEach((filename) => {
-        if (!(filename === '.DS_Store')) {
-            let fileContent = fs.readFileSync(path.join(directory, filename), 'utf8');
-            files.push({ fileName: filename, content: fileContent, type: constants.DOC_TYPES.API_LANDING });
-        }
-    });
-    return files;
-};
-
-const getAPIImages = async (directory) => {
-    let files = [];
-    const filenames = await fs.promises.readdir(directory, { withFileTypes: true });
-    for (const filename of filenames) {
-        if (!(filename === '.DS_Store')) {
-            let fileContent = await fs.promises.readFile(path.join(directory, filename.name));
-            files.push({ fileName: filename.name, content: fileContent, type: constants.DOC_TYPES.IMAGES });
-        }
-    }
-    return files;
-};
-
 const getAPIDocLinks = (documentMetadata) => {
 
     let files = [];
@@ -865,39 +947,6 @@ const getAPIDocLinks = (documentMetadata) => {
     });
     return files;
 };
-
-async function readDocFiles(directory, baseDir = '', topLevelOnly = false) {
-
-    const files = await fs.promises.readdir(directory, { withFileTypes: true });
-    let fileDetails = [];
-    for (const file of files) {
-        const filePath = path.join(directory, file.name);
-        const relativePath = path.join(baseDir, file.name);
-        if (file.isDirectory()) {
-            const subDirContents = await readDocFiles(filePath, relativePath, topLevelOnly);
-            fileDetails = fileDetails.concat(subDirContents);
-        } else {
-            if (!(file.name === '.DS_Store')) {
-                let content = await fs.promises.readFile(filePath);
-                let docType;
-                if (topLevelOnly) {
-                    docType = baseDir
-                        ? baseDir.split(path.sep)[0]
-                        : constants.DOC_TYPES.DOCS.OTHER;
-                } else {
-                    docType = baseDir;
-                }
-                fileDetails.push({
-                    type: constants.DOC_TYPES.DOC_ID + docType,
-                    fileName: file.name,
-                    content: content,
-                });
-            }
-        }
-    }
-    return fileDetails;
-}
-
 
 const validateIDP = () => {
 
@@ -1231,13 +1280,13 @@ function validateScripts(strContent) {
 // false positives. NOTE: `lookup` is deliberately excluded — the default theme uses it benignly
 // as {{#with (lookup limits 0)}}; its dangerous form ({{lookup this "csrfToken"}}) is instead
 // caught by the whole-context-argument rule below.
-const DISALLOWED_TEMPLATE_HELPERS = new Set(['json', 'getvalue', 'jsonsafesubscriptions']);
+const DISALLOWED_TEMPLATE_HELPERS = new Set(['json', 'scriptjson', 'getvalue', 'jsonsafesubscriptions']);
 // Helpers that serialise or dynamically index whatever they're handed. Passing the WHOLE render
 // context to one of these dumps everything (incl. csrfToken) or bypasses the path denylist —
 // e.g. {{{jsonBeautify this}}}, {{lookup this "csrfToken"}}. The default theme only ever passes
 // a narrowed value (this.inputSchema, lookup limits 0), so scoping the whole-context check to
 // these helpers avoids flagging benign loop-item calls like {{stripMdExtension this}}.
-const CONTEXT_SENSITIVE_HELPERS = new Set(['json', 'jsonbeautify', 'jsonattr', 'jsonsafesubscriptions', 'getvalue', 'lookup']);
+const CONTEXT_SENSITIVE_HELPERS = new Set(['json', 'scriptjson', 'jsonbeautify', 'jsonattr', 'jsonsafesubscriptions', 'getvalue', 'lookup']);
 // Context keys a theme must never echo. csrfToken is only ever injected into forms server-side;
 // a template that references it is attempting to steal it. (profile / @root are intentionally
 // NOT here — the default theme legitimately renders {{profile.firstName}}, {{@root.baseUrl}}, etc.)
@@ -1325,64 +1374,65 @@ function validateTemplateExpressions(strContent) {
     }
 }
 
+/**
+ * URL of an API's or MCP server's image. MCP servers are read from /mcp-servers, as /apis does
+ * not resolve them. orgId lets the (public) image read resolve the organisation for visitors
+ * with no session — mirrors getOrgAsset.
+ */
+function apiImageUrl(orgId, api, fileName) {
+    const base = api.type === constants.API_TYPE.MCP ? '/mcp-servers/' : constants.ROUTE.API_FILE_PATH;
+    return `${constants.API_PORTAL_API.orgPath(orgId)}${base}${encodeURIComponent(api.id)}${constants.API_TEMPLATE_FILE_NAME}${encodeURIComponent(fileName)}${constants.ORG_ID_PARAM}${orgId}`;
+}
+
 function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
         const images = element.apiImageMetadata;
-        let apiImageUrl;
         for (const key in images) {
-            apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            // orgId is appended so the (public) image endpoint can resolve the view for
-            // anonymous visitors with no session — mirrors getOrgAsset.
-            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
-            element.apiImageMetadata[key] = modifiedApiImageURL;
+            element.apiImageMetadata[key] = apiImageUrl(orgId, element, images[key]);
         }
     });
 }
 
-async function appendSubscriptionPlanDetails(orgId, subscriptionPlans) {
+/**
+ * The plans an API offers, with their details, for its pages. A paid plan is left out unless
+ * the API can sell it now (see services/billing/billingVisibility.js).
+ *
+ * @param {string} orgId
+ * @param {Array<{id: string}>} subscriptionPlans  the API's plans, by handle
+ * @param {string} [apiUuid]  the API; without it no paid plan is offered
+ */
+async function appendSubscriptionPlanDetails(orgId, subscriptionPlans, apiUuid) {
     const enrichedPlans = [];
     if (subscriptionPlans) {
+        let sellable;
         for (const plan of subscriptionPlans) {
-            const subscriptionPlan = await loadSubscriptionPlan(orgId, plan.id);
-            if (!subscriptionPlan) {
+            const planRow = await subscriptionPlanDao.getByName(orgId, plan.id);
+            if (!planRow) {
                 logger.warn('Subscription plan not found, skipping', {
                     orgId,
                     id: plan.id
                 });
                 continue;
             }
+            const subscriptionPlan = new subscriptionPlanDTO(planRow);
+            if (subscriptionPlan.paid) {
+                // Loaded once, and only when the API offers a paid plan.
+                sellable = sellable || await billingVisibility.sellablePlanUuids(orgId, apiUuid);
+                if (!sellable.has(planRow.uuid)) continue;
+            }
             enrichedPlans.push({
                 id: subscriptionPlan.id,
                 displayName: subscriptionPlan.displayName,
                 description: subscriptionPlan.description,
                 limits: subscriptionPlan.limits || [],
+                paid: subscriptionPlan.paid,
+                pricing: subscriptionPlan.pricing,
             });
         }
     }
     return enrichedPlans;
 }
-
-const loadSubscriptionPlan = async (orgId, planName) => {
-
-    try {
-        const planData = await subscriptionPlanDao.getByName(orgId, planName);
-        if (planData) {
-            return new subscriptionPlanDTO(planData);
-        } else {
-            throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
-        }
-    } catch (error) {
-        logger.error("Error occurred while loading subscription plans", {
-            orgId: orgId,
-            planName: planName,
-            error: error.message,
-            stack: error.stack
-        });
-        return null;
-    }
-}
-
 
 async function listFiles(path) {
 
@@ -1401,30 +1451,6 @@ async function listFiles(path) {
         });
     });
     return files;
-}
-
-async function findFileByNameRecursive(rootPath, targetNames) {
-    const normalizedTargetNames = new Set(Array.from(targetNames).map(name => String(name).toLowerCase()));
-    const stack = [rootPath];
-
-    while (stack.length > 0) {
-        const currentPath = stack.pop();
-        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.name === '.DS_Store' || entry.name === '__MACOSX') {
-                continue;
-            }
-            const fullPath = path.join(currentPath, entry.name);
-            if (entry.isDirectory()) {
-                stack.push(fullPath);
-                continue;
-            }
-            if (normalizedTargetNames.has(entry.name.toLowerCase())) {
-                return fullPath;
-            }
-        }
-    }
-    return null;
 }
 
 function normalizeStringArray(value) {
@@ -1454,6 +1480,11 @@ function resolveApiType(apiType) {
         );
     }
     return constants.API_TYPE[keyword];
+}
+
+/** The path segment of an artifact's page in a view: "mcp" for an MCP server, "api" for any API. */
+function artifactPageSection(apiType) {
+    return apiType === constants.API_TYPE.MCP ? 'mcp' : 'api';
 }
 
 function filterAllowedAPIs(searchResults, allowedAPIs) {
@@ -1552,8 +1583,6 @@ module.exports = {
     resolveApiIdInView,
     sendError,
     retrieveContentType,
-    getAPIFileContent,
-    getAPIImages,
     getAPIDocLinks,
     isTextFile,
     validateIDP,
@@ -1564,10 +1593,9 @@ module.exports = {
     readFilesInDirectory,
     validateTemplateExpressions,
     appendAPIImageURL,
+    apiImageUrl,
     appendSubscriptionPlanDetails,
     listFiles,
-    readDocFiles,
-    findFileByNameRecursive,
     unzipDirectory,
     createZipBuffer,
     readDirTree,
@@ -1576,9 +1604,9 @@ module.exports = {
     requireArtifactTypeFromPath,
     isAiDisabledForPortal,
     resolveAiEnabled,
-    isImageFile,
     normalizeStringArray,
     resolveApiType,
+    artifactPageSection,
     toPaginatedList,
     resolveActor,
     filePrefix,

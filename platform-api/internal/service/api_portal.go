@@ -86,6 +86,17 @@ type APIPortalService struct {
 	authRegistry *APIPortalAuthRegistry
 	identity     *IdentityService
 	slogger      *slog.Logger
+	webhooks     portalSecretRemover // optional; nil leaves the portal's webhook secret alone
+}
+
+// portalSecretRemover is the part of WebhookSecretService that deleting a portal needs.
+type portalSecretRemover interface {
+	DeletePortalSecret(ctx context.Context, orgID, portalHandle string) error
+}
+
+// SetWebhookSecrets makes DeleteAPIPortal remove the portal's own webhook secret with it.
+func (s *APIPortalService) SetWebhookSecrets(w portalSecretRemover) {
+	s.webhooks = w
 }
 
 // NewAPIPortalService constructs an APIPortalService.
@@ -274,10 +285,33 @@ func (s *APIPortalService) UpdateAPIPortalStatus(handle, orgID, updatedBy, statu
 	// repository.ErrAPIPortalNotPending is a normal outcome for concurrent pollers
 	// racing the state machine (see repository docs); it flows through unchanged
 	// so plugin callers can detect it via errors.Is and drop their write silently.
-	if err := s.portalRepo.UpdateStatus(portal.ID, orgID, strings.TrimSpace(updatedBy), status); err != nil {
+	// A transition no user made keeps the row's updated_by; the audit names
+	// the user the row kept.
+	actor, err := s.portalRepo.UpdateStatus(portal.ID, orgID, strings.TrimSpace(updatedBy), status)
+	if err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, strings.TrimSpace(updatedBy))
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
+	return nil
+}
+
+// ReopenAPIPortal moves an active or failed portal back to pending, for a
+// change that takes it out of service until the change completes; the change's
+// owner later moves it on with UpdateAPIPortalStatus. A portal that is already
+// pending returns ErrAPIPortalPending (unwrapped, for errors.Is).
+func (s *APIPortalService) ReopenAPIPortal(handle, orgID, updatedBy string) error {
+	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
+	if err != nil {
+		return err
+	}
+	if portal == nil {
+		return apperror.APIPortalNotFound.New()
+	}
+	actor, err := s.portalRepo.Reopen(portal.ID, orgID, strings.TrimSpace(updatedBy))
+	if err != nil {
+		return err
+	}
+	_ = s.auditRepo.Record("UPDATE_STATUS", portal.ID, "api_portal", orgID, actor)
 	return nil
 }
 
@@ -465,6 +499,14 @@ func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
 	}
 	if err := s.portalRepo.Delete(portal.ID, orgID); err != nil {
 		return err
+	}
+	// After the record: a failed portal delete must not strip the secret from a portal that is
+	// still live. A secret left behind here belongs to no portal and is removed through the
+	// webhook secret API, so a failure is logged rather than failing a delete that took effect.
+	if s.webhooks != nil {
+		if err := s.webhooks.DeletePortalSecret(context.Background(), orgID, portal.Handle); err != nil && s.slogger != nil {
+			s.slogger.Error("Failed to delete webhook secret of deleted api portal", "orgId", orgID, "handle", portal.Handle, "error", err)
+		}
 	}
 	_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, strings.TrimSpace(actor))
 	s.invalidateCachedAuthProvider(portal.Handle, portal.OrganizationID)

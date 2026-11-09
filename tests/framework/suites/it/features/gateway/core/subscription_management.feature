@@ -461,3 +461,106 @@ Feature: Subscription management
       {"externalRefId":"${CTX:subRef}","apiId":"${CTX:apiName}","subscriptionToken":"${CTX:subToken}"}
       """
     Then the response status should be 201
+
+  Scenario: Billing identifiers set at creation are returned and survive plan, token and status changes
+    Given I generate a unique value from "sub-mgmt-billing-gold" and store it as "goldPlanName"
+    When I send a "POST" request to the "gateway-controller" service at "/subscription-plans" with body:
+      """
+      {"planName":"${CTX:goldPlanName}","throttleLimitCount":100,"throttleLimitUnit":"Min"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "goldPlanId"
+    And I register the "subscription-plan" "${CTX:goldPlanId}" for cleanup
+    Given I generate a unique value from "sub-mgmt-billing-silver" and store it as "silverPlanName"
+    When I send a "POST" request to the "gateway-controller" service at "/subscription-plans" with body:
+      """
+      {"planName":"${CTX:silverPlanName}","throttleLimitCount":50,"throttleLimitUnit":"Min"}
+      """
+    Then the response status should be 201
+    And I store the JSON response field "id" as "silverPlanId"
+    And I register the "subscription-plan" "${CTX:silverPlanId}" for cleanup
+
+    Given I generate a unique value from "sub-mgmt-billing" and store it as "apiName"
+    And I generate a unique API context from "/sub-mgmt-billing" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                       |
+      | name                   | ${CTX:apiName}                                  |
+      | spec.displayName       | ${CTX:apiName}                                  |
+      | spec.version           | v1.0                                            |
+      | spec.context           | ${CTX:apiContext}/$version                      |
+      | spec.subscriptionPlans | ["${CTX:goldPlanName}","${CTX:silverPlanName}"] |
+      | spec.upstream.main.url | http://testbench:3002                           |
+      | spec.operations        | [{"method":"GET","path":"/health","policies":[{"name":"subscription-validation","version":"v1","params":{"subscriptionKeyHeader":"Subscription-Key"}}]}] |
+    Then the response should be successful
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 403
+
+    Given I generate a unique value from "sub-mgmt-billing" and store it as "subRef"
+    And I generate a unique value from "sub-mgmt-billing-token" and store it as "subToken"
+    And I generate a unique value from "sub-mgmt-billing-customer" and store it as "customerId"
+    And I generate a unique value from "sub-mgmt-billing-subscription" and store it as "billingSubId"
+    When I send a "POST" request to the "gateway-controller" service at "/subscriptions" with body:
+      """
+      {"externalRefId":"${CTX:subRef}","apiId":"${CTX:apiName}","subscriptionPlanId":"${CTX:goldPlanId}","subscriptionToken":"${CTX:subToken}","billingCustomerId":"${CTX:customerId}","billingSubscriptionId":"${CTX:billingSubId}"}
+      """
+    Then the response status should be 201
+    And I register the "subscription" "${CTX:subRef}" for cleanup
+    And the JSON response field "billingCustomerId" should be "${CTX:customerId}"
+    And the JSON response field "billingSubscriptionId" should be "${CTX:billingSubId}"
+
+    When I send a "GET" request to the "gateway-controller" service at "/subscriptions/${CTX:subRef}"
+    Then the response status should be 200
+    And the JSON response field "billingCustomerId" should be "${CTX:customerId}"
+    And the JSON response field "billingSubscriptionId" should be "${CTX:billingSubId}"
+    When I send a "GET" request to the "gateway-controller" service at "/subscriptions?apiId=${CTX:apiName}"
+    Then the response status should be 200
+    And the JSON response array "subscriptions" should contain an item with "billingCustomerId" equal to "${CTX:customerId}"
+
+    # A plan switch keeps the billing identifiers.
+    When I send a "PUT" request to the "gateway-controller" service at "/subscriptions/${CTX:subRef}" with body:
+      """
+      {"subscriptionPlanId":"${CTX:silverPlanId}"}
+      """
+    Then the response status should be 200
+    And the JSON response field "subscriptionPlanId" should be "${CTX:silverPlanId}"
+    And the JSON response field "billingCustomerId" should be "${CTX:customerId}"
+    And the JSON response field "billingSubscriptionId" should be "${CTX:billingSubId}"
+
+    # So does a token rotation.
+    Given I generate a unique value from "sub-mgmt-billing-new-token" and store it as "newToken"
+    When I send a "PUT" request to the "gateway-controller" service at "/subscriptions/${CTX:subRef}" with body:
+      """
+      {"subscriptionToken":"${CTX:newToken}"}
+      """
+    Then the response status should be 200
+    And the JSON response field "billingCustomerId" should be "${CTX:customerId}"
+    And the JSON response field "billingSubscriptionId" should be "${CTX:billingSubId}"
+    When I set header "Subscription-Key" to "${CTX:newToken}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
+
+    # An INACTIVE subscription, as a paid subscription that stopped paying becomes, is refused.
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I send a "PUT" request to the "gateway-controller" service at "/subscriptions/${CTX:subRef}" with body:
+      """
+      {"status":"INACTIVE"}
+      """
+    Then the response status should be 200
+    And the JSON response field "status" should be "INACTIVE"
+    And the JSON response field "billingCustomerId" should be "${CTX:customerId}"
+    When I set header "Subscription-Key" to "${CTX:newToken}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 403
+    Then the JSON response field "error" should be "forbidden"
+    And the JSON response field "message" should be "Subscription required for this API"
+
+    # Active again, with the same billing identifiers.
+    When I clear all headers
+    And I authenticate using basic auth as "admin"
+    And I send a "PUT" request to the "gateway-controller" service at "/subscriptions/${CTX:subRef}" with body:
+      """
+      {"status":"ACTIVE"}
+      """
+    Then the response status should be 200
+    And the JSON response field "billingCustomerId" should be "${CTX:customerId}"
+    And the JSON response field "billingSubscriptionId" should be "${CTX:billingSubId}"
+    When I set header "Subscription-Key" to "${CTX:newToken}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200

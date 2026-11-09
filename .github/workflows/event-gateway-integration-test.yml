@@ -28,6 +28,11 @@ on:
       - 'gateway/gateway-controller/**'
       - 'common/**'
       - 'sdk/**'
+      # Shared code the event gateway imports or builds into its images.
+      - 'httpkit/**'
+      - 'gateway/common/**'
+      - 'gateway/gateway-runtime/policy-engine/**'
+      - 'gateway/system-policies/analytics/**'
       - '.github/workflows/event-gateway-integration-test.yml'
 
 concurrency:
@@ -36,7 +41,23 @@ concurrency:
 
 jobs:
   integration-test:
+    name: Event gateway integration tests (${{ matrix.db }})
     runs-on: ubuntu-24.04
+    strategy:
+      # Each database is an independent check; one failing must not cancel the others.
+      fail-fast: false
+      matrix:
+        include:
+          - db: sqlite
+            make_target: test
+          - db: postgres
+            make_target: test-postgres
+          # SQL Server is disabled for now; uncomment to run it again.
+          # - db: sqlserver
+          #   make_target: test-sqlserver
+    env:
+      # Used for both Compose interpolation and the runner-side sqlcmd checks below (SQL Server only).
+      MSSQL_SA_PASSWORD: EGW_Strong!Pass123
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -45,7 +66,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: '1.26.5'
+          go-version: '1.26.10'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up Docker Buildx
@@ -64,14 +85,100 @@ jobs:
       - name: Build webhook-listener image
         run: make -C event-gateway/webhook-listener build IMAGE_NAME=event-gateway/webhook-listener VERSION=local
 
+      - name: Verify event-gateway-controller uses PostgreSQL
+        if: matrix.db == 'postgres'
+        run: |
+          set -euo pipefail
+          cd event-gateway
+
+          PROJECT="egw-it-postgres-verify"
+          cleanup() {
+            docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml up -d postgres gateway-controller
+
+          timeout 90 bash -c '
+            until docker logs egw-it-gateway-controller 2>&1 | grep -qE "PostgreSQL storage initialized"; do
+              sleep 2
+            done
+          ' || {
+            echo "=== Controller startup timed out — gateway-controller logs ==="
+            docker logs egw-it-gateway-controller 2>&1 || true
+            exit 1
+          }
+
+          # Assert the full provisioned schema: core (artifacts) plus the
+          # event-gateway-specific tables the controller no longer creates for
+          # external DBs (websub_apis, webbroker_apis, webhook_secrets) — so a
+          # silently-failed pre-provisioning init hook is caught here.
+          table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
+            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('artifacts', 'websub_apis', 'webbroker_apis', 'webhook_secrets');")"
+          [ "$table_count" = "4" ]
+
+          conn_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
+            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name = 'gateway-controller';")"
+          [ "${conn_count:-0}" -ge 1 ]
+
+      - name: Verify event-gateway-controller uses SQL Server
+        if: matrix.db == 'sqlserver'
+        run: |
+          set -euo pipefail
+          cd event-gateway
+
+          PROJECT="egw-it-sqlserver-verify"
+          cleanup() {
+            docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+
+          docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml up -d sqlserver mssql-init gateway-controller
+
+          timeout 120 bash -c '
+            until docker logs egw-it-gateway-controller 2>&1 | grep -qE "SQLServer storage initialized"; do
+              sleep 2
+            done
+          ' || {
+            echo "=== Controller startup timed out — gateway-controller logs ==="
+            docker logs egw-it-gateway-controller 2>&1 || true
+            exit 1
+          }
+
+          # Dump controller logs on any subsequent failure so the cause is never hidden
+          # by the cleanup trap (otherwise an assertion failure tears everything down silently).
+          dump_logs() {
+            echo "=== gateway-controller logs ==="
+            docker logs egw-it-gateway-controller 2>&1 || true
+          }
+          trap 'dump_logs; cleanup' EXIT
+
+          # Assert the full provisioned schema: core (artifacts) plus the
+          # event-gateway-specific tables the controller no longer creates for
+          # external DBs (websub_apis, webbroker_apis, webhook_secrets) — so a
+          # silently-failed pre-provisioning init step is caught here.
+          table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml exec -T sqlserver \
+            /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d gateway_test -h -1 -W \
+            -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('artifacts', 'websub_apis', 'webbroker_apis', 'webhook_secrets')" | tr -d '[:space:]')"
+          echo "provisioned table_count=$table_count"
+          [ "$table_count" = "4" ]
+
+          # The controller's DSN sets 'app name=gateway-controller', so its sessions are
+          # tagged accordingly in sys.dm_exec_sessions (SQL Server's analog of pg_stat_activity).
+          conn_count="$(docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml exec -T sqlserver \
+            /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d gateway_test -h -1 -W \
+            -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE program_name = 'gateway-controller'" | tr -d '[:space:]')"
+          echo "gateway-controller conn_count=$conn_count"
+          [ "${conn_count:-0}" -ge 1 ]
+
       - name: Run integration tests
-        run: make -C event-gateway/it test
+        run: make -C event-gateway/it ${{ matrix.make_target }}
 
       - name: Upload compose logs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: compose-logs
+          name: compose-logs-${{ matrix.db }}
           path: event-gateway/it/logs/
           retention-days: 7
 
@@ -80,6 +187,12 @@ jobs:
         run: |
           echo "=== Docker Containers ==="
           docker ps -a
+
+          for ctr in egw-it-gateway-controller egw-it-event-gateway egw-it-kafka egw-it-${{ matrix.db }}; do
+            echo ""
+            echo "=== Docker logs: $ctr ==="
+            docker logs "$ctr" 2>&1 || echo "(container $ctr not found)"
+          done
 
           echo ""
           echo "=== event-gateway/it/logs Directory Contents ==="

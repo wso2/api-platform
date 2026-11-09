@@ -41,6 +41,9 @@ import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { applicationApis } from '../../../../apis/applicationApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { Application } from '../../../../utils/types';
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from '../../../../Components/common/ReadOnlyTooltip';
 
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
@@ -51,6 +54,9 @@ export default function EditApplication() {
   const { currentOrganization, currentProject } = useAppShell();
   const { updateApplication, getApplicationById } = useApplications();
   const showSnackbar = useAIWorkspaceSnackbar();
+  // A read-only organization may not update anything; the control plane refuses
+  // the update, so the form must not offer to send it.
+  const isOrgReadOnly = useOrgReadOnly();
   const apimBaseUrl = PLATFORM_API_BASE_URL;
 
   const isProjectLevel = Boolean(currentProject?.id);
@@ -232,13 +238,15 @@ export default function EditApplication() {
           <Button variant="outlined" color="secondary" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
-          >
-            {isSubmitting ? 'Updating...' : 'Update'}
-          </Button>
+          <ReadOnlyTooltip>
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={isSubmitting || isOrgReadOnly || !isFormValid()}
+            >
+              {isSubmitting ? 'Updating...' : 'Update'}
+            </Button>
+          </ReadOnlyTooltip>
         </Box>
       </Box>
     </PageContent>

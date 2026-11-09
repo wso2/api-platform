@@ -35,18 +35,33 @@ import (
 const (
 	UpdateCmdLiteral = "update"
 	UpdateCmdExample = `# Update a subscription's status
-ap gateway subscription update --id sub-1 --status REVOKED`
+ap gateway subscription update --id sub-1 --status REVOKED
+
+# Move a subscription to another plan
+ap gateway subscription update --id sub-1 --subscription-plan-id gold-plan-id
+
+# Remove the plan from a subscription
+ap gateway subscription update --id sub-1 --clear-subscription-plan
+
+# Rotate the subscription token (prompts for the new token with hidden input)
+ap gateway subscription update --id sub-1 --rotate-token`
 )
 
 var (
-	updateSubscriptionID string
-	updateStatus         string
+	updateSubscriptionID    string
+	updateStatus            string
+	updatePlanID            string
+	updateClearPlan         bool
+	updateSubscriptionToken string
+	updateRotateToken       bool
 )
 
 var updateCmd = &cobra.Command{
-	Use:     UpdateCmdLiteral,
-	Short:   "Update a subscription on the gateway",
-	Long:    "Updates an existing subscription's status.",
+	Use:   UpdateCmdLiteral,
+	Short: "Update a subscription on the gateway",
+	Long: "Updates an existing subscription in place. Only the fields you pass are changed: " +
+		"the status, the subscription plan, and the subscription token. Rotating the token stops the previous " +
+		"token from working as soon as the update succeeds.",
 	Example: UpdateCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runUpdateCommand(cmd); err != nil {
@@ -59,22 +74,96 @@ var updateCmd = &cobra.Command{
 func init() {
 	gateway.AddSelectionFlags(updateCmd)
 	utils.AddStringFlag(updateCmd, utils.FlagID, &updateSubscriptionID, "", "Subscription ID (required)")
-	utils.AddStringFlag(updateCmd, utils.FlagStatus, &updateStatus, "", "Subscription status (ACTIVE, INACTIVE, REVOKED) (required)")
+	utils.AddStringFlag(updateCmd, utils.FlagStatus, &updateStatus, "", "New subscription status (ACTIVE, INACTIVE, REVOKED)")
+	utils.AddStringFlag(updateCmd, utils.FlagSubscriptionPlanID, &updatePlanID, "", "ID of the subscription plan to move the subscription to")
+	utils.AddBoolFlag(updateCmd, utils.FlagClearSubscriptionPlan, &updateClearPlan, false, "Remove the subscription plan from the subscription")
+	utils.AddBoolFlag(updateCmd, utils.FlagRotateToken, &updateRotateToken, false, "Rotate the subscription token; prompts for the new token with hidden input")
+	utils.AddStringFlag(updateCmd, utils.FlagSubscriptionToken, &updateSubscriptionToken, "", "New subscription token (not recommended, use --rotate-token)")
 
 	updateCmd.MarkFlagRequired(utils.FlagID)
-	updateCmd.MarkFlagRequired(utils.FlagStatus)
+}
+
+// subscriptionUpdateOptions holds the requested changes for a subscription update. statusSet and
+// planSet record whether the --status and --subscription-plan-id flags were supplied at all.
+type subscriptionUpdateOptions struct {
+	status    string
+	statusSet bool
+	planID    string
+	planSet   bool
+	clearPlan bool
+	token     string
+}
+
+// buildUpdatePayload builds the partial-update body. Only requested fields are included, because the
+// gateway leaves omitted fields unchanged; a cleared plan is sent as an explicit null.
+func buildUpdatePayload(opts subscriptionUpdateOptions) (map[string]interface{}, error) {
+	status := strings.TrimSpace(opts.status)
+	planID := strings.TrimSpace(opts.planID)
+	token := strings.TrimSpace(opts.token)
+
+	if opts.clearPlan && opts.planSet {
+		return nil, fmt.Errorf("--%s and --%s cannot be used together", utils.FlagSubscriptionPlanID, utils.FlagClearSubscriptionPlan)
+	}
+	if opts.statusSet && status == "" {
+		return nil, fmt.Errorf("--%s must not be empty", utils.FlagStatus)
+	}
+	if opts.planSet && planID == "" {
+		return nil, fmt.Errorf("--%s must not be empty", utils.FlagSubscriptionPlanID)
+	}
+
+	payload := map[string]interface{}{}
+	if status != "" {
+		payload["status"] = status
+	}
+	if planID != "" {
+		payload["subscriptionPlanId"] = planID
+	}
+	if opts.clearPlan {
+		payload["subscriptionPlanId"] = nil
+	}
+	if token != "" {
+		payload["subscriptionToken"] = token
+	}
+	if len(payload) == 0 {
+		return nil, fmt.Errorf("nothing to update: pass at least one of --%s, --%s, --%s or --%s",
+			utils.FlagStatus, utils.FlagSubscriptionPlanID, utils.FlagClearSubscriptionPlan, utils.FlagRotateToken)
+	}
+	return payload, nil
 }
 
 func runUpdateCommand(cmd *cobra.Command) error {
 	if strings.TrimSpace(updateSubscriptionID) == "" {
 		return fmt.Errorf("--%s is required", utils.FlagID)
 	}
-	if strings.TrimSpace(updateStatus) == "" {
-		return fmt.Errorf("--%s is required", utils.FlagStatus)
+	if updateRotateToken && strings.TrimSpace(updateSubscriptionToken) != "" {
+		return fmt.Errorf("--%s and --%s cannot be used together", utils.FlagRotateToken, utils.FlagSubscriptionToken)
+	}
+	if cmd.Flags().Changed(utils.FlagSubscriptionToken) && strings.TrimSpace(updateSubscriptionToken) == "" {
+		return fmt.Errorf("--%s must not be empty", utils.FlagSubscriptionToken)
 	}
 
-	payload := map[string]interface{}{
-		"status": strings.TrimSpace(updateStatus),
+	token := updateSubscriptionToken
+	if updateRotateToken {
+		var err error
+		token, err = utils.PromptPassword("Enter the new subscription token: ")
+		if err != nil {
+			return err
+		}
+		if token == "" {
+			return fmt.Errorf("the new subscription token must not be empty")
+		}
+	}
+
+	payload, err := buildUpdatePayload(subscriptionUpdateOptions{
+		status:    updateStatus,
+		statusSet: cmd.Flags().Changed(utils.FlagStatus),
+		planID:    updatePlanID,
+		planSet:   cmd.Flags().Changed(utils.FlagSubscriptionPlanID),
+		clearPlan: updateClearPlan,
+		token:     token,
+	})
+	if err != nil {
+		return err
 	}
 
 	data, err := json.Marshal(payload)

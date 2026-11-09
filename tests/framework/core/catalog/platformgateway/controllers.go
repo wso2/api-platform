@@ -42,25 +42,43 @@ const (
 	xdsControllerConfigFile  = "tests/framework/core/catalog/platformgateway/resources/controller-xds.toml"
 )
 
-// Validate rejects a controller count the gateway cannot run.
+// Validate rejects a controller count the gateway cannot run and replica numbers below 1 or
+// listed twice; ValidateReplicas checks the upper bound once the block's replica count is known.
 func (w *PlatformGatewayWiring) Validate() error {
 	if w.Controllers < 0 || w.Controllers > 2 {
 		return fmt.Errorf("controllers must be 1 or 2, got %d", w.Controllers)
 	}
+	seen := map[int]bool{}
+	for _, replica := range w.SecondOrganizationReplicas {
+		if replica < 1 {
+			return fmt.Errorf("secondOrganizationReplicas: replica %d must be 1 or more", replica)
+		}
+		if seen[replica] {
+			return fmt.Errorf("secondOrganizationReplicas: replica %d is listed twice", replica)
+		}
+		seen[replica] = true
+	}
 	return nil
 }
 
-// applyPlatformGatewayWiring selects the two-controller gateway for controllers: 2 and
-// keeps the registered definition otherwise.
+// applyPlatformGatewayWiring selects the two-controller gateway for controllers: 2, adds the
+// gateway signing keys for signingKeys: true, and keeps the registered definition otherwise.
 func applyPlatformGatewayWiring(def *components.Definition, wiring any) (*components.Definition, error) {
 	w, ok := wiring.(*PlatformGatewayWiring)
 	if !ok {
 		return nil, fmt.Errorf("platform-gateway wiring must be %T, got %T", &PlatformGatewayWiring{}, wiring)
 	}
-	if w.Controllers < 2 {
-		return def, nil
+	out := def
+	if w.Controllers >= 2 {
+		var err error
+		if out, err = withXDSController(out); err != nil {
+			return nil, err
+		}
 	}
-	return withXDSController(def)
+	if w.SigningKeys {
+		return withSigningKeys(out)
+	}
+	return out, nil
 }
 
 // withXDSController returns a copy of def that runs a second controller on the same

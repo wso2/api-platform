@@ -167,15 +167,16 @@ function stripBrackets(hostname) {
  * Address/scheme/TLS policy comes from the key manager's own entry; the
  * time and byte bounds come from the global [api_portal.key_manager_client]
  * section, since those are deployment-wide resource limits rather than
- * statements about one host.
+ * statements about one host. A caller that is not a key manager (the billing
+ * providers) passes its own bounds as `limits`, in the same shape.
  *
- * @param {ClientPolicy & { clientCert?: object }} [policy]
+ * @param {ClientPolicy & { clientCert?: object, limits?: object }} [policy]
  * @returns {import('axios').AxiosInstance}
  */
 function buildClient(policy = {}) {
     const { insecureSkipVerify, allowPrivate } = resolvePolicy(policy);
     const clientCert = policy.clientCert || null;
-    const cfg = clientConfig();
+    const cfg = policy.limits || clientConfig();
     const lookup = createGuardedLookup({ allowPrivate });
     // Same cipher/curve/version tuning as every other outbound client in this
     // portal; rejectUnauthorized and the guarded lookup are specific to this

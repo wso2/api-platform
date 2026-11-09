@@ -1853,6 +1853,71 @@ List of gateway status information for polling
 |list|[[RESTAPI](#schemarestapi)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
+## RESTAPIVersionListResponse
+
+<a id="schemarestapiversionlistresponse"></a>
+<a id="schema_RESTAPIVersionListResponse"></a>
+<a id="tocSrestapiversionlistresponse"></a>
+<a id="tocsrestapiversionlistresponse"></a>
+
+```json
+{
+  "displayName": "reading-list-api",
+  "versionsAvailable": true,
+  "count": 2,
+  "list": [
+    {
+      "id": "69942b1952c01e01cb249a9b",
+      "version": "v1.0",
+      "projectId": "default-project",
+      "context": "/default-project/reading-list-api/v1.0",
+      "lifeCycleStatus": "PUBLISHED",
+      "createdAt": "2019-08-24T14:15:22Z"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|The display name the versions were looked up by|
+|versionsAvailable|boolean|true|none|True when at least one REST API already uses this display name, meaning a create for<br>this display name adds a version to an existing API rather than creating a new one.|
+|count|integer|true|none|Number of versions in this response|
+|list|[[RESTAPIVersion](#schemarestapiversion)]|true|none|none|
+
+## RESTAPIVersion
+
+<a id="schemarestapiversion"></a>
+<a id="schema_RESTAPIVersion"></a>
+<a id="tocSrestapiversion"></a>
+<a id="tocsrestapiversion"></a>
+
+```json
+{
+  "id": "69942b1952c01e01cb249a9b",
+  "version": "v1.0",
+  "projectId": "default-project",
+  "context": "/default-project/reading-list-api/v1.0",
+  "lifeCycleStatus": "PUBLISHED",
+  "createdAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Unique handle/identifier of the REST API resource holding this version. Use it to<br>address the version through the other /rest-apis endpoints.|
+|version|string|true|none|Version identifier|
+|projectId|string|true|none|Handle (URL-friendly slug) of the project this version belongs to|
+|context|string|false|none|Context path this version is served on|
+|lifeCycleStatus|string|false|none|Current lifecycle status of this version|
+|createdAt|string(date-time)|false|none|Timestamp when this version was created|
+
 ## TokenRotationResponse
 
 <a id="schematokenrotationresponse"></a>
@@ -5348,6 +5413,410 @@ Secret metadata — never includes the plaintext value.
 |count|integer|true|none|Number of secrets in current response|
 |list|[[SecretSummary](#schemasecretsummary)]|true|none|[Secret metadata — never includes the plaintext value.]|
 |pagination|[Pagination](#schemapagination)|true|none|none|
+
+## ServiceAccount
+
+<a id="schemaserviceaccount"></a>
+<a id="schema_ServiceAccount"></a>
+<a id="tocSserviceaccount"></a>
+<a id="tocsserviceaccount"></a>
+
+```json
+{
+  "id": "ci-deployer",
+  "displayName": "CI deployer",
+  "description": "Deploys REST APIs from the release pipeline",
+  "clientId": "sa_acme_ci-deployer_3f9a1c",
+  "maskedSecret": "***9f2c1",
+  "roles": [
+    "ap_service_account"
+  ],
+  "status": "active",
+  "lastUsedAt": "2019-08-24T14:15:22Z",
+  "lastUsedIp": "203.0.113.7",
+  "secretRegeneratedAt": "2019-08-24T14:15:22Z",
+  "createdBy": "john.doe",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedBy": "john.doe",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+A service account. Never carries the plaintext secret.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Service account handle, generated from `displayName` and unique within the organization|
+|displayName|string|true|none|none|
+|description|string|true|none|What the account is for; may be empty|
+|clientId|string|true|read-only|none|
+|maskedSecret|string|true|read-only|none|
+|roles|[string]|true|none|The account's roles, from the role-to-scope mapping file|
+|status|string|true|none|none|
+|lastUsedAt|string(date-time)|false|read-only|none|
+|lastUsedIp|string|false|read-only|none|
+|secretRegeneratedAt|string(date-time)|false|read-only|none|
+|createdBy|string|false|read-only|none|
+|createdAt|string(date-time)|false|read-only|none|
+|updatedBy|string|false|read-only|none|
+|updatedAt|string(date-time)|false|read-only|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|disabled|
+
+## ServiceAccountListResponse
+
+<a id="schemaserviceaccountlistresponse"></a>
+<a id="schema_ServiceAccountListResponse"></a>
+<a id="tocSserviceaccountlistresponse"></a>
+<a id="tocsserviceaccountlistresponse"></a>
+
+```json
+{
+  "count": 1,
+  "list": [
+    {
+      "id": "ci-deployer",
+      "displayName": "CI deployer",
+      "description": "Deploys REST APIs from the release pipeline",
+      "clientId": "sa_acme_ci-deployer_3f9a1c",
+      "maskedSecret": "***9f2c1",
+      "roles": [
+        "ap_service_account"
+      ],
+      "status": "active",
+      "lastUsedAt": "2019-08-24T14:15:22Z",
+      "lastUsedIp": "203.0.113.7",
+      "secretRegeneratedAt": "2019-08-24T14:15:22Z",
+      "createdBy": "john.doe",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedBy": "john.doe",
+      "updatedAt": "2019-08-24T14:15:22Z"
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "offset": 0,
+    "limit": 10
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|count|integer|true|none|Number of service accounts in current response|
+|list|[[ServiceAccount](#schemaserviceaccount)]|true|none|[A service account. Never carries the plaintext secret.]|
+|pagination|[Pagination](#schemapagination)|true|none|none|
+
+## Role
+
+<a id="schemarole"></a>
+<a id="schema_Role"></a>
+<a id="tocSrole"></a>
+<a id="tocsrole"></a>
+
+```json
+{
+  "name": "ap_service_account",
+  "scopes": [
+    "ap:rest_api:read",
+    "ap:gateway:read"
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|none|
+|scopes|[string]|true|none|none|
+
+## RoleListResponse
+
+<a id="schemarolelistresponse"></a>
+<a id="schema_RoleListResponse"></a>
+<a id="tocSrolelistresponse"></a>
+<a id="tocsrolelistresponse"></a>
+
+```json
+{
+  "count": 1,
+  "list": [
+    {
+      "name": "ap_service_account",
+      "scopes": [
+        "ap:rest_api:read",
+        "ap:gateway:read"
+      ]
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "offset": 0,
+    "limit": 10
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|count|integer|true|none|none|
+|list|[[Role](#schemarole)]|true|none|none|
+|pagination|[Pagination](#schemapagination)|true|none|none|
+
+## ServiceAccountCreateRequest
+
+<a id="schemaserviceaccountcreaterequest"></a>
+<a id="schema_ServiceAccountCreateRequest"></a>
+<a id="tocSserviceaccountcreaterequest"></a>
+<a id="tocsserviceaccountcreaterequest"></a>
+
+```json
+{
+  "displayName": "CI deployer",
+  "description": "Deploys REST APIs from the release pipeline",
+  "roles": [
+    "ap_service_account"
+  ]
+}
+
+```
+
+The `id` is generated from `displayName`.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|none|
+|description|string|false|none|none|
+|roles|[string]|true|none|Roles from the role-to-scope mapping file. Any role is accepted.|
+
+## ServiceAccountUpdateRequest
+
+<a id="schemaserviceaccountupdaterequest"></a>
+<a id="schema_ServiceAccountUpdateRequest"></a>
+<a id="tocSserviceaccountupdaterequest"></a>
+<a id="tocsserviceaccountupdaterequest"></a>
+
+```json
+{
+  "displayName": "CI deployer",
+  "description": "Deploys REST APIs from the release pipeline",
+  "roles": [
+    "ap_service_account"
+  ],
+  "status": "disabled"
+}
+
+```
+
+Every field is optional.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|false|none|none|
+|description|string|false|none|none|
+|roles|[string]|false|none|Replaces the roles. Removing a role invalidates tokens<br>already issued; adding one does not.|
+|status|string|false|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|disabled|
+
+## ServiceAccountCredentials
+
+<a id="schemaserviceaccountcredentials"></a>
+<a id="schema_ServiceAccountCredentials"></a>
+<a id="tocSserviceaccountcredentials"></a>
+<a id="tocsserviceaccountcredentials"></a>
+
+```json
+{
+  "serviceAccount": {
+    "id": "ci-deployer",
+    "displayName": "CI deployer",
+    "description": "Deploys REST APIs from the release pipeline",
+    "clientId": "sa_acme_ci-deployer_3f9a1c",
+    "maskedSecret": "***9f2c1",
+    "roles": [
+      "ap_service_account"
+    ],
+    "status": "active",
+    "lastUsedAt": "2019-08-24T14:15:22Z",
+    "lastUsedIp": "203.0.113.7",
+    "secretRegeneratedAt": "2019-08-24T14:15:22Z",
+    "createdBy": "john.doe",
+    "createdAt": "2019-08-24T14:15:22Z",
+    "updatedBy": "john.doe",
+    "updatedAt": "2019-08-24T14:15:22Z"
+  },
+  "clientId": "sa_acme_ci-deployer_3f9a1c",
+  "clientSecret": "string"
+}
+
+```
+
+The only response that carries a plaintext secret. Returned on create and on
+regenerate. The secret is shown once and cannot be recovered.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|serviceAccount|[ServiceAccount](#schemaserviceaccount)|true|none|A service account. Never carries the plaintext secret.|
+|clientId|string|true|none|none|
+|clientSecret|string|true|none|apsa_ followed by 64 hex characters|
+
+## ServiceAccountTokenRequest
+
+<a id="schemaserviceaccounttokenrequest"></a>
+<a id="schema_ServiceAccountTokenRequest"></a>
+<a id="tocSserviceaccounttokenrequest"></a>
+<a id="tocsserviceaccounttokenrequest"></a>
+
+```json
+{
+  "grant_type": "client_credentials",
+  "client_id": "string",
+  "client_secret": "string",
+  "scope": "ap:rest_api:read ap:gateway:read"
+}
+
+```
+
+Send client_id and client_secret here, or with HTTP Basic instead.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|grant_type|string|true|none|none|
+|client_id|string|false|none|none|
+|client_secret|string|false|write-only|none|
+|scope|string|false|none|Space-separated scopes. Required when the server's<br>`auth.authorization.mode` is `scope`; ignored when it is `role`.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|grant_type|client_credentials|
+
+## ServiceAccountTokenResponse
+
+<a id="schemaserviceaccounttokenresponse"></a>
+<a id="schema_ServiceAccountTokenResponse"></a>
+<a id="tocSserviceaccounttokenresponse"></a>
+<a id="tocsserviceaccounttokenresponse"></a>
+
+```json
+{
+  "access_token": "string",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "scope": "ap:rest_api:read ap:rest_api:deployment:manage"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|access_token|string|true|none|none|
+|token_type|string|true|none|none|
+|expires_in|integer|true|none|Lifetime in seconds|
+|scope|string|false|none|none|
+
+## JWKSResponse
+
+<a id="schemajwksresponse"></a>
+<a id="schema_JWKSResponse"></a>
+<a id="tocSjwksresponse"></a>
+<a id="tocsjwksresponse"></a>
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "string",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "string",
+      "e": "AQAB",
+      "crv": "string",
+      "x": "string",
+      "y": "string"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|keys|[[JWK](#schemajwk)]|true|none|[An RSA or EC public signing key (RFC 7517)]|
+
+## JWK
+
+<a id="schemajwk"></a>
+<a id="schema_JWK"></a>
+<a id="tocSjwk"></a>
+<a id="tocsjwk"></a>
+
+```json
+{
+  "kty": "RSA",
+  "kid": "string",
+  "use": "sig",
+  "alg": "RS256",
+  "n": "string",
+  "e": "AQAB",
+  "crv": "string",
+  "x": "string",
+  "y": "string"
+}
+
+```
+
+An RSA or EC public signing key (RFC 7517)
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|kty|string|true|none|Key type, RSA or EC|
+|kid|string|true|none|Key ID. The RFC 7638 thumbprint of the key unless the operator set one.|
+|use|string|false|none|none|
+|alg|string|false|none|RS256 or PS256 for RSA, ES256 for P-256, ES384 for P-384|
+|n|string|false|none|RSA modulus|
+|e|string|false|none|RSA public exponent|
+|crv|string|false|none|EC curve, P-256 or P-384|
+|x|string|false|none|EC x coordinate, zero-padded to the curve size|
+|y|string|false|none|EC y coordinate, zero-padded to the curve size|
 
 ## GatewayTokenListResponse
 

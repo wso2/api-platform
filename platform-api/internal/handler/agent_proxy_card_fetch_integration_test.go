@@ -159,6 +159,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 		repository.NewAPIKeyRepo(db, registry),
 		gatewayEvents,
 		service.NewArtifactDefinitions(service.NewAgentProxyDefinition(agentRepo, &utils.AgentProxyUtils{})),
+		identity,
 		cfg,
 		slog.New(slog.NewJSONHandler(deployLogs, nil)),
 	)

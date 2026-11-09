@@ -29,7 +29,13 @@ export type AppPageProps = PageContentProps;
  * page decides its width and padding. Defaults match the console's standard
  * layout (full width, `py: 5`); any `PageContent` prop overrides them.
  */
-export function AppPage({ children, fullWidth = true, sx, ...pageContentProps }: AppPageProps) {
+export function AppPage({
+  children,
+  fullWidth = true,
+  sx,
+  ...pageContentProps
+}: AppPageProps) {
+
   return (
     <PageContent
       fullWidth={fullWidth}

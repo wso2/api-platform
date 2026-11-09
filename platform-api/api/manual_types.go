@@ -36,6 +36,10 @@ import (
 // silently: another actor already reached a terminal state.
 var ErrAPIPortalNotPending = errors.New("api portal is not in pending state")
 
+// ErrAPIPortalPending is returned by ReopenAPIPortal when the portal is
+// already pending: a provisioning or another change is still in progress.
+var ErrAPIPortalPending = errors.New("api portal is already pending")
+
 // UnpublishFromDevPortalRequest defines model for UnpublishFromDevPortalRequest.
 type UnpublishFromDevPortalRequest struct {
 	// DevPortalUuid UUID of the DevPortal to unpublish from

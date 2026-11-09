@@ -1,0 +1,29 @@
+name: wso2_apip_sys_jwks
+version: v1.0.0
+description: |
+  The gateway's internal JWKS system policy. It answers the gateway JWKS
+  endpoint (/.well-known/jwks): the public half of every gateway signing key
+  configured under [signing], so a receiver of anything the gateway signs —
+  backend JWTs, A2A Agent Card signatures — can verify it by kid.
+
+  Attached by the gateway controller to the one gateway-owned JWKS route on every
+  virtual host, never by an API author. It answers at the request-header phase
+  and the request never reaches an upstream.
+
+  GET and HEAD answer 200 with the JWK Set (application/jwk-set+json), a strong
+  ETag and Cache-Control: public with the configured jwks_cache_max_age, and 304
+  when If-None-Match already names the current set. Any other method answers
+  405. With no signing keys configured the set is empty ({"keys":[]}); the
+  endpoint itself is always present.
+
+  The response carries public key material only and no credentials, so it is
+  served with Access-Control-Allow-Origin: * for browser-based verifiers.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties: {}
+
+systemParameters:
+  type: object
+  properties: {}

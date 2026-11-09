@@ -100,6 +100,7 @@ import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 type FormState = {
   name: string;
@@ -1003,21 +1004,16 @@ function LLMProxyNewContent({
       setIsCreating(true);
       setFieldErrors({});
 
+      // The proxy calls its provider through the gateway, which adds the
+      // provider's own upstream credential, so the proxy needs a credential only
+      // to get past the provider's API key security. Without that it sends none,
+      // never the provider's upstream credential.
+      let providerAuthType = 'none';
+      let providerAuthHeader = '';
+      let providerAuthValue = '';
       // Encrypt the provider API key as a secret before storing it in the proxy
       // config — even though it is a platform-issued key, it is still a credential
       // that should not be persisted in plain text.
-      // Type, header and value move as one unit: an absent/'none' type carries no
-      // credential, so the header and value are cleared with it rather than being
-      // inherited from the provider and contradicting the type.
-      const inheritedAuthType = providerDetail?.upstream?.main?.auth?.type || 'none';
-      const inheritsCredential = inheritedAuthType !== 'none';
-      let providerAuthType = inheritedAuthType;
-      let providerAuthHeader = inheritsCredential
-        ? (providerDetail?.upstream?.main?.auth?.header ?? '')
-        : '';
-      let providerAuthValue = inheritsCredential
-        ? (providerDetail?.upstream?.main?.auth?.value ?? '')
-        : '';
       if (selectedProviderRequiresApiKey) {
         const rawKey = manualApiKeyValue.trim() || selectedProviderApiKeyValue || '';
         const isAlreadyPlaceholder = rawKey.includes('{{ secret ');
@@ -1818,6 +1814,12 @@ function LLMProxyNewContent({
     </>
   );
 
+  // When the organization is read-only, that — not the user's role — is why
+  // creation is unavailable, and saying "contact your admin" would send them
+  // after the wrong fix. Empty while the organization may write, so the
+  // permission wording stands.
+  const { readOnlyMessage } = useResourceLimits();
+
   if (!canCreateProxy) {
     return (
       <PageContent fullWidth>
@@ -1829,12 +1831,14 @@ function LLMProxyNewContent({
             />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.creation.unavailable.description"
-              defaultMessage={
-                'You do not have permission to create App LLM Proxies. Please contact your admin.'
-              }
-            />
+            {readOnlyMessage || (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.creation.unavailable.description"
+                defaultMessage={
+                  'You do not have permission to create App LLM Proxies. Please contact your admin.'
+                }
+              />
+            )}
           </Typography>
         </Stack>
       </PageContent>

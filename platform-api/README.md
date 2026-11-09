@@ -327,9 +327,10 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.deployments]` | Deployment caps and stuck-deployment timeout handling |
 | `[platform_api.gateway]` | Gateway registration verification toggles |
 | `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
-| `[platform_api.api_portal_publication]` | Time and retry limits for calls to an API Portal when publishing: `request_timeout`, `listing_request_timeout`, `max_retries`, `retry_backoff`, `overall_timeout` (validated together at startup) |
+| `[platform_api.api_portal_publication]` | Time and retry limits for calls to an API Portal when publishing: `request_timeout`, `listing_request_timeout`, `content_request_timeout`, `max_retries`, `retry_backoff`, `overall_timeout` (validated together at startup). With monetization, the listing push also creates the API's paid plans with the portal's billing provider: raise `listing_request_timeout` (e.g. `85s`) and `overall_timeout` (e.g. `110s`, below `server.timeouts.write`), and set `max_retries = 0` (see the config template) |
 | `[platform_api.webhook]` | API Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
 | `[platform_api.read_only]` | **Temporary** (`TEMP-READ-ONLY-MODE`): freeze every organization except an allowlist during the v1 → v2 migration — see [Read-only mode](#read-only-maintenance-mode--temporary) |
+| `[platform_api.mcp_server]` | MCP server at `/api/v0.9/mcp`, off by default: `enabled`, `max_request_bytes`, `public_url` (**required in `idp` mode**, for login discovery), `auth.audience` (**required in `idp` mode**; when `auth.idp.audience` is set, it must list this audience too, so REST routes then accept tokens meant for `/mcp`). `/mcp` signs in like every route; when `auth.authorization` is enabled, each tool checks the scopes of the REST routes it stands for. In read-only mode a frozen organization gets 503 on every `/mcp` call, reads included. Startup fails if a plugin overrides a route a tool uses. A reverse proxy on the same host must connect on a non-loopback address or send a loopback `Host`, or `/mcp` answers 403 |
 
 #### Authentication modes
 
@@ -339,10 +340,11 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 - **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key_file`, verified with the matching `public_key_file`. Used by the AI Workspace and API Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
-The paths that bypass authentication and scope enforcement — health/metrics probes, the login
-endpoint, and the internal routes authenticated by a gateway token instead of a user JWT — are not
-configurable: the list is a property of the product's own routing, and a wrong entry in it is an
-auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
+The paths that bypass authentication and scope enforcement — the health probes (`/health` for
+liveness and `/ready` for readiness, which answer every client unless `[platform_api.health] allowed_clients`
+narrows them), metrics probes, the login endpoint, and the internal routes authenticated by
+a gateway token instead of a user JWT — are not configurable: the list is a property of the
+product's own routing, and a wrong entry in it is an auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
 validated at startup. Use `auth.authorization.enabled` to control authorization enforcement.
 A config file still carrying `platform_api.auth.skip_paths` fails startup rather than having the
 key silently ignored.
@@ -552,7 +554,8 @@ What the freeze covers, beyond the HTTP routes:
 - **Background jobs**: the deployment timeout job and the startup LLM-template seeding skip
   frozen organizations.
 - **API Portal webhook** (`/api/internal/v0.9/webhook/events`): events for a frozen
-  organization are refused with 503 so the portal can retry after maintenance.
+  organization are refused. Like every failed delivery, the refusal is the generic `401`
+  response, so it reveals nothing about the organization; the reason is logged internally.
 - **Requests without an organization** in the context pass the guard only on the auth skip
   paths (gateway token, webhook signature, login), where the handler applies the check itself
   once the organization is known; on any other route a write without an organization is

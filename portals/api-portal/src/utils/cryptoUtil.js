@@ -27,8 +27,11 @@ const GCM_ALGO = "aes-256-gcm";
  * Create a standalone encrypt/decrypt pair for a given 64-char hex key.
  * Useful for encrypting webhook secrets, subscription tokens, etc.
  *
+ * `context`, when given, is bound to the payload (AES-GCM additional authenticated data): decrypting
+ * with any other `context` fails, so a payload can't be moved to a place it was not encrypted for.
+ *
  * @param {string} hexKey  64-character hex string (32 random bytes)
- * @returns {{ encrypt: (text: string) => string, decrypt: (payload: string) => string }}
+ * @returns {{ encrypt: (text: string, context?: string) => string, decrypt: (payload: string, context?: string) => string }}
  */
 function createCryptoUtil(hexKey) {
   if (!hexKey || !/^[0-9a-fA-F]{64}$/.test(hexKey)) {
@@ -40,16 +43,17 @@ function createCryptoUtil(hexKey) {
   }
   const keyBuf = Buffer.from(hexKey, "hex");
   return {
-    encrypt(text) {
+    encrypt(text, context) {
       if (typeof text !== "string") throw new TypeError("encrypt: text must be a string");
       const iv = crypto.randomBytes(GCM_IV_LENGTH);
       const cipher = crypto.createCipheriv(GCM_ALGO, keyBuf, iv);
+      if (context !== undefined) cipher.setAAD(Buffer.from(String(context), "utf8"));
       let encrypted = cipher.update(text, "utf8", "base64");
       encrypted += cipher.final("base64");
       const authTag = cipher.getAuthTag();
       return `gcm:${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted}`;
     },
-    decrypt(payload) {
+    decrypt(payload, context) {
       if (typeof payload !== "string") throw new TypeError("decrypt: payload must be a string");
       if (!payload.startsWith("gcm:")) throw new Error("decrypt: invalid payload format");
       const parts = payload.slice(4).split(":");
@@ -59,6 +63,7 @@ function createCryptoUtil(hexKey) {
       const authTag = Buffer.from(authTagStr, "base64");
       if (iv.length !== GCM_IV_LENGTH) throw new Error("decrypt: invalid IV length");
       const decipher = crypto.createDecipheriv(GCM_ALGO, keyBuf, iv);
+      if (context !== undefined) decipher.setAAD(Buffer.from(String(context), "utf8"));
       decipher.setAuthTag(authTag);
       let decrypted = decipher.update(encrypted, "base64", "utf8");
       decrypted += decipher.final("utf8");

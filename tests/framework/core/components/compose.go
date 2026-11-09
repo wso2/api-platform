@@ -52,6 +52,12 @@ type ComposeSpec struct {
 	// Env contains variables passed to Compose for interpolation.
 	Env map[string]string
 
+	// ProjectEnv contains variables set only in the Compose project environment, for
+	// interpolation and environment-sourced configs and secrets. Unlike Env, they are never
+	// written to a service env file, so a value may span lines and stays out of every
+	// container's environment.
+	ProjectEnv map[string]string
+
 	// CoverageServices lists services and artifact formats collected after shutdown.
 	CoverageServices []CoverageService
 
@@ -196,6 +202,7 @@ func (c *ComposeSpec) WithGenerated(files map[string][]byte) *ComposeSpec {
 		StagedFiles:          make(map[string]string, len(c.StagedFiles)),
 		GeneratedFiles:       make(map[string][]byte, len(files)+len(c.GeneratedFiles)),
 		Env:                  make(map[string]string, len(c.Env)),
+		ProjectEnv:           make(map[string]string, len(c.ProjectEnv)),
 		CoverageServices:     append([]CoverageService(nil), c.CoverageServices...),
 		BootAttempts:         c.BootAttempts,
 	}
@@ -204,6 +211,9 @@ func (c *ComposeSpec) WithGenerated(files map[string][]byte) *ComposeSpec {
 	}
 	for k, v := range c.Env {
 		out.Env[k] = v
+	}
+	for k, v := range c.ProjectEnv {
+		out.ProjectEnv[k] = v
 	}
 	for k, v := range c.GeneratedFiles {
 		out.GeneratedFiles[k] = append([]byte(nil), v...)

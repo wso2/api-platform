@@ -86,7 +86,7 @@ func depTSetup(t *testing.T) *depTEnv {
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 	svc := NewAgentDeploymentService(d.agentRepo, d.deployment, d.gatewayRepo, d.artifactRepo, d.apiKeyRepo,
 		events, NewArtifactDefinitions(NewAgentProxyDefinition(d.agentRepo, &utils.AgentProxyUtils{})),
-		cfg, newTestLogger())
+		newTestIdentityService(), cfg, newTestLogger())
 
 	env := &depTEnv{agentImportDeps: d, svc: svc, hub: hub, cfg: cfg}
 	env.proxy = env.createProxy(t, depTProxyHandle, constants.OriginCP)

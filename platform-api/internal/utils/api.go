@@ -470,7 +470,10 @@ func (u *APIUtil) upstreamAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth 
 // BuildAPIDeploymentYAML builds the deployment YAML struct from API model without marshalling
 func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymentYAML, error) {
 	operationList := make([]api.OperationRequest, 0)
-	for _, op := range apiModel.Configuration.Operations {
+	for i, op := range apiModel.Configuration.Operations {
+		if op.Request == nil {
+			return nil, fmt.Errorf("operation %d has no request definition", i)
+		}
 		operationList = append(operationList, api.OperationRequest{
 			Method:   api.OperationRequestMethod(op.Request.Method),
 			Path:     op.Request.Path,
@@ -478,7 +481,10 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 		})
 	}
 	channelList := make([]api.ChannelRequest, 0)
-	for _, ch := range apiModel.Channels {
+	for i, ch := range apiModel.Channels {
+		if ch.Request == nil {
+			return nil, fmt.Errorf("channel %d has no request definition", i)
+		}
 		channelList = append(channelList, api.ChannelRequest{
 			Method:   api.ChannelRequestMethod(ch.Request.Method),
 			Name:     ch.Request.Name,

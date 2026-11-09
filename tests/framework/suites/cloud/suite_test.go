@@ -145,10 +145,37 @@ func TestCloudSuite(t *testing.T) {
 		t.Fatalf("building source images: %v", err)
 	}
 
+	finalizer := cloudsteps.NewFinalizer()
+	// The starter hands the finalizer what it created, so the cleanup below removes it.
+	starter, err := cloudsteps.NewStarter(finalizer)
+	if err != nil {
+		t.Fatalf("creating the cloud run starter: %v", err)
+	}
+	// Cleanup runs after every runner has finished, also when a scenario failed or a runner
+	// panicked, and removes what the per-scenario cleanup left in the shared organisation.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		removed, err := finalizer.Finalize(ctx)
+		for _, resource := range removed {
+			t.Logf("cloud run finalizer removed a leftover: %s", resource)
+		}
+		if err != nil {
+			t.Errorf("cloud run finalizer left resources in the organisation: %v", err)
+		}
+	})
+
 	frameworkruntime.Run(t, narrowed, frameworkruntime.Deps{
 		RepoRoot:    root,
 		FeatureRoot: dir,
 		Steps: func(topo *frameworkruntime.Topology) (frameworkruntime.StepRegistrar, error) {
+			// The organisation must hold what the scenarios rely on, such as a gateway, before
+			// any runner starts; the first runner prepares it and the others share the result.
+			prepare, cancelPrepare := context.WithTimeout(context.Background(), 20*time.Minute)
+			defer cancelPrepare()
+			if err := starter.Start(prepare, topo); err != nil {
+				return nil, fmt.Errorf("preparing the cloud organisation: %w", err)
+			}
 			timeout := topo.PropagationTimeout
 			if timeout <= 0 {
 				timeout = retry.PropagationCeiling
@@ -160,7 +187,7 @@ func TestCloudSuite(t *testing.T) {
 			})
 			funnel := httpx.NewFunnel(client, 3, 2*time.Second)
 			return func(sc *godog.ScenarioContext) {
-				cloudsteps.Register(sc, topo, funnel)
+				finalizer.Register(sc, topo, funnel)
 			}, nil
 		},
 		CleanupDeleters: func(reg *cleanup.Registry, topo *frameworkruntime.Topology) {

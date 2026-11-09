@@ -72,6 +72,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 - [Get all REST APIs for an organization](rest-apis.md#get-all-rest-apis-for-an-organization)
 - [Create a new REST API](rest-apis.md#create-a-new-rest-api)
+- [List the versions of a REST API](rest-apis.md#list-the-versions-of-a-rest-api)
 - [Get REST API by ID](rest-apis.md#get-rest-api-by-id)
 - [Update REST API](rest-apis.md#update-rest-api)
 - [Delete REST API](rest-apis.md#delete-rest-api)
@@ -200,6 +201,18 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 - [Get subscription by ID](subscriptions.md#get-subscription-by-id)
 - [Update subscription](subscriptions.md#update-subscription)
 - [Delete subscription](subscriptions.md#delete-subscription)
+
+### [Service Accounts](service-accounts.md)
+
+- [List service accounts](service-accounts.md#list-service-accounts)
+- [Create a service account](service-accounts.md#create-a-service-account)
+- [Get a service account](service-accounts.md#get-a-service-account)
+- [Update a service account](service-accounts.md#update-a-service-account)
+- [Delete a service account](service-accounts.md#delete-a-service-account)
+- [Exchange client credentials for an access token](service-accounts.md#exchange-client-credentials-for-an-access-token)
+- [Service-account signing keys](service-accounts.md#service-account-signing-keys)
+- [Regenerate a service account's secret](service-accounts.md#regenerate-a-service-accounts-secret)
+- [List roles](service-accounts.md#list-roles)
 
 ### [Secrets](secrets.md)
 

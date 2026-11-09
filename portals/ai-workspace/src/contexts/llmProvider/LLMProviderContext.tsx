@@ -19,6 +19,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import type {
   LLMProvider,
+  Proxy,
   ProxiesResponse,
   UpdateLLMProviderRequest,
   APIKeyListResponse,
@@ -32,6 +33,7 @@ import {
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 
 // ============================================================================
 // Single LLM Provider Context - For managing a single provider by ID
@@ -230,10 +232,17 @@ export function LLMProviderProvider({ children, providerId }: LLMProviderProvide
     }
 
     try {
-      return await llmProviderApis.getLLMProviderProxies(
-        providerId,
-        organizationId,
-        PLATFORM_API_BASE_URL
+      // The collection endpoint defaults to limit=20 when unpaged — walk
+      // every page so a provider backing more than 20 proxies isn't
+      // silently truncated.
+      return await fetchAllPages<Proxy>((limit, offset) =>
+        llmProviderApis.getLLMProviderProxies(
+          providerId,
+          organizationId,
+          PLATFORM_API_BASE_URL,
+          limit,
+          offset
+        )
       );
     } catch (err) {
       logger.error(

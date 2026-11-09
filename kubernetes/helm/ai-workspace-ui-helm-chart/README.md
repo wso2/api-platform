@@ -228,5 +228,4 @@ every key below with `ai-workspace-ui.`.
 - `openshift.*`: an OpenShift Route to the UI (`openshift.routes.aiWorkspace`), rendered only
   when `openshift.enabled=true`. The Service serves HTTPS only, so the Route uses `passthrough`
   (default) or `reencrypt`. Security contexts are set through `deployment.podSecurityContext` /
-  `deployment.securityContext`, rendered as given. See the
-  [OpenShift deployment guide](../../../openshift/portals/ai-workspace/deployment-guide.md).
+  `deployment.securityContext`, rendered as given.

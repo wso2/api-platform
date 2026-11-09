@@ -34,11 +34,13 @@ import {
 } from '../../../../contexts/GatewayDeployContext';
 import { GatewayDeployMainSection } from '../../../../Components/GatewayDeploy';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
+import { AIEntityProvider } from '../../../../contexts/AIEntitiesContext';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import type { MCPServer } from '../../../../utils/types';
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 type ExternalServersDeployLayoutProps = {
   server: MCPServer | null;
@@ -50,7 +52,15 @@ function ExternalServersDeployLayout({ server }: ExternalServersDeployLayoutProp
 
   const hasDeployments = (deployments?.list ?? []).some((d) => d.status === 'DEPLOYED');
   const hasPolicies = (server?.policies?.length ?? 0) > 0;
-  const isReadOnly = Boolean(server?.readOnly);
+  // Whether the artifact itself was created from a gateway, which owns its
+  // runtime configuration. Kept separate from the flag below because only this
+  // one is true of the artifact: the gateway-managed banners and warnings speak
+  // about the gateway, and must not appear merely because the organization has
+  // gone read-only.
+  const isGatewayManagedServer = Boolean(server?.readOnly);
+  // Everything that only disables a control reads this one: an organization
+  // that may not write at all disables the same controls the gateway does.
+  const isReadOnly = useOrgReadOnly() || isGatewayManagedServer;
 
   const handleStepClick = (stepId: ExternalServerStepBannerStepId) => {
     if (stepId === 'add-policies') {
@@ -87,7 +97,7 @@ function ExternalServersDeployLayout({ server }: ExternalServersDeployLayoutProp
             defaultMessage="Deploy MCP Proxy to your Gateways"
           />
         </Typography>
-        {isReadOnly && (
+        {isGatewayManagedServer && (
           <Alert severity="info">
             This MCP proxy was created from a gateway. You can view its
             deployments, but deploy, redeploy, restore and undeploy actions are
@@ -164,12 +174,14 @@ export default function ExternalServersDeploy() {
   }
 
   return (
-    <GatewayDeployProvider
-      apiId={serverId}
-      resourceType="mcp-server"
-      readOnly={Boolean(server.readOnly)}
-    >
-      <ExternalServersDeployLayout server={server} />
-    </GatewayDeployProvider>
+    <AIEntityProvider type="mcp-server" id={serverId} initialEntity={server}>
+      <GatewayDeployProvider
+        apiId={serverId}
+        resourceType="mcp-server"
+        readOnly={Boolean(server.readOnly)}
+      >
+        <ExternalServersDeployLayout server={server} />
+      </GatewayDeployProvider>
+    </AIEntityProvider>
   );
 }

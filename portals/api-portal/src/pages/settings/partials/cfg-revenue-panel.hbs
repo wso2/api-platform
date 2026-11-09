@@ -1,0 +1,50 @@
+      <!-- ══ Usage & Revenue ══ -->
+      <div class="cfg-panel" id="cfg-revenue">
+        <div class="cfg-panel-header cfg-revenue-header">
+          <div>
+            <h2 class="cfg-panel-title">Usage &amp; Revenue</h2>
+            <p class="cfg-panel-desc">Revenue and billable usage from your paid subscription plans.</p>
+          </div>
+          {{#if billingConfiguration}}
+          <div class="cfg-revenue-controls">
+            <label class="cfg-revenue-search">
+              <i class="bi bi-search" aria-hidden="true"></i>
+              <input type="search" id="cfgRevenueSearch" class="form-control" placeholder="Subscriber, API or plan"
+                aria-label="Search by subscriber, API or plan" autocomplete="off">
+            </label>
+            <label class="cfg-revenue-period">Period
+              <select id="cfgRevenueMonths" class="form-select">
+                <option value="3">Last 3 months</option>
+                <option value="6">Last 6 months</option>
+                <option value="12">Last 12 months</option>
+                <option value="ALL">All time</option>
+              </select>
+            </label>
+          </div>
+          {{/if}}
+        </div>
+
+        {{#if billingConfiguration}}
+        <div id="cfgRevenueLoading" class="cfg-loader" role="status">
+          <span class="cfg-spinner" aria-hidden="true"></span>
+          <span class="visually-hidden">Loading invoices</span>
+        </div>
+        <div id="cfgRevenueNotice" class="cfg-billing-alert" role="status" hidden></div>
+        <div id="cfgRevenueBody" class="cfg-revenue-body" hidden>
+          <div class="cfg-revenue-cards" id="cfgRevenueCards"></div>
+
+          <section class="cfg-revenue-section">
+            <h3 class="cfg-revenue-title">Invoiced revenue by month</h3>
+            <div id="cfgRevenueChart"></div>
+            <p class="cfg-revenue-muted">Select a month to see only that month.</p>
+          </section>
+        </div>
+        {{else}}
+        <div class="cfg-billing-empty">
+          <i class="bi bi-graph-up"></i>
+          <div class="cfg-billing-empty-title">Track revenue and usage</div>
+          <p class="cfg-billing-empty-text">Set up billing to see revenue and usage from paid subscription plans.</p>
+          <a href="#cfg-billing" class="cfg-btn-primary cfg-revenue-goto-billing">Set up billing</a>
+        </div>
+        {{/if}}
+      </div><!-- /#cfg-revenue -->

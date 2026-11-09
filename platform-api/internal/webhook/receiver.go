@@ -24,6 +24,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/httpkit/httputil"
@@ -52,7 +54,8 @@ type apiKeyService interface {
 
 // subscriptionService is the subset of *service.SubscriptionService the receiver depends on.
 type subscriptionService interface {
-	CreateSubscription(apiID, kind, orgUUID, subscriberID string, applicationID, subscriptionPlanID *string, subscriptionToken, status, actor string) (*model.Subscription, error)
+	CreateSubscriptionWithBilling(apiID, kind, orgUUID, subscriberID string, applicationID, subscriptionPlanID *string, subscriptionToken, status, actor string, billing *model.SubscriptionBilling) (*model.Subscription, error)
+	ApplyBillingFromWebhook(orgUUID, apiHandle, kind, subscriberID string, billing *model.SubscriptionBilling) error
 	UpdateSubscription(subscriptionID, orgUUID, subscriberID, status, actor string) (*model.Subscription, error)
 	ChangePlan(subscriptionID, orgUUID, subscriberID, planUUID string) (*model.Subscription, error)
 	RegenerateToken(subscriptionID, orgUUID, subscriberID, newToken string) (*model.Subscription, error)
@@ -62,6 +65,24 @@ type subscriptionService interface {
 
 // organizationResolver resolves the API Portal organization handle (delivered as org.ref_id)
 // to the Platform API organization UUID that every downstream service and table is keyed by.
+// ErrSecretLookupFailed marks a failure to read a portal's secret from the store, as opposed to
+// the store answering that no such secret exists.
+var ErrSecretLookupFailed = errors.New("webhook secret lookup failed")
+
+// maxPortalSecretCandidates bounds how many of an organization's portal secrets one delivery
+// that carries no secret_hash is verified against, so an unauthenticated caller cannot make each
+// request cost one HMAC per retained secret of a large organization.
+const maxPortalSecretCandidates = 32
+
+// portalSecretSource resolves the PORTAL webhook secrets of an organization. A portal provisioned
+// with its own secret signs with it instead of cfg.Secret.
+type portalSecretSource interface {
+	// PortalSecretByHash returns the retained secret whose SecretHash is hash, or "" if none.
+	PortalSecretByHash(ctx context.Context, orgID, hash string) (string, error)
+	// PortalSecrets returns every retained secret, for portals that send no secret_hash.
+	PortalSecrets(ctx context.Context, orgID string) ([]string, error)
+}
+
 type organizationResolver interface {
 	GetOrganizationByHandle(handle string) (*model.Organization, error)
 }
@@ -76,17 +97,34 @@ type applicationService interface {
 	SetAPIKeyApplication(keyName, artifactRef, kind, appIDOrHandle, orgID, userID string) error
 }
 
+// subscriptionPlanService is the subset of *service.SubscriptionPlanService the receiver depends
+// on to copy plans created or changed in the API Portal.
+type subscriptionPlanService interface {
+	UpsertPlanFromWebhook(orgUUID, handle, name string, limitCount *int, limitUnit string, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error)
+	DeletePlanFromWebhook(orgUUID, handle string, occurredAt time.Time) error
+}
+
+// monetizationService is the subset of *service.MonetizationService the receiver depends on to
+// keep copies of the meters made in the API Portal.
+type monetizationService interface {
+	UpsertMeterFromWebhook(meter *model.Meter) error
+	DeleteMeterFromWebhook(orgUUID, handle string, occurredAt time.Time) error
+}
+
 // Receiver is the gin handler implementing the webhook processing flow.
 type Receiver struct {
-	cfg       config.Webhook
-	verifier  *Verifier
-	decryptor *Decryptor
-	apiKeys   apiKeyService
-	subs      subscriptionService
-	apps      applicationService
-	orgs      organizationResolver
-	readOnly  readOnlyMode // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
-	slogger   *slog.Logger
+	cfg           config.Webhook
+	verifier      *Verifier
+	decryptor     *Decryptor
+	portalSecrets portalSecretSource // optional; nil verifies against cfg.Secret only
+	apiKeys       apiKeyService
+	subs          subscriptionService
+	apps          applicationService
+	plans         subscriptionPlanService
+	monetization  monetizationService
+	orgs          organizationResolver
+	readOnly      readOnlyMode // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
+	slogger       *slog.Logger
 
 	handlers map[string]func(ctx context.Context, env *Envelope) error
 }
@@ -101,6 +139,8 @@ func NewReceiver(
 	apiKeys apiKeyService,
 	subs subscriptionService,
 	apps applicationService,
+	plans subscriptionPlanService,
+	monetization monetizationService,
 	orgs organizationResolver,
 	slogger *slog.Logger,
 ) (*Receiver, error) {
@@ -109,14 +149,16 @@ func NewReceiver(
 		return nil, err
 	}
 	r := &Receiver{
-		cfg:       cfg,
-		verifier:  NewVerifier(cfg.Secret, cfg.SignatureTolerance),
-		decryptor: decryptor,
-		apiKeys:   apiKeys,
-		subs:      subs,
-		apps:      apps,
-		orgs:      orgs,
-		slogger:   slogger,
+		cfg:          cfg,
+		verifier:     NewVerifier(cfg.Secret, cfg.SignatureTolerance),
+		decryptor:    decryptor,
+		apiKeys:      apiKeys,
+		subs:         subs,
+		apps:         apps,
+		plans:        plans,
+		orgs:         orgs,
+		monetization: monetization,
+		slogger:      slogger,
 	}
 	r.handlers = map[string]func(ctx context.Context, env *Envelope) error{
 		EventAPIKeyGenerated:              r.handleAPIKeyGenerated,
@@ -131,17 +173,62 @@ func NewReceiver(
 		EventApplicationUpdated:           r.handleApplicationUpdated,
 		EventApplicationDeleted:           r.handleApplicationDeleted,
 		EventAPIKeyApplicationUpdated:     r.handleAPIKeyApplicationUpdated,
+		EventSubscriptionPlanCreated:      r.handleSubscriptionPlanUpserted,
+		EventSubscriptionPlanUpdated:      r.handleSubscriptionPlanUpserted,
+		EventSubscriptionPlanDeleted:      r.handleSubscriptionPlanDeleted,
+		EventSubscriptionBillingUpdated:   r.handleSubscriptionBillingUpdated,
+		EventMeterCreated:                 r.handleMeterUpserted,
+		EventMeterUpdated:                 r.handleMeterUpserted,
+		EventMeterDeleted:                 r.handleMeterDeleted,
 	}
 	return r, nil
 }
 
+// SetPortalSecrets lets the receiver also accept deliveries signed with a per-portal secret.
+// cfg.Secret stays accepted, so portals provisioned before per-portal secrets keep working.
+func (r *Receiver) SetPortalSecrets(src portalSecretSource) { r.portalSecrets = src }
+
 // RegisterRoutes registers the webhook endpoint on the mux. Only called when the webhook is enabled.
 func (r *Receiver) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+RoutePath, middleware.MapErrors(r.slogger, r.ReceiveEvent))
+	mux.HandleFunc("POST "+RoutePath, middleware.MapErrors(r.slogger, r.rejectUniformly(r.ReceiveEvent)))
+}
+
+// rejectUniformly answers every failed delivery with one response, the unified 401, whatever the
+// reason: a bad signature, an unknown organization or secret, an invalid envelope, a read-only
+// organization, a store outage or a panic. The endpoint is reachable without authentication, so a
+// status or code that differed by cause would tell a caller which organizations and secret hashes
+// exist, how far a forged delivery got, and when the store is failing. The producer gains nothing
+// from the difference: it marks any non-2xx delivery failed without retrying.
+//
+// The real reason still reaches the log only: every failure carries its original code, status and
+// detail into the mapper's line, and a fault on this side (5xx) is also logged at ERROR with its
+// stack, as the mapper would have logged it.
+func (r *Receiver) rejectUniformly(next middleware.ErrorHandlerFunc) middleware.ErrorHandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) (err error) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				r.slogger.Error("Webhook delivery panicked", "panic", rec, "stack", string(debug.Stack()))
+				err = apperror.Unauthorized.New().WithLogMessage("webhook delivery rejected: panic recovered")
+			}
+		}()
+
+		if err = next(w, req); err == nil {
+			return nil
+		}
+		cause := apperror.FromError(err)
+		// A read-only rejection is an expected maintenance outcome, already logged at WARN.
+		if cause.HTTPStatus >= http.StatusInternalServerError && !apperror.OrganizationReadOnly.Is(cause) {
+			r.slogger.Error("Webhook delivery failed", "code", cause.Code, "status", cause.HTTPStatus,
+				"detail", cause.LogMessage, "error", err, "origin", cause.Origin(), "stack", cause.StackString())
+		}
+		return apperror.Unauthorized.Wrap(err).WithLogMessage(fmt.Sprintf(
+			"webhook delivery rejected (code=%s, status=%d): %s", cause.Code, cause.HTTPStatus, cause.LogMessage))
+	}
 }
 
 // ReceiveEvent runs the full webhook flow: size-limited read -> signature verify -> envelope
-// decode/validate -> idempotency -> dispatch -> mark processed.
+// decode/validate -> idempotency -> dispatch -> mark processed. The errors it returns are
+// classified for the log; the route answers every one of them alike (see rejectUniformly).
 func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error {
 	if !r.cfg.Enabled {
 		return apperror.NotFound.New().WithLogMessage("webhook endpoint is disabled")
@@ -157,10 +244,16 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 
 	// 1. Verify HMAC signature over the raw body. Per the unified auth-failure rule, this returns the
 	// same generic response as any other auth failure; the specific reason is internal-only.
-	if err := r.verifier.Verify(req.Header.Get(r.cfg.SignatureHeader), body, time.Now()); err != nil {
+	decryptor, err := r.authenticate(req.Context(), req.Header.Get(r.cfg.SignatureHeader), body)
+	if errors.Is(err, ErrSecretLookupFailed) {
+		return apperror.Internal.Wrap(err).
+			WithLogMessage("webhook portal secret lookup failed")
+	}
+	if err != nil {
 		return apperror.Unauthorized.Wrap(err).
 			WithLogMessage(fmt.Sprintf("webhook signature verification failed, clientIP=%s", req.RemoteAddr))
 	}
+	ctx := withDecryptor(req.Context(), decryptor)
 
 	// 2. Decode + validate the envelope.
 	env, err := DecodeEnvelope(body)
@@ -175,15 +268,15 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 
 	// 3. Resolve the organization handle (org.ref_id) to the Platform API organization UUID that all
 	//    downstream persistence is keyed by. The API Portal sends the handle; the services expect
-	//    the UUID. An unknown handle is a terminal 404 (not retryable) since the event references an
+	//    the UUID. An unknown handle is classified not-found, since the event references an
 	//    organization that does not exist in the control plane.
 	if err := r.resolveOrgUUID(env); err != nil {
 		log.Warn("Webhook organization resolution failed", "error", err)
 		return mapWebhookError(err)
 	}
 	log = log.With("orgId", env.OrgID)
-	if r.rejectIfReadOnly(w, env, log) { // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
-		return nil
+	if err := r.rejectIfReadOnly(env, log); err != nil { // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
+		return err
 	}
 
 	// 4. Dispatch to the matching handler. Duplicate (at-least-once) deliveries are made safe by
@@ -194,7 +287,7 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 		return apperror.ValidationFailed.New("Unsupported event type")
 	}
 
-	if err := handle(req.Context(), env); err != nil {
+	if err := handle(ctx, env); err != nil {
 		log.Error("Webhook event handling failed", "error", err)
 		return mapWebhookError(err)
 	}
@@ -202,6 +295,118 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 	log.Info("Webhook event processed")
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
 	return nil
+}
+
+// authenticate verifies the signature and returns the decryptor keyed by the secret that matched,
+// so field decryption uses the same secret the producer signed with.
+//
+// The envelope's org and secret_hash are read before anything is verified, so they only SELECT the
+// secret and are never trusted: a delivery that names a secret_hash is checked against exactly the
+// secret with that hash (a per-portal secret of that organization, or cfg.Secret), and is rejected
+// when no such secret is held. Only a delivery with no secret_hash, from a portal that predates it,
+// falls back to trying the organization's portal secrets and then cfg.Secret.
+func (r *Receiver) authenticate(ctx context.Context, header string, body []byte) (*Decryptor, error) {
+	now := time.Now()
+	env, err := DecodeEnvelope(body)
+	if err != nil {
+		env = &Envelope{} // unreadable body: nothing selects a secret; the global verifier decides
+	}
+
+	if env.SecretHash != "" {
+		secret, ok, err := r.secretForHash(ctx, env)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, ErrSignatureInvalid
+		}
+		if err := NewVerifier(secret, r.cfg.SignatureTolerance).Verify(header, body, now); err != nil {
+			return nil, err
+		}
+		return NewDecryptor(secret)
+	}
+
+	if !r.cfg.LegacySharedSecret {
+		// Legacy (hash-less) deliveries are switched off: nothing selects a secret, so fail now.
+		return nil, ErrSignatureInvalid
+	}
+
+	if r.portalSecrets != nil && strings.TrimSpace(header) != "" {
+		candidates := r.portalCandidates(ctx, env)
+		if len(candidates) > maxPortalSecretCandidates {
+			candidates = candidates[:maxPortalSecretCandidates]
+		}
+		for _, secret := range candidates {
+			if NewVerifier(secret, r.cfg.SignatureTolerance).Verify(header, body, now) != nil {
+				continue
+			}
+			return NewDecryptor(secret)
+		}
+	}
+	if err := r.verifier.Verify(header, body, now); err != nil {
+		return nil, err
+	}
+	return r.decryptor, nil
+}
+
+// secretForHash finds the secret an envelope's secret_hash names: cfg.Secret when the hash is its
+// hash (a portal seeded with the shared secret), else the organization's retained portal secret
+// with that hash.
+//
+// A failed lookup is an error of its own (ErrSecretLookupFailed), not "no such secret", so the log
+// tells a store outage from a bad signature. The caller sees the same response for both.
+func (r *Receiver) secretForHash(ctx context.Context, env *Envelope) (string, bool, error) {
+	if r.cfg.Secret != "" && env.SecretHash == SecretHash(r.cfg.Secret) {
+		return r.cfg.Secret, true, nil
+	}
+	if r.portalSecrets == nil || env.OrgID == "" {
+		return "", false, nil
+	}
+	org, err := r.orgs.GetOrganizationByHandle(env.OrgID)
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %v", ErrSecretLookupFailed, err)
+	}
+	if org == nil {
+		return "", false, nil // unknown organization: no secret to match
+	}
+	secret, err := r.portalSecrets.PortalSecretByHash(ctx, org.ID, env.SecretHash)
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %v", ErrSecretLookupFailed, err)
+	}
+	return secret, secret != "", nil
+}
+
+// portalCandidates returns the retained portal secrets of the organization an envelope names, or
+// nil when it names none or the lookup fails (cfg.Secret is still checked by the caller).
+func (r *Receiver) portalCandidates(ctx context.Context, env *Envelope) []string {
+	if env.OrgID == "" {
+		return nil
+	}
+	org, err := r.orgs.GetOrganizationByHandle(env.OrgID)
+	if err != nil || org == nil {
+		return nil
+	}
+	secrets, err := r.portalSecrets.PortalSecrets(ctx, org.ID)
+	if err != nil {
+		r.slogger.Warn("Webhook portal secret lookup failed", "error", err)
+		return nil
+	}
+	return secrets
+}
+
+type decryptorCtxKey struct{}
+
+// withDecryptor carries the decryptor chosen during authentication to the event handlers.
+func withDecryptor(ctx context.Context, d *Decryptor) context.Context {
+	return context.WithValue(ctx, decryptorCtxKey{}, d)
+}
+
+// decryptorFor returns the decryptor authentication selected, falling back to the configured one.
+func (r *Receiver) decryptorFor(ctx context.Context) *Decryptor {
+	if d, ok := ctx.Value(decryptorCtxKey{}).(*Decryptor); ok && d != nil {
+		return d
+	}
+	return r.decryptor
 }
 
 // resolveOrgUUID converts the organization handle carried in the envelope (org.ref_id, normalized

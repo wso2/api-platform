@@ -229,6 +229,17 @@ test('Enter commits the typed value instead of submitting the form', () => {
     assert.equal(input.value, '');
 });
 
+test('commit keeps a value typed but not yet entered, as a Save does before reading the chips', () => {
+    const { api, input } = build();
+    api.set(['existing']);
+    input.value = 'typed, also-typed';
+    api.commit();
+    assert.deepEqual(api.get(), ['existing', 'typed', 'also-typed']);
+    assert.equal(input.value, '');
+    api.commit();
+    assert.deepEqual(api.get(), ['existing', 'typed', 'also-typed'], 'nothing more is added from an empty input');
+});
+
 test('the separator key commits instead of being typed as a character', () => {
     const { api, input } = build();
     input.value = 'tag-one';

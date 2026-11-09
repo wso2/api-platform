@@ -55,6 +55,36 @@ const (
 	defaultTotalTokens      = 16
 )
 
+// KeyedPathPrefix is an OpenAI-dialect upstream that, like the real service, refuses any
+// credential but ValidAPIKey, sent in either the api-key header (Azure OpenAI) or as an
+// Authorization bearer token (OpenAI). Its refusal never repeats the presented key.
+const KeyedPathPrefix = "/openai-keyed/v1"
+
+// ValidAPIKey is the only credential the keyed upstream accepts.
+const ValidAPIKey = "sk-testbench-valid-key"
+
+// keyedRefusal mirrors OpenAI's 401 body for a wrong key, minus the masked key it quotes.
+var keyedRefusal = map[string]any{
+	"error": map[string]any{
+		"message": "Incorrect API key provided.",
+		"type":    "invalid_request_error",
+		"code":    "invalid_api_key",
+	},
+}
+
+// presentedKey returns the credential a request carries, whichever header it uses.
+func presentedKey(r *http.Request) string {
+	if key := r.Header.Get("api-key"); key != "" {
+		return key
+	}
+	// A bare Authorization value is not a bearer credential, so it presents no key.
+	key, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !bearer {
+		return ""
+	}
+	return key
+}
+
 // Handler returns the HTTP handler for the service.
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -77,6 +107,26 @@ func (s *Service) route(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.URL.Path
+	if keyed, ok := strings.CutPrefix(path, KeyedPathPrefix); ok {
+		if presentedKey(r) != ValidAPIKey {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			payload, _ := json.Marshal(keyedRefusal)
+			_, _ = w.Write(payload)
+			return
+		}
+		path = "/openai/v1" + keyed
+	}
+	// A scripted request may carry "stream": true, so it answers before the generic stream.
+	if isScriptedPath(path) {
+		s.scripted(w, body)
+		return
+	}
+	// The echo paths stream the request's own text, so they answer before the generic stream.
+	if path == ChatEchoPath || path == ChatEchoProviderPath {
+		s.openAIChatEcho(w, body)
+		return
+	}
 	if streamRequested(path, body) {
 		s.writeStream(w, path, body)
 		return
@@ -269,6 +319,106 @@ func (s *Service) openAIWebSearch(body []byte) map[string]any {
 		orElse(requestModel(body), "gpt-4.1-2025-04-14"),
 		"According to recent sources, the answer is 42.", "default", annotations,
 		openAIUsage(50, 0, 25, 0, 75))
+}
+
+// ChatEchoPath answers with the request's last user message as the assistant's reply, so a
+// scenario controls the response text a gateway policy sees. With "stream": true the reply is
+// sent as OpenAI chat-completion chunks over server-sent events, one word per chunk.
+const ChatEchoPath = "/openai/v1/chat-echo"
+
+// ChatEchoProviderPath answers like ChatEchoPath at the chat-completions path an OpenAI-template
+// LLM provider calls, so a provider whose upstream is http://testbench:3008/openai-echo/v1 gets
+// echoed, optionally streamed replies.
+const ChatEchoProviderPath = "/openai-echo/v1/chat/completions"
+
+// echoRequest is the part of a chat-completions request the echo path reads.
+type echoRequest struct {
+	Model    string `json:"model"`
+	Stream   bool   `json:"stream"`
+	Messages []struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	} `json:"messages"`
+}
+
+func (s *Service) openAIChatEcho(w http.ResponseWriter, body []byte) {
+	var req echoRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "openai: chat-echo needs a JSON chat-completions request", http.StatusBadRequest)
+		return
+	}
+	reply := lastUserText(req)
+	model := orElse(req.Model, "gpt-4o")
+	if !req.Stream {
+		w.Header().Set("Content-Type", "application/json")
+		writeJSON(w, openAIChatEnvelope("chatcmpl-echo", model, reply, "default", nil,
+			openAIUsage(defaultPromptTokens, 0, defaultCompletionTokens, 0, defaultTotalTokens)))
+		return
+	}
+	writeEchoStream(w, model, reply)
+}
+
+// lastUserText returns the text of the last user message: a string content, or the text parts
+// of a content-part array joined with a space.
+func lastUserText(req echoRequest) string {
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		message := req.Messages[i]
+		if message.Role != "user" {
+			continue
+		}
+		var text string
+		if json.Unmarshal(message.Content, &text) == nil {
+			return text
+		}
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(message.Content, &parts) != nil {
+			return ""
+		}
+		var texts []string
+		for _, part := range parts {
+			if part.Type == "text" {
+				texts = append(texts, part.Text)
+			}
+		}
+		return strings.Join(texts, " ")
+	}
+	return ""
+}
+
+func writeEchoStream(w http.ResponseWriter, model, reply string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	flusher, _ := w.(http.Flusher)
+	chunk := func(delta map[string]any, finishReason any) {
+		payload, _ := json.Marshal(map[string]any{
+			"id": "chatcmpl-echo", "object": "chat.completion.chunk", "created": 1741569952, "model": model,
+			"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finishReason}},
+		})
+		if _, err := w.Write([]byte("data: " + string(payload) + "\n\n")); err != nil {
+			log.Printf("openai: writing stream: %v", err)
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	chunk(map[string]any{"role": "assistant", "content": ""}, nil)
+	// Split after each space, so the chunks join back to the exact reply, whitespace included.
+	for _, piece := range strings.SplitAfter(reply, " ") {
+		if piece != "" {
+			chunk(map[string]any{"content": piece}, nil)
+		}
+	}
+	chunk(map[string]any{}, "stop")
+	if _, err := w.Write([]byte("data: [DONE]\n\n")); err != nil {
+		log.Printf("openai: writing stream: %v", err)
+	}
+	if flusher != nil {
+		flusher.Flush()
+	}
 }
 
 // Anthropic messages.

@@ -1,6 +1,6 @@
 <h1 id="wso2-api-portal-and-mcp-hub-mcp-server-content">MCP Server Content</h1>
 
-## Upload MCP server content
+## Add MCP server content
 
 <a id="opIdcreateMcpServerContent"></a>
 
@@ -15,12 +15,12 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
   -F 'content=string' \
-  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'docMetadata=[{"type":"DOC_LINK","links":[{"displayName":"External guide","url":"https://example.com/docs/guide"}]}]' \
   -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
 
-Uploads the static content package for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
+Adds new content to an MCP server; existing content is never changed or removed, and any clash rejects the whole request with `409`. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -31,26 +31,40 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:c
 
 </aside>
 
-<h3 id="upload-mcp-server-content-parameters">Parameters</h3>
+<h3 id="add-mcp-server-content-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
 |» content|body|string(binary)|true|ZIP upload field named `content`.|
-|» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
-|» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
+|» docMetadata|body|string|false|Optional JSON array of document links, grouped by type. Each `type` must be `DOC_<Category>`. A link is stored as `LINK_<displayName>` under that type.|
+|» imageMetadata|body|string|false|Optional JSON object mapping an image slot to an uploaded file name, overriding the slot taken from the file name. Each named file must be in the upload and fills one slot. Two images whose names differ only by extension take the same slot, so one of them must be named here.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 #### Detailed descriptions
 
 **body**: API content ZIP upload.
 
-Expected ZIP structure:
-- `web/`: optional API landing-page files and images.
-- `docs/`: optional downloadable documents.
+Each path in the ZIP gets one outcome, from the first rule that matches:
+- If the ZIP breaks an extraction limit or holds an unsafe path, the whole upload is rejected.
+- If the only top-level entry is one folder other than `web/` or `docs/`, the ZIP is read from inside it.
+- A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
+  ignored.
+- A path that appears more than once is rejected.
+- `web/api-content.md` and `web/api-content.hbs` are the landing page.
+- `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
+  fills the slot named by its file name without the extension, unless `imageMetadata` names another;
+  any image named `api-icon` is the thumbnail.
+- `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
+  `DOC_<Category>`. The `.md` extension is lowercase.
+- Anything else is rejected, including an unknown top-level folder that is empty.
 
-At least one of `web/` or `docs/` must exist at the ZIP root.
-`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
+If any path is rejected, the upload is rejected with `400` and nothing is stored; `errors` lists every rejected
+path, sorted, as `<path>: <reason>`. An upload with no content is accepted by `PUT` (it removes all content)
+and rejected by `POST`. Links in `docMetadata` count as content.
+
+`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields;
+text that isn't valid JSON, or of the wrong shape, is rejected with `400`.
 
 > Example responses
 >
@@ -78,13 +92,31 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
 > 409 Response
 
 ```json
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "Conflict"
+  "message": "Conflict",
+  "errors": [
+    {
+      "message": "Content already exists: A.md (DOC_HowTo)"
+    },
+    {
+      "message": "Content already exists: image slot api-icon"
+    }
+  ]
 }
 ```
 
@@ -98,16 +130,17 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-<h3 id="upload-mcp-server-content-responses">Responses</h3>
+<h3 id="add-mcp-server-content-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Some of the uploaded content already exists. Nothing was stored; every clash is listed.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="upload-mcp-server-content-responseschema">Response Schema</h3>
+<h3 id="add-mcp-server-content-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 
@@ -130,12 +163,12 @@ curl -X PUT https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
   -F 'content=string' \
-  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'docMetadata=[{"type":"DOC_LINK","links":[{"displayName":"External guide","url":"https://example.com/docs/guide"}]}]' \
   -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
 
-Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
+Replaces all content of an MCP server with the upload; anything not in it is removed, and an empty ZIP with no `docMetadata` links removes all content. The tools schema is never changed. Returns `201` when the server had no content and the upload adds some, and `200` otherwise. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -152,24 +185,38 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:u
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
 |» content|body|string(binary)|true|ZIP upload field named `content`.|
-|» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
-|» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
+|» docMetadata|body|string|false|Optional JSON array of document links, grouped by type. Each `type` must be `DOC_<Category>`. A link is stored as `LINK_<displayName>` under that type.|
+|» imageMetadata|body|string|false|Optional JSON object mapping an image slot to an uploaded file name, overriding the slot taken from the file name. Each named file must be in the upload and fills one slot. Two images whose names differ only by extension take the same slot, so one of them must be named here.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 #### Detailed descriptions
 
 **body**: API content ZIP upload.
 
-Expected ZIP structure:
-- `web/`: optional API landing-page files and images.
-- `docs/`: optional downloadable documents.
+Each path in the ZIP gets one outcome, from the first rule that matches:
+- If the ZIP breaks an extraction limit or holds an unsafe path, the whole upload is rejected.
+- If the only top-level entry is one folder other than `web/` or `docs/`, the ZIP is read from inside it.
+- A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
+  ignored.
+- A path that appears more than once is rejected.
+- `web/api-content.md` and `web/api-content.hbs` are the landing page.
+- `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
+  fills the slot named by its file name without the extension, unless `imageMetadata` names another;
+  any image named `api-icon` is the thumbnail.
+- `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
+  `DOC_<Category>`. The `.md` extension is lowercase.
+- Anything else is rejected, including an unknown top-level folder that is empty.
 
-At least one of `web/` or `docs/` must exist at the ZIP root.
-`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
+If any path is rejected, the upload is rejected with `400` and nothing is stored; `errors` lists every rejected
+path, sorted, as `<path>: <reason>`. An upload with no content is accepted by `PUT` (it removes all content)
+and rejected by `POST`. Links in `docMetadata` count as content.
+
+`docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields;
+text that isn't valid JSON, or of the wrong shape, is rejected with `400`.
 
 > Example responses
 >
-> 201 Response
+> 200 Response
 
 ```json
 {
@@ -193,13 +240,13 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-> 409 Response
+> 404 Response
 
 ```json
 {
   "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -217,9 +264,10 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="replace-mcp-server-content-responseschema">Response Schema</h3>
@@ -240,7 +288,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ```shell
 
-curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=DOC_HowTo&fileName=getting-started.md \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Accept: text/css'
 
@@ -248,21 +296,17 @@ curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}
 
 Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
 
-### Authentication
-
-<aside class="warning">
-This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
-
-Required scopes (the token must carry at least one of): `dp:mcp_server_content:read`, `dp:mcp_server_content:manage`
-
-</aside>
+Image files (`type=IMAGE`) are publicly readable so that an MCP server's icon renders on the public
+listing and landing pages without a session. `orgId` says which organization's image is read.
+All other content types require a session: an anonymous request for a non-image type is rejected.
 
 <h3 id="get-an-mcp-server-content-file-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
+|type|query|string|true|Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`). Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
+|orgId|query|string|false|Organization uuid of the image to read. Used only for `type=IMAGE`. In multi-organization mode, an `orgId` that names an existing organization selects it, even when the session belongs to another organization. An unknown `orgId` falls back to the session's organization, then to this instance's configured one. In single-organization mode it is ignored: the session's organization is used, or the configured one when there is no session.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
@@ -342,13 +386,13 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:r
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document \
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=DOC_HowTo \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Accept: application/json'
 
 ```
 
-Deletes stored MCP server content. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
+Deletes stored MCP server content, matching `type` exactly. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -363,7 +407,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:d
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
+|type|query|string|true|Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`). Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.|
 |fileName|query|string|false|File name selector used to delete a single stored API content file.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
@@ -387,8 +431,12 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:d
 
 > 404 Response
 
-```
-"string"
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
 ```
 
 > 500 Response
@@ -407,7 +455,7 @@ Required scopes (the token must carry at least one of): `dp:mcp_server_content:d
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|MCP server content deleted successfully.|None|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-mcp-server-content-files-responseschema">Response Schema</h3>

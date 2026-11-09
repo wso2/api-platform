@@ -205,7 +205,10 @@
     btn.textContent = 'Creating…';
     fetch(apiPortalApi.root('/applications'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': window.apiPortalApi.csrfToken(),
+      },
       credentials: 'include',
       body: JSON.stringify({ displayName: name, description: desc, id: generateHandle(name) }),
     })
@@ -261,6 +264,7 @@
     btn.textContent = 'Deleting…';
     fetch(apiPortalApi.root('/applications/' + pendingDeleteId), {
       method: 'DELETE',
+      headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
       credentials: 'include',
     })
       .then(function (r) {

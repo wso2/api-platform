@@ -18,6 +18,7 @@
 
 import type { ReactNode } from 'react';
 import { Alert, Box, Card, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { useResourceLimits } from '../hooks/useResourceLimits';
 import { Lock } from '@wso2/oxygen-ui-icons-react';
 
 export const GATEWAY_MANAGED_ARTIFACT_TOOLTIP =
@@ -83,12 +84,24 @@ type DisabledActionTooltipProps = {
 export function DisabledActionTooltip({
   children,
   disabled,
-  title = GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
+  title,
   fullWidth = false,
 }: DisabledActionTooltipProps) {
+  // A read-only organization disables every one of these controls whatever the
+  // artifact's own origin, and it outranks every other reason: saying "created
+  // from a gateway" — or, worse, "you do not have permission" — to someone whose
+  // whole organization has gone read-only names the wrong cause and points at the
+  // wrong fix. It outranks the caller's `title` too, and has to: read-only
+  // withdraws the write scopes (see AppAuthContext), so the permission titles
+  // callers compute from `hasPermission` are themselves a consequence of it.
+  const { readOnly, readOnlyMessage } = useResourceLimits();
+  const reason = readOnly
+    ? readOnlyMessage
+    : (title ?? GATEWAY_MANAGED_ARTIFACT_TOOLTIP);
+
   return (
     <Tooltip
-      title={disabled ? title : ''}
+      title={disabled ? reason : ''}
       disableHoverListener={!disabled}
       disableFocusListener={!disabled}
       disableTouchListener={!disabled}

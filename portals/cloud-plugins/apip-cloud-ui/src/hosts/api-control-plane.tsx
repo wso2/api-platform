@@ -8,40 +8,40 @@
  */
 
 import { PageContent } from '@wso2/oxygen-ui';
-import {
-  Activity,
-  BarChart3,
-  Gauge,
-  Layers,
-  Logs,
-  PanelsTopLeft,
-  Workflow,
-} from '@wso2/oxygen-ui-icons-react';
+import { BarChart3, PanelsTopLeft } from '@wso2/oxygen-ui-icons-react';
 
 import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
-import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
-import { GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
+import { GATEWAY_OPERATIONS, GatewaysFeature } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import type { GatewayType } from '@wso2-enterprise/apip-cloud-ui-gateways';
 import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
-import { LogsFeature, MetricsPanel, ScopedLogsNotice } from '@wso2-enterprise/apip-cloud-ui-logs';
-import { ManagedPortalsPage } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
-import { TrialStatusFeature } from '@wso2-enterprise/apip-cloud-ui-trial-status';
 import {
-  PipelinesFeature,
-  ProjectPipelinesFeature,
-} from '@wso2-enterprise/apip-cloud-ui-pipelines';
+  ManagedPortalsPage,
+  PORTAL_OPERATIONS,
+} from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
+import { AppSwitcherButton } from '@wso2-enterprise/apip-cloud-ui-app-switcher';
+import { SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
+import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
+import {
+  EntitlementsGate,
+  TrialStatusFeature,
+} from '@wso2-enterprise/apip-cloud-ui-entitlements';
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
 import {
+  APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
+  HEADER_START_SLOT,
+  HOME_GREETING_SLOT,
   PAGE_API_DEPLOY_SLOT,
-  PAGE_API_OBSERVABILITY_LOGS_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
 import type { CloudHostPort } from '../../../../api-control-plane/src/hostPort';
+import { isFeatureDisabled } from '../../../../api-control-plane/src/config/features';
+import { runtimeConfig } from '../../../../api-control-plane/src/config/runtime';
 import { routes } from '../../../../api-control-plane/src/routes/paths';
 import { useConsoleScope } from '../../../../api-control-plane/src/scope/ConsoleScopeContext';
 import { ScopeGate } from '../../../../api-control-plane/src/scope/ScopeGate';
@@ -49,6 +49,21 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
 import { filterExtensionsForRuntime } from '../runtimeFlags';
 import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
 import cloudLogoLight from '../assets/logos/apiplatform_black.svg';
+
+/**
+ * Scopes the cloud Deploy page deploys under (apip-cloud-ui-deploy
+ * API_DEPLOYMENT_OPERATIONS.DeployApi): one of them is needed to deploy.
+ */
+const CLOUD_DEPLOY_SCOPES = [
+  'ap:deployment:deploy',
+  'ap:deployment:manage',
+  'ap:rest_api:deployment:create',
+  'ap:rest_api:deployment:manage',
+  'ap:rest_api:manage',
+  'ap:graphql_api:deployment:create',
+  'ap:graphql_api:deployment:manage',
+  'ap:graphql_api:manage',
+] as const;
 
 /** Cloud console branding used by the host header and login page. */
 export const cloudBrandLogo: BrandLogo = {
@@ -62,6 +77,17 @@ export const cloudBrandLogo: BrandLogo = {
  * fresh array on every render would make that request repeat.
  */
 const API_GATEWAY_TYPES: GatewayType[] = ['regular', 'event'];
+
+/**
+ * `GatewaysFeature`'s port requires `gatewayVersions`, which this host's own
+ * `CloudHostPort` (core, `api-control-plane/src/hostPort.tsx`) does not carry.
+ * API Control Plane has no hardcoded catalog the way AI Workspace does — its
+ * release versions come from the BFF's own `config.toml` (`[[gateway_versions]]`,
+ * see `bff/internal/config/config.go`), surfaced through this SPA's
+ * `runtimeConfig.gatewayVersions` (`src/config/runtime.ts`), which already
+ * falls back to `[]` for a deployment whose config predates this field.
+ */
+const API_GATEWAY_VERSIONS = runtimeConfig.gatewayVersions;
 
 /**
  * The API Deploy override. The built-in Deploy page sits inside `AppPage`, which
@@ -84,10 +110,6 @@ function CloudDeployPage({ port }: { port: CloudHostPort }) {
   return isApiScope ? gate : <AppPage>{gate}</AppPage>;
 }
 
-/** Where the project/API notices send a reader for the organization's logs. */
-const observabilityLogsPath = (orgHandle: string) =>
-  `/organizations/${orgHandle}/observability/logs`;
-
 /**
  * Cloud features registered for the api-control-plane host. All live in this
  * same repo now (this package is copied into the cloned portal tree at
@@ -95,25 +117,12 @@ const observabilityLogsPath = (orgHandle: string) =>
  * apim-saas — never patched into it), so `ApiControlPlaneExtension` is
  * imported directly from core rather than hand-mirrored.
  *
- * `environments` is an organization-level sidebar item (environments are
- * org-scoped resources), sharing the same `apip-cloud-ui-environments-new`
- * package the ai-workspace host uses (`hosts/ai-workspace.tsx`). Its data flows
- * through the host port's `apiFetch` to platform-api's `/environments` endpoints.
- *
  * `gateways` overrides the built-in Gateways page via the `page.gateways` slot
  * (consumed by `AppRoutes`' `gateways/*` route wrapper) rather than adding a
  * sidebar item — the native nav entry and route stay in place; only what renders
  * there changes. Data flows through `apiFetch` to `/managed-gateways`. This
  * console manages API and event gateways; AI gateways belong to the AI
  * workspace host, which registers the same feature with only that type.
- *
- * `pipelines` ships one plugin with two extensions from the same feature
- * package: an organization-level list/create/edit view, and a project-level
- * view that binds the project to a single pipeline. Both present as one
- * "Pipelines" nav item that adapts to scope — the sidebar shows items at every
- * scope, so each is gated by `isVisible` on whether a project is in scope, and
- * exactly one is shown at a time. Data flows through the host port's `apiFetch`
- * to the platform-api REST endpoints.
  *
  * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
  * and the GraphQL API Deploy page via `page.graphqlApiDeploy` with the same feature,
@@ -135,23 +144,15 @@ const observabilityLogsPath = (orgHandle: string) =>
  * built-in Insights item, so it gives way wherever one of them is visible (org
  * and project scope) and comes back inside an API. Gated on
  * `cloudProxyEnabled` via `filterExtensionsForRuntime`.
- *
- * `observability` claims the built-in Observability item, which is per-API, and
- * stands in for it at organization level as a disclosure with two pages of its
- * own: Logs, which reads `/logs` (served by apip-platform-api), and a Metrics
- * placeholder. Its `aliases` keep the old `/logs` URL alive as a redirect.
- *
- * Inside a project and inside an API there are no logs to show — a gateway's
- * log line carries no API identity, and the query is scoped by organization
- * namespace — so both levels get the same notice pointing back at the
- * organization page. The project one claims the built-in item the way the
- * organization one does; the API one leaves the built-in Observability submenu
- * (Metrics, Alerts) in place and replaces only its Logs page, through
- * `PAGE_API_OBSERVABILITY_LOGS_SLOT`.
  */
 
 export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[] = [
   defineCloudPlugin({
+    // Entitlements is console-only. The shared `apip-cloud-ui-trial-status`
+    // package still serves AI Workspace unchanged; this console renders the
+    // newer badge from its own package instead, so neither portal constrains
+    // the other. Keeps the slot id `trial-status` so nothing downstream that
+    // selects on it has to change.
     id: 'trial-status',
     version: '0.1.0',
     extensions: [
@@ -161,21 +162,87 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         order: 10,
         render: (port) => <TrialStatusFeature port={port} />,
       },
+      {
+        // Headless: supplies the organization's creation limits and read-only
+        // verdict through the Port. Mounted on every in-shell route, and the
+        // only thing that ever calls `resourceLimits.set` — with no cloud
+        // plugin registered the host supplies nothing and stays unrestricted.
+        id: 'entitlements-gate',
+        slot: APP_GATE_SLOT,
+        order: 10,
+        render: (port) => <EntitlementsGate port={port} />,
+      },
     ],
   }),
   defineCloudPlugin({
-    id: 'environments',
+    // The WSO2 Cloud platform switcher (Oxygen AppSwitcher), fed by the
+    // deployment's `cloudShell` / `cloudConsoleUrl` runtime config. Console-only.
+    // Takes over the header's sidebar-collapse toggle spot at the far left —
+    // the sidebar's own `Sidebar.CollapseToggle` still collapses it.
+    id: 'app-switcher',
     version: '0.1.0',
     extensions: [
       {
-        id: 'environments',
-        slot: 'sidebar.organization',
-        order: 40,
-        routePath: 'environments',
-        render: (port) => <EnvironmentsFeature port={port} />,
-        label: 'Environments',
-        icon: <Layers size={20} />,
-        level: 'organization',
+        id: 'app-switcher',
+        slot: HEADER_START_SLOT,
+        order: 0,
+        render: () => (
+          <AppSwitcherButton
+            cloudShell={runtimeConfig.cloudShell}
+            cloudConsoleUrl={runtimeConfig.cloudConsoleUrl}
+          />
+        ),
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    // Asks a signed-in person once whether they want WSO2 marketing email, and
+    // records the answer with Pardot through platform-api's internal consent
+    // endpoint (the BFF's `marketing-consent` upstream, carrying the person's own
+    // token). Headless `app.gate` entry: renders nothing unless they never answered.
+    // Console-only; the AI Workspace host registers nothing.
+    id: 'marketing-consent',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'marketing-consent-gate',
+        slot: APP_GATE_SLOT,
+        order: 20,
+        render: (port) => (
+          <MarketingConsentGate port={port} proxyBase={runtimeConfig.platformApiBaseUrl} />
+        ),
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    // The header's settings icon, which opens the WSO2 Cloud console's organization
+    // pages. Console-only: it is registered in this host and not in the AI Workspace
+    // one, so that portal's header is unchanged. Ordered after the trial badge, and
+    // the header lays its action slot out ahead of the theme switcher, so the icon
+    // sits between them.
+    id: 'settings',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'settings-button',
+        slot: HEADER_ACTIONS_SLOT,
+        order: 20,
+        render: () => <SettingsButton />,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    // Greets the signed-in user by their own name on the Organization home page,
+    // read from the session the host already holds (no request of its own). With no
+    // name the page keeps greeting by the organization's name.
+    id: 'user-profile',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'home-greeting-name',
+        slot: HOME_GREETING_SLOT,
+        order: 10,
+        resolveName: (port) => nameFromPort(port),
       },
     ],
   }),
@@ -193,18 +260,36 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         // is consumed by the `gateways/*` route wrapper in `AppRoutes`, not the
         // nav/Settings-tab pipeline) but required by the shared extension type.
         //
-        // `group` must be set explicitly, and to the same cluster Environments
-        // and Pipelines fall into. Those are sidebar extensions that declare no
-        // group, so they share the unnamed divider cluster (`item.group ?? ''`
-        // in `useNavigationClusters`), while the built-in Gateways item lives in
+        // `group` must be set explicitly, and to the same cluster Portals falls
+        // into. That is a sidebar extension that declares no group, so it
+        // shares the unnamed divider cluster (`item.group ?? ''` in
+        // `useNavigationClusters`), while the built-in Gateways item lives in
         // the "place" cluster higher up. Omitting it here would keep that
-        // built-in cluster and leave Gateways above Environments.
+        // built-in cluster and leave Gateways above Portals.
+        //
+        // Order 110 puts this cluster last, after the Insights / Observability /
+        // Manage cluster (`operate`, up to order 100).
         group: '',
-        order: 45,
+        order: 110,
         routePath: 'gateways',
-        render: (port) => <GatewaysFeature gatewayTypes={API_GATEWAY_TYPES} port={port} />,
+        render: (port) => (
+          <GatewaysFeature
+            gatewayTypes={API_GATEWAY_TYPES}
+            // Map the environment-specific gateway host expected by the plugin.
+            port={{
+              ...port,
+              gatewayVersions: API_GATEWAY_VERSIONS,
+              controlPlaneHost: port.gatewayControlPlaneHost,
+            }}
+          />
+        ),
         label: 'Gateways',
         level: 'organization',
+        // The scopes the gateways list accepts (see `GATEWAY_OPERATIONS` for
+        // why `ap:gateway:read` is among them). Gates the nav placement this
+        // override carries — `useNavigationItems` applies it to the built-in
+        // Gateways item it repositions — and the page gates itself the same way.
+        requiredScopes: GATEWAY_OPERATIONS.ListManagedGateways,
       },
     ],
   }),
@@ -223,6 +308,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         render: (port) => <CloudDeployPage port={port} />,
         label: 'Deploy',
         level: 'api',
+        // The cloud deploys through the project's pipeline, under the scopes
+        // its Deploy page checks (CLOUD_DEPLOY_SCOPES).
+        actionScopes: CLOUD_DEPLOY_SCOPES,
       },
       {
         // The same Deploy feature for a GraphQL API, so both kinds deploy through
@@ -232,144 +320,17 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'graphql-api-deploy',
         slot: PAGE_GRAPHQL_API_DEPLOY_SLOT,
         order: 0,
+        actionScopes: CLOUD_DEPLOY_SCOPES,
         routePath: 'deploy',
         render: (port, artifactHandle) => (
-          <DeployFeature artifactHandle={artifactHandle} kind="GraphQLApi" port={port} />
+          <DeployFeature
+            artifactHandle={artifactHandle}
+            kind="GraphQLApi"
+            port={port}
+          />
         ),
         label: 'Deploy',
         level: 'api',
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'observability',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'observability',
-        slot: 'sidebar.organization',
-        // The built-in item's own cluster, and after organization-insights (70)
-        // so Insights stays above Observability here as it does in a project
-        // and inside an API.
-        claims: 'observability',
-        group: 'api',
-        order: 75,
-        routePath: 'observability',
-        // Organization scope only. Deeper in, this entry standing down is what
-        // hands the claim back — to the project notice below, and inside an API
-        // to the built-in submenu, whose Metrics and Alerts pages are the right
-        // ones there.
-        isVisible: (scope) => !scope.isProjectScope && !scope.isApiScope,
-        // No `render`: a direct hit on /observability redirects to the first
-        // child (Logs), so the URL names the page shown and the sidebar
-        // highlights it.
-        //
-        // The page used to live at /logs, and that URL is in bookmarks and
-        // runbooks.
-        aliases: ['logs'],
-        label: 'Observability',
-        icon: <Activity size={20} />,
-        // Organization, not project: the observability API scopes a log query
-        // by organization namespace and has no project filter that would work
-        // here — every provisioned gateway lives in one shared project, and a
-        // gateway's log line carries no API identity to attribute it by. That is
-        // why the project entry below is a notice and not a second console; when
-        // RBAC lands, project scoping has to be a server-side filter in apip-platform-api.
-        level: 'organization',
-        children: [
-          {
-            // Logs before Metrics, unlike the built-in submenu: Metrics is a
-            // placeholder, and opening on an empty page is worse than the
-            // inconsistency.
-            id: 'observability-logs',
-            routePath: 'logs',
-            render: (port) => <LogsFeature port={port} />,
-            label: 'Logs',
-            icon: <Logs size={20} />,
-          },
-          {
-            id: 'observability-metrics',
-            routePath: 'metrics',
-            // The plugin's own placeholder, not core's `ComingSoon`: this package
-            // is typechecked against both host portals' Oxygen versions, and
-            // importing that component fails under the older one.
-            render: () => <MetricsPanel />,
-            label: 'Metrics',
-            icon: <Gauge size={20} />,
-          },
-        ],
-      },
-      {
-        // The same claim one scope down. A leaf, not a disclosure: there is one
-        // page here, and two children would say the same thing twice.
-        id: 'project-observability',
-        slot: 'sidebar.project',
-        claims: 'observability',
-        group: 'api',
-        order: 70,
-        routePath: 'observability',
-        render: (port) => (
-          <ScopedLogsNotice
-            scope="project"
-            onViewOrganizationLogs={() =>
-              port.navigate(observabilityLogsPath(port.orgHandle))
-            }
-          />
-        ),
-        label: 'Observability',
-        icon: <Activity size={20} />,
-        level: 'project',
-        isVisible: (scope) => scope.isProjectScope && !scope.isApiScope,
-      },
-      {
-        // The Logs page of the built-in per-API Observability submenu, which
-        // otherwise renders a placeholder promising per-API runtime logs. Its
-        // siblings (Metrics, Alerts) are left alone. `routePath`/`level` are
-        // inert on a `page.*` entry, as for the gateways and deploy overrides.
-        id: 'api-observability-logs',
-        slot: PAGE_API_OBSERVABILITY_LOGS_SLOT,
-        order: 0,
-        routePath: 'observability/logs',
-        render: (port) => (
-          <ScopedLogsNotice
-            scope="API"
-            onViewOrganizationLogs={() =>
-              port.navigate(observabilityLogsPath(port.orgHandle))
-            }
-          />
-        ),
-        label: 'Logs',
-        level: 'api',
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    id: 'pipelines',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'pipelines',
-        slot: 'sidebar.organization',
-        order: 50,
-        routePath: 'pipelines',
-        render: (port) => <PipelinesFeature port={port} />,
-        label: 'Pipelines',
-        icon: <Workflow size={20} />,
-        level: 'organization',
-        // Only when no project is in scope — otherwise the project view below
-        // takes the same "Pipelines" slot, so exactly one is ever shown.
-        isVisible: (scope) => !scope.isProjectScope,
-      },
-      {
-        id: 'project-pipeline',
-        slot: 'sidebar.project',
-        order: 50,
-        routePath: 'pipelines',
-        render: (port) => <ProjectPipelinesFeature port={port} />,
-        label: 'Pipelines',
-        icon: <Workflow size={20} />,
-        level: 'project',
-        isVisible: (scope) => scope.isProjectScope,
       },
     ],
   }),
@@ -380,10 +341,11 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
       {
         id: 'managed-api-portals',
         slot: 'sidebar.organization',
-        // Placed after Pipelines (50); no built-in item competes for 60.
-        order: 60,
+        // Last in the sidebar, after the Gateways override (110).
+        order: 120,
         routePath: 'managed-api-portals',
         render: (port) => <ManagedPortalsPage port={port} />,
+        requiredScopes: PORTAL_OPERATIONS.ListManagedApiPortals,
         label: 'Portals',
         icon: <PanelsTopLeft size={20} />,
         level: 'organization',
@@ -398,11 +360,11 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'organization-insights',
         slot: 'sidebar.organization',
         claims: 'insights',
-        // Placed after managed-api-portals (60).
+        // First of the Insights / Observability / Manage cluster.
         order: 70,
         routePath: 'insights',
         label: 'Insights',
-        group: 'api',
+        group: 'operate',
         level: 'organization',
         icon: <BarChart3 size={20} />,
         isVisible: (scope) => {
@@ -414,7 +376,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
           return (
             Boolean(typed.isOrganizationScope) &&
             !typed.isProjectScope &&
-            !typed.isApiScope
+            !typed.isApiScope &&
+            !isFeatureDisabled('insights')
           );
         },
         // `InsightsFeature` brings its own `PageContent` on AI Workspace (whose
@@ -438,7 +401,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         order: 60,
         routePath: 'insights',
         label: 'Insights',
-        group: 'api',
+        group: 'operate',
         level: 'project',
         icon: <BarChart3 size={20} />,
         isVisible: (scope) => {
@@ -446,7 +409,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             isProjectScope?: boolean;
             isApiScope?: boolean;
           };
-          return Boolean(typed.isProjectScope) && !typed.isApiScope;
+          return (
+            Boolean(typed.isProjectScope) && !typed.isApiScope && !isFeatureDisabled('insights')
+          );
         },
         render: (port) => (
           <PageContent fullWidth>

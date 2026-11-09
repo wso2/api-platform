@@ -715,3 +715,137 @@ func TestAPIRepo_CreateAndRead_FullConfiguration(t *testing.T) {
 	}
 }
 
+// makeVersionedAPI creates a REST API row for version-lookup tests.
+func makeVersionedAPI(t *testing.T, repo APIRepository, handle, displayName, version, projectUUID, orgUUID string) *model.API {
+	t.Helper()
+	apiModel := &model.API{
+		Handle:          handle,
+		Name:            displayName,
+		Version:         version,
+		ProjectID:       projectUUID,
+		OrganizationID:  orgUUID,
+		LifeCycleStatus: "CREATED",
+		Configuration: model.RestAPIConfig{
+			Name:      displayName,
+			Version:   version,
+			Transport: []string{"https"},
+		},
+	}
+	if err := repo.CreateAPI(apiModel); err != nil {
+		t.Fatalf("CreateAPI(%s) failed: %v", handle, err)
+	}
+	return apiModel
+}
+
+func TestAPIRepo_GetAPIVersionsByDisplayName(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewAPIRepo(db)
+
+	orgUUID := "org-versions-001"
+	projectUUID := "project-versions-001"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	// Three versions of one API, plus an unrelated API that must not be picked up.
+	makeVersionedAPI(t, repo, "reading-list-v1", "reading-list-api", "v1.0", projectUUID, orgUUID)
+	makeVersionedAPI(t, repo, "reading-list-v2", "reading-list-api", "v2.0", projectUUID, orgUUID)
+	makeVersionedAPI(t, repo, "reading-list-v3", "reading-list-api", "v3.0", projectUUID, orgUUID)
+	makeVersionedAPI(t, repo, "unrelated-api", "unrelated-api", "v1.0", projectUUID, orgUUID)
+
+	t.Run("returns every version of the display name in the organization", func(t *testing.T) {
+		versions, err := repo.GetAPIVersionsByDisplayName(orgUUID, "reading-list-api")
+		if err != nil {
+			t.Fatalf("GetAPIVersionsByDisplayName failed: %v", err)
+		}
+		if len(versions) != 3 {
+			t.Fatalf("got %d versions, want 3", len(versions))
+		}
+		// ORDER BY version ASC
+		want := []string{"v1.0", "v2.0", "v3.0"}
+		for i, v := range versions {
+			if v.Version != want[i] {
+				t.Errorf("version[%d] = %q, want %q", i, v.Version, want[i])
+			}
+			if v.Name != "reading-list-api" {
+				t.Errorf("version[%d] display name = %q, want %q", i, v.Name, "reading-list-api")
+			}
+		}
+	})
+
+	t.Run("unknown display name returns empty, not an error", func(t *testing.T) {
+		versions, err := repo.GetAPIVersionsByDisplayName(orgUUID, "no-such-api")
+		if err != nil {
+			t.Fatalf("GetAPIVersionsByDisplayName failed: %v", err)
+		}
+		if len(versions) != 0 {
+			t.Fatalf("got %d versions, want 0", len(versions))
+		}
+	})
+}
+
+// Guards GO-AUTH-005: the same display name in another organization must not leak.
+func TestAPIRepo_GetAPIVersionsByDisplayName_CrossOrgIsolation(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewAPIRepo(db)
+
+	orgA, projectA := "org-versions-iso-a", "project-versions-iso-a"
+	orgB, projectB := "org-versions-iso-b", "project-versions-iso-b"
+	createTestOrganizationAndProject(t, db, orgA, projectA)
+	createTestOrganizationAndProject(t, db, orgB, projectB)
+
+	makeVersionedAPI(t, repo, "shared-name-a", "shared-name", "v1.0", projectA, orgA)
+	makeVersionedAPI(t, repo, "shared-name-b1", "shared-name", "v1.0", projectB, orgB)
+	makeVersionedAPI(t, repo, "shared-name-b2", "shared-name", "v2.0", projectB, orgB)
+
+	versions, err := repo.GetAPIVersionsByDisplayName(orgA, "shared-name")
+	if err != nil {
+		t.Fatalf("GetAPIVersionsByDisplayName failed: %v", err)
+	}
+	if len(versions) != 1 {
+		t.Fatalf("got %d versions for orgA, want 1 — cross-org rows leaked", len(versions))
+	}
+	if versions[0].OrganizationID != orgA {
+		t.Fatalf("returned row belongs to org %q, want %q", versions[0].OrganizationID, orgA)
+	}
+	if versions[0].Handle != "shared-name-a" {
+		t.Fatalf("returned handle %q, want %q", versions[0].Handle, "shared-name-a")
+	}
+}
+
+// Clients read the versions list to decide whether a create will be accepted, so a version
+// the list reports as taken must be exactly one the uniqueness check refuses.
+func TestAPIRepo_GetAPIVersionsByDisplayName_AgreesWithUniquenessCheck(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewAPIRepo(db)
+
+	orgUUID := "org-versions-agree"
+	projectUUID := "project-versions-agree"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	makeVersionedAPI(t, repo, "agreement-v1", "agreement-api", "v1.0", projectUUID, orgUUID)
+
+	versions, err := repo.GetAPIVersionsByDisplayName(orgUUID, "agreement-api")
+	if err != nil {
+		t.Fatalf("GetAPIVersionsByDisplayName failed: %v", err)
+	}
+	taken := map[string]bool{}
+	for _, v := range versions {
+		taken[v.Version] = true
+	}
+
+	for _, version := range []string{"v1.0", "v2.0"} {
+		exists, err := repo.CheckAPIExistsByNameAndVersionInOrganization("agreement-api", version, orgUUID, "")
+		if err != nil {
+			t.Fatalf("CheckAPIExistsByNameAndVersionInOrganization failed: %v", err)
+		}
+		if taken[version] != exists {
+			t.Errorf("version %q: the versions list reports taken=%v, the uniqueness check reports exists=%v",
+				version, taken[version], exists)
+		}
+	}
+}

@@ -215,7 +215,7 @@ same scope list:
 
 Startup validation is fail-closed:
 
-- Every `dp:*` scope must be declared in `docs/api-portal-openapi-spec-v0.9.yaml`. An undeclared one aborts startup — otherwise the role would authenticate fine and be denied every request.
+- Every `dp:*` scope must be declared in `resources/openapi/api-portal-openapi-spec-v0.9.yaml`. An undeclared one aborts startup — otherwise the role would authenticate fine and be denied every request.
 - Scopes in another component's namespace (`ap:*`, for a table shared with the Platform API) are checked for well-formedness only. This portal mints no `ap:*` scope and enforces none, so it can neither confirm nor deny their existence.
 - A duplicate role name is rejected rather than last-wins, and every problem in the file is reported at once.
 

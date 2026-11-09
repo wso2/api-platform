@@ -171,6 +171,29 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+// ListAPIVersions returns the versions of a REST API with the given display name.
+// No match is a 200 with versionsAvailable false, not a 404.
+func (h *APIHandler) ListAPIVersions(w http.ResponseWriter, r *http.Request) error {
+	// Organization comes from the verified JWT claim (GO-AUTH-005).
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	displayName := strings.TrimSpace(r.URL.Query().Get("displayName"))
+	if displayName == "" {
+		return apperror.ValidationFailed.New("displayName query parameter is required")
+	}
+	response, err := h.apiService.GetAPIVersions(orgId, displayName)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to get API versions in org %s", orgId))
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
+	return nil
+}
+
 // UpdateAPI updates an existing API identified by handle
 func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
@@ -362,7 +385,7 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	// Validate and extract operations from spec
 	operations, err := h.apiDocumentService.ExtractOperationsFromSpec(specContent)
 	if err != nil {
-		return err
+		return utils.HandleSpecValidationError(w, err)
 	}
 
 	// Create the API with extracted operations
@@ -488,17 +511,13 @@ func (h *APIHandler) PutOpenAPISpec(w http.ResponseWriter, r *http.Request) erro
 	if existingAPI.ReadOnly != nil && *existingAPI.ReadOnly {
 		// Read-only API: validate the spec but do not update operations.
 		if result := h.apiDocumentService.ValidateOpenAPISpec(specContent); !result.IsValid {
-			msg := "invalid OpenAPI specification"
-			if len(result.Errors) > 0 {
-				msg = result.Errors[0].Message
-			}
-			return apperror.ValidationFailed.New(msg)
+			return utils.WriteSpecValidationErrors(w, result.Errors)
 		}
 	} else {
 		// Non-read-only: validate, extract operations, merge with existing policies.
 		syncedOps, err := h.apiDocumentService.ExtractAndMergeOperations(specContent, existingAPI.Operations)
 		if err != nil {
-			return err
+			return utils.HandleSpecValidationError(w, err)
 		}
 		if len(syncedOps) > 0 {
 			updatedAPI := *existingAPI
@@ -663,6 +682,7 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/import-openapi", middleware.MapErrors(h.slogger, h.ImportOpenAPI))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPI))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIs))
+	mux.HandleFunc("GET "+base+"/versions", middleware.MapErrors(h.slogger, h.ListAPIVersions))
 	mux.HandleFunc("GET "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.GetAPI))
 	mux.HandleFunc("PUT "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.UpdateAPI))
 	mux.HandleFunc("DELETE "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.DeleteAPI))

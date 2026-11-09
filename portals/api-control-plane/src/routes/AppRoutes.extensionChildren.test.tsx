@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
 import { AppRoutes } from './AppRoutes';
 import { anOrganization, aProject, collection, resource } from '../test/msw';
-import { authStatePresets } from '../test/mockAuthState';
+import { authStatePresets, makeAuthState } from '../test/mockAuthState';
 import { server } from '../test/server';
 import { renderWithProviders, screen } from '../test/utils';
 
@@ -130,6 +130,37 @@ describe('AppRoutes extension children', () => {
 
     expect(await screen.findByText('Logs page')).toBeInTheDocument();
     expect(screen.queryByText('Hidden page')).not.toBeInTheDocument();
+  });
+
+  it('skips a child whose required scopes the user lacks when redirecting', async () => {
+    const gated: ApiControlPlaneExtension = {
+      ...parentWithoutRender,
+      children: [
+        {
+          id: 'observability-gated',
+          label: 'Gated',
+          render: () => <div>Gated page</div>,
+          routePath: 'gated',
+          requiredScopes: ['ap:gateway:manage'],
+        },
+        { id: 'observability-logs', label: 'Logs', render: () => <div>Logs page</div>, routePath: 'logs' },
+      ],
+    };
+    renderWithProviders(
+      <ExtensionsProvider extensions={[gated]}>
+        <AppRoutes extensions={[gated]} />
+      </ExtensionsProvider>,
+      {
+        authState: makeAuthState({
+          user: { email: 'viewer@example.com', name: 'Viewer', scopes: ['ap:gateway:read'] },
+        }),
+        permissionMode: 'enforce',
+        route: '/organizations/api-platform-demo/observability',
+      }
+    );
+
+    expect(await screen.findByText('Logs page')).toBeInTheDocument();
+    expect(screen.queryByText('Gated page')).not.toBeInTheDocument();
   });
 
   it('redirects an alias to the extension, and on to its first child', async () => {

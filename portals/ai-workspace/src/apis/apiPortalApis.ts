@@ -95,3 +95,37 @@ export async function resolveApiPortalUrl(
   // registration that carries no `url`.
   return API_PORTAL_URL.trim() || undefined;
 }
+
+/**
+ * The portal view every listing published from here lands in. The portal's
+ * routes are `/{org}/views/{view}/mcp/{handle}` and publication never selects a
+ * view, so the portal's own default is the only one a listing is reachable
+ * through.
+ */
+const DEFAULT_API_PORTAL_VIEW = 'default';
+
+/**
+ * Deep link to one published MCP proxy's listing in the API Portal.
+ *
+ * The portal addresses a listing by the handle it was published under, which is
+ * the MCP proxy's own id: the Platform API sends `apiId` as the portal metadata
+ * `name` (see HTTPPortalPublisher.Publish), and the portal stores that as the
+ * API handle. So the proxy id — not its display name and version — is what the
+ * path takes.
+ *
+ * Returns undefined when the portal address or the organization is unknown, so
+ * the caller shows no link rather than one that lands on the portal's home page.
+ */
+export function buildApiPortalMcpUrl(
+  portalUrl: string | undefined,
+  organizationHandle: string | undefined,
+  mcpProxyId: string | undefined
+): string | undefined {
+  const base = portalUrl?.trim().replace(/\/+$/, '');
+  const org = organizationHandle?.trim();
+  if (!base || !org || !mcpProxyId) return undefined;
+  return (
+    `${base}/${encodeURIComponent(org)}` +
+    `/views/${DEFAULT_API_PORTAL_VIEW}/mcp/${encodeURIComponent(mcpProxyId)}`
+  );
+}

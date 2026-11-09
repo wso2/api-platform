@@ -262,6 +262,7 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 
 	authURL, _, err := o.AuthCodeURL("/", url.Values{
 		"fidp":          {"google"},
+		"username":      {"someone@example.com"},
 		"scope":         {"openid admin"},
 		"redirect_uri":  {"https://evil.example.com/steal"},
 		"response_type": {"token"},
@@ -279,6 +280,9 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 	if q.Get("fidp") != "google" {
 		t.Errorf("fidp = %q, want it forwarded", q.Get("fidp"))
 	}
+	if q.Get("username") != "someone@example.com" {
+		t.Errorf("username = %q, want it forwarded", q.Get("username"))
+	}
 	for name, want := range map[string]string{
 		"response_type": "code",
 		"client_id":     o.clientID,
@@ -287,6 +291,37 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 	} {
 		if got := q.Get(name); got != want {
 			t.Errorf("%s = %q, want %q — an extra parameter overrode a protocol one", name, got, want)
+		}
+	}
+}
+
+// The resource indicator reaches /authorize exactly when configured. An IdP that
+// scopes tokens per resource server (ThunderID) issues no product scope without it,
+// and rejects an empty resource=, so unset must send no parameter at all; nor may a
+// forwarded extra pick the resource server.
+func TestAuthCodeURLResourceIndicator(t *testing.T) {
+	for _, resource := range []string{"", "urn:wso2:cloud"} {
+		o := &OIDC{
+			clientID:    "ai-workspace",
+			redirectURL: "https://portal.example.com/ai-workspace/api/auth/callback",
+			scopes:      "openid",
+			sealer:      testOIDC(t).sealer,
+			disco:       discoveryDoc{AuthorizationEndpoint: "https://idp.example.com/authorize"},
+		}
+		o.SetResource(resource)
+		authURL, _, err := o.AuthCodeURL("/", url.Values{"resource": {"urn:attacker"}})
+		if err != nil {
+			t.Fatalf("AuthCodeURL: %v", err)
+		}
+		u, err := url.Parse(authURL)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if _, present := u.Query()["resource"]; present != (resource != "") {
+			t.Errorf("resource %q: parameter present = %v", resource, present)
+		}
+		if got := u.Query().Get("resource"); got != resource {
+			t.Errorf("resource = %q, want %q", got, resource)
 		}
 	}
 }

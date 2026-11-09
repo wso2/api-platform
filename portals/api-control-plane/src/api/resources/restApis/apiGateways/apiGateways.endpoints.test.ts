@@ -29,7 +29,7 @@ import {
 import { server } from '../../../../test/server';
 import { ApiError } from '../../../core/errors';
 import { resetHttpClient } from '../../../core/http';
-import { addGatewaysToApi, listRestApiGateways } from './apiGateways.endpoints';
+import { addGatewaysToApi, invokeRestApiOnGateway, listRestApiGateways } from './apiGateways.endpoints';
 
 /**
  * Contract tests for `/rest-apis/{restApiId}/gateways` — the association
@@ -159,5 +159,49 @@ describe('failures', () => {
     )) as ApiError;
 
     expect(error.operation).toBe('GetRESTAPIGateways');
+  });
+});
+
+describe('invokeRestApiOnGateway', () => {
+  const INVOKE = '/gateway-relay/invoke';
+  const target = { restApiId: API_ID, gatewayId: 'prod-gw' };
+  const relayed = {
+    outcome: 'response',
+    response: {
+      status: 502,
+      statusText: 'Bad Gateway',
+      headers: [],
+      body: '',
+      bodyEncoding: 'utf8',
+      truncated: false,
+      durationMs: 3,
+    },
+  };
+
+  it('POSTs the test request, naming the API and gateway in the body', async () => {
+    server.use(accepts('post', INVOKE, relayed, { record: requests, status: 200 }));
+
+    await invokeRestApiOnGateway({ ...target, method: 'GET', path: '/orders' });
+
+    expect(requests.last()?.method).toBe('POST');
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/gateway-relay/invoke');
+    expect(JSON.parse(requests.last()!.body)).toEqual({ ...target, method: 'GET', path: '/orders' });
+  });
+
+  it('resolves with a gateway error status: the relay itself succeeded', async () => {
+    server.use(accepts('post', INVOKE, relayed, { status: 200 }));
+
+    const result = await invokeRestApiOnGateway({ ...target, method: 'GET', path: '/' });
+
+    expect(result.response.status).toBe(502);
+  });
+
+  it('rejects with the code when the request was not relayed', async () => {
+    server.use(failure('post', INVOKE, 403, 'REST_API_INVOKE_TARGET_NOT_ALLOWED'));
+
+    const error = await invokeRestApiOnGateway({ ...target, method: 'GET', path: '/' }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe('REST_API_INVOKE_TARGET_NOT_ALLOWED');
   });
 });

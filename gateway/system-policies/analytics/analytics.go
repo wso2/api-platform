@@ -1145,6 +1145,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 				tokenInfo, err := extractLLMProviderAnalyticsInfoFromBytes(
 					template, ctx.RequestHeaders, ctx.ResponseHeaders,
 					requestBodyBytes, accumulated, ctx.RequestPath,
+					llmResourcePath(ctx.SharedContext, ctx.RequestPath),
 				)
 				if err != nil {
 					slog.Warn("Failed to extract LLM token info from streaming response", "error", err)
@@ -1386,6 +1387,7 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 	return extractLLMProviderAnalyticsInfoFromBytes(
 		template, ctx.RequestHeaders, ctx.ResponseHeaders,
 		requestBodyBytes, responseBodyBytes, ctx.RequestPath,
+		llmResourcePath(ctx.SharedContext, ctx.RequestPath),
 	)
 }
 
@@ -1399,10 +1401,13 @@ func extractLLMProviderAnalyticsInfoFromBytes(
 	template map[string]interface{},
 	requestHeaders, responseHeaders *policy.Headers,
 	requestBodyBytes, responseBodyBytes []byte,
-	requestPath string,
+	requestPath, resourcePath string,
 ) (*LLMProviderAnalyticsInfo, error) {
 	var responseJSON map[string]interface{}
 	if len(responseBodyBytes) > 0 {
+		// Bedrock streams arrive in Amazon's binary event-stream framing; unwrap them to JSON.
+		// Detected from the bytes, as the streaming path may not see the content-type header.
+		responseBodyBytes = decodeEventStream(responseBodyBytes)
 		// SSE responses: merge all data events so fields spread across events are visible.
 		if merged, err := parseSSEMergedDataEvents(responseBodyBytes); err == nil {
 			responseJSON = merged
@@ -1417,7 +1422,7 @@ func extractLLMProviderAnalyticsInfoFromBytes(
 		_ = json.Unmarshal(requestBodyBytes, &requestJSON)
 	}
 
-	return extractLLMAnalyticsFromJSON(template, requestHeaders, responseHeaders, requestJSON, responseJSON, requestPath)
+	return extractLLMAnalyticsFromJSON(template, requestHeaders, responseHeaders, requestJSON, responseJSON, requestPath, resourcePath)
 }
 
 // extractLLMAnalyticsFromJSON is the core extraction logic operating on pre-parsed JSON maps.
@@ -1425,31 +1430,21 @@ func extractLLMAnalyticsFromJSON(
 	template map[string]interface{},
 	requestHeaders, responseHeaders *policy.Headers,
 	requestJSON, responseJSON map[string]interface{},
-	requestPath string,
+	requestPath, resourcePath string,
 ) (*LLMProviderAnalyticsInfo, error) {
 	if template == nil {
 		return nil, fmt.Errorf("template is nil")
 	}
 
-	spec, ok := template["spec"].(map[string]interface{})
+	rootSpec, ok := template["spec"].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("template spec is not a map")
 	}
+	spec := effectiveLLMSpec(rootSpec, resourcePath)
 
 	info := &LLMProviderAnalyticsInfo{}
 
-	extract := func(field string, fromRequest bool) (interface{}, error) {
-		fieldCfg, ok := spec[field].(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("field %s not found", field)
-		}
-
-		location, _ := fieldCfg["location"].(string)
-		identifier, _ := fieldCfg["identifier"].(string)
-		if identifier == "" {
-			return nil, fmt.Errorf("identifier missing for %s", field)
-		}
-
+	extractAt := func(field, location, identifier string, fromRequest bool) (interface{}, error) {
 		switch strings.ToLower(location) {
 		case "payload":
 			var src map[string]interface{}
@@ -1490,6 +1485,32 @@ func extractLLMAnalyticsFromJSON(
 		default:
 			return nil, fmt.Errorf("unsupported location %s", location)
 		}
+	}
+
+	// extract tries the field's primary identifier, then each fallback in order, and returns the
+	// first value found.
+	extract := func(field string, fromRequest bool) (interface{}, error) {
+		fieldCfg, ok := spec[field].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("field %s not found", field)
+		}
+		identifiers := llmFieldIdentifiers(fieldCfg)
+		if len(identifiers) == 0 {
+			return nil, fmt.Errorf("identifier missing for %s", field)
+		}
+		location, _ := fieldCfg["location"].(string)
+		var lastErr error
+		for _, identifier := range identifiers {
+			value, err := extractAt(field, location, identifier, fromRequest)
+			if err == nil && value != nil {
+				return value, nil
+			}
+			lastErr = err
+		}
+		if lastErr == nil {
+			lastErr = fmt.Errorf("no value for %s", field)
+		}
+		return nil, lastErr
 	}
 
 	if v, err := extract("promptTokens", false); err == nil {
@@ -1562,10 +1583,15 @@ func extractPathParam(requestPath, pattern string) (string, error) {
 	if match == nil {
 		return "", fmt.Errorf("pathParam identifier did not match request path")
 	}
+	value := match[0]
 	if len(match) > 1 {
-		return match[1], nil
+		value = match[1]
 	}
-	return match[0], nil
+	// AWS SDKs percent-encode the model id (":" as %3A), which would not match a price.
+	if decoded, err := url.PathUnescape(value); err == nil {
+		return decoded, nil
+	}
+	return value, nil
 }
 
 // compilePathParamRegex compiles (and caches) a pathParam identifier regex.

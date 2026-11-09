@@ -19,6 +19,7 @@
 import {
   Avatar,
   Box,
+  Button,
   Chip,
   IconButton,
   Stack,
@@ -46,6 +47,11 @@ const messages = defineMessages({
     id: 'apiCard.deleteAction',
     defaultMessage: 'Delete API',
     description: 'Delete action shown in an API card or row actions menu.',
+  },
+  deleteLabel: {
+    id: 'apiCard.deleteLabel',
+    defaultMessage: 'Delete',
+    description: 'Visible text of the labelled delete button on an API row.',
   },
   deleteAriaLabel: {
     id: 'apiCard.deleteAriaLabel',
@@ -325,5 +331,43 @@ export function ApiDeleteButton({ apiName, onDelete }: { apiName: string; onDele
         <Trash2 size={18} />
       </IconButton>
     </Tooltip>
+  );
+}
+
+/**
+ * Delete action with a visible label, for rows with room for it. Same class
+ * and accessible name as `ApiDeleteButton`, so a row can reveal either on hover.
+ */
+export function ApiDeleteLabelButton({
+  apiName,
+  onDelete,
+}: {
+  apiName: string;
+  onDelete: () => void;
+}) {
+  const { formatMessage } = useIntl();
+
+  return (
+    <Button
+      aria-label={formatMessage(messages.deleteAriaLabel, { apiName })}
+      className="api-delete-action"
+      color="error"
+      onClick={(event) => {
+        event.stopPropagation();
+        onDelete();
+      }}
+      size="small"
+      startIcon={<Trash2 size={18} />}
+      sx={(theme) => ({
+        flexShrink: 0,
+        transition: 'opacity 150ms ease',
+        // Hidden until hover only where there is a hover to reveal it; on touch it
+        // stays visible, so it is never an invisible tap target.
+        [`${theme.breakpoints.up('md')} and (hover: hover)`]: { opacity: 0 },
+      })}
+      variant="outlined"
+    >
+      {formatMessage(messages.deleteLabel)}
+    </Button>
   );
 }

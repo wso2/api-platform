@@ -18,7 +18,7 @@
 const EventEmitter = require('events');
 const eventDao = require('../../dao/eventDao');
 const { matchSubscribers, UNREADABLE_SECRET } = require('./subscriberRegistry');
-const { encryptField } = require('./envelopeCrypto');
+const { sealAtRest, SEALED_AT_REST_KEY, SEALED_AT_REST_VERSION } = require('./fieldAtRest');
 const logger = require('../../config/logger');
 
 // Internal bus used to wake the dispatcher without waiting for the next poll tick.
@@ -31,23 +31,31 @@ const VALID_EVENT_TYPES = new Set([
     'subscription.deleted',
     'subscription.plan_changed',
     'subscription.token_regenerated',
+    'subscription.billing_updated',
     'apikey.generated',
     'apikey.regenerated',
     'apikey.revoked',
     'apikey.application_updated',
     'application.created',
     'application.updated',
-    'application.deleted'
+    'application.deleted',
+    'subscription_plan.created',
+    'subscription_plan.updated',
+    'subscription_plan.deleted',
+    'meter.created',
+    'meter.updated',
+    'meter.deleted'
 ]);
 
 /**
  * Publish a domain event inside an existing db.withTransaction() transaction handle.
  *
  * Pass `opts.secretFields` ({ [fieldName]: plaintextValue }) whenever the event carries
- * sensitive values. Each field is encrypted per-subscriber (AES-256-GCM under a key
- * derived from that subscriber's shared secret) and stored
- * as { [fieldName]: envelope } in EVENT_DELIVERY.ENCRYPTED_FIELDS — delivery rows are
- * created immediately inside the caller's TX so plaintext never leaves this call's stack.
+ * sensitive values. Each field is encrypted under the portal's own encryption key (see
+ * fieldAtRest.js) and stored in EVENT_DELIVERY.ENCRYPTED_FIELDS — delivery rows are created
+ * immediately inside the caller's TX so plaintext never leaves this call's stack. The
+ * delivery worker re-encrypts the values under the subscriber's current secret when it sends,
+ * so a secret rotation in between cannot strand a pending delivery.
  * Secret values are NOT written to EVENT.PAYLOAD.
  *
  * @param {string} eventType
@@ -99,7 +107,7 @@ async function publish(eventType, payload, opts) {
             const encryptedForSub = {};
             for (const [fieldName, plaintextValue] of Object.entries(secretFields)) {
                 try {
-                    encryptedForSub[fieldName] = encryptField(sub.secret, plaintextValue);
+                    encryptedForSub[fieldName] = sealAtRest(fieldName, plaintextValue);
                 } catch (err) {
                     logger.error('Failed to encrypt field for subscriber', {
                         subscriberId: sub.id, fieldName, error: err.message
@@ -107,6 +115,8 @@ async function publish(eventType, payload, opts) {
                 }
             }
             if (Object.keys(encryptedForSub).length === Object.keys(secretFields).length) {
+                // Marks the values as sealed at rest, to be re-encrypted for the subscriber at send time.
+                encryptedForSub[SEALED_AT_REST_KEY] = SEALED_AT_REST_VERSION;
                 perSubscriberEncrypted[sub.id] = encryptedForSub;
             } else if (Object.keys(encryptedForSub).length > 0) {
                 logger.error('Partial encryption for subscriber — skipping delivery', {

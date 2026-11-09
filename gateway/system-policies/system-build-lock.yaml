@@ -5,3 +5,5 @@ policies:
     filePath: ./a2a
   - name: wso2_apip_sys_analytics
     filePath: ./analytics
+  - name: wso2_apip_sys_jwks
+    filePath: ./jwks

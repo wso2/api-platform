@@ -35,6 +35,9 @@ const (
 	PropKeyRequestPayload  = "request_payload"
 	PropKeyResponsePayload = "response_payload"
 
+	// PropKeyAIUsage holds a dto.AIUsage for LLM events.
+	PropKeyAIUsage = "aiUsage"
+
 	// Auth-context property keys. Populated generically (auth-type-agnostic) by the
 	// collector system policy (gateway/system-policies/analytics, a separate Go module —
 	// hence the matching string literals there rather than a shared Go constant) whenever
@@ -63,6 +66,11 @@ const (
 	// up here. Consumed by the stdout traffic-logging publisher's global
 	// "$ctx:metadata['<key>']" property (see internal/analytics/publishers/global_properties.go).
 	PropKeyMetadata = "x-wso2-metadata"
+
+	// PropKeyOperationPath carries the matched operation path template (e.g.
+	// "/basepath/auth/{channel}") as configured on the API, as opposed to the concrete
+	// request path. Consumed by the traffic-logging global "$ctx:request.pathTemplate" property.
+	PropKeyOperationPath = "x-wso2-operation-path"
 
 	// Fault metadata keys, written only on the fault path by the collector system policy's
 	// OnFault (gateway/system-policies/analytics — a separate Go module, hence the matching

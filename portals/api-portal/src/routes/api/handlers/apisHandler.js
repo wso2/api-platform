@@ -21,11 +21,13 @@
  * Tag: APIs
  */
 const apiMetadataService = require('../../../services/apiMetadataService');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
-    createApiMetadata: apiMetadataService.createAPIMetadata,
+    createApiMetadata: compose(requireCsrfForMutatingApi, apiMetadataService.createAPIMetadata),
     getApiMetadata: apiMetadataService.getAPIMetadata,
     getAllApiMetadataForOrganization: apiMetadataService.getAllAPIMetadata,
-    updateApiMetadata: apiMetadataService.updateAPIMetadata,
-    deleteApiMetadata: apiMetadataService.deleteAPIMetadata,
+    updateApiMetadata: compose(requireCsrfForMutatingApi, apiMetadataService.updateAPIMetadata),
+    deleteApiMetadata: compose(requireCsrfForMutatingApi, apiMetadataService.deleteAPIMetadata),
 };

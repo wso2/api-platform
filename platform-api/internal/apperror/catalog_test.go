@@ -57,7 +57,12 @@ var messageArity = map[string]int{
 	CodeOf(APIPublicationValidationFailed):        1,
 	CodeOf(APIPublicationPortalConflict):          1,
 	CodeOf(APIPublicationStateConflict):           1,
+	CodeOf(APIPublicationPlanPricingConflict):     1,
+	CodeOf(APIPublicationMeterConflict):           1,
 	CodeOf(PayloadTooLarge):                       1,
+	CodeOf(MeterExists):                           1,
+	CodeOf(MeterInUse):                            1,
+	CodeOf(SubscriptionPlanInUse):                 1,
 }
 
 // CodeOf makes the arity table read as a set of catalog references rather

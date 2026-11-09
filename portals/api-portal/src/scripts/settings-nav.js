@@ -19,12 +19,13 @@
 
 // Panel navigation
 (function () {
-  var PANELS   = ['cfg-organizations', 'cfg-views', 'cfg-labels', 'cfg-plans', 'cfg-keymanagers', 'cfg-apis', 'cfg-mcps', 'cfg-webhooks', 'cfg-llm', 'cfg-workflows', 'cfg-theming'];
+  var PANELS   = ['cfg-organizations', 'cfg-views', 'cfg-labels', 'cfg-plans', 'cfg-keymanagers', 'cfg-apis', 'cfg-mcps', 'cfg-billing', 'cfg-meters', 'cfg-revenue', 'cfg-webhooks', 'cfg-llm', 'cfg-workflows', 'cfg-theming'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 
   function activate(id) {
-    if (!PANELS.includes(id)) id = 'cfg-organizations';
+    // A panel that isn't on the page opens Organization instead.
+    if (!PANELS.includes(id) || !document.getElementById(id)) id = 'cfg-organizations';
     // The shared API/MCP wizard lives inside #cfg-apis. Any sidebar navigation exits it
     // and restores the APIs list, so we never land on a panel with the wizard still open.
     var wizard = document.getElementById('cfg-apis-wizard');
@@ -34,6 +35,8 @@
     navItems.forEach(function(a) { a.classList.toggle('active', a.dataset.panel === id); });
     panels.forEach(function(p)   { p.style.display = p.id === id ? 'flex' : 'none'; });
     history.replaceState(null, '', location.pathname + '#' + id);
+    // Lets a panel load its data only when it is opened.
+    document.dispatchEvent(new CustomEvent('cfg:panel-shown', { detail: { id: id } }));
   }
   // Exposed so the API/MCP wizard (defined in the Manage-APIs script) can restore the
   // originating tab when it closes.

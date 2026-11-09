@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
@@ -39,6 +39,9 @@ const API = 'countries-graphql-api';
 
 const api = aGraphQLApiDetail({ displayName: 'Countries GraphQL API', id: API, projectId: PROJECT });
 
+/** Renders the router's current path, so a test can see where the card navigated. */
+const LocationProbe = () => <output data-testid="location">{useLocation().pathname}</output>;
+
 function renderPage() {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
@@ -46,6 +49,10 @@ function renderPage() {
         <Route
           element={<GraphqlPublishPage />}
           path="/organizations/:orgHandle/projects/:projectHandler/graphql-apis/:graphqlApiHandler/publish"
+        />
+        <Route
+          element={<LocationProbe />}
+          path="/organizations/:orgHandle/projects/:projectHandler/graphql-apis/:graphqlApiHandler/publish/:apiPortalId"
         />
       </Routes>
     </ApiScopeProvider>,
@@ -72,7 +79,7 @@ describe('GraphqlPublishPage', () => {
       ),
     );
 
-    renderPage();
+    const { user } = renderPage();
 
     expect(
       await screen.findByRole('heading', { name: 'Publish Countries GraphQL API' }),
@@ -82,8 +89,12 @@ describe('GraphqlPublishPage', () => {
       apiId: API,
       apiType: 'graphql-api',
     });
-    expect(screen.getByRole('link', { name: 'Go to publish' })).toHaveAttribute(
-      'href',
+
+    await user.click(screen.getByRole('button', { name: 'More publish options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Configure & Publish' }));
+    await user.click(screen.getByRole('button', { name: 'Configure & Publish' }));
+
+    expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${API}/publish/partner-portal`,
     );
   });

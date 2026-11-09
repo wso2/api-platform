@@ -47,6 +47,7 @@ export {
   useGatewayManifest,
   useGatewayOptions,
   useGateways,
+  useInvalidateGateways,
   useRotateGatewayToken,
   useUpdateGateway,
 } from './gateways.hooks';

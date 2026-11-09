@@ -60,6 +60,8 @@ Before adding a helper, step, or dependency:
   concurrency is part of user-visible product behavior. Use deterministic
   synchronization; runner parallelism alone is not a concurrency guarantee.
 - Keep framework-only tests out of `it-suite.yaml` and `ui-suite.yaml`.
+- Put each feature file in a product folder under `features/`, such as
+  `features/gateway/mtls/`, never at the root of `features/`.
 
 ## Step Definitions
 
@@ -162,13 +164,9 @@ Before adding a helper, step, or dependency:
   The Platform Gateway template binding translates the compatible policy shape
   and the LLM-provider assertion binding selects the returned field. Feature
   files must describe the attached-policy behavior, not either representation.
-- Gateway `1.1.0` semantic-cache configuration uses the legacy root Redis keys;
-  the semantic-AI overlay and Redis provisioner must keep those keys and the
-  per-topology password available alongside the current vector-store keys.
-  Gateway-version-specific semantic-cache behavior must be isolated in a
-  runner selector: the cross-authenticated-caller isolation scenario is gated
-  to Gateway `>=1.2.0`, where that contract exists. Do not weaken the
-  isolation assertion to make an older Gateway pass.
+- The Redis provisioner passes its per-topology password through both the
+  legacy root Redis key, which Gateway `1.1.0` semantic-cache reads, and the
+  current vector-store key. Keep both.
 - Keep version-specific response or request handling in the relevant product
   step package. Do not make generic JSON assertions silently accept multiple
   data types or response shapes.
@@ -412,42 +410,49 @@ boot instead of reporting a test failure.
   concurrency requires comparison of resource state, partitions, browser
   diagnostics, and product logs before declaring a framework limitation.
 
-## Capability Map
+## Scenario Lists
 
-`docs/capability-map.yml` is the source of truth for the integration suite's
-capability and feature vocabulary. Capability and feature identifiers used by
-scenario annotations must be defined in that file.
+A product feature with a scenario list has `scenarios/<CODE>.yaml` (for example
+`scenarios/AIW-LLM.yaml`): one entry per scenario ID, kept by hand. Scenarios without an ID
+are fine; the rules below apply to those that carry one.
 
-Before adding or modifying a product scenario:
-
-1. Identify the capability and feature being tested in the map.
-2. Review the existing feature files and coverage documentation.
-3. Extend an existing capability or feature when it already represents the
-   behavior. Add a new map entry only when the behavior is genuinely new.
-
-Unknown capability or feature identifiers must fail validation. Do not invent
-similar identifiers or use free-form capability names.
+- Each entry records both layers: `ui` (browser journeys under `suites/ui`) and `it`
+  (API-level scenarios under `suites/it`). A layer's status is `automated`, `known-issue`
+  (with `issue`), `exempt` (with `reason`, approved by the feature owner) or `planned`, and
+  `refs` names the feature file and scenario that automate it.
+- Tag each scenario with every ID it covers (`@AIW-PRV-001`), on the scenario only, and the
+  feature with the list's code (`@AIW-LLM`). Update the entry's `refs` and status with the
+  scenario.
+- An ID whose expected result the product does not meet is never asserted to the product's
+  current behaviour without the feature owner's decision. If it is a product defect, keep
+  the expected result, put the ID in a scenario of its own tagged `@known-issue`, and record
+  the issue in the entry.
+- IT coverage is one scenario per ID (or a Scenario Outline) through the publisher REST API,
+  the contract the UI, the CLI and customers share.
+- UI coverage is a journey: one browser scenario that walks a user task and covers several
+  IDs, not one scenario per ID.
+- Tag a scenario with an ID, and mark its layer `automated`, only when the scenario performs
+  the ID's action and asserts its expected result. Seeing that something cannot be opened
+  does not prove a write against it is refused. When a layer cannot perform the action (the
+  UI offers no control for it), mark that layer `exempt` with the reason instead.
+- Pair every negative assertion (a 404, an absent list entry, a hidden control) with a
+  positive control for the same request or page that succeeds for the owner, so that the
+  negative cannot pass because the request or page is broken.
+- A scenario that covers an ID is done when it has passed three consecutive local runs and an
+  assertion check: temporarily break the condition it asserts and confirm that it fails.
+- Do not invent IDs. Maintainers assign them; an ID is added to its list before it is tagged.
 
 ## Scenario Annotations
 
-Every product scenario must identify what it tests and how it is classified:
+Classify a scenario with the tags that apply:
 
 | Annotation | Cardinality | Meaning |
 |---|---:|---|
-| `@cap:<id>` | 1 | The capability under test and the subject of the assertions. |
-| `@feat:<id>` | 1 | The feature within that capability. |
-| `@rule:<slug>` | 0..1 | An optional subgroup within the feature. |
+| `@<CODE-AREA-NNN>` | 0..N | A scenario ID the scenario covers; see Scenario Lists. |
 | `@type:smoke`, `@type:negative`, `@type:regression` | 0..N | The nature or selection category of the scenario. |
-| `@dep:<cap>` | 0..N | A cross-capability prerequisite, not coverage of that capability. |
-| `@legacy:<id>` | 0..N | An optional legacy test identifier used for parity tracking. |
+| `@known-issue` | 0..1 | Asserts expected behaviour the product does not meet yet; excluded by runner tags. |
 
-Use exactly one `@cap` and one `@feat` for each product scenario. If a scenario
-tests multiple capabilities, split it unless one capability is clearly the
-subject and the others are only prerequisites. Do not use `@dep` for universal
-baseline requirements.
-
-Non-product or framework-support features must use one exclusion annotation
-instead of product capability annotations:
+Non-product or framework-support features must use one exclusion annotation instead:
 
 ```text
 @setup    @infra    @framework    @migration
@@ -465,8 +470,8 @@ duplicating it.
 
 ### Feature level
 
-- Search `docs/capability-map.yml` and existing `.feature` files for the
-  capability and feature under test.
+- Search the feature's scenario list under `scenarios/` and the existing `.feature` files
+  for the behaviour under test.
 - Add scenarios to the existing feature file when it already owns the behavior.
 - Extend a `Scenario Outline` with another example when only the inputs differ.
 - Create a new feature file only when no existing feature represents the

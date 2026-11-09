@@ -38,7 +38,7 @@ import {
 import { LayoutTemplate, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { useAppAuthScopes } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 
@@ -74,7 +74,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentOrganization } = useAppShell();
-  const { hasPermission } = useAppAuth();
+  const { hasPermission } = useAppAuthScopes();
 
   const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(item.scope));
   const selectedKey = visibleNavItems.find((item) =>
@@ -140,7 +140,7 @@ export default function Settings() {
 
 export function SettingsIndexRedirect() {
   const { currentOrganization } = useAppShell();
-  const { hasPermission } = useAppAuth();
+  const { hasPermission } = useAppAuthScopes();
   const firstVisibleItem = NAV_ITEMS.find((item) => hasPermission(item.scope));
   const target = firstVisibleItem ? firstVisibleItem.path : '/home';
 

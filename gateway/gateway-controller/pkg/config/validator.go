@@ -23,6 +23,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync/atomic"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -34,15 +35,39 @@ type ValidationError struct {
 	Message string `json:"message"`
 }
 
-// validateNotReservedHealthPath rejects a resource path (or path prefix, such as
-// an LLMProvider/LLMProxy context with no per-operation path list of its own)
-// that falls under the reserved gateway health-check namespace
-// (constants.GatewayHealthPathPrefix) — reserved for the gateway's own /ready
-// and /healthy direct-response routes, which are added to every virtual host
-// regardless of what's deployed. See buildGatewayHealthRoutes in
-// gateway-controller/pkg/xds/translator.go. Shared across the RestAPI and LLM
-// validators so the reservation is enforced identically for every resource kind.
-func validateNotReservedHealthPath(field, resourcePath string) []ValidationError {
+// gatewayJWKSPathReserved tracks [signing] jwks_endpoint_enabled: the JWKS path
+// is reserved only while the gateway serves it. It is process-wide rather than a
+// validator field because every resource validator shares
+// validateNotReservedGatewayPath and is constructed without configuration.
+var gatewayJWKSPathReserved = func() *atomic.Bool {
+	b := &atomic.Bool{}
+	b.Store(true)
+	return b
+}()
+
+// SetGatewayJWKSPathReserved sets whether constants.GatewayJWKSPath is reserved.
+// Called once at startup from [signing] jwks_endpoint_enabled, before any
+// resource is validated. With the endpoint disabled the path is an ordinary
+// path that a resource may register.
+func SetGatewayJWKSPathReserved(reserved bool) {
+	gatewayJWKSPathReserved.Store(reserved)
+}
+
+// validateNotReservedGatewayPath rejects a resource path (or path prefix, such
+// as an LLMProvider/LLMProxy context with no per-operation path list of its own)
+// that collides with a route the gateway adds to every virtual host regardless
+// of what's deployed:
+//
+//   - the health-check namespace (constants.GatewayHealthPathPrefix), reserved
+//     as a prefix for the /ready and /healthy direct-response routes; and
+//   - the gateway JWKS endpoint (constants.GatewayJWKSPath), reserved exactly,
+//     since /.well-known/ itself is shared with other gateway-generated routes,
+//     and only while the endpoint is enabled (SetGatewayJWKSPathReserved).
+//
+// See buildGatewayHealthRoutes and buildGatewayJWKSRoute in
+// gateway-controller/pkg/xds/translator.go. Shared across every resource
+// validator so the reservation is enforced identically for every kind.
+func validateNotReservedGatewayPath(field, resourcePath string) []ValidationError {
 	// Canonicalize before comparing: every generated HttpConnectionManager sets
 	// NormalizePath (see translator.go), so Envoy collapses dot-segments at
 	// request time. A raw, uncleaned comparison here would miss a path like
@@ -57,6 +82,12 @@ func validateNotReservedHealthPath(field, resourcePath string) []ValidationError
 		return []ValidationError{{
 			Field:   field,
 			Message: fmt.Sprintf("path conflicts with the reserved gateway health-check namespace (%s)", constants.GatewayHealthPathPrefix),
+		}}
+	}
+	if gatewayJWKSPathReserved.Load() && canonical == constants.GatewayJWKSPath {
+		return []ValidationError{{
+			Field:   field,
+			Message: fmt.Sprintf("path conflicts with the reserved gateway JWKS endpoint (%s)", constants.GatewayJWKSPath),
 		}}
 	}
 	return nil

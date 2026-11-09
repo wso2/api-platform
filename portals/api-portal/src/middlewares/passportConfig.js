@@ -18,7 +18,8 @@
 
 const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth2');
-const { jwtVerify, createRemoteJWKSet } = require('jose');
+const { jwtVerify } = require('jose');
+const { getJwksResolver } = require('../utils/jwksResolver');
 const { getNestedClaim } = require('../utils/jwtDecode');
 const { config } = require('../config/configLoader');
 const { portalRoles } = require('./authorization');
@@ -26,21 +27,6 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const orgContext = require('../utils/orgContext');
 const { CustomError } = require('../utils/errors/customErrors');
-
-// One JWKS resolver per URL, kept at module scope. `createRemoteJWKSet`
-// keeps an in-memory key cache + rate-limits refreshes; recreating it per
-// call throws that state away and pushes the JWKS endpoint on every login.
-// Keyed by URL so a config change (or a test overriding the URL) creates a
-// new resolver rather than serving stale keys from another endpoint.
-const jwksResolvers = new Map();
-function getJwksResolver(jwksURL) {
-    let resolver = jwksResolvers.get(jwksURL);
-    if (!resolver) {
-        resolver = createRemoteJWKSet(new URL(jwksURL));
-        jwksResolvers.set(jwksURL, resolver);
-    }
-    return resolver;
-}
 
 /**
  * Verifies an IDP-issued JWT against the configured JWKS. Throws on any failure.
@@ -240,6 +226,9 @@ function configurePassport(SERVER_ID) {
                 view,
                 idToken: params.id_token,
                 email: decodedJWT['email'] || req.session.username,
+                // The configured display-name claim (auth.claim_mappings.display_name),
+                // stored on the user's idp reference row for display. Optional.
+                displayName: fromTokens(config.auth.claimMappings.displayName) ?? '',
                 [constants.ROLES.ORGANIZATION_CLAIM]: organizationId,
                 returnTo: req.session.returnTo,
                 accessToken,
@@ -301,6 +290,7 @@ function configurePassport(SERVER_ID) {
             firstName: user.firstName,
             lastName: user.lastName,
             email: user.email,
+            displayName: user.displayName,
             imageURL: user.imageURL,
             view: user.view,
             idToken: user.idToken,

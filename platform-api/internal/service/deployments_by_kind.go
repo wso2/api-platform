@@ -328,3 +328,33 @@ func (d DeploymentsByKind) RestoreDeploymentByHandle(handle, kind, deploymentID,
 	}
 	return deployments.Restore(handle, deploymentID, gatewayHandle, orgID, actor)
 }
+
+// ArtifactProjects resolves the project an artifact belongs to. Satisfied by
+// repository.ArtifactRepo.
+type ArtifactProjects interface {
+	GetProjectHandle(kind, handle, orgUUID string) (projectHandle string, found bool, err error)
+}
+
+// PluginDeployments is the deployments capability handed to plugins: every
+// kind-routed operation, plus the project an artifact belongs to, which a plugin
+// that scopes deployments by project checks before acting on an artifact.
+type PluginDeployments struct {
+	DeploymentsByKind
+	Projects ArtifactProjects
+}
+
+// GetArtifactProjectByHandle returns the handle of the project an artifact of the
+// named kind belongs to, or an empty handle when it belongs to none.
+func (p PluginDeployments) GetArtifactProjectByHandle(handle, kind, orgID string) (string, error) {
+	if _, err := p.For(kind); err != nil {
+		return "", err
+	}
+	project, found, err := p.Projects.GetProjectHandle(kind, handle, orgID)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", apperror.ArtifactNotFound.New()
+	}
+	return project, nil
+}

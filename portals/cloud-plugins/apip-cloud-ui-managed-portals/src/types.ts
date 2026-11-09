@@ -17,8 +17,34 @@
  *
  * The UI's job is to distinguish "still provisioning" from "ready to visit"
  * on Create; a rare post-provisioning outage is not something we surface.
+ * `deleting` is a portal the cloud's orchestrator is tearing down: it stays
+ * listed until it is gone.
  */
-export type ManagedPortalStatus = 'pending' | 'active' | 'failed';
+export type ManagedPortalStatus = 'pending' | 'active' | 'failed' | 'deleting';
+
+/** A change to an existing portal that the backend runs in the background. */
+export type ManagedPortalChangeOp = 'loginEnvironment' | 'selfSignup' | 'rotateKey';
+
+/** The background change running while the portal is pending. */
+export interface ManagedPortalChange {
+  op: ManagedPortalChangeOp;
+  /** The environment the sign-in moves to, for a loginEnvironment change. */
+  loginEnvironment?: string;
+  /** The sign-up setting being applied, for a selfSignup change. */
+  selfSignup?: boolean;
+}
+
+/**
+ * The last background change, when it failed. `op` is absent for a change
+ * kind this UI does not know; the failure still counts.
+ */
+export interface ManagedPortalChangeError extends Omit<ManagedPortalChange, 'op'> {
+  op?: ManagedPortalChangeOp;
+  /** What failed and what state the portal was left in, for the user. */
+  message: string;
+  /** ISO timestamp of the failure. */
+  at?: string;
+}
 
 export interface ManagedPortal {
   /** Portal id; equal to `handle` in the current backend. */
@@ -33,12 +59,18 @@ export interface ManagedPortal {
   url?: string;
   /** Data-plane env whose auth server backs portal-user login. Empty on list responses; populated by GET. */
   loginEnvironment?: string;
+  /** Whether portal users can create an account from the sign-in page. Empty on list responses; populated by GET. */
+  selfSignup?: boolean;
   /**
    * Provisioning-lifecycle status. Missing when the backend has not been
    * upgraded to write it; treated as `active` by the UI so pre-upgrade portals
    * still show a working Visit button.
    */
   status?: ManagedPortalStatus;
+  /** The change running in the background; set only while status is `pending`. Absent while the portal is being created. */
+  change?: ManagedPortalChange;
+  /** The last background change, when it failed. On list rows, only for pending and failed portals. */
+  lastChangeError?: ManagedPortalChangeError;
   /** ISO timestamp of the last row change. */
   updatedAt?: string;
 }
@@ -49,12 +81,15 @@ export interface CreateManagedPortalInput {
   description?: string;
   /** When omitted, the server picks the org's preferred env; pass only to override that choice. */
   loginEnvironment?: string;
+  /** Defaults to on when omitted. */
+  selfSignup?: boolean;
 }
 
 export interface UpdateManagedPortalInput {
   name?: string;
   description?: string;
   loginEnvironment?: string;
+  selfSignup?: boolean;
 }
 
 /** One data-plane environment; only the fields the UI's env selector needs. */
@@ -79,7 +114,8 @@ export interface PortalPort {
   get(id: string): Promise<ManagedPortal>;
   create(input: CreateManagedPortalInput): Promise<ManagedPortal>;
   update(id: string, input: UpdateManagedPortalInput): Promise<ManagedPortal>;
-  remove(id: string): Promise<void>;
+  /** `pending` is true when the portal is torn down in the background and reads as deleting until it is gone. */
+  remove(id: string): Promise<{ pending: boolean }>;
   /** Empty list means the org has no environments yet; callers should surface that rather than defaulting. */
   listEnvironments(): Promise<OrgEnvironment[]>;
 }

@@ -98,7 +98,8 @@ export const ApiDesignerBanner = () => (
         minWidth: 0,
         display: 'flex',
         justifyContent: { md: 'flex-end', xs: 'center' },
-        '& svg': { height: '100%', maxWidth: '100%', objectFit: 'contain', width: 'auto' },
+        // Fit the art to the slot's height so the card keeps its size.
+        '& .apid-frame': { height: '100%', width: 'auto' },
       }}
     >
       <ApiDesignerCanvasIllustration />

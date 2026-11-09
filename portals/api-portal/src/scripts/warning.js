@@ -174,6 +174,7 @@ async function deleteApplication() {
         }
         const response = await fetch(apiPortalApi.root(`/applications/${applicationId}`), {
             method: 'DELETE',
+            headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         });
         if (response.ok) {
             // remove the application card from the UI

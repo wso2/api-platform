@@ -52,6 +52,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/xdsclient"
+	"github.com/wso2/api-platform/sdk/core/signing"
 	sdkutils "github.com/wso2/api-platform/sdk/core/utils"
 )
 
@@ -196,6 +197,24 @@ func main() {
 	}
 	sdkutils.SetSharedHTTPClient(sharedHTTPClient)
 	slog.InfoContext(ctx, "Shared outbound HTTP client built for policies")
+
+	// Install the gateway signing keys every signing policy uses through
+	// sdk/core/signing, and that the gateway JWKS endpoint publishes. Installed
+	// before the registry builds any policy instance, and never replaced. With
+	// no [signing] keys an empty keyring is installed: the JWKS is empty and
+	// signing.Available() is false, so policies keep their own fallback.
+	signingKeyring, err := config.BuildSigningKeyring(cfg.Signing)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load gateway signing keys", "error", err)
+		os.Exit(1)
+	}
+	signing.Install(signingKeyring)
+	if active, ok := signing.ActiveKey(); ok {
+		slog.InfoContext(ctx, "Gateway signing keys loaded",
+			"active_kid", active.Kid, "algorithm", string(active.Algorithm), "published_keys", len(cfg.Signing.Keys))
+	} else {
+		slog.InfoContext(ctx, "No gateway signing keys configured; the JWKS is empty and gateway signing is unavailable")
+	}
 
 	// Initialize CEL evaluator
 	celEvaluator, err := cel.NewCELEvaluator()
