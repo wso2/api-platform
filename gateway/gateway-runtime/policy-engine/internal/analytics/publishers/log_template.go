@@ -140,7 +140,9 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.Co
 	}
 	// Excluded fields are removed before compiling, so they are never compiled or reported.
 	for _, entry := range logCfg.ExcludeFields {
-		excludeTemplatePath(root, strings.Split(entry, "."))
+		if _, matched := excludeTemplatePath(root, strings.Split(entry, ".")); !matched {
+			slog.Warn(fmt.Sprintf("%s: exclude_fields entry %q matches no field in the template and has no effect", source, entry))
+		}
 	}
 	env, err := createGlobalPropertyEnv()
 	if err != nil {
@@ -186,22 +188,23 @@ func readTemplateFile(path string) (string, error) {
 
 // excludeTemplatePath applies one exclude_fields path to an object node. A path that ends at a
 // key removes it; one that goes on inside an expression's value is kept on that node for
-// each request; any other path has no effect. It reports whether the removal emptied node.
-func excludeTemplatePath(node *templateNode, path []string) bool {
+// each request; any other path has no effect. It reports whether the removal emptied node, and
+// whether path named a field in the template.
+func excludeTemplatePath(node *templateNode, path []string) (emptied, matched bool) {
 	i := -1
 	_, rest, ok := splitLongestKey(path, func(k string) bool {
 		i = slices.IndexFunc(node.members, func(m templateMember) bool { return m.key == k })
 		return i >= 0
 	})
 	if !ok {
-		return false
+		return false, false
 	}
 	child := node.members[i].value
 	switch {
 	case len(rest) == 0: // the path ends at this key, removed below
 	case child.kind == objectNode:
-		if !excludeTemplatePath(child, rest) {
-			return false
+		if childEmptied, childMatched := excludeTemplatePath(child, rest); !childEmptied {
+			return false, childMatched
 		}
 	case child.kind == expressionNode:
 		if variable := strings.TrimSpace(child.expression); variable == "request.header" || variable == "response.header" {
@@ -214,12 +217,12 @@ func excludeTemplatePath(node *templateNode, path []string) bool {
 		} else {
 			child.excludePaths = append(child.excludePaths, rest)
 		}
-		return false
+		return false, true
 	default: // a literal or an array
-		return false
+		return false, false
 	}
 	node.members = slices.Delete(node.members, i, i+1)
-	return len(node.members) == 0
+	return len(node.members) == 0, true
 }
 
 // splitLongestKey returns the longest run of path's leading segments, joined with ".", that

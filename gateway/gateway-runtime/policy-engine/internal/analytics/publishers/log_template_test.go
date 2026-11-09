@@ -495,11 +495,8 @@ func TestLogTemplate_ExcludeFields(t *testing.T) {
 		{"claim names match exactly", []string{"auth_prop.Tenant"}, full},
 		{"header names match in any case", []string{"hdrs.X-User"}, line(service, http, route, client, authProp, `"hdrs":{"authorization":"****","x-foo":"bar"}`, tags)},
 		{"a masked header can be removed", []string{"hdrs.authorization"}, line(service, http, route, client, authProp, `"hdrs":{"x-foo":"bar","x-user":"alice"}`, tags)},
-		{"arrays are not reached", []string{"tags.0"}, full},
-		{"fixed values are not reached", []string{"service.name"}, full},
 		{"single values are not reached", []string{"http.method.name"}, full},
 		{"header values are not reached", []string{"hdrs.x-foo.bar"}, full},
-		{"no such field", []string{"nosuch"}, full},
 		{"every top-level field", []string{"service", "http", "http.route", "client", "auth_prop", "hdrs", "tags"}, `{}`},
 	}
 	for _, tt := range tests {
@@ -509,6 +506,43 @@ func TestLogTemplate_ExcludeFields(t *testing.T) {
 			assert.Empty(t, logs, "an exclusion is never logged")
 		})
 	}
+}
+
+// An exclude_fields entry that names no field in the template is reported once at startup and
+// changes nothing. A path inside an expression's value cannot be checked until a request arrives,
+// so it is not reported.
+func TestLogTemplate_ExclusionThatMatchesNoField(t *testing.T) {
+	full, _ := excludedLine(t, exclusionTemplate, nil, exclusionEvent())
+
+	tests := []struct {
+		name    string
+		exclude string
+		warns   bool
+	}{
+		{"no such field", "nosuch", true},
+		{"no such nested key", "http.nosuch", true},
+		{"inside an array", "tags.0", true},
+		{"inside a fixed value", "service.name", true},
+		{"inside an expression's value", "auth_prop.nosuch", false},
+		{"inside a header map", "hdrs.x-nosuch", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, logs := excludedLine(t, exclusionTemplate, []string{tt.exclude}, exclusionEvent())
+			assert.Equal(t, full, got)
+			if tt.warns {
+				assert.Equal(t, 1, strings.Count(logs, "level=WARN"), logs)
+				assert.Contains(t, logs, `exclude_fields entry \"`+tt.exclude+`\" matches no field in the template`)
+			} else {
+				assert.Empty(t, logs)
+			}
+		})
+	}
+	t.Run("inside an object written empty", func(t *testing.T) {
+		got, logs := excludedLine(t, `{"e":{},"b":1}`, []string{"e.x"}, exclusionEvent())
+		assert.Equal(t, `{"e":{},"b":1}`, got)
+		assert.Equal(t, 1, strings.Count(logs, "level=WARN"), logs)
+	})
 }
 
 func TestLogTemplate_ExclusionThatEmptiesAValueRemovesIt(t *testing.T) {
@@ -542,7 +576,6 @@ func TestLogTemplate_ExclusionThatEmptiesAValueRemovesIt(t *testing.T) {
 		{"an object above it with other fields stays", `{"o":{"a":"$ctx:auth.property","n":"$ctx:api.name"}}`, []string{"o.a.tenant"}, onlyTenant(), `{"o":{"n":"Orders"}}`},
 		{"every field emptied gives an empty line object", `{"a":"$ctx:auth.property"}`, []string{"a.tenant"}, onlyTenant(), `{}`},
 		{"a value that is already empty stays", `{"a":"$ctx:auth.property"}`, []string{"a.tenant"}, emptyClaims(), `{"a":{}}`},
-		{"an object written empty stays", `{"e":{},"b":1}`, []string{"e.x"}, onlyTenant(), `{"e":{},"b":1}`},
 		{"a header map emptied by exclusion is removed", `{"h":"$ctx:request.header","b":1}`, []string{"h.authorization", "h.x-foo"}, ordersEvent(), `{"b":1}`},
 		{"a header map with no captured headers is null", `{"h":"$ctx:request.header"}`, []string{"h.x-foo"}, createBaseEvent(), `{"h":null}`},
 		{"a flat key inside a value", `{"m":"$ctx:metadata"}`, []string{"m.x.y"}, metadata(), `{"m":{"deep":{"k":{"v":3}},"list":[{"k":1}],"x":{"y":2}}}`},
