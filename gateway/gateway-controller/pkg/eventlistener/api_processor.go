@@ -278,6 +278,7 @@ func extractAPINameVersion(cfg *models.StoredConfig) (string, string) {
 // deleteSubscriptionsOf removes a deleted artifact's subscriptions (subscriptions.api_id is not a FK)
 // and refreshes the subscription xDS so the policy engine drops their tokens. A subscription that
 // arrived before the artifact was known here is keyed by the control-plane ID, so that is cleared too.
+// A failed delete doesn't stop the other one or the refresh, so whatever was deleted loses its tokens.
 func (l *EventListener) deleteSubscriptionsOf(cfg *models.StoredConfig, entityID, eventID string) {
 	if l.db == nil {
 		return
@@ -291,7 +292,6 @@ func (l *EventListener) deleteSubscriptionsOf(cfg *models.StoredConfig, entityID
 			l.logger.Warn("Failed to delete subscriptions from database after API deletion",
 				slog.String("api_id", id),
 				slog.Any("error", err))
-			return
 		}
 	}
 	l.refreshSubscriptions(entityID, eventID)

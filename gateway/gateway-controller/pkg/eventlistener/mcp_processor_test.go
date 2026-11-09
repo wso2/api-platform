@@ -213,7 +213,7 @@ func (f *failingSnapshotUpdater) UpdateSnapshot(context.Context) error {
 	return errors.New("snapshot unavailable")
 }
 
-// A failed delete skips the snapshot refresh; a failed refresh is only logged.
+// A failed delete is only logged and the snapshot is still refreshed; a failed refresh is only logged.
 func TestDeleteSubscriptionsOf_Failures(t *testing.T) {
 	(&EventListener{logger: newTestLogger()}).deleteSubscriptionsOf(nil, "api-1", "evt")
 
@@ -221,9 +221,42 @@ func TestDeleteSubscriptionsOf_Failures(t *testing.T) {
 	snapshots := &mockSubscriptionSnapshotUpdater{}
 	require.NoError(t, closed.Close())
 	(&EventListener{db: closed, subscriptionManager: snapshots, logger: newTestLogger()}).deleteSubscriptionsOf(nil, "api-1", "evt")
-	assert.Zero(t, snapshots.callCount)
+	assert.Equal(t, 1, snapshots.callCount)
 
 	failing := &failingSnapshotUpdater{}
 	(&EventListener{db: setupSQLiteDBForEventListenerTests(t), subscriptionManager: failing, logger: newTestLogger()}).deleteSubscriptionsOf(nil, "api-1", "evt")
 	assert.Equal(t, 1, failing.calls)
+}
+
+// failFirstSubscriptionDelete fails deleting the subscriptions of one API and passes the rest through.
+type failFirstSubscriptionDelete struct {
+	storage.Storage
+	failFor string
+}
+
+func (f failFirstSubscriptionDelete) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	if apiID == f.failFor {
+		return errors.New("delete failed")
+	}
+	return f.Storage.DeleteSubscriptionsForAPINotIn(apiID, ids)
+}
+
+// When deleting by the gateway ID fails, the control-plane ID's subscriptions are still deleted
+// and the snapshot is refreshed, so their tokens are dropped.
+func TestDeleteSubscriptionsOf_ContinuesPastAFailedDelete(t *testing.T) {
+	db := setupSQLiteDBForEventListenerTests(t)
+	require.NoError(t, db.SaveSubscription(&models.Subscription{
+		ID: "sub-cp", APIID: "api-cp", SubscriptionToken: "cp-token", Status: models.SubscriptionStatusActive,
+	}))
+	snapshots := &mockSubscriptionSnapshotUpdater{}
+	listener := &EventListener{
+		db: failFirstSubscriptionDelete{Storage: db, failFor: "api-1"}, subscriptionManager: snapshots, logger: newTestLogger(),
+	}
+
+	listener.deleteSubscriptionsOf(&models.StoredConfig{UUID: "api-1", CPArtifactID: "api-cp"}, "api-1", "evt")
+
+	left, err := db.ListSubscriptionsByAPI("api-cp", "", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, left)
+	assert.Equal(t, 1, snapshots.callCount)
 }
