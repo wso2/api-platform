@@ -77,9 +77,7 @@ func (s *Steps) portalCard(ctx context.Context, portal string) (playwright.Locat
 	if err != nil {
 		return nil, err
 	}
-	return page.Locator(".MuiCard-root").Filter(playwright.LocatorFilterOptions{
-		Has: page.GetByRole("heading", playwright.PageGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)}),
-	}), nil
+	return s.card(page, resolved), nil
 }
 
 func (s *Steps) clickOnPortal(ctx context.Context, button, portal string) error {

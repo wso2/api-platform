@@ -139,8 +139,6 @@ func (s *Steps) clickOnGateway(ctx context.Context, button, gateway string) erro
 	return nil
 }
 
-// click presses a button anywhere on the page. An open drawer hides the page behind it from
-// role queries, so a button of the drawer is the one found.
 func (s *Steps) gatewayButtonState(ctx context.Context, button, gateway, state string) error {
 	resolved, err := uivalue.Expand(ctx, button)
 	if err != nil {
@@ -162,6 +160,8 @@ func (s *Steps) gatewayButtonState(ctx context.Context, button, gateway, state s
 	return nil
 }
 
+// click presses a button anywhere on the page. An open drawer hides the page behind it from
+// role queries, so a button of the drawer is the one found.
 func (s *Steps) click(ctx context.Context, button string) error {
 	locator, err := s.button(ctx, button)
 	if err != nil {
@@ -332,16 +332,16 @@ func (s *Steps) offersButton(ctx context.Context, which, name, role string) erro
 }
 
 func (s *Steps) gatewayAnswers(ctx context.Context, status int, method, path string) error {
-	return s.awaitGateway(ctx, status, method, path, "")
+	return s.awaitGateway(ctx, status, method, path, "", nil)
 }
 
 func (s *Steps) gatewayAnswersWithBody(ctx context.Context, status int, method, path string, body *godog.DocString) error {
-	return s.awaitGateway(ctx, status, method, path, body.Content)
+	return s.awaitGateway(ctx, status, method, path, body.Content, nil)
 }
 
 // awaitGateway sends the request to the gateway until it answers status. The gateway applies
 // a deploy or an undeploy shortly after the control plane accepts it.
-func (s *Steps) awaitGateway(ctx context.Context, status int, method, path, body string) error {
+func (s *Steps) awaitGateway(ctx context.Context, status int, method, path, body string, headers map[string]string) error {
 	resolved, err := uivalue.Expand(ctx, path)
 	if err != nil {
 		return err
@@ -350,7 +350,7 @@ func (s *Steps) awaitGateway(ctx context.Context, status int, method, path, body
 	if err != nil {
 		return err
 	}
-	request := httpx.Request{Method: method, URL: base + resolved}
+	request := httpx.Request{Method: method, URL: base + resolved, Headers: headers}
 	if body != "" {
 		request.ContentType = "application/json"
 		request.Body = []byte(body)

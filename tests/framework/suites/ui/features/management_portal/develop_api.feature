@@ -34,6 +34,8 @@ Feature: The Management Portal edits an API, attaches its policies and keeps its
     And the user uploads spec fixture "petstore-v2.yaml" in the Management Portal
     And the user clicks "Save" in the Management Portal
     And the user confirms with "Save" in the Management Portal
+    # Edit returns only once the save succeeds; opening another page sooner would cancel it.
+    And the Management Portal offers a "Edit" button
     And the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/edit"
     And the user enters "${CTX:api} edited" as the "Name" in the Management Portal
     And the user enters "Edited in the console." as the "Description" in the Management Portal
@@ -99,6 +101,7 @@ Feature: The Management Portal edits an API, attaches its policies and keeps its
     And the user enters "console-secret" as the "Password" in the Management Portal
     And the user clicks "Attach policy" in the Management Portal
     And the user clicks "Save changes" in the Management Portal
+    And the Management Portal shows "Policies saved."
     # A fresh load of the page: the policies below are read back from the control plane.
     And the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/policies"
     Then the Management Portal shows global policy "cors"
@@ -136,7 +139,9 @@ Feature: The Management Portal edits an API, attaches its policies and keeps its
     And the user clicks "Edit" in the Management Portal
     And the user enters "Call GET /store/inventory first." as the "Content" in the Management Portal
     And the user clicks "Save" in the Management Portal
-    Then the Management Portal shows "Call GET /store/inventory first."
+    # The editor's live preview shows the text before it is saved; the editor closes once it is.
+    Then the Management Portal offers no "Save" button
+    And the Management Portal shows "Call GET /store/inventory first."
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/documents"
     Then the Management Portal shows "Call GET /store/inventory first."
     And the Management Portal does not show "Call GET /pets first."

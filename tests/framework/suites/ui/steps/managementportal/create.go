@@ -204,7 +204,7 @@ func (s *Steps) projectHasRESTAPIs(ctx context.Context, project, ids string) err
 		got = append(got, api.ID)
 	}
 	slices.Sort(got)
-	if !slices.Equal(got, want) && len(got)+len(want) > 0 {
+	if !slices.Equal(got, want) {
 		return fmt.Errorf("project %q has REST APIs %v, want %v", resolvedProject, got, want)
 	}
 	return nil

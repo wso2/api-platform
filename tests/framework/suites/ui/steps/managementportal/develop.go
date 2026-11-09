@@ -27,8 +27,6 @@ import (
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
-	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
-	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/uivalue"
 )
 
@@ -151,19 +149,7 @@ func (s *Steps) card(page playwright.Page, heading string) playwright.Locator {
 
 // gatewayAnswersAs sends the request with Basic credentials until the gateway answers status.
 func (s *Steps) gatewayAnswersAs(ctx context.Context, status int, method, path, username, password string) error {
-	resolved, err := uivalue.Expand(ctx, path)
-	if err != nil {
-		return err
-	}
-	base, err := s.topo.URL("platform-gateway", "http")
-	if err != nil {
-		return err
-	}
-	request := httpx.Request{Method: method, URL: base + resolved, Headers: map[string]string{
+	return s.awaitGateway(ctx, status, method, path, "", map[string]string{
 		"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password)),
-	}}
-	return retry.Await(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
-		return s.client.Do(ctx, request, 0, 0)
-	}, func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == status },
-		fmt.Sprintf("the gateway never answered %d to %s %s as %q", status, method, resolved, username))
+	})
 }
