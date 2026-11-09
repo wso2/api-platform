@@ -20,43 +20,95 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { fetchEntitlementSummary } from './entitlementsApi';
 
-const stubFetch = () => {
-  const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
-};
+/**
+ * The summary is read through the console's proxy, beside the host's billing
+ * read, so it has to follow the proxy wherever the deployment puts it: `/proxy`
+ * behind the BFF, `/api-management/proxy` behind a gateway that serves the
+ * console under a path. A Platform API URL that is not a same-origin path has
+ * no billing route, so the read stays on the BFF's default.
+ */
+const stubRuntimeConfig = (config: Record<string, string>) =>
+  vi.stubGlobal('window', { __RUNTIME_CONFIG__: config });
+
+const okResponse = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('fetchEntitlementSummary', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
+  it.each([
+    [{ platformApiBaseUrl: '/proxy' }, '/proxy/billing-entitlement/summary?product=api-platform'],
+    [
+      { platformApiBaseUrl: '/api-management/proxy/' },
+      '/api-management/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [
+      { PLATFORM_API_BASE_URL: '/api-management/proxy' },
+      '/api-management/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [{}, '/proxy/billing-entitlement/summary?product=api-platform'],
+    [
+      { platformApiBaseUrl: 'https://localhost:9243' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [
+      { platformApiBaseUrl: '//platform.example.com' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [
+      { platformApiBaseUrl: '/\\platform.example.com' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [
+      { platformApiBaseUrl: '/\t/platform.example.com' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [{ platformApiBaseUrl: '//[' }, '/proxy/billing-entitlement/summary?product=api-platform'],
+    // A deployment that routes the Entitlement API apart from the proxy.
+    [
+      {
+        platformApiBaseUrl: '/api-management/proxy',
+        billingEntitlementBaseUrl: '/_api/entitlement/api/v1/',
+      },
+      '/_api/entitlement/api/v1/summary?product=api-platform',
+    ],
+    [
+      { BILLING_ENTITLEMENT_BASE_URL: '/_api/entitlement/api/v1' },
+      '/_api/entitlement/api/v1/summary?product=api-platform',
+    ],
+    // Only a same-origin path is taken; anything else keeps the proxy route.
+    [
+      { platformApiBaseUrl: '/proxy', billingEntitlementBaseUrl: 'https://billing.example.com/v1' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+    [
+      { platformApiBaseUrl: '/proxy', billingEntitlementBaseUrl: '//billing.example.com' },
+      '/proxy/billing-entitlement/summary?product=api-platform',
+    ],
+  ])('reads the summary under the proxy base for %j', async (config, expected) => {
+    stubRuntimeConfig(config);
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({ products: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchEntitlementSummary();
+
+    expect(fetchMock).toHaveBeenCalledWith(expected, expect.anything());
   });
 
-  it('reads through the proxy at the root when no base path is configured', async () => {
-    vi.stubGlobal('window', { __RUNTIME_CONFIG__: {} });
-    const fetchMock = stubFetch();
-    await fetchEntitlementSummary();
-    expect(fetchMock.mock.calls[0]?.[0]).toMatch(/^\/proxy\/billing-entitlement\/summary\?/);
+  it('resolves the summary it read', async () => {
+    stubRuntimeConfig({ platformApiBaseUrl: '/api-management/proxy' });
+    const summary = { products: [] };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse(summary)));
+
+    await expect(fetchEntitlementSummary()).resolves.toEqual(summary);
   });
 
-  it('reads through the proxy under the console base path', async () => {
-    vi.stubGlobal('window', { __RUNTIME_CONFIG__: { appBasePath: '/console' } });
-    const fetchMock = stubFetch();
-    await fetchEntitlementSummary();
-    expect(fetchMock.mock.calls[0]?.[0]).toMatch(
-      /^\/console\/proxy\/billing-entitlement\/summary\?/,
-    );
-  });
+  it('resolves null when the read fails, so a failed read never locks anyone out', async () => {
+    stubRuntimeConfig({ platformApiBaseUrl: '/api-management/proxy' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 } as Response));
 
-  // The server does not emit appBasePath, so the build-time value is the only
-  // one that reaches a real deployment.
-  it('falls back to the base path Vite built the bundle with', async () => {
-    vi.stubGlobal('window', { __RUNTIME_CONFIG__: {} });
-    vi.stubEnv('VITE_APP_BASE_PATH', '/console/');
-    const fetchMock = stubFetch();
-    await fetchEntitlementSummary();
-    expect(fetchMock.mock.calls[0]?.[0]).toMatch(
-      /^\/console\/proxy\/billing-entitlement\/summary\?/,
-    );
+    await expect(fetchEntitlementSummary()).resolves.toBeNull();
   });
 });

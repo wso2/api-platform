@@ -34,10 +34,12 @@ const useActiveColorScheme = () => {
 export type NoGatewayStateProps = {
   /** Opens the Add Gateway form with the chosen hosting already selected. */
   onAdd: (hosting: GatewayHosting) => void;
-  /** The organization's gateway quota is full — both buttons are disabled. */
-  disabled?: boolean;
-  /** Why creating is blocked; shown on hover over a disabled button. */
-  disabledMessage?: string;
+  /**
+   * Hosting kinds with no room left, each with the message explaining why.
+   * Per kind, not one flag: the two are capped separately, and each button
+   * here commits to one of them.
+   */
+  blocked?: Partial<Record<GatewayHosting, string>>;
 };
 
 // One 6s loop: the empty slot (ghost) is replaced by the gateway block, its bars
@@ -231,36 +233,36 @@ const Option: FC<OptionProps> = ({
  * gateway into an environment, and the two ways to add the first one. Each button
  * opens the Add Gateway form with that hosting already chosen.
  */
-const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd, disabled, disabledMessage }) => (
+const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd, blocked }) => (
   <Box sx={{ maxWidth: 640, mx: 'auto', pt: 6, textAlign: 'center' }}>
     <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
       <GatewayFlow />
     </Box>
     <Typography variant="h4" sx={{ mb: 0.5, fontWeight: 500 }}>
-      Connect your first gateway
+      Connect your first API gateway
     </Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mb: 4, opacity: 0.65 }}>
-      A gateway routes traffic to your APIs in an environment. Choose how you want to run it.
+      An API gateway routes traffic to your APIs in an environment. Choose how you want to run it.
     </Typography>
     <Card sx={{ border: '1px solid', borderColor: 'divider', textAlign: 'left', overflow: 'hidden' }}>
       <Option
         primary
         icon={<Server size={20} />}
-        title="Self-hosted gateway"
-        description="Run the gateway in your own infrastructure with full control over network, data and scaling."
-        action="Add self-hosted gateway"
+        title="Self-hosted API gateway"
+        description="Run the API gateway in your own infrastructure with full control over network, data and scaling."
+        action="Add self-hosted API gateway"
         onClick={() => onAdd('self-hosted')}
-        disabled={disabled}
-        disabledMessage={disabledMessage}
+        disabled={Boolean(blocked?.['self-hosted'])}
+        disabledMessage={blocked?.['self-hosted']}
       />
       <Option
         icon={<Cloud size={20} />}
-        title="WSO2 managed gateway"
-        description="A gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
-        action="Add Cloud gateway"
+        title="WSO2 managed API gateway"
+        description="An API gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
+        action="Add Cloud API gateway"
         onClick={() => onAdd('managed')}
-        disabled={disabled}
-        disabledMessage={disabledMessage}
+        disabled={Boolean(blocked?.managed)}
+        disabledMessage={blocked?.managed}
       />
     </Card>
   </Box>

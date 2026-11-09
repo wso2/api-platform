@@ -19,7 +19,6 @@ package server
 
 import (
 	"context"
-	"crypto/rsa"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -29,14 +28,14 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/client"
-	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
+	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/mcpserver"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -54,7 +53,6 @@ import (
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	"github.com/wso2/api-platform/httpkit/httputil"
 	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
@@ -71,16 +69,26 @@ type Server struct {
 	eventHub       eventhub.EventHub
 	logger         *slog.Logger
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
+	listeners      *listenerSet    // bound during startup, before the database is reached
+	quit           chan os.Signal  // shutdown signals, caught from the start of startup
+	markStarted    func()          // ends the health check's startup phase once the full API serves
+	revocations    *service.RevocationCache
+	revocationPoll time.Duration
 }
 
 // validateServerConfig enforces request-security requirements at startup that
-// are not covered by config-load validation. All checks are unconditional:
-// there is no relaxed/demo mode.
+// are not covered by config-load validation, and gives unset health settings their
+// defaults before validating them. All checks are unconditional: there is no
+// relaxed/demo mode.
 func validateServerConfig(cfg *config.Server) error {
 	if slices.Contains(cfg.Listeners.CORS.AllowedOrigins, "*") {
 		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
-	return nil
+	// A config built in code (platform.WithConfig) skips the loader, so its health
+	// settings may be unset; they take their defaults rather than leaving the database
+	// check with no time to answer.
+	config.ApplyHealthDefaults(&cfg.Health)
+	return config.ValidateHealth(&cfg.Health)
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies
@@ -115,12 +123,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	// TEMP-READ-ONLY-MODE: end
 
-	// Initialize database using configuration
-	db, err := database.NewConnection(&cfg.Database, slogger)
+	serving, err := (&Server{logger: slogger}).startServing(cfg)
 	if err != nil {
-		slogger.Error("Failed to connect to database", "error", err)
 		return nil, err
 	}
+	// Every failure path from here on must release what startServing acquired; built is
+	// set only on the success path.
+	built := false
+	defer func() {
+		if !built {
+			serving.release()
+		}
+	}()
+	db := serving.db
 
 	// Schema DDL is executed only for SQLite, which is used for local/demo
 	// deployments. For all other (server) drivers the schema must be
@@ -166,6 +181,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
 	publicationRepo := repository.NewPublicationRepo(db)
+	serviceAccountRepo := repository.NewServiceAccountRepo(db)
+
+	// The sa: sub prefix is reserved. Refuse to start rather than assume no
+	// existing identity already uses it.
+	saEnabled := cfg.Auth.ServiceAccount.Enabled
+	if !saEnabled {
+		slogger.Info("service accounts are disabled (auth.service_account.enabled = false)")
+	} else if foreign, err := serviceAccountRepo.ForeignReservedIdentities(); err != nil {
+		return nil, fmt.Errorf("failed to check reserved service-account identities: %w", err)
+	} else if len(foreign) > 0 {
+		return nil, fmt.Errorf("%d existing identities use the reserved %q subject prefix (e.g. %q); "+
+			"rename them before enabling service accounts", len(foreign), model.ServiceAccountSubPrefix, foreign[0])
+	}
 
 	// Seed the file-based organization on startup if file auth mode is selected.
 	if cfg.Auth.Mode == config.AuthModeFile {
@@ -272,7 +300,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, graphqlAPIRepo, llmProxyRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identityService, cfg, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
@@ -418,8 +446,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
+	webhookSecretService := service.NewWebhookSecretService(repository.NewWebhookSecretRepo(db), secretVault, identityService, cfg.Security.WebhookSecretMaxVersions)
 	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(apiPortalRepo, secretVault)
 	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
+	apiPortalService.SetWebhookSecrets(webhookSecretService)
 	portalPublisher, err := newPortalPublisher(apiPortalAuthRegistry, &cfg.APIPortalPublication, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API Portal publisher: %w", err)
@@ -432,6 +462,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
+	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, apiService, slogger)
+	if err != nil {
+		return nil, err
+	}
 	apiDocumentHandler := handler.NewAPIDocumentHandler(apiDocumentService, identityService, slogger, cfg)
 	apiThumbnailHandler := handler.NewAPIThumbnailHandler(apiDocumentService, identityService, slogger, cfg)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
@@ -480,6 +514,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	graphqlAPIService.SetSecretService(secretService)
 	graphqlAPIService.SetMaxSDLFetchBytes(cfg.OpenAPISpecMaxFetchBytes)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
+	webhookSecretHandler := handler.NewWebhookSecretHandler(webhookSecretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
 		Enabled:  cfg.Deployments.TimeoutEnabled,
@@ -495,6 +530,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	wsHandler.SetReadOnly(&cfg.ReadOnly)
 	internalGatewayHandler.SetReadOnly(&cfg.ReadOnly)
 	timeoutService.SetReadOnly(&cfg.ReadOnly)
+	webhookSecretService.SetReadOnly(&cfg.ReadOnly)
 	// TEMP-READ-ONLY-MODE: end
 
 	slogger.Info("Initialized all services and handlers successfully")
@@ -528,6 +564,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	appHandler.RegisterRoutes(core)
 	apiPortalHandler.RegisterRoutes(core)
 	apiHandler.RegisterRoutes(core)
+	apiInvokeHandler.RegisterRoutes(core)
 	apiDocumentHandler.RegisterRoutes(core)
 	apiThumbnailHandler.RegisterRoutes(core)
 	gatewayHandler.RegisterRoutes(core)
@@ -554,6 +591,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	graphqlAPIKeyHandler.RegisterRoutes(core)
 	graphqlAPIDeploymentHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
+	webhookSecretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.
 	// Plugins contribute routes, DB schema, and OpenAPI scopes at startup.
@@ -584,9 +622,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// assignment itself is the compile-time contract check: if a service method
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
-		Gateways:   gatewayService,
-		Projects:   projectService,
-		APIPortals: apiPortalService,
+		Gateways:       gatewayService,
+		Projects:       projectService,
+		APIPortals:     apiPortalService,
+		WebhookSecrets: webhookSecretService,
 		// Read-only lookups, so a plugin can tell a brand-new API from another
 		// version of an existing one — which no route answers on its own.
 		APIs: apiService,
@@ -631,6 +670,50 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// rather than with the other routes. It stays public because the auth
 	// middleware bypasses it via cfg.Auth.SkipPaths.
 	handler.NewAuthLoginHandler(cfg, roleScopeMap).RegisterPublicRoutes(core)
+
+	// Service accounts expand their roles through the same mapping, so they are
+	// wired here too.
+	saCfg := cfg.Auth.ServiceAccount
+	var saKeys *service.ServiceAccountKeys
+	if saEnabled {
+		saKeys, err = service.LoadServiceAccountKeys(cfg)
+		if errors.Is(err, service.ErrNoServiceAccountSigningKey) {
+			slogger.Warn("service-account token issue is disabled: no signing key", "reason", err)
+			saKeys = nil
+		} else if err != nil {
+			return nil, fmt.Errorf("failed to load service-account signing key: %w", err)
+		}
+	}
+	keyMap, err := buildIssuerKeyMap(cfg, saKeys)
+	if err != nil {
+		return nil, err
+	}
+	var revocations *service.RevocationCache
+	if saEnabled {
+		revocations = service.NewRevocationCache(serviceAccountRepo, slogger)
+		// Loaded before serving: a cold cache must never read as "nothing revoked".
+		// Postgres and SQL Server schemas are operator-provisioned, so a missing
+		// table surfaces here on upgrade.
+		if err := revocations.Load(); err != nil {
+			return nil, fmt.Errorf("failed to load service-account revocations (on Postgres or SQL Server, apply "+
+				"the service_accounts and service_account_revocations tables from the schema file, or set "+
+				"auth.service_account.enabled = false): %w", err)
+		}
+		var saSigner *service.SATokenSigner
+		var saPublicKeys []service.ServiceAccountKey
+		if saKeys != nil {
+			saSigner = service.NewSATokenSigner(saKeys, cfg)
+			saPublicKeys = saKeys.Keys
+		}
+		serviceAccountService := service.NewServiceAccountService(serviceAccountRepo, orgRepo, auditRepo, identityService,
+			roleScopeMap, saSigner, saCfg.TokenTTL, cfg.Auth.Authorization.Mode, slogger)
+		serviceAccountService.SetRevocationCache(revocations)
+		handler.NewServiceAccountHandler(serviceAccountService, identityService, saPublicKeys,
+			saCfg.Signing.EffectiveJWKSCacheMaxAge(), slogger).RegisterRoutes(core)
+	} else {
+		keyMap.DisableServiceAccounts()
+		cfg.Auth.SkipPaths = slices.DeleteFunc(cfg.Auth.SkipPaths, isServiceAccountSkipPath)
+	}
 
 	// The recorder defers registration errors (a duplicate or empty pattern, a
 	// nil handler) instead of panicking, so they are reported here, once, before
@@ -716,6 +799,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize webhook receiver: %w", err)
 		}
+		webhookReceiver.SetPortalSecrets(webhookSecretService)
 		webhookReceiver.SetReadOnly(&cfg.ReadOnly) // TEMP-READ-ONLY-MODE: remove with receiver_readonly.go
 		webhookReceiver.RegisterRoutes(mux)
 		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath)
@@ -757,23 +841,24 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if cfg.Auth.Mode == config.AuthModeFile {
 		slogger.Info("Auth mode: file (local users, RS256-signed JWT)")
 		slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
-		publicKey, err := cfg.Auth.JWT.LoadPublicKey()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
-		}
 		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-			PublicKey:      publicKey,
-			TokenIssuer:    cfg.Auth.JWT.Issuer,
 			SkipPaths:      cfg.Auth.SkipPaths,
 			SkipValidation: false,
 			ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
+			KeyMap:         keyMap,
 		}))
 	} else {
-		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap)
+		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap, keyMap)
 		if err != nil {
 			return nil, err
 		}
 		chain = append(chain, authenticator.Middleware()...)
+	}
+
+	// Runs straight after authentication, so every later layer sees only
+	// unrevoked service-account tokens.
+	if revocations != nil {
+		chain = append(chain, middleware.ServiceAccountRevocationMiddleware(keyMap, revocations))
 	}
 
 	// Resolve the organization claim (the platform UUID in file-based mode, or
@@ -856,7 +941,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
 
+	// The health endpoints report whether the database is reachable. It is the same
+	// checker that answered during the startup wait, so failure tracking carries over.
+	registerHealthRoutes(mux, serving.health)
+
 	startupOK = true
+	built = true
 	return &Server{
 		mux:            mux,
 		handler:        gohttpkit.Chain(chain...)(mux),
@@ -870,7 +960,76 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		eventHub:       eventHub,
 		logger:         slogger,
 		plugins:        plugins,
+		listeners:      serving.listeners,
+		quit:           serving.quit,
+		markStarted:    serving.markStarted,
+		revocations:    revocations,
+		revocationPoll: saCfg.Revocation.PollInterval,
 	}, nil
+}
+
+// buildIssuerKeyMap registers every issuer this server verifies. In idp mode
+// the local entry exists only to verify SA tokens, so it is the SA kind.
+func buildIssuerKeyMap(cfg *config.Server, saKeys *service.ServiceAccountKeys) (*middleware.IssuerKeyMap, error) {
+	var keys []middleware.IssuerKeys
+	sharedKey := saKeys != nil && !saKeys.OwnIssuer
+
+	if cfg.Auth.Mode == config.AuthModeIDP {
+		for _, iss := range cfg.Auth.IDP.Issuer {
+			keys = append(keys, middleware.IssuerKeys{Issuer: iss, Kind: middleware.IssuerKindIDP})
+		}
+		if sharedKey {
+			if saKeys.Issuer == "" {
+				return nil, fmt.Errorf("auth.jwt.issuer must not be empty when it signs service-account tokens")
+			}
+			keys = append(keys, middleware.IssuerKeys{Issuer: saKeys.Issuer,
+				Kind: middleware.IssuerKindServiceAccount,
+				Keys: verifyKeys(saKeys)})
+		}
+	} else {
+		// The map keys on iss, so an empty issuer would accept only tokens with none.
+		if cfg.Auth.JWT.Issuer == "" {
+			return nil, fmt.Errorf("auth.jwt.issuer must not be empty")
+		}
+		local := middleware.IssuerKeys{Issuer: cfg.Auth.JWT.Issuer, Kind: middleware.IssuerKindLocal}
+		if cfg.Auth.Mode == config.AuthModeInternalToken && cfg.Auth.InternalToken.SkipValidation {
+			// No auth.jwt key is required here; SA tokens on the shared key still verify.
+			if sharedKey {
+				local.Keys = verifyKeys(saKeys)
+			}
+		} else {
+			pub, err := cfg.Auth.JWT.LoadPublicKey()
+			if err != nil {
+				return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
+			}
+			local.Current = pub
+		}
+		keys = append(keys, local)
+	}
+
+	if saKeys != nil && saKeys.OwnIssuer {
+		keys = append(keys, middleware.IssuerKeys{
+			Issuer: saKeys.Issuer,
+			Kind:   middleware.IssuerKindServiceAccount,
+			Keys:   verifyKeys(saKeys),
+		})
+	}
+	return middleware.NewIssuerKeyMap(cfg.Auth.ServiceAccount.Audience, keys...)
+}
+
+// verifyKeys maps each SA key's kid to its public key and algorithm.
+func verifyKeys(saKeys *service.ServiceAccountKeys) map[string]middleware.VerifyKey {
+	m := make(map[string]middleware.VerifyKey, len(saKeys.Keys))
+	for _, k := range saKeys.Keys {
+		m[k.JWK.Kid] = middleware.VerifyKey{Key: k.Public, Alg: k.JWK.Alg}
+	}
+	return m
+}
+
+// isServiceAccountSkipPath reports whether p is a public service-account route,
+// dropped from the skip list when service accounts are off.
+func isServiceAccountSkipPath(p string) bool {
+	return p == constants.JWKSPath || strings.HasPrefix(p, constants.APIBasePath+"/service-accounts/")
 }
 
 // buildClaimMappings adapts the config-level claim name mapping (shared by all
@@ -884,6 +1043,7 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 		UserIDClaim:       cm.UserID,
 		UsernameClaim:     cm.Username,
 		EmailClaim:        cm.Email,
+		DisplayNameClaim:  cm.DisplayName,
 		ScopeClaim:        cm.Scope,
 		RolesClaimPath:    cm.Roles,
 		RoleScopeMap:      roleScopeMap,
@@ -893,27 +1053,21 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 // buildAuthenticator constructs an Authenticator from the server configuration.
 // Only called when the auth mode is "internal_token" or "idp" (file mode wires
 // its own local-JWT middleware).
-func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
+func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string,
+	keyMap *middleware.IssuerKeyMap) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
-		var publicKey *rsa.PublicKey
 		if cfg.Auth.InternalToken.SkipValidation {
 			slogger.Info("Auth mode: internal_token (signature, expiry and issuer validation skipped — " +
-				"tokens are trusted as minted by a trusted platform component)")
+				"tokens are trusted as minted by a trusted platform component; service-account tokens are still verified)")
 		} else {
 			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
-			var err error
-			publicKey, err = cfg.Auth.JWT.LoadPublicKey()
-			if err != nil {
-				return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
-			}
 		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-				PublicKey:      publicKey,
-				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
 				SkipValidation: cfg.Auth.InternalToken.SkipValidation,
 				ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
+				KeyMap:         keyMap,
 			}),
 		), nil
 	}
@@ -961,6 +1115,17 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		slog.String("jwksUrl", cfg.Auth.IDP.JWKSUrl),
 		slog.Any("issuers", cfg.Auth.IDP.Issuer),
 	)
+	// Locally signed (service-account) tokens bypass the IdP verifier by iss.
+	// With none registered, the chain is exactly the IdP one.
+	if keyMap.IsLocal(cfg.Auth.JWT.Issuer) || keyMap.IsLocal(cfg.Auth.ServiceAccount.Signing.Issuer) {
+		return middleware.NewJWTAuthenticator(
+			middleware.IssuerRoutingMiddleware(keyMap, middleware.AuthConfig{
+				SkipPaths:     cfg.Auth.SkipPaths,
+				ClaimMappings: buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
+				KeyMap:        keyMap,
+			}, authMiddleware, claimsMiddleware),
+		), nil
+	}
 	return middleware.NewJWTAuthenticator(
 		authMiddleware,
 		claimsMiddleware,
@@ -973,8 +1138,8 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 // claim whether the platform verifies it against a JWKS endpoint or with a local
 // public key, and file-mode users name a role from this same file to inherit its
 // scopes even while authorization itself runs in "scope" mode. Config validation
-// requires the path wherever it is needed, so an empty path here means nothing
-// consumes the mapping.
+// requires the path wherever it is needed (role-mode authorization, service
+// accounts), so an empty path here means nothing consumes the mapping.
 func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
 	if cfg.Auth.Authorization.RoleToScopeMapping == "" {
 		return nil, nil
@@ -1066,109 +1231,26 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 	}, nil
 }
 
-// Start brings up the enabled listeners. The plain-HTTP and TLS listeners are
-// independent: either or both may run, each on its own port. This mirrors the
-// gateway router's http/https listener split. At least one listener must be
-// enabled.
-//
-// timeouts bounds connection lifetime on both listeners so a slow or idle peer
-// cannot hold one open indefinitely (Slowloris). It is validated at config load.
-func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeouts) error {
-	httpCfg := listeners.HTTP
-	httpsCfg := listeners.HTTPS
-	if !httpCfg.Enabled && !httpsCfg.Enabled {
-		s.logger.Error("No listeners enabled")
-		return fmt.Errorf("no listeners enabled: set server.http.enabled=true and/or server.https.enabled=true in config")
-	}
-
-	// Preflight: validate listener configuration and build the TLS config before
-	// starting any listener, background job, or goroutine
-	if httpCfg.Enabled && (httpCfg.Port <= 0 || httpCfg.Port > 65535) {
-		return fmt.Errorf("HTTP listener enabled but server.http.port is invalid (got %d)", httpCfg.Port)
-	}
-	var tlsConfig *tls.Config
-	if httpsCfg.Enabled {
-		if httpsCfg.Port <= 0 || httpsCfg.Port > 65535 {
-			return fmt.Errorf("HTTPS listener enabled but server.https.port is invalid (got %d)", httpsCfg.Port)
-		}
-		var err error
-		if tlsConfig, err = s.buildTLSConfig(httpsCfg); err != nil {
-			return err
-		}
-	}
-
-	// Add a health endpoint. Routes added to s.mux after startup are reachable
-	// because s.handler wraps s.mux by reference.
-	s.mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
-	})
-
+// Start switches the listeners bound during startup to the full API and blocks until
+// a listener fails or a shutdown signal arrives, then shuts everything down.
+func (s *Server) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	defer signal.Stop(s.quit)
 
 	go s.timeoutService.Start(ctx)
-
-	// errCh is buffered for both listeners so a failing goroutine never blocks,
-	// even while the other listener is still being shut down.
-	errCh := make(chan error, 2)
-	var httpServers []*http.Server
-
-	// Plain-HTTP listener.
-	if httpCfg.Enabled {
-		// Plain HTTP is only safe when something upstream terminates TLS, or for
-		// internal traffic. Say so loudly.
-		s.logger.Warn("Plain-HTTP listener is enabled (server.http.enabled=true); " +
-			"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
-			"directly to untrusted networks.")
-		httpPort := strconv.Itoa(httpCfg.Port)
-		httpServer := &http.Server{
-			Addr:              ":" + httpPort,
-			Handler:           s.handler,
-			ReadHeaderTimeout: timeouts.ReadHeader,
-			ReadTimeout:       timeouts.Read,
-			WriteTimeout:      timeouts.Write,
-			IdleTimeout:       timeouts.Idle,
-		}
-		httpServers = append(httpServers, httpServer)
-		s.logger.Info("Starting HTTP listener", "address", "http://localhost:"+httpPort)
-		go func() {
-			errCh <- httpServer.ListenAndServe()
-		}()
+	if s.revocations != nil {
+		go s.revocations.Run(ctx, s.revocationPoll)
 	}
 
-	// TLS listener.
-	if httpsCfg.Enabled {
-		httpsPort := strconv.Itoa(httpsCfg.Port)
-		httpsServer := &http.Server{
-			Addr:              ":" + httpsPort,
-			Handler:           s.handler,
-			TLSConfig:         tlsConfig,
-			ReadHeaderTimeout: timeouts.ReadHeader,
-			ReadTimeout:       timeouts.Read,
-			WriteTimeout:      timeouts.Write,
-			IdleTimeout:       timeouts.Idle,
-		}
-		httpServers = append(httpServers, httpsServer)
-		s.logger.Info("Starting HTTPS listener", "address", "https://localhost:"+httpsPort)
-		go func() {
-			errCh <- httpsServer.ListenAndServeTLS("", "")
-		}()
-	}
-
+	s.listeners.useHandler(s.handler)
+	s.markStarted()
 	s.logger.Info("Platform API started")
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(quit)
 
 	teardown := func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		for _, srv := range httpServers {
-			if err := srv.Shutdown(shutdownCtx); err != nil {
-				s.logger.Error("HTTP server shutdown error", "addr", srv.Addr, "error", err)
-			}
-		}
+		s.listeners.shutdown(shutdownCtx)
 		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
@@ -1181,22 +1263,10 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 		}
 	}
 
-	select {
-	case err := <-errCh:
-		cancel()
-		teardown()
-		// A graceful Shutdown surfaces http.ErrServerClosed on the listener
-		// goroutine; that is a clean exit, not a startup failure.
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
-	case sig := <-quit:
-		s.logger.Info("Received shutdown signal", "signal", sig)
-		cancel()
-		teardown()
-		return nil
-	}
+	err := s.waitForStop()
+	cancel()
+	teardown()
+	return err
 }
 
 // GetMux returns the raw ServeMux for testing purposes.
@@ -1292,4 +1362,28 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 		"retryBackoff", cfg.RetryBackoff,
 		"overallTimeout", cfg.OverallTimeout)
 	return service.NewHTTPPortalPublisher(authRegistry, lightClient, listingClient, contentClient, cfg.PlanListingBudget()), nil
+}
+
+// newAPIInvokeHandler builds the gateway relay behind the invoke route. An
+// invalid allow_hosts entry fails startup.
+func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
+	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
+	if err != nil {
+		return nil, fmt.Errorf("invalid gateway_relay.egress: %w", err)
+	}
+	relay, err := gatewayrelay.NewRelay(gatewayrelay.RelayOptions{
+		RequestTimeout:   cfg.RequestTimeout,
+		MaxRequestBytes:  cfg.MaxRequestBytes,
+		MaxResponseBytes: cfg.MaxResponseBytes,
+		MaxConcurrent:    cfg.MaxConcurrent,
+		MaxPending:       cfg.MaxPending,
+		CAFile:           cfg.CAFile,
+		TLSSkipVerify:    cfg.TLSSkipVerify,
+		Egress:           policy,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize the gateway relay: %w", err)
+	}
+	slogger.Info("Gateway relay ready", "egress", policy.Describe())
+	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, cfg.RequestTimeout, slogger), nil
 }

@@ -19,6 +19,7 @@ package mcpserver
 
 import (
 	"encoding/json"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -79,6 +80,12 @@ type countingMappings struct{ created int }
 func (c *countingMappings) GetOrCreateUUID(string) (string, error)             { c.created++; return "u1", nil }
 func (c *countingMappings) GetSubByUUID(string) (string, bool, error)          { return "", false, nil }
 func (c *countingMappings) GetSubsByUUIDs([]string) (map[string]string, error) { return nil, nil }
+func (c *countingMappings) GetOrCreateUUIDWithDisplayName(identity, _ string) (string, error) {
+	return c.GetOrCreateUUID(identity)
+}
+func (c *countingMappings) GetIdentitiesByUUIDs([]string) (map[string]repository.UserIdentity, error) {
+	return nil, nil
+}
 
 func idpServer(t *testing.T) (*Server, *countingMappings) {
 	s, _ := newTestServer(t)

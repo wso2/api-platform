@@ -193,7 +193,10 @@ describe('MetersPage', () => {
     // It is required.
     const key = tokenKey();
     await user.clear(key);
-    await user.click(screen.getByRole('button', { name: 'Add Meter' }));
+    // Its error shows once the field is left.
+    expect(screen.queryByText('Enter the event key to add up.')).not.toBeInTheDocument();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Add Meter' })).toBeDisabled();
     expect(await screen.findByText('Enter the event key to add up.')).toBeInTheDocument();
     // No spaces.
     await user.type(key, 'metadata.ai token usage');
@@ -311,18 +314,18 @@ describe('MetersPage', () => {
     expect(screen.queryByText('Key')).not.toBeInTheDocument();
 
     expect(await offered(user)).toEqual([
-      'Status coderesponse.status',
-      'HTTP methodrequest.verb',
-      'Resourcerequest.route',
-      'API typemetadata.apiType',
-      'MCP methodmetadata.mcpAnalytics.jsonRpcMethod',
-      'Toolmetadata.mcpAnalytics.capabilityName',
-      'Prompt tokensmetadata.aiTokenUsage.promptTokens',
-      'Completion tokensmetadata.aiTokenUsage.completionTokens',
-      'Total tokensmetadata.aiTokenUsage.totalTokens',
-      'Custom',
+      'Status code',
+      'HTTP method',
+      'Resource',
+      'API type',
+      'MCP method',
+      'Tool',
+      'Prompt tokens',
+      'Completion tokens',
+      'Total tokens',
+      'Custom filterFilter on any attribute path',
     ]);
-    await addProperty(user, /^API type/);
+    await addProperty(user, 'API type');
     expect(screen.getByText('Property')).toBeInTheDocument();
     expect(screen.getByText('Key')).toBeInTheDocument();
     expect(propertyNames()).toEqual(['API type']);
@@ -339,24 +342,19 @@ describe('MetersPage', () => {
     const apiType = propertyAt(0);
     await user.clear(apiType.name);
     await user.type(apiType.name, 'Kind');
-    expect(await offered(user)).not.toContain('API typemetadata.apiType');
+    expect(await offered(user)).not.toContain('API type');
     // Nor while it has its name, whatever the case, though with another key.
     await user.clear(apiType.name);
     await user.type(apiType.name, 'api TYPE');
-    await user.clear(apiType.key);
-    await user.type(apiType.key, 'api.kind');
-    expect(await offered(user)).not.toContain('API typemetadata.apiType');
-    // Offered again once the meter has neither.
-    await user.clear(apiType.name);
-    await user.type(apiType.name, 'Kind');
-    expect(await offered(user)).toContain('API typemetadata.apiType');
+    // The key of a property from the list is fixed, so it is never offered again.
+    expect(apiType.key).toHaveAttribute('readonly');
     await user.click(screen.getByRole('button', { name: 'Add Meter' }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(JSON.parse(requests.last()!.body)).toEqual({
       displayName: 'LLM input tokens',
       filterFields: [
-        { eventKey: 'api.kind', field: 'Kind' },
+        { eventKey: 'metadata.apiType', field: 'api TYPE' },
         { eventKey: 'metadata.aiTokenUsage.promptTokens', field: 'Prompt tokens' },
       ],
       type: 'TOKENS',
@@ -375,11 +373,18 @@ describe('MetersPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create meter' }));
     await user.type(screen.getByLabelText(/Name/), 'Regional calls');
-    await addProperty(user, 'Custom');
+    await addProperty(user, /^Custom filter/);
     expect(propertyNames()).toEqual(['']);
     expect(eventKeys()).toEqual(['']);
     expect(screen.getByRole('button', { name: 'Remove this property' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Add Meter' }));
+    expect(screen.getByRole('button', { name: 'Add Meter' })).toBeDisabled();
+    // Errors show once a field is left.
+    expect(
+      screen.queryByText('Give each property a name of 1 to 40 characters.'),
+    ).not.toBeInTheDocument();
+    await user.click(propertyAt(0).name);
+    await user.click(propertyAt(0).key);
+    await user.tab();
     expect(
       await screen.findByText('Give each property a name of 1 to 40 characters.'),
     ).toBeInTheDocument();
@@ -400,7 +405,7 @@ describe('MetersPage', () => {
     expect(screen.getByRole('button', { name: 'Remove Region' })).toBeInTheDocument();
 
     // A name is the same whatever its case; a key is the same as written.
-    await addProperty(user, 'Custom');
+    await addProperty(user, /^Custom filter/);
     const zone = propertyAt(1);
     await user.type(zone.name, 'region');
     await user.type(zone.key, 'metadata.region');
@@ -453,8 +458,8 @@ describe('MetersPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Edit Successful calls' }));
     expect(propertyNames()).toEqual(gatewayProperties.map(([field]) => field));
-    expect(await offered(user)).toEqual(['Custom']);
-    await addProperty(user, 'Custom');
+    expect(await offered(user)).toEqual(['Custom filterFilter on any attribute path']);
+    await addProperty(user, /^Custom filter/);
     expect(screen.queryByRole('button', { name: 'Add filter' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Remove Tool' }));
     expect(screen.getByRole('button', { name: 'Add filter' })).toBeInTheDocument();
@@ -507,7 +512,7 @@ describe('MetersPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Create meter' }));
     await user.type(screen.getByLabelText(/Name/), 'Typed calls');
-    await addProperty(user, /^API type/);
+    await addProperty(user, 'API type');
     await user.click(screen.getByRole('button', { name: 'Add Meter' }));
 
     expect(await screen.findByText(message)).toBeInTheDocument();

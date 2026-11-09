@@ -19,6 +19,7 @@
 package components
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -451,6 +452,13 @@ func TestTypedWiring(t *testing.T) {
 		_, err := spec.Decode(node.Content[0])
 		require.ErrorContains(t, err, `mode must be "a" or "b"`)
 	})
+}
+
+func TestDependentWiring(t *testing.T) {
+	require.Nil(t, DependentWiring(context.Background()), "no wiring attached reads as nil")
+	wiring := &validatingWiring{Mode: "a"}
+	require.Same(t, wiring, DependentWiring(WithDependentWiring(context.Background(), wiring)))
+	require.Nil(t, DependentWiring(WithDependentWiring(context.Background(), nil)))
 }
 
 type validatingWiring struct {

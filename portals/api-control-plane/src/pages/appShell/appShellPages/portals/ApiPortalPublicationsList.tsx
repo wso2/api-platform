@@ -22,9 +22,11 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { useApiPublications } from '@/api/resources/apiPublications';
+import { PortalPublishIllustration } from '@/components/illustrations/PortalPublishIllustration';
 import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useExtensions } from '@/extensions';
 import { routes } from '@/routes/paths';
+import { useActionPermission, useCan } from '@/permissions';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
 import { PublicationLoadError } from './components/PublicationLoadError';
@@ -69,7 +71,7 @@ const messages = defineMessages({
   },
   emptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle',
-    defaultMessage: 'No Portals Available',
+    defaultMessage: 'Create your first portal',
     description: 'Shown when the organization has not registered any portal yet.',
   },
   emptyDescription: {
@@ -111,6 +113,12 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   );
   const target = targetProp ?? restTarget;
   const apiHandler = target.apiHandle;
+  // A card's Publish opens the publish page and publishes from it; without the
+  // kind's publication scope the cards say why instead of starting a call that
+  // fails. Both kinds asked unconditionally (hooks), then the target's is used.
+  const restPublish = useActionPermission('publishRestApiToApiPortal');
+  const graphqlPublish = useActionPermission('publishGraphQLApiToApiPortal');
+  const publishPermission = target.definitionKind === 'graphql' ? graphqlPublish : restPublish;
 
   const [search, setSearch] = useState('');
   const publicationsQuery = useApiPublications(target.apiType, apiHandler, { limit: LIST_LIMIT });
@@ -120,6 +128,10 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   // the extension being registered rather than emit a link that would 404.
   const extensions = useExtensions();
   const hasManagedPortalsExtension = extensions.some((ext) => ext.id === 'managed-api-portals');
+  // ...and only for a user who may create a portal there; others see the empty
+  // state without an action rather than a page whose Add Portal is disabled.
+  const canCreatePortal = useCan('CreateApiPortal');
+  const offerAddPortal = hasManagedPortalsExtension && canCreatePortal;
 
   // `isPending`, not `isLoading`: a disabled query reports `isLoading: false`
   // with no data, which would flash the empty state while scope resolves.
@@ -170,15 +182,11 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
 
       {publications.length === 0 ? (
         <EmptyState
-          actionLabel={
-            hasManagedPortalsExtension ? intl.formatMessage(messages.emptyAction) : undefined
-          }
+          actionLabel={offerAddPortal ? intl.formatMessage(messages.emptyAction) : undefined}
           description={intl.formatMessage(messages.emptyDescription)}
-          onAction={
-            hasManagedPortalsExtension
-              ? () => navigate(routes.managedApiPortals(orgHandle))
-              : undefined
-          }
+          illustration={<PortalPublishIllustration />}
+          singleLineDescription
+          onAction={offerAddPortal ? () => navigate(routes.managedApiPortals(orgHandle)) : undefined}
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (
@@ -216,6 +224,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
                   key={publication.apiPortalId}
                   orgHandle={orgHandle}
                   publication={publication}
+                  publishDeniedTooltip={publishPermission.allowed ? undefined : publishPermission.tooltip}
                   publishPath={target.publishPath}
                 />
               ))}

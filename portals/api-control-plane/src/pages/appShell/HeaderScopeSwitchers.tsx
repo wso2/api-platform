@@ -33,7 +33,22 @@ import ProjectQuickSelector from './ProjectQuickSelector';
 
 // Switcher options can carry long display names/handles; bound the trigger width
 // and let the option text ellipsize instead of overflowing the header.
-const SWITCHER_SELECT_SX = { minWidth: 220, maxWidth: 260 };
+const SWITCHER_SELECT_SX = {
+  minWidth: 220,
+  maxWidth: 260,
+  // Keep the trigger compact (~53px); the 0.23 default padding made it ~63px.
+  '& .MuiSelect-select.MuiSelect-outlined.MuiInputBase-input': {
+    paddingTop: '5px !important',
+    paddingBottom: '5px !important',
+  },
+};
+
+// Selectors with a clear (X) button: the X sits at the top-right corner and the
+// chevron drops to the bottom-right, both on the same right edge, so they never overlap.
+const SWITCHER_SELECT_WITH_CLEAR_SX = {
+  ...SWITCHER_SELECT_SX,
+  '& .MuiSelect-icon': { top: 'auto', bottom: -6, right: 10 },
+};
 
 const TRUNCATED_OPTION_TEXT_SLOT_PROPS = {
   primary: { noWrap: true },
@@ -271,7 +286,7 @@ export function HeaderScopeSwitchers() {
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.project.placeholder', defaultMessage: 'Search projects...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.project.empty', defaultMessage: 'No projects found' })}
             noResultsMessage={intl.formatMessage({ id: 'appShell.header.project.noResults', defaultMessage: 'No matching projects' })}
-            sx={SWITCHER_SELECT_SX}
+            sx={SWITCHER_SELECT_WITH_CLEAR_SX}
           />
 
           <IconButton
@@ -288,14 +303,16 @@ export function HeaderScopeSwitchers() {
             }}
             sx={{
               position: "absolute",
-              top: 6,
-              right: 2,
+              top: 5,
+              right: 10,
+              opacity: 0.6,
+              '&:hover': { opacity: 1 },
               zIndex: 1,
-              width: 20,
-              height: 10,
+              width: 24,
+              height: 20,
             }}
           >
-            <X size={14} />
+            <X size={12} />
           </IconButton>
         </Box>
       )}
@@ -347,7 +364,7 @@ export function HeaderScopeSwitchers() {
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.api.placeholder', defaultMessage: 'Search APIs...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.api.empty', defaultMessage: 'No APIs found' })}
             noResultsMessage={intl.formatMessage({ id: 'appShell.header.api.noResults', defaultMessage: 'No matching APIs' })}
-            sx={SWITCHER_SELECT_SX}
+            sx={SWITCHER_SELECT_WITH_CLEAR_SX}
           />
 
           <IconButton
@@ -364,14 +381,16 @@ export function HeaderScopeSwitchers() {
             }}
             sx={{
               position: "absolute",
-              top: 6,
-              right: 2,
+              top: 5,
+              right: 10,
+              opacity: 0.6,
+              '&:hover': { opacity: 1 },
               zIndex: 1,
-              width: 20,
-              height: 10,
+              width: 24,
+              height: 20,
             }}
           >
-            <X size={14} />
+            <X size={12} />
           </IconButton>
         </Box>
       )}

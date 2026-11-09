@@ -34,9 +34,9 @@ import { defineMessages, FormattedMessage, FormattedNumber, useIntl } from 'reac
 
 import { useAllGraphQLApis } from '@/api/resources/graphqlApis';
 import { useAllRestApis } from '@/api/resources/restApis';
-import grpcIcon from '@/assets/icons/gRPC.svg';
+// import grpcIcon from '@/assets/icons/gRPC.svg';
 import graphqlIcon from '@/assets/icons/graphql.svg';
-import websocketIcon from '@/assets/icons/websocket.svg';
+// import websocketIcon from '@/assets/icons/websocket.svg';
 import {
   matchesApiType,
   type ApiTypeFilter,
@@ -184,8 +184,9 @@ export function ProjectStatistics({ onTypeFilterChange, selectedType }: ProjectS
   const metrics = [
     { type: 'rest' as const, message: messages.rest, icon: typeIcon('rest') },
     { type: 'graphql' as const, message: messages.graphql, icon: typeIcon('graphql', graphqlIcon) },
-    { type: 'async' as const, message: messages.async, icon: typeIcon('async', websocketIcon) },
-    { type: 'grpc' as const, message: messages.grpc, icon: typeIcon('grpc', grpcIcon) },
+    // Hidden for now: Async / events and gRPC are not supported yet.
+    // { type: 'async' as const, message: messages.async, icon: typeIcon('async', websocketIcon) },
+    // { type: 'grpc' as const, message: messages.grpc, icon: typeIcon('grpc', grpcIcon) },
   ];
 
   return (

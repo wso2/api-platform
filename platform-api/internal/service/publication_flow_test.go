@@ -135,7 +135,7 @@ func (alwaysSucceedsPortalPublisher) Publish(_ context.Context, _ *model.APIPort
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+func (alwaysSucceedsPortalPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _, _ string) error {
 	return nil
 }
 
@@ -151,7 +151,7 @@ func (alwaysSucceedsPortalPublisher) Deprecate(_ context.Context, _ *model.APIPo
 	return nil
 }
 
-func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+func (alwaysSucceedsPortalPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _, _ string, _ *service.PortalContent) error {
 	return nil
 }
 
@@ -580,7 +580,7 @@ func (unpublishConflictPublisher) Publish(_ context.Context, _ *model.APIPortal,
 	return nil
 }
 
-func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+func (unpublishConflictPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _, _ string) error {
 	return &service.PortalConflictError{Message: "active consumers still attached"}
 }
 
@@ -596,7 +596,7 @@ func (unpublishConflictPublisher) Deprecate(_ context.Context, _ *model.APIPorta
 	return nil
 }
 
-func (unpublishConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+func (unpublishConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _, _ string, _ *service.PortalContent) error {
 	return nil
 }
 
@@ -657,7 +657,7 @@ func (unpublishSubscriptionConflictPublisher) Publish(_ context.Context, _ *mode
 	return nil
 }
 
-func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _ string) error {
+func (unpublishSubscriptionConflictPublisher) Unpublish(_ context.Context, _ *model.APIPortal, _, _ string) error {
 	return &service.PortalConflictError{
 		Message: "the API Portal rejected removal of this listing (status 409)",
 		Reason:  "active subscriptions are removed",
@@ -676,7 +676,7 @@ func (unpublishSubscriptionConflictPublisher) Deprecate(_ context.Context, _ *mo
 	return nil
 }
 
-func (unpublishSubscriptionConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _ string, _ *service.PortalContent) error {
+func (unpublishSubscriptionConflictPublisher) PublishContent(_ context.Context, _ *model.APIPortal, _, _ string, _ *service.PortalContent) error {
 	return nil
 }
 
@@ -725,13 +725,13 @@ type contentRecorder struct {
 	archive []byte
 }
 
-func (c *contentRecorder) PublishContent(_ context.Context, _ *model.APIPortal, _ string, content *service.PortalContent) error {
+func (c *contentRecorder) PublishContent(_ context.Context, _ *model.APIPortal, _, _ string, content *service.PortalContent) error {
 	c.archive = content.Archive
 	return nil
 }
 
 // TestPublish_PushesTheDraftLandingPage checks the stored landing page reaches the portal as
-// web/apiContent.md in the content archive.
+// web/api-content.md in the content archive.
 func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
 	tdb := openSchemaDB(t)
 	g := seedOrgGraph(t, tdb)
@@ -745,7 +745,7 @@ func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
 		t.Fatalf("pushed content is not a ZIP: %v", err)
 	}
 	for _, f := range zr.File {
-		if f.Name != "content/web/apiContent.md" {
+		if f.Name != "content/web/api-content.md" {
 			continue
 		}
 		rc, err := f.Open()
@@ -758,5 +758,5 @@ func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
 		}
 		return
 	}
-	t.Fatalf("pushed content has no web/apiContent.md")
+	t.Fatalf("pushed content has no web/api-content.md")
 }

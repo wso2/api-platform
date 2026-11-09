@@ -1,0 +1,202 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+.api-portal-animation {
+  --t: 7s;
+  text-align: left;
+  overflow: hidden;
+}
+.api-portal-animation .mono {
+  font-family: ui-monospace, monospace;
+}
+
+/* Window chrome */
+.api-portal-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--portal-border);
+}
+.api-portal-bar i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--portal-track);
+}
+.api-portal-url {
+  margin-left: 6px;
+  font-size: 9.5px;
+  color: var(--portal-muted);
+}
+.api-portal-live {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  color: var(--portal-success);
+  animation: api-portal-live var(--t) cubic-bezier(0.3, 1.6, 0.5, 1) infinite;
+}
+.api-portal-live::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--portal-success);
+}
+
+/* Body */
+.api-portal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  animation: api-portal-body var(--t) ease infinite;
+}
+.api-portal-title {
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.api-portal-sub {
+  margin-top: -5px;
+  font-size: 9.5px;
+  color: var(--portal-muted);
+}
+.api-portal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.api-portal-card {
+  height: 64px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.api-portal-name {
+  font-size: 10.5px;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-portal-meta {
+  font-size: 9px;
+  color: var(--portal-muted);
+}
+.api-portal-other {
+  background: var(--portal-row);
+  border: 1px solid var(--portal-border);
+}
+.api-portal-slot {
+  position: relative;
+  height: 64px;
+}
+.api-portal-slot-empty {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  border: 1px dashed color-mix(in srgb, var(--portal-accent-base) 45%, transparent);
+  animation: api-portal-slot-empty var(--t) ease infinite;
+}
+.api-portal-api {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--portal-accent-base) 60%, transparent);
+  background: color-mix(in srgb, var(--portal-accent-base) 14%, transparent);
+  animation: api-portal-drop var(--t) cubic-bezier(0.2, 1.3, 0.4, 1) infinite;
+}
+.api-portal-api-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+}
+.api-portal-badge {
+  font-size: 8.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: var(--portal-success);
+  border: 1px solid color-mix(in srgb, var(--portal-success-base) 45%, transparent);
+  background: color-mix(in srgb, var(--portal-success-base) 10%, transparent);
+  flex-shrink: 0;
+  white-space: nowrap;
+  animation: api-portal-badge var(--t) cubic-bezier(0.3, 1.6, 0.5, 1) infinite;
+}
+.api-portal-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--portal-border);
+  font-size: 9.5px;
+  color: var(--portal-muted);
+  animation: api-portal-foot var(--t) cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.api-portal-count {
+  margin-left: auto;
+  color: var(--portal-text);
+}
+
+/* Timeline (% of --t)
+   0-10 empty · 10-20 portal appears · 20-26 Live · 34-42 API drops in · 48-54 Published · 58-65 footer · hold to 86 · reset 94 */
+@keyframes api-portal-live {
+  0%, 20% { opacity: 0; transform: scale(0.8); }
+  26%, 86% { opacity: 1; transform: scale(1); }
+  94%, 100% { opacity: 0; transform: scale(0.8); }
+}
+@keyframes api-portal-body {
+  0%, 12% { opacity: 0; transform: translateY(6px); }
+  20%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: translateY(6px); }
+}
+@keyframes api-portal-slot-empty {
+  0%, 34% { opacity: 1; }
+  40%, 86% { opacity: 0; }
+  94%, 100% { opacity: 1; }
+}
+@keyframes api-portal-drop {
+  0%, 34% { opacity: 0; transform: translateY(-22px) scale(0.94); }
+  42%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: none; }
+}
+@keyframes api-portal-badge {
+  0%, 48% { opacity: 0; transform: scale(0.7); }
+  54%, 86% { opacity: 1; transform: scale(1); }
+  94%, 100% { opacity: 0; transform: scale(0.7); }
+}
+@keyframes api-portal-foot {
+  0%, 58% { opacity: 0; transform: translateY(6px); }
+  65%, 86% { opacity: 1; transform: none; }
+  94%, 100% { opacity: 0; transform: translateY(6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-portal-animation * {
+    animation: none !important;
+  }
+  .api-portal-slot-empty {
+    opacity: 0;
+  }
+}

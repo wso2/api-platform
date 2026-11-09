@@ -44,6 +44,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppPage } from '@/components/AppPage';
 import { useApiPortals } from '@/api/resources/apiPortals';
 import { useOrganization } from '@/api/resources/organizations';
+import { useGreetingName } from '@/hooks/useGreetingName';
 import { useGateways } from '@/api/resources/gateways';
 import { useDeleteProject, type Project } from '@/api/resources/projects';
 import { useGraphQLApiCounts } from '@/api/resources/graphqlApis';
@@ -58,6 +59,7 @@ import ExploreMoreCard from './components/ExploreMoreCard';
 import { Can } from '@/permissions/Can';
 import { CanCreate } from '@/permissions/CanCreate';
 import type { LimitedComponent } from '@/hooks/useResourceLimits';
+import { isFeatureDisabled } from '@/config/features';
 
 const messages = defineMessages({
   apiAction: {
@@ -80,7 +82,7 @@ const messages = defineMessages({
   bannerTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.bannerTitle',
     defaultMessage: 'Hello, {organizationName}',
-    description: '{organizationName} is the display name of the organization. Never translated.',
+    description: '{organizationName} is the name the user is greeted by: their own name where known, else the organization\'s display name. Never translated.',
   },
   developerPortalAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.developerPortalAction',
@@ -126,15 +128,15 @@ const messages = defineMessages({
   },
   gatewayAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction',
-    defaultMessage: 'Connect a gateway',
+    defaultMessage: 'Connect an API gateway',
   },
   gatewayDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription',
-    defaultMessage: 'Run your APIs on a managed gateway or a self-hosted one.',
+    defaultMessage: 'Run your APIs on a managed API gateway or a self-hosted one.',
   },
   gatewayTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle',
-    defaultMessage: 'Gateways',
+    defaultMessage: 'API Gateways',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading',
@@ -237,13 +239,6 @@ function OverviewCard({
                 '& svg': {
                   strokeWidth: 1.75,
                 },
-                ...theme.applyStyles('dark', {
-                  background:
-                    'radial-gradient(ellipse at 30% 25%, #493021 0%, #35251b 50%, #251e17 100%)',
-                  borderColor: '#61412b',
-                  boxShadow: 'inset 0 0 0 0.5px rgba(224, 150, 91, 0.06)',
-                  color: '#d88049',
-                }),
               };
             }}
             variant="rounded"
@@ -323,6 +318,7 @@ function OrganizationHomePageContent() {
     return rest === undefined && graphql === undefined ? undefined : (rest ?? 0) + (graphql ?? 0);
   };
   const currentOrganization = organizationQuery.data || organization || organizations[0];
+  const greetingName = useGreetingName(currentOrganization?.displayName ?? '');
 
   const sortedProjects = useMemo(
     () =>
@@ -392,13 +388,13 @@ function OrganizationHomePageContent() {
                       WebkitTextFillColor: 'transparent',
                     })}
                   >
-                    {currentOrganization.displayName}
+                    {greetingName}
                   </Box>
                 ),
               }}
             />
           </Typography>
-          <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 800 }} variant="body1">
+          <Typography color="text.secondary" sx={{ mt: 1 }} variant="body1">
             <FormattedMessage {...messages.bannerDescription} />
           </Typography>
         </Box>
@@ -419,6 +415,11 @@ function OrganizationHomePageContent() {
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
+            {/* No `component` below: gateways are capped per hosting kind, and
+                this card commits to neither — it opens the page where the
+                choice is made and each kind is gated on its own quota. One
+                combined verdict here would either block a user who still has
+                room for the other kind, or promise room for a kind with none. */}
             <OverviewCard
               action={intl.formatMessage(messages.gatewayAction)}
               description={intl.formatMessage(messages.gatewayDescription)}
@@ -431,7 +432,6 @@ function OrganizationHomePageContent() {
               onAction={() => navigate(routes.gateways(orgHandle))}
               title={intl.formatMessage(messages.gatewayTitle)}
               operationId="CreateGateway"
-              component="gateways"
             />
           </Grid>
           <Grid size={{ md: 4, xs: 12 }}>
@@ -536,14 +536,7 @@ function OrganizationHomePageContent() {
                             width: '100%',
                           }}
                         >
-                          <Avatar
-                            sx={{
-                              bgcolor: 'primary.main',
-                              color: 'primary.contrastText',
-                              height: 32,
-                              width: 32,
-                            }}
-                          >
+                          <Avatar sx={{ height: 32, width: 32 }}>
                             {project.displayName.charAt(0).toUpperCase()}
                           </Avatar>
                           <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'hidden' }}>
@@ -596,24 +589,26 @@ function OrganizationHomePageContent() {
                           )}
                         </Box>
                       </ButtonBase>
-                      <Can do="DeleteProject" denied="hide">
-                        <IconButton
-                          aria-label={intl.formatMessage(messages.deleteAriaLabel, {
-                            name: project.displayName,
-                          })}
-                          className="project-delete-action"
-                          color="error"
-                          onClick={() => setProjectToDelete(project)}
-                          size="small"
-                          sx={{
-                            flexShrink: 0,
-                            mr: 1.5,
-                            opacity: { md: 0, xs: 1 },
-                          }}
-                        >
-                          <Trash2 size={18} />
-                        </IconButton>
-                      </Can>
+                      {!isFeatureDisabled('project-delete') && (
+                        <Can do="DeleteProject" denied="hide">
+                          <IconButton
+                            aria-label={intl.formatMessage(messages.deleteAriaLabel, {
+                              name: project.displayName,
+                            })}
+                            className="project-delete-action"
+                            color="error"
+                            onClick={() => setProjectToDelete(project)}
+                            size="small"
+                            sx={{
+                              flexShrink: 0,
+                              mr: 1.5,
+                              opacity: { md: 0, xs: 1 },
+                            }}
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </Can>
+                      )}
                     </Box>
                   ))}
                 </Stack>

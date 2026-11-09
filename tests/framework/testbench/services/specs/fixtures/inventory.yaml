@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info:
+  title: Inventory
+  version: 2.0.0
+  description: Items in stock.
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items
+      responses:
+        '200':
+          description: The items.
+    post:
+      operationId: addItem
+      summary: Add an item
+      responses:
+        '201':
+          description: The item was added.

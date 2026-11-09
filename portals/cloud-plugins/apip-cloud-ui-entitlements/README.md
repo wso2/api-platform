@@ -28,17 +28,17 @@ deliberately left in place, because fixing it would change AI Workspace.
 | `EntitlementsGate.tsx` | Headless `app.gate` entry mounted on every in-shell route; supplies the creation limits and read-only verdict through the Port |
 | `ReadOnlyNotice.tsx` | The read-only banner's content, markup rather than a string because the wording and the upgrade link both belong on this side |
 | `entitlementStore.ts` | Memoises one organization's summary per generation, so the gate and the badge share a read instead of issuing one each |
-| `entitlementsApi.ts` | The same-origin `/proxy/billing-entitlement/*` read; the real billing URL never reaches the browser |
+| `entitlementsApi.ts` | The same-origin `<proxy base>/billing-entitlement/*` read (`/proxy` behind the BFF), or `billingEntitlementBaseUrl` when the deployment routes the Entitlement API apart from the proxy; the real billing URL never reaches the browser |
 | `entitlementLimits.ts` | Billing metric codes → the host's product nouns. All of the commercial knowledge lives here |
 | `entitlementTypes.ts` | The entitlement summary shape, hand-mirrored from the billing spec (separate repos) |
-| `runtimeConfig.ts` | Reads the BFF-injected `runtime-config.js` global for the billing console address |
+| `runtimeConfig.ts` | Reads the runtime config global for the billing console address, the proxy base (`platformApiBaseUrl`) and the Entitlement API path (`billingEntitlementBaseUrl`) |
 | `hostPort.ts` | The slice of the host Port this plugin needs, hand-mirrored rather than imported (separate repos) |
 | `types.ts` | The billing shapes this plugin reads |
 
 ## Dependency note
 
-This package is on `@wso2/oxygen-ui` **0.18.0** — the version that introduced
-`TrialBadge` — while the other cloud plugins remain on 0.5.0.
+This package is on `@wso2/oxygen-ui` **0.21.0** — 0.18.0 introduced
+`TrialBadge`, and 0.21.0 added the usage panel's `groups` — while the other cloud plugins remain on 0.5.0.
 
 Its `tsconfig.json` therefore resolves `@wso2/oxygen-ui` through
 `../../api-control-plane/node_modules`, **not** `../../ai-workspace/node_modules`

@@ -25,7 +25,7 @@ require (
 	github.com/wso2/api-platform/common v0.0.0-00010101000000-000000000000
 	github.com/wso2/api-platform/httpkit v0.0.0-local
 	golang.org/x/crypto v0.57.0
-	golang.org/x/net v0.58.0
+	golang.org/x/net v0.60.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

@@ -18,10 +18,12 @@
 
 import { Button, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { FileUp } from '@wso2/oxygen-ui-icons-react';
+import { useEffect } from 'react';
 import { defineMessages, FormattedMessage } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
 import { routes } from '@/routes/paths';
+import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
 
 const messages = defineMessages({
   importApi: {
@@ -38,6 +40,7 @@ type ProjectQuickActionsProps = { orgHandle: string; projectId: string };
 
 export function ProjectQuickActions({ orgHandle, projectId }: ProjectQuickActionsProps) {
   const navigate = useNavigate();
+  useEffect(preloadApiCreationWizard, []);
 
   return (
     <Stack spacing={0.5}>

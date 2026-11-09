@@ -1,9 +1,0 @@
-{
-  "body": {
-    "error": "All models are currently unavailable"
-  },
-  "headers": {
-    "content-type": "application/json"
-  },
-  "status": 503
-}

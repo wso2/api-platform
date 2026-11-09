@@ -807,6 +807,42 @@ CREATE TABLE IF NOT EXISTS secret_scopes (
 
 CREATE INDEX IF NOT EXISTS idx_secret_scopes_scope ON secret_scopes(scope, scope_value);
 
+-- Org-level managed secret metadata (e.g. per API portal webhook secret).
+-- The secret values themselves live in webhook_secrets, one row per rotation version.
+CREATE TABLE IF NOT EXISTS webhook_secrets_metadata (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    organization_uuid VARCHAR(40)   NOT NULL,
+    handle            VARCHAR(40)   NOT NULL,
+    name              VARCHAR(255)  NOT NULL,
+    type              VARCHAR(20)   NOT NULL DEFAULT 'PORTAL',
+    last_version      INTEGER       NOT NULL DEFAULT 0,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(200),
+    updated_at        TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_uuid, handle),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+-- Versioned, encrypted webhook secret values. Rows are immutable once written
+-- (rotation inserts a new version), so there are no updated_* columns.
+CREATE TABLE IF NOT EXISTS webhook_secrets (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    secret_uuid  VARCHAR(40)   NOT NULL,
+    secret_version    INTEGER       NOT NULL,
+    secret_enc        BYTEA         NOT NULL,
+    secret_hash       VARCHAR(255)  NOT NULL,
+    masked_secret     VARCHAR(255)  NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (secret_uuid, secret_version),
+    FOREIGN KEY (secret_uuid) REFERENCES webhook_secrets_metadata(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_secrets_secret_hash ON webhook_secrets(secret_hash);
+
 -- Pre-computed secret handle references per deployed artifact per gateway.
 -- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.
 -- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
@@ -830,11 +866,16 @@ CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
     ON artifact_secret_refs(organization_uuid, gateway_id);
 
 -- Maps our internal user UUID to the IdP actor identity. Audit columns store the
--- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
+-- UUID; events resolve it back to idp_id, responses to display_name (else idp_id).
+-- No FK; no empty-idp_id rows.
+-- display_name is the user's human-readable name, taken from the configured token
+-- claim (auth.claim_mappings.display_name) for display only; NULL until a token
+-- carries it, and never used for matching or authorization.
 CREATE TABLE IF NOT EXISTS user_idp_references (
-    uuid       VARCHAR(40)  PRIMARY KEY,
-    idp_id     VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    uuid         VARCHAR(40)  PRIMARY KEY,
+    idp_id       VARCHAR(255) NOT NULL,
+    created_at   TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    display_name VARCHAR(255),
     UNIQUE(idp_id)
 );
 
@@ -914,3 +955,52 @@ CREATE TABLE IF NOT EXISTS subscription_billing (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_subscription_billing_org ON subscription_billing(organization_uuid);
+
+-- Service accounts: non-human identities that exchange a client ID and secret
+-- for a short-lived platform JWT. client_id is globally unique because the
+-- token endpoint receives no organization. Roles are expanded at each exchange.
+CREATE TABLE IF NOT EXISTS service_accounts (
+    uuid                   VARCHAR(40)   PRIMARY KEY,
+    organization_uuid      VARCHAR(40)   NOT NULL,
+    handle                 VARCHAR(40)   NOT NULL,
+    name                   VARCHAR(255)  NOT NULL,
+    version                VARCHAR(30)   NOT NULL DEFAULT 'v1.0',
+    description            VARCHAR(1023) NOT NULL,
+    client_id              VARCHAR(255)  NOT NULL,
+    client_secret_hash     VARCHAR(255)  NOT NULL,
+    masked_secret          VARCHAR(8)    NOT NULL,
+    roles                  VARCHAR(1023) NOT NULL,
+    status                 VARCHAR(20)   NOT NULL DEFAULT 'active',
+    token_version          INTEGER       NOT NULL DEFAULT 1,
+    last_used_at           TIMESTAMPTZ,
+    last_used_ip           VARCHAR(45),
+    secret_regenerated_at  TIMESTAMPTZ,
+    secret_regenerated_by  VARCHAR(200),
+    data_version           VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by             VARCHAR(200),
+    created_at             TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP,
+    updated_by             VARCHAR(200),
+    updated_at             TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_uuid, handle),
+    UNIQUE(client_id),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_accounts_org    ON service_accounts(organization_uuid);
+
+-- Revocation watermarks for service-account tokens: one row per account, not
+-- per token. Every revoke bumps service_accounts.token_version, and a token
+-- carrying a version below min_token_version is rejected.
+-- DELIBERATE: no FOREIGN KEY to service_accounts or organizations. The row must
+-- outlive a hard delete of either, or a token minted just before the delete
+-- would pass on any replica that loaded its cache afterwards. Pruned by expires_at.
+CREATE TABLE IF NOT EXISTS service_account_revocations (
+    account_uuid       VARCHAR(40)  PRIMARY KEY,
+    organization_uuid  VARCHAR(40)  NOT NULL,
+    min_token_version  INTEGER       NOT NULL,
+    expires_at         TIMESTAMPTZ  NOT NULL,
+    revoked_by         VARCHAR(200),
+    revoked_at         TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_account_revocations_expires_at ON service_account_revocations(expires_at);

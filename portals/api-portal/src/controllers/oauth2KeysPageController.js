@@ -41,7 +41,7 @@ const kmRegistry = require('../services/keyManagerRegistry');
  *
  * Only a config-declared key manager can register a client — a database-backed one
  * carries a token endpoint and no driver config — so that is what decides whether
- * the "Generate key" button is offered. Offering it with nothing behind it would
+ * the "Register OAuth2 client" button is offered. Offering it with nothing behind it would
  * send the user into a modal that can only fail.
  */
 const loadOAuth2Keys = async (req, res, next) => {
@@ -143,8 +143,26 @@ const loadOAuth2Keys = async (req, res, next) => {
                 };
             });
 
+            // Which key types each application already holds, so the associate
+            // picker can grey out a choice the server would refuse with a 409
+            // instead of offering it and reporting the failure afterwards. Built
+            // from the same two maps the rows above use — no extra query.
+            const takenByApp = new Map();
+            for (const k of records || []) {
+                const appUuid = appByKey.get(k.keyId);
+                if (!appUuid) continue;
+                const handle = (appNames.get(appUuid) || {}).id;
+                if (!handle) continue;
+                if (!takenByApp.has(handle)) takenByApp.set(handle, []);
+                takenByApp.get(handle).push(k.keyType || 'PRODUCTION');
+            }
+
             applications = (await applicationDao.list(orgId, actor) || [])
-                .map((a) => ({ id: a.handle, displayName: a.display_name }));
+                .map((a) => ({
+                    id: a.handle,
+                    displayName: a.display_name,
+                    takenTypes: takenByApp.get(a.handle) || [],
+                }));
         } catch (dbError) {
             keysLoadError = true;
             logger.warn('Failed to load OAuth2 keys', { error: dbError.message, orgId });

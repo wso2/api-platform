@@ -17,20 +17,23 @@
  */
 
 /**
- * The badge's hover panel: how much of the interfaces budget is used, and what
- * used it.
+ * The badge's hover panel: how much of each metered quota is used.
  *
  * Kept separate from the component so the arithmetic unit-tests without pulling
  * the UI library into a plain Node test run.
  */
 
 import {
-  APIS,
-  INTERFACE_TYPE_METRICS,
-  MANAGED_INTERFACES,
+  GATEWAYS,
+  GATEWAY_METRICS,
+  HYBRID_GATEWAYS,
+  INFRASTRUCTURE_METRICS,
+  MANAGED_INTERFACE_METRICS,
   METRIC_LABELS,
-  STANDALONE_METRICS,
+  byCode,
+  displayQuotaOf,
   productOf,
+  usedOf,
 } from './entitlementLimits';
 import type { Entitlement, EntitlementSummary } from './entitlementTypes';
 
@@ -42,11 +45,23 @@ export type UsageItem = {
   limit: number;
 };
 
+/**
+ * Mirrors oxygen-ui's `TrialBadgeUsageGroup`: a run of rows inside a section,
+ * under a sub-heading when `title` is set, plain otherwise.
+ */
+export type UsageGroup = {
+  key: string;
+  title?: string;
+  items: UsageItem[];
+};
+
 /** Mirrors oxygen-ui's `TrialBadgeUsageSection`. */
 export type UsageSection = {
   key: string;
   title: string;
-  items: UsageItem[];
+  /** Rows directly under the section heading, drawn above any `groups`. */
+  items?: UsageItem[];
+  groups?: UsageGroup[];
   /** Shown after the section total; omitted to suppress the total entirely. */
   totalSuffix?: string;
 };
@@ -55,32 +70,80 @@ export type UsagePanel = {
   sections: UsageSection[];
 };
 
-const INTERFACES_LABEL = METRIC_LABELS[MANAGED_INTERFACES];
+/**
+ * A row is worth drawing only when the meter names a quota: the soft band's
+ * starting point, or the block point. Unlimited, uncapped and unresolved
+ * meters all arrive without one, and rendering them would invent a ceiling
+ * billing never set.
+ */
+const quotaOf = (entitlement: Entitlement | undefined): number | undefined =>
+  entitlement ? displayQuotaOf(entitlement) : undefined;
+
+type RowsSpec = {
+  codes: readonly string[];
+  /**
+   * Shorter labels for rows drawn under a sub-heading. The component indents
+   * a grouped row out of its `noWrap` label column, so "Managed Gateways"
+   * truncates there; the sub-heading already says what kind of row it is.
+   */
+  labels?: Record<string, string>;
+};
 
 /**
- * A section header reads `sum(count) of sum(limit)`, so its items must add up.
- * The type breakdown does not — the types share one budget, so summing their
- * limits would claim a ceiling nothing enforces. Hence its own section, with
- * no total; the budget's own figure is the one above it.
+ * The panel's sections, in display order.
+ *
+ * A section is totalled only when summing its rows means something. The
+ * component totals a section by adding up every row it draws, grouped ones
+ * included, and these meters are capped independently of one another — a
+ * managed-gateway allowance plus a self-hosted one plus a portal is a ceiling
+ * nothing enforces — so Infrastructure carries no total and is just a heading
+ * over related rows. Managed Interfaces holds a single metered row, so its
+ * total is that row.
+ *
+ * Inside Infrastructure, the gateway kinds sit under a "Gateways" sub-heading
+ * and Portals follows as a plain row. The component always draws a section's
+ * own `items` first, so a plain row below a titled group goes in a trailing
+ * untitled group instead.
  */
-const BY_TYPE_SECTION_KEY = 'interfaces-by-type';
-
-const isCapped = (entitlement: Entitlement | undefined): entitlement is Entitlement =>
-  Boolean(entitlement) &&
-  entitlement!.limit !== null &&
-  entitlement!.limit !== undefined;
+const SECTIONS: ReadonlyArray<
+  RowsSpec & {
+    key: string;
+    title: string;
+    groups?: ReadonlyArray<RowsSpec & { key: string; title?: string }>;
+    /** "used", not "left": the figure beside the title is what was consumed. */
+    totalSuffix?: string;
+  }
+> = [
+  {
+    key: 'managed-interfaces',
+    title: 'Managed Interfaces',
+    codes: MANAGED_INTERFACE_METRICS,
+    totalSuffix: 'used',
+  },
+  {
+    key: 'infrastructure',
+    title: 'Infrastructure',
+    codes: [],
+    groups: [
+      {
+        key: 'gateways',
+        title: 'Gateways',
+        codes: GATEWAY_METRICS,
+        labels: { [GATEWAYS]: 'WSO2 Managed', [HYBRID_GATEWAYS]: 'Self-Hosted' },
+      },
+      { key: 'portals', codes: INFRASTRUCTURE_METRICS },
+    ],
+  },
+];
 
 /**
  * Builds the hover panel, or `null` when there is nothing worth showing — no
- * summary, or an organization whose interfaces budget is unlimited and so has
- * nothing to count and nowhere to upgrade to.
+ * summary, or an organization with no capped meter at all and so nothing to
+ * count and nowhere to upgrade to.
  *
- * **One section per budget, deliberately.** The component totals a section by
- * summing its items, so two figures may only share a section when adding them
- * together means something — and none of these three may. APIs, self-hosted
- * gateways and developer portals are each capped independently of the others,
- * so a shared section would total unrelated budgets into a single figure that
- * describes nothing. One section each, every total its own.
+ * Only APIs are metered among the interface types — MCP, LLM and agent proxies
+ * are not — so Managed Interfaces holds that one row and there is no shared
+ * interfaces budget above it.
  */
 export function toUsagePanel(
   summary: EntitlementSummary | null | undefined
@@ -88,82 +151,44 @@ export function toUsagePanel(
   const product = productOf(summary);
   if (!product) return null;
 
-  const byCode = new Map<string, Entitlement>();
-  for (const e of product.entitlements ?? []) {
-    if (e?.name) byCode.set(e.name, e);
-  }
+  const entitlements = byCode(product);
 
-  // The shared budget is the headline; fall back to `apis` for a billing
-  // deployment that does not report it, rather than showing no panel at all.
-  const interfaces = byCode.get(MANAGED_INTERFACES) ?? byCode.get(APIS);
-  // Unlimited (or absent): nothing to count. Matches the rule that hides the
-  // upgrade affordance for an organization with no cap to hit.
-  if (!isCapped(interfaces)) return null;
-
-  const sections: UsageSection[] = [
-    {
-      key: MANAGED_INTERFACES,
-      title: INTERFACES_LABEL,
-      items: [
-        {
-          key: MANAGED_INTERFACES,
-          label: INTERFACES_LABEL,
-          count: interfaces.used ?? 0,
-          limit: interfaces.limit!,
-        },
-      ],
-      // "used", not "left": the figure beside it is what has been consumed.
-      totalSuffix: 'used',
-    },
-  ];
-
-  // What the budget was spent on. Only capped types: an omitted one is absent,
-  // not zero, and rendering it would invent a cap billing never set.
-  const byTypeItems = INTERFACE_TYPE_METRICS.flatMap((code) => {
-    const entitlement = byCode.get(code);
-    if (!isCapped(entitlement)) return [];
-    return [
-      {
-        key: code,
-        label: METRIC_LABELS[code] ?? code,
-        count: entitlement.used ?? 0,
-        limit: entitlement.limit!,
-      },
-    ];
-  });
-
-  if (byTypeItems.length > 0) {
-    sections.push({
-      key: BY_TYPE_SECTION_KEY,
-      title: 'By type',
-      items: byTypeItems,
-      // No total — see BY_TYPE_SECTION_KEY.
-    });
-  }
-
-  // Gateways and portals are capped independently of the APIs budget and of
-  // each other, so neither belongs in the section above — creating a gateway
-  // takes nothing from the APIs budget. One section each, rather than one
-  // shared section, because a shared one would total two unrelated budgets
-  // into a single meaningless figure.
-  for (const code of STANDALONE_METRICS) {
-    const entitlement = byCode.get(code);
-    if (!isCapped(entitlement)) continue;
-    const label = METRIC_LABELS[code] ?? code;
-    sections.push({
-      key: code,
-      title: label,
-      items: [
+  // Only capped meters: an omitted or unlimited one is absent, not zero,
+  // and rendering it would invent a cap billing never set.
+  const rowsOf = ({ codes, labels }: RowsSpec): UsageItem[] =>
+    codes.flatMap((code) => {
+      const entitlement = entitlements.get(code);
+      const quota = quotaOf(entitlement);
+      if (quota === undefined) return [];
+      return [
         {
           key: code,
-          label,
-          count: entitlement.used ?? 0,
-          limit: entitlement.limit!,
+          label: labels?.[code] ?? METRIC_LABELS[code] ?? code,
+          count: usedOf(entitlement),
+          limit: quota,
         },
-      ],
-      totalSuffix: 'used',
+      ];
+    });
+
+  const sections: UsageSection[] = [];
+
+  for (const spec of SECTIONS) {
+    const items = rowsOf(spec);
+    // A group, or a section, whose every meter is uncapped or absent is left
+    // out entirely, rather than shown as an empty heading.
+    const groups: UsageGroup[] = (spec.groups ?? []).flatMap((group) => {
+      const rows = rowsOf(group);
+      return rows.length > 0 ? [{ key: group.key, title: group.title, items: rows }] : [];
+    });
+    if (items.length === 0 && groups.length === 0) continue;
+    sections.push({
+      key: spec.key,
+      title: spec.title,
+      ...(items.length > 0 ? { items } : {}),
+      ...(groups.length > 0 ? { groups } : {}),
+      totalSuffix: spec.totalSuffix,
     });
   }
 
-  return { sections };
+  return sections.length > 0 ? { sections } : null;
 }

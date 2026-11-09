@@ -1190,6 +1190,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsResponseStatusForAPIContext)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have metadata field "([^"]*)" with value "([^"]*)"$`,
 		g.analyticsMetadataField)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until its analytics event has (no )?metadata field "([^"]*)"(?: with value "([^"]*)")? with body:$`,
+		g.sendUntilAnalyticsMetadata)
+	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) AI context field "([^"]*)"(?: with value "([^"]*)")?$`,
+		g.analyticsAIContextField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
 		g.analyticsCompanyID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
@@ -2186,6 +2190,9 @@ type analyticsEvent struct {
 	// as a map because the assertions are about the published document: a typed mirror would
 	// let a renamed or relocated field compile and pass.
 	A2A map[string]any `json:"a2a"`
+	// AIContext is the event's first-class LLM block (provider, model, usage), decoded as a map
+	// for the same reason as A2A.
+	AIContext map[string]any `json:"ai_context"`
 }
 
 func (g *Gateway) analyticsHeader(
@@ -2483,6 +2490,76 @@ func (g *Gateway) analyticsMetadataField(ctx context.Context, path, field, want 
 	return nil
 }
 
+// analyticsAIContextField asserts one field of the ai_context block on the latest analytics event
+// for a request path. The field is named by its dotted published path, such as
+// "usage.prompt_tokens", so a field that moved within the block fails rather than being found.
+func (g *Gateway) analyticsAIContextField(ctx context.Context, path, mode, field, want string) error {
+	if mode == "have" && want == "" {
+		return fmt.Errorf(`asserting AI context field %q requires a value: use 'with value "..."'`, field)
+	}
+	if mode != "have" && want != "" {
+		return fmt.Errorf("asserting that the event should %s AI context field %q takes no value", mode, field)
+	}
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	resolved, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	return aiContextAssert(event.AIContext, mode, field, resolved)
+}
+
+func aiContextAssert(block map[string]any, mode, field, want string) error {
+	if block == nil {
+		return fmt.Errorf("the analytics event carries no ai_context block")
+	}
+	value, ok := traverseJSON(block, field)
+	switch mode {
+	case "have":
+		if !ok {
+			return fmt.Errorf("AI context field %q not found in {%s}", field, sortedAnyKeys(block))
+		}
+		return aiContextValueMatches(field, value, want)
+	case "not have":
+		if ok {
+			return fmt.Errorf("expected no AI context field %q, but it is present with value %v", field, value)
+		}
+	default:
+		return fmt.Errorf("unsupported AI context assertion %q", mode)
+	}
+	return nil
+}
+
+// aiContextValueMatches compares a field against its expected text by the field's published type:
+// token counts under usage are JSON numbers and every other asserted field is a JSON string, so a
+// count published as a string, or a name published as a number, fails rather than matching.
+func aiContextValueMatches(field string, value any, want string) error {
+	if strings.HasPrefix(field, "usage.") {
+		got, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("expected AI context field %q to be a number, got %T %v", field, value, value)
+		}
+		expected, err := strconv.ParseFloat(want, 64)
+		if err != nil {
+			return fmt.Errorf("expected value %q for numeric AI context field %q is not a number", want, field)
+		}
+		if got != expected {
+			return fmt.Errorf("expected AI context field %q to be %s, got %v", field, want, got)
+		}
+		return nil
+	}
+	got, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected AI context field %q to be a string, got %T %v", field, value, value)
+	}
+	if got != want {
+		return fmt.Errorf("expected AI context field %q to be %q, got %q", field, want, got)
+	}
+	return nil
+}
+
 // analyticsCompanyID checks the company an event is attributed to. The gateway sets it to the
 // billing customer of a paid subscription, which is how Moesif bills that customer's usage.
 func (g *Gateway) analyticsCompanyID(ctx context.Context, path, mode, want string) error {
@@ -2495,6 +2572,73 @@ func (g *Gateway) analyticsCompanyID(ctx context.Context, path, mode, want strin
 		return err
 	}
 	return companyIDAssert(event, path, mode, resolved)
+}
+
+// sendUntilAnalyticsMetadata resends a data-plane request, which must answer 200, until the
+// latest analytics event for its path has the metadata field with the wanted value, or no longer
+// has it. It waits for a change that reaches the gateway asynchronously, such as an API key's
+// application mapping.
+func (g *Gateway) sendUntilAnalyticsMetadata(ctx context.Context, method, path, no, field, want string, body *godog.DocString) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	endpoint, err := g.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	wanted, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	// Checked before the first send: the request may change state.
+	if (no != "") == (wanted != "") {
+		return fmt.Errorf("an analytics metadata wait takes a value unless it waits for the field to be absent")
+	}
+	content, err := stepscommon.Expand(ctx, body.Content)
+	if err != nil {
+		return err
+	}
+	headers := g.scenarioHeaders(ctx)
+	if headers["Content-Type"] == "" {
+		headers["Content-Type"] = "application/json"
+	}
+	method = strings.ToUpper(method)
+	return awaitState(ctx, fmt.Sprintf("waiting for %s %s to be recorded with metadata field %q", method, endpoint, field),
+		func(ctx context.Context) error {
+			resp, sendErr := g.funnel.Send(ctx, httpx.Request{
+				Method: method, URL: endpoint, Body: []byte(content), Headers: headers, Host: g.requestHost(ctx),
+			})
+			if sendErr != nil {
+				return tolerated("the gateway did not answer: %v", sendErr)
+			}
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("expected 200 from %s %s, got %s", method, endpoint, describe(resp))
+			}
+			event, err := g.latestAnalyticsEvent(ctx, resolved)
+			if err != nil {
+				return err
+			}
+			return metadataFieldAwait(event, field, no != "", wanted)
+		})
+}
+
+// metadataFieldAwait judges one event for sendUntilAnalyticsMetadata: nil once the field has the
+// wanted value (or is absent, when absent), tolerated while the event still shows the earlier
+// state, and an error for any other value, which the change cannot explain.
+func metadataFieldAwait(event *analyticsEvent, field string, absent bool, want string) error {
+	value, present := traverseJSON(event.Metadata, field)
+	got := fmt.Sprintf("%v", value)
+	switch {
+	case absent && !present, !absent && present && got == want:
+		return nil
+	case absent:
+		return tolerated("the latest analytics event still has metadata field %q (%s)", field, got)
+	case !present:
+		return tolerated("the latest analytics event has no metadata field %q yet", field)
+	default:
+		return fmt.Errorf("the latest analytics event has metadata field %q %q, want %q", field, got, want)
+	}
 }
 
 // companyIDAssert checks an event's company id: "have" a given one, or "not have" one at all.

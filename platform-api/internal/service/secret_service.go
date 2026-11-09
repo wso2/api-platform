@@ -54,18 +54,18 @@ func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, ide
 }
 
 // toSecretResponse converts secret via secretToResponse and resolves its
-// createdBy/updatedBy UUIDs to their raw external identity.
+// createdBy/updatedBy UUIDs to display names (else the raw identity).
 func (s *SecretService) toSecretResponse(secret *model.Secret) (*dto.SecretResponse, error) {
 	resp := secretToResponse(secret)
 	if resp == nil {
 		return nil, nil
 	}
-	createdBy, err := s.identity.SubForUUID(resp.CreatedBy)
+	createdBy, err := s.identity.DisplayNameForUUID(resp.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
 	resp.CreatedBy = createdBy
-	updatedBy, err := s.identity.SubForUUID(resp.UpdatedBy)
+	updatedBy, err := s.identity.DisplayNameForUUID(resp.UpdatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -74,13 +74,13 @@ func (s *SecretService) toSecretResponse(secret *model.Secret) (*dto.SecretRespo
 }
 
 // toSecretSummary converts secret via secretToSummary and resolves its
-// createdBy UUID to its raw external identity.
+// createdBy UUID to a display name (else the raw identity).
 func (s *SecretService) toSecretSummary(secret *model.Secret) (*dto.SecretSummary, error) {
 	resp := secretToSummary(secret)
 	if resp == nil {
 		return nil, nil
 	}
-	createdBy, err := s.identity.SubForUUID(resp.CreatedBy)
+	createdBy, err := s.identity.DisplayNameForUUID(resp.CreatedBy)
 	if err != nil {
 		return nil, err
 	}

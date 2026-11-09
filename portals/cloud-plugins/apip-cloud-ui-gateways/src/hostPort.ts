@@ -59,6 +59,24 @@ export type GatewayVersionEntry = {
   channel: 'STS' | 'LTS';
 };
 
+/**
+ * The gateway quotas this feature may ask about. Each hosting kind is capped
+ * separately, so a control committing to one kind asks about that kind;
+ * `gateways` answers the broader "may any gateway be created" for a control
+ * that only opens the choice, and is false only once no kind has room.
+ */
+export type GatewayLimitComponent = 'gateways' | 'managedGateways' | 'selfHostedGateways';
+
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the cloud spec's any-of list, `:manage`
+ * scopes included — and says whether the user may be offered it. Mirrors the
+ * host's `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -88,8 +106,8 @@ export type AIWorkspaceHostPort = {
 
   resourceLimits?: {
     refresh: () => void;
-    canCreate?: (component: 'gateways') => boolean;
-    limitMessage?: (component: 'gateways') => string;
+    canCreate?: (component: GatewayLimitComponent) => boolean;
+    limitMessage?: (component: GatewayLimitComponent) => string;
     /**
      * The organization may not write at all — a different question from
      * whether it has room for one more gateway, and the one that governs
@@ -104,4 +122,11 @@ export type AIWorkspaceHostPort = {
     /** Why the organization is read-only; the host supplies the wording. */
     readOnlyMessage?: string;
   };
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };

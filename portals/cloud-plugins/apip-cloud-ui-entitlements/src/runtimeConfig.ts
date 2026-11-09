@@ -24,7 +24,10 @@
 type WindowConfig = Partial<{
   APIP_ACP_BILLING_CONSOLE_URL: string;
   billingConsoleUrl: string;
-  appBasePath: string;
+  BILLING_ENTITLEMENT_BASE_URL: string;
+  billingEntitlementBaseUrl: string;
+  PLATFORM_API_BASE_URL: string;
+  platformApiBaseUrl: string;
 }>;
 
 const fromWindow = (): WindowConfig => {
@@ -37,25 +40,6 @@ const fromWindow = (): WindowConfig => {
     ...(globalWindow.config ?? {}),
   };
 };
-
-/**
- * The console's serving prefix, e.g. "/console"; empty when served at the root.
- *
- * Same order and same normalization as the console's own `runtime.ts`: the
- * injected global first, then what Vite baked in at build time. The build-time
- * fallback is what carries the value today, since the server does not emit the
- * key — without it this returns empty and the fetch below goes to the origin
- * root however the console is served.
- */
-export function appBasePath(): string {
-  const value =
-    fromWindow().appBasePath ||
-    import.meta.env.VITE_APP_BASE_PATH ||
-    import.meta.env.BASE_URL ||
-    '';
-  if (!value || value === '/') return '';
-  return `/${value.replace(/^\/|\/$/g, '')}`;
-}
 
 /**
  * The organization's upgrade page in the billing console.
@@ -77,4 +61,54 @@ export function upgradeUrl(organization: string | undefined): string | undefined
     .replace(/\/$/, '');
   if (!base || !organization) return undefined;
   return `${base}/cloud/bijira/upgrade?orgId=${encodeURIComponent(organization)}`;
+}
+
+// Placeholder origin a candidate path is resolved against, to see whether the
+// URL parser keeps it on this origin.
+const PROBE_ORIGIN = 'https://same-origin.invalid';
+
+/**
+ * Whether `path` stays on this page's origin. A leading `/` alone does not
+ * decide it: the URL parser reads `//host`, `/\host`, and a tab or newline
+ * between the slashes as another host. A value it cannot parse is not a path.
+ */
+const isSameOriginPath = (path: string): boolean => {
+  if (!path.startsWith('/')) return false;
+  try {
+    return new URL(path, PROBE_ORIGIN).origin === PROBE_ORIGIN;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The same-origin path this console's named upstreams sit under: `/proxy`
+ * behind the BFF (`{proxy_prefix}/{name}`), `/api-management/proxy` behind a
+ * gateway that serves the console under a path.
+ *
+ * Read from the same runtime config the host reads `platformApiBaseUrl` from.
+ * Only a same-origin path counts: an absolute URL points straight at a
+ * Platform API, which has no billing routes, so that and an unset value fall
+ * back to the BFF's default `/proxy`.
+ */
+export function proxyBase(): string {
+  const config = fromWindow();
+  const base = (config.PLATFORM_API_BASE_URL || config.platformApiBaseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
+  return isSameOriginPath(base) ? base : '/proxy';
+}
+
+/**
+ * Same-origin path of billing's Entitlement API: `billingEntitlementBaseUrl`
+ * when the deployment routes it apart from the console's proxy (e.g.
+ * `/_api/entitlement/api/v1`), otherwise the `billing-entitlement` route under
+ * the proxy base. A value that is not a same-origin path is ignored.
+ */
+export function entitlementBase(): string {
+  const config = fromWindow();
+  const own = (config.BILLING_ENTITLEMENT_BASE_URL || config.billingEntitlementBaseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
+  return isSameOriginPath(own) ? own : `${proxyBase()}/billing-entitlement`;
 }

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type FC, type MouseEvent } from 'react';
+import { useEffect, useState, type FC, type MouseEvent } from 'react';
 import {
   Box,
   Button,
@@ -35,6 +35,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, Clock, Trash2, X } from '@wso2/oxygen-ui-icons-react';
+import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import { relativeTime } from '../utils/time';
 import { activeGatewayCount } from '../utils/status';
 import type { Build, Environment } from '../types';
@@ -52,6 +53,8 @@ export type BuildAreaCardProps = {
   busy: boolean;
   /** Why deploying is unavailable (e.g. a gateway owns the API); disables Deploy when set. */
   lockedReason?: string;
+  /** Whether the user holds a scope that deletes builds; every delete is disabled otherwise. */
+  canDeleteBuild: boolean;
   /** Opens deployment using an existing build, or creates a build when omitted. */
   onDeployClick: (buildId?: string, createBuild?: boolean) => void;
   /**
@@ -74,6 +77,7 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
   undeletableBuilds,
   busy,
   lockedReason,
+  canDeleteBuild,
   onDeployClick,
   onDeleteBuild,
 }) => {
@@ -82,6 +86,10 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
   const [selectedDeployAction, setSelectedDeployAction] = useState<DeployAction>('deploy');
   // Deleting a build cannot be undone, so the trash icon asks for confirmation first.
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  // A confirmation opened before the scope was lost closes rather than staying usable.
+  useEffect(() => {
+    if (!canDeleteBuild) setPendingDelete(null);
+  }, [canDeleteBuild]);
   const latestBuild = builds[0] ?? null;
   const visibleBuilds = builds.slice(0, VISIBLE_BUILD_COUNT);
   const hasActiveGateway = activeGatewayCount(targetEnvironment.gateways) > 0;
@@ -145,12 +153,14 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
                     </Box>
                   ) : null}
                 </Box>
-                <Tooltip title={blockedReason || 'Delete this build'}>
+                <Tooltip
+                  title={!canDeleteBuild ? NO_PERMISSION_TOOLTIP : blockedReason || 'Delete this build'}
+                >
                   <span>
                     <IconButton
                       size="small"
                       aria-label={`Delete build ${build.buildId}`}
-                      disabled={busy || Boolean(blockedReason)}
+                      disabled={busy || !canDeleteBuild || Boolean(blockedReason)}
                       onClick={() => setPendingDelete(build.buildId)}
                     >
                       <Trash2 size={15} />
@@ -287,9 +297,9 @@ const BuildAreaCard: FC<BuildAreaCardProps> = ({
           <Button
             color="error"
             variant="contained"
-            disabled={busy}
+            disabled={busy || !canDeleteBuild}
             onClick={() => {
-              if (!pendingDelete) return;
+              if (!pendingDelete || !canDeleteBuild) return;
               const buildId = pendingDelete;
               setPendingDelete(null);
               onDeleteBuild(buildId);

@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Box, CircularProgress } from '@wso2/oxygen-ui';
+import { Alert, Box, CircularProgress, PageContent, PageTitle } from '@wso2/oxygen-ui';
 import GatewayForm from './GatewayForm';
 import GatewayOverview from './components/GatewayOverview';
 import GatewaysList from './GatewaysList';
@@ -26,6 +26,8 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
+import { hostingBlocked } from './utils/limits';
 import type {
   Environment,
   Gateway,
@@ -66,8 +68,27 @@ const STATUS_POLL_INTERVAL_MS = 5000;
 
 const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const { apiFetch, notify, resourceLimits } = port;
+  const permissions = permissionsOf(port);
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
   const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
+
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused.
+  const canList = permissions.canAny(GATEWAY_OPERATIONS.ListManagedGateways);
+  const canReadEnvironments = permissions.canAny(GATEWAY_OPERATIONS.ListEnvironments);
+  // A gateway is created into an environment, so the form needs the list to
+  // offer one: without it Add Gateway could only open a form that cannot be
+  // submitted.
+  const canCreate =
+    permissions.canAny(GATEWAY_OPERATIONS.CreateManagedGateway) && canReadEnvironments;
+  const canUpdate = permissions.canAny(GATEWAY_OPERATIONS.UpdateManagedGateway);
+  const canManageTokens = permissions.canAny(GATEWAY_OPERATIONS.CreateGatewayToken);
+  const canDelete = permissions.canAny(GATEWAY_OPERATIONS.DeleteManagedGateway);
+  const canReadConfiguration = permissions.canAny(GATEWAY_OPERATIONS.GetManagedGatewayConfiguration);
+  const canWriteConfiguration = permissions.canAny(
+    GATEWAY_OPERATIONS.UpdateManagedGatewayConfiguration
+  );
 
   // The hosting the empty state's button asked for; null when Add Gateway was used.
   const [initialHosting, setInitialHosting] = useState<GatewayHosting | null>(null);
@@ -76,6 +97,14 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const [viewingGatewayId, setViewingGatewayId] = useState<string | null>(null);
   // The token minted with a just-registered gateway, handed to its setup view; null otherwise.
   const [setupToken, setSetupToken] = useState<string | null>(null);
+  // A create or edit form opened before its scope was lost (a token refresh can
+  // drop one mid-session) goes back to the list rather than staying submittable.
+  const formPermitted = view === 'edit' ? canUpdate : view === 'create' ? canCreate : true;
+  useEffect(() => {
+    if (formPermitted) return;
+    setView('list');
+    setEditingGatewayId(null);
+  }, [formPermitted]);
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +122,10 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   // replace the list with an error page, so it only ever writes fresh data.
   const load = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!canList) {
+        if (!silent) setLoading(false);
+        return;
+      }
       const seq = ++loadSeqRef.current;
       if (!silent) {
         setLoading(true);
@@ -104,7 +137,9 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         const [managedResult, selfHostedResult, environmentResult] = await Promise.allSettled([
           client.listGateways(gatewayTypes),
           selfHostedClient.listGateways(gatewayTypes),
-          client.listEnvironments(),
+          // Only asked for when the user may read environments: without them the
+          // list shows a gateway's raw environment id, which beats a 403 for the page.
+          canReadEnvironments ? client.listEnvironments() : Promise.resolve<Environment[]>([]),
         ]);
         if (seq !== loadSeqRef.current) return;
         if (environmentResult.status === 'rejected') throw environmentResult.reason;
@@ -140,7 +175,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         if (!silent && seq === loadSeqRef.current) setLoading(false);
       }
     },
-    [client, selfHostedClient, gatewayTypes, notify]
+    [canList, canReadEnvironments, client, selfHostedClient, gatewayTypes, notify]
   );
 
   useEffect(() => {
@@ -291,6 +326,17 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
     [client, selfHostedClient, gateways, load, notify, port, resourceLimits]
   );
 
+  if (!canList) {
+    return (
+      <PageContent fullWidth>
+        <PageTitle sx={{ mb: 3 }}>
+          <PageTitle.Header>Gateways</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view gateways.</Alert>
+      </PageContent>
+    );
+  }
+
   if (loading) {
     return (
       <Box sx={{ alignItems: 'center', display: 'flex', justifyContent: 'center', py: 8, width: '100%' }}>
@@ -321,11 +367,15 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         environments={environments}
         gatewayVersions={port.gatewayVersions}
         initialHosting={initialHosting}
+        hostingBlocked={hostingBlocked(port)}
         onBack={() => {
           setView('list');
           setEditingGatewayId(null);
         }}
         onSubmit={async (input) => {
+          // Rechecked here, not only when the form opened: the scope can be lost
+          // while it is open, before the effect above has closed it.
+          if (!formPermitted) return;
           const saved = await submitGateway(input, view === 'edit' ? editingGatewayId ?? undefined : undefined);
           if (saved) {
             setView('list');
@@ -333,6 +383,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
           }
         }}
         onSubmitSelfHosted={async (input) => {
+          if (!formPermitted) return;
           const saved = await submitSelfHostedGateway(
             input,
             view === 'edit' ? editingGatewayId ?? undefined : undefined
@@ -373,6 +424,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         onGenerateRegistrationToken={selfHostedClient.generateToken}
         onReconfigureRegistrationToken={selfHostedClient.reconfigureToken}
         notify={notify}
+        canManageTokens={canManageTokens}
+        canEdit={canUpdate}
       />
     );
   }
@@ -382,6 +435,11 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
       gateways={visibleGateways}
       environments={environments}
       port={port}
+      canCreate={canCreate}
+      canUpdate={canUpdate}
+      canDelete={canDelete}
+      canReadConfiguration={canReadConfiguration}
+      canWriteConfiguration={canWriteConfiguration}
       onAddClick={(hosting) => {
         setInitialHosting(hosting ?? null);
         setView('create');

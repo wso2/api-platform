@@ -111,6 +111,17 @@ const (
 	CodeRESTAPIDeploymentValidationFailed = "REST_API_DEPLOYMENT_VALIDATION_FAILED"
 	CodeRESTAPIAPIKeyNotFound             = "REST_API_API_KEY_NOT_FOUND"
 	CodeRESTAPIAPIKeyForbidden            = "REST_API_API_KEY_FORBIDDEN"
+
+	// Sending a test request to a REST API through a gateway it is deployed to
+	// (POST /gateway-relay/invoke).
+	CodeRESTAPIInvokeGatewayNotDeployed       = "REST_API_INVOKE_GATEWAY_NOT_DEPLOYED"
+	CodeRESTAPIInvokeGatewayNoEndpoint        = "REST_API_INVOKE_GATEWAY_NO_ENDPOINT"
+	CodeRESTAPIInvokeGatewayUnsupportedScheme = "REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME"
+	CodeRESTAPIInvokeTargetNotAllowed         = "REST_API_INVOKE_TARGET_NOT_ALLOWED"
+	CodeRESTAPIInvokeRequestInvalid           = "REST_API_INVOKE_REQUEST_INVALID"
+	CodeRESTAPIInvokeBusy                     = "REST_API_INVOKE_BUSY"
+	CodeRESTAPIInvokeUpstreamTimeout          = "REST_API_INVOKE_UPSTREAM_TIMEOUT"
+	CodeRESTAPIInvokeUpstreamUnreachable      = "REST_API_INVOKE_UPSTREAM_UNREACHABLE"
 )
 
 // MCP proxy domain codes. MCP_PROXY_UPSTREAM_UNAUTHORIZED reports that the
@@ -180,6 +191,22 @@ const (
 	CodeSecretNotFound = "SECRET_NOT_FOUND"
 	CodeSecretExists   = "SECRET_EXISTS"
 	CodeSecretInUse    = "SECRET_IN_USE"
+)
+
+// Webhook secret domain codes.
+const (
+	CodeWebhookSecretNotFound     = "WEBHOOK_SECRET_NOT_FOUND"
+	CodeWebhookSecretExists       = "WEBHOOK_SECRET_EXISTS"
+	CodeWebhookSecretVersionLimit = "WEBHOOK_SECRET_VERSION_LIMIT"
+	CodeWebhookSecretLastVersion  = "WEBHOOK_SECRET_LAST_VERSION"
+)
+
+// Service account domain codes.
+const (
+	CodeServiceAccountNotFound = "SERVICE_ACCOUNT_NOT_FOUND"
+	CodeServiceAccountExists   = "SERVICE_ACCOUNT_EXISTS"
+	// CodeServiceAccountInvalidScope is RFC 6749's invalid_scope at the token endpoint.
+	CodeServiceAccountInvalidScope = "SERVICE_ACCOUNT_INVALID_SCOPE"
 )
 
 // Artifact domain codes. Used by flows that operate on a generic artifact

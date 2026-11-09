@@ -22,6 +22,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import { useResourceLimits } from '../../../hooks/useResourceLimits';
 import type { ApiError } from '../../core/errors';
@@ -116,15 +117,18 @@ const GATEWAY_POLL_INTERVAL_MS = 5000;
  * visited yet — invalidating only the current page leaves those stale. Prefix
  * invalidation covers all of them in one call, and TanStack Query only
  * refetches the queries that are actually mounted.
+ *
+ * Also exported for the app shell, which invalidates on behalf of extensions
+ * that write through their own client and cannot reach this cache.
  */
-const useInvalidateGateways = (orgId?: string) => {
+export const useInvalidateGateways = (orgId?: string) => {
   const queryClient = useQueryClient();
   const { org } = useApiScope({ orgId });
 
-  return () => {
+  return useCallback(() => {
     if (!org) return;
     void queryClient.invalidateQueries({ queryKey: gatewayKeys.all(org) });
-  };
+  }, [org, queryClient]);
 };
 
 export const useCreateGateway = (overrides: { orgId?: string } = {}) => {

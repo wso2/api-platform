@@ -1,0 +1,265 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package finalizer
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestOwnedByMatchesOnlyTheTrackedSuffixSegments(t *testing.T) {
+	suffixes := []string{"abcde234"}
+	for name, names := range map[string][]string{
+		"inside a name":              {"syn-gw-abcde234-3"},
+		"ends the name":              {"development-syn-gw-abcde234"},
+		"underscores read as dashes": {"Syn_Env_ABCDE234_1"},
+		"one of several names":       {"development-syn-gw-ab", "syn-gw-abcde234-12"},
+	} {
+		require.True(t, OwnedBy(names, suffixes), name)
+	}
+	for name, names := range map[string][]string{
+		"another runner":       {"syn-gw-zzzzz222-3"},
+		"inside a longer word": {"syn-gwabcde234x-3"},
+		"a default resource":   {"development-default", "development"},
+		"no names":             nil,
+		"blank name":           {" "},
+	} {
+		require.False(t, OwnedBy(names, suffixes), name)
+	}
+	require.False(t, OwnedBy([]string{"syn-gw-abcde234-3"}, []string{"", " "}), "a blank suffix matches nothing")
+}
+
+// leftovers is a fake system under test: named collections that record deletions in order.
+type leftovers struct {
+	mu      sync.Mutex
+	items   map[string][]Leftover
+	fail    map[string]error
+	deleted []string
+}
+
+func (l *leftovers) collection(name string) Collection {
+	return Collection{
+		Name: name,
+		List: func(context.Context) ([]Leftover, error) {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			if err := l.fail["list "+name]; err != nil {
+				return nil, err
+			}
+			return l.items[name], nil
+		},
+		Delete: func(_ context.Context, id string) error {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			if err := l.fail[name+"/"+id]; err != nil {
+				return err
+			}
+			l.deleted = append(l.deleted, name+"/"+id)
+			return nil
+		},
+	}
+}
+
+func newLeftovers() *leftovers {
+	return &leftovers{fail: map[string]error{}, items: map[string][]Leftover{
+		"/gateways": {
+			{ID: "gw-1", Names: []string{"gw-abcde234-1"}},
+			{ID: "default", Names: []string{"default"}},
+			{ID: "gw-2", Names: []string{"gw-zzzzz222-1"}},
+			{ID: "gw-cut", Names: []string{"gw-cut", "gw-abcde234-12"}},
+		},
+		"/projects": {{ID: "proj-1", Names: []string{"proj-abcde234-2"}}},
+	}}
+}
+
+func TestSweepDeletesOnlyTheTrackedRunnersEntriesInOrder(t *testing.T) {
+	system := newLeftovers()
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{system.collection("/gateways"), system.collection("/projects")})
+	require.NoError(t, err)
+	require.Equal(t, []string{"/gateways/gw-1", "/gateways/gw-cut", "/projects/proj-1"}, removed)
+	require.Equal(t, removed, system.deleted)
+}
+
+func TestSweepDoesNothingBeforeARunnerIsTracked(t *testing.T) {
+	system := newLeftovers()
+	tracker := NewTracker(nil)
+	tracker.Track("")
+	require.False(t, tracker.Tracked())
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{system.collection("/gateways")})
+	require.NoError(t, err)
+	require.Empty(t, removed)
+	require.Empty(t, system.deleted)
+}
+
+func TestSweepCarriesOnPastFailures(t *testing.T) {
+	system := newLeftovers()
+	system.fail["list /gateways"] = errors.New("listing refused")
+	system.fail["/projects/proj-1"] = errors.New("delete refused")
+	system.items["/pipelines"] = []Leftover{{ID: "pipe-1", Names: []string{"pipe-abcde234-1"}}}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{
+		system.collection("/gateways"), system.collection("/projects"), system.collection("/pipelines"),
+	})
+	require.ErrorContains(t, err, "listing /gateways: listing refused")
+	require.ErrorContains(t, err, "delete refused")
+	require.Equal(t, []string{"/pipelines/pipe-1"}, removed)
+}
+
+func TestSweepRejectsAnIncompleteCollectionAndAnEntryWithoutID(t *testing.T) {
+	system := newLeftovers()
+	system.items["/gateways"] = []Leftover{{Names: []string{"gw-abcde234-1"}}}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{{Name: "/broken"}, system.collection("/gateways")})
+	require.ErrorContains(t, err, `collection "/broken" needs both a list and a delete function`)
+	require.ErrorContains(t, err, "/gateways holds a leftover with no id")
+	require.Empty(t, removed)
+}
+
+func TestTrackIsSafeForConcurrentRunners(t *testing.T) {
+	tracker := NewTracker(nil)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tracker.Track("abcde234")
+			_ = tracker.Tracked()
+		}()
+	}
+	wg.Wait()
+	require.True(t, tracker.Tracked())
+}
+
+func TestSweepGivesEachCollectionItsOwnBudget(t *testing.T) {
+	var secondListed bool
+	stuck := Collection{
+		Name:       "/stuck",
+		Timeout:    20 * time.Millisecond,
+		MinAttempt: 20 * time.Millisecond,
+		List: func(context.Context) ([]Leftover, error) {
+			return []Leftover{{ID: "a", Names: []string{"x-abcde234"}}}, nil
+		},
+		Delete: func(ctx context.Context, _ string) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	next := Collection{
+		Name: "/next",
+		List: func(ctx context.Context) ([]Leftover, error) {
+			secondListed = ctx.Err() == nil
+			return nil, nil
+		},
+		Delete: func(context.Context, string) error { return nil },
+	}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	_, err := tracker.Sweep(context.Background(), []Collection{stuck, next})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.True(t, secondListed, "a collection that ran out of time must not starve the next one")
+}
+
+func TestSweepTriesEveryLeftoverAfterTheCollectionBudgetIsSpent(t *testing.T) {
+	var attempts []string
+	collection := Collection{
+		Name:       "/slow",
+		Timeout:    30 * time.Millisecond,
+		MinAttempt: 300 * time.Millisecond,
+		List: func(context.Context) ([]Leftover, error) {
+			return []Leftover{
+				{ID: "a", Names: []string{"x-abcde234"}},
+				{ID: "b", Names: []string{"y-abcde234"}},
+				{ID: "c", Names: []string{"z-abcde234"}},
+			}, nil
+		},
+		Delete: func(ctx context.Context, id string) error {
+			attempts = append(attempts, id)
+			if id == "a" {
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return nil
+		},
+	}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{collection})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, []string{"a", "b", "c"}, attempts)
+	require.Equal(t, []string{"/slow/b", "/slow/c"}, removed, "a spent budget must not leave later leftovers with an expired context")
+}
+
+func TestSweepDeletesFromAPartialListingAndReportsItsError(t *testing.T) {
+	collection := Collection{
+		Name: "/partial",
+		List: func(context.Context) ([]Leftover, error) {
+			return []Leftover{{ID: "a", Names: []string{"x-abcde234"}}}, errors.New("page 2 refused")
+		},
+		Delete: func(context.Context, string) error { return nil },
+	}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{collection})
+	require.Equal(t, []string{"/partial/a"}, removed)
+	require.ErrorContains(t, err, "listing /partial: page 2 refused")
+}
+
+func TestOwnsMatchesTheTrackedSuffixes(t *testing.T) {
+	tracker := NewTracker(nil)
+	require.False(t, tracker.Owns([]string{"syn-api-abcde234-1"}), "nothing is tracked yet")
+	tracker.Track("abcde234")
+	require.True(t, tracker.Owns([]string{"default", "syn-api-abcde234-1"}))
+	require.False(t, tracker.Owns([]string{"default", "ops-api"}))
+}
+
+func TestSweepDeletesAnIDListedTwiceOnce(t *testing.T) {
+	var deletes int
+	collection := Collection{
+		Name: "/repeated",
+		List: func(context.Context) ([]Leftover, error) {
+			leftover := Leftover{ID: "a", Names: []string{"x-abcde234"}}
+			return []Leftover{leftover, leftover}, nil
+		},
+		Delete: func(context.Context, string) error { deletes++; return nil },
+	}
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{collection})
+	require.NoError(t, err)
+	require.Equal(t, []string{"/repeated/a"}, removed)
+	require.Equal(t, 1, deletes)
+}

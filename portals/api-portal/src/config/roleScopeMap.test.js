@@ -26,7 +26,7 @@ const path = require('node:path');
 
 const roleScopeMap = require('./roleScopeMap');
 
-const SPEC_PATH = path.join(__dirname, '..', '..', 'docs', 'api-portal-openapi-spec-v0.9.yaml');
+const { OPENAPI_SPEC_PATH: SPEC_PATH } = require('../utils/constants');
 const SHIPPED_MAPPING_PATH = path.join(__dirname, '..', '..', 'resources', 'role-to-scope-mapping.yaml');
 
 let tmpDir;
@@ -396,7 +396,6 @@ test('the shipped platform-api-system role reaches exactly the pinned publish-op
         // MCP server content (dp:mcp_server_content:manage)
         'createMcpServerContent',
         'deleteMcpServerContentFile',
-        'getMcpServerContentFile',
         'replaceMcpServerContent',
         // Subscription plans and their pricing (dp:subscription_plan:manage)
         'addSubscriptionPlans',

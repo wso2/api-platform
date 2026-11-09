@@ -147,6 +147,7 @@ function GatewayDetailPageContent() {
                 controlPlaneHost={runtimeConfig.gatewayControlPlaneHost}
                 gateway={gateway}
                 gatewayId={gatewayId}
+                gatewayVersions={runtimeConfig.gatewayVersions}
               />
             ) : (
               <GatewayPoliciesPanel gatewayId={gatewayId} />

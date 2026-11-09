@@ -247,6 +247,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		if err != nil {
 			return nil, err
 		}
+		o.SetResource(cfg.Auth.OIDC.Resource)
 		s.oidc = o
 
 		// Built after the OIDC client to reuse its endpoint discovery.

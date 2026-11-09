@@ -233,6 +233,9 @@ var releasedPolicyNames = func(ctx context.Context, runtimeImage string) (map[st
 	return names, nil
 }
 
+// policyIdentity names one version of one policy.
+type policyIdentity struct{ name, version string }
+
 // stagePolicyWorkspace copies the policy tree into a Docker-accessible build workspace.
 //
 // only, when non-nil, names the policies to stage; the rest are left out. A source build also
@@ -335,7 +338,7 @@ func stagePolicyWorkspace(repoRoot, source string, only map[string]bool, sourceB
 		Gateway:  gatewayBuildOptions{Version: ""},
 		Policies: make([]policyBuildEntry, 0, len(entries)),
 	}
-	seen := make(map[string]string, len(entries))
+	seen := make(map[policyIdentity]string, len(entries))
 	for _, entry := range entries {
 		if entry.Type()&os.ModeSymlink != 0 {
 			return policyWorkspace{}, fmt.Errorf("platform-gateway: policy source entry %q is a symlink", entry.Name())
@@ -354,11 +357,14 @@ func stagePolicyWorkspace(repoRoot, source string, only map[string]bool, sourceB
 				"policy", definition.Name)
 			continue
 		}
-		if previous, exists := seen[definition.Name]; exists {
-			return policyWorkspace{}, fmt.Errorf("platform-gateway: duplicate policy name %q in %q and %q",
-				definition.Name, previous, entry.Name())
+		// A gateway carries several versions of one policy, so a policy is identified by its name
+		// and version together. Only the same name at the same version twice is a duplicate.
+		identity := policyIdentity{name: definition.Name, version: definition.Version}
+		if previous, exists := seen[identity]; exists {
+			return policyWorkspace{}, fmt.Errorf("platform-gateway: duplicate policy name %q version %q in %q and %q",
+				definition.Name, definition.Version, previous, entry.Name())
 		}
-		seen[definition.Name] = entry.Name()
+		seen[identity] = entry.Name()
 
 		dst := filepath.Join(workspace.Policies, entry.Name())
 		if err := copyPolicyTree(src, dst); err != nil {

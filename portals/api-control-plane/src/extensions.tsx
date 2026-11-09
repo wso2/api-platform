@@ -67,6 +67,24 @@ type ApiControlPlaneExtensionBase = SlotEntry & {
    * only. Query string and hash are carried over.
    */
   aliases?: readonly string[];
+  /**
+   * Scopes of which the signed-in user must hold one for this entry to appear
+   * in the sidebar: the accepted-scope list of the operation its page reads, as
+   * the cloud plugin's OpenAPI spec declares it (`:manage` scopes included), so
+   * one held scope is enough. Omitted, the entry shows to everyone, as a
+   * built-in item without a scope gate does. Visibility only — the page still
+   * gates itself, since a URL can be typed. A `claims` held by an entry the
+   * user may not see is released, the way an invisible claim is.
+   */
+  requiredScopes?: readonly string[];
+  /**
+   * For a page override (`page.*` slots): the scopes, one of which the page's
+   * own primary action needs, when they differ from the built-in page's. A
+   * control elsewhere that leads to the action (the API overview's Deploy
+   * button) is then gated on these instead of the built-in operation, so it is
+   * not offered to a user the overriding page would refuse.
+   */
+  actionScopes?: readonly string[];
 };
 
 export type ApiControlPlaneExtension = ApiControlPlaneExtensionBase &
@@ -113,6 +131,8 @@ export type ApiControlPlaneExtensionChild = {
   label: string;
   icon?: ReactNode;
   isVisible?: (scope: ConsoleScope) => boolean;
+  /** As on the parent — see `requiredScopes` on `ApiControlPlaneExtension`. */
+  requiredScopes?: readonly string[];
 };
 
 /**
@@ -164,14 +184,6 @@ export const PAGE_API_DEPLOY_SLOT = 'page.apiDeploy';
 export const PAGE_GRAPHQL_API_DEPLOY_SLOT = 'page.graphqlApiDeploy';
 
 /**
- * Slot for overriding the built-in per-API Logs page under Observability. Same
- * arrangement as `PAGE_API_DEPLOY_SLOT`: consumed by the
- * `apiObservabilityLogs` route wrapper in `AppRoutes`, with `routePath`/`level`
- * inert.
- */
-export const PAGE_API_OBSERVABILITY_LOGS_SLOT = 'page.apiObservabilityLogs';
-
-/**
  * Slot for an entry in the app header's action area, rendered before the
  * built-in controls. Consumed directly by `AppHeader` (via `useSlot`) — not by
  * the sidebar or Settings-tab filters, which only match `sidebar.*` /
@@ -181,6 +193,17 @@ export const PAGE_API_OBSERVABILITY_LOGS_SLOT = 'page.apiObservabilityLogs';
  * inert, the same arrangement the `page.*` slots use.
  */
 export const HEADER_ACTIONS_SLOT = 'header.actions';
+
+/**
+ * Slot for an entry that replaces the header's built-in sidebar-collapse
+ * toggle, rendered in its place at the far left of the header, before the
+ * brand logo. Consumed directly by `AppHeader` (via `useSlot`) — same
+ * arrangement as `HEADER_ACTIONS_SLOT`. A deployment that registers nothing
+ * here keeps the built-in toggle; one that does loses the header's own way to
+ * collapse the sidebar, so it must leave another one in place (the sidebar's
+ * own `Sidebar.CollapseToggle` already does, in this portal).
+ */
+export const HEADER_START_SLOT = 'header.start';
 
 /**
  * Slot for a headless, host-mounted policy hook, rendered on every in-shell
@@ -199,6 +222,23 @@ export const HEADER_ACTIONS_SLOT = 'header.actions';
 export const APP_GATE_SLOT = 'app.gate';
 
 /**
+ * Slot for a source of the name the Organization home page greets the signed-in
+ * user by ("Hello, <name>").
+ *
+ * The portal greets by the organization's display name. A deployment that knows
+ * the person's own name registers an entry here; its `resolveName` may answer
+ * nothing when it has none, in which case the next entry is tried and, failing
+ * all, the organization name stays.
+ * A deployment that registers nothing here greets exactly as it always did.
+ */
+export const HOME_GREETING_SLOT = 'home.greeting';
+
+/** A `home.greeting` entry — see `HOME_GREETING_SLOT`. Nothing renders; it only supplies a name. */
+export type ApiControlPlaneGreetingSource = SlotEntry & {
+  resolveName: (port: CloudHostPort) => string | null | undefined;
+};
+
+/**
  * A headless `app.gate` entry — see `APP_GATE_SLOT`. Like a header action, it
  * carries only `render`, because it has no page and no nav presence; declaring
  * `routePath`/`level` would claim otherwise. `render` is called with the live
@@ -212,6 +252,19 @@ export type ApiControlPlaneAppGate = SlotEntry & {
 export const isSidebarExtension = (
   extension: ApiControlPlaneExtension
 ): boolean => extension.slot.startsWith(SIDEBAR_SLOT_PREFIX);
+
+/**
+ * Whether the signed-in user may be shown `entry` — true when it declares no
+ * `requiredScopes`, otherwise when `hasScope` holds for at least one of them
+ * (an any-of list, as the spec's own accepted-scope lists are).
+ */
+export const isExtensionPermitted = (
+  entry: { requiredScopes?: readonly string[] },
+  hasScope: (scope: string) => boolean
+): boolean => {
+  const required = entry.requiredScopes ?? [];
+  return required.length === 0 || required.some(hasScope);
+};
 
 /** Prefix for a slot that overrides a built-in page (e.g. `page.gateways`). */
 const PAGE_SLOT_PREFIX = 'page.';
@@ -271,7 +324,8 @@ export type ApiControlPlaneCloudEntry =
   // render }` — so this arm admits nothing new on its own. Named anyway: a gate
   // being accepted by accident, because it happens to match another arm, is not
   // the same as the registry declaring that gates are entries.
-  | ApiControlPlaneAppGate;
+  | ApiControlPlaneAppGate
+  | ApiControlPlaneGreetingSource;
 
 export function ExtensionsProvider({
   extensions,

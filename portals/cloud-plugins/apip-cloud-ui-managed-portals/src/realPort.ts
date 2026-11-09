@@ -12,6 +12,9 @@
 import type {
   CreateManagedPortalInput,
   ManagedPortal,
+  ManagedPortalChange,
+  ManagedPortalChangeError,
+  ManagedPortalChangeOp,
   ManagedPortalStatus,
   OrgEnvironment,
   PortalPort,
@@ -88,6 +91,17 @@ async function request<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
+  return (await send<T>(base, orgRef, method, path, body)).body;
+}
+
+/** Like `request`, with the response's status; a 2xx with no body has none. */
+async function send<T>(
+  base: string,
+  orgRef: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<{ status: number; body: T }> {
   const mutating = method !== 'GET';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -129,8 +143,8 @@ async function request<T>(
     throw new RequestError(message, response.status);
   }
 
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  const text = response.status === 204 ? '' : await response.text();
+  return { status: response.status, body: (text.trim() === '' ? undefined : JSON.parse(text)) as T };
 }
 
 // Wire shapes match the plugin's OAS.
@@ -143,6 +157,8 @@ type WirePortal = {
   loginEnvironment?: string;
   selfSignup?: boolean;
   status?: string;
+  change?: { op?: string; loginEnvironment?: string; selfSignup?: boolean };
+  lastChangeError?: { op?: string; loginEnvironment?: string; selfSignup?: boolean; message?: string; at?: string };
   updatedAt?: string;
 };
 type WirePortalList = { count?: number; list?: WirePortal[] };
@@ -154,8 +170,38 @@ type WirePortalList = { count?: number; list?: WirePortal[] };
  * button (see fallback in ManagedPortalsList).
  */
 function normalizeStatus(raw?: string): ManagedPortalStatus | undefined {
-  if (raw === 'pending' || raw === 'active' || raw === 'failed') return raw;
+  if (raw === 'pending' || raw === 'active' || raw === 'failed' || raw === 'deleting') return raw;
   return undefined;
+}
+
+/** An unknown change kind from a newer backend reads as no change: the row says "Updating" generically. */
+function normalizeChangeOp(raw?: string): ManagedPortalChangeOp | undefined {
+  if (raw === 'loginEnvironment' || raw === 'selfSignup' || raw === 'rotateKey') return raw;
+  return undefined;
+}
+
+function changeFromWire(w: WirePortal['change']): ManagedPortalChange | undefined {
+  const op = normalizeChangeOp(w?.op);
+  if (!op) return undefined;
+  return { op, loginEnvironment: w?.loginEnvironment, selfSignup: w?.selfSignup };
+}
+
+/** Message for a failed change the backend sent without one. */
+export const CHANGE_FAILED_FALLBACK_MESSAGE = 'The last change to this portal did not complete. Try it again.';
+
+/**
+ * Any lastChangeError means the last change failed, so it is kept even when
+ * its kind is unknown to this UI or its message is empty.
+ */
+function changeErrorFromWire(w: WirePortal['lastChangeError']): ManagedPortalChangeError | undefined {
+  if (!w) return undefined;
+  return {
+    op: normalizeChangeOp(w.op),
+    loginEnvironment: w.loginEnvironment,
+    selfSignup: w.selfSignup,
+    message: w.message?.trim() || CHANGE_FAILED_FALLBACK_MESSAGE,
+    at: w.at,
+  };
 }
 
 // `name` is the value loginEnvironment expects; other response fields are ignored.
@@ -176,6 +222,8 @@ function fromWire(w: WirePortal): ManagedPortal {
     loginEnvironment: w.loginEnvironment,
     selfSignup: w.selfSignup,
     status: normalizeStatus(w.status),
+    change: changeFromWire(w.change),
+    lastChangeError: changeErrorFromWire(w.lastChangeError),
     updatedAt: w.updatedAt,
   };
 }
@@ -245,7 +293,10 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       return fromWire(body);
     },
     async remove(id: string) {
-      await request<void>(base, orgHandle, 'DELETE', url(id));
+      // 204: deleted. 202: the cloud's orchestrator tears it down, and the portal
+      // reads as deleting until it is gone.
+      const res = await send<{ status?: string } | undefined>(base, orgHandle, 'DELETE', url(id));
+      return { pending: res.status === 202 || res.body?.status === 'deleting' };
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
       // Sibling endpoint reached via the same BFF proxy and org-id header as the portal calls.

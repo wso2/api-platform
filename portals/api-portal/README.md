@@ -315,6 +315,7 @@ These are the variables the shipped `configs/config.toml` honours:
 | `APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY` | `config.auth.local.tlsSkipVerify` |
 | `APIP_AP_ORGANIZATION_HANDLE` | `config.organization.handle` |
 | `APIP_AP_ORGANIZATION_DISPLAY_NAME` | `config.organization.displayName` |
+| `APIP_AP_MONETIZATION_DISABLED` | `config.monetization.disabled` |
 
 The five `APIP_AP_DATABASE_HOST`/`PORT`/`NAME`/`USER`/`PASSWORD` variables need a key
 to reference them first: the shipped `config.toml` is SQLite-only (driver + path), so
