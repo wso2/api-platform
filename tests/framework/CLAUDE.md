@@ -12,6 +12,8 @@
   Test behaviour that exists only in the hosted cloud in `suites/cloud`.
 - Every test starts from an entry in a scenario list: `scenarios/on-prem/` for `suites/it`
   and `suites/ui`, `scenarios/cloud/` for `suites/cloud`. See "Scenario Lists".
+- `.agents/skills/write-framework-tests/SKILL.md` (at the repository root) walks through
+  writing a test from its scenario-list entry to a passing scenario, step by step.
 - The cloud suite runs from the apim-saas e2e image against a shared organisation. On a pull
   request it is only compiled and its step unit tests run, so its scenarios must be safe to
   run repeatedly against shared, long-lived resources.
