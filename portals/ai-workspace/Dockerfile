@@ -9,9 +9,11 @@ RUN apk --no-cache add python3 build-base git
 
 WORKDIR /web
 
-# Separate dependency install for better layer caching
+# Separate dependency install for better layer caching. The cache mount keeps npm's
+# tarball cache across builds, so a package-lock.json change re-resolves the tree
+# without re-downloading every package (npm ci always wipes node_modules itself).
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 
 # .dockerignore keeps this from copying the host's node_modules over the tree npm
 # just installed (and its dist/, .env and local keys) — see the notes there before
@@ -43,12 +45,15 @@ COPY --from=common go.mod go.sum /src/common/
 COPY --from=httpkit go.mod go.sum /src/httpkit/
 COPY bff/go.mod bff/go.sum ./
 ENV CGO_ENABLED=0 GOWORK=off
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY --from=common . /src/common
 COPY --from=httpkit . /src/httpkit
 COPY bff/ ./
-RUN COVER_FLAGS=""; \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    COVER_FLAGS=""; \
     if [ "$ENABLE_COVERAGE" = "true" ]; then \
         COVER_FLAGS="-cover -covermode=atomic"; \
         if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
