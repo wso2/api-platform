@@ -35,12 +35,11 @@ func enabledFeatureUsage() FeatureUsage {
 	return c
 }
 
-// On by default, but a deployment without a collector (self-hosted) needs no
-// URLs or credentials to start.
-func TestFeatureUsageIsOnByDefaultButNeedsNoCollector(t *testing.T) {
+// Off by default, and the disabled defaults need no URLs or credentials.
+func TestFeatureUsageIsOffByDefault(t *testing.T) {
 	cfg := defaultConfig()
-	if !cfg.FeatureUsage.Enabled {
-		t.Fatal("feature usage reporting must be on by default")
+	if cfg.FeatureUsage.Enabled {
+		t.Fatal("feature usage reporting must be off unless a deployment turns it on")
 	}
 	if cfg.FeatureUsage.Configured() {
 		t.Fatal("no collector may be configured by default")

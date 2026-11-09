@@ -28,13 +28,13 @@ import (
 // events naming a taxonomy feature) to WSO2 Cloud's authenticated Moesif
 // collector proxy.
 //
-// Reporting is on by default, and starts as soon as a collector is configured:
-// CollectorURL and the Token client. Nothing has a default value, because the
-// collector is a WSO2 Cloud service reachable only inside its cluster, so a
-// deployment without one (a self-hosted Platform API) reports nothing. Setting
-// Enabled to false turns reporting off even where a collector is configured.
+// Reporting is off by default. A deployment turns it on with Enabled = true
+// (MOESIF_ENABLED in WSO2 Cloud) and configures a collector: CollectorURL and
+// the Token client. Neither has a default value, because the collector is a
+// WSO2 Cloud service reachable only inside its cluster; enabled without a
+// collector, reporting does nothing and says so once at startup.
 type FeatureUsage struct {
-	// Enabled is the on/off switch (MOESIF_ENABLED in WSO2 Cloud). On by
+	// Enabled is the on/off switch (MOESIF_ENABLED in WSO2 Cloud). Off by
 	// default.
 	Enabled bool `koanf:"enabled"`
 	// CollectorURL is the collector proxy's base URL (MOESIF_EVENTS_API_URL in
@@ -77,7 +77,7 @@ const (
 
 func defaultFeatureUsage() FeatureUsage {
 	return FeatureUsage{
-		Enabled:        true,
+		Enabled:        false,
 		QueueSize:      256,
 		Workers:        2,
 		RequestTimeout: 5 * time.Second,

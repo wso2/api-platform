@@ -418,8 +418,7 @@ func TestCloseIsBoundedByItsContext(t *testing.T) {
 	p.Record(validCreation()) // after Close: dropped, must not panic
 }
 
-// Reporting is on by default, but with no collector configured (a
-// self-hosted Platform API) there is nothing to send to.
+// Turned on but with no collector configured, there is nothing to send to.
 func TestNewFromConfigEnabledWithoutACollectorIsNoop(t *testing.T) {
 	logs := &syncBuffer{}
 	r, err := NewFromConfig(config.FeatureUsage{Enabled: true}, fakeAttributor{}, slog.New(slog.NewTextHandler(logs, nil)))

@@ -761,13 +761,11 @@ audience = ""
 # reach the route — authentication, authorization, read-only mode — are not.
 # The feature code is sent as metadata.growth_action.
 #
-# On by default (enabled = true), and reporting starts as soon as a collector
-# is configured: collector_url and the [platform_api.feature_usage.token]
-# client. None of them has a default — the collector is a WSO2 Cloud service
-# reachable only inside its cluster — so a deployment without one (a
-# self-hosted Platform API) reports nothing, and says so once at startup.
-# Configuring only some of them fails startup. Set enabled = false to turn
-# reporting off even where a collector is configured.
+# Off by default. To report, set enabled = true and configure a collector:
+# collector_url and the [platform_api.feature_usage.token] client. None of
+# them has a default — the collector is a WSO2 Cloud service reachable only
+# inside its cluster. Enabled without a collector, reporting does nothing and
+# says so once at startup; configuring only some of them fails startup.
 #
 # Every event is checked against the taxonomy embedded in the binary before it
 # is queued, because the proxy validates nothing. The call is described only
@@ -783,14 +781,14 @@ audience = ""
 # checks its signature, issuer and expiry.
 #
 # WSO2 Cloud example:
-#   enabled       = '{{ env "MOESIF_ENABLED" "true" }}'
+#   enabled       = '{{ env "MOESIF_ENABLED" "false" }}'   # the release binding sets MOESIF_ENABLED=true
 #   collector_url = '{{ env "MOESIF_EVENTS_API_URL" "" }}'
 #   token_url     = '{{ env "PLATFORM_IDP_TOKEN_URL" "" }}'
 #   client_id     = '{{ env "PLATFORM_IDP_CLIENT_ID" "" }}'
 #   client_secret = '{{ file "/secrets/platform-api/platform-idp-client-secret" }}'
 # -----------------------------------------------------------------------------
 [platform_api.feature_usage]
-enabled         = true   # on by default; reports only once a collector is configured below
+enabled         = false  # off by default; set true and configure a collector below to report
 collector_url   = ""     # e.g. http://api-platform-internal-gateway-gateway-runtime.openchoreo-data-plane:8080/moesif-collector
 queue_size      = 256    # events waiting for delivery; a full queue drops new ones
 workers         = 2      # concurrent deliveries
