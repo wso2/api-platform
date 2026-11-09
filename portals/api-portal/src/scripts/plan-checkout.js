@@ -85,7 +85,7 @@
         var limit = Array.prototype.map.call(card.querySelectorAll('.aov-plan-limit li'), function (li) {
           return li.textContent.replace(/\s+/g, ' ').trim();
         }).join(' · ');
-        if (limit) pricing.appendChild(row('Rate limit', limit));
+        if (limit) pricing.appendChild(row('Limits', limit));
 
         // A flat rate is charged up front; usage is invoiced afterwards. The amounts carry their currency.
         el('paidSubscribeTerms').textContent = [

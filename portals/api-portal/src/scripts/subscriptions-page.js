@@ -40,6 +40,9 @@ function openSubManage(subId) {
     document.getElementById('subManageApiName').textContent = _manageSub.apiName;
     document.getElementById('subManagePlanName').textContent = _manageSub.planName;
     document.getElementById('subManageKind').textContent = _manageSub.mcp ? 'MCP server subscription' : 'API subscription';
+    document.querySelectorAll('#subManageModal .subManageTarget').forEach(function (el) {
+        el.textContent = _manageSub.mcp ? 'MCP server' : 'API';
+    });
     updateSubManageStatus(_manageSub.status);
     document.getElementById('subManageTokenVal').textContent = '•'.repeat(28);
     const revealIcon = document.getElementById('subManageRevealIcon');
@@ -300,7 +303,8 @@ function askSubUnsub() {
             const until = _manageSub.periodEnd ? formatBillingDate(_manageSub.periodEnd) : 'the end of the period';
             desc.textContent = 'Your subscription will remain active until ' + until + '.';
         } else {
-            desc.textContent = 'Your applications will lose access to this API and any tokens will stop working. '
+            desc.textContent = 'Your applications will lose access to this ' + (_manageSub.mcp ? 'MCP server' : 'API')
+                + ' and any tokens will stop working. '
                 + (_manageSub.paid ? 'Usage up to now is billed on a final invoice. ' : '')
                 + 'You can re-subscribe at any time.';
         }
@@ -317,7 +321,8 @@ function askSubEndNow() {
     const desc = document.getElementById('subUnsubDesc');
     if (desc) {
         desc.textContent = 'Your subscription ends immediately instead of on ' + formatBillingDate(_manageSub.endsAt)
-            + ', and your applications lose access to this API. The rest of the paid period is not refunded.';
+            + ', and your applications lose access to this ' + (_manageSub.mcp ? 'MCP server' : 'API')
+            + '. The rest of the paid period is not refunded.';
     }
     const confirm = document.getElementById('subUnsubConfirmBtn');
     if (confirm) confirm.textContent = 'End now';

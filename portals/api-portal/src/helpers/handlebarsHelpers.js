@@ -112,7 +112,8 @@ const helpers = {
     // The kind of artifact, as subscribers read it: MCP, REST, GraphQL and so on.
     apiTypeLabel: (type) => {
         const map = { mcp: 'MCP', restapi: 'REST', rest: 'REST', graphql: 'GraphQL', soap: 'SOAP', ws: 'WebSocket', websubapi: 'WebSub' };
-        return map[String(type || '').toLowerCase()] || String(type || 'REST');
+        if (!type) return 'Unknown';
+        return map[String(type).toLowerCase()] || String(type);
     },
     isMcpType: (type) => String(type || '').toLowerCase() === 'mcp',
     // A date without its time, for "since" columns.

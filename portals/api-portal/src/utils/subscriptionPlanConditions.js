@@ -198,8 +198,8 @@ function normalizeConditions(conditions) {
 
 /**
  * The request-count windows of a plan's REQUEST_COUNT and EVENT_COUNT limits (DAO rows or request
- * limits): the subscription rate limit counts events as requests. Unlimited, unit-less, unsupported
- * and repeated-length limits are left out, as the Platform API does, and at most ten are kept.
+ * limits): the subscription rate limit counts events as requests. Unit-less limits are per minute.
+ * Unlimited, unsupported and repeated-length limits are left out, and at most ten are kept.
  */
 function requestWindowsFromLimits(limits) {
     const windows = [];
@@ -208,7 +208,8 @@ function requestWindowsFromLimits(limits) {
         const type = String(l.limit_type ?? l.limitType ?? 'REQUEST_COUNT').toUpperCase();
         const count = Number(l.limit_count ?? l.limitCount);
         if (!REQUEST_LIMIT_TYPES.includes(type) || !Number.isInteger(count) || count < 1) continue;
-        const unit = String(l.time_unit ?? l.timeUnit ?? '').trim().toUpperCase();
+        // A stored limit with no unit came from the YAML shorthand (requestCount), which is per minute.
+        const unit = String(l.time_unit ?? l.timeUnit ?? '').trim().toUpperCase() || 'MINUTE';
         if (!TIME_UNITS.includes(unit)) continue;
         const amount = Math.max(1, Number(l.time_amount ?? l.timeAmount) || 1);
         const key = windowKey(amount, unit);

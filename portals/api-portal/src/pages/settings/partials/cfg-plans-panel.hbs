@@ -57,7 +57,10 @@
                       <span class="cfg-cond-chip-more">+{{moreConditions.length}}</span>
                       <span class="cfg-cond-tip" role="tooltip">
                         <span class="cfg-cond-tip-title">More conditions</span>
-                        {{#moreConditions}}<span class="cfg-cond-tip-line">{{this}}</span>{{/moreConditions}}
+                        {{#moreConditions}}
+                        <span class="cfg-cond-tip-sub">{{title}}</span>
+                        {{#details}}<span class="cfg-cond-tip-line">{{this}}</span>{{/details}}
+                        {{/moreConditions}}
                       </span>
                     </span>
                     {{/if}}

@@ -3196,3 +3196,10 @@
 #wz-content-chip.cfg-spec-chip--error { border-color: var(--danger-surface); background: var(--danger-surface); }
 #wz-content-chip.cfg-spec-chip--error .cfg-spec-sub { color: var(--danger); font-weight: 600; }
 .cfg-spec-chip .cfg-action-btn[hidden] { display: none; }
+
+/* These set their own display, so [hidden] needs saying again, whatever the layout's base styles. */
+.pln-menu[hidden], .pln-add-cond[hidden], .pln-cond-body[hidden], .pln-chooser[hidden],
+.pln-cond-empty[hidden], .pln-cond-chip[hidden], .pln-preview-price[hidden] { display: none !important; }
+/* The plans table's last rows open their condition cards upward, so they stay in the scroll area. */
+.cfg-table tbody tr:nth-last-child(-n+2) .cfg-cond-tip { top: auto; bottom: calc(100% + 6px); }
+.cfg-cond-tip-sub { font-weight: 600; color: var(--text-strong); margin-top: 4px; }

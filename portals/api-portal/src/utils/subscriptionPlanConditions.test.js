@@ -105,6 +105,9 @@ test('request windows come from the REQUEST_COUNT and EVENT_COUNT limits that ha
         { limitType: 'BANDWIDTH', limitCount: 9, timeUnit: 'MONTH' },
     ]), [w(100, 1, 'MINUTE'), w(6000, 1, 'HOUR'), w(9, 1, 'DAY')]);
     assert.equal(requestCondition([]), null);
+    // A stored limit with no unit came from the YAML shorthand: it is per minute, not dropped.
+    assert.deepEqual(requestWindowsFromLimits([{ limit_type: 'REQUEST_COUNT', limit_count: 10000, time_unit: null, time_amount: 1 }]),
+        [w(10000, 1, 'MINUTE')]);
 });
 
 test('the request-count condition is replaced in place, added first, or removed', () => {

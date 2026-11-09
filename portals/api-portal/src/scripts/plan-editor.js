@@ -106,6 +106,11 @@
     val.type = 'text'; val.className = 'cfg-form-input cfg-form-input--mono pln-pair-value'; val.placeholder = 'value';
     val.setAttribute('aria-label', 'Value');
     val.value = value === undefined ? '' : (typeof value === 'string' ? value : JSON.stringify(value));
+    // The saved value, so an untouched one is sent back as it was ("00123" stays a string).
+    if (value !== undefined) {
+      row.dataset.savedText = val.value;
+      row.dataset.savedValue = JSON.stringify(value);
+    }
     var rm = document.createElement('button');
     rm.type = 'button'; rm.className = 'cfg-icon-btn cfg-icon-btn--danger'; rm.title = 'Remove value';
     rm.setAttribute('aria-label', 'Remove value'); rm.appendChild(icon('bi-x-lg'));
@@ -341,7 +346,7 @@
 
   /* The conditions as the API takes them, in their order. Throws with a message fit for the user. */
   function readConditions() {
-    var seen = {};
+    var seen = Object.create(null);
     return condEls().map(function (el) {
       var t = TYPE_OF[el.dataset.type];
       if (el.dataset.type === 'custom') {
@@ -357,7 +362,7 @@
           if (!k && !val) return;
           if (!k) throw new Error('Each value of the condition ' + id + ' needs a key.');
           if (Object.prototype.hasOwnProperty.call(params, k)) throw new Error('The condition ' + id + ' has the key ' + k + ' twice.');
-          params[k] = parseValue(val);
+          params[k] = row.dataset.savedText === val ? JSON.parse(row.dataset.savedValue) : parseValue(val);
         });
         return { id: id, type: 'custom', params: params };
       }

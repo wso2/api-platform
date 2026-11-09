@@ -59,7 +59,7 @@ const constants = require('../utils/constants');
 const MAX_CHIPS = 4;
 const visibleChips = (chips) => ({
     conditionChips: chips.slice(0, MAX_CHIPS),
-    moreConditions: chips.slice(MAX_CHIPS).map(c => `${c.label} · ${c.first}${c.more ? ` (+${c.more})` : ''}`),
+    moreConditions: chips.slice(MAX_CHIPS).map(c => ({ title: c.custom ? `${c.label} · ${c.first}` : c.label, details: c.details })),
 });
 
 const loadSettingsPage = async (req, res) => {
