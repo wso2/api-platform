@@ -614,6 +614,22 @@ though the routing policy keeps nominating it, and that load spreads across the 
   work: failover treats it as a one-element list and continues with its own configured chain after
   it. Adoption of the ordered-list contract MUST be incremental — no routing policy is required to
   change for failover to function.
+- **FR-023a**: Both metadata keys failover reads MUST be addressed generically — by the channel's
+  shared convention (`selected_provider`) or by purpose (`model_routing.published_ranking`), never
+  by a producing policy's name. A producer-specific address reads as *absent* for every other
+  policy, and absent is a legitimate state, so the decision is discarded with no error and no log.
+  Verified 2026-11-09: reading `model_roundrobin.selected_provider` silently dropped the routing
+  decision of **seven of the eight** steering policies in `wso2/gateway-controllers`. The literal
+  key values MUST be pinned by a test, because every other test references the constant and so
+  cannot detect a rename.
+- **FR-023b**: The single-selection channel carries a **provider only**. Failover MUST read it as
+  "the model the client requested, at that provider", matching how every `openai-to-*` transformer
+  already resolves a model (request body, then its own configured override — never from
+  `selected_provider`). An empty, whitespace-only, absent or non-string value is NOT a selection and
+  MUST leave the configured order untouched: a producer *deletes* the key when its choice is the
+  primary provider, so empty means no steering occurred. A producer needing to name a different
+  **model** MUST use the ordered list; no generic single-selection key for a model exists and none
+  is to be invented.
 - **FR-024**: Once the configured fallbacks for the first target are spent, failover MUST continue
   through the remainder of the published list, in the order the routing policy ranked it. Ranked
   targets are not discarded — the routing policy already judged them usable. A target reachable

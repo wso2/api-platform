@@ -13,6 +13,27 @@ the translator policies (`gateway/examples/openai-multi-provider-proxy.yaml:18-2
 more than the winner: it needs the policy's **ranking**, so traversal after a failure follows the
 algorithm's own judgement rather than a fixed list.
 
+### Both keys are addressed generically, and that is load-bearing
+
+`selected_provider` is **not** namespaced by producer, and the ranking key is namespaced by
+*purpose* (`model_routing`) rather than by any one policy. A consumer of a shared channel must read
+the channel's own address.
+
+This was got wrong once and is worth recording. The consumer originally read
+`model_roundrobin.selected_provider` — `model-round-robin`'s **private** key, introduced by
+`64a2d3b` (2026-07-27) for that policy's own bookkeeping. Of the eight steering policies in
+`wso2/gateway-controllers`, only that one writes it. Every other policy writes bare
+`selected_provider`, the convention established by `77dcac0` (2026-07-09) and read by all five
+`openai-to-*` transformers. So with failover attached, seven steering policies had their decision
+read as *absent* and silently discarded while failover published its configured order instead — a
+`cost-based-model-routing` request would still be billed at whichever provider the publisher
+configured first, not the cheap one the policy chose.
+
+Nothing failed and nothing was logged, because an absent selection is a legitimate state: it is what
+a producer writes when it has nothing to say. That is why `TestContractKeysArePinned` asserts the
+**literal** value and rejects any `.` in it. Every other test in the suite references the constant,
+so a rename moves producer and consumer together and the suite stays green.
+
 The ranking is published **once per client request** and carried across attempts, so no routing
 algorithm is ever re-run mid-request — no re-classification, no re-scoring, no re-drawn weighting
 (FR-022).
@@ -66,6 +87,31 @@ with string values, since a producer assembling the list generically naturally p
 Both decode identically. Anything else is treated as no ranking at all, and the request degrades
 to the single-selection path rather than failing.
 
+## The single-selection tier
+
+A producer that has not adopted the ordered list publishes:
+
+```
+selected_provider = "<additionalProviders[].as alias or provider id>"
+```
+
+It carries a **provider and nothing else**, and the consumer reads it as *"the model the client
+asked for, at this provider"* — yielding the one-element ranking `{requested model, provider}`.
+
+That reading is not an assumption; it is how the rest of the chain already behaves. No
+`openai-to-*` transformer derives a model from this key: each resolves the model from the request
+body, falling back to its own configured override, and uses `selected_provider` only to decide
+whether it is the transformer for this request. Provider selection and model selection are
+orthogonal everywhere else, and this consumer matches that.
+
+**An empty or absent value is not a selection.** `applyProviderRouting` *deletes* the key when its
+choice is the primary provider, so empty means "no steering happened" and the configured order must
+stand. A whitespace-only or non-string value is treated the same way.
+
+**A producer that needs to name a different MODEL must use the ordered list.** The single-selection
+channel cannot express it, and no generic key for it exists — inventing one would add a third
+address to a channel that already has a working convention.
+
 ## Producer obligations
 
 A routing policy that adopts this contract MUST:
@@ -91,12 +137,33 @@ A routing policy that adopts this contract MUST:
 
 ### Adoption at launch (FR-028, FR-029)
 
-| Policy | Adopts at launch | Ranking it publishes |
-|---|---|---|
-| `model-round-robin` | **Yes** | Full rotation starting at the current cursor |
-| `model-weighted-round-robin` | **Yes** | Weighted draw order over the healthy set |
-| `llm-header-router` | No — degrades | Single selection ⇒ one-element list |
-| `typesafe-jev-model-routing` (vendor-owned) | No — degrades | Single selection ⇒ one-element list |
+Audited against `wso2/gateway-controllers` on 2026-11-09 — every steering policy in the repo, not a
+sample. "Degrades" now means it genuinely works through the single-selection tier; before the key
+fix above it meant the policy's decision was dropped.
+
+| Policy | Version | Adopts the ordered list | What failover sees |
+|---|---|---|---|
+| `model-round-robin` | v1.2.0 | **Yes** | Full rotation starting at the current cursor |
+| `model-weighted-round-robin` | v1.1.1 | No — degrades | Single selection ⇒ one-element list |
+| `cost-based-model-routing` | v0.9.0 | No — degrades | Single selection ⇒ one-element list |
+| `intelligent-model-routing` | v0.9.0 | No — degrades | Single selection ⇒ one-element list |
+| `llm-header-router` | v0.9.1 | No — degrades | Single selection ⇒ one-element list |
+| `semantic-model-routing` | v0.9.0 | No — degrades | Single selection ⇒ one-element list |
+| `time-based-model-routing` | v0.9.1 | No — degrades | Single selection ⇒ one-element list |
+| `typesafe-jev-model-routing` (vendor-owned) | v0.8.0 | No — degrades | Single selection ⇒ one-element list |
+
+`model-weighted-round-robin` was previously listed here as adopting at launch. It does not: it
+writes `model_weighted_roundrobin.selected_*` plus bare `selected_provider`, and nothing else. Its
+*pick* therefore reaches failover through the single-selection tier, but its weighted **order** does
+not — the weights decide which provider leads and then the publisher's configured chain supplies the
+rest. Adopting the ordered list is what would carry the draw order, and it has not.
+
+### Steering that this contract does not cover
+
+`dynamic-endpoint` (v1.0.1) and `interceptor-service`'s `DynamicEndpoint` reply steer to an
+arbitrary **upstream definition**, not to a model or provider. A ranking cannot express that, so
+these do not compose with failover: attaching both leaves their steering inert because failover owns
+the route's one cluster specifier. See T024u2/T024u3.
 
 No routing policy is *required* to change for failover to function (FR-023).
 

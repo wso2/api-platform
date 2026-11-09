@@ -1806,6 +1806,147 @@ Feature: Automatic fallback to a healthy model
     When I delete the LLM provider "mf-mixed-alive-provider"
     Then the response status code should be 200
 
+
+  # ====================================================================
+  # FR-023a/b — a steering policy's decision reaches failover generically
+  # ====================================================================
+
+  @generic-steering
+  Scenario: A steering policy that publishes only a provider still leads the failover chain
+    # The consumer used to read "model_roundrobin.selected_provider" -- model-round-robin's own
+    # private key. Seven of the eight steering policies in gateway-controllers write bare
+    # "selected_provider" instead, so with failover attached their decision was read as ABSENT
+    # and silently discarded while failover published its configured order. Nothing failed and
+    # nothing was logged, because absent is a legitimate state (FR-023a).
+    #
+    # llm-header-router is the subject because it is the purest case: it writes ONLY bare
+    # selected_provider, and it selects from a request header, so the scenario controls the
+    # decision exactly rather than inferring it from cost or a rotation cursor.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-steer-primary
+      spec:
+        displayName: MF Steer Primary
+        version: v1.0
+        template: openai
+        context: /mf-steer-primary-ctx
+        upstream:
+          url: http://sample-backend:9080/steer-primary-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-steer-chosen
+      spec:
+        displayName: MF Steer Chosen
+        version: v1.0
+        template: openai
+        context: /mf-steer-chosen-ctx
+        upstream:
+          url: http://sample-backend:9080/steer-chosen-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Both providers are HEALTHY. That is deliberate: if the steering decision is honoured the
+    # request goes to the chosen one on attempt 1, and if it is discarded it goes to the
+    # configured primary on attempt 1. Both return 200, so the status code cannot tell them
+    # apart and the body is the discriminator -- which is exactly how the bug stayed invisible.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-steer-proxy
+      spec:
+        displayName: MF Steer Proxy
+        version: v1.0
+        context: /mf-steer-proxy
+        provider:
+          id: mf-steer-primary
+        additionalProviders:
+          - id: mf-steer-chosen
+            as: chosen
+        operationPolicies:
+          - name: llm-header-router
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  headerName: x-provider
+                  mappings:
+                    - headerValue: chosen
+                      provider: chosen
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: chosen
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The header names the non-primary provider, so the steering policy publishes
+    # selected_provider=chosen. Failover must lead with it.
+    When I set header "Content-Type" to "application/json"
+    And I set header "x-provider" to "chosen"
+    And I send a POST request to "http://localhost:8080/mf-steer-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # ONE attempt: the steered target led and succeeded, so no failover occurred.
+    And the response header "x-envoy-attempt-count" should be "1"
+    # THE assertion. The steered provider's upstream, not the configured primary's.
+    And the response body should contain "/steer-chosen-upstream"
+    And the response body should not contain "/steer-primary-upstream"
+
+    # CONTROL -- a header value matching no mapping. With no defaultProvider configured, the
+    # policy DELETES selected_provider (llmheaderrouter.go:180, the same thing
+    # applyProviderRouting does when it picks the primary), so this proves the policy ran and
+    # selected nothing, which is stronger than the policy not running at all.
+    #
+    # Without a control, "the body says chosen" could not be told apart from "this proxy always
+    # routes to chosen", and the scenario would pass with the steering ignored entirely.
+    #
+    # Not done by clearing headers: that also drops the controller credential the cleanup
+    # DELETEs below need, which fails the scenario at teardown with a 401.
+    When I set header "x-provider" to "no-such-provider"
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-steer-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/steer-primary-upstream"
+    And the response body should not contain "/steer-chosen-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-steer-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-steer-primary"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-steer-chosen"
+    Then the response status code should be 200
+
   # ====================================================================
   # Traversal stops when the caller goes away
   # ====================================================================
