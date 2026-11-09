@@ -49,6 +49,21 @@ import { filterExtensionsForRuntime } from '../runtimeFlags';
 import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
 import cloudLogoLight from '../assets/logos/apiplatform_black.svg';
 
+/**
+ * Scopes the cloud Deploy page deploys under (apip-cloud-ui-deploy
+ * API_DEPLOYMENT_OPERATIONS.DeployApi): one of them is needed to deploy.
+ */
+const CLOUD_DEPLOY_SCOPES = [
+  'ap:deployment:deploy',
+  'ap:deployment:manage',
+  'ap:rest_api:deployment:create',
+  'ap:rest_api:deployment:manage',
+  'ap:rest_api:manage',
+  'ap:graphql_api:deployment:create',
+  'ap:graphql_api:deployment:manage',
+  'ap:graphql_api:manage',
+] as const;
+
 /** Cloud console branding used by the host header and login page. */
 export const cloudBrandLogo: BrandLogo = {
   dark: cloudLogoDark,
@@ -273,6 +288,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         render: (port) => <CloudDeployPage port={port} />,
         label: 'Deploy',
         level: 'api',
+        // The cloud deploys through the project's pipeline, under the scopes
+        // its Deploy page checks (CLOUD_DEPLOY_SCOPES).
+        actionScopes: CLOUD_DEPLOY_SCOPES,
       },
       {
         // The same Deploy feature for a GraphQL API, so both kinds deploy through
@@ -282,6 +300,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'graphql-api-deploy',
         slot: PAGE_GRAPHQL_API_DEPLOY_SLOT,
         order: 0,
+        actionScopes: CLOUD_DEPLOY_SCOPES,
         routePath: 'deploy',
         render: (port, artifactHandle) => (
           <DeployFeature

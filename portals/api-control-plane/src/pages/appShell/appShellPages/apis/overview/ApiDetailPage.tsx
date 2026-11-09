@@ -31,6 +31,7 @@ import { OverviewTab } from './OverviewTab';
 import { ProgressBanner } from './ProgressBanner';
 import { useCloudDeployments } from './useCloudDeployments';
 import { useCan } from '@/permissions/useCan';
+import { PAGE_API_DEPLOY_SLOT } from '@/extensions';
 
 // No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
 // degrades to a shallower tier rather than linking here without an API.
@@ -111,6 +112,7 @@ function ApiDetailPageContent() {
         canEdit={canEdit}
         deployOperation="DeployAPI"
         deployPath={deployPath}
+        deploySlot={PAGE_API_DEPLOY_SLOT}
         editPath={editPath}
       />
 
