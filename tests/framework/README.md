@@ -31,7 +31,7 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 
 # The ap CLI's ai-workspace commands against platform-api (needs the ap binary, see below):
 make ap-cli
-go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
+go test ./suites/it -count=1 -timeout=30m -blocks=platform-api-core/api-sqlite_gateway-sqlite -feature-tags=@ai-workspace-cli
 
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
@@ -44,7 +44,7 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=2
 # Reports are written under whichever directory you pass; open its index.html to navigate
 # to each component report. A run's counters are never merged with another run's.
 
-# The UI suite (browser-driven AI Workspace journeys against the real gateway):
+# The UI suite (browser journeys through the AI Workspace, API Portal and Management Portal):
 go test ./suites/ui -count=1 -timeout=25m
 
 # The cloud suite (external APIP cloud; requires a workflow-provided access token):
@@ -54,20 +54,16 @@ go test ./suites/cloud -count=1 -timeout=15m \
 ```
 
 Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
-`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+`make a2a-trip-planner` here. The `ai-workspace-cli` and `ap-cli-gateway` runners also need the host `ap` binary:
 `make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
 missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
-product coverage-image target. See
-[`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects
-and how.
+product coverage-image target.
 
 The UI suite builds the `ai-workspace` and `platform-api` images through the framework when
 coverage is selected and pulls `mcr.microsoft.com/playwright` for the in-network browser;
 the playwright driver installs itself on first run. Failing scenarios leave a full-page
-screenshot and the DOM under `suites/ui/artifacts/`. See
-[`docs/ui-testing-architecture.md`](docs/ui-testing-architecture.md) for the architecture
-and the execution findings.
+screenshot and the DOM under `suites/ui/artifacts/`.
 
 ## Layout
 
@@ -83,9 +79,15 @@ framework/
   core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
   snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
-  it/  cloud/  ui/
+  it/               on-premises products at the API level; blocks in it/blocks/
+  ui/               on-premises portals through the browser
+  cloud/            the hosted APIP cloud
 scenarios/          one scenario list per feature (TENANT.yaml, ...)
 ```
+
+Which suite a test belongs in, how each suite lays out its feature files and step packages, and
+which block a new integration test goes in are in `CLAUDE.md` ("Suites: Where a Test Goes" and
+"Integration Suite Blocks").
 
 The cloud suite targets externally hosted APIP services. It does not compile product code,
 pull product images, create Docker networks, or provision databases. The environment-to-domain

@@ -88,7 +88,9 @@ go test ./suites/it -count=1 -v -timeout=60m -blocks gateway-core/sqlite -featur
 - `make -C gateway test-integration` runs the `gateway-core` block on SQLite;
   `make -C gateway test-integration-all` runs the whole suite.
 - Only blocks with a database matrix have `/sqlite`, `/postgres` and `/sqlserver` variants;
-  single-engine blocks (e.g. `gateway-mtls-trust-any`) are selected by their bare name.
+  single-engine blocks (e.g. `gateway-mtls-trust-any`) are selected by their bare name. A block
+  with a matrix on two components names each variant after both, e.g.
+  `platform-api-core/api-sqlite_gateway-sqlite`; an unknown name fails with the list of valid ones.
 - Use `-feature-tags`, never `-tags`, and `-block-parallel`, never `-parallel` (see the README).
 - A source build rewrites `gateway/build-manifest.yaml` with the newest policy versions; restore
   it (`git restore gateway/build-manifest.yaml`) before committing.

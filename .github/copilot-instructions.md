@@ -10,7 +10,7 @@ This document provides instructions for the GitHub Copilot coding agent when wor
   - `gateway/gateway-runtime/router/` - Envoy-based router
 - `kubernetes/` - Kubernetes operator and Helm charts
   - `kubernetes/gateway-operator/` - Gateway Kubernetes operator
-- `tests/framework/` - Integration test framework; the gateway integration tests are in `tests/framework/suites/it/`
+- `tests/framework/` - Integration test framework. On-premises API-level tests (including the gateway integration tests) are in `tests/framework/suites/it/`, on-premises portal (browser) tests in `tests/framework/suites/ui/`, and hosted-cloud tests in `tests/framework/suites/cloud/`; see "Suites: Where a Test Goes" in `tests/framework/CLAUDE.md`
 
 ## Running Integration Tests
 

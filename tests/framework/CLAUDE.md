@@ -1,40 +1,71 @@
 # Test Framework Engineering Rules
 
-## Architecture
+## Suites: Where a Test Goes
 
-Integration-test steps should use this structure:
+| Suite | Tests | Runs against | Suite file |
+|---|---|---|---|
+| `suites/it` | On-premises products at the API level: REST calls, the `ap` CLI and gateway traffic, no browser | Containers the framework starts (`testbench` mocks the backends) | `it-suite.yaml` + `blocks/*.yaml` |
+| `suites/ui` | On-premises portals through the browser (Playwright journeys) | Containers the framework starts, plus a browser container | `ui-suite.yaml` |
+| `suites/cloud` | The hosted APIP cloud: behaviour only the cloud has, such as the cloud console, managed gateways, environments and promotion | An external cloud environment; nothing is started locally | `cloud-suite.yaml` |
+
+- Test on-premises product behaviour in `suites/it`, and its portal journeys in `suites/ui`.
+  Test behaviour that exists only in the hosted cloud in `suites/cloud`.
+- The cloud suite runs from the apim-saas e2e image against a shared organisation. On a pull
+  request it is only compiled and its step unit tests run, so its scenarios must be safe to
+  run repeatedly against shared, long-lived resources.
+
+### Feature files
+
+| Suite | Layout | Example |
+|---|---|---|
+| `suites/it` | `features/<product>/<area>/`, kebab-case folders | `features/gateway/mtls/`, `features/management-portal/deployments/lifecycle/` |
+| `suites/ui` | `features/<portal>/`, snake_case folders | `features/apiportal/`, `features/management_portal/` |
+| `suites/cloud` | `features/apip_<area>.feature`, one file per cloud area | `features/apip_gateway.feature` |
+
+`suites/it` product folders:
+
+- `gateway/`: the gateway on its own (deploy, policies, routes, security, mTLS, GraphQL,
+  observability, control-plane connection).
+- `management-portal/`: the control plane (Platform API) that backs the Management Portal.
+- `apiportal/`: the API Portal server.
+- `ai-workspace/`: AI Workspace resources through the control plane.
+- `ai-workspace-gateway/`: AI Workspace proxies (LLM, MCP, agent) deployed straight to the
+  gateway.
+- `cli/`: the `ap` CLI.
+
+`suites/ui` portal folders: `ai_workspace/` and `aiw_llm/` (AI Workspace; `aiw_llm/` holds
+the journeys of the `AIW-LLM` scenario list), `apiportal/` and `management_portal/`.
+
+### Step packages
 
 ```text
 suites/it/steps/
-├── base.go
-├── request.go
-├── assertions.go
-├── health.go
-│
-├── common/
-│   ├── request.go
-│   ├── json.go
-│   └── polling.go
-│
-└── platformgateway/
-    ├── gateway.go
-    ├── endpoint.go
-    ├── health.go
-    ├── resource.go
-    ├── policy.go
-    └── template.go
+├── base.go            suite construction and common step registration
+├── common/            product-independent step mechanics (naming, polling, templates)
+├── platformgateway/   gateway endpoints, resources, health, policies, mTLS
+├── platformapi/       control plane (Platform API) resources and deployments
+├── apiportal/         API Portal server
+├── apcli/             the ap CLI session shared by CLI step packages
+└── aiworkspacecli/    the ap CLI's ai-workspace commands
+
+suites/ui/steps/
+├── base.go, browser.go  suite construction and browser mechanics
+├── uivalue/           placeholder resolution for UI steps
+├── aiworkspace/       AI Workspace pages
+├── apiportal/         API Portal pages
+└── managementportal/  Management Portal (API Control Plane) pages
+
+suites/cloud/steps/cloudconsole/   cloud control-plane and data-plane steps
+suites/cloud/setup/                run-level starter and finalizer for the shared organisation
 ```
 
 `base.go` is the entry point for suite construction and step registration.
 
 The root `steps` package contains suite-wide behavior. The `common` package
-contains reusable step mechanics that are independent of a product. The
-`platformgateway` package contains platform-gateway-specific endpoints,
-resources, health checks, policies, and template behavior.
-
-When steps for another product are introduced, place them in a product-specific
-package using the same structure. Do not reference product step packages that do
-not yet exist, and do not add product-specific behavior to `common`.
+contains reusable step mechanics that are independent of a product. Each product
+package contains that product's endpoints, resources, health checks and
+assertions. Put a new product's steps in a package of its own, and do not add
+product-specific behavior to `common`.
 
 Before adding a helper, step, or dependency:
 
@@ -48,8 +79,8 @@ Before adding a helper, step, or dependency:
 
 ## Product and Framework Test Boundaries
 
-- `suites/it` and `suites/ui` contain product user journeys and product
-  integration behavior defined by suite YAML.
+- `suites/it`, `suites/ui` and `suites/cloud` contain product user journeys and
+  product integration behavior defined by suite YAML.
 - Do not use product feature files to test framework scheduling, runner or
   block isolation, cleanup ownership, concurrency orchestration, or topology
   mechanics.
@@ -59,9 +90,11 @@ Before adding a helper, step, or dependency:
 - A product scenario may test concurrent product requests only when that
   concurrency is part of user-visible product behavior. Use deterministic
   synchronization; runner parallelism alone is not a concurrency guarantee.
-- Keep framework-only tests out of `it-suite.yaml` (and its `blocks/` files) and `ui-suite.yaml`.
-- Put each feature file in a product folder under `features/`, such as
-  `features/gateway/mtls/`, never at the root of `features/`.
+- Keep framework-only tests out of `it-suite.yaml` (and its `blocks/` files), `ui-suite.yaml`
+  and `cloud-suite.yaml`.
+- In `suites/it` and `suites/ui`, put each feature file in a product folder under
+  `features/`, such as `features/gateway/mtls/`, never at the root of `features/`. See
+  "Feature files" above for each suite's layout.
 
 ## Step Definitions
 
