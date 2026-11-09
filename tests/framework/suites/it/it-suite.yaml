@@ -28,8 +28,8 @@
 #
 # Adding a test:
 #   1. Pick the file by the products your test checks.
-#   2. Follow the guideline at the top of that file: add a runner to its main block; a new
-#      block is the last resort.
+#   2. Follow the guideline at the top of that file: add a runner to its first block, the
+#      generic block most tests fit in; a new block is the last resort.
 #   3. A new combination of products (a new file under blocks/, listed in blockFiles) is an
 #      even worse last resort: first check whether the test fits an existing combination.
 #

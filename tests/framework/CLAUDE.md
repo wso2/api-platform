@@ -462,7 +462,8 @@ starts only because another needs it (the Platform API an API Portal depends on)
 To add a feature to the suite:
 
 1. Pick the file by the products the feature's scenarios check.
-2. Add a runner to that file's main block, the first block in the file. This is the default.
+2. Add a runner to that file's main block, the first block in the file. It is the generic
+   block that most tests fit in, so this is the default.
 3. Add a new block only as the last resort, when the feature needs a product setting (an
    overlay) the main block's other runners must not see, or must run alone because it
    restarts or stops a product, reads gateway-wide counters or logs, or expects a product with
