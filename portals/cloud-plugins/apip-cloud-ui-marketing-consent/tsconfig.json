@@ -1,0 +1,22 @@
+{
+  // Console-only plugin, so the default config resolves against the API Control
+  // Plane's dependency tree (oxygen-ui 0.21.0), like apip-cloud-ui-entitlements.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@wso2/oxygen-ui": ["../../api-control-plane/node_modules/@wso2/oxygen-ui"],
+      "react": ["../../api-control-plane/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["../../api-control-plane/node_modules/@types/react/jsx-runtime.d.ts"]
+    },
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src"],
+  // Tests need vitest, which only the console has installed: see tsconfig.console.json.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

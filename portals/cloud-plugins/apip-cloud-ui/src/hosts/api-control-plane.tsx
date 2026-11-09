@@ -18,6 +18,7 @@ import {
   ManagedPortalsPage,
   PORTAL_OPERATIONS,
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
 import { AppSwitcherButton } from '@wso2-enterprise/apip-cloud-ui-app-switcher';
 import { SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
@@ -176,6 +177,23 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
             cloudConsoleUrl={runtimeConfig.cloudConsoleUrl}
           />
         ),
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    // Asks a signed-in person once whether they want WSO2 marketing email, and
+    // records the answer with Pardot through platform-api's internal consent
+    // endpoint (the BFF's `marketing-consent` upstream, carrying the person's own
+    // token). Headless `app.gate` entry: renders nothing unless they never answered.
+    // Console-only; the AI Workspace host registers nothing.
+    id: 'marketing-consent',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'marketing-consent-gate',
+        slot: APP_GATE_SLOT,
+        order: 20,
+        render: (port) => <MarketingConsentGate port={port} />,
       },
     ],
   }),
