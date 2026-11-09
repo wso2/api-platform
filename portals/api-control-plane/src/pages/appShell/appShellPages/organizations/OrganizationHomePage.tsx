@@ -53,6 +53,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
+import { apiCreationEntry } from '../apis/create/entryPoint';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 import ExploreMoreCard from './components/ExploreMoreCard';
@@ -334,7 +335,7 @@ function OrganizationHomePageContent() {
 
   const createApi = () => {
     if (sortedProjects.length === 1) {
-      navigate(routes.newApi(orgHandle, sortedProjects[0].id));
+      navigate(routes.newApi(orgHandle, sortedProjects[0].id), apiCreationEntry('org-home'));
       return;
     }
     setSelectedProject(sortedProjects[0]?.id ?? '');
@@ -344,7 +345,7 @@ function OrganizationHomePageContent() {
   const continueToApiCreation = () => {
     if (!selectedProject) return;
     setProjectSelectorOpen(false);
-    navigate(routes.newApi(orgHandle, selectedProject));
+    navigate(routes.newApi(orgHandle, selectedProject), apiCreationEntry('org-home'));
   };
 
   const confirmDeleteProject = () => {

@@ -342,4 +342,22 @@ describe('runtimeConfig', () => {
       expect((await loadRuntimeConfig()).sanitizeHtmlDocsAdditionalAllowedAttributes).toEqual(expected);
     });
   });
+
+  it('leaves feature-usage tracking off when the deployment says nothing', async () => {
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.featureUsageTrackingEnabled).toBe(false);
+    expect(runtimeConfig.moesifPublishableKey).toBe('');
+  });
+
+  it('reads feature-usage tracking and the Moesif publishable key from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      featureUsageTrackingEnabled: 'true',
+      moesifPublishableKey: 'publishable-key',
+    };
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.featureUsageTrackingEnabled).toBe(true);
+    expect(runtimeConfig.moesifPublishableKey).toBe('publishable-key');
+  });
 });

@@ -182,6 +182,17 @@ export type RuntimeConfig = {
   sanitizeHtmlDocsEnabled: boolean;
   sanitizeHtmlDocsAdditionalAllowedTags: string[];
   sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
+  /**
+   * Feature-usage tracking: UI actions published to Moesif from the browser
+   * (see `src/featureUsage`). Off by default, so an on-prem install reports
+   * nothing; it takes effect only together with `moesifPublishableKey`.
+   */
+  featureUsageTrackingEnabled: boolean;
+  /**
+   * Publishable (collector) Application ID of the Moesif application that
+   * receives the actions. It is public by design: it can only write data.
+   */
+  moesifPublishableKey: string;
 };
 
 type LegacyWindowConfig = Partial<{
@@ -251,6 +262,10 @@ type LegacyWindowConfig = Partial<{
   sanitizeHtmlDocsEnabled: boolean | string;
   sanitizeHtmlDocsAdditionalAllowedTags: string;
   sanitizeHtmlDocsAdditionalAllowedAttributes: string;
+  FEATURE_USAGE_TRACKING_ENABLED: string;
+  featureUsageTrackingEnabled: boolean | string;
+  MOESIF_PUBLISHABLE_KEY: string;
+  moesifPublishableKey: string;
 }>;
 
 declare global {
@@ -547,4 +562,14 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().sanitizeHtmlDocsAdditionalAllowedAttributes ??
       import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_ATTRIBUTES,
   ),
+  featureUsageTrackingEnabled: readBoolean(
+    fromWindow().FEATURE_USAGE_TRACKING_ENABLED ||
+      fromWindow().featureUsageTrackingEnabled ||
+      import.meta.env.VITE_FEATURE_USAGE_TRACKING_ENABLED,
+  ),
+  moesifPublishableKey:
+    fromWindow().MOESIF_PUBLISHABLE_KEY ||
+    fromWindow().moesifPublishableKey ||
+    import.meta.env.VITE_MOESIF_PUBLISHABLE_KEY ||
+    '',
 };

@@ -18,10 +18,10 @@
 
 import { Box, Button, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
-import { useNavigate } from 'react-router-dom';
-import { DefineApiPanel } from './components/DefineApiPanel';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { DefineApiPanel, type RestApproachKey } from './components/DefineApiPanel';
 import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { GraphqlConfigureForm } from './components/graphql/GraphqlConfigureForm';
 import { GraphqlDefinePanel } from './components/graphql/GraphqlDefinePanel';
@@ -48,8 +48,19 @@ import {
 import { API_TYPES } from './uiConfig';
 // import { ApiDesignerBanner } from './components/ApiDesignerBanner';
 import type { ApiError } from '@/api/core/errors';
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
+import { readApiCreationEntryPoint } from './entryPoint';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
+
+type TaxonomyApiType =
+  FeatureDimensions<'apip.manage-apis.api-creation-wizard.select-api-type'>['api_type'];
+
+/** The taxonomy's `api_type` for a wizard type; a type without one is not reported. */
+const TAXONOMY_API_TYPES: Readonly<Record<string, TaxonomyApiType>> = {
+  graphql: 'graphql-api',
+  rest: 'rest-api',
+};
 
 const messages = defineMessages({
   back: {
@@ -139,6 +150,34 @@ const ApiCreationWizardContent = () => {
   /** Tracks whether the user has taken over the backend URL across form remounts. */
   const [upstreamEdited, setUpstreamEdited] = useState(false);
 
+  /*
+   * Feature usage: one Moesif action per screen the user moves past, so a
+   * funnel can order them and show where users stop.
+   *   1. apip.manage-apis.api-creation-wizard                      (opened)
+   *   2. apip.manage-apis.api-creation-wizard.select-api-type      (type chosen)
+   *   3. apip.manage-apis.create-rest-api.select-creation-method   (scratch or contract)
+   *   4. apip.manage-apis.create-rest-api                          (Create clicked)
+   * Form fields are not reported: edits are noise, and their values are
+   * customer text that must not reach analytics.
+   */
+  const trackFeature = useTrackFeature();
+  const location = useLocation();
+  /**
+   * Mirrors DefineApiPanel's approach, reported on mount as well as on change:
+   * "Start from scratch" is the default tab, so a user who never clicks it
+   * still has to be counted as having chosen it.
+   */
+  const [restApproach, setRestApproach] = useState<RestApproachKey | null>(null);
+  const openReported = useRef(false);
+  useEffect(() => {
+    // Once per visit, however often identity or route state re-render this.
+    if (openReported.current) return;
+    openReported.current = true;
+    trackFeature('apip.manage-apis.api-creation-wizard', {
+      entry_point: readApiCreationEntryPoint(location.state),
+    });
+  }, [location.state, trackFeature]);
+
   /**
    * The chosen type's own name, translated. `apiType` is already the entry from
    * the catalog, so its descriptor is read directly rather than looked up again.
@@ -189,6 +228,11 @@ const ApiCreationWizardContent = () => {
       setGraphqlSubmittedValues(null);
     } else {
       if (sourceDraft === null) return;
+      if (restApproach) {
+        trackFeature('apip.manage-apis.create-rest-api.select-creation-method', {
+          creation_method: restApproach,
+        });
+      }
       setPrefilledData(sourceDraft);
       setSubmittedValues(null);
       setServerErrors(null);
@@ -277,6 +321,12 @@ const ApiCreationWizardContent = () => {
   const onGeneralFormSumit = async (finalData: GeneralApiCreationFormState) => {
     if (!activeScope.projectHandler) return;
     if (step !== 'configure') return;
+    // On the Create click (a submission that passed form validation), not on
+    // the server's answer: the product decision for this feature. Retry on the
+    // progress screen is not a new use.
+    if (restApproach) {
+      trackFeature('apip.manage-apis.create-rest-api', { creation_method: restApproach });
+    }
     setSubmittedValues(finalData);
     setCreationStarted(true);
     createApi(finalData);
@@ -457,7 +507,11 @@ const ApiCreationWizardContent = () => {
                   {isGraphql ? (
                     <GraphqlDefinePanel onDraftChange={setGraphqlSourceDraft} />
                   ) : (
-                    <DefineApiPanel initialApiTypeKey={apiType?.key} onDraftChange={setSourceDraft} />
+                    <DefineApiPanel
+                      initialApiTypeKey={apiType?.key}
+                      onApproachChange={setRestApproach}
+                      onDraftChange={setSourceDraft}
+                    />
                   )}
                 </Box>
               )}
@@ -558,8 +612,15 @@ const ApiCreationWizardContent = () => {
                   endIcon={<ArrowRight size={16} />}
                   key="continue-wizard"
                   onClick={() => {
-                    if (step === 'apiType') setStep('source');
-                    else continueFromSource();
+                    if (step === 'apiType') {
+                      const taxonomyApiType = apiType ? TAXONOMY_API_TYPES[apiType.key] : undefined;
+                      if (taxonomyApiType) {
+                        trackFeature('apip.manage-apis.api-creation-wizard.select-api-type', {
+                          api_type: taxonomyApiType,
+                        });
+                      }
+                      setStep('source');
+                    } else continueFromSource();
                   }}
                   type="button"
                   variant="contained"

@@ -30,7 +30,8 @@ import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
 import { DefineApproachLayout, type DefineApproach } from './DefineApproachLayout';
 import { ReadyToConnectIllustration } from '@/components/illustrations/ReadyToConnectIllustration';
 
-type ApproachKey = 'contract' | 'scratch';
+export type RestApproachKey = 'contract' | 'scratch';
+type ApproachKey = RestApproachKey;
 
 const messages = defineMessages({
   contractDescription: {
@@ -79,6 +80,11 @@ const messages = defineMessages({
 export type DefineApiPanelProps = {
   initialApiTypeKey?: string;
   onDraftChange: (data: ApiCreationWizardDraftState | null) => void;
+  /**
+   * The approach in effect: called on mount with the default and again on
+   * every change, so a parent knows it even when the user never touched the
+   * default tab.
+   */
   onApproachChange?: (approach: ApproachKey) => void;
   onContinue?: () => void;
 };
@@ -111,10 +117,9 @@ export const DefineApiPanel = ({
   const [endpointUrl, setEndpointUrl] = useState('');
   const [contract, setContract] = useState<FetchedContract | null>(null);
 
-  const selectApproach = (next: ApproachKey) => {
-    setApproach(next);
-    onApproachChange?.(next);
-  };
+  useEffect(() => {
+    onApproachChange?.(approach);
+  }, [approach, onApproachChange]);
 
   const scratchDraft = useMemo((): ApiCreationWizardDraftState | null => {
     const upstreamUrl = endpointUrl.trim();
@@ -178,7 +183,7 @@ export const DefineApiPanel = ({
           />
         )
       }
-      onChange={selectApproach}
+      onChange={setApproach}
       preview={
         approach === 'contract' ? (
           <ApiResourcesPreview height={472} rawText={contract?.rawText} spec={contract?.spec} />

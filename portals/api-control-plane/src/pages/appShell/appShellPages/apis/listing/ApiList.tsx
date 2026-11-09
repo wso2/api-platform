@@ -43,6 +43,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
 import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
+import { apiCreationEntry, type ApiCreationEntryPoint } from '../create/entryPoint';
 import { matchesApiType, type ApiTypeFilter } from './apiTypeFilter';
 import { CanCreate } from '@/permissions/CanCreate';
 
@@ -291,7 +292,8 @@ export function ApiList({
         : routes.api(orgHandle, projectHandler, api.id ?? ''),
     );
   useEffect(preloadApiCreationWizard, []);
-  const createApi = () => navigate(routes.newApi(orgHandle, projectHandler));
+  const createApi = (entryPoint: Exclude<ApiCreationEntryPoint, 'direct'>) =>
+    navigate(routes.newApi(orgHandle, projectHandler), apiCreationEntry(entryPoint));
 
   const layoutSx = {
     display: 'grid',
@@ -334,7 +336,7 @@ export function ApiList({
           component="restApis"
           description={intl.formatMessage(messages.emptyDescription)}
           illustration={<ImportApiIllustration />}
-          onAction={createApi}
+          onAction={() => createApi('api-list-empty-state')}
           title={intl.formatMessage(messages.emptyTitle)}
           operationId="CreateRESTAPI"
         />
@@ -373,7 +375,11 @@ export function ApiList({
                 </ToggleButton>
               </ToggleButtonGroup>
               <CanCreate component="restApis" denied="hide" do="CreateRESTAPI">
-                <Button onClick={createApi} startIcon={<Plus size={18} />} variant="contained">
+                <Button
+                  onClick={() => createApi('api-list')}
+                  startIcon={<Plus size={18} />}
+                  variant="contained"
+                >
                   <FormattedMessage {...messages.createApiButton} />
                 </Button>
               </CanCreate>
