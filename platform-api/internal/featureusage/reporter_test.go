@@ -159,6 +159,7 @@ func newTestPublisher(t *testing.T, attributor Attributor, statuses []int, tune 
 		RetryBackoff:   time.Millisecond,
 		AttemptTimeout: 2 * time.Second,
 		OverallTimeout: 5 * time.Second,
+		Environment:    "production",
 	}
 	if tune != nil {
 		tune(&opts)
@@ -218,12 +219,12 @@ func TestPublisherSendsAnAPIEvent(t *testing.T) {
 		t.Errorf("response = %v, want exactly %v", response, wantResponse)
 	}
 
+	// The same metadata keys as Agent Manager's API events, and nothing else.
 	metadata, _ := body["metadata"].(map[string]any)
-	if metadata["growth_action"] != FeatureCreateRESTAPI || metadata["platform"] != "WSO2 API Platform" ||
-		metadata["source"] != "api" || metadata["creation_method"] != "contract" ||
-		metadata["has_sandbox_upstream"] != true || metadata["action"] != "REST API Creation" ||
-		metadata["category"] != "manage-apis" {
-		t.Errorf("metadata = %v", metadata)
+	wantMetadata := map[string]any{"growth_action": FeatureCreateRESTAPI, "platform": "WSO2 API Platform",
+		"source": "api", "environment": "production"}
+	if !reflect.DeepEqual(metadata, wantMetadata) {
+		t.Errorf("metadata = %v, want exactly %v", metadata, wantMetadata)
 	}
 	// Nothing beyond the Events API fields leaves the process.
 	for key := range body {
@@ -364,7 +365,7 @@ func TestPublisherRefreshesTheTokenOnceOn401(t *testing.T) {
 func TestInvalidOccurrenceIsNeverSent(t *testing.T) {
 	p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID}, []int{http.StatusOK}, nil)
 	o := validCreation()
-	o.Dimensions["creation_method"] = "imported-by-alice@example.com"
+	o.Dimensions["api_name"] = "imported-by-alice@example.com"
 	p.Record(o)
 	p.flush(t)
 	if n := len(p.collector.recorded()); n != 0 {
@@ -452,6 +453,34 @@ func TestNewFromConfigDisabledIsNoop(t *testing.T) {
 func TestNewPublisherRejectsIncompleteOptions(t *testing.T) {
 	if _, err := NewPublisher(Options{}); err == nil {
 		t.Error("NewPublisher accepted empty options")
+	}
+}
+
+// An unset environment leaves the field out rather than sending a blank one.
+func TestPublisherLeavesOutAnUnsetEnvironment(t *testing.T) {
+	p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID}, []int{http.StatusOK},
+		func(o *Options) { o.Environment = "" })
+	p.Record(validCreation())
+	p.flush(t)
+	requests := p.collector.recorded()
+	if len(requests) != 1 {
+		t.Fatalf("collector got %d requests, want 1", len(requests))
+	}
+	metadata, _ := requests[0].body["metadata"].(map[string]any)
+	if _, present := metadata["environment"]; present {
+		t.Errorf("metadata = %v, want no environment", metadata)
+	}
+}
+
+func TestNewPublisherRejectsAnEnvironmentThatIsNotACode(t *testing.T) {
+	opts := Options{
+		CollectorURL: "http://collector", HTTPClient: http.DefaultClient, Tokens: &fakeTokens{},
+		Attributor: fakeAttributor{}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		QueueSize: 1, Workers: 1, MaxAttempts: 1, AttemptTimeout: time.Second, OverallTimeout: time.Second,
+		Environment: "Alice's Staging",
+	}
+	if _, err := NewPublisher(opts); err == nil {
+		t.Error("NewPublisher accepted free text as the environment")
 	}
 }
 

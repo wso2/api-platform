@@ -20,6 +20,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -56,6 +57,12 @@ type FeatureUsage struct {
 	RetryBackoff time.Duration `koanf:"retry_backoff"`
 	// OverallTimeout bounds the delivery of one event, all attempts included.
 	OverallTimeout time.Duration `koanf:"overall_timeout"`
+	// Environment names the deployment environment this instance runs in
+	// (e.g. "production", "staging"), sent as every event's "environment"
+	// metadata, as Agent Manager's events do. Every environment reports into
+	// one Moesif application, so this is what keeps their usage apart.
+	// Defaults to "production"; empty leaves the field out.
+	Environment string `koanf:"environment"`
 }
 
 // FeatureUsageToken is the OAuth 2.0 client-credentials client used to obtain
@@ -84,8 +91,13 @@ func defaultFeatureUsage() FeatureUsage {
 		MaxAttempts:    3,
 		RetryBackoff:   time.Second,
 		OverallTimeout: 30 * time.Second,
+		Environment:    "production",
 	}
 }
+
+// featureUsageEnvironmentPattern is what feature_usage.environment may hold:
+// a short code, so nothing but a label reaches the event.
+var featureUsageEnvironmentPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$`)
 
 // Configured reports whether any collector setting is present. An enabled
 // section with none present reports nothing; one with only some present is a
@@ -136,6 +148,9 @@ func validateFeatureUsageConfig(c *FeatureUsage) error {
 	if c.OverallTimeout < c.RequestTimeout {
 		return fmt.Errorf("feature_usage.overall_timeout (%s) must be at least feature_usage.request_timeout (%s)",
 			c.OverallTimeout, c.RequestTimeout)
+	}
+	if c.Environment != "" && !featureUsageEnvironmentPattern.MatchString(c.Environment) {
+		return fmt.Errorf("feature_usage.environment must be lowercase letters, digits and hyphens, at most 64 characters (e.g. production)")
 	}
 	return nil
 }

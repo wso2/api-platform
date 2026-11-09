@@ -93,6 +93,9 @@ func TestValidateFeatureUsageConfig(t *testing.T) {
 		"too many attempts":         func(c *FeatureUsage) { c.MaxAttempts = maxFeatureUsageMaxAttempts + 1 },
 		"negative backoff":          func(c *FeatureUsage) { c.RetryBackoff = -time.Second },
 		"overall shorter than call": func(c *FeatureUsage) { c.OverallTimeout = time.Second },
+		"free-text environment":     func(c *FeatureUsage) { c.Environment = "Alice's Staging" },
+		"upper-case environment":    func(c *FeatureUsage) { c.Environment = "Production" },
+		"overlong environment":      func(c *FeatureUsage) { c.Environment = strings.Repeat("a", 65) },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -106,5 +109,20 @@ func TestValidateFeatureUsageConfig(t *testing.T) {
 				t.Errorf("error echoes a credential: %v", err)
 			}
 		})
+	}
+}
+
+// Events are labelled "production" unless a deployment says otherwise; an
+// empty value leaves the label out, as Agent Manager does.
+func TestFeatureUsageEnvironment(t *testing.T) {
+	if got := defaultConfig().FeatureUsage.Environment; got != "production" {
+		t.Fatalf("default environment = %q, want production", got)
+	}
+	for _, env := range []string{"production", "staging", "dev-2", ""} {
+		c := enabledFeatureUsage()
+		c.Environment = env
+		if err := validateFeatureUsageConfig(&c); err != nil {
+			t.Errorf("environment %q rejected: %v", env, err)
+		}
 	}
 }

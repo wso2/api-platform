@@ -108,22 +108,9 @@ features:
       event_name: "apip.manage-apis.create-rest-api"
       event_category: "lifecycle"
       platforms: ["web", "api"]
-      dimensions:
-        - name: "creation_method"
-          type: "enum"
-          values: ["scratch", "contract"]
-          required: true
-          description: "Whether the API was defined from scratch or from an imported contract."
-        - name: "has_sandbox_upstream"
-          type: "boolean"
-          required: false
-          description: "Whether a sandbox upstream was configured."
       aggregations:
         - type: "count"
           label: "REST APIs Created"
-        - type: "count_distinct"
-          label: "Distinct Creation Methods Used"
-          dimension: "creation_method"
     sub_features:
       - code: "apip.manage-apis.create-rest-api.import-contract"
         name: "Contract Import"

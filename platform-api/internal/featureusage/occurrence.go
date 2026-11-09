@@ -122,7 +122,7 @@ func validate(tax *Taxonomy, enabled map[string]bool, o Occurrence, now time.Tim
 		return nil, reject("%s", err.Error())
 	}
 
-	metadata := make(map[string]any, len(o.Dimensions)+7)
+	metadata := make(map[string]any, len(o.Dimensions)+3)
 	for name, value := range o.Dimensions {
 		dim, declared := feature.Dimensions[name]
 		if !declared {
@@ -155,15 +155,12 @@ func validate(tax *Taxonomy, enabled map[string]bool, o Occurrence, now time.Tim
 	}
 
 	// Written after the dimensions; the taxonomy guarantees no dimension uses
-	// these names, so nothing can shadow them. An API event has no action
-	// name, so growth_action is what names the feature (Agent Manager's key).
+	// these names, so nothing can shadow them. They are the keys Agent
+	// Manager's API events carry: an API event has no action name, so
+	// growth_action is what names the feature.
 	metadata["growth_action"] = feature.Code
 	metadata["platform"] = tax.ProductName
 	metadata["source"] = PlatformAPI
-	metadata["action"] = feature.Name
-	metadata["category"] = feature.Category
-	metadata["tier"] = feature.Tier
-	metadata["event_category"] = feature.EventCategory
 
 	return &validatedEvent{
 		feature:       feature,

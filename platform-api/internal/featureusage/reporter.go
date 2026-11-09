@@ -99,6 +99,9 @@ type Options struct {
 	RetryBackoff   time.Duration // may be zero
 	AttemptTimeout time.Duration
 	OverallTimeout time.Duration
+	// Environment, when set, is sent as every event's "environment" metadata.
+	// It must be a code (see stringDimensionPattern).
+	Environment string
 	// Taxonomy defaults to the embedded API Platform taxonomy.
 	Taxonomy *Taxonomy
 	// Now defaults to time.Now.
@@ -107,13 +110,14 @@ type Options struct {
 
 // Publisher is the Reporter that delivers to the collector proxy.
 type Publisher struct {
-	taxonomy   *Taxonomy
-	enabled    map[string]bool
-	attributor Attributor
-	client     *collectorClient
-	logger     *slog.Logger
-	now        func() time.Time
-	overall    time.Duration
+	taxonomy    *Taxonomy
+	enabled     map[string]bool
+	attributor  Attributor
+	client      *collectorClient
+	logger      *slog.Logger
+	now         func() time.Time
+	overall     time.Duration
+	environment string
 
 	mu     sync.RWMutex // guards closed and sends on queue
 	closed bool
@@ -138,6 +142,9 @@ func NewPublisher(opts Options) (*Publisher, error) {
 	base := strings.TrimRight(strings.TrimSpace(opts.CollectorURL), "/")
 	if base == "" {
 		return nil, errors.New("feature usage: CollectorURL is required")
+	}
+	if opts.Environment != "" && !stringDimensionPattern.MatchString(opts.Environment) {
+		return nil, errors.New("feature usage: Environment must be a code")
 	}
 
 	tax := opts.Taxonomy
@@ -168,12 +175,13 @@ func NewPublisher(opts Options) (*Publisher, error) {
 			retryBackoff:   opts.RetryBackoff,
 			attemptTimeout: opts.AttemptTimeout,
 		},
-		logger:     opts.Logger,
-		now:        now,
-		overall:    opts.OverallTimeout,
-		queue:      make(chan *validatedEvent, opts.QueueSize),
-		baseCtx:    ctx,
-		cancelBase: cancel,
+		logger:      opts.Logger,
+		now:         now,
+		overall:     opts.OverallTimeout,
+		environment: opts.Environment,
+		queue:       make(chan *validatedEvent, opts.QueueSize),
+		baseCtx:     ctx,
+		cancelBase:  cancel,
 	}
 	for i := 0; i < opts.Workers; i++ {
 		p.workers.Add(1)
@@ -207,6 +215,9 @@ func (p *Publisher) Record(o Occurrence) {
 	if err != nil {
 		p.dropped(o.Feature, 0, err)
 		return
+	}
+	if p.environment != "" {
+		event.metadata["environment"] = p.environment
 	}
 
 	p.mu.RLock()
@@ -378,6 +389,7 @@ func NewFromConfig(cfg config.FeatureUsage, attributor Attributor, logger *slog.
 		RetryBackoff:   cfg.RetryBackoff,
 		AttemptTimeout: cfg.RequestTimeout,
 		OverallTimeout: cfg.OverallTimeout,
+		Environment:    cfg.Environment,
 	})
 	if err != nil {
 		return nil, err
@@ -385,6 +397,7 @@ func NewFromConfig(cfg config.FeatureUsage, attributor Attributor, logger *slog.
 	logger.Info("Feature usage reporting enabled",
 		slog.String("party", logParty),
 		slog.Int("features", len(enabledFeatures)),
+		slog.String("environment", cfg.Environment),
 		slog.Bool("plaintextCollector", strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.CollectorURL)), "http://")))
 	return publisher, nil
 }

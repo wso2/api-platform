@@ -236,9 +236,6 @@ const ApiCreationWizardContent = () => {
     // import-openapi. The backend still accepts `url` for direct REST callers.
     const formData = new FormData();
     formData.append('file', values.contractImport.specFile, values.contractImport.specFile.name);
-    // Feature-usage analytics only: which approach the user picked, since both
-    // arrive at import-openapi carrying a spec file.
-    formData.append('creationMethod', values.contractImport.creationMethod);
     formData.append('id', values.id.trim());
     formData.append('displayName', values.displayName.trim());
     formData.append('version', values.version.trim());

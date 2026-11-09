@@ -53,16 +53,17 @@ const (
 	DimensionString  DimensionType = "string"
 )
 
-// reservedMetadataKeys are the metadata keys this package fills itself, from
-// the taxonomy, using the names WSO2's other Moesif publishers use: Agent
-// Manager's API events (growth_action, platform, source) and WSO2 Cloud's
-// feature reports (action, category, tier, event_category, initiating_product).
-// One feature then reads the same in Moesif whichever team reported it. A
-// dimension may not use one of these names, or it could shadow them.
+// reservedMetadataKeys are metadata keys a dimension may not use. This package
+// fills the first four on every API event (environment when configured), as
+// Agent Manager's API events do; the rest are keys WSO2 Cloud's feature
+// reports fill. Reserving them keeps a
+// dimension from shadowing or contradicting them, so one feature reads the
+// same in Moesif whichever team reported it.
 var reservedMetadataKeys = map[string]bool{
 	"growth_action":      true,
 	"platform":           true,
 	"source":             true,
+	"environment":        true,
 	"action":             true,
 	"category":           true,
 	"tier":               true,

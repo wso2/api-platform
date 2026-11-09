@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -86,7 +86,7 @@ vi.mock('./components/DefineApiPanel', () => ({
             onDraftChange({
               displayName: 'Orders API',
               version: '1.0',
-              contractImport: { specFile: STUB_SPEC_FILE, creationMethod: 'contract' },
+              contractImport: { specFile: STUB_SPEC_FILE },
             })
           }
           type="button"
@@ -97,7 +97,7 @@ vi.mock('./components/DefineApiPanel', () => ({
         <button
           onClick={() =>
             onDraftChange({
-              contractImport: { specFile: STUB_SPEC_FILE, creationMethod: 'scratch' },
+              contractImport: { specFile: STUB_SPEC_FILE },
               displayName: 'Untitled API',
               upstream: { main: { url: 'https://example.com' } },
               version: '1.0',
@@ -152,19 +152,6 @@ beforeEach(() => {
   server.use(accepts('post', '/rest-apis/validate-openapi', { isValid: true, errors: [] }));
 });
 
-/**
- * Captures the fields the wizard appends to its import-openapi form. jsdom
- * cannot put FormData on the wire (see secrets.endpoints.test.ts), so a
- * recorded request body reads "[object FormData]"; the fields are read as they
- * are appended instead.
- */
-const captureFormFields = () => {
-  const append = vi.spyOn(FormData.prototype, 'append');
-  onTestFinished(() => append.mockRestore());
-  return (name: string) =>
-    append.mock.calls.filter(([key]) => key === name).map(([, value]) => value);
-};
-
 /** Runs the wizard as far as a submitted create request. */
 const submitCreate = async () => {
   const rendered = renderWithProviders(<ApiCreationWizard />, { route, scope });
@@ -195,7 +182,6 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
 
   it('shows Step 3 without posting when Continue is clicked, then posts on Create', async () => {
     const createRequests = recorder();
-    const formField = captureFormFields();
     server.use(accepts('post', '/rest-apis/import-openapi', { id: 'orders-api' }, { record: createRequests }));
     const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
 
@@ -212,33 +198,6 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(createRequests.count()).toBe(1);
-    expect(formField('creationMethod')).toEqual(['contract']);
-  });
-
-  it('declares a scratch creation when the user starts from scratch', async () => {
-    const createRequests = recorder();
-    const formField = captureFormFields();
-    server.use(
-      accepts(
-        'post',
-        '/rest-apis/import-openapi',
-        { id: 'untitled-api' },
-        { record: createRequests },
-      ),
-    );
-    const { user } = renderWithProviders(<ApiCreationWizard />, { route, scope });
-
-    await user.click(screen.getByRole('button', { name: 'Choose REST' }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    await user.click(screen.getByRole('button', { name: 'Start from scratch' }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    const targetUrl = screen.getByLabelText(/Target URL/);
-    await user.clear(targetUrl);
-    await user.type(targetUrl, 'https://orders.example.com');
-    await user.click(screen.getByRole('button', { name: 'Create' }));
-
-    expect(createRequests.count()).toBe(1);
-    expect(formField('creationMethod')).toEqual(['scratch']);
   });
 });
 

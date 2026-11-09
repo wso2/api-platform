@@ -72,7 +72,7 @@ func (h *APIHandler) SetFeatureUsageReporter(r featureusage.Reporter) {
 // routes can be registered before it is injected.
 func (h *APIHandler) trackCreation(next http.Handler) http.Handler {
 	return featureusage.Track(func() featureusage.Reporter { return h.featureUsage },
-		featureusage.FeatureCreateRESTAPI, featureusage.RESTAPICreationDefaults(), next)
+		featureusage.FeatureCreateRESTAPI, nil, next)
 }
 
 // attributeCall records the caller on a tracked call before any validation, so
@@ -109,7 +109,6 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return apperror.NewValidation(err)
 	}
-	usage.SetHasSandboxUpstream(req.Upstream.Sandbox != nil && !isEmptyUpstreamDefinition(*req.Upstream.Sandbox))
 
 	// Validate required fields
 	if req.DisplayName == "" {
@@ -374,13 +373,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
 		return err
 	}
-	// Read the declared creation method up front, so a scratch import that
-	// fails a check below is still reported as scratch. An invalid value is
-	// rejected where it always was, after the field and upstream checks.
-	creationMethod, methodErr := parseCreationMethod(r.FormValue("creationMethod"))
-	if methodErr == nil {
-		usage.SetCreationMethod(creationMethod)
-	}
 
 	var req api.ImportOpenAPIRequest
 	req.DisplayName = strings.TrimSpace(r.FormValue("displayName"))
@@ -398,7 +390,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 			return apperror.ValidationFailed.New("upstream must be a valid JSON object")
 		}
 	}
-	usage.SetHasSandboxUpstream(req.Upstream.Sandbox != nil && !isEmptyUpstreamDefinition(*req.Upstream.Sandbox))
 
 	if req.DisplayName == "" {
 		return apperror.ValidationFailed.New("displayName is required")
@@ -417,9 +408,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	}
 	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
 		return err
-	}
-	if methodErr != nil {
-		return methodErr
 	}
 
 	spec, err := h.readOpenAPISpecFromMultipart(w, r, maxBytes)
@@ -739,23 +727,6 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base+"/{restApiId}/gateways", middleware.MapErrors(h.slogger, h.AddGatewaysToAPI))
 	mux.HandleFunc("GET "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.GetOpenAPISpec))
 	mux.HandleFunc("PUT "+base+"/{restApiId}/openapi", middleware.MapErrors(h.slogger, h.PutOpenAPISpec))
-}
-
-// parseCreationMethod reads import-openapi's optional creationMethod field,
-// which only feeds feature-usage reporting. The API Control Plane console sends
-// the approach the user picked; any other caller supplied a contract, so an
-// absent value means "contract". Anything else is rejected rather than guessed
-// (the rejected call is still reported, as "contract": only a declared
-// "scratch" is ever reported as scratch).
-func parseCreationMethod(raw string) (featureusage.CreationMethod, error) {
-	switch method := featureusage.CreationMethod(strings.TrimSpace(raw)); method {
-	case "":
-		return featureusage.CreationMethodContract, nil
-	case featureusage.CreationMethodScratch, featureusage.CreationMethodContract:
-		return method, nil
-	default:
-		return "", apperror.ValidationFailed.New("creationMethod must be one of: scratch, contract")
-	}
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {

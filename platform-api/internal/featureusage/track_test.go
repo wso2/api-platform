@@ -51,7 +51,7 @@ func serveTracked(t *testing.T, rep Reporter, handler http.HandlerFunc) *httptes
 	t.Helper()
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v0.9/rest-apis", Track(func() Reporter { return rep },
-		FeatureCreateRESTAPI, RESTAPICreationDefaults(), handler))
+		FeatureCreateRESTAPI, nil, handler))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v0.9/rest-apis?owner=alice", nil))
 	return rec
@@ -64,7 +64,6 @@ func TestTrackReportsASuccessfulCall(t *testing.T) {
 		call := CallFrom(r.Context())
 		call.SetOrganization(testOrgUUID)
 		call.SetActor(testUserUUID)
-		call.SetHasSandboxUpstream(true)
 		call.SetResource(testAPIUUID)
 		w.WriteHeader(http.StatusCreated)
 	})
@@ -78,12 +77,12 @@ func TestTrackReportsASuccessfulCall(t *testing.T) {
 		o.OccurrenceID != testAPIUUID {
 		t.Errorf("unexpected occurrence: %+v", o)
 	}
-	if o.Dimensions[dimCreationMethod] != "contract" || o.Dimensions[dimHasSandboxUpstream] != true {
-		t.Errorf("dimensions = %v, want the contract default plus the handler's sandbox fact", o.Dimensions)
+	if len(o.Dimensions) != 0 {
+		t.Errorf("dimensions = %v, want none for a route without any", o.Dimensions)
 	}
 	inv := o.Invocation
 	if inv.Method != http.MethodPost || inv.Status != http.StatusCreated ||
-		inv.URI != "http://example.com/api/v0.9/rest-apis" || inv.RequestTime.Before(before) {
+		inv.URI != "https://platform-api/api/v0.9/rest-apis" || inv.RequestTime.Before(before) {
 		t.Errorf("invocation = %+v", inv)
 	}
 	if _, err := validate(mustTaxonomy(t), enabledFeatures, o, time.Now()); err != nil {
@@ -96,7 +95,6 @@ func TestTrackReportsAFailedCallWithItsStatus(t *testing.T) {
 	serveTracked(t, rep, func(w http.ResponseWriter, r *http.Request) {
 		call := CallFrom(r.Context())
 		call.SetOrganization(testOrgUUID)
-		call.SetCreationMethod(CreationMethodScratch)
 		call.SetResource(testAPIUUID) // created, then rolled back
 		http.Error(w, "boom", http.StatusInternalServerError)
 	})
@@ -105,8 +103,8 @@ func TestTrackReportsAFailedCallWithItsStatus(t *testing.T) {
 		t.Fatalf("recorded %d occurrences, want 1", len(got))
 	}
 	o := got[0]
-	if o.Invocation.Status != http.StatusInternalServerError || o.Dimensions[dimCreationMethod] != "scratch" {
-		t.Errorf("occurrence = %+v, want status 500 with the declared method", o)
+	if o.Invocation.Status != http.StatusInternalServerError {
+		t.Errorf("occurrence = %+v, want status 500", o)
 	}
 	// A failed call is not identified by what it created and rolled back.
 	if o.OccurrenceID == testAPIUUID || !canonicalUUID(o.OccurrenceID) {
@@ -180,25 +178,25 @@ func TestTrackPassesThroughWhenReportingIsOff(t *testing.T) {
 	}
 }
 
-// The defaults belong to the route, not to one call: a handler changing its
-// call's dimensions must not leak into the next call.
+// A route's fixed dimensions belong to the route, not to one call: a handler
+// changing its call's dimensions must not leak into the next call.
 func TestTrackDoesNotShareDimensionsBetweenCalls(t *testing.T) {
 	rep := &capture{}
 	mux := http.NewServeMux()
 	mux.Handle("POST /api/v0.9/rest-apis", Track(func() Reporter { return rep }, FeatureCreateRESTAPI,
-		RESTAPICreationDefaults(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		map[string]any{"target": "gateway"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			call := CallFrom(r.Context())
 			call.SetOrganization(testOrgUUID)
-			if r.URL.Query().Get("scratch") == "1" {
-				call.SetCreationMethod(CreationMethodScratch)
+			if r.URL.Query().Get("portal") == "1" {
+				call.SetDimension("target", "portal")
 			}
 		})))
-	for _, target := range []string{"/api/v0.9/rest-apis?scratch=1", "/api/v0.9/rest-apis"} {
+	for _, target := range []string{"/api/v0.9/rest-apis?portal=1", "/api/v0.9/rest-apis"} {
 		mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, target, nil))
 	}
 	got := rep.all()
-	if len(got) != 2 || got[0].Dimensions[dimCreationMethod] != "scratch" || got[1].Dimensions[dimCreationMethod] != "contract" {
-		t.Fatalf("got %+v; the second call must start from the contract default again", got)
+	if len(got) != 2 || got[0].Dimensions["target"] != "portal" || got[1].Dimensions["target"] != "gateway" {
+		t.Fatalf("got %+v; the second call must start from the route's dimensions again", got)
 	}
 }
 

@@ -30,39 +30,3 @@ const FeatureCreateRESTAPI = "apip.manage-apis.create-rest-api"
 var enabledFeatures = map[string]bool{
 	FeatureCreateRESTAPI: true,
 }
-
-// CreationMethod is the creation_method dimension of FeatureCreateRESTAPI.
-type CreationMethod string
-
-const (
-	// CreationMethodScratch is an API the user started from a blank definition
-	// in the API Control Plane console's "Start from scratch" approach; the
-	// console declares it on the import-openapi call.
-	CreationMethodScratch CreationMethod = "scratch"
-	// CreationMethodContract is every other creation: the console's "From
-	// contract" approach and any direct Platform API or CLI call, which always
-	// supplies the definition itself.
-	CreationMethodContract CreationMethod = "contract"
-)
-
-// The dimensions of FeatureCreateRESTAPI, as the taxonomy names them.
-const (
-	dimCreationMethod     = "creation_method"
-	dimHasSandboxUpstream = "has_sandbox_upstream"
-)
-
-// RESTAPICreationDefaults are the dimensions every FeatureCreateRESTAPI call
-// starts with: "contract", unless the console declares "scratch".
-func RESTAPICreationDefaults() map[string]any {
-	return map[string]any{dimCreationMethod: string(CreationMethodContract)}
-}
-
-// SetCreationMethod records the creation_method dimension.
-func (c *Call) SetCreationMethod(method CreationMethod) {
-	c.SetDimension(dimCreationMethod, string(method))
-}
-
-// SetHasSandboxUpstream records the has_sandbox_upstream dimension.
-func (c *Call) SetHasSandboxUpstream(hasSandbox bool) {
-	c.SetDimension(dimHasSandboxUpstream, hasSandbox)
-}

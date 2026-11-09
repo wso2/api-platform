@@ -1256,6 +1256,20 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 // effort; the plugins shut down after it and keep the rest.
 const featureUsageShutdownTimeout = 3 * time.Second
 
+// featureUsageShutdownBudget is how long the reporter may take to flush, out
+// of what is left of ctx: featureUsageShutdownTimeout, or half the remaining
+// time when less than twice that is left, so the plugins shutting down after
+// it always keep at least the other half.
+func featureUsageShutdownBudget(ctx context.Context) time.Duration {
+	budget := featureUsageShutdownTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		if half := time.Until(deadline) / 2; half < budget {
+			budget = half
+		}
+	}
+	return budget
+}
+
 // Start switches the listeners bound during startup to the full API and blocks until
 // a listener fails or a shutdown signal arrives, then shuts everything down.
 func (s *Server) Start() error {
@@ -1281,7 +1295,7 @@ func (s *Server) Start() error {
 		// left of the shutdown deadline, so a stalled collector cannot leave the
 		// plugins below none.
 		if s.featureUsage != nil {
-			usageCtx, usageCancel := context.WithTimeout(shutdownCtx, featureUsageShutdownTimeout)
+			usageCtx, usageCancel := context.WithTimeout(shutdownCtx, featureUsageShutdownBudget(shutdownCtx))
 			if err := s.featureUsage.Close(usageCtx); err != nil {
 				s.logger.Warn("Feature usage reporter shutdown", "error", err)
 			}

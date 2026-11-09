@@ -139,14 +139,15 @@ func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // Track wraps the handler of a REST API route so that every call it serves is
 // reported as one event of feature — success or failure, with the status the
-// call answered with. Each call starts with the defaults as its dimensions;
-// next adds what it learns through CallFrom(r.Context()).
+// call answered with. dimensions are the route's fixed taxonomy dimensions
+// (nil for a feature that has none); next records what it learns about the
+// call through CallFrom(r.Context()).
 //
 // reporter is looked up on every call, so the route can be registered before
 // the reporter exists. When it is nil or reporting is off, next is served
 // untouched. Register Track outside any error-mapping middleware, so the
 // status it sees is the one the caller received.
-func Track(reporter func() Reporter, feature string, defaults map[string]any, next http.Handler) http.Handler {
+func Track(reporter func() Reporter, feature string, dimensions map[string]any, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rep := reporter()
 		if _, off := rep.(noop); rep == nil || off {
@@ -154,7 +155,7 @@ func Track(reporter func() Reporter, feature string, defaults map[string]any, ne
 			return
 		}
 		started := time.Now()
-		call := &Call{dimensions: maps.Clone(defaults)}
+		call := &Call{dimensions: maps.Clone(dimensions)}
 		if call.dimensions == nil {
 			call.dimensions = map[string]any{}
 		}

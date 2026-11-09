@@ -769,8 +769,10 @@ audience = ""
 #
 # Every event is checked against the taxonomy embedded in the binary before it
 # is queued, because the proxy validates nothing. The call is described only
-# by verb, route template (no query) and status; no caller IP address, headers
-# or bodies are sent. Only codes, enums, booleans and opaque UUIDs go in the
+# by verb, route template (no query) and status, under a fixed host; no caller
+# IP address, Host header, other headers or bodies are sent. environment labels
+# every event, as Agent Manager's events are labelled, so the environments
+# sharing one Moesif application can be told apart. Only codes, enums, booleans and opaque UUIDs go in the
 # metadata: company_id is the organization's identity-provider UUID (the
 # platform UUID when it has none), and user_id the acting user's subject only
 # when that is a UUID. Reporting never fails or delays a request: a full
@@ -782,6 +784,7 @@ audience = ""
 #
 # WSO2 Cloud example:
 #   enabled       = '{{ env "MOESIF_ENABLED" "false" }}'   # the release binding sets MOESIF_ENABLED=true
+#   environment   = '{{ env "MOESIF_ENVIRONMENT" "production" }}'   # set per environment, e.g. staging
 #   collector_url = '{{ env "MOESIF_EVENTS_API_URL" "" }}'
 #   token_url     = '{{ env "PLATFORM_IDP_TOKEN_URL" "" }}'
 #   client_id     = '{{ env "PLATFORM_IDP_CLIENT_ID" "" }}'
@@ -796,6 +799,7 @@ request_timeout = "5s"   # one request to the token endpoint or the proxy
 max_attempts    = 3      # tries for 429/5xx/timeouts (a 401 also gets one retry with a fresh token)
 retry_backoff   = "1s"   # base wait between attempts, growing linearly
 overall_timeout = "30s"  # deadline for delivering one event, all attempts included
+environment     = "production"  # sent as each event's environment; "" leaves it out
 
 [platform_api.feature_usage.token]
 token_url     = ""

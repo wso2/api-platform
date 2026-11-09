@@ -913,3 +913,32 @@ func TestValidateServerConfigAppliesFeatureUsageLimits(t *testing.T) {
 		t.Fatalf("validateServerConfig() with reporting off = %v, want nil", err)
 	}
 }
+
+// The reporter's flush never takes more than half of what is left of the
+// shutdown deadline, so the plugins after it keep a usable context.
+func TestFeatureUsageShutdownBudget(t *testing.T) {
+	for name, tc := range map[string]struct {
+		remaining time.Duration
+		max       time.Duration
+	}{
+		"plenty of time left":   {10 * time.Second, featureUsageShutdownTimeout},
+		"less than 2x the cap":  {4 * time.Second, 2 * time.Second},
+		"almost nothing left":   {100 * time.Millisecond, 50 * time.Millisecond},
+		"deadline already past": {-time.Second, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), tc.remaining)
+			defer cancel()
+			got := featureUsageShutdownBudget(ctx)
+			if got > tc.max || (tc.remaining > 0 && got <= 0) {
+				t.Errorf("budget = %s with %s left, want at most %s and positive", got, tc.remaining, tc.max)
+			}
+			if deadline, _ := ctx.Deadline(); tc.remaining > 0 && got > time.Until(deadline)/2+time.Millisecond {
+				t.Errorf("budget %s leaves the plugins less than half of what is left", got)
+			}
+		})
+	}
+	if got := featureUsageShutdownBudget(context.Background()); got != featureUsageShutdownTimeout {
+		t.Errorf("budget without a deadline = %s, want %s", got, featureUsageShutdownTimeout)
+	}
+}

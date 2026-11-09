@@ -20,24 +20,21 @@ package featureusage
 import (
 	"errors"
 	"net/http"
-	"net/netip"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
 
 // Invocation is the REST API call a feature occurrence happened in, as
 // Moesif's Events API records it. It names the route, not the request: the
-// URI is the route template without a query, and nothing from the caller —
-// headers, body, address — is carried at all.
+// URI is the route template under a fixed host, without a query, and nothing
+// from the caller — headers (Host included), body, address — is carried.
 type Invocation struct {
 	// Method is the HTTP verb, e.g. "POST".
 	Method string
 	// URI is an absolute http(s) URI whose path is the route template, e.g.
-	// "https://platform-api.example.com/api/v0.9/rest-apis". No query, no
-	// fragment, no user info.
+	// "https://platform-api/api/v0.9/rest-apis". No query, no fragment, no
+	// user info.
 	URI string
 	// Status is the HTTP status the call answered with.
 	Status int
@@ -49,65 +46,28 @@ type Invocation struct {
 
 const maxURILength = 2048
 
-var (
-	// hostPattern accepts a DNS name or IPv4 address with an optional port.
-	// validHost adds bracketed IPv6; anything else in the Host header — it is
-	// caller-supplied — is replaced by "unknown" rather than sent.
-	hostPattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?$`)
+// reportedOrigin is the scheme and host of every reported URI. Moesif needs an
+// absolute URI, but the request's own Host header is set by whoever sends the
+// request, so it is never copied; the environment metadata is what tells
+// deployments apart.
+const reportedOrigin = "https://platform-api"
 
-	allowedVerbs = map[string]bool{
-		http.MethodGet: true, http.MethodPost: true, http.MethodPut: true,
-		http.MethodPatch: true, http.MethodDelete: true,
-	}
-)
+var allowedVerbs = map[string]bool{
+	http.MethodGet: true, http.MethodPost: true, http.MethodPut: true,
+	http.MethodPatch: true, http.MethodDelete: true,
+}
 
 // InvocationFromRequest describes r, answered with status, as an Invocation.
 // The path is the route pattern the request matched (so a path parameter
 // appears as its template, e.g. {restApiId}, never as a value) and the query
 // is dropped. started is when the handler began serving r.
 func InvocationFromRequest(r *http.Request, status int, started time.Time) Invocation {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if proto := r.Header.Get("X-Forwarded-Proto"); proto == "http" || proto == "https" {
-		scheme = proto
-	}
-	host := r.Host
-	if !validHost(host) {
-		host = "unknown"
-	}
 	return Invocation{
 		Method:      r.Method,
-		URI:         scheme + "://" + host + routePath(r),
+		URI:         reportedOrigin + routePath(r),
 		Status:      status,
 		RequestTime: started,
 	}
-}
-
-// validHost reports whether host is a DNS name or IPv4 address, or a bracketed
-// IPv6 address ("[::1]", "[2001:db8::1]:9243"), each with an optional port.
-func validHost(host string) bool {
-	if !strings.HasPrefix(host, "[") {
-		return hostPattern.MatchString(host)
-	}
-	end := strings.IndexByte(host, ']')
-	if end < 0 {
-		return false
-	}
-	addr, err := netip.ParseAddr(host[1:end])
-	if err != nil || !addr.Is6() || addr.Zone() != "" {
-		return false
-	}
-	rest := host[end+1:]
-	if rest == "" {
-		return true
-	}
-	if !strings.HasPrefix(rest, ":") {
-		return false
-	}
-	port, err := strconv.Atoi(rest[1:])
-	return err == nil && port >= 1 && port <= 65535 && rest[1:] == strconv.Itoa(port)
 }
 
 // routePath returns the path of the route pattern r matched, falling back to

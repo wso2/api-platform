@@ -32,8 +32,9 @@ func TestEmbeddedTaxonomyParses(t *testing.T) {
 	}
 }
 
-// The producer's typed builder must agree with the taxonomy entry it emits:
-// this is what stops a code change from quietly inventing a dimension or value.
+// REST API creation is reported as an endpoint invocation only, so its
+// taxonomy entry declares no dimensions: a required one would get every event
+// dropped, and an optional one would be a promise nothing keeps.
 func TestCreateRESTAPIMatchesTaxonomy(t *testing.T) {
 	tax, err := DefaultTaxonomy()
 	if err != nil {
@@ -47,34 +48,8 @@ func TestCreateRESTAPIMatchesTaxonomy(t *testing.T) {
 		f.Tier != "core" || f.EventCategory != "lifecycle" || !f.Platforms[PlatformAPI] {
 		t.Errorf("unexpected taxonomy entry: %+v", f)
 	}
-
-	method, ok := f.Dimensions["creation_method"]
-	if !ok || method.Type != DimensionEnum || !method.Required {
-		t.Fatalf("creation_method = %+v, want a required enum", method)
-	}
-	for _, m := range []CreationMethod{CreationMethodScratch, CreationMethodContract} {
-		if !method.Values[string(m)] {
-			t.Errorf("creation method %q is not a value of the taxonomy enum", m)
-		}
-	}
-	if len(method.Values) != 2 {
-		t.Errorf("creation_method has %d values, want 2 (a new value needs a CreationMethod constant)", len(method.Values))
-	}
-	sandbox, ok := f.Dimensions["has_sandbox_upstream"]
-	if !ok || sandbox.Type != DimensionBoolean || sandbox.Required {
-		t.Errorf("has_sandbox_upstream = %+v, want an optional boolean", sandbox)
-	}
-
-	// Every dimension the defaults and setters write is declared.
-	for _, name := range []string{dimCreationMethod, dimHasSandboxUpstream} {
-		if _, declared := f.Dimensions[name]; !declared {
-			t.Errorf("the code writes undeclared dimension %q", name)
-		}
-	}
-	for name, value := range RESTAPICreationDefaults() {
-		if d, declared := f.Dimensions[name]; !declared || (d.Type == DimensionEnum && !d.Values[value.(string)]) {
-			t.Errorf("default %s=%v is not declared by the taxonomy", name, value)
-		}
+	if len(f.Dimensions) != 0 {
+		t.Errorf("dimensions = %v, want none", f.Dimensions)
 	}
 }
 

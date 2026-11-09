@@ -18,7 +18,6 @@
 package featureusage
 
 import (
-	"crypto/tls"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -54,10 +53,7 @@ func validCreation() Occurrence {
 		ActorSubject: testUserUUID,
 		OccurrenceID: testAPIUUID,
 		Invocation:   validInvocation(),
-		Dimensions: map[string]any{
-			dimCreationMethod:     string(CreationMethodContract),
-			dimHasSandboxUpstream: true,
-		},
+		Dimensions:   map[string]any{},
 	}
 }
 
@@ -75,16 +71,12 @@ func TestValidateBuildsTaxonomyMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The keys Agent Manager's API events carry, and nothing else: the
+	// feature has no dimensions, so the event is the endpoint invocation.
 	want := map[string]any{
-		"growth_action":        FeatureCreateRESTAPI,
-		"platform":             "WSO2 API Platform",
-		"source":               "api",
-		"creation_method":      "contract",
-		"has_sandbox_upstream": true,
-		"action":               "REST API Creation",
-		"category":             "manage-apis",
-		"tier":                 "core",
-		"event_category":       "lifecycle",
+		"growth_action": FeatureCreateRESTAPI,
+		"platform":      "WSO2 API Platform",
+		"source":        "api",
 	}
 	if !reflect.DeepEqual(event.metadata, want) {
 		t.Errorf("metadata = %v, want %v", event.metadata, want)
@@ -153,10 +145,6 @@ func TestValidateRejects(t *testing.T) {
 		"a feature that is not allowlisted": func(o *Occurrence) { o.Feature = "apip.manage-apis.delete-api" },
 		"a feature not in the taxonomy":     func(o *Occurrence) { o.Feature = "apip.manage-apis.made-up" },
 		"an undeclared dimension":           func(o *Occurrence) { o.Dimensions["api_name"] = secretLooking },
-		"an enum value outside the enum":    func(o *Occurrence) { o.Dimensions["creation_method"] = secretLooking },
-		"an enum value of the wrong type":   func(o *Occurrence) { o.Dimensions["creation_method"] = 1 },
-		"a boolean of the wrong type":       func(o *Occurrence) { o.Dimensions["has_sandbox_upstream"] = "true" },
-		"a missing required dimension":      func(o *Occurrence) { delete(o.Dimensions, "creation_method") },
 		"a missing organization":            func(o *Occurrence) { o.OrgUUID = "" },
 		"a missing occurrence ID":           func(o *Occurrence) { o.OccurrenceID = "" },
 		"a status that is not HTTP":         func(o *Occurrence) { o.Invocation.Status = 999 },
@@ -186,11 +174,60 @@ func TestValidateRejects(t *testing.T) {
 	}
 }
 
-func TestOptionalDimensionMayBeOmitted(t *testing.T) {
-	o := validCreation()
-	delete(o.Dimensions, "has_sandbox_upstream")
-	if _, err := validate(mustTaxonomy(t), enabledFeatures, o, time.Now()); err != nil {
-		t.Fatalf("an optional dimension must be omittable: %v", err)
+// A feature that declares dimensions gets them type- and enum-checked; the
+// embedded create-rest-api has none, so this uses a test taxonomy.
+func TestValidateChecksDimensions(t *testing.T) {
+	tax, err := ParseTaxonomy([]byte(`product:
+  id: "apip"
+  name: "WSO2 API Platform"
+features:
+  - code: "apip.manage-apis.deploy-api"
+    name: "API Deployment"
+    category: "manage-apis"
+    tier: "core"
+    tracking:
+      event_name: "apip.manage-apis.deploy-api"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "target"
+          type: "enum"
+          values: ["gateway", "portal"]
+          required: true
+        - name: "first_deployment"
+          type: "boolean"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabled := map[string]bool{"apip.manage-apis.deploy-api": true}
+	occurrence := func(dims map[string]any) Occurrence {
+		return Occurrence{Feature: "apip.manage-apis.deploy-api", OrgUUID: testOrgUUID, OccurrenceID: "x",
+			Invocation: validInvocation(), Dimensions: dims}
+	}
+
+	event, err := validate(tax, enabled, occurrence(map[string]any{"target": "gateway", "first_deployment": true}), time.Now())
+	if err != nil {
+		t.Fatalf("valid dimensions were rejected: %v", err)
+	}
+	if event.metadata["target"] != "gateway" || event.metadata["first_deployment"] != true {
+		t.Errorf("metadata = %v, want the dimensions in it", event.metadata)
+	}
+	if _, err := validate(tax, enabled, occurrence(map[string]any{"target": "portal"}), time.Now()); err != nil {
+		t.Errorf("an optional dimension must be omittable: %v", err)
+	}
+	for name, dims := range map[string]map[string]any{
+		"an enum value outside the enum":  {"target": "Alice Smith <alice@example.com>"},
+		"an enum value of the wrong type": {"target": 1},
+		"a boolean of the wrong type":     {"target": "gateway", "first_deployment": "true"},
+		"a missing required dimension":    {"first_deployment": true},
+	} {
+		_, err := validate(tax, enabled, occurrence(dims), time.Now())
+		if err == nil {
+			t.Errorf("validate accepted %s", name)
+		} else if strings.Contains(err.Error(), "alice") {
+			t.Errorf("rejection reason echoes the rejected value: %v", err)
+		}
 	}
 }
 
@@ -277,6 +314,9 @@ features:
 	}
 }
 
+// The reported URI is the route template under a fixed host: neither the
+// Host header nor X-Forwarded-Proto, both set by whoever sends the request,
+// nor any path value or query reaches the event.
 func TestInvocationFromRequest(t *testing.T) {
 	started := time.Now()
 	var got Invocation
@@ -285,67 +325,29 @@ func TestInvocationFromRequest(t *testing.T) {
 		got = InvocationFromRequest(r, http.StatusCreated, started)
 	})
 
-	tests := []struct {
-		name, host, proto, wantURI string
-		tls                        bool
-	}{
-		{"plain http", "platform-api.example.com", "", "http://platform-api.example.com/api/v0.9/rest-apis/{restApiId}/x", false},
-		{"behind a TLS proxy", "platform-api.example.com:9080", "https", "https://platform-api.example.com:9080/api/v0.9/rest-apis/{restApiId}/x", false},
-		{"direct TLS", "10.0.0.7:9243", "", "https://10.0.0.7:9243/api/v0.9/rest-apis/{restApiId}/x", true},
-		{"a host that is not a hostname", "alice smith@evil", "javascript", "http://unknown/api/v0.9/rest-apis/{restApiId}/x", false},
-		{"bracketed IPv6 with port", "[::1]:9243", "", "https://[::1]:9243/api/v0.9/rest-apis/{restApiId}/x", true},
-		{"bracketed IPv6 without port", "[2001:db8::1]", "", "http://[2001:db8::1]/api/v0.9/rest-apis/{restApiId}/x", false},
-		{"bracketed IPv6 with a bad port", "[::1]:99999", "", "http://unknown/api/v0.9/rest-apis/{restApiId}/x", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	const wantURI = "https://platform-api/api/v0.9/rest-apis/{restApiId}/x"
+	for name, host := range map[string]string{
+		"a public hostname":      "platform-api.example.com",
+		"an IP address and port": "10.0.0.7:9243",
+		"an IPv6 address":        "[::1]:9243",
+		"caller-chosen text":     "alice-smith.example.com",
+		"a host that is no host": "alice smith@evil",
+	} {
+		t.Run(name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/v0.9/rest-apis/orders-api-by-alice/x?owner=alice", nil)
-			req.Host = tc.host
-			if tc.proto != "" {
-				req.Header.Set("X-Forwarded-Proto", tc.proto)
-			}
-			if tc.tls {
-				req.TLS = &tls.ConnectionState{}
-			}
+			req.Host = host
+			req.Header.Set("X-Forwarded-Proto", "http")
 			mux.ServeHTTP(httptest.NewRecorder(), req)
 
-			if got.URI != tc.wantURI {
-				t.Errorf("URI = %q, want %q (the route template, no path values, no query)", got.URI, tc.wantURI)
+			if got.URI != wantURI {
+				t.Errorf("URI = %q, want %q", got.URI, wantURI)
 			}
 			if got.Method != http.MethodPost || got.Status != http.StatusCreated || !got.RequestTime.Equal(started) {
 				t.Errorf("invocation = %+v", got)
-			}
-			if strings.Contains(got.URI, "alice") {
-				t.Errorf("URI leaks request values: %q", got.URI)
 			}
 			if _, err := got.normalize(time.Now()); err != nil {
 				t.Errorf("a request-derived invocation failed validation: %v", err)
 			}
 		})
-	}
-}
-
-func TestValidHost(t *testing.T) {
-	for host, want := range map[string]bool{
-		"platform-api.example.com":      true,
-		"platform-api.example.com:9080": true,
-		"10.0.0.7:9243":                 true,
-		"[::1]":                         true,
-		"[::1]:9243":                    true,
-		"[2001:db8::1]:443":             true,
-		"[::1]:0":                       false,
-		"[::1]:65536":                   false,
-		"[::1]:09243":                   false,
-		"[::1]x":                        false,
-		"[::1":                          false,
-		"[10.0.0.7]:80":                 false, // brackets are for IPv6 only
-		"[fe80::1%25eth0]:80":           false, // no zones
-		"[not-an-ip]:80":                false,
-		"alice smith@evil":              false,
-		"":                              false,
-	} {
-		if got := validHost(host); got != want {
-			t.Errorf("validHost(%q) = %v, want %v", host, got, want)
-		}
 	}
 }

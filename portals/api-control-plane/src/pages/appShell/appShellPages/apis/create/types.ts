@@ -65,12 +65,6 @@ export interface ApiOperation {
  */
 export interface ContractImport {
   specFile: File;
-  /**
-   * Which approach produced `specFile`: the "Start from scratch" skeleton or an
-   * imported contract. Sent as `creationMethod` so the platform's feature-usage
-   * analytics can tell the two apart — both submit through import-openapi.
-   */
-  creationMethod: 'scratch' | 'contract';
 }
 
 export interface GeneralApiCreationFormState {
