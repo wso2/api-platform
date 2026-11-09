@@ -59,10 +59,12 @@ var finalizerCollections = []struct {
 	collection string
 	idFields   []string
 	wait       bool
+	// budget bounds the collection's time; zero selects finalizerCollectionBudget.
+	budget time.Duration
 }{
 	{collection: secretsCollection, idFields: []string{"id", "handle"}},
 	{collection: managedGatewaysCollection, idFields: []string{"id"}},
-	{collection: "/projects", idFields: []string{"id"}},
+	{collection: "/projects", idFields: []string{"id"}, budget: projectDeleteTimeout},
 	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
 	{collection: environmentsCollection, idFields: []string{"name"}, wait: true},
 }
@@ -165,9 +167,13 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 		sweeps = append(sweeps, projectScopedSweep(client, base, token, owns, collection))
 	}
 	for _, entry := range finalizerCollections {
+		budget := entry.budget
+		if budget == 0 {
+			budget = finalizerCollectionBudget
+		}
 		sweeps = append(sweeps, finalizer.Collection{
 			Name:    entry.collection,
-			Timeout: finalizerCollectionBudget,
+			Timeout: budget,
 			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 				items, err := listCollection(ctx, client, base, token, entry.collection)
 				if errors.Is(err, errCollectionNotServed) {
@@ -182,6 +188,9 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 				return leftovers, err
 			},
 			Delete: func(ctx context.Context, id string) error {
+				if entry.collection == "/projects" {
+					return deleteProjectThroughCloudAPI(ctx, client, base, token, id)
+				}
 				return deleteLeftover(ctx, client, base, token, entry.collection, id, entry.wait)
 			},
 		})

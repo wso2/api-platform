@@ -367,10 +367,15 @@ func TestAssertAPIResponseMatchesRequestedPost(t *testing.T) {
 // cloudAPIStub serves handler as the organization's platform API endpoint.
 func cloudAPIStub(t *testing.T, handler http.HandlerFunc) *frameworkruntime.Topology {
 	t.Helper()
-	server := httptest.NewServer(handler)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The cloud API's project route is served next to the platform API's; the handler sees
+		// both as plain collection paths.
+		r.URL.Path = strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, platformAPIRoute), coreAPIRoute)
+		handler(w, r)
+	}))
 	t.Cleanup(server.Close)
 	inst, err := components.NewExternalInstance(corecatalog.CloudConsole(), 0, 1,
-		map[string]string{corecatalog.EndpointAPIPPlatformAPI: server.URL})
+		map[string]string{corecatalog.EndpointAPIPPlatformAPI: server.URL + platformAPIRoute})
 	require.NoError(t, err)
 	set := components.NewSet()
 	require.NoError(t, set.Add(inst))
@@ -1437,10 +1442,7 @@ func TestReadDefaultAndAbsentProjects(t *testing.T) {
 	require.NoError(t, steps.readAbsentProject(ctx))
 	absent, err := requiredValue(ctx, keyAbsentProjectID)
 	require.NoError(t, err)
-	require.NoError(t, steps.deleteAbsentProject(ctx))
-	absentAfterDelete := optionalValue(ctx, keyAbsentProjectID)
-	require.NotEqual(t, absent, absentAfterDelete, "each probe names a project of its own")
-	require.Equal(t, []string{"GET /projects/default", "GET /projects/" + absent, "DELETE /projects/" + absentAfterDelete}, seen)
+	require.Equal(t, []string{"GET /projects/default", "GET /projects/" + absent}, seen)
 	require.Empty(t, registry.Pending(), "a project that is never created is never registered")
 	published, err := httpx.Published(ctx)
 	require.NoError(t, err)
@@ -1887,7 +1889,7 @@ func TestCloudSweepsSkipACollectionThePlatformDoesNotServe(t *testing.T) {
 
 func TestCloudSweepsReportALeftoverThatCannotBeDeleted(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/projects/syn-project-abcde234-2"] = http.StatusConflict
+	stub.failing["/managed-gateways/development-syn-gw-abcde234-1"] = http.StatusConflict
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
@@ -1895,9 +1897,9 @@ func TestCloudSweepsReportALeftoverThatCannotBeDeleted(t *testing.T) {
 	defer cancel()
 
 	removed, err := sweepLeftovers(ctx, base, 2*time.Second)
-	require.ErrorContains(t, err, "/projects/syn-project-abcde234-2")
-	require.Contains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1")
-	require.NotContains(t, removed, "/projects/syn-project-abcde234-2")
+	require.ErrorContains(t, err, "/managed-gateways/development-syn-gw-abcde234-1")
+	require.Contains(t, removed, "/secrets/syn-secret-abcde234-1")
+	require.NotContains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1")
 }
 
 func TestFinalizerSweepsTheRunnersItObserved(t *testing.T) {
@@ -3769,4 +3771,33 @@ func TestJudgeRoundAcceptsWritesAndConflictsAndFlagsEverythingElse(t *testing.T)
 
 func TestADeploymentGetsAtLeastTenMinutesToBecomeDeployed(t *testing.T) {
 	require.GreaterOrEqual(t, deployedTimeout, 10*time.Minute)
+}
+
+func TestCoreProjectsBaseReplacesThePlatformAPIRoute(t *testing.T) {
+	base, err := coreProjectsBase("http://dev.localhost:19080" + platformAPIRoute + "/")
+	require.NoError(t, err)
+	require.Equal(t, "http://dev.localhost:19080"+coreAPIRoute, base)
+
+	_, err = coreProjectsBase("http://dev.localhost:19080/some/other/route")
+	require.Error(t, err)
+}
+
+func TestDeleteProjectThroughCloudAPISendsOneRequestAndNeverFails(t *testing.T) {
+	for _, status := range []int{http.StatusNoContent, http.StatusNotFound, http.StatusForbidden} {
+		var requests []string
+		var authorization string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests = append(requests, r.Method+" "+r.URL.Path)
+			authorization = r.Header.Get("Authorization")
+			w.WriteHeader(status)
+		}))
+
+		client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
+		err := deleteProjectThroughCloudAPI(context.Background(), client, server.URL+platformAPIRoute, "console-token", "syn-project-1")
+		server.Close()
+
+		require.NoError(t, err, "status %d", status)
+		require.Equal(t, []string{"DELETE " + coreAPIRoute + "/projects/syn-project-1"}, requests, "status %d", status)
+		require.Equal(t, "Bearer console-token", authorization)
+	}
 }

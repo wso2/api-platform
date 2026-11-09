@@ -149,8 +149,6 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
 	sc.Step(`^the synthetic APIP project should be retrievable by handle$`, s.getProject)
-	sc.Step(`^I delete the synthetic APIP project$`, s.deleteProject)
-	sc.Step(`^the synthetic APIP project should eventually be absent$`, s.verifyProjectDeleted)
 
 	sc.Step(`^I create a synthetic non-production APIP environment$`, s.createEnvironment)
 	sc.Step(`^I create a synthetic non-production APIP environment that lasts for the runner$`, s.createRunnerEnvironment)
@@ -279,7 +277,7 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(cleanup.KindAPI, cloudDeleter(topo, client, "/rest-apis", false)); err != nil {
 		return err
 	}
-	if err := reg.RegisterDeleter(cleanup.KindProject, cloudDeleter(topo, client, "/projects", false)); err != nil {
+	if err := reg.RegisterDeleter(cleanup.KindProject, projectDeleter(topo, client)); err != nil {
 		return err
 	}
 	if err := reg.RegisterDeleter(cleanup.KindEnvironment, cloudDeleter(topo, client, "/environments", true)); err != nil {

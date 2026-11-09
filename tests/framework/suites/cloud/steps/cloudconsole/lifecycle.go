@@ -511,36 +511,6 @@ func (s *Steps) getProject(ctx context.Context) error {
 	return err
 }
 
-func (s *Steps) deleteProject(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodDelete, "/projects/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return responseError(resp)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		deregister(ctx, cleanup.KindProject, id)
-	}
-	return nil
-}
-
-func (s *Steps) verifyProjectDeleted(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	if err := s.awaitNotFound(ctx, "/projects/"+url.PathEscape(id), "project "+id); err != nil {
-		return err
-	}
-	deregister(ctx, cleanup.KindProject, id)
-	return nil
-}
-
 // syntheticEnvironmentBase is the base of the names a suite run gives its environments. It is
 // short on purpose: the platform renders a gateway's service name from the environment name twice,
 // so every character of the environment's name is two taken from the handle of each gateway in it.
