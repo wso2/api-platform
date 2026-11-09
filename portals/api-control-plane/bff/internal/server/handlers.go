@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,7 +120,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// written. The token is never returned in the response body — the browser
 	// only ever gets the display user; every backend call is routed through
 	// the same-origin proxy, which injects the token itself.
-	s.setSessionCookie(w, sess.AccessToken, "", sess.AbsoluteExpiry)
+	if err := s.setSessionCookie(w, sess.AccessToken, "", sess.AbsoluteExpiry); err != nil {
+		slog.Error("file-based login: session not stored", "err", err)
+		writeServerErrorJSON(w, http.StatusInternalServerError, "SESSION_TOO_LARGE", "the session token is too large to store", w.Header().Get("X-Request-Id"))
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": sess.User})
 }
 
@@ -227,7 +232,12 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=session_failed", http.StatusFound)
 		return
 	}
-	s.setSessionCookie(w, sess.AccessToken, sess.RefreshToken, sess.AbsoluteExpiry)
+	if err := s.setSessionCookie(w, sess.AccessToken, sess.RefreshToken, sess.AbsoluteExpiry); err != nil {
+		slog.Error("oidc callback: session not stored", "err", err)
+		_ = s.store.Delete(r.Context(), sess.AccessToken)
+		http.Redirect(w, r, "/login?error=session_too_large", http.StatusFound)
+		return
+	}
 	http.Redirect(w, r, sanitizeReturn(ret), http.StatusFound)
 }
 
@@ -274,8 +284,13 @@ func (s *Server) proxyHandler(rp *httputil.ReverseProxy) http.HandlerFunc {
 					writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
 					return
 				}
+				if err := s.setSessionCookie(w, refreshed.AccessToken, refreshed.RefreshToken, refreshed.AbsoluteExpiry); err != nil {
+					slog.Error("token refresh: session not stored", "err", err)
+					_ = s.store.Delete(r.Context(), refreshed.AccessToken)
+					writeErrorJSON(w, http.StatusUnauthorized, "SESSION_TOO_LARGE", "the session token is too large to store")
+					return
+				}
 				token = refreshed.AccessToken
-				s.setSessionCookie(w, refreshed.AccessToken, refreshed.RefreshToken, refreshed.AbsoluteExpiry)
 			}
 		}
 
@@ -324,16 +339,23 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 // exp with a still-valid refresh token must reach proxyHandler's refresh
 // logic, not be rejected here before it gets the chance.
 func (s *Server) tokensFromCookie(r *http.Request) (access, refresh string, ok bool) {
+	// A split session names its part count; every part must be there, or the
+	// joined token would be cut short. Without a count it is the single cookie.
+	parts := 1
+	if cc, err := r.Cookie(s.sessionCountName()); err == nil {
+		n, convErr := strconv.Atoi(cc.Value)
+		if convErr != nil || n < 2 || n > sessionMaxChunks {
+			return "", "", false
+		}
+		parts = n
+	}
 	var b strings.Builder
-	for i := 0; i < sessionMaxChunks; i++ {
+	for i := 0; i < parts; i++ {
 		c, err := r.Cookie(s.sessionChunkName(i))
 		if err != nil || c.Value == "" {
-			break
+			return "", "", false
 		}
 		b.WriteString(c.Value)
-	}
-	if b.Len() == 0 {
-		return "", "", false
 	}
 	access = b.String()
 	if rc, err := r.Cookie(s.refreshCookieName()); err == nil {

@@ -19,6 +19,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -336,5 +337,87 @@ func TestTokensFromCookie_StopsAtMissingChunk(t *testing.T) {
 	a, _, ok := srv.tokensFromCookie(req)
 	if !ok || a != "aaa" {
 		t.Fatalf("tokensFromCookie = (%q, %v), want only the leading chunk", a, ok)
+	}
+}
+
+// A split session whose part count names more parts than arrive is not a session:
+// joining what did arrive would forward a token cut short.
+func TestTokensFromCookie_SplitSessionMissingPartRejected(t *testing.T) {
+	cfg := newTestConfig("https://unused.example.com")
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	scopes := strings.Repeat("ap:rest_api:deployment:undeploy ", 180)
+	access := makeJWT(map[string]any{"sub": "u1", "scope": scopes, "exp": time.Now().Add(time.Hour).Unix()})
+	rec := httptest.NewRecorder()
+	if err := srv.setSessionCookie(rec, access, "", time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("setSessionCookie: %v", err)
+	}
+	var count *http.Cookie
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	for _, c := range liveCookies(rec.Result()) {
+		if c.Name == srv.sessionCountName() {
+			count = c
+		}
+		if c.Name == srv.sessionChunkName(1) {
+			continue // the browser lost the second part
+		}
+		req.AddCookie(c)
+	}
+	if count == nil || count.Value != "2" {
+		t.Fatalf("part count cookie = %v, want 2", count)
+	}
+	if a, _, ok := srv.tokensFromCookie(req); ok {
+		t.Fatalf("tokensFromCookie accepted an incomplete session (%d of %d bytes)", len(a), len(access))
+	}
+}
+
+// A token too large for every session cookie is reported, and nothing of it is kept.
+func TestSetSessionCookie_TooLargeIsAnError(t *testing.T) {
+	cfg := newTestConfig("https://unused.example.com")
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	huge := strings.Repeat("x", sessionMaxChunks*sessionCookieBudget)
+	rec := httptest.NewRecorder()
+	if err := srv.setSessionCookie(rec, huge, "r", time.Now().Add(time.Hour)); !errors.Is(err, errSessionTooLarge) {
+		t.Fatalf("setSessionCookie error = %v, want errSessionTooLarge", err)
+	}
+	if live := liveCookies(rec.Result()); len(live) != 0 {
+		t.Fatalf("cookies written for a rejected session: %v", live)
+	}
+}
+
+// Every part fits the budget including its own (suffixed) name, and a name that
+// leaves too little room for a value is refused at start-up.
+func TestSessionCookieName_SizesChunksAndRejectsLongNames(t *testing.T) {
+	cfg := newTestConfig("https://unused.example.com")
+	cfg.Session.Cookie.Name = strings.Repeat("n", 600)
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+	access := strings.Repeat("a.b", 3000)
+	rec := httptest.NewRecorder()
+	if err := srv.setSessionCookie(rec, access, "", time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("setSessionCookie: %v", err)
+	}
+	for _, c := range liveCookies(rec.Result()) {
+		if len(c.Name)+len(c.Value)+1 > sessionCookieBudget {
+			t.Fatalf("cookie %d bytes long exceeds the %d budget", len(c.Name)+len(c.Value)+1, sessionCookieBudget)
+		}
+	}
+
+	cfg2 := newTestConfig("https://unused.example.com")
+	cfg2.Session.Cookie.Name = strings.Repeat("n", sessionCookieBudget-minSessionChunk)
+	if _, err := New(context.Background(), cfg2); err == nil {
+		t.Fatal("New accepted a session cookie name that leaves too little room for the token")
 	}
 }
