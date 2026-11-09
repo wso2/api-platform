@@ -25,65 +25,80 @@
 
   var editPlanId = null;
 
-  var LIMIT_TYPES = ['REQUEST_COUNT','EVENT_COUNT','BANDWIDTH','TOTAL_TOKEN_COUNT'];
   var TIME_UNITS  = ['MINUTE','HOUR','DAY','MONTH'];
+  var BUILT_IN_IDS = { 'request-count': 'requests', 'tool-call-count': 'tool-calls', 'token-count': 'tokens' };
+  // Custom conditions of the plan being edited: not edited here, sent back as they are.
+  var customConditions = [];
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
 
-  /* ── limit row builder ── */
-  function makeLimitRow(limit) {
+  /* ── one limit of a condition: count per time window ── */
+  function makeWindowRow(w) {
     var row = document.createElement('div');
     row.className = 'cfg-limit-row';
     row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px;';
-
-    var typeOpts = LIMIT_TYPES.map(function(t){
-      return '<option value="'+t+'"'+(limit&&limit.limitType===t?' selected':'')+'>'+t+'</option>';
+    var unitOpts = TIME_UNITS.map(function(u){
+      return '<option value="'+u+'"'+(w&&w.timeUnit===u?' selected':'')+'>'+u+'</option>';
     }).join('');
-    var unitOpts = '<option value="">— no window —</option>'+TIME_UNITS.map(function(u){
-      return '<option value="'+u+'"'+(limit&&limit.timeUnit===u?' selected':'')+'>'+u+'</option>';
-    }).join('');
-
     row.innerHTML =
-      '<select class="cfg-form-input cfg-limit-type" style="flex:2;">'+typeOpts+'</select>'+
       '<input type="number" class="cfg-form-input cfg-form-input--mono cfg-limit-count" style="flex:1.5;" '+
-        'placeholder="count" value="'+(limit?limit.limitCount:'')+'" />'+
+        'placeholder="count" min="1" value="'+(w?w.count:'')+'" />'+
       '<span style="color:var(--text-muted);font-size:.8rem;white-space:nowrap;">/ per</span>'+
       '<input type="number" class="cfg-form-input cfg-form-input--mono cfg-limit-amount" style="flex:.7;" '+
-        'placeholder="1" value="'+(limit&&limit.timeAmount!=null?limit.timeAmount:1)+'" min="1" />'+
+        'placeholder="1" value="'+(w&&w.timeAmount!=null?w.timeAmount:1)+'" min="1" />'+
       '<select class="cfg-form-input cfg-limit-unit" style="flex:1.2;">'+unitOpts+'</select>'+
       '<button type="button" class="cfg-icon-btn cfg-icon-btn--danger cfg-limit-remove-btn" title="Remove">'+
         '<i class="bi bi-x-lg"></i></button>';
-
     row.querySelector('.cfg-limit-remove-btn').addEventListener('click', function(){ row.remove(); });
     return row;
   }
 
-  document.getElementById('pol-add-limit-btn').addEventListener('click', function(){
-    document.getElementById('pol-limits-list').appendChild(makeLimitRow(null));
+  document.querySelectorAll('#cfg-plan-modal .pol-condition').forEach(function(section){
+    section.querySelector('.pol-add-window-btn').addEventListener('click', function(){
+      section.querySelector('.pol-condition-windows').appendChild(makeWindowRow(null));
+    });
   });
 
-  function readLimits() {
-    var rows = document.querySelectorAll('#pol-limits-list .cfg-limit-row');
-    var limits = [];
-    rows.forEach(function(row){
-      var rawCount = row.querySelector('.cfg-limit-count').value.trim();
-      var count = rawCount === '-1' ? -1 : parseInt(rawCount, 10);
-      var rawAmount = row.querySelector('.cfg-limit-amount').value.trim();
-      var amount = rawAmount === '' ? 1 : parseInt(rawAmount, 10);
-      if (isNaN(count) || (count !== -1 && count <= 0)) {
-        throw new Error('Limit count must be -1 (unlimited) or a positive number.');
-      }
-      if (isNaN(amount) || amount <= 0) {
-        throw new Error('Limit time amount must be a positive number.');
-      }
-      limits.push({
-        limitType:  row.querySelector('.cfg-limit-type').value,
-        limitCount: count,
-        timeUnit:   row.querySelector('.cfg-limit-unit').value || null,
-        timeAmount: amount,
-      });
+  /* Shows the plan's built-in conditions; a plan saved before conditions has its request limits as one. */
+  function fillConditions(conditions) {
+    customConditions = [];
+    var byType = {};
+    (conditions || []).forEach(function(c){
+      if (BUILT_IN_IDS[c.type]) byType[c.type] = c; else customConditions.push(c);
     });
-    return limits;
+    document.querySelectorAll('#cfg-plan-modal .pol-condition').forEach(function(section){
+      var c = byType[section.dataset.type];
+      var params = (c && c.params) || {};
+      var list = section.querySelector('.pol-condition-windows');
+      list.innerHTML = '';
+      (params.limits || []).forEach(function(w){ list.appendChild(makeWindowRow(w)); });
+      section.querySelector('.pol-condition-on-exceed').value = params.onExceed || 'reject';
+      var tokenType = section.querySelector('.pol-condition-token-type');
+      if (tokenType) tokenType.value = params.tokenType || 'total';
+    });
+  }
+
+  /* The built-in conditions with at least one limit, then the custom conditions as they were. */
+  function readConditions() {
+    var conditions = [];
+    document.querySelectorAll('#cfg-plan-modal .pol-condition').forEach(function(section){
+      var limits = [];
+      section.querySelectorAll('.cfg-limit-row').forEach(function(row){
+        var rawCount = row.querySelector('.cfg-limit-count').value.trim();
+        var rawAmount = row.querySelector('.cfg-limit-amount').value.trim();
+        var count = /^\d+$/.test(rawCount) ? parseInt(rawCount, 10) : NaN;
+        var amount = rawAmount === '' ? 1 : (/^\d+$/.test(rawAmount) ? parseInt(rawAmount, 10) : NaN);
+        if (!(count >= 1)) throw new Error('Each limit needs a count of at least 1.');
+        if (!(amount >= 1)) throw new Error('Each limit needs a time window of at least 1.');
+        limits.push({ count: count, timeAmount: amount, timeUnit: row.querySelector('.cfg-limit-unit').value });
+      });
+      if (limits.length === 0) return;
+      var params = { limits: limits, onExceed: section.querySelector('.pol-condition-on-exceed').value };
+      var tokenType = section.querySelector('.pol-condition-token-type');
+      if (tokenType) params.tokenType = tokenType.value;
+      conditions.push({ id: BUILT_IN_IDS[section.dataset.type], type: section.dataset.type, params: params });
+    });
+    return conditions.concat(customConditions);
   }
 
   /* ── paid plan: a flat rate, or up to 20 usage prices, each on a meter and its own filters ── */
@@ -761,13 +776,11 @@
     document.getElementById('pol-desc').value    = mode === 'edit' ? (data.description||'') : '';
     document.getElementById('pol-refid').value   = mode === 'edit' ? (data.refId||'')       : '';
 
-    var list = document.getElementById('pol-limits-list');
-    list.innerHTML = '';
-    var existing = [];
-    if (mode === 'edit' && data.limits) {
-      try { existing = typeof data.limits === 'string' ? JSON.parse(data.limits) : data.limits; } catch(e){}
+    var conditions = [];
+    if (mode === 'edit' && data.conditions) {
+      try { conditions = typeof data.conditions === 'string' ? JSON.parse(data.conditions) : data.conditions; } catch(e){}
     }
-    existing.forEach(function(l){ list.appendChild(makeLimitRow(l)); });
+    fillConditions(conditions);
 
     var pricing = null;
     if (mode === 'edit' && data.pricing) {
@@ -793,9 +806,9 @@
     var displayName = v('pol-display');
     if (!displayName) { await showAlert('Name is required.', 'error'); return; }
 
-    var limits, pricing;
+    var conditions, pricing;
     try {
-      limits = readLimits();
+      conditions = readConditions();
       // Editing never sends pricing: it can't change once a plan is created.
       pricing = editPlanId ? null : readPricing();
     } catch (e) {
@@ -806,7 +819,7 @@
     var body = {
       displayName: displayName,
       description: v('pol-desc') || undefined,
-      limits:      limits,
+      conditions:  conditions,
       refId:       v('pol-refid') || undefined,
     };
     // No `id` on create — the server generates a UUID handle. On edit, send the
@@ -854,7 +867,7 @@
         planName:    btn.dataset.name,
         displayName: btn.dataset.display,
         description: btn.dataset.desc,
-        limits:      btn.dataset.limits,
+        conditions:  btn.dataset.conditions,
         pricing:     btn.dataset.pricing,
         refId:       btn.dataset.refid,
       });

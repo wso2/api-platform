@@ -31,7 +31,6 @@ const TAGS_TABLE = 'tags';
 const API_LABEL_MAPPINGS_TABLE = 'api_label_mappings';
 const API_TAG_MAPPINGS_TABLE = 'api_tag_mappings';
 const SUBSCRIPTION_PLANS_TABLE = 'subscription_plans';
-const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'subscription_plan_limits';
 const API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE = 'api_subscription_plan_mappings';
 const VIEW_LABEL_MAPPINGS_TABLE = 'view_label_mappings';
 
@@ -124,7 +123,7 @@ const SEARCH_APIS_POSTGRES_SQL = `
  *   api_contents       — content rows of type IMAGES
  *   labels             — [{handle}]
  *   tags               — [{name}]
- *   subscription_plans — plan rows with `.limits` attached
+ *   subscription_plans — plan rows with `.conditions` and `.limits` attached
  */
 async function attachAssociations(apiRows, t) {
     const exec = t || db;
@@ -160,19 +159,7 @@ async function attachAssociations(apiRows, t) {
          WHERE m.api_uuid IN (${placeholders}) AND m.portal_id = ?`,
         [...apiIds, getPortalId()]
     );
-    const planIds = [...new Set(planMappingRows.map((p) => p.uuid))];
-    let limitsByPlan = new Map();
-    if (planIds.length > 0) {
-        const planPlaceholders = planIds.map(() => '?').join(', ');
-        const limitRows = await exec.query(
-            `SELECT * FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid IN (${planPlaceholders})`,
-            planIds
-        );
-        limitsByPlan = groupBy(limitRows, 'plan_uuid');
-    }
-    for (const plan of planMappingRows) {
-        plan.limits = limitsByPlan.get(plan.uuid) || [];
-    }
+    await require('./subscriptionPlanDao').attachConditions(planMappingRows, t);
     const plansByApi = groupBy(planMappingRows, 'mapping_api_uuid');
 
     for (const api of apiRows) {

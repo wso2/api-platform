@@ -208,12 +208,31 @@
       <textarea id="pol-desc" class="cfg-form-input" rows="2" placeholder="Describe this tier…"></textarea>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <label style="margin:0;">Limits</label>
-        <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="pol-add-limit-btn"><i class="bi bi-plus"></i> Add limit</button>
+      <label style="margin:0 0 8px;">Conditions</label>
+      {{#*inline "pol-condition"}}
+      <div class="pol-condition" data-type="{{type}}" style="border:1px solid #e3e8ee;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:.85rem;font-weight:600;flex:1;">{{label}}</span>
+          {{#if (eq type "token-count")}}
+          <select class="cfg-form-input pol-condition-token-type" style="width:auto;" aria-label="Tokens counted">
+            <option value="total">Total tokens</option>
+            <option value="prompt">Prompt tokens</option>
+            <option value="completion">Completion tokens</option>
+          </select>
+          {{/if}}
+          <select class="cfg-form-input pol-condition-on-exceed" style="width:auto;" aria-label="When a limit is reached">
+            <option value="reject">Reject when reached</option>
+            <option value="allow">Allow when reached</option>
+          </select>
+          <button type="button" class="cfg-btn-secondary cfg-btn-sm pol-add-window-btn"><i class="bi bi-plus"></i> Add limit</button>
+        </div>
+        <div class="pol-condition-windows"></div>
       </div>
-      <div id="pol-limits-list"></div>
-      <p class="cfg-field-hint">Leave empty for an unlimited plan. Use −1 as the count to mark a limit as unlimited.</p>
+      {{/inline}}
+      {{> pol-condition type="request-count" label="Requests"}}
+      {{> pol-condition type="tool-call-count" label="Tool calls"}}
+      {{> pol-condition type="token-count" label="Tokens"}}
+      <p class="cfg-field-hint">A plan with no limits is unlimited. Each limit of a condition needs a window of its own length.</p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:24px;">
       <label for="pol-refid">External reference ID <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>

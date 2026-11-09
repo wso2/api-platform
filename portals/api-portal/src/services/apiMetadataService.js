@@ -2387,6 +2387,7 @@ function mapYamlToSubscriptionPlan(item) {
         description: spec.description,
         refId: spec.refId,
         limits: Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec),
+        conditions: spec.conditions,
         pricing: spec.pricing,
     };
 }

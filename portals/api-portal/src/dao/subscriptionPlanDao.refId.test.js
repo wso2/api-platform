@@ -38,9 +38,11 @@ function loadDao(statements) {
     const stubs = {
         driver: {
             execute: async (sql, params) => { statements.push({ sql, params }); return { rowCount: 1 }; },
-            // create/update re-read the plan; the shape is irrelevant here.
-            queryOne: async () => null,
+            // The plan tables exist; create/update re-read the plan, whose shape is irrelevant here.
+            queryOne: async (sql) => (/sqlite_master/.test(sql) ? { found: 1 } : null),
             query: async () => [],
+            getDialect: () => 'sqlite',
+            binaryParam: (value) => value,
         },
         orgContext: { getPortalId: () => 'portal-a' },
     };

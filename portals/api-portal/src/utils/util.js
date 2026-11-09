@@ -32,6 +32,10 @@ const db = require('../db/driver');
 const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
+const planConditions = require('./subscriptionPlanConditions');
+
+// APIs whose subscription rate limit counts events rather than requests.
+const EVENT_API_TYPES = [constants.API_TYPE.WS, constants.API_TYPE.WEBSUB];
 const billingVisibility = require('../services/billing/billingVisibility');
 const { currentRequest } = require('./requestContext');
 const { pageAccess } = require('./pageAccess');
@@ -1380,8 +1384,10 @@ function appendAPIImageURL(subList, req, orgId) {
  * @param {string} orgId
  * @param {Array<{id: string}>} subscriptionPlans  the API's plans, by handle
  * @param {string} [apiUuid]  the API; without it no paid plan is offered
+ * @param {string} [apiType]  the API's type; an event-based API shows its request limits as events
  */
-async function appendSubscriptionPlanDetails(orgId, subscriptionPlans, apiUuid) {
+async function appendSubscriptionPlanDetails(orgId, subscriptionPlans, apiUuid, apiType) {
+    const events = EVENT_API_TYPES.includes(apiType);
     const enrichedPlans = [];
     if (subscriptionPlans) {
         let sellable;
@@ -1404,7 +1410,8 @@ async function appendSubscriptionPlanDetails(orgId, subscriptionPlans, apiUuid) 
                 id: subscriptionPlan.id,
                 displayName: subscriptionPlan.displayName,
                 description: subscriptionPlan.description,
-                limits: subscriptionPlan.limits || [],
+                limits: planConditions.displayLimits(subscriptionPlan.conditions, { events }),
+                conditions: subscriptionPlan.conditions,
                 paid: subscriptionPlan.paid,
                 pricing: subscriptionPlan.pricing,
             });

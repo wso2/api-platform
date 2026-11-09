@@ -2,9 +2,13 @@
 
 A subscription plan (also called a subscription plan) is a named usage tier that controls how much of an API a developer can consume. You attach one or more plans to each API you publish, and developers choose a plan when subscribing.
 
-Plans can enforce:
-- Request rate limits (`requestcount`)
-- Event count limits (`eventcount`) for async APIs
+A plan's limits are its conditions:
+- Requests (`request-count`). On event-based APIs (WebSocket, WebSub) the same limit counts events, and the portal shows it as events
+- Tool calls (`tool-call-count`), for MCP servers
+- Tokens (`token-count`), for AI APIs
+- Custom conditions, key-value settings that a policy reads
+
+A plan saved before conditions shows its request and event limits as a request-count condition.
 
 ## Default Plans
 
@@ -58,7 +62,51 @@ curl -k -X POST https://localhost:9543/api-portal/api/v0.9/subscription-plans \
 | `spec.type` | Yes | `requestcount` (rate-limited) or `eventcount` |
 | `spec.requestCount` | No | Maximum requests allowed. Use `-1` for unlimited |
 | `spec.description` | No | Additional description shown to developers |
+| `spec.conditions` | No | The plan's limits; see [Conditions](#conditions) |
 | `spec.pricing` | No | A paid plan's pricing: the same fields as `pricing` in JSON, under the same rules. A plan without it is free |
+
+### Conditions
+
+Give a plan its limits as `spec.conditions` in YAML, or `conditions` in JSON:
+
+```yaml
+spec:
+  displayName: Enterprise Plan
+  conditions:
+    - type: request-count
+      params:
+        limits:
+          - { count: 10000, timeAmount: 1, timeUnit: MINUTE }
+          - { count: 1000000, timeAmount: 1, timeUnit: DAY }
+        onExceed: reject
+    - type: tool-call-count
+      params:
+        limits:
+          - { count: 500, timeAmount: 1, timeUnit: HOUR }
+    - type: token-count
+      params:
+        limits:
+          - { count: 2000000, timeAmount: 1, timeUnit: MONTH }
+        tokenType: total
+    - id: region
+      type: custom
+      params: { zone: eu }
+```
+
+The portal checks conditions with the same rules as the Platform API:
+
+- A plan has at most 20 conditions.
+- It has at most one of each built-in type. Each built-in type has a fixed `id`: `requests`, `tool-calls` or `tokens`.
+- A built-in condition has 1 to 10 limits. Each limit is a `count` per `timeAmount` `timeUnit`, where the unit is `MINUTE`, `HOUR`, `DAY` or `MONTH`. No two limits can cover the same length of time, so 60 `MINUTE` and 1 `HOUR` clash.
+- `onExceed` is `reject` (the default) or `allow`.
+- `tokenType` is `total` (the default), `prompt` or `completion`. It applies to token conditions only.
+- A custom condition has its own `id`, made of lowercase letters, digits and hyphens. Its `params` are key-value pairs, at most 4 KB.
+
+Sending `conditions` replaces all of the plan's conditions; `[]` removes them. Leaving it out keeps them.
+
+Older clients can still send `limits` alone. The `REQUEST_COUNT` and `EVENT_COUNT` limits that have a `timeUnit` then set the request-count condition, and the plan's other conditions stay as they were. Unlimited (`-1`) limits and other limit types are not kept. Responses still carry `limits`: the windows of the request-count condition.
+
+**Upgrading:** conditions are stored in the `subscription_plan_conditions` table, which replaces `subscription_plan_limits`. SQLite adds the table at startup. For PostgreSQL and SQL Server, re-run `schema.postgres.sql` or `schema.sqlserver.sql`; the scripts are safe to run again. Until then, plans keep only their request limits, and conditions of other types are refused. A plan saved before the upgrade reads its request and event limits as a request-count condition, and moves to the new table the next time it is saved.
 
 A paid plan carries its pricing in `spec.pricing`. Pricing is given only when the plan is created and can't be updated after that. Write amounts as quoted decimals, as in JSON. A usage price names an existing meter by its id in `meterId`; create the meter first.
 

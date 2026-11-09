@@ -137,6 +137,14 @@ test('an unlimited limit keeps -1 and a missing time unit stays null', () => {
     assert.deepStrictEqual(payload.limits, [{ limit_type: 'REQUEST_COUNT', limit_count: -1, time_unit: null, time_amount: 1 }]);
 });
 
+test('a plan loaded with conditions sends them; one loaded without leaves them out', () => {
+    const { events } = load();
+    const conditions = [{ id: 'tool-calls', type: 'tool-call-count', params: { limits: [{ count: 5, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' } }];
+    assert.deepStrictEqual(events.buildPlanPayload({ handle: 'gold', display_name: 'Gold', limits: [], conditions }).conditions, conditions);
+    assert.deepStrictEqual(events.buildPlanPayload({ handle: 'gold', display_name: 'Gold', limits: [], conditions: [] }).conditions, []);
+    assert.strictEqual('conditions' in events.buildPlanPayload({ handle: 'gold', display_name: 'Gold', limits }), false);
+});
+
 test('a deleted plan is sent with only its Platform API handle', async () => {
     const { events, calls } = load();
     await events.publishPlanDeleted('org-1', { uuid: 'p3', handle: 'h', ref_id: 'silver' }, {});

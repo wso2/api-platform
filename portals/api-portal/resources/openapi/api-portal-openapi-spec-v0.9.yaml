@@ -6076,9 +6076,18 @@ components:
           type: string
         description:
           type: string
+        conditions:
+          type: array
+          description: >-
+            The plan's conditions. A plan saved before conditions shows its REQUEST_COUNT and EVENT_COUNT limits as
+            a request-count condition.
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanCondition"
         limits:
           type: array
-          description: Rate/quota limits enforced for this plan. Empty when the plan is unlimited.
+          description: >-
+            The windows of the plan's request-count condition as REQUEST_COUNT limits, kept for older clients.
+            Empty when the plan has no request-count condition.
           items:
             type: object
             properties:
@@ -6322,6 +6331,41 @@ components:
           type: object
           description: Free-form organization configuration.
           additionalProperties: true
+    SubscriptionPlanCondition:
+      type: object
+      required:
+        - type
+        - params
+      description: >-
+        One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count) has the
+        id its type fixes (requests, tool-calls, tokens) and its windows as params: `{"limits": [{"count", "timeAmount",
+        "timeUnit"}], "onExceed", "tokenType"}`, with timeUnit one of MINUTE, HOUR, DAY or MONTH, onExceed reject
+        (default) or allow, and tokenType total (default), prompt or completion for a token-count condition only. A
+        custom condition has an id of its own (lowercase letters, digits and hyphens) and key-value pairs as params,
+        at most 4 KB.
+      properties:
+        id:
+          type: string
+          example: requests
+        type:
+          type: string
+          enum:
+            - request-count
+            - tool-call-count
+            - token-count
+            - custom
+        params:
+          type: object
+          additionalProperties: true
+      example:
+        id: requests
+        type: request-count
+        params:
+          limits:
+            - count: 100
+              timeAmount: 1
+              timeUnit: MINUTE
+          onExceed: reject
     SubscriptionPlanRequest:
       type: object
       example:
@@ -6329,11 +6373,15 @@ components:
         refId: string
         displayName: string
         description: string
-        limits:
-          - limitType: REQUEST_COUNT
-            limitCount: 10000
-            timeUnit: MINUTE
-            timeAmount: 1
+        conditions:
+          - id: requests
+            type: request-count
+            params:
+              limits:
+                - count: 10000
+                  timeAmount: 1
+                  timeUnit: MINUTE
+              onExceed: reject
       required:
         - displayName
       properties:
@@ -6361,11 +6409,23 @@ components:
           type: string
         description:
           type: string
+        conditions:
+          type: array
+          maxItems: 20
+          description: >-
+            The plan's conditions: at most one of each built-in type (request-count, tool-call-count, token-count)
+            and any number of custom conditions, up to 20. Replaces all of them on update, and [] removes them all;
+            omit it to keep them.
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanCondition"
         limits:
           type: array
           description: >-
-            Rate/quota limits enforced for this plan. Omit or leave empty for an unlimited plan. Replaces the
-            whole limit set on update.
+            Kept for older clients: use `conditions` instead. Sent without `conditions`, the REQUEST_COUNT and
+            EVENT_COUNT limits that have a timeUnit set the plan's request-count condition (the subscription rate
+            limit counts events as requests), and its other conditions are kept; an empty list removes the
+            request-count condition. Unlimited (-1) limits and other limit types are not kept. Ignored when
+            `conditions` is sent.
           items:
             type: object
             required:

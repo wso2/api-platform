@@ -27,7 +27,7 @@
                 data-name="{{planName}}"
                 data-display="{{displayName}}"
                 data-desc="{{description}}"
-                data-limits="{{{jsonAttr limits}}}"
+                data-conditions="{{{jsonAttr conditions}}}"
                 data-pricing="{{{jsonAttr pricing}}}"
                 data-refid="{{refId}}">
                 <td>
@@ -35,10 +35,10 @@
                   {{#if description}}<div style="font-size:.75rem;color:#637282;margin-top:2px;">{{description}}</div>{{/if}}
                 </td>
                 <td>
-                  {{#if limits.length}}
-                    {{#limits}}
+                  {{#if displayLimits.length}}
+                    {{#displayLimits}}
                     <span class="cfg-limit-badge">{{limitTypeLabel limitType}} · {{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{#unless (eq timeAmount 1)}}{{timeAmount}} {{/unless}}{{timeUnitLabel timeUnit}}{{/if}}</span>
-                    {{/limits}}
+                    {{/displayLimits}}
                   {{else}}
                     <span style="color:#9aa3af;font-size:.8rem;">—</span>
                   {{/if}}
@@ -54,7 +54,7 @@
                   <div class="cfg-row-actions">
                     <button class="cfg-icon-btn cfg-plan-edit-btn" type="button"
                       data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
-                      data-desc="{{description}}" data-limits="{{{jsonAttr limits}}}" data-pricing="{{{jsonAttr pricing}}}"
+                      data-desc="{{description}}" data-conditions="{{{jsonAttr conditions}}}" data-pricing="{{{jsonAttr pricing}}}"
                       data-refid="{{refId}}" title="Edit">
                       <i class="bi bi-pencil"></i>
                     </button>

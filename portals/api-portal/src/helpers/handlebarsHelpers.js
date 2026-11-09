@@ -79,7 +79,10 @@ const helpers = {
 
     // Subscription plan limit display helpers
     limitTypeLabel: (type) => {
-        const map = { REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens' };
+        const map = {
+            REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens',
+            TOOL_CALL_COUNT: 'tool calls', PROMPT_TOKEN_COUNT: 'prompt tokens', COMPLETION_TOKEN_COUNT: 'completion tokens',
+        };
         return map[String(type)] || String(type || '').toLowerCase().replace(/_/g, ' ');
     },
     timeUnitLabel: (unit) => {

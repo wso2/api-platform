@@ -25,6 +25,7 @@ const viewDao = require('../dao/viewDao');
 const orgContext = require('../utils/orgContext');
 const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
+const planConditions = require('../utils/subscriptionPlanConditions');
 const whDao = require('../dao/webhookSubscriberDao');
 const meterDao = require('../dao/meterDao');
 const billingConfigurationService = require('../services/billing/billingConfigurationService');
@@ -189,8 +190,13 @@ const loadSettingsPage = async (req, res) => {
                     timeAmount: l.time_amount,
                     limitCount: Number(l.limit_count),
                 })),
+                conditions: p.conditions || [],
                 pricing: p.pricing ? new PlanPricingDTO(p.pricing) : null,
-            })).map(p => ({ ...p, pricingText: pricingSummary(p.pricing, metersByHandle) }));
+            })).map(p => ({
+                ...p,
+                displayLimits: planConditions.displayLimits(p.conditions),
+                pricingText: pricingSummary(p.pricing, metersByHandle),
+            }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });
         }
