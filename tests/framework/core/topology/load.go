@@ -188,10 +188,23 @@ func LoadFile(path string, registry *components.Registry) (*Resolved, error) {
 	if err := decodeStrict(raw, &suite); err != nil {
 		return nil, fmt.Errorf("topology: in suite file %q: parsing suite: %w", path, err)
 	}
+	// declaredIn records where each block name is declared, so a name used twice is reported
+	// with both files rather than only the suite file.
+	declaredIn := make(map[string]string, len(suite.Blocks))
+	for _, block := range suite.Blocks {
+		declaredIn[block.Name] = filepath.Base(path)
+	}
 	for _, name := range suite.BlockFiles {
 		blocks, err := readBlockFile(filepath.Dir(path), name)
 		if err != nil {
 			return nil, fmt.Errorf("topology: in suite file %q: %w", path, err)
+		}
+		for _, block := range blocks {
+			if first, seen := declaredIn[block.Name]; seen {
+				return nil, fmt.Errorf("topology: in suite file %q: block %q is declared in both %q and %q",
+					path, block.Name, first, name)
+			}
+			declaredIn[block.Name] = name
 		}
 		suite.Blocks = append(suite.Blocks, blocks...)
 	}
@@ -218,6 +231,11 @@ func readBlockFile(dir, name string) ([]Block, error) {
 	}
 	if len(file.Blocks) == 0 {
 		return nil, fmt.Errorf("block file %q declares no blocks", name)
+	}
+	for i, block := range file.Blocks {
+		if strings.TrimSpace(block.Name) == "" {
+			return nil, fmt.Errorf("block file %q: block %d has no name", name, i+1)
+		}
 	}
 	return file.Blocks, nil
 }

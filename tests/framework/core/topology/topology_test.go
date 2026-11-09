@@ -927,7 +927,34 @@ blockFiles:
 			"blocks/two.yaml": "blocks:" + block("a"),
 		})
 		_, err := LoadFile(path, testRegistry(t))
-		require.ErrorContains(t, err, `duplicate block name "a"`)
+		require.ErrorContains(t, err, `block "a" is declared in both "blocks/one.yaml" and "blocks/two.yaml"`)
+	})
+
+	t.Run("a block file name that repeats a suite block is reported with both files", func(t *testing.T) {
+		path := writeSuite(t, head+"blocks:"+block("a")+"\nblockFiles: [blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a"),
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `block "a" is declared in both "suite.yaml" and "blocks/one.yaml"`)
+	})
+
+	t.Run("an unnamed block is reported with its file and position", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a") + `
+  - components: [{name: mock-jwks}]
+    runners: [{name: r, features: [features/unnamed.feature]}]
+`,
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `block file "blocks/one.yaml": block 2 has no name`)
+	})
+
+	t.Run("a malformed block file is reported with its name", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/bad.yaml]\n", map[string]string{
+			"blocks/bad.yaml": "blocks: [\n",
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `parsing block file "blocks/bad.yaml"`)
 	})
 
 	t.Run("a missing block file is an error", func(t *testing.T) {
