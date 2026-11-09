@@ -51,8 +51,9 @@ func (s *Steps) registerDeploySteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the Management Portal confirms (stopping|redeploying|deleting) deployment "([^"]*)"$`, s.confirms)
 	sc.Step(`^the user closes the drawer in the Management Portal$`, s.closeDrawer)
 	sc.Step(`^the deployment status on gateway "([^"]*)" becomes "([^"]*)"$`, s.deploymentStatusBecomes)
-	sc.Step(`^the Management Portal's "([^"]*)" button is (enabled|disabled)$`, s.buttonState)
-	sc.Step(`^the Management Portal offers (a|no) "([^"]*)" button$`, s.offersButton)
+	sc.Step(`^the Management Portal's "([^"]*)" (button|link) is (enabled|disabled)$`, s.buttonState)
+	sc.Step(`^the "([^"]*)" button on gateway "([^"]*)" in the Management Portal is (enabled|disabled)$`, s.gatewayButtonState)
+	sc.Step(`^the Management Portal offers (a|no) "([^"]*)" (button|link)$`, s.offersButton)
 	sc.Step(`^the gateway answers (\d+) to a "([^"]*)" request to "([^"]*)"$`, s.gatewayAnswers)
 	sc.Step(`^the gateway answers (\d+) to a "([^"]*)" request to "([^"]*)" with body:$`, s.gatewayAnswersWithBody)
 }
@@ -140,6 +141,23 @@ func (s *Steps) clickOnGateway(ctx context.Context, button, gateway string) erro
 
 // click presses a button anywhere on the page. An open drawer hides the page behind it from
 // role queries, so a button of the drawer is the one found.
+func (s *Steps) gatewayButtonState(ctx context.Context, button, gateway, state string) error {
+	card, err := s.gatewayCard(ctx, gateway)
+	if err != nil {
+		return err
+	}
+	locator := card.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: button, Exact: playwright.Bool(true)})
+	if state == "enabled" {
+		err = s.expect.Locator(locator).ToBeEnabled()
+	} else {
+		err = s.expect.Locator(locator).ToBeDisabled()
+	}
+	if err != nil {
+		return fmt.Errorf("the %q button on gateway %q is not %s: %w", button, gateway, state, err)
+	}
+	return nil
+}
+
 func (s *Steps) click(ctx context.Context, button string) error {
 	locator, err := s.button(ctx, button)
 	if err != nil {
@@ -265,36 +283,46 @@ func (s *Steps) deploymentStatusBecomes(ctx context.Context, gateway, status str
 	return nil
 }
 
-func (s *Steps) buttonState(ctx context.Context, name, state string) error {
-	locator, err := s.button(ctx, name)
+func (s *Steps) buttonState(ctx context.Context, name, role, state string) error {
+	resolved, err := uivalue.Expand(ctx, name)
 	if err != nil {
 		return err
 	}
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return err
+	}
+	locator := page.GetByRole(playwright.AriaRole(role), playwright.PageGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)})
 	if state == "enabled" {
 		err = s.expect.Locator(locator).ToBeEnabled()
 	} else {
 		err = s.expect.Locator(locator).ToBeDisabled()
 	}
 	if err != nil {
-		return fmt.Errorf("the %q button is not %s: %w", name, state, err)
+		return fmt.Errorf("the %q %s is not %s: %w", resolved, role, state, err)
 	}
 	return nil
 }
 
-// offersButton checks a button is there or absent. Features check absence after the page
-// shows what it loaded, so absence is not mistaken for a page still loading.
-func (s *Steps) offersButton(ctx context.Context, which, name string) error {
-	locator, err := s.button(ctx, name)
+// offersButton checks a button or link is there or absent. Features check absence after the
+// page shows what it loaded, so absence is not mistaken for a page still loading.
+func (s *Steps) offersButton(ctx context.Context, which, name, role string) error {
+	resolved, err := uivalue.Expand(ctx, name)
 	if err != nil {
 		return err
 	}
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return err
+	}
+	locator := page.GetByRole(playwright.AriaRole(role), playwright.PageGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)})
 	if which == "a" {
 		err = s.expect.Locator(locator).ToBeVisible()
 	} else {
 		err = s.expect.Locator(locator).ToHaveCount(0)
 	}
 	if err != nil {
-		return fmt.Errorf("expected %s %q button: %w", which, name, err)
+		return fmt.Errorf("expected %s %q %s: %w", which, resolved, role, err)
 	}
 	return nil
 }

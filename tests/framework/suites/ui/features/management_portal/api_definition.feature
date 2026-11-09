@@ -22,7 +22,7 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
   I want to create an API from my OpenAPI definition and upload a new one when it changes
   So that the console keeps an API's operations in step with its contract
 
-  @APIDEF-010 @APIDEF-009 @APIDEF-012 @APIDEF-001
+  @APIDEF-010 @APIDEF-009 @APIDEF-012 @APIDEF-001 @CONSOLE-003 @CONSOLE-004
   Scenario: Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones
     Given I generate a unique handle from "apidef-ui-project" and store it as "project"
     And I generate a unique handle from "apidef-ui-file" and store it as "api"
@@ -35,12 +35,17 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user clicks "Upload" in the Management Portal
     And the user uploads spec fixture "invalid.yaml" in the Management Portal
     Then the Management Portal shows "Validation failed:"
+    And the Management Portal's "Continue" button is disabled
     When the user uploads spec fixture "swagger2.yaml" in the Management Portal
     Then the Management Portal shows "Swagger 2.x is not allowed"
+    And the Management Portal's "Continue" button is disabled
     When the user uploads spec fixture "empty-paths.yaml" in the Management Portal
     Then the Management Portal shows "API contract must contain at least one operation."
+    And the Management Portal's "Continue" button is disabled
     When the user uploads a generated spec of 65537 bytes in the Management Portal
     Then the Management Portal shows "The OpenAPI specification exceeds the maximum allowed size."
+    And the Management Portal's "Continue" button is disabled
+    And project "${CTX:project}" has exactly these REST APIs on the control plane: ""
     When the user uploads spec fixture "petstore-v1.yaml" in the Management Portal
     And the user clicks "Continue" in the Management Portal
     And the user enters "${CTX:api}" as the "Name" in the Management Portal
@@ -50,12 +55,15 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user enters "http://testbench:3000" as the "Endpoint" in the Management Portal
     And the REST API "${CTX:api}" created in the Management Portal is deleted after the scenario
     And the user clicks "Create" in the Management Portal
-    Then the Management Portal shows "/pets/{petId}"
-    And the Management Portal shows "/store/inventory"
+    Then the API overview lists exactly these resources:
+      | GET  | /pets            |
+      | POST | /pets            |
+      | GET  | /pets/{petId}    |
+      | GET  | /store/inventory |
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/definition"
     Then the Management Portal shows "Pets and the store's inventory."
 
-  @APIDEF-002
+  @APIDEF-002 @CONSOLE-002
   Scenario: Journey: a publisher creates an API from an OpenAPI URL
     Given I generate a unique handle from "apidef-ui-project" and store it as "project"
     And I generate a unique handle from "apidef-ui-url" and store it as "api"
@@ -70,14 +78,22 @@ Feature: The Management Portal creates an API from an OpenAPI definition and rep
     And the user enters "${CTX:specUrl}" as the "URL for API Contract" in the Management Portal
     And the user submits the "URL for API Contract" field in the Management Portal
     And the user clicks "Continue" in the Management Portal
-    And the user enters "${CTX:api}" as the "Name" in the Management Portal
-    And the user enters "v1.0" as the "Version" in the Management Portal
-    And the user enters "/${CTX:api}" as the "Context" in the Management Portal
+    Then the "Name" field in the Management Portal holds "Petstore"
+    And the "Version" field in the Management Portal holds "1.0.0"
+    And the "Description" field in the Management Portal holds "Pets and the store's inventory."
+    # A unique name: the control plane refuses a second API with the same name and version.
+    When the user enters "${CTX:api}" as the "Name" in the Management Portal
     And the user enters "http://testbench:3000" as the "Endpoint" in the Management Portal
     And the REST API "${CTX:api}" created in the Management Portal is deleted after the scenario
     And the user clicks "Create" in the Management Portal
-    Then the Management Portal shows "/pets/{petId}"
-    And the Management Portal shows "/store/inventory"
+    # The console shows a version with a leading "v".
+    Then the API overview shows version "v1.0.0"
+    And the API overview shows description "Pets and the store's inventory."
+    And the API overview lists exactly these resources:
+      | GET  | /pets            |
+      | POST | /pets            |
+      | GET  | /pets/{petId}    |
+      | GET  | /store/inventory |
 
   @APIDEF-004 @APIDEF-005
   Scenario: Journey: a publisher replaces a deployed API's definition and redeploys it

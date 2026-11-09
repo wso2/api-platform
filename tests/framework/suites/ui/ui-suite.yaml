@@ -131,13 +131,13 @@ blocks:
 
   # Management Portal deployment lifecycle and API definitions: the console against the real
   # control plane and a real gateway, so each deployment's status follows the gateway's
-  # acknowledgement. platform-api trusts the testbench specs service and caps a definition at
-  # 64 KiB (overlays/platform-api-openapi-import.toml).
+  # acknowledgement. platform-api trusts the testbench specs service, caps a definition at 64 KiB
+  # and lets the Test page's relay reach the gateway (overlays/platform-api-management-portal.toml).
   - name: management-portal-deploy
     parallel: 2
     components:
       - name: platform-api
-        overlay: tests/framework/core/catalog/overlays/platform-api-openapi-import.toml
+        overlay: tests/framework/core/catalog/overlays/platform-api-management-portal.toml
       - name: platform-gateway
         dependsOn: [platform-api]
       - name: testbench
@@ -153,6 +153,52 @@ blocks:
         tags: "~@known-issue"
         features:
           - features/management_portal/api_definition.feature
+      - name: api-creation
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/create_api.feature
+      - name: api-development
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/develop_api.feature
+      - name: api-testing
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/test_api.feature
+      - name: api-permissions
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/permissions.feature
+      - name: gateway-provisioning
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/gateways.feature
+
+  # Management Portal publishing: the console publishes a deployed API to a real API Portal the
+  # control plane trusts (overlays/platform-api-management-portal-publish.toml).
+  - name: management-portal-publish
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/platform-api-management-portal-publish.toml
+      - name: api-portal
+        db: postgres
+        dependsOn: [platform-api]
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+      - name: testbench
+      - name: api-control-plane
+        dependsOn: [platform-api]
+      - name: browser
+    runners:
+      - name: api-publishing
+        tags: "~@known-issue"
+        features:
+          - features/management_portal/publish_api.feature
 
   # The AI Workspace journey topology: the workspace UI against the real control plane,
   # a real AI gateway registered with it, the testbench as every upstream (its openai

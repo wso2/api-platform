@@ -81,6 +81,9 @@ type Topology struct {
 	// stacks contains compose-backed components addressable by service name.
 	stacks map[string]*ComposeStack
 
+	// repoRoot resolves the repository paths of the block's definitions and overlays.
+	repoRoot string
+
 	// logWriter, when non-nil, receives every component's stdout/stderr for the block's
 	// whole lifetime. Nil in a default run — the suite decides whether logs are captured.
 	logWriter *logcapture.Writer
@@ -256,6 +259,7 @@ func BootBlock(
 	}
 
 	t.Admin = actor.Administrator()
+	t.repoRoot = repoRoot
 
 	// Provision storage before starting components.
 	storage, err := Provision(ctx, DatabaseOptions{
