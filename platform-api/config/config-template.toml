@@ -56,7 +56,9 @@
 [platform_api]
 
 # Resource paths loaded at startup. Defaults match the published container
-# image — override only for a custom layout.
+# image — override only for a custom layout. An overridden openapi_spec_path must
+# be the spec of the same release as the binary: authorization denies any route
+# the spec does not declare.
 db_schema_path                = "./internal/database/schema.sql"
 openapi_spec_path             = "./resources/openapi.yaml"
 llm_template_definitions_path = "./resources/default-llm-provider-templates"
@@ -82,6 +84,31 @@ level = "info"   # debug | info | warn | error
 
 # Log encoding. Use "json" when shipping logs to an aggregator.
 format = "text"   # text | json
+
+# Health check behaviour (/health and /ready). Every key is optional; the values shown are
+# the defaults.
+[platform_api.health]
+# Clients allowed to call the health endpoints. The default, "*", allows every client.
+# To restrict access, list IP addresses or CIDR ranges, comma-separated, for example
+# "127.0.0.1,::1,10.0.0.0/8"; any other client then gets 403. Keep the addresses your
+# probes and load balancers call from.
+allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "*" }}'
+# cache_ttl = "3s"    # how long an evaluated health result is reused
+
+# The database check decides from the outcomes of the platform's own database operations
+# and pings the database itself, at most once per idle_period, only while they are too few to decide from.
+# During startup_wait the cause is logged at WARN; a rejected login, a PostgreSQL database that
+# does not exist or an untrusted server certificate ends startup at once instead of waiting.
+# SQL Server reports a missing database the same way as one still recovering, so startup waits.
+[platform_api.health.database]
+# check_timeout   = '{{ env "APIP_CP_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for one run of the check and its ping; keep below the probe timeout
+# startup_wait    = '{{ env "APIP_CP_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting
+# failure_window  = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # how far back operation outcomes are counted (at most 1h)
+# failure_ratio   = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that reports the database down
+# min_attempts    = '{{ env "APIP_CP_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
+# idle_period     = '{{ env "APIP_CP_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # with too few operations to decide, the check pings once per period
+# pool_saturation = '{{ env "APIP_CP_HEALTH_DATABASE_POOL_SATURATION" "0.9" }}'  # share of the pool in use, with callers waiting, that counts as saturated
+# pool_wait_limit = '{{ env "APIP_CP_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated before the database is reported down
 
 # ---------------------------------------------------------------------------
 # Security
@@ -190,6 +217,10 @@ user_id       = "sub"             # claim used as the user's unique ID
 username      = "username"
 email         = "email"
 scope         = "scope"           # space-separated scope string
+# Claim carrying the user's human-readable name (OIDC "name"). Stored beside the
+# user's IdP id; responses show it as createdBy/updatedBy. Optional: a token without
+# it still works, and responses fall back to the IdP id.
+display_name  = "name"
 # Claim carrying the user's roles. Read in role authorization mode, and it is the
 # claim the file-mode login endpoint signs the user's roles into. Default suits
 # Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles". A dotted path works
@@ -303,6 +334,7 @@ skip_validation = false
 # and SQL Server, apply the service_accounts and service_account_revocations
 # tables from the schema file first. Turning it off again refuses every
 # service-account token; accounts are kept and work again when turned back on.
+# Needs auth.authorization.role_to_scope_mapping: an account's roles come from it.
 enabled = false
 # Lifetime of a service-account token.
 token_ttl = "15m"
@@ -461,6 +493,12 @@ timeout_interval = 20   # seconds between timeout check sweeps
 timeout_duration = 60   # seconds before a stuck deployment is timed out
 
 # ---------------------------------------------------------------------------
+# Organizations — how a new organization is set up
+# ---------------------------------------------------------------------------
+[platform_api.organizations]
+create_default_project = true   # create a "default" project with every new organization
+
+# ---------------------------------------------------------------------------
 # API Portal publication — limits on the calls made to an API Portal
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "5s". Network errors and 5xx are retried, 4xx are not.
@@ -596,6 +634,43 @@ max_entries  = 512     # LRU cap on cached Agent proxies (0 = cache nothing)
 max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
 
 # ---------------------------------------------------------------------------
+# Gateway relay — the Test console's requests to a deployed REST API
+# ---------------------------------------------------------------------------
+# POST /gateway-relay/invoke sends the console's test request to a gateway the
+# REST API is deployed to and returns the gateway's response as data. The caller names the REST API and the gateway,
+# never a URL; the target is that gateway's endpoint plus the context of the API's
+# deployment there, sent with the deployment's main vhost as Host when it has one.
+[platform_api.gateway_relay]
+request_timeout    = "30s"     # from the test request's arrival to the end of the gateway call: reading the request and finding the target take from it; must stay below server.timeouts.write
+max_request_bytes  = 2097152   # 2 MiB decoded request body (the JSON request may be up to twice that: base64, escaping)
+max_response_bytes = 8388608   # 8 MiB; a longer gateway response is truncated and flagged, not failed
+max_concurrent     = 32        # relayed calls in flight at once, per replica
+max_pending        = 64        # calls that may wait for a slot before new ones get 503 (as does one still waiting at request_timeout)
+ca_file            = ""        # PEM bundle to trust for gateway certificates
+tls_skip_verify    = false     # development only; exclusive with ca_file
+
+# Where the relay may connect. A gateway's endpoint is tenant-settable data, so
+# this list is how a deployment says what a gateway address may look like.
+#
+#   1. Nothing is reachable unless an allow_hosts entry matches; an empty list
+#      refuses every target.
+#   2. Always refused, whatever the list says: link-local (the 169.254.169.254
+#      metadata endpoint), the unspecified address, multicast and broadcast,
+#      and the IPv6 ranges that route onward to IPv4 (6to4 2002::/16, NAT64
+#      64:ff9b::/96). Checked against every resolved address at dial time.
+#
+# Private, loopback and ClusterIP addresses are dialable when listed, because
+# that is where gateways live. Entries are "[scheme://]host[:port]"; scheme and
+# port constrain only when written, and "*" in the host matches any run of
+# characters ("*.gw.example.com" matches a.gw.example.com, not gw.example.com):
+#
+#   allow_hosts = ["https://*.gw.svc.cluster.local:9443", "https://gw.api.example.com"]
+#
+# Read below from APIP_CP_GATEWAY_RELAY_ALLOW_HOSTS, comma-separated.
+[platform_api.gateway_relay.egress]
+allow_hosts = '{{ env "APIP_CP_GATEWAY_RELAY_ALLOW_HOSTS" "https://localhost:8443" }}'
+
+# ---------------------------------------------------------------------------
 # EventHub — multi-replica HA event delivery
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "3s", "10m", "1h". All must be positive.
@@ -620,6 +695,10 @@ secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
 signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature
+# false (default): a delivery without secret_hash is rejected before any signature check.
+# true: accept it (portal older than the field), verified against each of the organization's
+# portal secrets, then the shared secret. Enable only while such a portal is still in use.
+legacy_shared_secret = false
 
 # ---------------------------------------------------------------------------
 # Read-only (maintenance) mode — TEMPORARY, v1 → v2 migration (TEMP-READ-ONLY-MODE)

@@ -33,7 +33,7 @@ const roleScopeMap = require('./roleScopeMap');
 require('../keymanagers/drivers'); // fills the driver registry before `type` is checked
 const { validateKeyManagerConfig } = require('./keyManagerConfig');
 const { assertDialable } = require('../keymanagers/core/httpClient');
-// utils/constants.js has no imports of its own, so pulling the route constants in here
+// utils/constants.js imports nothing from this project, so pulling the route constants in here
 // cannot create a cycle back through the config loader.
 const routeConstants = require('../utils/constants');
 // db/rebind.js is a pure helper module with no requires of its own (db/driver.js is
@@ -861,11 +861,16 @@ function validateArtifactConfig(artifacts) {
 validateArtifactConfig(config.artifacts);
 
 /**
- * Fail-closed startup check: the billing settings below must be whole numbers of at least 1, and
- * the Moesif keys set in config must come as a pair, for one Moesif application, and only outside
- * multi-organization mode.
+ * Fail-closed startup check: monetization.disabled must be true or false, the billing settings
+ * below must be whole numbers of at least 1, and the Moesif keys set in config must come as a pair,
+ * for one Moesif application, and only outside multi-organization mode.
  */
 function validateBillingConfig(cfg) {
+    const disabled = cfg.monetization?.disabled;
+    if (typeof disabled !== 'boolean') {
+        process.stderr.write(`[FATAL] monetization.disabled must be true or false, got ${JSON.stringify(disabled)}.\n`);
+        process.exit(1);
+    }
     const billing = cfg.billing;
     const settings = {
         'billing.stripe.webhook_signature_tolerance_sec': billing?.stripe?.webhookSignatureToleranceSec,
@@ -938,9 +943,7 @@ const AUTHORIZATION_MODES = ['scope', 'role'];
 // The OpenAPI document apiPortalRouter serves /api/v0.9 from — the authority on
 // which dp:* scopes exist, so a grant table naming one that isn't declared there
 // can be rejected at startup rather than denying requests later.
-const PORTAL_SPEC_PATH = path.join(
-    __dirname, '..', '..', 'docs', 'api-portal-openapi-spec-v0.9.yaml'
-);
+const PORTAL_SPEC_PATH = routeConstants.OPENAPI_SPEC_PATH;
 
 /**
  * Rejects config keys retired when authentication and authorization were split into

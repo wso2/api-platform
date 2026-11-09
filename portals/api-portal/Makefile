@@ -33,7 +33,7 @@ API_PORTAL_IMAGE := $(DOCKER_REGISTRY)/api-portal
 REPO_ROOT         := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR      := $(REPO_ROOT)/docs/rest-apis/api-portal
-OPENAPI_SPEC      := docs/api-portal-openapi-spec-v0.9.yaml
+OPENAPI_SPEC      := resources/openapi/api-portal-openapi-spec-v0.9.yaml
 
 .DEFAULT_GOAL := help
 

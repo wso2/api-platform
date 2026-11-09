@@ -324,7 +324,7 @@ describe('organization-level items', () => {
   });
 
   /*
-   * Manage replaced the Settings link: both of its pages are organization-scoped,
+   * Manage replaced the Settings link: all of its pages are organization-scoped,
    * so it points at the organization's tabs at every scope and never gates.
    */
   it('points at the organization-level pages at every scope', () => {
@@ -334,8 +334,10 @@ describe('organization-level items', () => {
     expect(children?.map((child) => child.id)).toEqual([
       'manage-subscription-plans',
       'manage-meters',
+      'manage-service-accounts',
     ]);
     expect(children?.[1].to(atApi())).toBe(`${ORG}/meters`);
+    expect(children?.[2].to(atApi())).toBe(`${ORG}/service-accounts`);
   });
 
   it('lights the page entry, not the Manage parent, on either page', () => {
@@ -346,6 +348,15 @@ describe('organization-level items', () => {
     expect(plans.match?.(`${ORG}/meters`)).toBe(false);
     expect(meters.match?.(`${ORG}/meters`)).toBe(true);
     expect(meters.match?.(`${ORG}/settings`)).toBe(false);
+  });
+
+  it('lights Service Accounts on its own page only', () => {
+    const accounts = definitionFor('manage').children?.find(
+      (child) => child.id === 'manage-service-accounts',
+    );
+    expect(accounts?.match?.(`${ORG}/service-accounts`)).toBe(true);
+    expect(accounts?.match?.(`${ORG}/subscription-plans`)).toBe(false);
+    expect(accounts?.isVisible?.(atOrg()) ?? true).toBe(true);
   });
 });
 
@@ -393,6 +404,13 @@ describe('Manage menu', () => {
       (child) => child.id === 'manage-subscription-plans',
     );
     expect(plans?.isVisible?.(atOrg()) ?? true).toBe(true);
+  });
+
+  it('lists Develop, Deploy, Test, then Publish', () => {
+    const [develop, deploy, test, publish] = ['develop', 'deploy', 'test', 'publish'].map(definitionFor);
+    expect(develop.order).toBeLessThan(deploy.order);
+    expect(deploy.order).toBeLessThan(test.order);
+    expect(test.order).toBeLessThan(publish.order);
   });
 
   it('sits in the same section as Insights and Observability, after them', () => {

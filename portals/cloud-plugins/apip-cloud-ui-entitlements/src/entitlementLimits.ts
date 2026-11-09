@@ -30,7 +30,10 @@ import type { Entitlement, EntitlementSummary, ProductEntitlement } from './enti
 /** The product this console's subscription is for. */
 export const PRODUCT = 'api-platform';
 
-/** No ceiling, in the host's vocabulary. The API says `null`; the host says -1. */
+/**
+ * No ceiling, in the host's vocabulary. The API says so with an `unlimited`
+ * enforcement mode, or by carrying no block point; the host says -1.
+ */
 const UNLIMITED = -1;
 
 /** The metered interface type. MCP, LLM and agent proxies are not metered. */
@@ -93,39 +96,87 @@ export function productOf(
   return products.find((p) => p.product === PRODUCT) ?? (products.length === 1 ? products[0] : undefined);
 }
 
-function byCode(product: ProductEntitlement | undefined): Map<string, Entitlement> {
+/**
+ * The product's quota meters by code. Feature entitlements are dropped: they
+ * carry `enabled`, not a quota, and reading one as a cap would invent a limit.
+ */
+export function byCode(product: ProductEntitlement | undefined): Map<string, Entitlement> {
   const map = new Map<string, Entitlement>();
   for (const e of product?.entitlements ?? []) {
-    if (e?.name) map.set(e.name, e);
+    if (e?.name && e.type !== 'feature') map.set(e.name, e);
   }
   return map;
 }
 
 /**
+ * What the meter counts today. `quota.used` and the top-level `used` are the
+ * same number whenever both are there; the top level is the only one left for
+ * a past billing period.
+ */
+export function usedOf(entitlement: Entitlement | undefined): number {
+  return entitlement?.quota?.used ?? entitlement?.used ?? 0;
+}
+
+/**
+ * The value at which billing starts refusing, or `undefined` when nothing
+ * stops this meter.
+ *
+ * `quota.hard_limit` is that point in both modes — the quota in hard mode, the
+ * ceiling in soft mode — so a soft meter blocks at its ceiling and not at the
+ * point where overage merely starts being charged.
+ *
+ * Absent for three different reasons, all of which must read as uncapped: an
+ * `unlimited` plan, a soft meter with no ceiling, and a meter billing could
+ * resolve no limit for. The last is a failed read, and a failed read must
+ * never cap: the control plane refuses an over-limit create regardless.
+ */
+export function blockPointOf(entitlement: Entitlement | undefined): number | undefined {
+  if (!entitlement) return undefined;
+  if (entitlement.enforcement?.mode === 'unlimited') return undefined;
+  const hardLimit = entitlement.quota?.hard_limit;
+  return typeof hardLimit === 'number' ? hardLimit : undefined;
+}
+
+/**
+ * The quota a usage row should name: where overage starts on a soft meter,
+ * the block point otherwise. `undefined` when the meter has neither.
+ */
+export function displayQuotaOf(entitlement: Entitlement | undefined): number | undefined {
+  if (entitlement?.enforcement?.mode === 'soft') {
+    const softLimit = entitlement.quota?.soft_limit;
+    if (typeof softLimit === 'number') return softLimit;
+  }
+  return blockPointOf(entitlement);
+}
+
+/**
  * How much headroom a meter has, as a number `min()` can compare.
  *
- * `Infinity` means unlimited — both an explicit `null` remaining and an absent
- * metric. An absent metric is *not* a cap: billing omits meters a plan does not
- * define, and treating that as zero would block creation outright.
+ * `Infinity` means unlimited — an `unlimited` mode, a meter with no block
+ * point, or an absent metric. An absent metric is *not* a cap: billing omits
+ * meters a plan does not define, and treating that as zero would block
+ * creation outright.
  */
 function remainingOf(entitlement: Entitlement | undefined): number {
   if (!entitlement) return Infinity;
-  if (entitlement.remaining === null) return Infinity;
-  if (typeof entitlement.remaining === 'number') {
-    // An organization grandfathered above a lowered limit reports negative.
-    return Math.max(0, entitlement.remaining);
+  const blockPoint = blockPointOf(entitlement);
+  if (blockPoint === undefined) return Infinity;
+  if (typeof entitlement.quota?.remaining === 'number') {
+    // Billing clamps this at 0 already; clamp again for an organization
+    // grandfathered above a lowered limit on an older deployment.
+    return Math.max(0, entitlement.quota.remaining);
   }
-  // No `remaining`: derive it, still treating a null/absent limit as unlimited.
-  if (entitlement.limit === null || entitlement.limit === undefined) return Infinity;
-  return Math.max(0, entitlement.limit - (entitlement.used ?? 0));
+  // `remaining` rides along with a block point, but derive it rather than
+  // assume headroom if it ever goes missing.
+  return Math.max(0, blockPoint - usedOf(entitlement));
 }
 
-/** The host's `{max, used}` for one meter, with `null` limit becoming -1. */
+/** The host's `{max, used}` for one meter, with no block point becoming -1. */
 function toLimit(entitlement: Entitlement): ResourceLimit {
-  const unlimited = entitlement.limit === null || entitlement.limit === undefined;
+  const blockPoint = blockPointOf(entitlement);
   return {
-    max: unlimited ? UNLIMITED : entitlement.limit!,
-    used: entitlement.used ?? 0,
+    max: blockPoint ?? UNLIMITED,
+    used: usedOf(entitlement),
   };
 }
 
@@ -169,7 +220,7 @@ function bindingLimit(
   if (!entitlement) return undefined;
 
   if (remainingOf(entitlement) === Infinity) {
-    return { max: UNLIMITED, used: entitlement.used ?? 0 };
+    return { max: UNLIMITED, used: usedOf(entitlement) };
   }
 
   const limit = toLimit(entitlement);

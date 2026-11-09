@@ -6,3 +6,11 @@ root_ca_file = "/app/data/certs/api-portal-ca.pem"
 # with a few kilobytes of documents. The content of the other scenarios stays far below it.
 [platform_api]
 publication_archive_max_bytes = 4096
+
+# Enables the platform-api webhook receiver for API Portal integration tests. These scenarios
+# send events with no secret_hash (they predate the webhook-secret feature), so the shared-secret
+# fallback must stay on.
+[platform_api.webhook]
+enabled = true
+secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'
+legacy_shared_secret = true

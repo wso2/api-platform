@@ -119,7 +119,7 @@ Utils: `formatRelativeTime`, `pxToRem`, `alpha`.
 ### Theming
 
 `OxygenUIThemeProvider` is mounted once, directly in `App.tsx`, with a one-entry registry
-(`AcrylicOrangeTheme`) declared at module scope in that same file — module scope because the
+(`ChoreoLabsTheme`) declared at module scope in that same file — module scope because the
 provider keys a theme-resolving effect on the array's identity. Don't call the provider anywhere
 else, and don't wrap it in an app-level provider of your own.
 

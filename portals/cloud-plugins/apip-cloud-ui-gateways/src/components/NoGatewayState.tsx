@@ -239,27 +239,27 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({ onAdd, blocked }) => (
       <GatewayFlow />
     </Box>
     <Typography variant="h4" sx={{ mb: 0.5, fontWeight: 500 }}>
-      Connect your first gateway
+      Connect your first API gateway
     </Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mb: 4, opacity: 0.65 }}>
-      A gateway routes traffic to your APIs in an environment. Choose how you want to run it.
+      An API gateway routes traffic to your APIs in an environment. Choose how you want to run it.
     </Typography>
     <Card sx={{ border: '1px solid', borderColor: 'divider', textAlign: 'left', overflow: 'hidden' }}>
       <Option
         primary
         icon={<Server size={20} />}
-        title="Self-hosted gateway"
-        description="Run the gateway in your own infrastructure with full control over network, data and scaling."
-        action="Add self-hosted gateway"
+        title="Self-hosted API gateway"
+        description="Run the API gateway in your own infrastructure with full control over network, data and scaling."
+        action="Add self-hosted API gateway"
         onClick={() => onAdd('self-hosted')}
         disabled={Boolean(blocked?.['self-hosted'])}
         disabledMessage={blocked?.['self-hosted']}
       />
       <Option
         icon={<Cloud size={20} />}
-        title="WSO2 managed gateway"
-        description="A gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
-        action="Add Cloud gateway"
+        title="WSO2 managed API gateway"
+        description="An API gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
+        action="Add Cloud API gateway"
         onClick={() => onAdd('managed')}
         disabled={Boolean(blocked?.managed)}
         disabledMessage={blocked?.managed}

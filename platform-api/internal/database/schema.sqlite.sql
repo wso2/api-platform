@@ -809,6 +809,42 @@ CREATE TABLE IF NOT EXISTS secret_scopes (
 
 CREATE INDEX IF NOT EXISTS idx_secret_scopes_scope ON secret_scopes(scope, scope_value);
 
+-- Org-level managed secret metadata (e.g. per API portal webhook secret).
+-- The secret values themselves live in webhook_secrets, one row per rotation version.
+CREATE TABLE IF NOT EXISTS webhook_secrets_metadata (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    organization_uuid VARCHAR(40)   NOT NULL,
+    handle            VARCHAR(40)   NOT NULL,
+    name              VARCHAR(255)  NOT NULL,
+    type              VARCHAR(20)   NOT NULL DEFAULT 'PORTAL',
+    last_version      INTEGER       NOT NULL DEFAULT 0,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_uuid, handle),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+-- Versioned, encrypted webhook secret values. Rows are immutable once written
+-- (rotation inserts a new version), so there are no updated_* columns.
+CREATE TABLE IF NOT EXISTS webhook_secrets (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    secret_uuid  VARCHAR(40)   NOT NULL,
+    secret_version    INTEGER       NOT NULL,
+    secret_enc        BLOB          NOT NULL,
+    secret_hash       VARCHAR(255)  NOT NULL,
+    masked_secret     VARCHAR(255)  NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (secret_uuid, secret_version),
+    FOREIGN KEY (secret_uuid) REFERENCES webhook_secrets_metadata(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_secrets_secret_hash ON webhook_secrets(secret_hash);
+
 -- Pre-computed secret handle references per deployed artifact per gateway.
 -- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.
 -- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
@@ -832,11 +868,16 @@ CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
     ON artifact_secret_refs(organization_uuid, gateway_id);
 
 -- Maps our internal user UUID to the IdP actor identity. Audit columns store the
--- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
+-- UUID; events resolve it back to idp_id, responses to display_name (else idp_id).
+-- No FK; no empty-idp_id rows.
+-- display_name is the user's human-readable name, taken from the configured token
+-- claim (auth.claim_mappings.display_name) for display only; NULL until a token
+-- carries it, and never used for matching or authorization.
 CREATE TABLE IF NOT EXISTS user_idp_references (
-    uuid       VARCHAR(40)  PRIMARY KEY,
-    idp_id     VARCHAR(255) NOT NULL,
-    created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    uuid         VARCHAR(40)  PRIMARY KEY,
+    idp_id       VARCHAR(255) NOT NULL,
+    created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    display_name VARCHAR(255),
     UNIQUE(idp_id)
 );
 

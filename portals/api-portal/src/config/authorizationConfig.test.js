@@ -452,7 +452,7 @@ test('the shipped config pins page tiers to roles the shipped grant table define
     // reach the REST API and still be refused the settings page.
     const roleScopeMap = require('./roleScopeMap');
     const table = roleScopeMap.loadRoleScopeMap(SHIPPED_MAPPING_PATH,
-        path.join(PROJECT_ROOT, 'docs', 'api-portal-openapi-spec-v0.9.yaml'));
+        require('../utils/constants').OPENAPI_SPEC_PATH);
     const shipped = fs.readFileSync(path.join(PROJECT_ROOT, 'configs', 'config.toml'), 'utf8');
     // Scope the scan to the portal_roles table so an `admin = ...` key in some other
     // table can never be mistaken for a page tier.

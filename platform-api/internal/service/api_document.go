@@ -181,14 +181,8 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 		return "", apperror.ValidationFailed.New("invalid document type")
 	}
 	if req.Type == constants.DocumentTypeOther {
-		trimmed := strings.TrimSpace(req.OtherTypeName)
-		if trimmed != "" {
-			if constants.ForbiddenOtherTypeNames[strings.ToLower(trimmed)] {
-				return "", apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
-			}
-			if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(trimmed) > maxName {
-				return "", apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
- 			}
+		if err := validateOtherTypeName(strings.TrimSpace(req.OtherTypeName)); err != nil {
+			return "", err
 		}
 	}
 	req.Type = resolveStoredDocType(req.Type, req.OtherTypeName)
@@ -198,8 +192,8 @@ func (s *APIDocumentService) CreateApiDocument(req *dto.CreateAPIDocumentRequest
 	if len(req.DisplayName) > maxDocDisplayNameLen {
 		return "", apperror.ValidationFailed.New(fmt.Sprintf("displayName must be at most %d characters", maxDocDisplayNameLen))
 	}
-	if len(req.FileName) > maxDocFileNameLen {
-		return "", apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
+	if err := validateDocFileName(req.FileName); err != nil {
+		return "", err
 	}
 	if req.Handle != "" {
 		if err := utils.ValidateHandle(req.Handle); err != nil {
@@ -455,14 +449,8 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 			return apperror.ValidationFailed.New("invalid document type")
 		}
 		if newType == constants.DocumentTypeOther {
-			trimmed := strings.TrimSpace(req.OtherTypeName)
-			if trimmed != "" {
-				if constants.ForbiddenOtherTypeNames[strings.ToLower(trimmed)] {
-					return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
-				}
-				if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(trimmed) > maxName {
-					return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
-				}
+			if err := validateOtherTypeName(strings.TrimSpace(req.OtherTypeName)); err != nil {
+				return err
 			}
 		}
 		updatedDocument.Type = resolveStoredDocType(newType, req.OtherTypeName)
@@ -478,8 +466,8 @@ func (s *APIDocumentService) UpdateApiDocument(req *dto.UpdateAPIDocumentRequest
 		updatedDocument.DisplayName = trimmed
 	}
 	if req.FileName != nil {
-		if len(*req.FileName) > maxDocFileNameLen {
-			return apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
+		if err := validateDocFileName(*req.FileName); err != nil {
+			return err
 		}
 		updatedDocument.FileName = *req.FileName
 	}
@@ -521,19 +509,23 @@ func (s *APIDocumentService) ValidateOpenAPISpec(specContent []byte) api.Validat
 
 // ExtractOperationsFromSpec extracts operations from an OpenAPI spec.
 // Returns nil if the spec has no paths; the caller creates a wildcard operation.
+// When the spec is invalid it returns apperror.ValidationFailed (so any caller
+// maps it to a 400) wrapping a *utils.SpecValidationError, which handlers can
+// extract via utils.HandleSpecValidationError to render the individual
+// {message, path} entries.
 func (s *APIDocumentService) ExtractOperationsFromSpec(specContent []byte) ([]api.Operation, error) {
 	sd, loadErr := utils.LoadSpecDocument(specContent)
 	if loadErr != nil {
 		s.slogger.Error("Failed to parse OpenAPI spec for operation extraction", "error", loadErr)
-		return nil, apperror.ValidationFailed.New("invalid OpenAPI specification")
+		return nil, apperror.ValidationFailed.Wrap(
+			&utils.SpecValidationError{Errors: []api.OpenAPIValidationError{{Message: loadErr.Error()}}},
+			"OpenAPI specification is not valid")
 	}
 
 	if result := utils.ValidateSpec(sd); !result.IsValid {
-		msg := "invalid OpenAPI specification"
-		if len(result.Errors) > 0 {
-			msg = result.Errors[0].Message
-		}
-		return nil, apperror.ValidationFailed.New(msg)
+		return nil, apperror.ValidationFailed.Wrap(
+			&utils.SpecValidationError{Errors: result.Errors},
+			"OpenAPI specification is not valid")
 	}
 
 	return extractOperations(sd), nil
@@ -547,6 +539,40 @@ const (
 	maxDocFileNameLen    = 255
 	maxSpecFileNameLen   = 255
 )
+
+// validateDocFileName checks a document's file name against what the API Portal stores: a safe
+// path element ending in .md, the only document format its docs page opens. Empty means the
+// default <handle>.md. Saving and publishing both use it, so a saved name can be published.
+func validateDocFileName(name string) error {
+	if name == "" {
+		return nil
+	}
+	if len(name) > maxDocFileNameLen {
+		return apperror.ValidationFailed.New(fmt.Sprintf("fileName must be at most %d characters", maxDocFileNameLen))
+	}
+	if !isSafePathElement(name) || !strings.HasSuffix(name, ".md") {
+		return apperror.ValidationFailed.New("fileName must end in .md and must not start with a dot or contain '..'")
+	}
+	return nil
+}
+
+// validateOtherTypeName checks the name of an Other document's type, which becomes its folder
+// on the API Portal, so a saved name can be published. Empty means the default Other folder.
+func validateOtherTypeName(name string) error {
+	if name == "" {
+		return nil
+	}
+	if constants.ForbiddenOtherTypeNames[strings.ToLower(name)] {
+		return apperror.ValidationFailed.New("otherTypeName cannot be a reserved or fixed document type name")
+	}
+	if maxName := maxDocTypeLen - len(constants.DocumentTypePrefix); len(name) > maxName {
+		return apperror.ValidationFailed.New(fmt.Sprintf("otherTypeName must be at most %d characters", maxName))
+	}
+	if !isSafePathElement(name) {
+		return apperror.ValidationFailed.New(`otherTypeName must not start with a dot or contain '..', '/' or '\'`)
+	}
+	return nil
+}
 
 // NormalizeSpecFileName strips the directory component from an uploaded filename
 // and caps the result to the DB column ceiling, preserving the extension and

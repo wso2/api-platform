@@ -33,6 +33,7 @@ import {
   NotepadText,
   Rocket,
   SlidersHorizontal,
+  UserRoundKey,
   ShieldCheck,
   FlaskConical,
   Box,
@@ -402,7 +403,7 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     id: 'gateways',
-    label: 'Gateways',
+    label: 'API Gateways',
     group: CLUSTER.place,
     order: 30,
     icon: <Network />,
@@ -446,7 +447,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     id: 'test',
     label: 'Test',
     group: CLUSTER.api,
-    order: 40,
+    order: 50,
     icon: <FlaskConical />,
     isVisible: apiCapability(({ canTest }) => canTest),
     // A leaf, not a parent: the console, the cURL builder and the response all
@@ -462,7 +463,7 @@ export const navigationRegistry: NavigationDefinition[] = [
     id: 'deploy',
     label: 'Deploy',
     group: CLUSTER.api,
-    order: 50,
+    order: 40,
     icon: <Rocket />,
     isVisible: apiCapability(({ canDeploy }) => canDeploy),
     to: apiLevelTo(routes.apiDeploy, routes.graphqlApiDeploy),
@@ -535,6 +536,9 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Publish',
     group: CLUSTER.api,
     order: 55,
+    // Only for users who may publish: without it the page could only show the
+    // publication read-only. REST and GraphQL publishing are granted together.
+    permission: 'publishRestApiToApiPortal',
     icon: <Megaphone />,
     to: apiLevelTo(routes.apiPortals, routes.graphqlApiPublish),
     match: matchRoutes(
@@ -546,8 +550,8 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     // Organization-level admin pages, grouped like Observability. The pages
-    // pages are organization-level routes (`/subscription-plans`, `/meters`). No `requires`, so the
-    // children show at every scope (both tabs are organization-scoped).
+    // pages are organization-level routes (`/subscription-plans`, `/meters`, `/service-accounts`). No
+    // `requires`, so the children show at every scope (all tabs are organization-scoped).
     id: 'manage',
     label: 'Manage',
     group: CLUSTER.operate,
@@ -555,9 +559,11 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <SlidersHorizontal />,
     // Opens whichever of its pages `disableFeatures` leaves on.
     to: orgLevelTo((orgHandle) =>
-      isFeatureDisabled('subscription-plans')
-        ? routes.meters(orgHandle)
-        : routes.subscriptionPlans(orgHandle),
+      !isFeatureDisabled('subscription-plans')
+        ? routes.subscriptionPlans(orgHandle)
+        : !isFeatureDisabled('meters')
+          ? routes.meters(orgHandle)
+          : routes.serviceAccounts(orgHandle),
     ),
     // Never matches: the sidebar highlights the first active item it finds,
     // parents before children, so a parent matching its own pages would take the
@@ -581,6 +587,21 @@ export const navigationRegistry: NavigationDefinition[] = [
         order: 1,
         to: orgLevelTo((orgHandle) => routes.meters(orgHandle)),
         match: matchRoutes(routes.meters()),
+      },
+      {
+        icon: <UserRoundKey />,
+        disableKey: 'service-accounts',
+        id: 'manage-service-accounts',
+        label: 'Service Accounts',
+        order: 2,
+        // The page is for administrators; others would only see "forbidden".
+        permission: 'createServiceAccount',
+        to: orgLevelTo((orgHandle) => routes.serviceAccounts(orgHandle)),
+        match: matchRoutes(
+          routes.serviceAccounts(),
+          routes.serviceAccountCreate(),
+          routes.serviceAccountCreated(),
+        ),
       },
     ],
   },

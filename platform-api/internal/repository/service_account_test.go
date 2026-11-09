@@ -18,6 +18,7 @@
 package repository
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -195,6 +196,10 @@ func TestServiceAccountRepo_ListAndCount(t *testing.T) {
 	if n, err := repo.Count("org-sa", ""); err != nil || n != 3 {
 		t.Fatalf("Count = %d, %v", n, err)
 	}
+	// Equal created_at values still page in one fixed order.
+	if _, err := db.Exec(db.Rebind(`UPDATE service_accounts SET created_at = ?`), time.Unix(1_700_000_000, 0).UTC()); err != nil {
+		t.Fatal(err)
+	}
 	page, err := repo.List("org-sa", "", 2, 0)
 	if err != nil || len(page) != 2 {
 		t.Fatalf("first page = %d, %v", len(page), err)
@@ -204,11 +209,64 @@ func TestServiceAccountRepo_ListAndCount(t *testing.T) {
 		t.Fatalf("second page = %d, %v", len(rest), err)
 	}
 	seen := map[string]bool{}
+	var order []string
 	for _, sa := range append(page, rest...) {
 		if sa.OrganizationID != "org-sa" || seen[sa.Handle] {
 			t.Fatalf("unexpected row %+v", sa)
 		}
 		seen[sa.Handle] = true
+		order = append(order, sa.Handle)
+	}
+	if strings.Join(order, ",") != "c-bot,b-bot,a-bot" {
+		t.Fatalf("tied rows out of order: %v", order)
+	}
+}
+
+// Exchanges can commit out of order; an older one must not overwrite a newer one.
+func TestServiceAccountRepo_TouchLastUsedKeepsLatest(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	createTestOrganizationAndProject(t, db, "org-sa", "proj-sa")
+	repo := NewServiceAccountRepo(db)
+	sa := newTestServiceAccount("org-sa", "11111111-0000-0000-0000-000000000001", "ci-bot")
+	if err := repo.Create(sa, sa.Subject("org")); err != nil {
+		t.Fatal(err)
+	}
+
+	later := time.Now().UTC().Truncate(time.Millisecond)
+	if err := repo.TouchLastUsed(sa.UUID, later, "203.0.113.2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.TouchLastUsed(sa.UUID, later.Add(-time.Second), "203.0.113.1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.GetByHandle("org-sa", "ci-bot")
+	if err != nil || got.LastUsedIP != "203.0.113.2" || !got.LastUsedAt.Equal(later) {
+		t.Fatalf("last used = %v from %q, %v; want %v from 203.0.113.2", got.LastUsedAt, got.LastUsedIP, err, later)
+	}
+}
+
+// A revoke made after token_ttl was shortened keeps the earlier, longer expiry.
+func TestServiceAccountRepo_RevokeKeepsLaterExpiry(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+	repo := NewServiceAccountRepo(db)
+
+	t0 := time.Now().UTC().Truncate(time.Millisecond)
+	for _, r := range []*model.ServiceAccountRevocation{
+		{AccountUUID: "acc", OrganizationID: "org", MinTokenVersion: 2, ExpiresAt: t0.Add(2 * time.Hour)},
+		{AccountUUID: "acc", OrganizationID: "org", MinTokenVersion: 3, ExpiresAt: t0.Add(time.Hour)},
+	} {
+		if err := repo.Revoke(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := repo.PruneExpired(t0.Add(90 * time.Minute)); err != nil || n != 0 {
+		t.Fatalf("the watermark was pruned at the shorter expiry: PruneExpired = %d, %v", n, err)
+	}
+	active, err := repo.ListActive(t0)
+	if err != nil || len(active) != 1 || active[0].MinTokenVersion != 3 {
+		t.Fatalf("ListActive = %+v, %v", active, err)
 	}
 }
 

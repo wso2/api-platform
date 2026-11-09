@@ -46,6 +46,7 @@ import { buildConsoleRequest, firstOperationOf } from './utils/operationRequest'
 import { TestKeySection } from './components/TestKeySection';
 import { emptyRequest, withTarget, type ConsoleRequest, type KeyValueRow } from './utils/types';
 import TestConsoleSpecViewer from './console/TestConsoleSpecViewer';
+import { useCan } from '@/permissions';
 
 const messages = defineMessages({
   apiNotFound: {
@@ -172,7 +173,11 @@ function TestConsole() {
    * How the Console view sends a request. Persisted, because it tracks which
    * gateways the user's browser can reach rather than anything about this API.
    */
-  const [callMode, setCallMode] = useTestCallMode();
+  const [storedCallMode, setCallMode] = useTestCallMode();
+  // The proxy mode relays through the control plane (an InvokeRESTAPIOnGateway
+  // call); a caller who may not relay sends the request from the browser.
+  const canRelay = useCan('InvokeRESTAPIOnGateway');
+  const callMode = canRelay ? storedCallMode : 'direct';
 
   const [selectedGatewayId, setSelectedGatewayId] = useState('');
   const [request, setRequest] = useState<ConsoleRequest | undefined>(undefined);

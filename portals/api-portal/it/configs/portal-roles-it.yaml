@@ -30,7 +30,7 @@
 #
 # dp_narrow_it is the deliberate exception — see its comment below.
 #
-# Every dp:* scope must be declared in docs/api-portal-openapi-spec-v0.9.yaml; the
+# Every dp:* scope must be declared in resources/openapi/api-portal-openapi-spec-v0.9.yaml; the
 # portal validates this file against the spec at startup and refuses to boot on an
 # unknown one, so a typo fails the fixture loudly.
 # --------------------------------------------------------------------

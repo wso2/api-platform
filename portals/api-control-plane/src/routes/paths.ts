@@ -251,7 +251,8 @@ export const routes = {
   // Org-level portal registry lives in the cloud-plugin sidebar; this builder is
   // the well-known link the built-in Publish page uses for its "register a portal"
   // empty-state so the core does not encode the plugin's routePath literal.
-  managedApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/managed-api-portals`,
+  managedApiPortals: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/managed-api-portals`,
   // GraphQL API-level pages — see `graphqlApiPath` for why these live under a
   // distinct `graphql-apis` segment rather than joining the REST `api*` builders above.
   graphqlApi: (
@@ -348,6 +349,11 @@ export const routes = {
   // and no scope-less alias: there is nothing to select.
   subscriptionPlans: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/subscription-plans`,
   meters: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/meters`,
+  serviceAccounts: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/service-accounts`,
+  serviceAccountCreate: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/service-accounts/create`,
+  serviceAccountCreated: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/service-accounts/created`,
 };
 
 export type ProjectPathBuilder = (orgHandle: string, projectHandler: ScopeHandle) => string;

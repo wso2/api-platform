@@ -24,11 +24,16 @@
  */
 
 import {
+  GATEWAYS,
   GATEWAY_METRICS,
+  HYBRID_GATEWAYS,
   INFRASTRUCTURE_METRICS,
   MANAGED_INTERFACE_METRICS,
   METRIC_LABELS,
+  byCode,
+  displayQuotaOf,
   productOf,
+  usedOf,
 } from './entitlementLimits';
 import type { Entitlement, EntitlementSummary } from './entitlementTypes';
 
@@ -40,11 +45,23 @@ export type UsageItem = {
   limit: number;
 };
 
+/**
+ * Mirrors oxygen-ui's `TrialBadgeUsageGroup`: a run of rows inside a section,
+ * under a sub-heading when `title` is set, plain otherwise.
+ */
+export type UsageGroup = {
+  key: string;
+  title?: string;
+  items: UsageItem[];
+};
+
 /** Mirrors oxygen-ui's `TrialBadgeUsageSection`. */
 export type UsageSection = {
   key: string;
   title: string;
-  items: UsageItem[];
+  /** Rows directly under the section heading, drawn above any `groups`. */
+  items?: UsageItem[];
+  groups?: UsageGroup[];
   /** Shown after the section total; omitted to suppress the total entirely. */
   totalSuffix?: string;
 };
@@ -53,35 +70,69 @@ export type UsagePanel = {
   sections: UsageSection[];
 };
 
-const isCapped = (entitlement: Entitlement | undefined): entitlement is Entitlement =>
-  Boolean(entitlement) &&
-  entitlement!.limit !== null &&
-  entitlement!.limit !== undefined;
+/**
+ * A row is worth drawing only when the meter names a quota: the soft band's
+ * starting point, or the block point. Unlimited, uncapped and unresolved
+ * meters all arrive without one, and rendering them would invent a ceiling
+ * billing never set.
+ */
+const quotaOf = (entitlement: Entitlement | undefined): number | undefined =>
+  entitlement ? displayQuotaOf(entitlement) : undefined;
+
+type RowsSpec = {
+  codes: readonly string[];
+  /**
+   * Shorter labels for rows drawn under a sub-heading. The component indents
+   * a grouped row out of its `noWrap` label column, so "Managed Gateways"
+   * truncates there; the sub-heading already says what kind of row it is.
+   */
+  labels?: Record<string, string>;
+};
 
 /**
- * The panel's groups, in display order.
+ * The panel's sections, in display order.
  *
- * A group is totalled only when summing its rows means something. The
- * component totals a section by adding its items up, and these meters are
- * capped independently of one another — a managed-gateway allowance plus a
- * self-hosted one is a ceiling nothing enforces — so those groups carry no
- * total and are just a heading over related rows. Managed Interfaces holds a single metered row,
- * so its total is that row.
+ * A section is totalled only when summing its rows means something. The
+ * component totals a section by adding up every row it draws, grouped ones
+ * included, and these meters are capped independently of one another — a
+ * managed-gateway allowance plus a self-hosted one plus a portal is a ceiling
+ * nothing enforces — so Infrastructure carries no total and is just a heading
+ * over related rows. Managed Interfaces holds a single metered row, so its
+ * total is that row.
+ *
+ * Inside Infrastructure, the gateway kinds sit under a "Gateways" sub-heading
+ * and Portals follows as a plain row. The component always draws a section's
+ * own `items` first, so a plain row below a titled group goes in a trailing
+ * untitled group instead.
  */
-const GROUPS: ReadonlyArray<{
-  key: string;
-  title: string;
-  codes: readonly string[];
-  /** "used", not "left": the figure beside the title is what was consumed. */
-  totalSuffix?: string;
-}> = [
-  { key: 'infrastructure', title: 'Infrastructure', codes: INFRASTRUCTURE_METRICS },
-  { key: 'gateways', title: 'Gateways', codes: GATEWAY_METRICS },
+const SECTIONS: ReadonlyArray<
+  RowsSpec & {
+    key: string;
+    title: string;
+    groups?: ReadonlyArray<RowsSpec & { key: string; title?: string }>;
+    /** "used", not "left": the figure beside the title is what was consumed. */
+    totalSuffix?: string;
+  }
+> = [
   {
     key: 'managed-interfaces',
     title: 'Managed Interfaces',
     codes: MANAGED_INTERFACE_METRICS,
     totalSuffix: 'used',
+  },
+  {
+    key: 'infrastructure',
+    title: 'Infrastructure',
+    codes: [],
+    groups: [
+      {
+        key: 'gateways',
+        title: 'Gateways',
+        codes: GATEWAY_METRICS,
+        labels: { [GATEWAYS]: 'WSO2 Managed', [HYBRID_GATEWAYS]: 'Self-Hosted' },
+      },
+      { key: 'portals', codes: INFRASTRUCTURE_METRICS },
+    ],
   },
 ];
 
@@ -100,32 +151,43 @@ export function toUsagePanel(
   const product = productOf(summary);
   if (!product) return null;
 
-  const byCode = new Map<string, Entitlement>();
-  for (const e of product.entitlements ?? []) {
-    if (e?.name) byCode.set(e.name, e);
-  }
+  const entitlements = byCode(product);
 
-  const sections: UsageSection[] = [];
-
-  for (const group of GROUPS) {
-    // Only capped meters: an omitted or unlimited one is absent, not zero,
-    // and rendering it would invent a cap billing never set.
-    const items: UsageItem[] = group.codes.flatMap((code) => {
-      const entitlement = byCode.get(code);
-      if (!isCapped(entitlement)) return [];
+  // Only capped meters: an omitted or unlimited one is absent, not zero,
+  // and rendering it would invent a cap billing never set.
+  const rowsOf = ({ codes, labels }: RowsSpec): UsageItem[] =>
+    codes.flatMap((code) => {
+      const entitlement = entitlements.get(code);
+      const quota = quotaOf(entitlement);
+      if (quota === undefined) return [];
       return [
         {
           key: code,
-          label: METRIC_LABELS[code] ?? code,
-          count: entitlement.used ?? 0,
-          limit: entitlement.limit!,
+          label: labels?.[code] ?? METRIC_LABELS[code] ?? code,
+          count: usedOf(entitlement),
+          limit: quota,
         },
       ];
     });
-    // A group whose every meter is uncapped or absent is left out entirely,
-    // rather than shown as an empty heading.
-    if (items.length === 0) continue;
-    sections.push({ key: group.key, title: group.title, items, totalSuffix: group.totalSuffix });
+
+  const sections: UsageSection[] = [];
+
+  for (const spec of SECTIONS) {
+    const items = rowsOf(spec);
+    // A group, or a section, whose every meter is uncapped or absent is left
+    // out entirely, rather than shown as an empty heading.
+    const groups: UsageGroup[] = (spec.groups ?? []).flatMap((group) => {
+      const rows = rowsOf(group);
+      return rows.length > 0 ? [{ key: group.key, title: group.title, items: rows }] : [];
+    });
+    if (items.length === 0 && groups.length === 0) continue;
+    sections.push({
+      key: spec.key,
+      title: spec.title,
+      ...(items.length > 0 ? { items } : {}),
+      ...(groups.length > 0 ? { groups } : {}),
+      totalSuffix: spec.totalSuffix,
+    });
   }
 
   return sections.length > 0 ? { sections } : null;

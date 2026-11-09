@@ -51,6 +51,9 @@ const ApproachTab = ({ active, description, icon, onClick, title }: ApproachTabP
       bgcolor: active ? 'action.selected' : 'transparent',
       border: 1,
       borderColor: active ? 'primary.main' : 'divider',
+      // Every tab sits on the panel's orange top edge, so the line under an
+      // inactive tab is orange too rather than a divider grey in light mode.
+      borderBottomColor: 'primary.main',
       borderRadius: '8px 8px 0 0',
       color: 'text.primary',
       cursor: 'pointer',

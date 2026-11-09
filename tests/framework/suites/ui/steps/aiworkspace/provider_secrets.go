@@ -455,9 +455,7 @@ func (u *Steps) aSecretWasCreatedForThatCredential(ctx context.Context) error {
 		if err := tcontext.Set(ctx, keyLastSecretHandle, handle); err != nil {
 			return err
 		}
-		return cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindSecret, ID: handle, Actor: u.topo.Admin.Username,
-		})
+		return u.registerSecret(ctx, handle)
 	}
 	return nil
 }

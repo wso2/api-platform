@@ -87,7 +87,7 @@ func TestRegistry(t *testing.T) {
 
 func TestBuildSpecsCoverSourceBuiltProducts(t *testing.T) {
 	root := repoRoot(t)
-	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace"} {
+	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace", "api-control-plane"} {
 		t.Run(name, func(t *testing.T) {
 			spec, err := BuildSpec(name, "test-version")
 			require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestGatewayBuildPlanClearsExportedPoliciesBeforeExporting(t *testing.T) {
 
 func TestSourceBuildPlansOmitCoverageArgumentsWhenDisabled(t *testing.T) {
 	root := repoRoot(t)
-	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace"} {
+	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace", "api-control-plane"} {
 		t.Run(name, func(t *testing.T) {
 			spec, err := BuildSpec(name, "test-version")
 			require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestSourceBuildPlansOmitCoverageArgumentsWhenDisabled(t *testing.T) {
 
 func TestCoverageArgumentsPrecedeDockerContext(t *testing.T) {
 	root := repoRoot(t)
-	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace"} {
+	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace", "api-control-plane"} {
 		t.Run(name, func(t *testing.T) {
 			spec, err := BuildSpec(name, "test-version")
 			require.NoError(t, err)

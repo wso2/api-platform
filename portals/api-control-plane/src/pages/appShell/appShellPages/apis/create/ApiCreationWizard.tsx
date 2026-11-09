@@ -46,7 +46,7 @@ import {
   type ApiCreationProgressStatus,
 } from './components/ApiCreationProgress';
 import { API_TYPES } from './uiConfig';
-import { ApiDesignerBanner } from './components/ApiDesignerBanner';
+// import { ApiDesignerBanner } from './components/ApiDesignerBanner';
 import type { ApiError } from '@/api/core/errors';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
@@ -521,8 +521,16 @@ const ApiCreationWizardContent = () => {
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button
-                disabled={step === 'apiType'}
-                onClick={() => setStep(step === 'configure' ? 'source' : 'apiType')}
+                onClick={() => {
+                  if (step === 'apiType') {
+                    const { orgHandle, projectHandler } = params;
+                    if (orgHandle && projectHandler) {
+                      navigate(routes.projectHome(orgHandle, projectHandler));
+                    }
+                    return;
+                  }
+                  setStep(step === 'configure' ? 'source' : 'apiType');
+                }}
                 type="button"
                 variant="text"
               >
@@ -563,7 +571,7 @@ const ApiCreationWizardContent = () => {
           </Stack>
         </Stack>
       </Box>
-      {step === 'apiType' && <ApiDesignerBanner />}
+      {/* {step === 'apiType' && <ApiDesignerBanner />} */}
     </Stack>
   );
 };

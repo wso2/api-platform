@@ -31,10 +31,27 @@ export type ApiFetch = <T = unknown>(
   body?: unknown
 ) => Promise<T | undefined>;
 
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the cloud spec's any-of list, `:manage`
+ * scopes included — and says whether the user may be offered it. Mirrors the
+ * host's `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };

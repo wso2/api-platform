@@ -49,6 +49,7 @@ const apiBase = "/api/v0.9"
 // Agent is stored by the control plane as an AgentProxy, so it is addressed under agent-proxies.
 var artifactPaths = map[string]string{
 	"Agent":               "agent-proxies",
+	"GraphQLApi":          "graphql-apis",
 	"LlmProviderTemplate": "llm-provider-templates",
 	"LlmProvider":         "llm-providers",
 	"LlmProxy":            "llm-proxies",
@@ -96,6 +97,8 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, funnel *httpx.F
 	RegisterPortalEvents(sc, s)
 	RegisterMCPServer(sc, s)
 	RegisterServiceAccount(sc, s)
+	RegisterAPIDefinition(sc, s)
+	RegisterUserToken(sc, s)
 }
 
 // baseURL resolves the control plane's HTTPS base URL for this block.

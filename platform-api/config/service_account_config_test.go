@@ -49,6 +49,9 @@ func TestValidateServiceAccountConfig(t *testing.T) {
 	require.NoError(t, err)
 	edFile := writePEMFile(dir, "ed.pem", pkcs8PEM(t, edKey))
 	bigFile := writePEMFile(dir, "big.pem", strings.Repeat("x", maxSigningKeyFileBytes+1))
+	smallRSA, err := rsa.GenerateKey(rand.Reader, 1024)
+	require.NoError(t, err)
+	smallFile := writePEMFile(dir, "small.pem", pkcs8PEM(t, smallRSA))
 
 	signing := func(keys ...ServiceAccountSigningKey) ServiceAccountSigning {
 		return ServiceAccountSigning{Issuer: "platform-api-sa", Keys: keys}
@@ -106,6 +109,10 @@ func TestValidateServiceAccountConfig(t *testing.T) {
 		{"Ed25519", func(a *Auth) {
 			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: edFile, Active: true})
 		}, "unsupported key type"},
+		{"an RSA key under 2048 bits", func(a *Auth) {
+			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: smallFile, Active: true})
+		}, "use at least 2048"},
+		{"no role mapping", func(a *Auth) { a.Authorization.RoleToScopeMapping = "" }, "role_to_scope_mapping is required"},
 		{"an algorithm that does not fit the key", func(a *Auth) {
 			a.ServiceAccount.Signing = signing(ServiceAccountSigningKey{Path: ecFile, Active: true, Algorithm: "RS256"})
 		}, "does not fit this key"},
@@ -127,7 +134,7 @@ func TestValidateServiceAccountConfig(t *testing.T) {
 			auth := Auth{
 				Mode:           AuthModeInternalToken,
 				JWT:            JWT{Issuer: "platform-api", PublicKeyFile: validJWTPublicKeyFile},
-				Authorization:  Authorization{Mode: AuthzModeScope},
+				Authorization:  Authorization{Mode: AuthzModeScope, RoleToScopeMapping: "role-to-scope-mapping.yaml"},
 				ServiceAccount: defaultConfig().Auth.ServiceAccount,
 			}
 			auth.ServiceAccount.Enabled = true
@@ -178,6 +185,9 @@ func TestLoadConfig_ServiceAccountSigningKeys(t *testing.T) {
 	activeFile, oldFile := writePEMFile(dir, "active.pem", active), writePEMFile(dir, "old.pem", old)
 
 	cfg, err := loadWithKeys(t, `
+[platform_api.auth.authorization]
+role_to_scope_mapping = "role-to-scope-mapping.yaml"
+
 [platform_api.auth.service_account]
 enabled = true
 
