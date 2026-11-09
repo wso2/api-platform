@@ -518,10 +518,6 @@ const loadDocsPage = async (req, res, next) => {
         const metaForNav = {
             refId: apiMetadata.refId,
         };
-        // Load the definition so the API Keys nav is computed the same way as every
-        // other API-scoped page — without it the check always returns false and the
-        // API Keys item is hidden on the documentation page.
-        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             apiMD: '',
             baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
@@ -529,7 +525,7 @@ const loadDocsPage = async (req, res, next) => {
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
-            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiMetadata.type, metaForNav, definitionResponse.swagger ?? null),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiMetadata.type, metaForNav),
         }
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
@@ -564,8 +560,7 @@ const loadDocsPage = async (req, res, next) => {
                 apiType: apiType,
                 apiName: apiMetadata[0].name || '',
                 profile: req.isAuthenticated() ? profile : null,
-                // resolveShowApiKeysNav returns false early for GraphQL/MCP/SOAP and lazily
-                // fetches the definition itself for the remaining types, so no preload here.
+                // resolveShowApiKeysNav decides from the API type alone; no definition is needed.
                 showApiKeysNav: await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
@@ -925,7 +920,7 @@ async function getApiDefinitionFileContent(orgId, apiId) {
  * flag the same way.
  *
  * The result does not depend on the API definition's security schemes. GraphQL,
- * MCP and SOAP APIs do not get API keys.
+ * MCP, SOAP and WebSub APIs do not get API keys.
  *
  * The orgId, apiId and preloadedDefinition parameters are no longer used; they
  * are kept so existing callers do not need to change.

@@ -60,11 +60,14 @@ const findSubscriptionTokenHeader = (apiDefinition) => {
     return null;
 };
 
-// API types for which API keys are not offered.
+// API types for which API keys are not offered. WebSub is among them because the
+// Platform API's API key webhook does not accept WebSub APIs, so a key generated here
+// would never reach the gateway.
 const API_KEY_UNSUPPORTED_TYPES = [
     constants.API_TYPE.GRAPHQL,
     constants.API_TYPE.MCP,
     constants.API_TYPE.SOAP,
+    constants.API_TYPE.WEBSUB,
 ];
 
 /**

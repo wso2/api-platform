@@ -39,8 +39,9 @@ test('API keys are offered for an API with no type set', () => {
     assert.strictEqual(apiUsesApiKeySecurity({}), true);
 });
 
-test('API keys are not offered for GraphQL, MCP and SOAP APIs', () => {
-    for (const type of [constants.API_TYPE.GRAPHQL, constants.API_TYPE.MCP, constants.API_TYPE.SOAP]) {
+test('API keys are not offered for GraphQL, MCP, SOAP and WebSub APIs', () => {
+    for (const type of [constants.API_TYPE.GRAPHQL, constants.API_TYPE.MCP, constants.API_TYPE.SOAP,
+        constants.API_TYPE.WEBSUB]) {
         assert.strictEqual(apiUsesApiKeySecurity({ type }), false, type);
     }
 });
