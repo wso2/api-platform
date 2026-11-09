@@ -260,6 +260,23 @@ though the routing policy keeps nominating it, and that load spreads across the 
   through per-attempt timeouts.
 - **Duplicate targets**: A target that appears more than once in the chain is attempted at most once
   per request.
+- **A member whose hostname does not resolve** *(known limitation, measured 2026-11-05)*: the
+  member's cluster is created with **zero hosts**, so Envoy answers locally with
+  `no_healthy_upstream`. A local reply is not an upstream attempt, so the retry policy does not
+  apply and the request is **not** failed over — the client gets a 503 even though a healthy
+  fallback is configured. The policy grades that 503 like any other failure, so with the default
+  `suspendAfterFailures: 1` the target is suspended and request 2 onward lead with the fallback.
+  The cost is therefore one lost request per misconfigured member, self-healing, and the trigger is
+  a typo or a decommissioned host rather than a runtime fault.
+
+  Not fixed, deliberately. Deploy-time hostname resolution would have to *warn* rather than reject —
+  the controller and the data plane can hold different DNS views (split horizon, separate
+  namespaces), so a controller-side resolution failure is not proof the gateway cannot reach the
+  host, and rejecting a deploy on a transient DNS blip is worse than the failure it prevents. A
+  warning does not change runtime behaviour, so it would buy diagnosability, not correctness.
+  Actually closing it would mean either making a local `no_healthy_upstream` retriable (Envoy does
+  not retry what was never an attempt) or giving the policy visibility into Envoy cluster health,
+  which cuts against failover's health being private to itself.
 - **Single-target configuration**: A chain with one target behaves exactly like no failover — one
   attempt, response returned as-is — and is accepted, not rejected.
 - **Slow primary**: A target that is reachable but far slower than the per-attempt limit is
