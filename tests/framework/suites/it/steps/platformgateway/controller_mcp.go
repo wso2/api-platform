@@ -74,8 +74,70 @@ func (g *Gateway) callControllerMCPTool(
 	if err := json.Unmarshal([]byte(expanded), &args); err != nil {
 		return fmt.Errorf("MCP tool arguments must be a JSON object: %w", err)
 	}
-	_, err = g.controllerMCPToolCall(ctx, service, tool, args)
-	return err
+	resp, err := g.controllerMCPToolCall(ctx, service, tool, args)
+	if err != nil {
+		return err
+	}
+	return g.trackMCPToolResource(ctx, tool, args, resp)
+}
+
+// mcpTrackedKinds maps each kind a scenario can create through the generic tool step to
+// the cleanup kind and management collection that remove it.
+var mcpTrackedKinds = map[string]struct {
+	kind       cleanup.Kind
+	collection string
+}{
+	"RestApi":    {cleanup.KindAPI, "/rest-apis"},
+	"GraphQLApi": {cleanup.KindGraphQLAPI, "/graphql-apis"},
+}
+
+// trackMCPToolResource keeps the cleanup registry in step with a generic tool call, as
+// deployAPIThroughMCP does for its own: a successful create through the deploy tool is
+// registered at once, so a later failed step cannot leak it, and a successful undeploy is
+// deregistered so teardown does not attempt it again.
+func (g *Gateway) trackMCPToolResource(
+	ctx context.Context, tool string, args map[string]any, resp *httpx.Response,
+) error {
+	if !mcpToolSucceeded(resp) {
+		return nil
+	}
+	kindName, _ := args["kind"].(string)
+	tracked, ok := mcpTrackedKinds[kindName]
+	if !ok {
+		return nil
+	}
+	id, _ := args["id"].(string)
+	switch tool {
+	case toolDeployAPI:
+		if id != "" {
+			return nil // an update: the resource was registered when it was created
+		}
+		manifest, _ := args["yaml"].(string)
+		name := apiNameFrom(manifest)
+		if name == "" {
+			return nil
+		}
+		if err := cleanup.Register(ctx, cleanup.Resource{
+			Kind: tracked.kind, ID: name, Actor: "admin",
+			Description: "deployed through MCP by " + scenarioLabel(ctx),
+		}); err != nil {
+			deleteURL, urlErr := g.managementURL(tracked.collection + "/" + name)
+			if urlErr == nil {
+				if deleteErr := g.compensateDelete(ctx, deleteURL, g.scenarioHeaders(ctx)); deleteErr != nil {
+					return fmt.Errorf("registering %s %q for cleanup: %w; compensation failed: %v",
+						kindName, name, err, deleteErr)
+				}
+			}
+			return fmt.Errorf("registering %s %q for cleanup: %w", kindName, name, err)
+		}
+	case toolUndeployAPI:
+		if id != "" {
+			if reg, err := cleanup.Of(ctx); err == nil {
+				reg.Deregister(tracked.kind, id)
+			}
+		}
+	}
+	return nil
 }
 
 // deployAPIThroughMCP renders the canonical API template and creates the API through the

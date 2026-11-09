@@ -386,10 +386,11 @@ of your own instead.`,
 Destructive and irreversible. Confirm the exact kind, resource id and key name
 with the user, then call with confirm=true.
 
-Note that success does NOT prove the key existed: a key that is missing, already
-revoked, or attached to a different resource all report success. This is
-deliberate, so the tool cannot be used to probe which key names exist. To check
-what is actually present, call wso2_apip_gw_list_api_keys.`,
+The resource itself must exist: an unknown kind or resource id is an error.
+Once it does, success does NOT prove the key existed: a key name that is
+missing, already revoked, or attached to a different resource all report
+success. This is deliberate, so the tool cannot be used to probe which key
+names exist. To check what is actually present, call wso2_apip_gw_list_api_keys.`,
 		Annotations: toolDestructiveIdempotent,
 	}, h.revokeAPIKey)
 

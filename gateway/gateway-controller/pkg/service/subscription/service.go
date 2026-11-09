@@ -145,6 +145,10 @@ func (s *SubscriptionService) Create(params CreateParams) (*Result, error) {
 		}
 	}
 
+	if req.SubscriptionPlanId != nil && *req.SubscriptionPlanId == "" {
+		req.SubscriptionPlanId = nil
+	}
+
 	status := models.SubscriptionStatusActive
 	if req.Status != nil {
 		parsed, err := parseSubscriptionStatus(string(*req.Status))

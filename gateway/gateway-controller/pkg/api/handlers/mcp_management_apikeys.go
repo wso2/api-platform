@@ -344,7 +344,11 @@ func (h *McpHandler) revokeAPIKey(ctx context.Context, _ *mcp.CallToolRequest, i
 	if err != nil {
 		log.Error("MCP API key revocation failed",
 			slog.String("id", in.ID), slog.String("key_name", in.KeyName), slog.Any("error", err))
-		return nil, nil, keyOpError("revoke the API key on", ops.Kind, in.ID, err)
+		if storage.IsNotFoundError(err) {
+			return nil, nil, fmt.Errorf("cannot revoke the API key on %s %q: no such resource; "+
+				"call %s with kind=%s to see what is deployed", ops.Kind, in.ID, toolListResources, ops.Kind)
+		}
+		return nil, nil, fmt.Errorf("failed to revoke the API key on %s %q: the Gateway refused the operation", ops.Kind, in.ID)
 	}
 
 	return nil, map[string]any{

@@ -353,6 +353,20 @@ func TestRevokeAPIKey(t *testing.T) {
 	assert.Equal(t, 1, f.rest.keyCalls["revoke"])
 }
 
+// Revoke reports a missing key as success, so its not-found can only mean the
+// resource is missing, and the message must not suggest a missing key.
+func TestRevokeAPIKeyMissingResourceIsNamedPrecisely(t *testing.T) {
+	f := newToolsHandler(false)
+	f.rest.keyErr = fmt.Errorf("%w: API configuration handle 'orders' not found", storage.ErrNotFound)
+
+	_, _, err := f.h.revokeAPIKey(toolsCtx("developer"), nil,
+		revokeKeyInput{Kind: "RestApi", ID: "orders", KeyName: "k1", Confirm: true})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `cannot revoke the API key on RestApi "orders": no such resource`)
+	assert.NotContains(t, err.Error(), "no such key")
+}
+
 func TestRevokeAPIKeyRefusals(t *testing.T) {
 	f := newToolsHandler(false)
 	_, _, err := f.h.revokeAPIKey(toolsCtx("developer"), nil, revokeKeyInput{Kind: "RestApi", ID: "orders", KeyName: "k1"})
@@ -368,11 +382,11 @@ func TestRevokeAPIKeyRefusals(t *testing.T) {
 	assert.Zero(t, f.rest.keyCalls["revoke"])
 
 	f = newToolsHandler(false)
-	f.rest.keyErr = fmt.Errorf("%w: duplicate", storage.ErrConflict)
+	f.rest.keyErr = fmt.Errorf("API key revocation failed for API: 'orders'")
 	_, _, err = f.h.revokeAPIKey(toolsCtx("developer"), nil,
 		revokeKeyInput{Kind: "RestApi", ID: "orders", KeyName: "k1", Confirm: true})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "a key with that name already exists")
+	assert.Equal(t, `failed to revoke the API key on RestApi "orders": the Gateway refused the operation`, err.Error())
 }
 
 func TestKeyOpErrorNeverEchoesTheCause(t *testing.T) {

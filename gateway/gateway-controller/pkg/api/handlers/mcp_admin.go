@@ -50,7 +50,9 @@ func AdminMCPRouteKeys() []string {
 // from this endpoint by construction because the admin MCP surface is read-only
 type AdminStatusSource interface {
 	GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse
-	BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigDumpResponse, error)
+	// ConfigDumpJSON is the dump with resolved secret values redacted, exactly
+	// as the admin server's GET /config_dump serves it.
+	ConfigDumpJSON(log *slog.Logger) ([]byte, error)
 }
 
 // adminHealthResponse mirrors the payload adminserver.Server.GetHealth writes for GET /health.
@@ -264,10 +266,10 @@ func (h *AdminMcpHandler) getConfigDump(
 		return nil, nil, err
 	}
 
-	dump, err := h.status.BuildConfigDumpResponse(h.logger)
+	dump, err := h.status.ConfigDumpJSON(h.logger)
 	if err != nil {
 		h.logger.Error("MCP "+toolAdminConfigDump+" failed", slog.Any("error", err))
 		return nil, nil, fmt.Errorf("the Gateway could not produce a configuration dump")
 	}
-	return nil, dump, nil
+	return nil, json.RawMessage(dump), nil
 }

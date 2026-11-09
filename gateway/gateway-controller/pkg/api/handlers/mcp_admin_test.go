@@ -19,6 +19,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -31,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/common/authenticators"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 type stubAdminStatus struct {
@@ -43,11 +45,11 @@ func (s *stubAdminStatus) GetXDSSyncStatusResponse() adminapi.XDSSyncStatusRespo
 	return s.xds
 }
 
-func (s *stubAdminStatus) BuildConfigDumpResponse(_ *slog.Logger) (*adminapi.ConfigDumpResponse, error) {
+func (s *stubAdminStatus) ConfigDumpJSON(_ *slog.Logger) ([]byte, error) {
 	if s.configErr != nil {
 		return nil, s.configErr
 	}
-	return &s.configDump, nil
+	return json.Marshal(s.configDump)
 }
 
 func newAdminTestHandler(configDumpEnabled bool) *AdminMcpHandler {
@@ -157,6 +159,35 @@ func TestAdminConfigDumpToolReturnsSterileErrorOnFailure(t *testing.T) {
 	// database host or driver error.
 	assert.NotContains(t, err.Error(), "db-01")
 	assert.NotContains(t, err.Error(), "sql:")
+}
+
+// The config dump tool serves the rendered configuration, so a resolved secret
+// would appear verbatim if the tool skipped the redaction GET /config_dump applies.
+func TestAdminConfigDumpToolRedactsSecrets(t *testing.T) {
+	server := createTestAPIServer()
+	require.Equal(t, http.StatusCreated, postAgent(t, server, agentArtifactYAML).Code)
+	stored, err := server.db.GetConfigByKindAndHandle(models.KindAgent, "weather-agent-v1-0")
+	require.NoError(t, err)
+	// Stand in for what the template engine records when a {{ secret }} resolves.
+	stored.SensitiveValues = []string{"super-secret-upstream-key"}
+	require.NoError(t, server.store.Add(stored))
+
+	h := NewAdminMcpHandler(AdminMcpHandlerParams{
+		Status:            server,
+		ResourceRoles:     map[string][]string{"GET /config_dump": {"admin"}},
+		ConfigDumpEnabled: true,
+		Logger:            slog.Default(),
+	})
+	ctx := withMcpCaller(t.Context(), mcpCaller{Skipped: true})
+
+	_, out, err := h.getConfigDump(ctx, nil, configDumpInput{})
+
+	require.NoError(t, err)
+	body, err := json.Marshal(out)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "weather-agent-v1-0", "the Agent should appear in the dump")
+	assert.NotContains(t, string(body), "super-secret-upstream-key",
+		"the admin MCP config dump leaked a tracked secret value")
 }
 
 func TestAdminGatewayStatusMergesHealthAndXDS(t *testing.T) {
