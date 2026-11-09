@@ -3436,6 +3436,7 @@ func TestRunnerGatewayIsRegisteredBeforeTheRequestAndNumbered(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, id, current)
 	require.Equal(t, "development", environment)
+	require.Equal(t, scenarioGatewayDescription, optionalValue(ctx, keyScenarioGatewayMark))
 	require.ErrorContains(t, steps.selectSyntheticGateway(ctx, 2), "does not exist")
 
 	// A runner-owned gateway is swept with the runner, not with the scenario.

@@ -307,7 +307,7 @@ func runRunner(
 
 	sweepCtx, cancel := context.WithTimeout(
 		tcontext.WithLocal(tcontext.WithShared(context.Background(), topo.Shared), local),
-		8*time.Minute,
+		3*time.Minute,
 	)
 	defer cancel()
 	if err := cleanup.Install(sweepCtx, registry); err != nil {

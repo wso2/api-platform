@@ -128,18 +128,18 @@ Feature: APIP cloud managed gateway lifecycle
     Given I obtain an APIP cloud console token
     And I work with synthetic managed APIP gateway 1
     When I update the managed APIP gateway with:
-      | description | Updated by the APIP cloud integration test |
-      | isCritical  | true                                       |
-      | properties  | {"owner": "cloud-it"}                      |
+      | description | ${CTX:cloudScenarioGatewayMarker} Updated by the APIP cloud integration test |
+      | isCritical  | true                                                                         |
+      | properties  | {"owner": "cloud-it"}                                                        |
     Then the cloud API response status code should be 200
     And the managed APIP gateway should report:
-      | description      | Updated by the APIP cloud integration test |
-      | isCritical       | true                                       |
-      | properties.owner | cloud-it                                   |
+      | description      | ${CTX:cloudScenarioGatewayMarker} Updated by the APIP cloud integration test |
+      | isCritical       | true                                                                         |
+      | properties.owner | cloud-it                                                                     |
     And the update should have left the managed APIP gateway's identity unchanged
     When I update the managed APIP gateway with:
-      | description | Restored by the APIP cloud integration test |
-      | isCritical  | false                                       |
+      | description | ${CTX:cloudScenarioGatewayMarker} Restored by the APIP cloud integration test |
+      | isCritical  | false                                                                         |
     Then the cloud API response status code should be 200
 
   @TC_APIP_DEP_010 @ID_APIP_GATEWAY_010

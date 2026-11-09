@@ -67,6 +67,7 @@ const (
 	keyEchoBackendURL  = "cloudEchoBackendURL"
 
 	keyManagedGatewayEnv   = "cloudManagedGatewayEnvironment"
+	keyScenarioGatewayMark = "cloudScenarioGatewayMarker"
 	keyGatewayDeleteStatus = "cloudGatewayDeleteStatus"
 	keyManagedGatewayName  = "cloudManagedGatewayName"
 	keyConfigGatewayID     = "cloudConfigGatewayID"

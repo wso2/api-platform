@@ -148,6 +148,11 @@ func (s *Steps) selectSyntheticGateway(ctx context.Context, n int) error {
 	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
 		return err
 	}
+	// An update replaces the description, so a scenario that updates one keeps the marker by
+	// starting its description with this value.
+	if err := tcontext.Set(ctx, keyScenarioGatewayMark, scenarioGatewayDescription); err != nil {
+		return err
+	}
 	return tcontext.Set(ctx, keyManagedGatewayID, id)
 }
 
