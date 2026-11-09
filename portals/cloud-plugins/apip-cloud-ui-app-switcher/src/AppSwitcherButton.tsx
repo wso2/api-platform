@@ -66,7 +66,7 @@ export default function AppSwitcherButton({
         ))}
       </AppSwitcher.Section>
       {manage.length > 0 && (
-        <AppSwitcher.Footer label="Manage">
+        <AppSwitcher.Footer label="Manage" columns={manage.length}>
           {manage.map((l) => (
             <AppSwitcher.App
               key={l.key}

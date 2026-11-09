@@ -16,13 +16,13 @@
  * under the License.
  */
 
-import { ColorSchemeImage, ColorSchemeToggle, Header, UserMenu } from '@wso2/oxygen-ui';
+import { ColorSchemeToggle, Header, UserMenu } from '@wso2/oxygen-ui';
 import { LogOut, Menu } from '@wso2/oxygen-ui-icons-react';
 import { Fragment } from 'react';
 import { useIntl } from 'react-intl';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { useBrandLogo } from '@/branding/BrandLogoProvider';
+import { BrandLockup } from '@/branding/BrandLockup';
 import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
 import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
 import { useAuth } from '@/contexts/auth/AuthProvider';
@@ -69,7 +69,6 @@ export function AppHeader() {
   const navigate = useNavigate();
   // const { actions } = useAppShell();
   const auth = useAuth();
-  const brandLogo = useBrandLogo();
   // Cloud-only entries; empty in a standalone console, which registers none.
   const headerActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_ACTIONS_SLOT);
   // Cloud-only: replaces the sidebar-collapse toggle below when present.
@@ -110,15 +109,7 @@ export function AppHeader() {
         onClick={goToOrganizationHome}
       >
         <Header.BrandLogo>
-          <ColorSchemeImage
-            alt={intl.formatMessage({
-              id: 'appShell.header.title',
-              defaultMessage: 'API Platform',
-            })}
-            height={BRAND_LOGO_HEIGHT}
-            src={brandLogo}
-            width="auto"
-          />
+          <BrandLockup height={BRAND_LOGO_HEIGHT} />
         </Header.BrandLogo>
       </Header.Brand>
 
