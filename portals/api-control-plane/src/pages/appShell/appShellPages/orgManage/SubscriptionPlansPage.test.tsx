@@ -41,17 +41,32 @@ const PLANS = '/subscription-plans';
 
 const plans: SubscriptionPlanFixture[] = [
   aSubscriptionPlan({
+    conditions: [
+      {
+        id: 'requests',
+        params: {
+          limits: [
+            { count: 1000, timeAmount: 1, timeUnit: 'HOUR' },
+            { count: 20000, timeAmount: 1, timeUnit: 'DAY' },
+          ],
+          onExceed: 'allow',
+        },
+        type: 'request-count',
+      },
+      {
+        id: 'tokens',
+        params: {
+          limits: [{ count: 5000, timeAmount: 2, timeUnit: 'MINUTE' }],
+          onExceed: 'reject',
+          tokenType: 'prompt',
+        },
+        type: 'token-count',
+      },
+      { id: 'tier', params: { level: 'gold' }, type: 'custom' },
+    ],
+    description: 'For partners',
     displayName: 'Bronze',
     id: 'bronze',
-    limits: [
-      {
-        limitCount: 1000,
-        limitType: 'REQUEST_COUNT',
-        stopOnQuotaReach: true,
-        timeAmount: 1,
-        timeUnit: 'HOUR',
-      },
-    ],
   }),
   aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'INACTIVE' }),
 ];
@@ -95,15 +110,76 @@ beforeEach(() => {
 });
 
 describe('SubscriptionPlansPage', () => {
-  it('lists plans with their limit chips', async () => {
+  it('lists plans by name, conditions, pricing and status, with a chip per condition', async () => {
     server.use(collection(PLANS, plans, { record: requests }));
     renderPage();
 
     expect(await screen.findByText('Bronze')).toBeInTheDocument();
-    expect(screen.getByText('Gold')).toBeInTheDocument();
-    expect(screen.getByText('req · 1000 / hr')).toBeInTheDocument();
-    // Gold has no limits configured — the unlimited chip, not an empty cell.
-    expect(screen.getByText('req · ∞')).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      'Name',
+      'Conditions',
+      'Pricing',
+      'Status',
+      'Actions',
+    ]);
+    expect(
+      screen.getByText('Define the conditions and quota tiers applications can subscribe to.'),
+    ).toBeInTheDocument();
+    const bronze = screen.getByText('Bronze').closest('tr')!;
+    // The description is for the plan's page, not the list.
+    expect(within(bronze).queryByText('For partners')).not.toBeInTheDocument();
+    // Each chip: what it counts, its first limit, and how many more it has.
+    const chips = Array.from(bronze.querySelectorAll('.MuiChip-root')).map(
+      (chip) => chip.textContent,
+    );
+    expect(chips).toEqual(['Requests1,000 / hr+1', 'Prompt tokens5,000 / 2 min', 'Customtier']);
+    // Gold has no conditions — Unlimited, not an empty cell.
+    const gold = screen.getByText('Gold').closest('tr')!;
+    expect(within(gold).getByText('Unlimited')).toBeInTheDocument();
+  });
+
+  it('lists every limit of a condition, or the values of a custom one, on hover', async () => {
+    server.use(collection(PLANS, plans));
+    const { user } = renderPage();
+
+    await screen.findByText('Bronze');
+    const requestsChip = screen.getByText('Requests');
+    await user.hover(requestsChip);
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('Requests1,000 / hr20,000 / dayAllowed past the limit');
+    await user.unhover(requestsChip);
+    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+
+    await user.hover(screen.getByText('tier'));
+    await waitFor(() =>
+      expect(screen.getByRole('tooltip')).toHaveTextContent('Custom · tierlevel = gold'),
+    );
+  });
+
+  it('shows five condition chips at most, and a "+N" chip listing the rest', async () => {
+    const conditions = Array.from({ length: 7 }, (_, index) => ({
+      id: `custom-${index + 1}`,
+      params: { position: index + 1 },
+      type: 'custom' as const,
+    }));
+    server.use(
+      collection(PLANS, [
+        aSubscriptionPlan({ conditions, displayName: 'Platinum', id: 'platinum' }),
+      ]),
+    );
+    const { user } = renderPage();
+
+    await screen.findByText('Platinum');
+    expect(screen.getByText('custom-5')).toBeInTheDocument();
+    expect(screen.queryByText('custom-6')).not.toBeInTheDocument();
+    const more = screen.getByLabelText('2 more conditions');
+    expect(more).toHaveTextContent('+2');
+
+    await user.hover(more);
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent(
+      'More conditionsCustom · custom-6position = 6Custom · custom-7position = 7',
+    );
   });
 
   it('searches on the server, not only in the plans already loaded', async () => {
@@ -220,7 +296,7 @@ describe('SubscriptionPlansPage', () => {
     expect(screen.queryByText('No matching plans')).not.toBeInTheDocument();
   });
 
-  it("toggles a plan's status from the row switch, without resending its limits", async () => {
+  it("toggles a plan's status from the row switch, without resending its conditions", async () => {
     server.use(
       collection(PLANS, plans, { record: requests }),
       accepts(
@@ -239,9 +315,9 @@ describe('SubscriptionPlansPage', () => {
     // list, and that GET can land after the PUT.
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
     const putCall = requests.calls.find((call) => call.method === 'PUT');
-    // Bronze has a limit configured; a stale cached copy of it must never be
-    // resent, since the server would persist it verbatim, undoing whatever
-    // the limit's actual current value is.
+    // Bronze has conditions; a stale cached copy of them must never be
+    // resent, since the server would persist them verbatim, undoing whatever
+    // their actual current value is.
     expect(JSON.parse(putCall!.body)).toEqual({
       displayName: 'Bronze',
       id: 'bronze',

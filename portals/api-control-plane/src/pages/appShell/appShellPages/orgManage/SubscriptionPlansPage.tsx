@@ -19,7 +19,6 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
-  Chip,
   IconButton,
   ListingTable,
   PageTitle,
@@ -48,6 +47,7 @@ import { EmptyResults } from '@/components/common/EmptyResults';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Can } from '@/permissions';
+import { PlanConditionChips } from './components/PlanConditionChips';
 import { SubscriptionPlanFormDialog } from './components/SubscriptionPlanFormDialog';
 import { pricingSummary, summaryMeterIds } from './components/pricingFormat';
 
@@ -63,9 +63,9 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.actions',
     defaultMessage: 'Actions',
   },
-  columnLimits: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.limits',
-    defaultMessage: 'Limits',
+  columnConditions: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.SubscriptionPlansPage.column.conditions',
+    defaultMessage: 'Conditions',
   },
   columnName: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.name',
@@ -139,7 +139,7 @@ const messages = defineMessages({
   emptyDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.description',
     defaultMessage:
-      'Plans define how many requests an app can make in a time window. Enable one on the APIs you publish.',
+      'Plans set the conditions an app subscribes to, such as how many requests, tool calls, tokens or events it can use in a time window. Enable one on the APIs you publish.',
   },
   emptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.title',
@@ -148,13 +148,6 @@ const messages = defineMessages({
   errorMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.error.message',
     defaultMessage: 'Unable to load subscription plans',
-  },
-  limitChip: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.limitChip',
-    defaultMessage:
-      'req · {count} / {amount, plural, one {} other {# }}{unit, select, MINUTE {min} HOUR {hr} DAY {day} MONTH {mo} other {}}',
-    description:
-      'Compact monospace tag summarizing one throttling limit, e.g. "req · 1000 / hr" or "req · 100000 / 2 hr".',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.loading',
@@ -205,39 +198,17 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.subtitle',
-    defaultMessage: 'Define the rate and quota tiers applications can subscribe to.',
+    defaultMessage: 'Define the conditions and quota tiers applications can subscribe to.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.title',
     defaultMessage: 'Subscription Plans',
-  },
-  unlimitedChip: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.unlimitedChip',
-    defaultMessage: 'req · ∞',
-    description: 'Chip shown for a plan with no configured limits.',
   },
   updateFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.update.failed',
     defaultMessage: 'Failed to update the plan.',
   },
 });
-
-/** Which limits show as a chip on one row, `req · {count} / {window}` per
- * entry, or a single unlimited chip when the plan has none configured. */
-const useLimitChipLabels = () => {
-  const intl = useIntl();
-  return (plan: SubscriptionPlan): string[] => {
-    const limits = plan.limits ?? [];
-    if (limits.length === 0) return [intl.formatMessage(messages.unlimitedChip)];
-    return limits.map((limit) =>
-      intl.formatMessage(messages.limitChip, {
-        amount: limit.timeAmount ?? 1,
-        count: limit.limitCount,
-        unit: limit.timeUnit,
-      }),
-    );
-  };
-};
 
 export function SubscriptionPlansPage() {
   const intl = useIntl();
@@ -260,7 +231,6 @@ export function SubscriptionPlansPage() {
   );
   const updateMutation = useUpdateSubscriptionPlan();
   const deleteMutation = useDeleteSubscriptionPlan();
-  const limitChipLabels = useLimitChipLabels();
 
   const [dialogTarget, setDialogTarget] = useState<'create' | SubscriptionPlan | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubscriptionPlan | null>(null);
@@ -285,7 +255,7 @@ export function SubscriptionPlansPage() {
     const nextStatus = plan.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     updateMutation.mutate(
       {
-        // Sends a partial update so a stale plan can't overwrite its limits.
+        // Sends a partial update so a stale plan can't overwrite its conditions.
         body: { displayName: plan.displayName, id: plan.id, status: nextStatus },
         subscriptionPlanId: plan.id,
       },
@@ -391,7 +361,7 @@ export function SubscriptionPlansPage() {
                         <FormattedMessage {...messages.columnName} />
                       </ListingTable.Cell>
                       <ListingTable.Cell>
-                        <FormattedMessage {...messages.columnLimits} />
+                        <FormattedMessage {...messages.columnConditions} />
                       </ListingTable.Cell>
                       <ListingTable.Cell>
                         <FormattedMessage {...messages.columnPricing} />
@@ -413,22 +383,7 @@ export function SubscriptionPlansPage() {
                           </Typography>
                         </ListingTable.Cell>
                         <ListingTable.Cell>
-                          <Stack direction="row" flexWrap="wrap" gap={0.75}>
-                            {limitChipLabels(plan).map((label, index) => (
-                              <Chip
-                                key={label + index}
-                                label={label}
-                                size="small"
-                                sx={{
-                                  fontFamily: 'monospace',
-                                  fontWeight: 500,
-                                  opacity: index === 0 ? 1 : 0.6,
-                                  typography: 'caption',
-                                }}
-                                variant="filled"
-                              />
-                            ))}
-                          </Stack>
+                          <PlanConditionChips conditions={plan.conditions} />
                         </ListingTable.Cell>
                         <ListingTable.Cell>
                           <Typography
