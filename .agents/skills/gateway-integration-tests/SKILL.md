@@ -1,16 +1,18 @@
 ---
 name: gateway-integration-tests
-description: Run or debug WSO2 API Platform gateway integration tests. Use when the user asks to run gateway Integration Tests (IT), BDD tests, godog tests, or a specific `.feature` file; verify a feature file passes; or debug why a gateway integration test is failing.
+description: Run or debug WSO2 API Platform integration tests (the `tests/framework/suites/it` suite), with troubleshooting focused on the gateway. Use when the user asks to run gateway Integration Tests (IT), BDD tests, godog tests, a block, or a specific `.feature` file; verify a feature file passes; or debug why an integration test is failing.
 compatibility: "Requires docker, make, Go (the version in tests/framework/go.mod). Optional: delve (`dlv`) for gateway-level debugging via [[gateway-debug]]."
 allowed-tools: Bash Read Edit Grep Glob
 ---
 
 # Gateway Integration Tests
 
-Runs the gateway integration tests of the integration framework (`tests/framework`, Godog +
+Runs the integration suite of the integration framework (`tests/framework/suites/it`, Godog +
 Testcontainers) for a chosen block, runner or feature, diagnoses failures, and confirms nothing
-is left running afterwards. The framework starts every container a block needs itself — the
-gateway, a database and the testbench mock backends — and removes them when the run ends.
+is left running afterwards. The suite covers the gateway, Platform API, the API Portal, AI
+Workspace and the `ap` CLI; the troubleshooting below focuses on the gateway. The framework
+starts every container a block needs itself — the products, their databases and the testbench
+mock backends — and removes them when the run ends.
 
 `tests/framework/README.md` documents every flag; `tests/framework/CLAUDE.md` holds the
 conventions for writing features and steps.
