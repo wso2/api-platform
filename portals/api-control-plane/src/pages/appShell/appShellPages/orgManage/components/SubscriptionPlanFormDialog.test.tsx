@@ -76,7 +76,7 @@ function setup(
     collection('/meters', meters),
     ...meters.map((meter) => resource(`/meters/${meter.id}`, meter)),
   );
-  // An existing plan is read again for its usage, which locks its name and limit while it is used.
+  // An existing plan is read again for its usage, which locks its name and conditions while it is used.
   if (overrides.plan) {
     server.use(
       resource(`${PLANS}/${overrides.plan.id}`, {
@@ -226,54 +226,14 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(requests.count()).toBe(0);
   });
 
-  it('disables Add plan until a newly added limit has a valid count', async () => {
-    const { user } = setup();
-
-    await user.type(screen.getByLabelText(/Plan name/), 'Gold');
-    await user.click(screen.getByRole('button', { name: 'Add limit' }));
-    await user.type(screen.getByLabelText('Request count'), '0');
-    await user.tab();
-
-    expect(screen.getByText('Enter a whole number of at least 1.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add plan' })).toBeDisabled();
-    expect(requests.count()).toBe(0);
-  });
-
-  it('caps limits at one: "Add limit" hides after a row is added, and returns once it is removed', async () => {
-    const { user } = setup();
-
-    await user.click(screen.getByRole('button', { name: 'Add limit' }));
-    expect(screen.queryByRole('button', { name: 'Add limit' })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Remove limit' }));
-    expect(screen.getByRole('button', { name: 'Add limit' })).toBeInTheDocument();
-  });
-
   it('shows the subtitle, the plan name field and the optional expiry label', () => {
     setup();
 
     expect(
-      screen.getByText('Define usage limits and availability for this plan.'),
+      screen.getByText('Define the conditions, pricing and availability of this plan.'),
     ).toBeInTheDocument();
     expect(screen.getByPlaceholderText('e.g. Gold')).toBeInTheDocument();
     expect(screen.getByLabelText(/Expiry date \(optional\)/)).toBeInTheDocument();
-  });
-
-  it('shows "Unlimited requests" while there are no limits, and not once one is added', async () => {
-    const { user } = setup();
-
-    expect(screen.getByText('Unlimited requests')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Add limit' }));
-    expect(screen.queryByText('Unlimited requests')).not.toBeInTheDocument();
-  });
-
-  it('keeps Block requests on by default and lets it be turned off', async () => {
-    const { user } = setup();
-
-    const block = screen.getByRole('switch', { name: 'Block requests when quota is reached' });
-    expect(block).toBeChecked();
-    await user.click(block);
-    expect(block).not.toBeChecked();
   });
 
   it('shows Paid plan as coming soon, with no switch, when paidplan is disabled', () => {
@@ -326,73 +286,6 @@ describe('SubscriptionPlanFormDialog', () => {
     await waitFor(() => expect(requests.count()).toBe(1));
     // null, not absent: an omitted expiryTime means "keep the current value".
     expect(JSON.parse(requests.last()!.body)).toHaveProperty('expiryTime', null);
-  });
-
-  it('locks the name and limit of a plan in use, and still saves its other settings', async () => {
-    const plan = aSubscriptionPlan({
-      displayName: 'Gold',
-      id: 'gold',
-      limits: [
-        {
-          limitCount: 1000,
-          limitType: 'REQUEST_COUNT',
-          stopOnQuotaReach: true,
-          timeAmount: 1,
-          timeUnit: 'HOUR',
-        },
-      ],
-    });
-    server.use(accepts('put', `${PLANS}/gold`, plan, { record: requests }));
-    const { user } = setup({
-      plan,
-      usage: { ...UNUSED, inUse: true, restApis: 1, subscriptions: 2 },
-    });
-
-    expect(
-      await screen.findByText(
-        'This plan is in use. To change its name or limit, create a new plan.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/Plan name/)).toBeDisabled();
-    expect(screen.getByLabelText('Request count')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Remove limit' })).toBeDisabled();
-    // How requests over the quota are treated can still change.
-    await user.click(screen.getByRole('switch', { name: 'Block requests when quota is reached' }));
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    expect(JSON.parse(requests.last()!.body)).toMatchObject({
-      displayName: 'Gold',
-      limits: [{ limitCount: 1000, stopOnQuotaReach: false, timeUnit: 'HOUR' }],
-    });
-  });
-
-  it('opens pre-filled with an existing plan, and preserves its status on save', async () => {
-    const plan = aSubscriptionPlan({
-      displayName: 'Gold',
-      id: 'gold',
-      limits: [
-        {
-          limitCount: 1000,
-          limitType: 'REQUEST_COUNT',
-          stopOnQuotaReach: true,
-          timeAmount: 1,
-          timeUnit: 'HOUR',
-        },
-      ],
-      status: 'INACTIVE',
-    });
-    server.use(accepts('put', `${PLANS}/gold`, plan, { record: requests }));
-    const { user } = setup({ plan });
-
-    expect(screen.getByLabelText(/Plan name/)).toHaveValue('Gold');
-    expect(screen.getByLabelText('Request count')).toHaveValue(1000);
-
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    // Status isn't editable in this dialog — the plan's own status must round-trip.
-    expect(JSON.parse(requests.last()!.body).status).toBe('INACTIVE');
   });
 
   it('shows a taken name as an inline field error, not a generic toast', async () => {
@@ -909,7 +802,7 @@ describe('SubscriptionPlanFormDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
   });
 
-  it("shows an existing plan's pricing read-only, its name and limits still editable", async () => {
+  it("shows an existing plan's pricing read-only, its name and conditions still editable", async () => {
     setup({ plan: aSubscriptionPlan({ pricing: aPlanPricing() }) });
 
     expect(
@@ -935,7 +828,7 @@ describe('SubscriptionPlanFormDialog', () => {
     ).not.toBeInTheDocument();
     // The rest of the plan stays editable.
     expect(screen.getByLabelText(/Plan name/)).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Add limit' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add condition' })).toBeEnabled();
   });
 
   it("lists an existing plan's prices by name, as the API Portal does, whatever order they come in", async () => {
@@ -1140,5 +1033,396 @@ describe('SubscriptionPlanFormDialog', () => {
     expect(screen.queryByText('Plan not created')).not.toBeInTheDocument();
     expect(screen.queryByText('A plan with this name already exists')).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+/** Picks a condition type from the Add condition menu. */
+async function addCondition(user: User, type: string) {
+  await user.click(screen.getByRole('button', { name: 'Add condition' }));
+  await user.click(await screen.findByRole('menuitem', { name: new RegExp(`^${type}`) }));
+  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+}
+
+/** Picks an option of a select. */
+async function choose(user: User, select: HTMLElement, option: string) {
+  await user.click(select);
+  await user.click(await screen.findByRole('option', { name: option }));
+}
+
+/** The card of a condition, by its type's name. */
+const card = (name: string) => screen.getByRole('group', { name });
+
+const requestsCondition = {
+  id: 'requests',
+  params: {
+    limits: [
+      { count: 100, timeAmount: 1, timeUnit: 'MINUTE' },
+      { count: 10000, timeAmount: 1, timeUnit: 'DAY' },
+    ],
+    onExceed: 'allow',
+  },
+  type: 'request-count' as const,
+};
+
+const customCondition = {
+  id: 'tier',
+  params: { code: '00123', level: 'gold', max: 5 },
+  type: 'custom' as const,
+};
+
+describe('SubscriptionPlanFormDialog conditions', () => {
+  it('offers the built-in condition types not yet used, and Custom', async () => {
+    const { user } = setup();
+
+    expect(screen.getByText('No conditions: this plan is unlimited.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add condition' }));
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
+      'Request countREST APIs only. Counts every request.',
+      'Event countWebSocket and WebSub APIs only. Counts every event.',
+      'Tool-call countMCP proxies only. Counts tools/call.',
+      'Token countLLM proxies only. Counts model tokens.',
+      'CustomAn ID and key-value pairs, read by a policy your team writes.',
+    ]);
+    await user.click(screen.getByRole('menuitem', { name: /^Request count/ }));
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+
+    expect(screen.queryByText('No conditions: this plan is unlimited.')).not.toBeInTheDocument();
+    expect(card('Request count')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add condition' }));
+    const names = (await screen.findAllByRole('menuitem')).map((item) => item.textContent ?? '');
+    expect(names).toHaveLength(4);
+    expect(names.some((name) => name.startsWith('Request count'))).toBe(false);
+  });
+
+  it('creates a plan with its conditions and description, never the legacy limits', async () => {
+    server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
+    const { user, onClose } = setup();
+
+    await user.type(screen.getByLabelText(/Plan name/), 'Gold');
+    await user.type(screen.getByLabelText(/Description/), 'For partners');
+
+    await addCondition(user, 'Request count');
+    const requestCount = card('Request count');
+    await user.type(within(requestCount).getByLabelText('Count'), '100');
+    await user.click(within(requestCount).getByRole('button', { name: 'Add limit' }));
+    await user.type(within(requestCount).getAllByLabelText('Count')[1], '10000');
+    await choose(
+      user,
+      within(requestCount).getAllByRole('combobox', { name: 'Window unit' })[1],
+      'Day',
+    );
+    await choose(
+      user,
+      within(requestCount).getByRole('combobox', { name: 'When a limit is reached' }),
+      'Allow when reached',
+    );
+    expect(
+      within(requestCount).getByText(
+        '100 requests per minute · 10,000 requests per day · overage allowed',
+      ),
+    ).toBeInTheDocument();
+
+    await addCondition(user, 'Token count');
+    const tokenCount = card('Token count');
+    await choose(
+      user,
+      within(tokenCount).getByRole('combobox', { name: 'Tokens counted' }),
+      'Prompt tokens',
+    );
+    await user.type(within(tokenCount).getByLabelText('Count'), '5000');
+    await user.clear(within(tokenCount).getByLabelText('Window length'));
+    await user.type(within(tokenCount).getByLabelText('Window length'), '2');
+    await choose(user, within(tokenCount).getByRole('combobox', { name: 'Window unit' }), 'Hour');
+
+    await addCondition(user, 'Custom');
+    const custom = card('Custom');
+    await user.type(within(custom).getByLabelText(/^ID/), 'business-hours');
+    await user.type(within(custom).getByLabelText('Key'), 'start');
+    await user.type(within(custom).getByLabelText('Value'), '9');
+    await user.click(within(custom).getByRole('button', { name: 'Add value' }));
+    await user.type(within(custom).getAllByLabelText('Key')[1], 'zone');
+    await user.type(within(custom).getAllByLabelText('Value')[1], 'UTC');
+
+    await user.click(screen.getByRole('button', { name: 'Add plan' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    const body = JSON.parse(requests.last()!.body);
+    expect(body).toMatchObject({ description: 'For partners', displayName: 'Gold', id: 'gold' });
+    expect(body).not.toHaveProperty('limits');
+    expect(body.conditions).toEqual([
+      {
+        id: 'requests',
+        params: {
+          limits: [
+            { count: 100, timeAmount: 1, timeUnit: 'MINUTE' },
+            { count: 10000, timeAmount: 1, timeUnit: 'DAY' },
+          ],
+          onExceed: 'allow',
+        },
+        type: 'request-count',
+      },
+      {
+        id: 'tokens',
+        params: {
+          limits: [{ count: 5000, timeAmount: 2, timeUnit: 'HOUR' }],
+          onExceed: 'reject',
+          tokenType: 'prompt',
+        },
+        type: 'token-count',
+      },
+      { id: 'business-hours', params: { start: 9, zone: 'UTC' }, type: 'custom' },
+    ]);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('sends an empty conditions list, and no description, for an unlimited plan', async () => {
+    server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText(/Plan name/), 'Free');
+    await user.click(screen.getByRole('button', { name: 'Add plan' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    const body = JSON.parse(requests.last()!.body);
+    expect(body.conditions).toEqual([]);
+    expect(body).not.toHaveProperty('description');
+    expect(body).not.toHaveProperty('limits');
+  });
+
+  it('shows a bad count, or a window another limit already has, by its limit', async () => {
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText(/Plan name/), 'Gold');
+    await addCondition(user, 'Request count');
+    const requestCount = card('Request count');
+    // The new limit's count has the focus, and is not flagged before it is filled in.
+    expect(within(requestCount).getByLabelText('Count')).toHaveFocus();
+    expect(
+      within(requestCount).queryByText('Enter a whole number of at least 1.'),
+    ).not.toBeInTheDocument();
+    await user.type(within(requestCount).getByLabelText('Count'), '0');
+    await user.tab();
+
+    expect(
+      within(requestCount).getByText('Enter a whole number of at least 1.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add plan' })).toBeDisabled();
+
+    await user.clear(within(requestCount).getByLabelText('Count'));
+    await user.type(within(requestCount).getByLabelText('Count'), '100');
+    expect(
+      within(requestCount).queryByText('Enter a whole number of at least 1.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add plan' })).toBeEnabled();
+
+    // 60 minutes is the same window as 1 hour.
+    await user.click(within(requestCount).getByRole('button', { name: 'Add limit' }));
+    await user.type(within(requestCount).getAllByLabelText('Count')[1], '5000');
+    await user.clear(within(requestCount).getAllByLabelText('Window length')[1]);
+    await user.type(within(requestCount).getAllByLabelText('Window length')[1], '60');
+    await user.tab();
+    await choose(
+      user,
+      within(requestCount).getAllByRole('combobox', { name: 'Window unit' })[0],
+      'Hour',
+    );
+
+    expect(
+      within(requestCount).getByText(
+        'Another limit already covers this window; each limit needs a window of its own length.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add plan' })).toBeDisabled();
+    expect(requests.count()).toBe(0);
+  });
+
+  it("checks a custom condition's ID and keys as the Platform API does", async () => {
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText(/Plan name/), 'Gold');
+    await addCondition(user, 'Custom');
+    const custom = card('Custom');
+    const id = within(custom).getByLabelText(/^ID/);
+
+    await user.type(id, 'Business Hours');
+    await user.tab();
+    expect(
+      within(custom).getByText(
+        'Use lowercase letters, digits and hyphens, starting with a letter (at most 63 characters).',
+      ),
+    ).toBeInTheDocument();
+
+    await user.clear(id);
+    await user.type(id, 'requests');
+    expect(
+      within(custom).getByText('requests is the ID of a built-in condition; choose another.'),
+    ).toBeInTheDocument();
+
+    await user.clear(id);
+    await user.type(id, 'tier');
+    await user.type(within(custom).getByLabelText('Value'), 'gold');
+    await user.tab();
+    expect(within(custom).getByText('Each value needs a key.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add plan' })).toBeDisabled();
+
+    await user.type(within(custom).getByLabelText('Key'), 'level');
+    expect(within(custom).queryByText('Each value needs a key.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add plan' })).toBeEnabled();
+  });
+
+  it('refuses a description longer than the Platform API keeps', async () => {
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText(/Plan name/), 'Gold');
+    await user.click(screen.getByLabelText(/Description/));
+    await user.paste('x'.repeat(1024));
+
+    expect(screen.getByText('Use at most 1,023 characters (1,024 now).')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add plan' })).toBeDisabled();
+  });
+
+  it("opens a plan's conditions collapsed, with their summary, and saves them back as they were", async () => {
+    const plan = aSubscriptionPlan({
+      conditions: [requestsCondition, customCondition],
+      description: 'For partners',
+      displayName: 'Gold',
+      id: 'gold',
+      status: 'INACTIVE',
+    });
+    server.use(accepts('put', `${PLANS}/gold`, plan, { record: requests }));
+    const { user } = setup({ plan });
+
+    expect(screen.getByLabelText(/Plan name/)).toHaveValue('Gold');
+    expect(screen.getByLabelText(/Description/)).toHaveValue('For partners');
+    expect(
+      screen.getByText('100 requests per minute · 10,000 requests per day · overage allowed'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('code = 00123 · level = gold · max = 5')).toBeInTheDocument();
+    // Collapsed: the windows are not shown until the condition is opened.
+    expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show Request count settings' }));
+    expect(
+      within(card('Request count'))
+        .getAllByLabelText('Count')
+        .map((input) => (input as HTMLInputElement).value),
+    ).toEqual(['100', '10000']);
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    const body = JSON.parse(requests.last()!.body);
+    // Status isn't editable in this dialog — the plan's own status must round-trip.
+    expect(body.status).toBe('INACTIVE');
+    // A saved "00123" stays a string, and 5 stays a number.
+    expect(body.conditions).toEqual([requestsCondition, customCondition]);
+    expect(body).not.toHaveProperty('limits');
+    // The description did not change, so it is not sent.
+    expect(body).not.toHaveProperty('description');
+  });
+
+  it("edits a plan's conditions: removes a limit and a condition", async () => {
+    const plan = aSubscriptionPlan({
+      conditions: [requestsCondition, customCondition],
+      displayName: 'Gold',
+      id: 'gold',
+    });
+    server.use(accepts('put', `${PLANS}/gold`, plan, { record: requests }));
+    const { user } = setup({ plan });
+
+    await user.click(screen.getByRole('button', { name: 'Show Request count settings' }));
+    await user.click(
+      within(card('Request count')).getAllByRole('button', { name: 'Remove limit' })[1],
+    );
+    await user.click(screen.getByRole('button', { name: 'Remove Custom condition' }));
+    await user.type(screen.getByLabelText(/Description/), 'Now with support');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    const body = JSON.parse(requests.last()!.body);
+    expect(body.description).toBe('Now with support');
+    expect(body.conditions).toEqual([
+      {
+        ...requestsCondition,
+        params: { ...requestsCondition.params, limits: [requestsCondition.params.limits[0]] },
+      },
+    ]);
+  });
+
+  it('keeps the last limit of a condition: remove the condition instead', async () => {
+    const { user } = setup();
+
+    await addCondition(user, 'Event count');
+    expect(within(card('Event count')).getByRole('button', { name: 'Remove limit' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Remove Event count condition' }));
+    expect(screen.getByText('No conditions: this plan is unlimited.')).toBeInTheDocument();
+  });
+
+  it('stops adding conditions at 20, and limits at 10', async () => {
+    const conditions = [
+      {
+        id: 'requests',
+        params: {
+          limits: Array.from({ length: 10 }, (_, index) => ({
+            count: 10,
+            timeAmount: index + 1,
+            timeUnit: 'MINUTE' as const,
+          })),
+          onExceed: 'reject',
+        },
+        type: 'request-count' as const,
+      },
+      ...Array.from({ length: 19 }, (_, index) => ({
+        id: `custom-${index}`,
+        params: {},
+        type: 'custom' as const,
+      })),
+    ];
+    const { user } = setup({ plan: aSubscriptionPlan({ conditions }) });
+
+    expect(screen.getByRole('button', { name: 'Add condition' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Show Request count settings' }));
+    expect(within(card('Request count')).getByRole('button', { name: 'Add limit' })).toBeDisabled();
+  });
+
+  it('locks the name and conditions of a plan in use, and still saves its description and expiry', async () => {
+    const plan = aSubscriptionPlan({
+      conditions: [requestsCondition],
+      displayName: 'Gold',
+      id: 'gold',
+    });
+    server.use(accepts('put', `${PLANS}/gold`, plan, { record: requests }));
+    const { user } = setup({
+      plan,
+      usage: { ...UNUSED, inUse: true, restApis: 1, subscriptions: 2 },
+    });
+
+    expect(
+      await screen.findByText(
+        'This plan is in use. To change its name or conditions, create a new plan.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Plan name/)).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Add condition' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Remove Request count condition' }),
+    ).not.toBeInTheDocument();
+    // Its conditions can still be looked at.
+    await user.click(screen.getByRole('button', { name: 'Show Request count settings' }));
+    for (const input of within(card('Request count')).getAllByLabelText('Count')) {
+      expect(input).toBeDisabled();
+    }
+    expect(screen.queryByRole('button', { name: 'Remove limit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add limit' })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Description/), 'Now with support');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    const body = JSON.parse(requests.last()!.body);
+    expect(body).toMatchObject({ description: 'Now with support', displayName: 'Gold' });
+    // Omitted means "keep": the plan keeps its conditions.
+    expect(body).not.toHaveProperty('conditions');
+    expect(body).not.toHaveProperty('limits');
   });
 });

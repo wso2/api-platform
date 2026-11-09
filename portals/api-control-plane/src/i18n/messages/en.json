@@ -2732,20 +2732,220 @@
   "apiControlPlane.pages.appShell.appShellPages.orgManage.SubscriptionPlansPage.clearSearch": {
     "defaultMessage": "Clear search"
   },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.SubscriptionPlansPage.column.conditions": {
+    "defaultMessage": "Conditions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.allowed": {
+    "defaultMessage": "Allowed past the limit",
+    "description": "Tooltip line of a condition that lets requests through once a limit is used up."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.label": {
+    "defaultMessage": "{type, select, requests {Requests} events {Events} toolCalls {Tool calls} total {Tokens} prompt {Prompt tokens} completion {Completion tokens} other {Custom}}",
+    "description": "Name on a condition chip: what the condition counts, or Custom."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.moreAria": {
+    "defaultMessage": "{count, plural, one {# more condition} other {# more conditions}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.moreTitle": {
+    "defaultMessage": "More conditions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.moreWindows": {
+    "defaultMessage": "+{count, number}",
+    "description": "How many more limits (or conditions) there are than the chip shows."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.noLimit": {
+    "defaultMessage": "No limit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.noValues": {
+    "defaultMessage": "No values"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.pair": {
+    "defaultMessage": "{name} = {value}",
+    "description": "One key-value pair of a custom condition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.unlimited": {
+    "defaultMessage": "Unlimited",
+    "description": "Shown for a plan with no conditions."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.window": {
+    "defaultMessage": "{count} / {amount, plural, one {} other {# }}{unit, select, MINUTE {min} HOUR {hr} DAY {day} MONTH {mo} other {}}",
+    "description": "One limit of a condition, e.g. \"1,000 / min\" or \"5,000 / 2 hr\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.addCondition": {
+    "defaultMessage": "Add condition"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.addLimit": {
+    "defaultMessage": "Add limit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.addValue": {
+    "defaultMessage": "Add value"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.collapse": {
+    "defaultMessage": "Hide {name} settings"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.conditionTypes": {
+    "defaultMessage": "Condition types",
+    "description": "Accessible name of the menu of condition types to add."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.idHint": {
+    "defaultMessage": "Lowercase letters, digits and hyphens, starting with a letter. The policy finds the condition by this ID."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.idLabel": {
+    "defaultMessage": "ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.idPlaceholder": {
+    "defaultMessage": "e.g. business-hours"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.empty": {
+    "defaultMessage": "No conditions: this plan is unlimited."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.expand": {
+    "defaultMessage": "Show {name} settings"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.helper": {
+    "defaultMessage": "A plan with no conditions is unlimited. A condition takes effect on an API only where the developer attaches the policy that enforces it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.label": {
+    "defaultMessage": "Conditions"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.onExceed.allow": {
+    "defaultMessage": "Allow when reached"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.onExceed.label": {
+    "defaultMessage": "When a limit is reached"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.onExceed.reject": {
+    "defaultMessage": "Reject when reached"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.pair.equals": {
+    "defaultMessage": "=",
+    "description": "Sits between the key and the value of a custom condition pair."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.pair.key": {
+    "defaultMessage": "Key"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.pair.keyPlaceholder": {
+    "defaultMessage": "key"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.pair.value": {
+    "defaultMessage": "Value"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.pair.valuePlaceholder": {
+    "defaultMessage": "value"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.removeCondition": {
+    "defaultMessage": "Remove {name} condition"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.removeLimit": {
+    "defaultMessage": "Remove limit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.removeValue": {
+    "defaultMessage": "Remove value"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.noLimit": {
+    "defaultMessage": "No limit yet"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.noValues": {
+    "defaultMessage": "No values yet"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.overageAllowed": {
+    "defaultMessage": "overage allowed"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.pair": {
+    "defaultMessage": "{name} = {value}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.window": {
+    "defaultMessage": "{count} {what, select, events {events} toolCalls {tool calls} total {tokens} prompt {prompt tokens} completion {completion tokens} other {requests}} per {amount, plural, one {{unit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {unit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "description": "One limit of a condition, e.g. \"1,000 requests per minute\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.tokenType.label": {
+    "defaultMessage": "Tokens counted"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.tokenType.option": {
+    "defaultMessage": "{tokenType, select, prompt {Prompt tokens} completion {Completion tokens} other {Total tokens}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.description": {
+    "defaultMessage": "{type, select, requestCount {REST APIs only. Counts every request.} eventCount {WebSocket and WebSub APIs only. Counts every event.} toolCallCount {MCP proxies only. Counts tools/call.} tokenCount {LLM proxies only. Counts model tokens.} other {An ID and key-value pairs, read by a policy your team writes.}}",
+    "description": "What a condition type counts, and on which APIs, in the Add condition menu."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.name": {
+    "defaultMessage": "{type, select, requestCount {Request count} eventCount {Event count} toolCallCount {Tool-call count} tokenCount {Token count} other {Custom}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.amount": {
+    "defaultMessage": "Window length"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.count": {
+    "defaultMessage": "Count"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.countPlaceholder": {
+    "defaultMessage": "count"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.per": {
+    "defaultMessage": "per"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.unit": {
+    "defaultMessage": "Window unit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.unitOption": {
+    "defaultMessage": "{unit, select, MINUTE {Minute} HOUR {Hour} DAY {Day} other {Month}}"
+  },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanPricingSection.comingSoon": {
     "defaultMessage": "Coming soon"
   },
-  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.expiry.optional": {
-    "defaultMessage": "(optional)"
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.description.label": {
+    "defaultMessage": "Description"
   },
-  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.limits.unlimited": {
-    "defaultMessage": "Unlimited requests"
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.description.placeholder": {
+    "defaultMessage": "What subscribers get on this plan"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.description.tooLong": {
+    "defaultMessage": "Use at most {max, number} characters ({count, number} now)."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.optionalField": {
+    "defaultMessage": "{label} <muted>(optional)</muted>",
+    "description": "Label of an optional field; {label} is the field name."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.create": {
-    "defaultMessage": "Define usage limits and availability for this plan."
+    "defaultMessage": "Define the conditions, pricing and availability of this plan."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.edit": {
-    "defaultMessage": "Update usage limits and availability for this plan."
+    "defaultMessage": "Update the conditions and availability of this plan."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.amountInvalid": {
+    "defaultMessage": "Enter a window of at least 1."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.countInvalid": {
+    "defaultMessage": "Enter a whole number of at least 1."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.customIdBuiltIn": {
+    "defaultMessage": "{id} is the ID of a built-in condition; choose another."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.customIdInvalid": {
+    "defaultMessage": "Use lowercase letters, digits and hyphens, starting with a letter (at most 63 characters)."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.customIdTaken": {
+    "defaultMessage": "Another condition already has the ID {id}."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.noWindows": {
+    "defaultMessage": "Add at least one limit, or remove the condition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.pairKeyMissing": {
+    "defaultMessage": "Each value needs a key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.pairKeyTaken": {
+    "defaultMessage": "The key {name} is used twice."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.paramsTooLarge": {
+    "defaultMessage": "The values must be at most {max, number} bytes in all."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.tooManyConditions": {
+    "defaultMessage": "A plan can have at most {max, number} conditions."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.tooManyWindows": {
+    "defaultMessage": "A condition can have at most {max, number} limits."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.windowTaken": {
+    "defaultMessage": "Another limit already covers this window; each limit needs a window of its own length."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.afterBody": {
     "defaultMessage": "You’ll save the secret, then can get a test token on the same page. The secret is shown once."
@@ -4198,9 +4398,6 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.actions": {
     "defaultMessage": "Actions"
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.limits": {
-    "defaultMessage": "Limits"
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.column.name": {
     "defaultMessage": "Name"
   },
@@ -4240,17 +4437,13 @@
     "defaultMessage": "Create plan"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.description": {
-    "defaultMessage": "Plans define how many requests an app can make in a time window. Enable one on the APIs you publish."
+    "defaultMessage": "Plans set the conditions an app subscribes to, such as how many requests, tool calls, tokens or events it can use in a time window. Enable one on the APIs you publish."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.title": {
     "defaultMessage": "Create your first subscription plan"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.error.message": {
     "defaultMessage": "Unable to load subscription plans"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.limitChip": {
-    "defaultMessage": "req · {count} / {amount, plural, one {} other {# }}{unit, select, MINUTE {min} HOUR {hr} DAY {day} MONTH {mo} other {}}",
-    "description": "Compact monospace tag summarizing one throttling limit, e.g. \"req · 1000 / hr\" or \"req · 100000 / 2 hr\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.loading": {
     "defaultMessage": "Loading subscription plans"
@@ -4292,14 +4485,10 @@
     "description": "Accessible name of the per-row status switch when the plan is inactive."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.subtitle": {
-    "defaultMessage": "Define the rate and quota tiers applications can subscribe to."
+    "defaultMessage": "Define the conditions and quota tiers applications can subscribe to."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.title": {
     "defaultMessage": "Subscription Plans"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.unlimitedChip": {
-    "defaultMessage": "req · ∞",
-    "description": "Chip shown for a plan with no configured limits."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.update.failed": {
     "defaultMessage": "Failed to update the plan."
@@ -4668,9 +4857,6 @@
     "defaultMessage": "Saving…",
     "description": "Label on the submit button while edits to an existing plan are being saved."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.addLimit": {
-    "defaultMessage": "Add limit"
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.conflict.message": {
     "defaultMessage": "A plan named \"{name}\" already exists in this organization. Choose a different name."
   },
@@ -4687,46 +4873,8 @@
     "defaultMessage": "Expiry date"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.inUseNote": {
-    "defaultMessage": "This plan is in use. To change its name or limit, create a new plan.",
-    "description": "Shown when editing a plan that APIs offer or subscriptions use; the name and limit fields are disabled."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.countLabel": {
-    "defaultMessage": "Request count",
-    "description": "Accessible name of the numeric field holding how many requests are allowed."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.error": {
-    "defaultMessage": "Enter a whole number of at least 1."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.per": {
-    "defaultMessage": "/ per"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.remove": {
-    "defaultMessage": "Remove limit"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.bandwidth": {
-    "defaultMessage": "Bandwidth"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.comingSoon": {
-    "defaultMessage": "Coming soon",
-    "description": "Chip shown next to a limit type that is not selectable yet."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.requestCount": {
-    "defaultMessage": "Request count"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.tokenCount": {
-    "defaultMessage": "Token count"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.typeLabel": {
-    "defaultMessage": "Limit type"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.unitLabel": {
-    "defaultMessage": "Time window unit"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.helper": {
-    "defaultMessage": "Leave empty for an unlimited plan."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.label": {
-    "defaultMessage": "Limits"
+    "defaultMessage": "This plan is in use. To change its name or conditions, create a new plan.",
+    "description": "Shown when editing a plan that APIs offer or subscriptions use; the name and conditions are read-only."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.conflict": {
     "defaultMessage": "A plan with this name already exists"
@@ -4755,29 +4903,11 @@
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.updated": {
     "defaultMessage": "Updated plan \"{name}\"."
   },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.helper": {
-    "defaultMessage": "Reject requests that exceed the limit."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.label": {
-    "defaultMessage": "Block requests when quota is reached"
-  },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.create": {
     "defaultMessage": "Add subscription plan"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.edit": {
     "defaultMessage": "Edit subscription plan"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.day": {
-    "defaultMessage": "Day"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.hour": {
-    "defaultMessage": "Hour"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.minute": {
-    "defaultMessage": "Minute"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.month": {
-    "defaultMessage": "Month"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.components.meterLabels.operator.equals": {
     "defaultMessage": "equals"

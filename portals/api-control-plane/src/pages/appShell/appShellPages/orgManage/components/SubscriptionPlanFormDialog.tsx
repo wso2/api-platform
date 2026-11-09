@@ -16,14 +16,13 @@
  * under the License.
  */
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
   AdapterDateFns,
   Alert,
   AlertTitle,
   Box,
   Button,
-  Chip,
   DatePickers,
   Dialog,
   DialogActions,
@@ -35,14 +34,11 @@ import {
   FormHelperText,
   FormLabel,
   IconButton,
-  MenuItem,
   OutlinedInput,
-  Select,
   Stack,
-  Switch,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Infinity as InfinityIcon, Plus, X } from '@wso2/oxygen-ui-icons-react';
+import { X } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { isErrorCode } from '@/api/core/errors';
@@ -55,7 +51,14 @@ import {
 } from '@/api/resources/subscriptionPlans';
 import { useNotifications } from '@/components/Notifications';
 import { popupPaperSx } from '@/theme/receipes';
+import { PlanConditionsEditor } from './PlanConditionsEditor';
 import { PlanPricingSection } from './PlanPricingSection';
+import {
+  checkConditions,
+  draftsFromConditions,
+  MAX_DESCRIPTION_CHARS,
+  type ConditionDraft,
+} from './planConditions';
 import {
   buildPricingBody,
   draftFromPricing,
@@ -63,20 +66,9 @@ import {
   type PricingDraft,
 } from './planPricingDraft';
 
-/** One entry of `SubscriptionPlan['limits']`, generated from the spec. */
-type SubscriptionPlanLimit = NonNullable<SubscriptionPlan['limits']>[number];
-
-/** A limit row being edited. Numeric fields stay strings while the user types. */
-type LimitDraft = {
-  key: number;
-  limitCount: string;
-  timeUnit: SubscriptionPlanLimit['timeUnit'];
-};
-
 type FormState = {
   displayName: string;
-  limits: LimitDraft[];
-  stopOnQuotaReach: boolean;
+  description: string;
   /** The picked calendar day (local), or `null` for no expiry. Holds an Invalid
    * Date while the user is partway through typing one. */
   expiryDate: Date | null;
@@ -92,14 +84,17 @@ const UNVISITED: FieldVisit = { blurred: false, edited: false };
 const settled = (visit: FieldVisit) => visit.blurred && visit.edited;
 
 const NAME_FIELD = 'subscription-plan-name';
+const DESCRIPTION_FIELD = 'subscription-plan-description';
 const EXPIRY_FIELD = 'subscription-plan-expiry';
 
 const emptyForm = (): FormState => ({
+  description: '',
   displayName: '',
   expiryDate: null,
-  limits: [],
-  stopOnQuotaReach: true,
 });
+
+/** Characters as the Platform API counts them (runes), not UTF-16 code units. */
+const charCount = (value: string) => Array.from(value).length;
 
 /** The longest plan handle the Platform API keeps. */
 const MAX_HANDLE_CHARS = 40;
@@ -124,16 +119,10 @@ const fromExpiryTime = (timestamp: string): Date => {
   return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
 };
 
-const isPositiveInteger = (value: string): boolean => /^[1-9]\d*$/.test(value.trim());
-
 /** The code the Platform API answers a new plan whose handle is taken with. */
 const PLAN_EXISTS = 'SUBSCRIPTION_PLAN_EXISTS';
 
 const messages = defineMessages({
-  addLimit: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.addLimit',
-    defaultMessage: 'Add limit',
-  },
   addPlan: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.addPlan',
     defaultMessage: 'Add plan',
@@ -169,6 +158,18 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.created',
     defaultMessage: 'Created plan "{name}".',
   },
+  descriptionLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.description.label',
+    defaultMessage: 'Description',
+  },
+  descriptionPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.description.placeholder',
+    defaultMessage: 'What subscribers get on this plan',
+  },
+  descriptionTooLong: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.description.tooLong',
+    defaultMessage: 'Use at most {max, number} characters ({count, number} now).',
+  },
   editTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.edit',
     defaultMessage: 'Edit subscription plan',
@@ -185,73 +186,24 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.expiry.label',
     defaultMessage: 'Expiry date',
   },
-  expiryOptional: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.expiry.optional',
-    defaultMessage: '(optional)',
-  },
-  limitsUnlimited: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.limits.unlimited',
-    defaultMessage: 'Unlimited requests',
+  optionalField: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.optionalField',
+    defaultMessage: '{label} <muted>(optional)</muted>',
+    description: 'Label of an optional field; {label} is the field name.',
   },
   subtitleCreate: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.create',
-    defaultMessage: 'Define usage limits and availability for this plan.',
+    defaultMessage: 'Define the conditions, pricing and availability of this plan.',
   },
   subtitleEdit: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.edit',
-    defaultMessage: 'Update usage limits and availability for this plan.',
+    defaultMessage: 'Update the conditions and availability of this plan.',
   },
   inUseNote: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.inUseNote',
-    defaultMessage: 'This plan is in use. To change its name or limit, create a new plan.',
+    defaultMessage: 'This plan is in use. To change its name or conditions, create a new plan.',
     description:
-      'Shown when editing a plan that APIs offer or subscriptions use; the name and limit fields are disabled.',
-  },
-  limitCountLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.countLabel',
-    defaultMessage: 'Request count',
-    description: 'Accessible name of the numeric field holding how many requests are allowed.',
-  },
-  limitError: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.error',
-    defaultMessage: 'Enter a whole number of at least 1.',
-  },
-  limitPer: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.per',
-    defaultMessage: '/ per',
-  },
-  limitTypeBandwidth: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.bandwidth',
-    defaultMessage: 'Bandwidth',
-  },
-  limitTypeComingSoon: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.comingSoon',
-    defaultMessage: 'Coming soon',
-    description: 'Chip shown next to a limit type that is not selectable yet.',
-  },
-  limitTypeLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.typeLabel',
-    defaultMessage: 'Limit type',
-  },
-  limitTypeRequestCount: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.requestCount',
-    defaultMessage: 'Request count',
-  },
-  limitTypeTokenCount: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.type.tokenCount',
-    defaultMessage: 'Token count',
-  },
-  limitUnitLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.unitLabel',
-    defaultMessage: 'Time window unit',
-  },
-  limitsHelper: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.helper',
-    defaultMessage: 'Leave empty for an unlimited plan.',
-  },
-  limitsLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limits.label',
-    defaultMessage: 'Limits',
+      'Shown when editing a plan that APIs offer or subscriptions use; the name and conditions are read-only.',
   },
   nameConflict: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.conflict',
@@ -273,10 +225,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.name.error.required',
     defaultMessage: 'Enter a display name',
   },
-  removeLimit: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.limit.remove',
-    defaultMessage: 'Remove limit',
-  },
   saveChanges: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.action.saveChanges',
     defaultMessage: 'Save changes',
@@ -286,33 +234,9 @@ const messages = defineMessages({
     defaultMessage: 'Saving…',
     description: 'Label on the submit button while edits to an existing plan are being saved.',
   },
-  stopHelper: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.helper',
-    defaultMessage: 'Reject requests that exceed the limit.',
-  },
-  stopLabel: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.stop.label',
-    defaultMessage: 'Block requests when quota is reached',
-  },
   titleCreate: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.title.create',
     defaultMessage: 'Add subscription plan',
-  },
-  unitDay: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.day',
-    defaultMessage: 'Day',
-  },
-  unitHour: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.hour',
-    defaultMessage: 'Hour',
-  },
-  unitMinute: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.minute',
-    defaultMessage: 'Minute',
-  },
-  unitMonth: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.unit.month',
-    defaultMessage: 'Month',
   },
   updateFailed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.components.SubscriptionPlanFormDialog.notification.updateFailed',
@@ -324,26 +248,12 @@ const messages = defineMessages({
   },
 });
 
-/** One disabled `limitType` option, paired with a "Coming soon" chip so a
- * longer label doesn't visually crowd or touch the chip (a fixed `spacing`
- * gap, not space distributed across the row). */
-const ComingSoonMenuItem = ({ label, value }: { label: MessageDescriptor; value: string }) => {
-  const intl = useIntl();
-  return (
-    <MenuItem disabled value={value}>
-      <Stack alignItems="center" direction="row" spacing={1}>
-        <Typography component="span" variant="body2">
-          <FormattedMessage {...label} />
-        </Typography>
-        <Chip
-          label={intl.formatMessage(messages.limitTypeComingSoon)}
-          size="small"
-          variant="outlined"
-        />
-      </Stack>
-    </MenuItem>
-  );
-};
+/** The "(optional)" after a field's label, in a quieter colour. */
+const optionalMuted = (chunks: ReactNode[]) => (
+  <Typography color="text.secondary" component="span" variant="inherit">
+    {chunks}
+  </Typography>
+);
 
 export type SubscriptionPlanFormDialogProps = {
   open: boolean;
@@ -373,16 +283,15 @@ export function SubscriptionPlanFormDialog({
 
   const isEdit = plan !== null;
   const mutation = isEdit ? updateMutation : createMutation;
-  // A plan in use keeps its name and limit (the server refuses a change); its status, expiry and
-  // quota behaviour can still change.
+  // A plan in use keeps its name and conditions (the server refuses a change); its description,
+  // status and expiry can still change.
   const usageQuery = useSubscriptionPlan(open && isEdit ? plan.id : undefined);
   const inUse = isEdit && usageQuery.data?.usage?.inUse === true;
 
-  // Stable keys for limit rows across add/remove — a plain counter, since
-  // limits carry no id of their own until the plan is saved.
-  const nextLimitKey = useRef(0);
-
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [conditions, setConditions] = useState<ConditionDraft[]>([]);
+  // Bumped on every open, so the conditions editor starts afresh (collapsed, nothing touched).
+  const [session, setSession] = useState(0);
   const [pricing, setPricing] = useState<PricingDraft>(freeDraft);
   const { meters, isPending: metersPending } = useMetersById(
     pricing.prices.map((price) => price.meterId),
@@ -390,59 +299,32 @@ export function SubscriptionPlanFormDialog({
   const [submitted, setSubmitted] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [nameVisit, setNameVisit] = useState<FieldVisit>(UNVISITED);
-  const [limitVisit, setLimitVisit] = useState<FieldVisit>(UNVISITED);
 
   useEffect(() => {
     if (!open) return;
     setForm(
       plan
         ? {
+            description: plan.description ?? '',
             displayName: plan.displayName,
             expiryDate: plan.expiryTime ? fromExpiryTime(plan.expiryTime) : null,
-            limits: (plan.limits ?? []).map((limit) => ({
-              key: nextLimitKey.current++,
-              limitCount: String(limit.limitCount),
-              timeUnit: limit.timeUnit,
-            })),
-            stopOnQuotaReach: plan.limits?.[0]?.stopOnQuotaReach ?? true,
           }
         : emptyForm(),
     );
+    setConditions(draftsFromConditions(plan?.conditions));
+    setSession((current) => current + 1);
     setPricing(draftFromPricing(plan?.pricing));
     setSubmitted(false);
     setConflict(false);
     setNameVisit(UNVISITED);
-    setLimitVisit(UNVISITED);
   }, [open, plan]);
 
-  const addLimit = () => {
-    setForm((current) => ({
-      ...current,
-      limits: [
-        ...current.limits,
-        { key: nextLimitKey.current++, limitCount: '', timeUnit: 'MONTH' },
-      ],
-    }));
-  };
-
-  const removeLimit = (key: number) => {
-    setForm((current) => ({
-      ...current,
-      limits: current.limits.filter((limit) => limit.key !== key),
-    }));
-  };
-
-  const updateLimit = (key: number, patch: Partial<LimitDraft>) => {
-    setForm((current) => ({
-      ...current,
-      limits: current.limits.map((limit) => (limit.key === key ? { ...limit, ...patch } : limit)),
-    }));
-  };
-
   const trimmedName = form.displayName.trim();
+  const trimmedDescription = form.description.trim();
   const slug = slugify(trimmedName);
-  const limitCountInvalid = form.limits.map((limit) => !isPositiveInteger(limit.limitCount));
-  const hasLimitError = limitCountInvalid.some(Boolean);
+  // A plan in use keeps the conditions it has: they are neither checked nor sent.
+  const conditionsCheck = checkConditions(conditions);
+  const hasConditionsError = !inUse && conditionsCheck.body === null;
 
   // Order matters: an empty name is reported before a bad slug, and a 409
   // (checked only after a real submit) only makes sense once the rest passes.
@@ -457,7 +339,8 @@ export function SubscriptionPlanFormDialog({
   const hasNameError = nameErrorMessage !== null;
 
   const showNameError = (submitted || settled(nameVisit)) && hasNameError;
-  const showLimitError = (submitted || settled(limitVisit)) && hasLimitError;
+  const descriptionLength = charCount(trimmedDescription);
+  const hasDescriptionError = descriptionLength > MAX_DESCRIPTION_CHARS;
   const hasExpiryError = form.expiryDate !== null && Number.isNaN(form.expiryDate.getTime());
   // An existing plan's pricing is only shown, so it is neither checked nor sent.
   const pricingResult = isEdit ? { body: null, problem: null } : buildPricingBody(pricing, meters);
@@ -465,23 +348,28 @@ export function SubscriptionPlanFormDialog({
   const busy = mutation.isPending;
   // New pricing is checked against its meters, so it waits until they are read.
   const canSubmit =
-    !hasNameError && !hasLimitError && !hasExpiryError && !busy && (isEdit || !metersPending);
+    !hasNameError &&
+    !hasDescriptionError &&
+    !hasConditionsError &&
+    !hasExpiryError &&
+    !busy &&
+    (isEdit || !metersPending);
 
   const handleSubmit = (event: FormEvent) => {
     // A real submit, so Enter in the name field saves the plan.
     event.preventDefault();
     setSubmitted(true);
-    if (hasNameError || hasLimitError || hasExpiryError || hasPricingError || busy) return;
+    if (
+      hasNameError ||
+      hasDescriptionError ||
+      hasConditionsError ||
+      hasExpiryError ||
+      hasPricingError ||
+      busy
+    ) {
+      return;
+    }
 
-    const limits: SubscriptionPlanLimit[] = form.limits.map((limit) => ({
-      limitCount: Number(limit.limitCount),
-      limitType: 'REQUEST_COUNT',
-      stopOnQuotaReach: form.stopOnQuotaReach,
-      // platform-api always persists this as 1 regardless of what is sent, so
-      // there is no amount field in the UI to source it from.
-      timeAmount: 1,
-      timeUnit: limit.timeUnit,
-    }));
     const expiryTime = form.expiryDate ? toExpiryTime(form.expiryDate) : undefined;
 
     if (isEdit && plan) {
@@ -490,13 +378,17 @@ export function SubscriptionPlanFormDialog({
           // The editable fields only: a body with pricing is refused, and the
           // plan keeps the pricing it was created with. null, not undefined: an
           // omitted expiryTime means "keep", so clearing the date has to be sent
-          // explicitly.
+          // explicitly. A plan in use keeps its conditions, so they are left out (omitted means
+          // "keep"); the description is sent only when it changed ("" clears it).
           body: {
             displayName: trimmedName,
             expiryTime: expiryTime ?? null,
             id: plan.id,
-            limits,
             status: plan.status,
+            ...(inUse ? {} : { conditions: conditionsCheck.body ?? [] }),
+            ...(trimmedDescription !== (plan.description ?? '').trim()
+              ? { description: trimmedDescription }
+              : {}),
           },
           subscriptionPlanId: plan.id ?? '',
         },
@@ -516,11 +408,12 @@ export function SubscriptionPlanFormDialog({
     // A paid plan is created with its pricing in the one request.
     createMutation.mutate(
       {
+        conditions: conditionsCheck.body ?? [],
         displayName: trimmedName,
         expiryTime,
         id: slug,
-        limits,
         status: 'ACTIVE',
+        ...(trimmedDescription ? { description: trimmedDescription } : {}),
         ...(pricingResult.body ? { pricing: pricingResult.body } : {}),
       },
       {
@@ -544,7 +437,7 @@ export function SubscriptionPlanFormDialog({
   return (
     <Dialog
       fullWidth
-      maxWidth="sm"
+      maxWidth="md"
       onClose={busy ? undefined : onClose}
       open={open}
       slotProps={{ paper: { sx: { maxHeight: 'calc(100% - 64px)' } } }}
@@ -570,7 +463,14 @@ export function SubscriptionPlanFormDialog({
         </Stack>
       </DialogTitle>
       <Divider />
-      <Box component="form" noValidate onSubmit={handleSubmit}>
+      {/* The form is the flex column the paper's height limit passes on, so the content scrolls
+          between the title and the actions. */}
+      <Box
+        component="form"
+        noValidate
+        onSubmit={handleSubmit}
+        sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+      >
         <DialogContent>
           <Form.Stack spacing={3}>
             {inUse && (
@@ -613,170 +513,61 @@ export function SubscriptionPlanFormDialog({
               </FormHelperText>
             </FormControl>
 
-            <Stack spacing={1.5}>
-              <Stack alignItems="flex-start" direction="row" justifyContent="space-between">
-                <Box>
-                  <Form.Header sx={{ fontWeight: 600, typography: 'body2' }}>
-                    <FormattedMessage {...messages.limitsLabel} />
-                  </Form.Header>
-                  <Typography color="text.secondary" sx={{ display: 'block', opacity: 0.7 }} variant="caption">
-                    <FormattedMessage {...messages.limitsHelper} />
-                  </Typography>
-                </Box>
-                {form.limits.length === 0 && !inUse && (
-                  <Button
-                    color="secondary"
-                    onClick={addLimit}
-                    size="small"
-                    startIcon={<Plus size={16} />}
-                    variant="outlined"
-                  >
-                    <FormattedMessage {...messages.addLimit} />
-                  </Button>
-                )}
-              </Stack>
-
-              {form.limits.length === 0 && (
-                <Stack
-                  alignItems="center"
-                  direction="row"
-                  spacing={1.5}
-                  sx={{
-                    border: '1px dashed',
-                    borderColor: 'divider',
-                    borderRadius: '10px',
-                    color: 'text.secondary',
-                    px: 2,
-                    py: 2,
-                  }}
-                >
-                  <InfinityIcon size={16} />
-                  <Typography variant="body2">
-                    <FormattedMessage {...messages.limitsUnlimited} />
-                  </Typography>
-                </Stack>
-              )}
-
-              {form.limits.map((limit, index) => (
-                <Box
-                  key={limit.key}
-                  sx={{
-                    alignItems: 'center',
-                    display: 'grid',
-                    gap: 1,
-                    gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr) auto minmax(0,1.2fr) auto',
-                  }}
-                >
-                  <Select
-                    disabled={inUse}
-                    inputProps={{ 'aria-label': intl.formatMessage(messages.limitTypeLabel) }}
-                    onChange={() => updateLimit(limit.key, {})}
-                    size="small"
-                    value="REQUEST_COUNT"
-                  >
-                    <MenuItem value="REQUEST_COUNT">
-                      <FormattedMessage {...messages.limitTypeRequestCount} />
-                    </MenuItem>
-                    <ComingSoonMenuItem label={messages.limitTypeBandwidth} value="BANDWIDTH" />
-                    <ComingSoonMenuItem
-                      label={messages.limitTypeTokenCount}
-                      value="TOTAL_TOKEN_COUNT"
-                    />
-                  </Select>
-                  <OutlinedInput
-                    disabled={inUse}
-                    error={showLimitError && limitCountInvalid[index]}
-                    inputProps={{
-                      'aria-label': intl.formatMessage(messages.limitCountLabel),
-                      inputMode: 'numeric',
-                      min: 1,
-                    }}
-                    onBlur={() => setLimitVisit((visit) => ({ ...visit, blurred: true }))}
-                    onChange={(event) => {
-                      updateLimit(limit.key, { limitCount: event.target.value });
-                      setLimitVisit((visit) => ({ ...visit, edited: true }));
-                    }}
-                    placeholder="10000"
-                    size="small"
-                    type="number"
-                    value={limit.limitCount}
-                  />
-                  <Typography color="text.secondary" variant="body2">
-                    <FormattedMessage {...messages.limitPer} />
-                  </Typography>
-                  <Select
-                    disabled={inUse}
-                    inputProps={{ 'aria-label': intl.formatMessage(messages.limitUnitLabel) }}
-                    onChange={(event) =>
-                      updateLimit(limit.key, {
-                        timeUnit: event.target.value as LimitDraft['timeUnit'],
-                      })
-                    }
-                    size="small"
-                    value={limit.timeUnit}
-                  >
-                    <MenuItem value="MINUTE">
-                      <FormattedMessage {...messages.unitMinute} />
-                    </MenuItem>
-                    <MenuItem value="HOUR">
-                      <FormattedMessage {...messages.unitHour} />
-                    </MenuItem>
-                    <MenuItem value="DAY">
-                      <FormattedMessage {...messages.unitDay} />
-                    </MenuItem>
-                    <MenuItem value="MONTH">
-                      <FormattedMessage {...messages.unitMonth} />
-                    </MenuItem>
-                  </Select>
-                  <IconButton
-                    aria-label={intl.formatMessage(messages.removeLimit)}
-                    color="error"
-                    disabled={inUse}
-                    onClick={() => removeLimit(limit.key)}
-                    size="small"
-                  >
-                    <X size={16} />
-                  </IconButton>
-                </Box>
-              ))}
-
-              {showLimitError && (
-                <Typography color="error" variant="caption">
-                  <FormattedMessage {...messages.limitError} />
-                </Typography>
-              )}
-            </Stack>
-
-            <Stack
-              alignItems="center"
-              direction="row"
-              justifyContent="space-between"
-              spacing={2}
-              sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '10px', px: 2, py: 1.5 }}
-            >
-              <Box>
-                <Typography sx={{ fontWeight: 600 }} variant="body1">
-                  <FormattedMessage {...messages.stopLabel} />
-                </Typography>
-                <Typography color="text.secondary" sx={{ opacity: 0.7 }} variant="body2">
-                  <FormattedMessage {...messages.stopHelper} />
-                </Typography>
-              </Box>
-              <Switch
-                checked={form.stopOnQuotaReach}
-                slotProps={{ input: { role: 'switch', 'aria-label': intl.formatMessage(messages.stopLabel) } }}
+            <FormControl error={hasDescriptionError} fullWidth>
+              <FormLabel htmlFor={DESCRIPTION_FIELD}>
+                <FormattedMessage
+                  {...messages.optionalField}
+                  values={{ label: intl.formatMessage(messages.descriptionLabel), muted: optionalMuted }}
+                />
+              </FormLabel>
+              <OutlinedInput
+                aria-describedby={`${DESCRIPTION_FIELD}-helper-text`}
+                disabled={busy}
+                id={DESCRIPTION_FIELD}
+                minRows={2}
+                multiline
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, stopOnQuotaReach: event.target.checked }))
+                  setForm((current) => ({ ...current, description: event.target.value }))
                 }
+                placeholder={intl.formatMessage(messages.descriptionPlaceholder)}
+                value={form.description}
               />
-            </Stack>
+              <FormHelperText id={`${DESCRIPTION_FIELD}-helper-text`}>
+                {hasDescriptionError ? (
+                  <FormattedMessage
+                    {...messages.descriptionTooLong}
+                    values={{ count: descriptionLength, max: MAX_DESCRIPTION_CHARS }}
+                  />
+                ) : null}
+              </FormHelperText>
+            </FormControl>
+
+            <PlanConditionsEditor
+              check={conditionsCheck}
+              disabled={busy}
+              key={session}
+              onChange={setConditions}
+              readOnly={inUse}
+              showAllErrors={submitted}
+              value={conditions}
+            />
+
+            <PlanPricingSection
+              disabled={busy}
+              hasMeters={hasMeters}
+              meters={meters}
+              onChange={setPricing}
+              problem={submitted ? pricingResult.problem : null}
+              readOnly={isEdit}
+              value={pricing}
+            />
 
             <FormControl error={hasExpiryError} fullWidth>
               <FormLabel htmlFor={EXPIRY_FIELD}>
-                <FormattedMessage {...messages.expiryLabel} />{' '}
-                <Typography color="text.secondary" component="span" variant="inherit">
-                  <FormattedMessage {...messages.expiryOptional} />
-                </Typography>
+                <FormattedMessage
+                  {...messages.optionalField}
+                  values={{ label: intl.formatMessage(messages.expiryLabel), muted: optionalMuted }}
+                />
               </FormLabel>
               <DatePickers.LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DatePickers.DatePicker
@@ -801,16 +592,6 @@ export function SubscriptionPlanFormDialog({
                 />
               </FormHelperText>
             </FormControl>
-
-            <PlanPricingSection
-              disabled={busy}
-              hasMeters={hasMeters}
-              meters={meters}
-              onChange={setPricing}
-              problem={submitted ? pricingResult.problem : null}
-              readOnly={isEdit}
-              value={pricing}
-            />
           </Form.Stack>
         </DialogContent>
         <Divider />
