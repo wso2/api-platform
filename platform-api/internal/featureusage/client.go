@@ -41,7 +41,8 @@ const maxDrainBytes = 4 << 10
 
 // eventBody is the request body of Moesif's Events API (one API call). Only
 // what identifies the call's route and outcome is carried: no caller IP
-// address, headers or bodies, which can hold personal data or credentials.
+// address, header values or bodies, which can hold personal data or
+// credentials.
 type eventBody struct {
 	Request       eventRequest   `json:"request"`
 	Response      eventResponse  `json:"response"`
@@ -51,15 +52,19 @@ type eventBody struct {
 	Metadata      map[string]any `json:"metadata"`
 }
 
+// Moesif's Events API requires request.headers and response.headers. They are
+// always sent empty: no header of the call is reported.
 type eventRequest struct {
-	Time string `json:"time"`
-	URI  string `json:"uri"`
-	Verb string `json:"verb"`
+	Time    string            `json:"time"`
+	URI     string            `json:"uri"`
+	Verb    string            `json:"verb"`
+	Headers map[string]string `json:"headers"`
 }
 
 type eventResponse struct {
-	Time   string `json:"time"`
-	Status int    `json:"status"`
+	Time    string            `json:"time"`
+	Status  int               `json:"status"`
+	Headers map[string]string `json:"headers"`
 }
 
 // statusError is a non-2xx answer from the collector proxy or Moesif.
@@ -80,15 +85,19 @@ type collectorClient struct {
 	attemptTimeout time.Duration
 }
 
-// send posts payload and returns how many requests it made.
+// send posts payload and returns how many requests it made — every one,
+// including the extra request a 401 triggers, so a drop log reports what was
+// actually sent. The retry budget (maxAttempts) is counted separately.
 func (c *collectorClient) send(ctx context.Context, payload []byte) (int, error) {
+	requests := 0
 	attempts := 0
 	retriedUnauthorized := false
 	for {
+		requests++
 		attempts++
 		err := c.attempt(ctx, payload)
 		if err == nil {
-			return attempts, nil
+			return requests, nil
 		}
 
 		var se *statusError
@@ -101,22 +110,28 @@ func (c *collectorClient) send(ctx context.Context, payload []byte) (int, error)
 			continue
 		}
 		if !retryable(err) || attempts >= c.maxAttempts || ctx.Err() != nil {
-			return attempts, err
+			return requests, err
 		}
 		if !sleep(ctx, c.retryBackoff*time.Duration(attempts)) {
-			return attempts, err
+			return requests, err
 		}
 	}
 }
 
+// attempt makes one delivery attempt. Fetching a token (when the cached one
+// has expired) and posting the event each get their own attemptTimeout, so a
+// slow token endpoint cannot eat the collector request's budget; both stay
+// within ctx, the delivery's overall deadline.
 func (c *collectorClient) attempt(ctx context.Context, payload []byte) error {
-	ctx, cancel := context.WithTimeout(ctx, c.attemptTimeout)
-	defer cancel()
-
-	token, err := c.tokens.Token(ctx)
+	tokenCtx, cancelToken := context.WithTimeout(ctx, c.attemptTimeout)
+	token, err := c.tokens.Token(tokenCtx)
+	cancelToken()
 	if err != nil {
 		return err
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, c.attemptTimeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.eventsURL, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("build collector request: %w", err)

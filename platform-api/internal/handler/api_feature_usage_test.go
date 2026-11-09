@@ -74,7 +74,7 @@ type wantEvent struct {
 	status  int
 	method  featureusage.CreationMethod
 	sandbox any    // true/false, or nil when the call failed before it was known
-	actor   string // "" when the call failed before the actor was resolved
+	actor   string // the caller, resolved before any validation
 }
 
 // assertEvent checks the single reported occurrence against want.
@@ -144,7 +144,41 @@ func TestImportOpenAPI_ReportsARejectedCreationMethod(t *testing.T) {
 	if env.apiRepo.createdID != "" {
 		t.Error("an API was created despite the invalid creationMethod")
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, featureusage.CreationMethodContract, false, ""}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, featureusage.CreationMethodContract, false, "internal-alice"}, before)
+}
+
+// A scratch import that fails validation is still reported as scratch, and
+// the validation error the caller gets is unchanged.
+func TestImportOpenAPI_ReportsARejectedScratchImportAsScratch(t *testing.T) {
+	env := newOAEnv(t)
+	before := time.Now()
+	fields := []oaFormField{
+		{"version", oaVersion}, {"context", oaContext}, {"projectId", oaProjectHand},
+		{"upstream", oaMainUpstream}, {"creationMethod", "scratch"}, // displayName missing
+	}
+	body, ct := oaImportBody(fields, "orders.yaml", []byte(validOpenAPI))
+	rec := env.do(t, http.MethodPost, importPath, oaOrg, "alice", bytes.NewReader(body), ct)
+
+	oaAssertError(t, rec, http.StatusBadRequest, apperror.CodeCommonValidationFailed)
+	if !strings.Contains(rec.Body.String(), "displayName is required") {
+		t.Errorf("the validation error changed: %s", rec.Body.String())
+	}
+	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, featureusage.CreationMethodScratch, false, "internal-alice"}, before)
+}
+
+// Both problems present: the field check still answers first, as before.
+func TestImportOpenAPI_InvalidMethodDoesNotChangeTheValidationOrder(t *testing.T) {
+	env := newOAEnv(t)
+	fields := []oaFormField{
+		{"version", oaVersion}, {"context", oaContext}, {"projectId", oaProjectHand},
+		{"upstream", oaMainUpstream}, {"creationMethod", "imported"}, // displayName missing too
+	}
+	body, ct := oaImportBody(fields, "orders.yaml", []byte(validOpenAPI))
+	rec := env.do(t, http.MethodPost, importPath, oaOrg, "alice", bytes.NewReader(body), ct)
+	oaAssertError(t, rec, http.StatusBadRequest, apperror.CodeCommonValidationFailed)
+	if !strings.Contains(rec.Body.String(), "displayName is required") {
+		t.Errorf("want the displayName error first, got: %s", rec.Body.String())
+	}
 }
 
 // A rolled-back create is reported as the failure the caller saw.
@@ -228,8 +262,8 @@ func TestCreateAPI_ReportsFailures(t *testing.T) {
 		actor   string
 	}{
 		"unknown project":   {createJSON("no-such-project", oaMainUpstream), http.StatusNotFound, false, "internal-alice"},
-		"missing upstream":  {createJSON(oaProjectHand, `{"main":{}}`), http.StatusBadRequest, false, ""},
-		"malformed request": {`{"displayName":`, http.StatusBadRequest, nil, ""},
+		"missing upstream":  {createJSON(oaProjectHand, `{"main":{}}`), http.StatusBadRequest, false, "internal-alice"},
+		"malformed request": {`{"displayName":`, http.StatusBadRequest, nil, "internal-alice"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

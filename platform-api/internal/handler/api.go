@@ -75,6 +75,19 @@ func (h *APIHandler) trackCreation(next http.Handler) http.Handler {
 		featureusage.FeatureCreateRESTAPI, featureusage.RESTAPICreationDefaults(), next)
 }
 
+// attributeCall records the caller on a tracked call before any validation, so
+// a rejected request is attributed too. Best effort, and only while the call
+// is tracked: a failed lookup leaves the event without a user and changes
+// nothing about the response, which still comes from the checks that follow.
+func (h *APIHandler) attributeCall(r *http.Request, usage *featureusage.Call) {
+	if usage == nil {
+		return
+	}
+	if actor, err := h.identity.InternalUserID(r); err == nil {
+		usage.SetActor(actor)
+	}
+}
+
 // getOpenAPISpecMaxBytes returns the configured max bytes, falling back to 5 MiB if unset.
 func (h *APIHandler) getOpenAPISpecMaxBytes() int64 {
 	if h.cfg.OpenAPISpecMaxFetchBytes <= 0 {
@@ -93,6 +106,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	// Feature usage: this call is reported whatever its outcome (trackCreation).
 	usage := featureusage.CallFrom(r.Context())
 	usage.SetOrganization(orgId)
+	h.attributeCall(r, usage)
 
 	var req api.CreateRESTAPIRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -358,10 +372,18 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	// Feature usage: this call is reported whatever its outcome (trackCreation).
 	usage := featureusage.CallFrom(r.Context())
 	usage.SetOrganization(orgId)
+	h.attributeCall(r, usage)
 
 	maxBytes := h.getOpenAPISpecMaxBytes()
 	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
 		return err
+	}
+	// Read the declared creation method up front, so a scratch import that
+	// fails a check below is still reported as scratch. An invalid value is
+	// rejected where it always was, after the field and upstream checks.
+	creationMethod, methodErr := parseCreationMethod(r.FormValue("creationMethod"))
+	if methodErr == nil {
+		usage.SetCreationMethod(creationMethod)
 	}
 
 	var req api.ImportOpenAPIRequest
@@ -400,11 +422,9 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
 		return err
 	}
-	creationMethod, err := parseCreationMethod(r.FormValue("creationMethod"))
-	if err != nil {
-		return err
+	if methodErr != nil {
+		return methodErr
 	}
-	usage.SetCreationMethod(creationMethod)
 
 	spec, err := h.readOpenAPISpecFromMultipart(w, r, maxBytes)
 	if err != nil {

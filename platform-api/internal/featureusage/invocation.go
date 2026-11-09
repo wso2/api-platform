@@ -20,8 +20,10 @@ package featureusage
 import (
 	"errors"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -49,8 +51,8 @@ const maxURILength = 2048
 
 var (
 	// hostPattern accepts a DNS name or IPv4 address with an optional port.
-	// Anything else in the Host header — it is caller-supplied — is replaced
-	// by "unknown" rather than sent.
+	// validHost adds bracketed IPv6; anything else in the Host header — it is
+	// caller-supplied — is replaced by "unknown" rather than sent.
 	hostPattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(:[0-9]{1,5})?$`)
 
 	allowedVerbs = map[string]bool{
@@ -72,7 +74,7 @@ func InvocationFromRequest(r *http.Request, status int, started time.Time) Invoc
 		scheme = proto
 	}
 	host := r.Host
-	if !hostPattern.MatchString(host) {
+	if !validHost(host) {
 		host = "unknown"
 	}
 	return Invocation{
@@ -81,6 +83,31 @@ func InvocationFromRequest(r *http.Request, status int, started time.Time) Invoc
 		Status:      status,
 		RequestTime: started,
 	}
+}
+
+// validHost reports whether host is a DNS name or IPv4 address, or a bracketed
+// IPv6 address ("[::1]", "[2001:db8::1]:9243"), each with an optional port.
+func validHost(host string) bool {
+	if !strings.HasPrefix(host, "[") {
+		return hostPattern.MatchString(host)
+	}
+	end := strings.IndexByte(host, ']')
+	if end < 0 {
+		return false
+	}
+	addr, err := netip.ParseAddr(host[1:end])
+	if err != nil || !addr.Is6() || addr.Zone() != "" {
+		return false
+	}
+	rest := host[end+1:]
+	if rest == "" {
+		return true
+	}
+	if !strings.HasPrefix(rest, ":") {
+		return false
+	}
+	port, err := strconv.Atoi(rest[1:])
+	return err == nil && port >= 1 && port <= 65535 && rest[1:] == strconv.Itoa(port)
 }
 
 // routePath returns the path of the route pattern r matched, falling back to

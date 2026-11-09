@@ -108,14 +108,18 @@ func (c *Call) occurrence(feature string, inv Invocation) (Occurrence, bool) {
 	}, true
 }
 
-// statusWriter remembers the status a handler sent.
+// statusWriter remembers the final status a handler sent.
 type statusWriter struct {
 	http.ResponseWriter
 	status int
 }
 
+// WriteHeader records the first final status. An informational 1xx response
+// (e.g. 103 Early Hints) is passed on but not recorded: the handler sends its
+// real answer after it. 101 Switching Protocols is final.
 func (s *statusWriter) WriteHeader(code int) {
-	if s.status == 0 {
+	informational := code >= 100 && code < 200 && code != http.StatusSwitchingProtocols
+	if s.status == 0 && !informational {
 		s.status = code
 	}
 	s.ResponseWriter.WriteHeader(code)

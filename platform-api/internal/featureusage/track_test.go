@@ -201,3 +201,20 @@ func TestTrackDoesNotShareDimensionsBetweenCalls(t *testing.T) {
 		t.Fatalf("got %+v; the second call must start from the contract default again", got)
 	}
 }
+
+// An informational response (103 Early Hints) is not the call's status: the
+// final one is, and a successful final status keeps the created resource's ID.
+func TestTrackRecordsTheFinalStatusNotAnInformationalOne(t *testing.T) {
+	rep := &capture{}
+	serveTracked(t, rep, func(w http.ResponseWriter, r *http.Request) {
+		call := CallFrom(r.Context())
+		call.SetOrganization(testOrgUUID)
+		call.SetResource(testAPIUUID)
+		w.WriteHeader(http.StatusEarlyHints)
+		w.WriteHeader(http.StatusCreated)
+	})
+	got := rep.all()
+	if len(got) != 1 || got[0].Invocation.Status != http.StatusCreated || got[0].OccurrenceID != testAPIUUID {
+		t.Fatalf("got %+v, want one event with status 201 identified by the created API", got)
+	}
+}

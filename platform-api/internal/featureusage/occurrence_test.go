@@ -294,6 +294,9 @@ func TestInvocationFromRequest(t *testing.T) {
 		{"behind a TLS proxy", "platform-api.example.com:9080", "https", "https://platform-api.example.com:9080/api/v0.9/rest-apis/{restApiId}/x", false},
 		{"direct TLS", "10.0.0.7:9243", "", "https://10.0.0.7:9243/api/v0.9/rest-apis/{restApiId}/x", true},
 		{"a host that is not a hostname", "alice smith@evil", "javascript", "http://unknown/api/v0.9/rest-apis/{restApiId}/x", false},
+		{"bracketed IPv6 with port", "[::1]:9243", "", "https://[::1]:9243/api/v0.9/rest-apis/{restApiId}/x", true},
+		{"bracketed IPv6 without port", "[2001:db8::1]", "", "http://[2001:db8::1]/api/v0.9/rest-apis/{restApiId}/x", false},
+		{"bracketed IPv6 with a bad port", "[::1]:99999", "", "http://unknown/api/v0.9/rest-apis/{restApiId}/x", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -320,5 +323,30 @@ func TestInvocationFromRequest(t *testing.T) {
 				t.Errorf("a request-derived invocation failed validation: %v", err)
 			}
 		})
+	}
+}
+
+func TestValidHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"platform-api.example.com":      true,
+		"platform-api.example.com:9080": true,
+		"10.0.0.7:9243":                 true,
+		"[::1]":                         true,
+		"[::1]:9243":                    true,
+		"[2001:db8::1]:443":             true,
+		"[::1]:0":                       false,
+		"[::1]:65536":                   false,
+		"[::1]:09243":                   false,
+		"[::1]x":                        false,
+		"[::1":                          false,
+		"[10.0.0.7]:80":                 false, // brackets are for IPv6 only
+		"[fe80::1%25eth0]:80":           false, // no zones
+		"[not-an-ip]:80":                false,
+		"alice smith@evil":              false,
+		"":                              false,
+	} {
+		if got := validHost(host); got != want {
+			t.Errorf("validHost(%q) = %v, want %v", host, got, want)
+		}
 	}
 }

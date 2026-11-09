@@ -208,15 +208,16 @@ func TestPublisherSendsAnAPIEvent(t *testing.T) {
 	}
 
 	// The call is described by time, route URI and verb only: no caller IP
-	// address, headers or body.
+	// address or body, and the headers Moesif requires are sent empty.
 	request, _ := body["request"].(map[string]any)
-	want := map[string]any{"time": "2026-11-06T02:45:00Z", "uri": testURI, "verb": "POST"}
+	want := map[string]any{"time": "2026-11-06T02:45:00Z", "uri": testURI, "verb": "POST", "headers": map[string]any{}}
 	if !reflect.DeepEqual(request, want) {
 		t.Errorf("request = %v, want exactly %v", request, want)
 	}
 	response, _ := body["response"].(map[string]any)
-	if response["status"] != float64(201) || response["time"] != "2026-11-06T02:45:00.25Z" || len(response) != 2 {
-		t.Errorf("response = %v, want status 201 and the response time only", response)
+	wantResponse := map[string]any{"time": "2026-11-06T02:45:00.25Z", "status": float64(201), "headers": map[string]any{}}
+	if !reflect.DeepEqual(response, wantResponse) {
+		t.Errorf("response = %v, want exactly %v", response, wantResponse)
 	}
 
 	metadata, _ := body["metadata"].(map[string]any)
@@ -456,3 +457,35 @@ func TestNewPublisherRejectsIncompleteOptions(t *testing.T) {
 // Guard against the fake token source drifting from the real contract.
 var _ TokenSource = (*fakeTokens)(nil)
 var _ TokenSource = (*clientCredentialsTokenSource)(nil)
+
+// blockingAttributor stalls every lookup until release is closed, like a
+// database query that never returns.
+type blockingAttributor struct{ release chan struct{} }
+
+func (a blockingAttributor) CompanyID(string) (string, error) {
+	<-a.release
+	return testCompanyUUID, nil
+}
+func (a blockingAttributor) UserID(string) (string, error) { return "", nil }
+
+func TestCloseReturnsByItsDeadlineWhenALookupStalls(t *testing.T) {
+	release := make(chan struct{})
+	p := newTestPublisher(t, blockingAttributor{release: release}, []int{http.StatusOK}, nil)
+	defer close(release) // let the stuck worker finish after the test
+	p.Record(validCreation())
+	p.Record(validCreation())
+	time.Sleep(20 * time.Millisecond) // let a worker pick one up and block
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if err := p.Close(ctx); err == nil {
+		t.Error("Close must report that shutdown cut delivery short")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("Close waited %s for a stalled lookup; it must return by its deadline", elapsed)
+	}
+	if n := len(p.collector.recorded()); n != 0 {
+		t.Errorf("collector got %d requests from a delivery cut short", n)
+	}
+}

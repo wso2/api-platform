@@ -34,9 +34,9 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
-	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
 	"github.com/wso2/api-platform/platform-api/internal/mcpserver"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -947,16 +947,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// checker that answered during the startup wait, so failure tracking carries over.
 	registerHealthRoutes(mux, serving.health)
 
-	startupOK = true
-	built = true
 	// Built last, so no earlier startup failure leaves its delivery workers
-	// running; no request is served before Start, so nothing is missed.
+	// running; no request is served before Start, so nothing is missed. It
+	// comes before the success markers below, so a failure here still stops
+	// the plugins and releases what startServing acquired.
 	featureUsage, err := featureusage.NewFromConfig(cfg.FeatureUsage,
 		service.NewFeatureUsageAttributor(orgRepo, identityService), slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
 	}
 	apiHandler.SetFeatureUsageReporter(featureUsage)
+
+	startupOK = true
+	built = true
 
 	return &Server{
 		featureUsage:   featureUsage,
@@ -1263,6 +1266,13 @@ func (s *Server) Start() error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		s.listeners.shutdown(shutdownCtx)
+		// After the listeners: no request can record usage any more, so what is
+		// queued is everything left to deliver, bounded by the shutdown deadline.
+		if s.featureUsage != nil {
+			if err := s.featureUsage.Close(shutdownCtx); err != nil {
+				s.logger.Warn("Feature usage reporter shutdown", "error", err)
+			}
+		}
 		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)

@@ -46,7 +46,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -125,7 +124,6 @@ type Publisher struct {
 	baseCtx    context.Context
 	cancelBase context.CancelFunc
 	workers    sync.WaitGroup
-	abandoned  atomic.Int64 // queued events skipped because shutdown cut delivery short
 }
 
 // NewPublisher validates opts, checks every allowlisted feature against the
@@ -227,7 +225,10 @@ func (p *Publisher) Record(o Occurrence) {
 }
 
 // Close implements Reporter. Queued events keep being delivered until ctx is
-// done; then in-flight deliveries are cancelled.
+// done; then in-flight deliveries are cancelled, what is still queued is
+// skipped, and Close returns at once. It does not wait for a worker held up
+// in an identity lookup (those take no context), so shutdown always ends by
+// its deadline; such a worker exits as soon as the lookup returns.
 func (p *Publisher) Close(ctx context.Context) error {
 	p.mu.Lock()
 	if !p.closed {
@@ -246,14 +247,11 @@ func (p *Publisher) Close(ctx context.Context) error {
 		p.cancelBase()
 		return nil
 	case <-ctx.Done():
-		// Workers now abandon in-flight deliveries and skip what is still
-		// queued, so this wait is short.
 		p.cancelBase()
-		<-done
-		if n := p.abandoned.Load(); n > 0 {
+		if n := len(p.queue); n > 0 {
 			p.logger.Warn("REPORT_DROPPED",
 				slog.String("party", logParty),
-				slog.Int64("count", n),
+				slog.Int("count", n),
 				slog.String("error", "shutdown deadline reached before delivery"))
 		}
 		return fmt.Errorf("feature usage: shutdown cut delivery short: %w", ctx.Err())
@@ -264,8 +262,7 @@ func (p *Publisher) work() {
 	defer p.workers.Done()
 	for event := range p.queue {
 		if p.baseCtx.Err() != nil {
-			p.abandoned.Add(1)
-			continue
+			continue // shutdown cut delivery short; Close has logged what was left
 		}
 		p.deliver(event)
 	}
@@ -279,6 +276,11 @@ func (p *Publisher) deliver(event *validatedEvent) {
 	payload, err := p.render(event)
 	if err != nil {
 		p.dropped(event.feature.Code, 0, err)
+		return
+	}
+	if ctx.Err() != nil {
+		// The identity lookup outlasted the delivery deadline or shutdown.
+		p.dropped(event.feature.Code, 0, errors.New("delivery deadline reached during the identity lookup"))
 		return
 	}
 	attempts, err := p.client.send(ctx, payload)
@@ -320,13 +322,15 @@ func (p *Publisher) render(event *validatedEvent) ([]byte, error) {
 	inv := event.invocation
 	payload, err := json.Marshal(eventBody{
 		Request: eventRequest{
-			Time: inv.RequestTime.Format(time.RFC3339Nano),
-			URI:  inv.URI,
-			Verb: inv.Method,
+			Time:    inv.RequestTime.Format(time.RFC3339Nano),
+			URI:     inv.URI,
+			Verb:    inv.Method,
+			Headers: map[string]string{},
 		},
 		Response: eventResponse{
-			Time:   inv.ResponseTime.Format(time.RFC3339Nano),
-			Status: inv.Status,
+			Time:    inv.ResponseTime.Format(time.RFC3339Nano),
+			Status:  inv.Status,
+			Headers: map[string]string{},
 		},
 		UserID:        userID,
 		CompanyID:     companyID,
