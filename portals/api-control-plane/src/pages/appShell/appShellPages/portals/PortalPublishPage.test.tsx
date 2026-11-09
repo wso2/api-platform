@@ -2240,12 +2240,12 @@ describe('PortalPublishPage — while a publish runs', () => {
 
     await user.click(screen.getByRole('button', { name: 'Publish' }));
     // Both saves have gone through; the publish call is still in flight.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publishing\u2026' })).toBeDisabled());
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Republish' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publishing\u2026' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Republishing\u2026' })).not.toBeInTheDocument();
     expect(await screen.findByText('portals listing')).toBeInTheDocument();
     expect(reads.publication.count()).toBe(1);
   });
@@ -2261,6 +2261,79 @@ describe('PortalPublishPage — while a publish runs', () => {
     // One read each when the page opened, none for the three writes after it.
     expect(reads.draft.count()).toBe(1);
     expect(reads.publication.count()).toBe(1);
+  });
+});
+
+describe('PortalPublishPage — progress on the portal actions', () => {
+  /** A request that waits until released, then answers as `answer` does. */
+  function held(method: 'post', path: string, answer: () => Response) {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      mswHttp[method](apiUrl(path), async () => {
+        await gate;
+        return answer();
+      }),
+    );
+    return () => release();
+  }
+
+  const conflict = () =>
+    HttpResponse.json({ code: 'PUBLICATION_PORTAL_CONFLICT', message: 'Conflict.', status: 'error' } as never, { status: 409 });
+
+  const spinnerIn = async (name: string) => within(await screen.findByRole('button', { name })).findByRole('progressbar');
+
+  it('shows progress on Publish until the publish ends, holding the other actions meanwhile, and stops when it fails', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(accepts('put', DRAFT_PATH, aPublicationDraftDetails()), accepts('put', DRAFT_DEFINITION_PATH, undefined));
+    const release = held('post', PUBLISH_PATH, conflict);
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await spinnerIn('Publishing\u2026')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publishing\u2026' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'More publish actions' })).toBeDisabled();
+
+    release();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(within(screen.getByRole('button', { name: 'Publish' })).queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('shows progress on Unpublish until the unpublish ends', async () => {
+    servePublicationState({ publication: aPublication() });
+    const release = held('post', UNPUBLISH_PATH, () => new HttpResponse(null, { status: 204 }));
+
+    const { user } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
+
+    expect(await spinnerIn('Unpublishing\u2026')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More publish actions' })).toBeDisabled();
+    release();
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+  });
+
+  it('shows progress on Deprecate until the deprecation ends', async () => {
+    servePublicationState({ publication: aPublication() });
+    const release = held('post', DEPRECATE_PATH, () => HttpResponse.json(aPublication({ status: 'DEPRECATED' })));
+
+    const { user } = renderPage();
+    await screen.findByRole('button', { name: 'Unpublish' });
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
+    await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
+    await confirmInDialog(user);
+
+    expect(await spinnerIn('Deprecating\u2026')).toBeInTheDocument();
+    release();
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
   });
 });
 

@@ -3890,20 +3890,36 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
     "defaultMessage": "Deprecate"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecating": {
+    "defaultMessage": "Deprecating…",
+    "description": "Label of the Deprecate button while the deprecation is in progress."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions": {
     "defaultMessage": "More publish actions"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publish": {
     "defaultMessage": "Publish"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publishing": {
+    "defaultMessage": "Publishing…",
+    "description": "Label of the Publish button while the publish is in progress."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republish": {
     "defaultMessage": "Republish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republishing": {
+    "defaultMessage": "Republishing…",
+    "description": "Label of the Republish button while the republish is in progress."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.saveDraft": {
     "defaultMessage": "Save Draft"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
     "defaultMessage": "Unpublish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublishing": {
+    "defaultMessage": "Unpublishing…",
+    "description": "Label of the Unpublish button while the unpublish is in progress."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.error": {
     "defaultMessage": "Unable to load the published specification."
