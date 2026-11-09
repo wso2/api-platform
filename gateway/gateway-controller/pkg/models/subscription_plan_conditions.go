@@ -37,6 +37,7 @@ var builtInConditionIDs = map[string]string{
 	ConditionTypeRequestCount:  ConditionIDRequests,
 	ConditionTypeToolCallCount: "tool-calls",
 	ConditionTypeTokenCount:    "tokens",
+	ConditionTypeEventCount:    "events",
 }
 
 var customConditionIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
@@ -98,7 +99,7 @@ func NormalizeConditions(conditions []SubscriptionPlanCondition) ([]Subscription
 		} else if c.Type == "" {
 			return nil, fmt.Errorf("%s: type is required", field)
 		} else {
-			return nil, fmt.Errorf("%s: type must be one of request-count, tool-call-count, token-count or custom", field)
+			return nil, fmt.Errorf("%s: type must be one of request-count, tool-call-count, token-count, event-count or custom", field)
 		}
 		if err != nil {
 			return nil, err

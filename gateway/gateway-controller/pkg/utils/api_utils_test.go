@@ -744,6 +744,29 @@ func TestAPIUtilsService_FetchAPIKeysByKind_WebSubAPI(t *testing.T) {
 	}
 }
 
+// The bulk sync of subscription plans keeps each plan's conditions as the control plane sends them,
+// an event-count condition among them.
+func TestAPIUtilsService_FetchSubscriptionPlans_KeepsEventCount(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/subscription-plans", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":"plan-ws","planName":"Streams","status":"ACTIVE","stopOnQuotaReach":true,
+			"conditions":[{"id":"events","type":"event-count","params":{"limits":[{"count":500,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}}]}]`))
+	}))
+	defer server.Close()
+
+	svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, testHTTPClient(), logger)
+	plans, err := svc.FetchSubscriptionPlans()
+	require.NoError(t, err)
+	require.Len(t, plans, 1)
+	require.Len(t, plans[0].Conditions, 1)
+	assert.Equal(t, "events", plans[0].Conditions[0].ID)
+	assert.Equal(t, models.ConditionTypeEventCount, plans[0].Conditions[0].Type)
+	assert.JSONEq(t, `{"limits":[{"count":500,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`, string(plans[0].Conditions[0].Params))
+}
+
 func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := PlatformAPIConfig{BaseURL: "http://localhost"}

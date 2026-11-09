@@ -64,6 +64,7 @@ const (
 	ConditionTypeRequestCount  = "request-count"
 	ConditionTypeToolCallCount = "tool-call-count"
 	ConditionTypeTokenCount    = "token-count"
+	ConditionTypeEventCount    = "event-count"
 	ConditionTypeCustom        = "custom"
 	ConditionIDRequests        = "requests"
 )

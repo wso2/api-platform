@@ -90,6 +90,11 @@ func TestNormalizeConditions_Refusals(t *testing.T) {
 		"unknown param":         {[]SubscriptionPlanCondition{cond("", "request-count", `{"limits":[{"count":1,"timeUnit":"DAY"}],"burst":2}`)}, "invalid params"},
 		"custom without id":     {[]SubscriptionPlanCondition{cond("", "custom", `{}`)}, "needs an id"},
 		"custom built-in id":    {[]SubscriptionPlanCondition{cond("tokens", "custom", `{}`)}, "id of a built-in condition"},
+		"custom events id":      {[]SubscriptionPlanCondition{cond("events", "custom", `{}`)}, "events is the id of a built-in condition"},
+		"two event-counts":      {[]SubscriptionPlanCondition{cond("", "event-count", limit), cond("events", "event-count", limit)}, "only one event-count"},
+		"wrong event-count id":  {[]SubscriptionPlanCondition{cond("messages", "event-count", limit)}, "the id of a event-count condition is events"},
+		"tokenType off events":  {[]SubscriptionPlanCondition{cond("", "event-count", `{"limits":[{"count":1,"timeUnit":"DAY"}],"tokenType":"total"}`)}, "token-count conditions only"},
+		"same-length events":    {[]SubscriptionPlanCondition{cond("", "event-count", `{"limits":[{"count":1,"timeAmount":24,"timeUnit":"HOUR"},{"count":2,"timeUnit":"DAY"}]}`)}, "window of its own length"},
 		"custom params array":   {[]SubscriptionPlanCondition{cond("promo", "custom", `[1]`)}, "JSON object"},
 		"custom params too big": {[]SubscriptionPlanCondition{cond("promo", "custom", `{"v":"`+strings.Repeat("x", 5000)+`"}`)}, "at most 4096 bytes"},
 		"no type":               {[]SubscriptionPlanCondition{cond("x", "", `{}`)}, "type is required"},
@@ -114,6 +119,25 @@ func TestNormalizeConditions_Refusals(t *testing.T) {
 	}
 }
 
+// An event-count condition takes the id events and the request-count rules: windows with timeAmount
+// defaulting to 1, onExceed defaulting to reject.
+func TestNormalizeConditions_EventCount(t *testing.T) {
+	got, err := NormalizeConditions([]SubscriptionPlanCondition{
+		cond("", "request-count", `{"limits":[{"count":100,"timeUnit":"MINUTE"}]}`),
+		cond("", "event-count", `{"limits":[{"count":500,"timeUnit":"minute"},{"count":10000,"timeAmount":2,"timeUnit":"DAY"}]}`),
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "events", got[1].ID)
+	assert.Equal(t, `{"limits":[{"count":500,"timeAmount":1,"timeUnit":"MINUTE"},{"count":10000,"timeAmount":2,"timeUnit":"DAY"}],"onExceed":"reject"}`, string(got[1].Params))
+
+	got, err = NormalizeConditions([]SubscriptionPlanCondition{
+		cond("events", "event-count", `{"limits":[{"count":5,"timeAmount":1,"timeUnit":"MONTH"}],"onExceed":"allow"}`),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, `{"limits":[{"count":5,"timeAmount":1,"timeUnit":"MONTH"}],"onExceed":"allow"}`, string(got[0].Params))
+}
+
 // subscription-validation v1 gets the first one-unit window, or else the first window per unit, in
 // the gateway's unit names; no request-count condition leaves the plan unlimited for it.
 func TestSetThrottleLimitFromConditions(t *testing.T) {
@@ -129,7 +153,9 @@ func TestSetThrottleLimitFromConditions(t *testing.T) {
 	assert.Equal(t, 9, *plan.ThrottleLimitCount, "9 per 2 hours keeps its count, per hour")
 	assert.Equal(t, "Hour", *plan.ThrottleLimitUnit)
 
-	plan.Conditions = []SubscriptionPlanCondition{cond("tool-calls", "tool-call-count", `{"limits":[{"count":9,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"reject"}`)}
+	plan.Conditions = []SubscriptionPlanCondition{
+		cond("tool-calls", "tool-call-count", `{"limits":[{"count":9,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"reject"}`),
+		cond("events", "event-count", `{"limits":[{"count":9,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"allow"}`)}
 	plan.SetThrottleLimitFromConditions()
 	assert.Nil(t, plan.ThrottleLimitCount)
 	assert.Nil(t, plan.ThrottleLimitUnit)
@@ -152,14 +178,27 @@ func TestWithThrottleLimit(t *testing.T) {
 	got = WithThrottleLimit([]SubscriptionPlanCondition{old, custom}, nil, "", true)
 	require.Len(t, got, 1)
 	assert.Equal(t, "promo", got[0].ID)
+
+	// The throttle limit fields change only the request-count condition, never event-count.
+	events := cond("events", "event-count", `{"limits":[{"count":7,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"reject"}`)
+	got = WithThrottleLimit([]SubscriptionPlanCondition{events, old}, intPtr(3), "Min", true)
+	require.Len(t, got, 2)
+	assert.Equal(t, events, got[0])
+	assert.Equal(t, "requests", got[1].ID)
+	assert.JSONEq(t, `{"limits":[{"count":3,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`, string(got[1].Params))
+
+	got = WithThrottleLimit([]SubscriptionPlanCondition{events}, nil, "", true)
+	assert.Equal(t, []SubscriptionPlanCondition{events}, got)
 }
 
 func TestWithOnExceed(t *testing.T) {
 	in := []SubscriptionPlanCondition{
 		cond("requests", "request-count", `{"limits":[{"count":1,"timeAmount":1,"timeUnit":"MINUTE"},{"count":9,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"reject"}`),
 		cond("promo", "custom", `{"a":1}`),
+		cond("events", "event-count", `{"limits":[{"count":7,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"reject"}`),
 	}
 	got := WithOnExceed(in, false)
+	assert.Equal(t, in[2].Params, got[2].Params, "only the request-count condition changes")
 	assert.JSONEq(t, `{"limits":[{"count":1,"timeAmount":1,"timeUnit":"MINUTE"},{"count":9,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"allow"}`, string(got[0].Params))
 	assert.Equal(t, `{"a":1}`, string(got[1].Params))
 	assert.Contains(t, string(in[0].Params), `"reject"`, "the input is not changed")
