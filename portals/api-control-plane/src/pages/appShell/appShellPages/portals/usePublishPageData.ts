@@ -177,6 +177,7 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     ...(publicationDefinitionAbsent ? [apiOpenApiQuery] : []),
     draftThumbnailQuery,
     publicationThumbnailQuery,
+    ...(apiOwnThumbnailNeeded ? [apiThumbnailQuery] : []),
     draftLandingPageQuery,
     publicationLandingPageQuery,
   ].some((query) => query.isFetching);
@@ -273,12 +274,15 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
 
   return {
     api: apiQuery.data,
-    apiDefinition,
+    /** Only once read, not an older cached copy while it is read again or after that read failed. */
+    apiDefinition: apiOpenApiQuery.isFetching || apiOpenApiQuery.error ? undefined : apiDefinition,
     apiThumbnail: { blob: apiThumbnailQuery.blob, error: apiThumbnailQuery.error, isPending: apiThumbnailQuery.isPending },
     draft,
     error,
     isLoading,
     productionUrlOptions,
+    /** The gateways could not be read, so the Production URL has no default. The page lets the user type one. */
+    productionUrlsFailed: Boolean(gatewaysQuery.error) && !isNotFound(gatewaysQuery.error),
     publication,
     publishedDefinition: {
       definition: publishedDefinition,

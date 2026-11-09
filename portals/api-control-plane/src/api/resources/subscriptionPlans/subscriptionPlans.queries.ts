@@ -38,6 +38,7 @@ const PLANS_MAX_PAGES = 50;
 /**
  * Pages through `/subscription-plans` until `pagination.total` plans are held.
  * Duplicates are dropped: a plan created mid-fetch can shift a later page.
+ * `pagination.total` stays the server's, so a list cut off at `PLANS_MAX_PAGES` still shows it is incomplete.
  */
 const fetchAllSubscriptionPlans = async (
   org: OrgScope,
@@ -46,6 +47,7 @@ const fetchAllSubscriptionPlans = async (
   const plans: SubscriptionPlan[] = [];
   const seen = new Set<string>();
   let received = 0;
+  let total = 0;
 
   for (let page = 0; page < PLANS_MAX_PAGES; page += 1) {
     const response = await listSubscriptionPlans({
@@ -55,18 +57,19 @@ const fetchAllSubscriptionPlans = async (
     });
     const items = response.list ?? [];
     received += items.length;
+    total = response.pagination?.total ?? 0;
     for (const plan of items) {
       if (plan.id && seen.has(plan.id)) continue;
       if (plan.id) seen.add(plan.id);
       plans.push(plan);
     }
-    if (items.length === 0 || received >= (response.pagination?.total ?? 0)) break;
+    if (items.length === 0 || received >= total) break;
   }
 
   return {
     list: plans,
     count: plans.length,
-    pagination: { total: plans.length, offset: 0, limit: plans.length },
+    pagination: { total: Math.max(total, plans.length), offset: 0, limit: plans.length },
   };
 };
 
