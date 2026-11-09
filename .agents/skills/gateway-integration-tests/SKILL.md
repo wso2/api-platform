@@ -30,6 +30,10 @@ conventions for writing features and steps.
   components (gateway, database, testbench, platform-api, …) started once; inside each block,
   **runners** (lists of feature files that run against that block). Blocks with a database matrix expand
   to one variant per engine: `<block>/sqlite`, `<block>/postgres`, `<block>/sqlserver`.
+- Adding a feature to the suite: pick the block file by the products the feature checks, add a
+  runner to that file's main block (its first block), and add a new block or a new block file
+  only as the last resort. The rules are in "Integration Suite Blocks" in
+  `tests/framework/CLAUDE.md`.
 - Features: `suites/it/features/<area>/…/*.feature`. Each feature file starts with a tag
   (e.g. `@config-dump`).
 - Steps: `suites/it/steps/` (`base.go` for generic request/assertion steps,

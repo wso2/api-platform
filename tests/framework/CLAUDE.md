@@ -410,6 +410,41 @@ boot instead of reporting a test failure.
   concurrency requires comparison of resource state, partitions, browser
   diagnostics, and product logs before declaring a framework limitation.
 
+## Integration Suite Blocks
+
+`suites/it/it-suite.yaml` holds only the suite-wide settings (`defaults`, timeouts) and lists,
+under `blockFiles`, the files that hold its blocks. Each file under `suites/it/blocks/` covers
+one combination of the products its tests check. Helper services (`testbench`, `tls-backend`,
+`a2a-trip-planner`) do not count towards the combination, and neither does a product a block
+starts only because another needs it (the Platform API an API Portal depends on).
+
+| File | Products the tests check | Main block |
+|---|---|---|
+| `blocks/gateway.yaml` | gateway | `gateway-core` |
+| `blocks/platform-api.yaml` | Platform API | (its only block) |
+| `blocks/platform-api-gateway.yaml` | Platform API + gateway | `platform-api-core` |
+| `blocks/api-portal.yaml` | API Portal | `api-portal-core` |
+| `blocks/platform-api-gateway-api-portal.yaml` | Platform API + API Portal + gateway | `platform-api-gateway-api-portal` |
+
+To add a feature to the suite:
+
+1. Pick the file by the products the feature's scenarios check.
+2. Add a runner to that file's main block, the first block in the file. This is the default.
+3. Add a new block only as the last resort, when the feature needs a product setting (an
+   overlay) the main block's other runners must not see, or must run alone because it
+   restarts or stops a product, reads gateway-wide counters or logs, or expects a product with
+   no other state. First check whether an existing block in the file already has that setting
+   or isolation, and add the runner there. Write the reason as a comment above a new block.
+4. A new combination of products is an even worse last resort: check that the feature cannot
+   be tested with an existing combination first. If it really needs one, add
+   `blocks/<products>.yaml` with the same header as the other files, list it in
+   `blockFiles`, and add it to the table above.
+
+- Do not put blocks back in `it-suite.yaml`.
+- Block names are unique across all the files; the loader rejects a duplicate.
+- Feature paths in a block file are relative to `suites/it`, the same as in `it-suite.yaml`.
+- Find the block that runs a feature with `grep -rn "<feature>.feature" suites/it/blocks/`.
+
 ## Scenario Lists
 
 A product feature with a scenario list has `scenarios/<CODE>.yaml` (for example

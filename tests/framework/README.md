@@ -221,6 +221,11 @@ accessor set, DB contract) lives in Go. The suite YAML references components by 
 declares topology: which blocks exist, which components each needs, what DB, what overlay,
 which features run where, and how much runs in parallel.
 
+A suite file may keep its blocks in further files, listed under `blockFiles` relative to it and
+read in order; each holds only `blocks`. The integration suite keeps one file per combination of
+products under `suites/it/blocks/`. "Integration Suite Blocks" in `CLAUDE.md` says which block a
+new feature goes in.
+
 If a topology need cannot be expressed by composing existing components, the answer is a new
 component or a new option in Go — not a new construct in the YAML schema. That line is what
 keeps the YAML from becoming a second programming language.
