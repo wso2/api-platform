@@ -829,7 +829,7 @@ func TestLogTemplate_MaxPayloadSizeCutsBodiesLikeTheDefaultLine(t *testing.T) {
 // when debug logging is on.
 // A template writes null for every variable the request has no value for, unlike properties,
 // which keep their starting values. auth.authenticated and response.status always have a value.
-func TestLogTemplate_NoValueIsNull(t *testing.T) {
+func TestLogTemplate_MissingValuesAreNull(t *testing.T) {
 	event := createBaseEvent()
 	event.API = nil
 	event.ProxyResponseCode = 503
@@ -869,6 +869,33 @@ const backendErrorTemplate = `{"category":"$ctx:error.category","code":"$ctx:err
 	`"phase":"$ctx:error.policyPhase","source":"$ctx:error.source","original":"$ctx:error.originalStatus",` +
 	`"jsonRpc":"$ctx:error.jsonRpcCode","guardrail":{"name":"$ctx:error.guardrail.name",` +
 	`"action":"$ctx:error.guardrail.action","reason":"$ctx:error.guardrail.reason"}}`
+
+// The gateway always sets the API, application, operation, target and request ID on an event,
+// with "" or 0 where the request has no value. Those are written as null, as for a missing object.
+func TestLogTemplate_EmptyValuesAreNull(t *testing.T) {
+	event := createBaseEvent()
+	event.API = &dto.ExtendedAPI{}
+	event.Application = &dto.Application{}
+	event.Operation = &dto.Operation{}
+	event.Target = &dto.Target{}
+	event.MetaInfo = &dto.MetaInfo{}
+	event.Properties[dto.PropKeyAuthType] = ""
+	event.Properties[dto.PropKeyAuthIssuer] = ""
+	event.Properties[dto.PropKeyAuthCredentialID] = ""
+	event.Properties[dto.PropKeyAuthTokenID] = ""
+	template := `{"apiId":"$ctx:api.id","api":"$ctx:api.name","version":"$ctx:api.version",` +
+		`"context":"$ctx:api.context","kind":"$ctx:api.kind","project":"$ctx:project.id",` +
+		`"appId":"$ctx:application.id","app":"$ctx:application.name","owner":"$ctx:application.owner",` +
+		`"keyType":"$ctx:application.keyType","path":"$ctx:request.path","method":"$ctx:request.method",` +
+		`"id":"$ctx:request.id","targetStatus":"$ctx:target.statusCode","destination":"$ctx:target.destination",` +
+		`"authType":"$ctx:auth.type","issuer":"$ctx:auth.issuer","credential":"$ctx:auth.credential_id",` +
+		`"token":"$ctx:auth.token_id"}`
+
+	assert.Equal(t, `{"apiId":null,"api":null,"version":null,"context":null,"kind":null,"project":null,`+
+		`"appId":null,"app":null,"owner":null,"keyType":null,"path":null,"method":null,"id":null,`+
+		`"targetStatus":null,"destination":null,"authType":null,"issuer":null,"credential":null,"token":null}`,
+		templateLine(t, template, event))
+}
 
 // Inside an error, a field that error does not use is null; the fields it fills keep their values.
 func TestLogTemplate_ErrorFieldsTheErrorDoesNotUseAreNull(t *testing.T) {

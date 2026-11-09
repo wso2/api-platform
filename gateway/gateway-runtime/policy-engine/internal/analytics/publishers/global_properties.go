@@ -407,10 +407,10 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	}
 
 	if event.Operation != nil {
-		if referenced["request.path"] {
+		if referenced["request.path"] && event.Operation.APIResourceTemplate != "" {
 			ctx["request.path"] = event.Operation.APIResourceTemplate
 		}
-		if referenced["request.method"] {
+		if referenced["request.method"] && event.Operation.APIMethod != "" {
 			ctx["request.method"] = event.Operation.APIMethod
 		}
 	}
@@ -419,7 +419,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 			ctx["request.pathTemplate"] = tmpl
 		}
 	}
-	if referenced["request.id"] && event.MetaInfo != nil {
+	if referenced["request.id"] && event.MetaInfo != nil && event.MetaInfo.CorrelationID != "" {
 		ctx["request.id"] = event.MetaInfo.CorrelationID
 	}
 	if referenced["request.timestamp"] && !event.RequestTimestamp.IsZero() {
@@ -451,46 +451,46 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	}
 
 	if event.API != nil {
-		if referenced["api.id"] {
+		if referenced["api.id"] && event.API.APIID != "" {
 			ctx["api.id"] = event.API.APIID
 		}
-		if referenced["api.name"] {
+		if referenced["api.name"] && event.API.APIName != "" {
 			ctx["api.name"] = event.API.APIName
 		}
-		if referenced["api.version"] {
+		if referenced["api.version"] && event.API.APIVersion != "" {
 			ctx["api.version"] = event.API.APIVersion
 		}
-		if referenced["api.context"] {
+		if referenced["api.context"] && event.API.APIContext != "" {
 			ctx["api.context"] = event.API.APIContext
 		}
-		if referenced["api.kind"] {
+		if referenced["api.kind"] && event.API.APIType != "" {
 			ctx["api.kind"] = event.API.APIType
 		}
-		if referenced["project.id"] {
+		if referenced["project.id"] && event.API.ProjectID != "" {
 			ctx["project.id"] = event.API.ProjectID
 		}
 	}
 
 	if event.Target != nil {
-		if referenced["target.statusCode"] {
+		if referenced["target.statusCode"] && event.Target.TargetResponseCode != 0 {
 			ctx["target.statusCode"] = event.Target.TargetResponseCode
 		}
-		if referenced["target.destination"] {
+		if referenced["target.destination"] && event.Target.Destination != "" {
 			ctx["target.destination"] = event.Target.Destination
 		}
 	}
 
 	if a := event.Application; a != nil {
-		if referenced["application.id"] {
+		if referenced["application.id"] && a.ApplicationID != "" {
 			ctx["application.id"] = a.ApplicationID
 		}
-		if referenced["application.name"] {
+		if referenced["application.name"] && a.ApplicationName != "" {
 			ctx["application.name"] = a.ApplicationName
 		}
-		if referenced["application.owner"] {
+		if referenced["application.owner"] && a.ApplicationOwner != "" {
 			ctx["application.owner"] = a.ApplicationOwner
 		}
-		if referenced["application.keyType"] {
+		if referenced["application.keyType"] && a.KeyType != "" {
 			ctx["application.keyType"] = a.KeyType
 		}
 	}
@@ -513,22 +513,22 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		}
 	}
 	if referenced["auth.type"] {
-		if authType, ok := event.Properties[dto.PropKeyAuthType].(string); ok {
+		if authType, ok := event.Properties[dto.PropKeyAuthType].(string); ok && authType != "" {
 			ctx["auth.type"] = authType
 		}
 	}
 	if referenced["auth.issuer"] {
-		if issuer, ok := event.Properties[dto.PropKeyAuthIssuer].(string); ok {
+		if issuer, ok := event.Properties[dto.PropKeyAuthIssuer].(string); ok && issuer != "" {
 			ctx["auth.issuer"] = issuer
 		}
 	}
 	if referenced["auth.credential_id"] {
-		if credentialID, ok := event.Properties[dto.PropKeyAuthCredentialID].(string); ok {
+		if credentialID, ok := event.Properties[dto.PropKeyAuthCredentialID].(string); ok && credentialID != "" {
 			ctx["auth.credential_id"] = credentialID
 		}
 	}
 	if referenced["auth.token_id"] {
-		if tokenID, ok := event.Properties[dto.PropKeyAuthTokenID].(string); ok {
+		if tokenID, ok := event.Properties[dto.PropKeyAuthTokenID].(string); ok && tokenID != "" {
 			ctx["auth.token_id"] = tokenID
 		}
 	}
