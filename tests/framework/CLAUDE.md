@@ -495,7 +495,8 @@ scenario ID, kept by hand.
 | `scenarios/cloud/<CODE>.yaml` | `suites/cloud` | `cloud` (scenarios under `suites/cloud`) |
 
 Before writing a scenario, find the entry it automates in its feature's list. If the entry
-does not exist, have it added first; if the feature has no list, start one.
+does not exist, add it in the same change as the scenario; if the feature has no list, start
+one. The lists in the repository are where IDs are created and kept.
 
 - A layer's status is `automated`, `known-issue` (with `issue`), `exempt` (with `reason`,
   approved by the feature owner) or `planned`, and `refs` names the feature file and
@@ -520,7 +521,14 @@ does not exist, have it added first; if the feature has no list, start one.
   negative cannot pass because the request or page is broken.
 - A scenario that covers an ID is done when it has passed three consecutive local runs and an
   assertion check: temporarily break the condition it asserts and confirm that it fails.
-- Do not invent IDs. Maintainers assign them; an ID is added to its list before it is tagged.
+- A new entry takes the next free number for its ID prefix (after `APIDEF-014` comes
+  `APIDEF-015`; a list may use one prefix per sub-feature, as `AIW-LLM` does with `AIW-PRV`
+  and `AIW-PRX`), with a title that states the action and the expected result, and a
+  priority. A new list takes a short code of its own. The pull request review approves new
+  entries and codes, and the feature owner reviews them.
+- Never reuse, renumber or delete an ID that has been merged; retire an entry by marking its
+  layers `exempt` with the reason. An ID is added to its list before a scenario is tagged
+  with it.
 
 ## Scenario Annotations
 

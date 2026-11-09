@@ -19,8 +19,15 @@ Every test starts from an entry in its feature's scenario list ("Scenario Lists"
 - Cloud tests (`suites/cloud`): `scenarios/cloud/<CODE>.yaml`.
 
 Find the entry that describes the behaviour, with its ID, title (action and expected result)
-and priority. If there is no entry, ask the feature owner to add one, or start the feature's
-list if it has none. Never invent an ID.
+and priority. The lists in the repository are where IDs live; you do not need any other
+document. If there is no entry, add one in the same change:
+
+- Take the next free number for the list's ID prefix (`APIDEF-014` → `APIDEF-015`; `AIW-LLM`
+  uses `AIW-PRV` and `AIW-PRX`, one prefix per sub-feature).
+- Write the title as the action and its expected result, and set a priority (P0–P2).
+- If the feature has no list, start `<CODE>.yaml` with a short code and the header the other
+  lists carry.
+- Never reuse or renumber a merged ID. The pull request review approves the new entry.
 
 ## Step 2: Pick the suite
 

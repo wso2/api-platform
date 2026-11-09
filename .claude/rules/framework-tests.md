@@ -15,9 +15,9 @@ never break.
 
 1. **Every test starts from a scenario list.** A new scenario automates an entry in its
    feature's list: `scenarios/on-prem/<CODE>.yaml` for `suites/it` and `suites/ui`,
-   `scenarios/cloud/<CODE>.yaml` for `suites/cloud`. Never invent an ID; the entry is added
-   before the scenario is tagged with it, and its status and `refs` are updated in the same
-   change as the scenario.
+   `scenarios/cloud/<CODE>.yaml` for `suites/cloud`. A missing entry is added in the same
+   change, with the next free ID for its prefix; never reuse or renumber a merged ID. The
+   entry's status and `refs` are updated in the same change as the scenario.
 
 2. **The right suite, file and block.** On-premises API-level behaviour goes in `suites/it`,
    portal journeys in `suites/ui`, cloud-only behaviour in `suites/cloud`. Add a scenario to the
@@ -45,7 +45,7 @@ never break.
    without `@known-issue` and an issue, or a looser assertion.
 
 > **Before outputting a test change:**
-> * Does every new or changed scenario carry the ID of an existing entry in its scenario list, and is the entry's status and `refs` updated?
+> * Does every new or changed scenario carry the ID of an entry in its scenario list (added in this change if new, with the next free ID), and is the entry's status and `refs` updated?
 > * Is the scenario in the feature file that owns the behaviour, and its runner in an existing block that fits? If a new block, block file or overlay was added, is the reason in a comment above it?
 > * Is every resource the scenario creates, including through the browser, registered for cleanup?
 > * Are the assertions exact, with a positive control for each negative one, and is every `@known-issue` scenario excluded by its runner and linked to an issue?
