@@ -58,7 +58,7 @@ func (s *Server) addPluginTools(srv *mcp.Server, tools []pdk.MCPTool) error {
 		}
 		apiType := schema.Properties["apiType"]
 		// Only a string apiType is the platform's API type; any other type keeps its own schema.
-		s.inputSchema(schema, apiType != nil && (apiType.Type == "string" || slices.Contains(apiType.Types, "string")))
+		s.inputSchema(schema, tool.Name, apiType != nil && (apiType.Type == "string" || slices.Contains(apiType.Types, "string")))
 		for name, title := range tool.Titles {
 			if p := schema.Properties[name]; p != nil {
 				p.Title = title

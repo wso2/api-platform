@@ -30,6 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -197,7 +198,10 @@ func newRealDirect(t *testing.T) realDirect {
 			subscriptionPlanRepo, customPolicyRepo, events, apiUtil, logger, auditRepo, identity),
 		Deployments: service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, auditRepo, apiUtil, definitions, identity, cfg, logger),
 		Gateways:    service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, events, logger, false, false, auditRepo, identity),
+		Documents:   service.NewAPIDocumentService(repository.NewDocumentRepo(db), artifactRepo, auditRepo, logger),
 
+		GraphQLAPIs:            service.NewGraphQLAPIService(graphqlAPIRepo, projectRepo, auditRepo, deploymentRepo, gatewayRepo, orgRepo, events, identity, logger),
+		GraphQLAPIDeployments:  service.NewGraphQLAPIDeploymentService(graphqlAPIRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, artifactRepo, events, definitions, identity, cfg, logger),
 		LLMProviders:           providers,
 		LLMProviderDeployments: service.NewLLMProviderDeploymentService(providerRepo, templateRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, artifactRepo, definitions, identity, cfg, logger),
 		LLMProxies:             proxies,
@@ -245,6 +249,10 @@ func directPayload(apiTypeName, projectID, providerID string) object {
 	case "mcp-proxy":
 		return object{"displayName": "Docs MCP", "version": "v1.0", "projectId": projectID,
 			"upstream": object{"main": object{"url": "https://mcp.example.com/mcp"}}}
+	case "graphql-api":
+		return object{"displayName": "Countries", "context": "/countries", "version": "v1", "projectId": projectID,
+			"upstream":     object{"main": object{"url": "https://countries.example.com/graphql"}},
+			"schemaSource": "inline", "sdl": testSDL}
 	default:
 		return object{"displayName": "Helper Agent", "version": "v1.0", "projectId": projectID, "protocol": "a2a",
 			"upstream": object{"main": object{"url": "https://agent.example.com"}},
@@ -265,7 +273,7 @@ func TestDirect_APILifecycle(t *testing.T) {
 	require.NoError(t, err)
 	providerID := idOf(t, createdProvider)
 
-	for _, name := range []string{"rest-api", "mcp-proxy", "agent-proxy", "llm-proxy", "llm-provider"} {
+	for _, name := range []string{"rest-api", "graphql-api", "mcp-proxy", "agent-proxy", "llm-proxy", "llm-provider"} {
 		t.Run(name, func(t *testing.T) {
 			apiKind, err := apiTypeNamed(name)
 			require.NoError(t, err)
@@ -410,4 +418,69 @@ func TestDirect_DeployRefusesAnUnknownAPI(t *testing.T) {
 		_, err = env.undeploy(ctx, env.caller, &apiKind, "no-such-api", "aaaaaaaa-0000-0000-0000-000000000001", "no-such-gateway")
 		assert.Error(t, err, apiKind.name)
 	}
+}
+
+const testSDL = "type Query { country(code: ID!): Country }\ntype Country { code: ID! name: String! }"
+
+// TestDirect_GraphQLKeepsItsSchema checks what the graphql-api adapter adds to
+// the service: a read never returns the SDL, so an update that sets no new
+// schema keeps the stored one; a file source is refused; and its definition
+// is the SDL.
+func TestDirect_GraphQLKeepsItsSchema(t *testing.T) {
+	ctx := context.Background()
+	env := newRealDirect(t)
+	graphql, err := apiTypeNamed("graphql-api")
+	require.NoError(t, err)
+
+	file := directPayload("graphql-api", env.projectID, "")
+	file["schemaSource"] = "file"
+	_, err = env.createAPI(ctx, env.caller, graphql, file)
+	assert.ErrorContains(t, err, `schemaSource "file"`)
+
+	created, err := env.createAPI(ctx, env.caller, graphql, directPayload("graphql-api", env.projectID, ""))
+	require.NoError(t, err)
+	id := idOf(t, created)
+
+	whole, err := env.getAPI(ctx, env.caller, graphql, id)
+	require.NoError(t, err)
+	assert.NotContains(t, whole, "sdl", "a read leaves the SDL out")
+	whole["description"] = "metadata only"
+	_, err = env.updateAPI(ctx, env.caller, graphql, id, whole)
+	require.NoError(t, err)
+
+	doc, err := env.getDefinition(ctx, env.caller, graphql, id)
+	require.NoError(t, err)
+	assert.Equal(t, "application/graphql", doc.ContentType)
+	assert.Contains(t, doc.Content, "country(code: ID!)", "the update kept the schema")
+
+	whole["schemaSource"] = "file"
+	_, err = env.updateAPI(ctx, env.caller, graphql, id, whole)
+	assert.ErrorContains(t, err, `schemaSource "file"`)
+
+	gateways, err := env.listAPIGateways(ctx, env.caller, graphql, id)
+	require.NoError(t, err)
+	assert.Empty(t, gateways)
+}
+
+// TestDirect_RESTDefinitionAndGateways reads a REST API's OpenAPI document,
+// and refuses a type with no definition.
+func TestDirect_RESTDefinitionAndGateways(t *testing.T) {
+	ctx := context.Background()
+	env := newRealDirect(t)
+	rest, err := apiTypeNamed("rest-api")
+	require.NoError(t, err)
+	created, err := env.createAPI(ctx, env.caller, rest, directPayload("rest-api", env.projectID, ""))
+	require.NoError(t, err)
+
+	// One made from JSON has no OpenAPI document; publish_api makes one from its operations.
+	_, err = env.getDefinition(ctx, env.caller, rest, idOf(t, created))
+	assert.True(t, apperror.NotFound.Is(err), "no stored document: %v", err)
+
+	gateways, err := env.listAPIGateways(ctx, env.caller, rest, idOf(t, created))
+	require.NoError(t, err)
+	assert.Empty(t, gateways)
+
+	mcpProxy, _ := apiTypeNamed("mcp-proxy")
+	_, err = env.getDefinition(ctx, env.caller, mcpProxy, "anything")
+	assert.ErrorContains(t, err, "has no definition document")
 }

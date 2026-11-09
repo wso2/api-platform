@@ -31,6 +31,7 @@ func TestGetAPISchema_EveryType(t *testing.T) {
 	// Exact and ordered: the schema's own list first, then each allOf part's, without repeats.
 	wantRequired := map[string][]string{
 		"rest-api":     {"displayName", "context", "version", "projectId", "upstream"},
+		"graphql-api":  {"displayName", "version", "projectId", "upstream"},
 		"llm-provider": {"displayName", "version", "template", "upstream", "accessControl"},
 		"llm-proxy":    {"displayName", "version", "projectId"},
 		"mcp-proxy":    {"displayName", "version", "upstream"},

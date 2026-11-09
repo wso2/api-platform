@@ -751,6 +751,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			Logger:      slogger,
 			PluginTools: wiring.mcpTools,
 
+			Documents:    apiDocumentService,
+			Portals:      apiPortalService,
+			Publications: publicationService,
+
+			GraphQLAPIs:            graphqlAPIService,
+			GraphQLAPIDeployments:  graphqlAPIDeploymentService,
 			LLMProviders:           llmProviderService,
 			LLMProviderDeployments: llmProviderDeploymentService,
 			LLMProxies:             llmProxyService,

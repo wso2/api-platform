@@ -37,16 +37,33 @@ type apiType struct {
 	project    projectRule
 	// hiddenInOutput lists fields left out of tool results because they are very large.
 	hiddenInOutput []string
+	// definition is the API definition route; empty when unsupported.
+	definition string
+	// publishable types can be published to an API Portal.
+	publishable bool
 }
 
 // apiTypes are the types the tools serve. Each type also needs a direct adapter
-// (direct.go). graphql-api is left out: its create and update are multipart.
+// (direct.go).
 var apiTypes = []apiType{
 	{
-		name:       "rest-api",
-		collection: "/rest-apis",
-		schema:     "CreateRESTAPIRequest",
-		project:    projectRequired,
+		name:        "rest-api",
+		collection:  "/rest-apis",
+		schema:      "CreateRESTAPIRequest",
+		project:     projectRequired,
+		definition:  "GET {c}/{id}/openapi",
+		publishable: true,
+	},
+	{
+		// The REST API takes a GraphQL API as multipart, for an SDL file upload.
+		// The tools take the same fields as JSON, with the SDL inline, from a URL,
+		// or by introspection; the direct adapter calls the service, so no form is built.
+		name:        "graphql-api",
+		collection:  "/graphql-apis",
+		schema:      "CreateGraphQLAPIRequest",
+		project:     projectRequired,
+		definition:  "GET {c}/{id}/sdl",
+		publishable: true,
 	},
 	{
 		name:       "llm-provider",
@@ -64,6 +81,8 @@ var apiTypes = []apiType{
 		hiddenInOutput: []string{"openapi"},
 	},
 	{
+		// The REST API can publish an MCP proxy too, but publish_api builds the
+		// listing from the API's definition, which an MCP proxy does not have.
 		name:       "mcp-proxy",
 		collection: "/mcp-proxies",
 		schema:     "MCPProxy",
@@ -86,11 +105,16 @@ func apiTypeNamed(name string) (*apiType, error) {
 	return nil, fail("apiType %q is not supported", name)
 }
 
-// expand fills a tool's route templates with this type's collection.
+// expand fills a tool's route templates with this type: {c} is its collection,
+// {t} its name, and {def} its definition route.
 func (t *apiType) expand(routes []string) []string {
-	out := make([]string, len(routes))
-	for i, r := range routes {
-		out[i] = strings.ReplaceAll(r, "{c}", t.collection)
+	out := make([]string, 0, len(routes))
+	for _, r := range routes {
+		if r == "{def}" {
+			r = t.definition
+		}
+		r = strings.ReplaceAll(r, "{c}", t.collection)
+		out = append(out, strings.ReplaceAll(r, "{t}", t.name))
 	}
 	return out
 }

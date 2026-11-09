@@ -21,6 +21,7 @@ import (
 	"context"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 // object is an API as the REST API sends it: a JSON object.
@@ -43,4 +44,17 @@ type backend interface {
 	deleteProject(ctx context.Context, c caller, id string) error
 	listGateways(ctx context.Context, c caller, p page) ([]api.GatewayResponse, int, error)
 	getGateway(ctx context.Context, c caller, id string) (*api.GatewayResponse, error)
+
+	// For the types with a definition document: rest-api and graphql-api.
+	getDefinition(ctx context.Context, c caller, t *apiType, id string) (definitionDoc, error)
+	listAPIGateways(ctx context.Context, c caller, t *apiType, id string) ([]api.RESTAPIGatewayResponse, error)
+
+	// API Portals and the listings published to them.
+	listPortals(ctx context.Context, c caller, p page) ([]api.ApiPortalListItem, int, error)
+	getDraft(ctx context.Context, c caller, t *apiType, id, portalID string) (*model.Publication, error)
+	saveDraft(ctx context.Context, c caller, t *apiType, id, portalID string, draft *model.Publication) error
+	hasDraftDefinition(ctx context.Context, c caller, t *apiType, id, portalID string) (bool, error)
+	saveDraftDefinition(ctx context.Context, c caller, t *apiType, id, portalID string, doc definitionDoc) error
+	publish(ctx context.Context, c caller, t *apiType, id, portalID string) (*model.Publication, error)
+	unpublish(ctx context.Context, c caller, t *apiType, id, portalID string) error
 }
