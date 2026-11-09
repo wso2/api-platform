@@ -171,16 +171,26 @@ func notInSyntheticEnvironment(item map[string]any) string {
 	return ""
 }
 
-// gatewayFilters returns the filters that choose a gateway to deploy to. A gateway the operator
-// names through CLOUD_GATEWAY_ID is their explicit choice, so it is taken as named: the names that
-// mark a suite run's own gateways and environments can look like an operator's, and only an
-// unpinned run has to tell them apart.
+// gatewayFilters returns the filters that choose a gateway to deploy to. A gateway a suite run
+// created for its scenarios is never chosen, as its description says. A gateway the operator names
+// through CLOUD_GATEWAY_ID is otherwise their explicit choice, so it is taken as named: the names
+// that mark a suite run's own gateways and environments can look like an operator's, and only an
+// unpinned run has to tell them apart by name.
 func gatewayFilters(pin string) []gatewayFilter {
-	filters := []gatewayFilter{regularGatewaysOnly}
+	filters := []gatewayFilter{regularGatewaysOnly, notScenarioGateway}
 	if pin != "" {
 		return append(filters, pinnedGateway(pin))
 	}
 	return append(filters, notSyntheticGateway, notInSyntheticEnvironment)
+}
+
+// notScenarioGateway rejects a gateway a suite run created for one of its scenarios, which that run
+// deletes when the scenario or runner ends.
+func notScenarioGateway(item map[string]any) string {
+	if description, _ := item["description"].(string); strings.HasPrefix(description, scenarioGatewayDescription) {
+		return "a scenario gateway of a suite run"
+	}
+	return ""
 }
 
 // pinnedGateway rejects every gateway but the one a run was told to use.

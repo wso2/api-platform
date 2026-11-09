@@ -329,6 +329,13 @@ func emptyEnvironment(ctx context.Context, client *httpx.Client, base, bearer, e
 
 func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collection string, waitForNotFound bool) cleanup.Deleter {
 	return func(ctx context.Context, resource cleanup.Resource) error {
+		if waitForNotFound {
+			// A deletion that waits for the platform to finish has a budget of its own, so a slow
+			// earlier deletion in the sweep cannot use up the time of the next.
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), environmentDeletionTimeout+30*time.Second)
+			defer cancel()
+		}
 		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 		if err != nil {
 			return err

@@ -19,7 +19,6 @@ package cloudconsole
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -76,14 +75,12 @@ func projectDeleter(topo *frameworkruntime.Topology, client *httpx.Client) clean
 // deleteProjectThroughCloudAPI asks the cloud API to delete one project and does not wait for the
 // project to be gone: the request is accepted at once and the project's removal, and its record
 // in the APIP platform API, are the cloud's concern rather than the APIP's. An absent project
-// counts as deleted. A delete the cloud API refuses or cannot take within timeout is
-// logged and not reported as a failure, so it never fails a scenario or holds up the next runner.
+// counts as deleted. A delete the cloud API refuses or cannot take within timeout is returned, so
+// cleanup reports the project as a leak with the owner, runner and scenario it belongs to.
 func deleteProjectThroughCloudAPI(ctx context.Context, client *httpx.Client, platformAPIBase, bearer, id string, timeout time.Duration) error {
-	logger := slog.Default()
 	base, err := coreProjectsBase(platformAPIBase)
 	if err != nil {
-		logger.Warn("a synthetic project was left for the cloud console to delete", "project", id, "error", err)
-		return nil
+		return fmt.Errorf("deleting project %s: %w", id, err)
 	}
 	target := base + "/projects/" + url.PathEscape(id)
 	err = retry.Await(ctx, retry.Options{Timeout: timeout, Interval: projectDeleteInterval},
@@ -109,8 +106,5 @@ func deleteProjectThroughCloudAPI(ctx context.Context, client *httpx.Client, pla
 		},
 		func(resp *httpx.Response) bool { return resp != nil },
 		"deleting project "+id)
-	if err != nil {
-		logger.Warn("a synthetic project was left for the cloud console to delete", "project", id, "error", err)
-	}
-	return nil
+	return err
 }

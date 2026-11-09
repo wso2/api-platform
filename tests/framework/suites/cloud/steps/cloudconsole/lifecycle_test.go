@@ -2125,6 +2125,36 @@ func TestFindActiveGatewayHonoursAPinnedGateway(t *testing.T) {
 	require.ErrorContains(t, err, "not the gateway named by "+cloudGatewayPinEnv)
 }
 
+func TestFindActiveGatewayRefusesAPinnedGatewayOfASuiteRun(t *testing.T) {
+	steps, ctx := gatewayChoiceStub(t, []map[string]any{
+		listedGateway("dev-scenario", "development", map[string]any{"displayName": "frontend-1", "description": scenarioGatewayDescription}),
+		listedGateway("dev-operator", "development", map[string]any{"displayName": "frontend-2", "description": "the operator's"}),
+	}, nil)
+
+	t.Setenv(cloudGatewayPinEnv, "dev-scenario")
+	require.ErrorContains(t, steps.findActiveGateway(ctx), "dev-scenario: a scenario gateway of a suite run")
+
+	t.Setenv(cloudGatewayPinEnv, "dev-operator")
+	require.NoError(t, steps.findActiveGateway(ctx), "an operator's gateway that looks like a suite run's is still taken")
+}
+
+func TestAnEnvironmentDeletionHasABudgetOfItsOwn(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/managed-gateways" {
+			writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{}})
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+	})
+	spent, cancel := context.WithCancel(ctx)
+	cancel()
+
+	deleter := cloudDeleter(steps.topo, steps.client, "/environments", true)
+	require.NoError(t, deleter(spent, cleanup.Resource{Kind: cleanup.KindEnvironment, ID: "e-1"}),
+		"a sweep that has used its time does not stop the deletion of the next environment")
+}
+
 func TestFindActiveGatewayFailsWhenThePipelineCannotBeRead(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	t.Setenv(cloudGatewayPinEnv, "")
@@ -2173,8 +2203,11 @@ func TestBuildManagedGatewayRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, map[string]any{
 		"displayName": "syn-gw-1", "environment": "dev", "isCritical": true,
-		"properties": map[string]any{"owner": "it"}, "version": "1.0",
-	}, body)
+		"properties": map[string]any{"owner": "it"}, "version": "1.0", "description": scenarioGatewayDescription,
+	}, body, "a gateway a scenario creates is marked as the suite's own")
+	named, err := buildManagedGatewayRequest(ctx, map[string]string{"environment": "dev", "description": "mine"})
+	require.NoError(t, err)
+	require.Equal(t, "mine", named["description"], "a description the scenario names is kept")
 
 	for name, values := range map[string]map[string]string{
 		"no environment":     {"displayName": "x"},
@@ -3824,7 +3857,38 @@ func TestCoreProjectsBaseReplacesThePlatformAPIRoute(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestDeleteProjectThroughCloudAPISendsOneRequestAndNeverFails(t *testing.T) {
+func TestDeleteProjectThroughCloudAPIRetriesATransientAnswer(t *testing.T) {
+	previous := projectDeleteInterval
+	projectDeleteInterval = 10 * time.Millisecond
+	t.Cleanup(func() { projectDeleteInterval = previous })
+
+	for _, transient := range []int{http.StatusServiceUnavailable, http.StatusRequestTimeout, http.StatusTooManyRequests} {
+		requests := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			requests++
+			if requests == 1 {
+				w.WriteHeader(transient)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}))
+
+		client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second, MaxRetries: -1})
+		err := deleteProjectThroughCloudAPI(context.Background(), client, server.URL+platformAPIRoute, "console-token", "syn-project-1", projectDeleteTimeout)
+		server.Close()
+
+		require.NoError(t, err, "status %d is retried until the delete is accepted", transient)
+		require.Equal(t, 2, requests, "status %d sends a second DELETE", transient)
+	}
+}
+
+func TestDeleteProjectThroughCloudAPIReturnsAnUnderivableRoute(t *testing.T) {
+	client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
+	err := deleteProjectThroughCloudAPI(context.Background(), client, "http://dev.localhost:19080/some/other/route", "console-token", "syn-project-1", projectDeleteTimeout)
+	require.ErrorContains(t, err, "syn-project-1")
+}
+
+func TestDeleteProjectThroughCloudAPISendsOneRequestAndReportsARefusal(t *testing.T) {
 	for _, status := range []int{http.StatusNoContent, http.StatusNotFound, http.StatusForbidden} {
 		var requests []string
 		var authorization string
@@ -3838,7 +3902,11 @@ func TestDeleteProjectThroughCloudAPISendsOneRequestAndNeverFails(t *testing.T) 
 		err := deleteProjectThroughCloudAPI(context.Background(), client, server.URL+platformAPIRoute, "console-token", "syn-project-1", projectDeleteTimeout)
 		server.Close()
 
-		require.NoError(t, err, "status %d", status)
+		if status == http.StatusForbidden {
+			require.ErrorContains(t, err, "syn-project-1", "a refusal is returned so cleanup reports the leak")
+		} else {
+			require.NoError(t, err, "status %d", status)
+		}
 		require.Equal(t, []string{"DELETE " + coreAPIRoute + "/projects/syn-project-1"}, requests, "status %d", status)
 		require.Equal(t, "Bearer console-token", authorization)
 	}

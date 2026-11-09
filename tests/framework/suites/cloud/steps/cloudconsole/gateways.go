@@ -40,6 +40,11 @@ var gatewayStatuses = map[string]bool{"PROVISIONING": true, "FAILED": true, "ACT
 // gatewayKinds are the functionality types a managed gateway can have.
 var gatewayKinds = []string{regularGatewayKind, "ai", "event"}
 
+// scenarioGatewayDescription is the description a suite run gives the gateways it creates for its
+// scenarios when the scenario names none. It tells a run that is pointed at a gateway whether the
+// gateway belongs to a suite run, whatever its name looks like.
+const scenarioGatewayDescription = "Created by the APIP cloud integration suite for one of its runs and removed when the run ends."
+
 // managedGatewayRequestKeys lists the values a managed gateway request table may carry.
 var managedGatewayRequestKeys = map[string]bool{
 	"displayName": true, "environment": true, "handle": true, "version": true,
@@ -137,6 +142,9 @@ func buildManagedGatewayRequest(ctx context.Context, values map[string]string) (
 	}
 	if environment, _ := body["environment"].(string); strings.TrimSpace(environment) == "" {
 		return nil, errors.New("a managed gateway request needs an environment")
+	}
+	if _, present := body["description"]; !present {
+		body["description"] = scenarioGatewayDescription
 	}
 	return body, nil
 }
