@@ -323,6 +323,77 @@ func perAttemptPolicies(operations *[]management.Operation) []models.Policy {
 	return nil
 }
 
+// moveFailoverLast puts model-failover at the END of an operation's request chain.
+//
+// WHY IT IS AUTOMATIC, and not the author's job. This policy consumes routing decisions that
+// earlier policies publish into shared request metadata, so it has to run after them. Chain
+// order looks like it already says that, but it only half does, and the half it misses is
+// invisible in the YAML: the engine runs EVERY policy's OnRequestHeaders before ANY policy's
+// OnRequestBody (two separate sweeps — ExecuteRequestHeaderPolicies, then
+// ExecuteRequestPolicies), and this policy resolves its chain in the body phase.
+//
+// So of the eight steering policies in wso2/gateway-controllers, four publish in the header
+// phase (llm-header-router, cost-based-model-routing, model-round-robin,
+// model-weighted-round-robin) and are honoured wherever they sit, while four publish only in
+// the body phase (semantic-, time-based-, intelligent- and typesafe-jev-model-routing) and are
+// silently ignored if written after this one. Identical-looking configuration, opposite
+// outcomes, decided by which Go interfaces a policy happens to implement. An author cannot see
+// that, and the control plane cannot tell them: phases are declared by interface
+// implementation, not in the policy-definition YAML the controller loads.
+//
+// The control plane does know the operation has failover, so it says so itself — the same
+// argument prependFailoverFaultEntry makes for the fault chain. Position follows from what the
+// policy IS: last on the request path because it consumes what every earlier policy decided,
+// first on the fault path because it writes a default they can reshape.
+//
+// WHAT IT ALSO MOVES. One list drives every phase, and the response phases iterate it in
+// REVERSE (ExecuteResponseHeaderPolicies and friends), so last-on-request is first-on-response.
+// That is wanted rather than tolerated: grading reads the upstream's own status and headers
+// before another response policy reshapes them. The status is unaffected either way — a status
+// rewrite propagates only in the response BODY phase, which runs after the whole header phase
+// where grading happens — but response HEADERS do propagate, and content-type is what
+// distinguishes a provisional streamed 200 from a complete one.
+//
+// Returns whether anything actually moved, so the caller can say so at generation time rather
+// than silently rearranging what an author deliberately wrote.
+func moveFailoverLast(failover *models.FailoverConfig, policies []models.Policy) ([]models.Policy, bool) {
+	// No resolved failover means the policy is inert for this operation — it publishes nothing
+	// and grades nothing — so there is nothing to order around. Same guard as
+	// prependFailoverFaultEntry, for the same reason.
+	if failover == nil {
+		return policies, false
+	}
+
+	kept := make([]models.Policy, 0, len(policies))
+	var entries []models.Policy
+	for _, p := range policies {
+		if p.Name == FailoverPolicyName {
+			entries = append(entries, p)
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if len(entries) == 0 {
+		return policies, false
+	}
+	// Already last (the common case once an author follows the documented order): return the
+	// original slice untouched so the caller logs nothing.
+	if indexOfFirst(policies, FailoverPolicyName) == len(kept) {
+		return policies, false
+	}
+	return append(kept, entries...), true
+}
+
+// indexOfFirst reports the position of the first entry with the given name, or -1.
+func indexOfFirst(policies []models.Policy, name string) int {
+	for i, p := range policies {
+		if p.Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
 // prependFailoverFaultEntry puts model-failover at the FRONT of an operation's fault chain
 // whenever that operation actually resolved a failover configuration.
 //

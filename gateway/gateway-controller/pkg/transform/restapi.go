@@ -305,6 +305,17 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			// priority groups and reach a (provider, model) the control plane never enumerated
 			// — a wildcard member, or a target a routing policy alone knows about.
 			InjectProviderClusters(routeChain, failoverProviderClusters)
+			// model-failover runs LAST on the request path, wherever the author wrote it —
+			// see moveFailoverLast for why the control plane decides this rather than the
+			// author. Logged when it actually moved, so a deliberate arrangement is not
+			// silently rearranged.
+			if moved, changed := moveFailoverLast(rdcRoute.Failover, routeChain.Policies); changed {
+				routeChain.Policies = moved
+				slog.Info("model-failover moved to the end of the request chain; it consumes "+
+					"routing decisions published by earlier policies, so its position is set "+
+					"by the control plane rather than by chain order",
+					slog.String("route", routeKey))
+			}
 			// Fault policies: this operation's entries then the API's, which is the order
 			// they execute in, and then the fault-path system policies LAST.
 			//

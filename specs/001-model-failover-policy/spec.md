@@ -630,6 +630,33 @@ though the routing policy keeps nominating it, and that load spreads across the 
   primary provider, so empty means no steering occurred. A producer needing to name a different
   **model** MUST use the ordered list; no generic single-selection key for a model exists and none
   is to be invented.
+- **FR-023c**: `model-failover`'s position in the request chain MUST be set by the control plane,
+  not by the author: it is placed LAST, wherever it is written, whenever the operation resolved a
+  failover configuration. An inert attachment is left where it was written, and the relative order
+  of every other policy is preserved — the platform decides one position, not ordering generally.
+  When the position actually changes, the controller MUST say so at generation time, so a
+  deliberate arrangement is not silently rearranged.
+
+  **Why the author cannot own this.** The engine runs every policy's `OnRequestHeaders` before any
+  policy's `OnRequestBody` — two separate sweeps of the chain — and failover resolves its chain in
+  the body phase. So of the eight steering policies in `wso2/gateway-controllers`, the four that
+  publish in the header phase are honoured wherever they sit, and the four that publish only in the
+  body phase are silently ignored if written after failover. Identical-looking configuration,
+  opposite outcomes, decided by which Go interfaces a policy implements — which is not visible in
+  the YAML, and which the controller cannot report either, because phases are declared by interface
+  implementation rather than in the policy-definition the controller loads. Precedent: the control
+  plane already positions this policy on the fault chain (`prependFailoverFaultEntry`) on the same
+  reasoning, and already forces system policies to the front of every chain
+  (`InjectSystemPolicies`). Position follows from what the policy is — last on the request path
+  because it consumes what every earlier policy decided, first on the fault path because it writes
+  a default they can reshape.
+
+  **What this also moves, deliberately.** One list drives every phase and the response phases
+  iterate it in reverse, so last-on-request is first-on-response. That is wanted: grading reads the
+  upstream's own status and headers before another response policy reshapes them. The *status* is
+  unaffected either way — a status rewrite propagates only in the response body phase, which runs
+  after the whole header phase where grading happens — but response *headers* do propagate, and
+  `content-type` is what distinguishes a provisional streamed `200` from a complete one (FR-030p).
 - **FR-024**: Once the configured fallbacks for the first target are spent, failover MUST continue
   through the remainder of the published list, in the order the routing policy ranked it. Ranked
   targets are not discarded — the routing policy already judged them usable. A target reachable

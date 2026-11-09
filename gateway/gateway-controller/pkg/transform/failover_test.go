@@ -521,3 +521,94 @@ func TestPrependFailoverFaultEntry_NeverFabricatesAnEntry(t *testing.T) {
 		t.Fatalf("an entry was fabricated: %+v", got)
 	}
 }
+
+// ── moveFailoverLast ─────────────────────────────────────────────────────────
+//
+// Chain order looks like it already decides whether a steering policy is honoured, and it only
+// half does. The engine runs every policy's OnRequestHeaders before any policy's OnRequestBody,
+// and model-failover resolves its chain in the body phase — so a steering policy that publishes
+// in the header phase is honoured wherever it sits, while one that publishes only in the body
+// phase is silently ignored if written afterwards. Same YAML, opposite outcomes, decided by
+// which Go interfaces a policy implements, which an author cannot see and the controller cannot
+// read. These pin the control plane deciding instead.
+
+func TestMoveFailoverLast_MovesItBehindAPolicyWrittenAfterIt(t *testing.T) {
+	chain := []models.Policy{
+		{Name: FailoverPolicyName},
+		{Name: "semantic-model-routing"}, // publishes in the body phase only
+	}
+	got, changed := moveFailoverLast(&models.FailoverConfig{}, chain)
+	if !changed {
+		t.Fatal("changed = false; the policy was first and had to move")
+	}
+	if len(got) != 2 || got[0].Name != "semantic-model-routing" || got[1].Name != FailoverPolicyName {
+		t.Fatalf("chain = %+v, want the steering policy first and failover last", got)
+	}
+}
+
+// Relative order of everything else is untouched: the control plane decides ONE position, it
+// does not take over ordering generally.
+func TestMoveFailoverLast_PreservesTheOrderOfEveryOtherPolicy(t *testing.T) {
+	chain := []models.Policy{
+		{Name: "api-key-auth"},
+		{Name: FailoverPolicyName},
+		{Name: "semantic-model-routing"},
+		{Name: "pii-masking-regex"},
+	}
+	got, changed := moveFailoverLast(&models.FailoverConfig{}, chain)
+	if !changed {
+		t.Fatal("changed = false; failover was in the middle and had to move")
+	}
+	want := []string{"api-key-auth", "semantic-model-routing", "pii-masking-regex", FailoverPolicyName}
+	for i, name := range want {
+		if i >= len(got) || got[i].Name != name {
+			t.Fatalf("chain = %+v, want %v", got, want)
+		}
+	}
+}
+
+// Already last: nothing moved, so the caller logs nothing. An author who followed the
+// documented order should see no message telling them their configuration was rearranged.
+func TestMoveFailoverLast_AlreadyLastReportsNoChange(t *testing.T) {
+	chain := []models.Policy{
+		{Name: "semantic-model-routing"},
+		{Name: FailoverPolicyName},
+	}
+	got, changed := moveFailoverLast(&models.FailoverConfig{}, chain)
+	if changed {
+		t.Fatal("changed = true; failover was already last")
+	}
+	if len(got) != 2 || got[1].Name != FailoverPolicyName {
+		t.Fatalf("chain = %+v, want it left alone", got)
+	}
+}
+
+// An inert attachment is not repositioned. The same guard prependFailoverFaultEntry uses, for
+// the same reason: with nothing resolved the policy publishes nothing and grades nothing, so
+// there is no ordering requirement to enforce and no reason to touch the author's chain.
+func TestMoveFailoverLast_InertAttachmentIsLeftWhereItWasWritten(t *testing.T) {
+	chain := []models.Policy{
+		{Name: FailoverPolicyName},
+		{Name: "semantic-model-routing"},
+	}
+	got, changed := moveFailoverLast(nil, chain)
+	if changed {
+		t.Fatal("changed = true; an unresolved failover config must not reorder anything")
+	}
+	if got[0].Name != FailoverPolicyName {
+		t.Fatalf("chain = %+v, want the authored order kept", got)
+	}
+}
+
+// No failover entry at all: every other API on the gateway goes through this code path, so it
+// must be a no-op rather than a reshuffle.
+func TestMoveFailoverLast_ChainWithoutFailoverIsUntouched(t *testing.T) {
+	chain := []models.Policy{{Name: "api-key-auth"}, {Name: "pii-masking-regex"}}
+	got, changed := moveFailoverLast(&models.FailoverConfig{}, chain)
+	if changed {
+		t.Fatal("changed = true; there is no failover entry to move")
+	}
+	if len(got) != 2 || got[0].Name != "api-key-auth" {
+		t.Fatalf("chain = %+v, want it untouched", got)
+	}
+}
