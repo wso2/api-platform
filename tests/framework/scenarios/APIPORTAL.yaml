@@ -123,7 +123,6 @@ scenarios:
           scenario: "An administrator manages a view's labels and handle, within its deletion and access rules"
         - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
           scenario: "A view whose handle is invalid is refused and stores nothing"
-      # @known-issue scenario above: "A view whose handle is invalid is refused and stores nothing" ("to be filed — view handles are stored as sent: uppercase, space and slash handles are accepted with 201")
   - id: APIP-011
     title: "Labels: lifecycle, effect on APIs and validation"
     priority: P1
@@ -184,8 +183,6 @@ scenarios:
           scenario: "A disabled key manager issues no token through an application's client mapping"
         - feature: suites/it/features/apiportal/applications/key_managers.feature
           scenario: "A deleted key manager issues no more tokens to the applications mapped to it"
-      # @known-issue scenario above: "A disabled key manager issues no token through an application's client mapping" ("to be filed — token generation through an application client mapping ignores a disabled key manager")
-      # @known-issue scenario above: "A deleted key manager issues no more tokens to the applications mapped to it" ("to be filed — deleting a key manager still referenced by an application client mapping answers 500, and the mapping keeps issuing tokens")
   - id: APIP-016
     title: "OAuth2 keys and tokens, through to the gateway"
     priority: P1
@@ -244,7 +241,6 @@ scenarios:
           scenario: "The registry listing pages and searches under both paths, and only publishers can change it"
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
           scenario: "A second version of a registry server is published, listed beside the first and follows server-level status changes"
-      # @known-issue scenario above: "A second version of a registry server is published, listed beside the first and follows server-level status changes" ("to be filed — the portal handle derived from the registry server name is unique, so publishing a second version fails with 409 Server version already exists")
   - id: APIP-021
     title: "API workflows: lifecycle, visibility, Arazzo, prompts and llms.txt"
     priority: P1
@@ -259,7 +255,6 @@ scenarios:
           scenario: "Invalid workflow requests are refused and the workflow is unchanged"
         - feature: suites/it/features/apiportal/ai/workflows.feature
           scenario: "Each workflow entry in a view's llms.txt shows the workflow's name and links to its page"
-      # @known-issue scenario above: "Each workflow entry in a view's llms.txt shows the workflow's name and links to its page" ("to be filed — the llms.txt template reads name and apiWorkflowId, which the workflow DTO lacks, so each entry has an empty name and a broken link")
   - id: APIP-022
     title: "AI agent discovery: llms.txt, Markdown and specification routes"
     priority: P1
