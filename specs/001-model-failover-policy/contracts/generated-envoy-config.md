@@ -132,7 +132,10 @@ response served whole (FR-030n/o).
 | Flags deliberately excluded | `DC` (the *client* disconnected — not the target's fault), `UH`/`NR` (no attempt reached an upstream) |
 
 Healthy traffic matches no flag, so it is never serialized, buffered or sent: the stream costs
-nothing until a target actually fails. Envoy validates each flag string against its own closed
+nothing until a target actually fails. Asserted end to end by `model-failover.feature`'s
+truncation scenarios, whose control — a *complete* SSE response of the same chunked,
+no-content-length shape — must suspend nothing, or the sink would be flagging streaming
+rather than failure. Envoy validates each flag string against its own closed
 list at load, so a typo fails the config push rather than silently matching nothing.
 
 ## 7. Invariants

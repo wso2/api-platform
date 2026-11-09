@@ -1453,6 +1453,359 @@ Feature: Automatic fallback to a healthy model
     When I delete the API "mf-stream-safety-v1.0"
     Then the response status code should be 200
 
+
+  # ====================================================================
+  # FR-030n/o/p — an attempt that fails AFTER its response headers is graded
+  # ====================================================================
+
+  @truncation-grading
+  Scenario: A provider that truncates every response is suspended like any other failure
+    # The scenario above establishes that a post-commitment failure is NOT failed
+    # over, and must not be. This one establishes that it is still GRADED, which is
+    # the half that was missing. Before FR-030n/o/p a truncating provider was
+    # recorded as succeeding: the response phase sees an ordinary 200, so the false
+    # success reset the consecutive-failure counter and diluted the error-rate
+    # window. A provider truncating EVERYTHING was thereby immunised against the
+    # suspension its real failures would have triggered — worse than recording
+    # nothing at all.
+    #
+    # Envoy publishes this outcome only as a response flag on the access log, so
+    # what this scenario really exercises is the whole grading transport: Envoy's
+    # filtered access-log sink, the engine's verdict decoder, and the policy's
+    # correlation of a cluster back to the target that health is keyed by.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-trunc-provider
+      spec:
+        displayName: MF Truncating
+        version: v1.0
+        template: openai
+        context: /mf-trunc-ctx
+        upstream:
+          url: http://mock-truncating-provider:9080/truncate
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-trunc-alive-provider
+      spec:
+        displayName: MF Truncating Alive
+        version: v1.0
+        template: openai
+        context: /mf-trunc-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/trunc-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # One truncation suspends, for longer than the scenario runs, so a pass cannot
+    # come from the window expiring rather than from the grading working.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-truncate-proxy
+      spec:
+        displayName: MF Truncate Proxy
+        version: v1.0
+        context: /mf-truncate-proxy
+        provider:
+          id: mf-trunc-provider
+        additionalProviders:
+          - id: mf-trunc-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 300
+                  suspendAfterFailures: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Request 1 reaches the truncating target and the client wears it: a real 200
+    # whose body stops early, one attempt, no rescue. That is FR-013 holding.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-truncate-proxy/chat/completions" allowing a cut-off body with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should have been cut off
+
+    # Request 2 is the assertion. Both requests take ONE attempt, so the attempt
+    # count cannot tell them apart here -- the body is the discriminator. A body
+    # from the alive upstream means the truncation was graded as a failure and the
+    # leading target withdrawn. A second cut-off body would mean the truncation was
+    # recorded as a success and the target is still leading the chain.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-truncate-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/trunc-alive-upstream"
+    And the response body should not have been cut off
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-truncate-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-trunc-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-trunc-alive-provider"
+    Then the response status code should be 200
+
+  @truncation-grading
+  Scenario: A complete streamed response of the same shape suspends nothing
+    # The control for the scenario above, and the reason it means anything. The
+    # grading signal is a response flag, and a streamed response is exactly the
+    # shape most likely to be flagged by accident -- chunked, no content-length,
+    # ending when the upstream closes. If an ordinary complete SSE response also
+    # suspended its target, the previous scenario would pass for a reason that has
+    # nothing to do with truncation, and every streaming provider on the gateway
+    # would be suspended after a single successful call.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-whole-provider
+      spec:
+        displayName: MF Whole Stream
+        version: v1.0
+        template: openai
+        context: /mf-whole-ctx
+        upstream:
+          url: http://mock-truncating-provider:9080/whole
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-whole-alive-provider
+      spec:
+        displayName: MF Whole Alive
+        version: v1.0
+        template: openai
+        context: /mf-whole-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/whole-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-whole-proxy
+      spec:
+        displayName: MF Whole Proxy
+        version: v1.0
+        context: /mf-whole-proxy
+        provider:
+          id: mf-whole-provider
+        additionalProviders:
+          - id: mf-whole-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 300
+                  suspendAfterFailures: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Same streaming shape as the truncating mock, delivered whole.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-whole-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/whole/chat/completions"
+    And the response body should not have been cut off
+
+    # And the target is still leading the chain on the next request -- it was not
+    # graded as a failure for merely having streamed.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-whole-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/whole/chat/completions"
+    And the response body should not contain "/whole-alive-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-whole-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-whole-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-whole-alive-provider"
+    Then the response status code should be 200
+
+  @truncation-grading
+  Scenario: A truncation and an outright failure count on the same target, not against each other
+    # The immunity this feature removes was not only "a truncating provider is never
+    # suspended". It was also that a truncation CANCELLED real failures: the false
+    # success reset the consecutive-failure counter, so a target alternating between
+    # truncating and failing outright never reached a threshold above one.
+    #
+    # The two failures arrive by different routes -- the truncation through the
+    # access-log verdict, the 503 through the ordinary response phase -- and the
+    # point is that they land on one counter. With suspendAfterFailures at 2,
+    # neither alone suspends, so a pass means both were counted.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-mixed-provider
+      spec:
+        displayName: MF Mixed Failures
+        version: v1.0
+        template: openai
+        context: /mf-mixed-ctx
+        upstream:
+          url: http://mock-truncating-provider:9080/mixed
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-mixed-alive-provider
+      spec:
+        displayName: MF Mixed Alive
+        version: v1.0
+        template: openai
+        context: /mf-mixed-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/mixed-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-mixed-proxy
+      spec:
+        displayName: MF Mixed Proxy
+        version: v1.0
+        context: /mf-mixed-proxy
+        provider:
+          id: mf-mixed-provider
+        additionalProviders:
+          - id: mf-mixed-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 300
+                  suspendAfterFailures: 2
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The mock alternates, so clear its counter first -- otherwise a re-run starts
+    # on the 503 and the scenario silently tests something else.
+    When I send a GET request to "http://localhost:9083/reset"
+    Then the response status code should be 200
+
+    # Failure 1 of 2: a truncation. One attempt, no rescue, client wears it.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-mixed-proxy/chat/completions" allowing a cut-off body with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should have been cut off
+
+    # Failure 2 of 2: an outright 503, before any body, so this one DOES fail over.
+    # The target is still leading at this point -- two attempts prove it was tried.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-mixed-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/mixed-alive-upstream"
+
+    # Threshold reached across both causes: the target is out, so this request
+    # leads with the fallback and costs one attempt instead of two.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-mixed-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/mixed-alive-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-mixed-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-mixed-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-mixed-alive-provider"
+    Then the response status code should be 200
+
   # ====================================================================
   # Traversal stops when the caller goes away
   # ====================================================================

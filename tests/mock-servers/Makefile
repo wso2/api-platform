@@ -18,7 +18,7 @@
 
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 VERSION ?= latest
-MOCKS ?= mock-jwks mock-azure-content-safety mock-aws-bedrock-guardrail mock-embedding-provider mock-analytics-collector
+MOCKS ?= mock-jwks mock-azure-content-safety mock-aws-bedrock-guardrail mock-embedding-provider mock-analytics-collector mock-truncating-provider
 
 .DEFAULT_GOAL := help
 

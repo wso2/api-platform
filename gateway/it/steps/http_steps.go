@@ -33,6 +33,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -113,6 +114,7 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	// HTTP method steps
 	ctx.Step(`^I send a GET request to \"([^\"]*)\"$`, h.ISendGETRequest)
 	ctx.Step(`^I send a GET request to \"([^\"]*)\" allowing a cut-off body$`, h.SendGETRequestAllowingCutOffBody)
+	ctx.Step(`^I send a POST request to \"([^\"]*)\" allowing a cut-off body with body:$`, h.SendPOSTRequestAllowingCutOffBody)
 	ctx.Step(`^the response body should have been cut off$`, h.theResponseBodyShouldHaveBeenCutOff)
 	ctx.Step(`^the response body should not have been cut off$`, h.theResponseBodyShouldNotHaveBeenCutOff)
 	ctx.Step(`^I send a GET request to \"([^\"]*)\" and give up after (\d+)ms$`, h.SendGETRequestGivingUpAfter)
@@ -154,6 +156,20 @@ func (h *HTTPSteps) Reset() {
 	h.load = loadTally{}
 	h.headers = make(map[string]string)
 	h.requestHost = ""
+}
+
+// beginRequest clears the per-response flags so they describe the response this request
+// is about to produce, not any earlier one in the same scenario.
+//
+// bodyCutOff used to be cleared only by Reset, i.e. between scenarios. A scenario that
+// made a cut-off request and then a normal one would see the normal response reported as
+// cut off too -- "the response body should not have been cut off" failed while naming the
+// LATER response's byte count, which reads as a real truncation and is not one. Both
+// assertion steps say "the response body", singular, so clearing per request is what
+// their wording already promised.
+func (h *HTTPSteps) beginRequest() {
+	h.bodyCutOff = false
+	h.requestAbandoned = false
 }
 
 // SetHeader sets a header for subsequent requests
@@ -249,6 +265,7 @@ func (h *HTTPSteps) SendRequest(method, url string, body []byte) error {
 // the test is when each event arrived, not just the final bytes. The body
 // passed here is whatever that reader chose to retain.
 func (h *HTTPSteps) RecordResponse(resp *http.Response, body []byte) {
+	h.beginRequest()
 	h.lastResponse = resp
 	h.lastBody = body
 }
@@ -450,6 +467,7 @@ func (h *HTTPSteps) iSendPOSTRequestWithHeaderAndBody(url, headerName, headerVal
 
 // sendRequestWithTempHeader sends a request with a temporary header that doesn't persist
 func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, headerName, headerValue string) error {
+	h.beginRequest()
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -520,6 +538,7 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 
 // sendRequest is a helper to send HTTP requests
 func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
+	h.beginRequest()
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
@@ -588,6 +607,7 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 }
 
 func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
+	h.beginRequest()
 	var bodyReader io.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader([]byte(body.Content))
@@ -729,6 +749,33 @@ func (h *HTTPSteps) SendGETRequestAllowingCutOffBody(url string) error {
 	log.Printf("DEBUG: response body was cut off mid-stream (status=%d, %d bytes read): %v",
 		h.lastResponse.StatusCode, len(h.lastBody), err)
 	return nil
+}
+
+// SendPOSTRequestAllowingCutOffBody is SendGETRequestAllowingCutOffBody for the verb an
+// LLM call actually uses. A provider that truncates a completion is reached by POST, so
+// the GET-only variant cannot express it.
+func (h *HTTPSteps) SendPOSTRequestAllowingCutOffBody(url string, body *godog.DocString) error {
+	err := h.ISendPOSTRequestWithBody(url, body)
+	if err == nil {
+		return nil
+	}
+	if h.lastResponse == nil || !isTruncatedBody(err) {
+		return err
+	}
+	h.bodyCutOff = true
+	log.Printf("DEBUG: response body was cut off mid-stream (status=%d, %d bytes read): %v",
+		h.lastResponse.StatusCode, len(h.lastBody), err)
+	return nil
+}
+
+// isTruncatedBody reports whether err is a body that stopped before its framing said it
+// would. Two shapes reach the client depending on how the upstream died and how Envoy
+// passes that on: a short read of a declared length (io.ErrUnexpectedEOF), or the
+// downstream connection itself being reset (ECONNRESET). A provider process dying sends
+// an RST rather than a FIN, so the second shape is the one a real truncation produces and
+// accepting only the first would make a truncation test fail for the wrong reason.
+func isTruncatedBody(err error) bool {
+	return isUnexpectedEOF(err) || errors.Is(err, syscall.ECONNRESET)
 }
 
 // isUnexpectedEOF reports whether err is the body ending before the framing said it would.

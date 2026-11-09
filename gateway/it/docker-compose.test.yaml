@@ -305,6 +305,20 @@ services:
     networks:
       - it-gateway-runtime-network
 
+  # Commits a 200 and then dies mid-body -- the one failure shape Envoy will not
+  # retry (the client already has the headers) and the policy's response phase
+  # cannot see. Grading it needs the access-log verdict (FR-030n/o/p).
+  mock-truncating-provider:
+    container_name: it-mock-truncating-provider
+    image: ghcr.io/wso2/api-platform/mock-truncating-provider:latest
+    build:
+      context: ../../tests/mock-servers/mock-truncating-provider
+      dockerfile: Dockerfile
+    ports:
+      - "9083:9080"
+    networks:
+      - it-gateway-runtime-network
+
   # Mock Analytics Collector for analytics testing
   mock-analytics-collector:
     container_name: it-mock-analytics-collector
