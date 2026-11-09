@@ -181,8 +181,11 @@ func (s *SQLiteStorage) migrateSchemaV6ToV7() error {
 		_ = tx.Rollback()
 	}()
 
-	// The table may already have the column: a version 5 database without the table gets it from
-	// the current schema in migrateSchemaV5ToV6.
+	// The schema first: it creates any missing table, subscription_plans included (with the column).
+	if _, err := tx.Exec(schemaSQL); err != nil {
+		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", currentSchemaVersion, err)
+	}
+	// An existing subscription_plans gets the column; it may already have it.
 	var hasConditions int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('subscription_plans') WHERE name = 'conditions'`).Scan(&hasConditions); err != nil {
 		return fmt.Errorf("failed to read the subscription_plans columns: %w", err)
@@ -191,9 +194,6 @@ func (s *SQLiteStorage) migrateSchemaV6ToV7() error {
 		if _, err := tx.Exec(`ALTER TABLE subscription_plans ADD COLUMN conditions TEXT`); err != nil {
 			return fmt.Errorf("failed to add subscription_plans.conditions column: %w", err)
 		}
-	}
-	if _, err := tx.Exec(schemaSQL); err != nil {
-		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", currentSchemaVersion, err)
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion)); err != nil {
 		return fmt.Errorf("failed to set schema version: %w", err)

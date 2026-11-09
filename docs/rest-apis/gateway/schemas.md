@@ -1268,9 +1268,7 @@ MINUTE, HOUR, DAY or MONTH. A custom condition has an id of its own and key-valu
 {
   "planName": "Gold",
   "billingPlan": "COMMERCIAL",
-  "stopOnQuotaReach": true,
-  "throttleLimitCount": 1000,
-  "throttleLimitUnit": "Hour",
+  "status": "ACTIVE",
   "conditions": [
     {
       "id": "requests",
@@ -1278,17 +1276,15 @@ MINUTE, HOUR, DAY or MONTH. A custom condition has an id of its own and key-valu
       "params": {
         "limits": [
           {
-            "count": 100,
+            "count": 1000,
             "timeAmount": 1,
-            "timeUnit": "MINUTE"
+            "timeUnit": "HOUR"
           }
         ],
         "onExceed": "reject"
       }
     }
-  ],
-  "expiryTime": "2026-12-31T23:59:59Z",
-  "status": "ACTIVE"
+  ]
 }
 
 ```
@@ -1302,7 +1298,7 @@ MINUTE, HOUR, DAY or MONTH. A custom condition has an id of its own and key-valu
 |stopOnQuotaReach|boolean|false|none|none|
 |throttleLimitCount|integer|false|none|none|
 |throttleLimitUnit|string|false|none|none|
-|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most<br>one condition of each built-in type (request-count, tool-call-count, token-count) and any<br>number of custom conditions. Send either conditions or the throttle limit fields, not both.|
+|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most 20<br>conditions: at most one of each built-in type (request-count, tool-call-count, token-count),<br>and custom conditions for the rest. Send either conditions or the throttle limit fields, not both.|
 |expiryTime|string(date-time)|false|none|none|
 |status|string|false|none|none|
 
@@ -1326,11 +1322,8 @@ MINUTE, HOUR, DAY or MONTH. A custom condition has an id of its own and key-valu
 
 ```json
 {
-  "planName": "string",
-  "billingPlan": "string",
-  "stopOnQuotaReach": true,
-  "throttleLimitCount": 0,
-  "throttleLimitUnit": "Min",
+  "planName": "Gold",
+  "billingPlan": "COMMERCIAL",
   "conditions": [
     {
       "id": "requests",
@@ -1338,17 +1331,15 @@ MINUTE, HOUR, DAY or MONTH. A custom condition has an id of its own and key-valu
       "params": {
         "limits": [
           {
-            "count": 100,
+            "count": 1000,
             "timeAmount": 1,
-            "timeUnit": "MINUTE"
+            "timeUnit": "HOUR"
           }
         ],
         "onExceed": "reject"
       }
     }
-  ],
-  "expiryTime": "2019-08-24T14:15:22Z",
-  "status": "ACTIVE"
+  ]
 }
 
 ```
@@ -1364,7 +1355,7 @@ Partial update. Fields that are omitted are left unchanged.
 |stopOnQuotaReach|boolean|false|none|none|
 |throttleLimitCount|integer¦null|false|none|Set together with throttleLimitUnit. Send an explicit null for both fields to remove the<br>limit, which makes the plan unlimited.|
 |throttleLimitUnit|string¦null|false|none|Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.|
-|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most<br>one condition of each built-in type (request-count, tool-call-count, token-count) and any<br>number of custom conditions. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or<br>the throttle limit fields, not both. The throttle limit fields alone change only the<br>request-count condition.|
+|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most 20<br>conditions: at most one of each built-in type (request-count, tool-call-count, token-count),<br>and custom conditions for the rest. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or<br>the throttle limit fields, not both. The throttle limit fields alone change only the<br>request-count condition.|
 |expiryTime|string(date-time)¦null|false|none|Send an explicit null to remove the expiry time.|
 |status|string|false|none|none|
 

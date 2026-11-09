@@ -89,6 +89,21 @@ func TestPlanEvents_StoreConditions(t *testing.T) {
 		t.Fatalf("created plan = %+v, want both conditions", plan)
 	}
 
+	// An update with other conditions replaces them.
+	client.handleSubscriptionPlanUpdatedEvent(planEvent("subscriptionPlan.updated", map[string]interface{}{
+		"planId": "plan-1", "planName": "Agents", "status": "ACTIVE", "stopOnQuotaReach": true,
+		"conditions": []interface{}{
+			map[string]interface{}{"id": "tokens", "type": "token-count",
+				"params": map[string]interface{}{"limits": []interface{}{map[string]interface{}{"count": 1000, "timeAmount": 1, "timeUnit": "DAY"}}, "onExceed": "allow", "tokenType": "prompt"}},
+			map[string]interface{}{"id": "region", "type": "custom", "params": map[string]interface{}{"zone": "eu"}},
+		},
+	}))
+	plan = db.plans["plan-1"]
+	if len(plan.Conditions) != 2 || plan.Conditions[0].ID != "tokens" || plan.Conditions[1].ID != "region" ||
+		!strings.Contains(string(plan.Conditions[0].Params), `"tokenType":"prompt"`) || string(plan.Conditions[1].Params) != `{"zone":"eu"}` {
+		t.Fatalf("updated plan conditions = %+v, want tokens and region as sent", plan.Conditions)
+	}
+
 	client.handleSubscriptionPlanUpdatedEvent(planEvent("subscriptionPlan.updated", map[string]interface{}{
 		"planId": "plan-1", "planName": "Agents", "status": "ACTIVE", "stopOnQuotaReach": true,
 		"conditions": []interface{}{},

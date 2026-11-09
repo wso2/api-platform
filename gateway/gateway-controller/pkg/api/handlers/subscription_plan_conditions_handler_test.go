@@ -19,7 +19,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,6 +84,7 @@ func TestCreateSubscriptionPlan_RefusesBadConditions(t *testing.T) {
 		"unknown type":                  `{"planName":"P2","conditions":[{"type":"bandwidth","params":{"limits":[{"count":1,"timeUnit":"DAY"}]}}]}`,
 		"two request-count":             `{"planName":"P3","conditions":[{"type":"request-count","params":{"limits":[{"count":1,"timeUnit":"DAY"}]}},{"type":"request-count","params":{"limits":[{"count":2,"timeUnit":"HOUR"}]}}]}`,
 		"custom without id":             `{"planName":"P4","conditions":[{"type":"custom","params":{}}]}`,
+		"null conditions":               `{"planName":"P5","conditions":null}`,
 	} {
 		code, resp := createPlanViaHandler(t, server, body)
 		assert.Equal(t, http.StatusBadRequest, code, "%s: %s", name, resp)
@@ -163,4 +166,22 @@ func TestCreateSubscriptionPlan_LongerWindowOnly(t *testing.T) {
 	assert.Equal(t, "Hour", *resp.ThrottleLimitUnit)
 	stored := storedPlan(t, server, *resp.Id)
 	assert.JSONEq(t, `{"limits":[{"count":1000,"timeAmount":2,"timeUnit":"HOUR"}],"onExceed":"reject"}`, string(stored.Conditions[0].Params))
+}
+
+// Setting the throttle limit adds a request-count condition, so a plan with 20 conditions can't take
+// one: the merged list is checked before it's saved.
+func TestUpdateSubscriptionPlan_ThrottleLimitKeepsTheConditionCap(t *testing.T) {
+	server, _ := newPlanTestServer(t)
+	customs := make([]string, 0, 20)
+	for i := 0; i < 20; i++ {
+		customs = append(customs, fmt.Sprintf(`{"id":"c%d","type":"custom","params":{}}`, i))
+	}
+	code, body := createPlanViaHandler(t, server, `{"planName":"Full","conditions":[`+strings.Join(customs, ",")+`]}`)
+	require.Equal(t, http.StatusCreated, code, string(body))
+	id := *planResponse(t, body).Id
+
+	code, body = putSubscriptionPlan(t, server, id, "application/json", `{"throttleLimitCount":5,"throttleLimitUnit":"Min"}`)
+	require.Equal(t, http.StatusBadRequest, code, string(body))
+	assert.Contains(t, errorMessage(t, body), "at most 20 conditions")
+	assert.Len(t, storedPlan(t, server, id).Conditions, 20, "nothing saved")
 }

@@ -442,10 +442,20 @@ func (s *APIServer) resolveAPIIDByHandle(w http.ResponseWriter, r *http.Request,
 		return cfgByID.UUID, nil
 	}
 
-	// Fallback: resolve by handle (metadata.name).
+	// Fallback: resolve by handle (metadata.name). A REST API and an MCP proxy may share a handle;
+	// then the handle can't say which is meant, and the ID must be used.
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
-	if storage.IsNotFoundError(err) {
-		cfg, err = s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
+	mcpCfg, mcpErr := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
+	switch {
+	case err == nil && cfg != nil && mcpErr == nil && mcpCfg != nil:
+		log.Warn("Handle names both a REST API and an MCP proxy", slog.String("handle", handle))
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("'%s' is the handle of both a REST API and an MCP proxy; use its ID instead", handle),
+		})
+		return "", fmt.Errorf("ambiguous handle")
+	case storage.IsNotFoundError(err):
+		cfg, err = mcpCfg, mcpErr
 	}
 	if err != nil {
 		if storage.IsNotFoundError(err) {

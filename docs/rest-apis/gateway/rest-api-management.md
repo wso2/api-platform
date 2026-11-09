@@ -1252,9 +1252,7 @@ Create a subscription plan that defines rate limits and access tiers for API sub
 {
   "planName": "Gold",
   "billingPlan": "COMMERCIAL",
-  "stopOnQuotaReach": true,
-  "throttleLimitCount": 1000,
-  "throttleLimitUnit": "Hour",
+  "status": "ACTIVE",
   "conditions": [
     {
       "id": "requests",
@@ -1262,17 +1260,15 @@ Create a subscription plan that defines rate limits and access tiers for API sub
       "params": {
         "limits": [
           {
-            "count": 100,
+            "count": 1000,
             "timeAmount": 1,
-            "timeUnit": "MINUTE"
+            "timeUnit": "HOUR"
           }
         ],
         "onExceed": "reject"
       }
     }
-  ],
-  "expiryTime": "2026-12-31T23:59:59Z",
-  "status": "ACTIVE"
+  ]
 }
 ```
 
@@ -1513,11 +1509,8 @@ Update an existing subscription plan in the Gateway.
 
 ```json
 {
-  "planName": "string",
-  "billingPlan": "string",
-  "stopOnQuotaReach": true,
-  "throttleLimitCount": 0,
-  "throttleLimitUnit": "Min",
+  "planName": "Gold",
+  "billingPlan": "COMMERCIAL",
   "conditions": [
     {
       "id": "requests",
@@ -1525,17 +1518,15 @@ Update an existing subscription plan in the Gateway.
       "params": {
         "limits": [
           {
-            "count": 100,
+            "count": 1000,
             "timeAmount": 1,
-            "timeUnit": "MINUTE"
+            "timeUnit": "HOUR"
           }
         ],
         "onExceed": "reject"
       }
     }
-  ],
-  "expiryTime": "2019-08-24T14:15:22Z",
-  "status": "ACTIVE"
+  ]
 }
 ```
 

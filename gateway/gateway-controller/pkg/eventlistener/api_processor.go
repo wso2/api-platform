@@ -123,6 +123,9 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	// Update policies
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
 	l.syncAPIKeysForAPI(storedConfig, event.EventID)
+	if models.TakesSubscriptions(storedConfig.Kind) {
+		l.refreshSubscriptions(entityID, event.EventID)
+	}
 
 	l.logger.Info("Successfully processed API create/update event",
 		slog.String("api_id", entityID),
@@ -160,7 +163,7 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 			slog.Any("error", err))
 	}
 
-	l.deleteSubscriptionsOf(entityID, event.EventID)
+	l.deleteSubscriptionsOf(existingConfig, entityID, event.EventID)
 
 	if existingConfig != nil && l.apiKeyXDSManager != nil {
 		apiName, apiVersion := extractAPINameVersion(existingConfig)
@@ -273,24 +276,37 @@ func extractAPINameVersion(cfg *models.StoredConfig) (string, string) {
 }
 
 // deleteSubscriptionsOf removes a deleted artifact's subscriptions (subscriptions.api_id is not a FK)
-// and refreshes the subscription xDS so the policy engine drops their tokens.
-func (l *EventListener) deleteSubscriptionsOf(entityID, eventID string) {
+// and refreshes the subscription xDS so the policy engine drops their tokens. A subscription that
+// arrived before the artifact was known here is keyed by the control-plane ID, so that is cleared too.
+func (l *EventListener) deleteSubscriptionsOf(cfg *models.StoredConfig, entityID, eventID string) {
 	if l.db == nil {
 		return
 	}
-	if err := l.db.DeleteSubscriptionsForAPINotIn(entityID, nil); err != nil {
-		l.logger.Warn("Failed to delete subscriptions from database after API deletion",
-			slog.String("api_id", entityID),
-			slog.Any("error", err))
-		return
+	ids := []string{entityID}
+	if cfg != nil && cfg.CPArtifactID != "" && cfg.CPArtifactID != entityID {
+		ids = append(ids, cfg.CPArtifactID)
 	}
+	for _, id := range ids {
+		if err := l.db.DeleteSubscriptionsForAPINotIn(id, nil); err != nil {
+			l.logger.Warn("Failed to delete subscriptions from database after API deletion",
+				slog.String("api_id", id),
+				slog.Any("error", err))
+			return
+		}
+	}
+	l.refreshSubscriptions(entityID, eventID)
+}
+
+// refreshSubscriptions rebuilds the subscription xDS. After a deployment it picks up subscriptions
+// that arrived before the artifact was known here; after a deletion it drops the artifact's tokens.
+func (l *EventListener) refreshSubscriptions(entityID, eventID string) {
 	if l.subscriptionManager == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := l.subscriptionManager.UpdateSnapshot(ctx); err != nil {
-		l.logger.Warn("Failed to refresh subscription snapshot after API deletion",
+		l.logger.Warn("Failed to refresh subscription snapshot",
 			slog.String("api_id", entityID),
 			slog.String("event_id", eventID),
 			slog.Any("error", err))

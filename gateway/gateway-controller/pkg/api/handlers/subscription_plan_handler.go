@@ -82,9 +82,15 @@ func (s *APIServer) CreateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxSubscriptionRequestBodyBytes)
 	var req api.SubscriptionPlanCreateRequest
-	if err := s.bindRequestBody(r, &req); err != nil {
+	fields, err := s.bindRequestBodyWithFields(r, &req)
+	if err != nil {
 		log.Warn("Invalid subscription plan create body", slog.Any("error", err))
 		writeSubscriptionBodyError(w, err)
+		return
+	}
+	// As on update, an explicit null isn't read as "no conditions".
+	if _, sent := fields["conditions"]; sent && req.Conditions == nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "conditions must be an array; send [] for a plan with no conditions"})
 		return
 	}
 	planName := strings.TrimSpace(req.PlanName)
@@ -320,7 +326,13 @@ func (s *APIServer) UpdateSubscriptionPlan(w http.ResponseWriter, r *http.Reques
 			if req.StopOnQuotaReach != nil {
 				stop = *req.StopOnQuotaReach
 			}
-			updated.Conditions = models.WithThrottleLimit(updated.Conditions, updated.ThrottleLimitCount, unit, stop)
+			// Checked again: adding the request-count condition can take a plan past 20 conditions.
+			merged, err := models.NormalizeConditions(models.WithThrottleLimit(updated.Conditions, updated.ThrottleLimitCount, unit, stop))
+			if err != nil {
+				httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+				return
+			}
+			updated.Conditions = merged
 		}
 	}
 

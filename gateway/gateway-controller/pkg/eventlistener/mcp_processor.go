@@ -105,6 +105,7 @@ func (l *EventListener) handleMCPProxyCreateOrUpdate(event eventhub.Event) {
 
 	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after MCP proxy replica sync")
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.refreshSubscriptions(entityID, event.EventID)
 
 	l.logger.Info("Successfully processed MCP proxy create/update event",
 		slog.String("proxy_id", entityID),
@@ -129,7 +130,7 @@ func (l *EventListener) handleMCPProxyDelete(event eventhub.Event) {
 
 	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after MCP proxy deletion")
 
-	l.deleteSubscriptionsOf(entityID, event.EventID)
+	l.deleteSubscriptionsOf(existingConfig, entityID, event.EventID)
 
 	if l.policyManager != nil && existingConfig != nil {
 		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {

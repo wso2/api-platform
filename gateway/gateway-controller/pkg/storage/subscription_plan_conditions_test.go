@@ -74,6 +74,41 @@ func TestSubscriptionPlan_ConditionsRoundTrip(t *testing.T) {
 	assert.Assert(t, !column.Valid, "no conditions recorded is stored as NULL")
 }
 
+// A version 6 database that lacks subscription_plans gets it, with the conditions column, rather than
+// failing the upgrade on the column check.
+func TestSQLite_UpgradeFromV6WithoutPlansTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v6-no-plans.db")
+	createReleasedV5Database(t, path)
+
+	rawDB, err := sql.Open("sqlite3", path)
+	assert.NilError(t, err)
+	for _, statement := range []string{
+		`ALTER TABLE certificates ADD COLUMN usage TEXT NOT NULL DEFAULT 'upstream'`,
+		`ALTER TABLE certificates ADD COLUMN role TEXT NOT NULL DEFAULT 'client'`,
+		`ALTER TABLE certificates ADD COLUMN match_json TEXT`,
+		`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`,
+		`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`,
+		`DROP TABLE subscription_plans`,
+		fmt.Sprintf("PRAGMA user_version = %d", conditionsSchemaVersion),
+	} {
+		_, err = rawDB.Exec(statement)
+		assert.NilError(t, err, statement)
+	}
+	assert.NilError(t, rawDB.Close())
+
+	upgraded, err := NewStorage(BackendConfig{Type: "sqlite", SQLitePath: path, GatewayID: "platform-gateway-id"},
+		slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	assert.NilError(t, err)
+	defer upgraded.(*sqlStore).db.Close()
+
+	var version, hasConditions int
+	assert.NilError(t, upgraded.(*sqlStore).db.QueryRow("PRAGMA user_version").Scan(&version))
+	assert.Equal(t, version, currentSchemaVersion)
+	assert.NilError(t, upgraded.(*sqlStore).db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('subscription_plans') WHERE name = 'conditions'`).Scan(&hasConditions))
+	assert.Equal(t, hasConditions, 1)
+}
+
 // A version 6 database gets the conditions column; its plans keep their throttle limit and read with
 // no conditions recorded.
 func TestSQLite_UpgradeFromV6AddsPlanConditions(t *testing.T) {

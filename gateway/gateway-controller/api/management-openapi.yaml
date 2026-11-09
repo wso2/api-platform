@@ -4987,6 +4987,19 @@ components:
       type: object
       required:
         - planName
+      example:
+        planName: Gold
+        billingPlan: COMMERCIAL
+        status: ACTIVE
+        conditions:
+          - id: requests
+            type: request-count
+            params:
+              limits:
+                - count: 1000
+                  timeAmount: 1
+                  timeUnit: HOUR
+              onExceed: reject
       properties:
         planName:
           type: string
@@ -5007,10 +5020,11 @@ components:
           example: Hour
         conditions:
           type: array
+          maxItems: 20
           description: |
-            The plan's conditions, enforced by the policies attached to an API. A plan has at most
-            one condition of each built-in type (request-count, tool-call-count, token-count) and any
-            number of custom conditions. Send either conditions or the throttle limit fields, not both.
+            The plan's conditions, enforced by the policies attached to an API. A plan has at most 20
+            conditions: at most one of each built-in type (request-count, tool-call-count, token-count),
+            and custom conditions for the rest. Send either conditions or the throttle limit fields, not both.
           items:
             $ref: "#/components/schemas/SubscriptionPlanCondition"
         expiryTime:
@@ -5026,6 +5040,18 @@ components:
       type: object
       description: |
         Partial update. Fields that are omitted are left unchanged.
+      example:
+        planName: Gold
+        billingPlan: COMMERCIAL
+        conditions:
+          - id: requests
+            type: request-count
+            params:
+              limits:
+                - count: 1000
+                  timeAmount: 1
+                  timeUnit: HOUR
+              onExceed: reject
       properties:
         planName:
           type: string
@@ -5052,10 +5078,11 @@ components:
             Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.
         conditions:
           type: array
+          maxItems: 20
           description: |
-            The plan's conditions, enforced by the policies attached to an API. A plan has at most
-            one condition of each built-in type (request-count, tool-call-count, token-count) and any
-            number of custom conditions. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or
+            The plan's conditions, enforced by the policies attached to an API. A plan has at most 20
+            conditions: at most one of each built-in type (request-count, tool-call-count, token-count),
+            and custom conditions for the rest. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or
             the throttle limit fields, not both. The throttle limit fields alone change only the
             request-count condition.
           items:

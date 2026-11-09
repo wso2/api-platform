@@ -1165,6 +1165,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I resolve the "([^"]*)" service( host)? URL at "([^"]*)" and store it as "([^"]*)"$`,
 		g.resolveServiceURLAndStore)
 	sc.Step(`^I register the "([^"]*)" "([^"]*)" for cleanup$`, g.registerAdminResourceForCleanup)
+	sc.Step(`^I deregister the "([^"]*)" "([^"]*)" from cleanup$`, g.deregisterAdminResourceFromCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
 	sc.Step(`^the "([^"]*)" service logs should not contain "([^"]*)"$`, g.serviceLogsNotContain)
 	sc.Step(`^the "([^"]*)" service log event containing "([^"]*)" should not contain "([^"]*)"$`,
@@ -1808,6 +1809,26 @@ func (g *Gateway) registerAdminResourceForCleanup(ctx context.Context, kindName,
 		}
 		return fmt.Errorf("registering %s %q for cleanup: %w", kindName, id, err)
 	}
+	return nil
+}
+
+// deregisterAdminResourceFromCleanup drops a resource the scenario has deleted itself, so cleanup
+// doesn't delete it again.
+func (g *Gateway) deregisterAdminResourceFromCleanup(ctx context.Context, kindName, idExpr string) error {
+	entry, ok := adminResourceKinds[kindName]
+	if !ok {
+		return fmt.Errorf("unknown cleanup resource kind %q: this suite recognizes %v",
+			kindName, sortedAdminResourceKindNames())
+	}
+	id, err := stepscommon.Expand(ctx, idExpr)
+	if err != nil {
+		return err
+	}
+	reg, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	reg.Deregister(entry.kind, id)
 	return nil
 }
 

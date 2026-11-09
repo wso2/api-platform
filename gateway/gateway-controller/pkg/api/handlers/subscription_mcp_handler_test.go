@@ -150,3 +150,19 @@ func TestSubscription_RefusesOtherKinds(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, code)
 	assert.Contains(t, errorMessage(t, body), "REST API or MCP proxy with identifier 'no-such-proxy' not found")
 }
+
+// A handle shared by a REST API and an MCP proxy can't say which is meant: it is refused, and the ID
+// still works.
+func TestSubscription_RefusesAmbiguousHandle(t *testing.T) {
+	server := newMCPSubscriptionTestServer(t, nil)
+	require.NoError(t, server.db.SaveConfig(&models.StoredConfig{
+		UUID: "0000-rest-docs-0000-000000000000", Kind: models.KindRestApi, Handle: "docs-mcp", DesiredState: models.StateDeployed,
+	}))
+
+	code, body := postSubscription(t, server, "application/json", []byte(`{"apiId":"docs-mcp","subscriptionToken":"shared-token"}`))
+	require.Equal(t, http.StatusBadRequest, code, string(body))
+	assert.Contains(t, errorMessage(t, body), "is the handle of both a REST API and an MCP proxy")
+
+	code, body = postSubscription(t, server, "application/json", []byte(`{"apiId":"`+mcpProxyUUID+`","subscriptionToken":"by-id-token"}`))
+	require.Equal(t, http.StatusCreated, code, string(body))
+}

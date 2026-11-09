@@ -139,6 +139,7 @@ Feature: MCP proxy subscriptions
 
     When I send a "DELETE" request to the "gateway-controller" service at "/subscriptions/${CTX:subRef}"
     Then the response status should be 204
+    And I deregister the "subscription" "${CTX:subRef}" from cleanup
     When I send a "POST" request to "${CTX:mcpContext}/mcp" until status 403 with body:
       """
       {"jsonrpc":"2.0","id":8,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"it","version":"1.0.0"}}}
@@ -191,7 +192,9 @@ Feature: MCP proxy subscriptions
       {"externalRefId":"${CTX:subRef}","apiId":"${CTX:mcpName}","subscriptionPlanId":"${CTX:offeredPlanId}","subscriptionToken":"${CTX:subToken}"}
       """
     Then the response status should be 201
+    And I register the "subscription" "${CTX:subRef}" for cleanup
 
     When I delete the MCP proxy "${CTX:mcpName}"
     Then the response should be successful
     When I send a "GET" request to the "gateway-controller" service at "/subscriptions/${CTX:subRef}" until status 404
+    And I deregister the "subscription" "${CTX:subRef}" from cleanup
