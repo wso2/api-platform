@@ -142,18 +142,22 @@ func (s *Steps) clickOnGateway(ctx context.Context, button, gateway string) erro
 // click presses a button anywhere on the page. An open drawer hides the page behind it from
 // role queries, so a button of the drawer is the one found.
 func (s *Steps) gatewayButtonState(ctx context.Context, button, gateway, state string) error {
+	resolved, err := uivalue.Expand(ctx, button)
+	if err != nil {
+		return err
+	}
 	card, err := s.gatewayCard(ctx, gateway)
 	if err != nil {
 		return err
 	}
-	locator := card.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: button, Exact: playwright.Bool(true)})
+	locator := card.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)})
 	if state == "enabled" {
 		err = s.expect.Locator(locator).ToBeEnabled()
 	} else {
 		err = s.expect.Locator(locator).ToBeDisabled()
 	}
 	if err != nil {
-		return fmt.Errorf("the %q button on gateway %q is not %s: %w", button, gateway, state, err)
+		return fmt.Errorf("the %q button on gateway %q is not %s: %w", resolved, gateway, state, err)
 	}
 	return nil
 }
@@ -351,15 +355,8 @@ func (s *Steps) awaitGateway(ctx context.Context, status int, method, path, body
 		request.ContentType = "application/json"
 		request.Body = []byte(body)
 	}
-	last, err := retry.Until(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
+	return retry.Await(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
 		return s.client.Do(ctx, request, 0, 0)
-	}, func(resp *httpx.Response) bool { return resp.StatusCode == status })
-	if err != nil {
-		described := "no response"
-		if last != nil {
-			described = last.Describe()
-		}
-		return fmt.Errorf("the gateway never answered %d to %s %s; last: %s: %w", status, method, resolved, described, err)
-	}
-	return nil
+	}, func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == status },
+		fmt.Sprintf("the gateway never answered %d to %s %s", status, method, resolved))
 }

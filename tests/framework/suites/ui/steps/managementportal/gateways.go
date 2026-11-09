@@ -79,7 +79,7 @@ func (s *Steps) gatewayListStatus(ctx context.Context, name, status string) erro
 	if err != nil {
 		return err
 	}
-	_, err = retry.Until(ctx, retry.Options{Timeout: 90 * time.Second, Interval: 3 * time.Second},
+	err = retry.Await(ctx, retry.Options{Timeout: 90 * time.Second, Interval: 3 * time.Second},
 		func(ctx context.Context) (bool, error) {
 			if err := s.openPage(ctx, "/organizations/default/gateways"); err != nil {
 				return false, err
@@ -90,11 +90,8 @@ func (s *Steps) gatewayListStatus(ctx context.Context, name, status string) erro
 				return false, nil
 			}
 			return true, nil
-		}, func(shown bool) bool { return shown })
-	if err != nil {
-		return fmt.Errorf("the gateway list never showed %q as %q: %w", resolved, status, err)
-	}
-	return nil
+		}, func(shown bool) bool { return shown }, fmt.Sprintf("the gateway list never showed %q as %q", resolved, status))
+	return err
 }
 
 // deleteConsoleGatewayAfterScenario registers a gateway the console provisions, which the

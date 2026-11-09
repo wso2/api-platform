@@ -82,11 +82,10 @@ func (s *Steps) overviewShows(ctx context.Context, field, value string) error {
 // overviewListsResources compares the operations the overview's Resources panel renders, as
 // "METHOD path", with the table's rows, ignoring order.
 func (s *Steps) overviewListsResources(ctx context.Context, table *godog.Table) error {
-	var want []string
-	for _, row := range table.Rows {
-		want = append(want, strings.ToUpper(row.Cells[0].Value)+" "+row.Cells[1].Value)
+	want, err := resourceRows(table)
+	if err != nil {
+		return err
 	}
-	slices.Sort(want)
 	page, err := s.pageGetter(ctx)
 	if err != nil {
 		return err
@@ -190,9 +189,15 @@ func (s *Steps) projectHasRESTAPIs(ctx context.Context, project, ids string) err
 		List []struct {
 			ID string `json:"id"`
 		} `json:"list"`
+		Pagination struct {
+			Total int `json:"total"`
+		} `json:"pagination"`
 	}
 	if err := json.Unmarshal(resp.Body, &listed); err != nil {
 		return fmt.Errorf("listing project %q's REST APIs: %w", resolvedProject, err)
+	}
+	if listed.Pagination.Total > len(listed.List) {
+		return fmt.Errorf("project %q has %d REST APIs, more than one page lists", resolvedProject, listed.Pagination.Total)
 	}
 	got := []string{}
 	for _, api := range listed.List {
@@ -203,4 +208,17 @@ func (s *Steps) projectHasRESTAPIs(ctx context.Context, project, ids string) err
 		return fmt.Errorf("project %q has REST APIs %v, want %v", resolvedProject, got, want)
 	}
 	return nil
+}
+
+// resourceRows reads a two-column | METHOD | path | table as sorted "METHOD path" entries.
+func resourceRows(table *godog.Table) ([]string, error) {
+	var rows []string
+	for i, row := range table.Rows {
+		if len(row.Cells) != 2 {
+			return nil, fmt.Errorf("resource row %d has %d cells, want | METHOD | path |", i+1, len(row.Cells))
+		}
+		rows = append(rows, strings.ToUpper(row.Cells[0].Value)+" "+row.Cells[1].Value)
+	}
+	slices.Sort(rows)
+	return rows, nil
 }

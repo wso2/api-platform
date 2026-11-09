@@ -162,15 +162,8 @@ func (s *Steps) gatewayAnswersAs(ctx context.Context, status int, method, path, 
 	request := httpx.Request{Method: method, URL: base + resolved, Headers: map[string]string{
 		"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password)),
 	}}
-	last, err := retry.Until(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
+	return retry.Await(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
 		return s.client.Do(ctx, request, 0, 0)
-	}, func(resp *httpx.Response) bool { return resp.StatusCode == status })
-	if err != nil {
-		described := "no response"
-		if last != nil {
-			described = last.Describe()
-		}
-		return fmt.Errorf("the gateway never answered %d to %s %s as %q; last: %s: %w", status, method, resolved, username, described, err)
-	}
-	return nil
+	}, func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == status },
+		fmt.Sprintf("the gateway never answered %d to %s %s as %q", status, method, resolved, username))
 }

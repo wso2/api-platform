@@ -48,6 +48,14 @@ Feature: The Management Portal offers a read-only user no way to change an API
     And the policy catalog's "CORS" entry in the Management Portal can be attached
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/documents"
     Then the Management Portal's "Create Document" button is enabled
+    When the user clicks "Create Document" in the Management Portal
+    And the user enters "Viewer guide" as the "Name" in the Management Portal
+    And the user enters "Read before calling the API." as the "Content" in the Management Portal
+    And the user clicks "Create" in the Management Portal
+    Then the documents page lists "Viewer guide" under "How To"
+    And the Management Portal offers a "Create Document" button
+    And the Management Portal offers a "Edit" button
+    And the Management Portal offers a "Delete" button
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/deploy"
     Then the "Deploy" button on gateway "it-gateway" in the Management Portal is enabled
     # The viewer.
@@ -72,6 +80,10 @@ Feature: The Management Portal offers a read-only user no way to change an API
     When the user chooses "CORS" in the Management Portal
     Then the Management Portal offers no "Attach policy" button
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/documents"
-    Then the Management Portal's "Create Document" button is disabled
+    # With a document listed, the page's Create Document action is hidden rather than disabled.
+    Then the documents page lists "Viewer guide" under "How To"
+    And the Management Portal offers no "Create Document" button
+    And the Management Portal offers no "Edit" button
+    And the Management Portal offers no "Delete" button
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/deploy"
     Then the "Deploy" button on gateway "it-gateway" in the Management Portal is disabled

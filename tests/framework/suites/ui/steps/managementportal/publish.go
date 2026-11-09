@@ -24,7 +24,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"strings"
 
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
@@ -162,11 +161,10 @@ func (s *Steps) followPortalLink(ctx context.Context, name string) error {
 
 // portalListsResources compares the API page's resource rows, as "METHOD path", with the table.
 func (s *Steps) portalListsResources(ctx context.Context, table *godog.Table) error {
-	var want []string
-	for _, row := range table.Rows {
-		want = append(want, strings.ToUpper(row.Cells[0].Value)+" "+row.Cells[1].Value)
+	want, err := resourceRows(table)
+	if err != nil {
+		return err
 	}
-	slices.Sort(want)
 	page, err := s.pageGetter(ctx)
 	if err != nil {
 		return err

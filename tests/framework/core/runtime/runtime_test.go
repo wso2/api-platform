@@ -95,6 +95,14 @@ func TestLaunchComposeInstanceRefusesWhatItCannotStart(t *testing.T) {
 	}
 }
 
+func TestClaimSuffixRefusesANameAlreadyOnTheNetwork(t *testing.T) {
+	topo := &Topology{}
+	require.ErrorContains(t, topo.claimSuffix("platform-gateway", "-2", 2), "replica 2 already uses")
+	require.NoError(t, topo.claimSuffix("platform-gateway", "-console", 1))
+	require.ErrorContains(t, topo.claimSuffix("platform-gateway", "-console", 1), "already uses the suffix")
+	require.NoError(t, topo.claimSuffix("platform-api", "-console", 1))
+}
+
 func TestComponentVersion(t *testing.T) {
 	definition := &components.Definition{Name: "platform-gateway"}
 	tests := []struct {

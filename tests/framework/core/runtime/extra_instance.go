@@ -39,15 +39,18 @@ func (t *Topology) LaunchComposeInstance(
 		return nil, fmt.Errorf("runtime: another instance of %s needs a suffix to tell it apart", component)
 	}
 	var def *components.Definition
-	overlay := ""
+	overlay, replicas := "", 0
 	for _, rc := range t.Block.Components {
 		if rc.Def != nil && rc.Def.Name == component {
-			def, overlay = rc.Def, rc.Overlay
+			def, overlay, replicas = rc.Def, rc.Overlay, rc.Replicas
 			break
 		}
 	}
 	if def == nil || !def.IsCompose() || def.Compose == nil {
 		return nil, fmt.Errorf("runtime: block %q runs no compose component %q", blockName(t.Block), component)
+	}
+	if err := t.claimSuffix(component, suffix, replicas); err != nil {
+		return nil, err
 	}
 
 	merged := map[string]string{}
@@ -66,11 +69,14 @@ func (t *Topology) LaunchComposeInstance(
 		}
 		generated["config.toml"] = content
 	}
-	stack, err := LaunchCompose(ctx, def, def.Compose.WithGenerated(generated), Options{
-		Network: t.network, RepoRoot: t.repoRoot, Env: merged, LogWriter: t.logWriter, InstanceSuffix: suffix,
-	})
+	spec := def.Compose.WithGenerated(generated)
+	opts := Options{Network: t.network, RepoRoot: t.repoRoot, Env: merged, LogWriter: t.logWriter, InstanceSuffix: suffix}
+	stack, err := launchComposeWithRetry(ctx, component+suffix, spec.BootAttempts,
+		func(ctx context.Context) (*ComposeStack, error) { return LaunchCompose(ctx, def, spec, opts) })
 	if stack != nil {
+		t.extraMu.Lock()
 		t.stops = append(t.stops, stack.Stop)
+		t.extraMu.Unlock()
 	}
 	if err != nil {
 		if stack != nil {
@@ -79,4 +85,25 @@ func (t *Topology) LaunchComposeInstance(
 		return nil, fmt.Errorf("starting %s%s: %w", component, suffix, err)
 	}
 	return stack, nil
+}
+
+// claimSuffix reserves suffix for one extra instance of component. Its services are named with
+// it on the block's network, so a suffix the block's own replicas or an earlier extra instance
+// use would put two services behind one name.
+func (t *Topology) claimSuffix(component, suffix string, replicas int) error {
+	for ordinal := 0; ordinal < replicas; ordinal++ {
+		if instanceSuffix(ordinal, replicas) == suffix {
+			return fmt.Errorf("runtime: %s replica %d already uses the suffix %q", component, ordinal+1, suffix)
+		}
+	}
+	t.extraMu.Lock()
+	defer t.extraMu.Unlock()
+	if t.extraSuffixes[component+suffix] {
+		return fmt.Errorf("runtime: another instance of %s already uses the suffix %q", component, suffix)
+	}
+	if t.extraSuffixes == nil {
+		t.extraSuffixes = map[string]bool{}
+	}
+	t.extraSuffixes[component+suffix] = true
+	return nil
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps/uivalue"
 )
 
@@ -78,11 +79,35 @@ func (s *Steps) sendFromConsole(ctx context.Context, method, path string) error 
 			return fmt.Errorf("clearing %s %s's last response: %w", method, path, err)
 		}
 	}
-	if err := op.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Execute", Exact: playwright.Bool(true)}).Click(); err != nil {
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return err
+	}
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("sending %s %s needs the runner context", method, path)
+	}
+	// The browser's own request tells who sends the call: the console's relay, or the browser
+	// straight to the gateway.
+	execute := op.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Execute", Exact: playwright.Bool(true)})
+	request, err := page.ExpectRequest(func(r playwright.Request) bool {
+		return strings.Contains(r.URL(), relayPath) || strings.HasSuffix(strings.SplitN(r.URL(), "?", 2)[0], path)
+	}, func() error { return execute.Click() })
+	if err != nil {
 		return fmt.Errorf("executing %s %s: %w", method, path, err)
 	}
+	sender := "from the browser"
+	if strings.Contains(request.URL(), relayPath) {
+		sender = "through the proxy"
+	}
+	local.Set(senderKey(method, path), sender)
 	return nil
 }
+
+// relayPath is the console's endpoint that sends a Test page call on the browser's behalf.
+const relayPath = "/gateway-relay/invoke"
+
+func senderKey(method, path string) string { return "console-sender:" + method + " " + path }
 
 func (s *Steps) consoleShowsRequest(ctx context.Context, url, method, path string) error {
 	resolved, err := uivalue.Expand(ctx, url)
@@ -127,6 +152,9 @@ func (s *Steps) consoleResponseEchoes(ctx context.Context, method, path string, 
 	}
 	if got.Method != echoMethod || got.Path != echoPath {
 		return fmt.Errorf("%s %s reached the backend as %s %s, want %s %s", method, path, got.Method, got.Path, echoMethod, echoPath)
+	}
+	if recorded, _ := tcontext.Get(ctx, senderKey(method, path)); recorded != sender {
+		return fmt.Errorf("%s %s was sent %v, not %s", method, path, recorded, sender)
 	}
 	agent := strings.Join(got.Headers["User-Agent"], " ")
 	if fromBrowser := strings.HasPrefix(agent, "Mozilla/"); fromBrowser != (sender == "from the browser") {
