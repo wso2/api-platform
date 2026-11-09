@@ -26,14 +26,18 @@ import { useBrandLogo } from '@/branding/BrandLogoProvider';
 import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
 import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
 import { useAuth } from '@/contexts/auth/AuthProvider';
-import { HEADER_ACTIONS_SLOT, type ApiControlPlaneHeaderAction } from '@/extensions';
+import {
+  HEADER_ACTIONS_SLOT,
+  HEADER_START_SLOT,
+  type ApiControlPlaneHeaderAction,
+} from '@/extensions';
 import { usePort } from '@/hostPort';
 import { routes } from '@/routes/paths';
 import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
 import { useSlot } from '@/slots';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
-const BRAND_LOGO_HEIGHT = 32;
+const BRAND_LOGO_HEIGHT = 26;
 /** Matches Oxygen's own Header.Toggle icon size, so swapping the glyph doesn't resize the button. */
 const TOGGLE_ICON_SIZE = 20;
 
@@ -68,6 +72,8 @@ export function AppHeader() {
   const brandLogo = useBrandLogo();
   // Cloud-only entries; empty in a standalone console, which registers none.
   const headerActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_ACTIONS_SLOT);
+  // Cloud-only: replaces the sidebar-collapse toggle below when present.
+  const headerStartActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_START_SLOT);
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
@@ -91,7 +97,11 @@ export function AppHeader() {
     // the content. Portalled surfaces (menus, modals, tooltips) sit higher
     // still and are unaffected.
     <Header sx={{ position: 'relative', zIndex: 'appBar' }}>
-      <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
+      {headerStartActions.length > 0 ? (
+        <HeaderExtensionActions entries={headerStartActions} />
+      ) : (
+        <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
+      )}
       <Header.Brand
         aria-label={intl.formatMessage({
           id: 'appShell.header.brand.aria',

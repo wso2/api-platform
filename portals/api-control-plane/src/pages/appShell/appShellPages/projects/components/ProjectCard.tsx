@@ -22,6 +22,7 @@ import { defineMessages, useIntl } from 'react-intl';
 import type { Project } from '@/api/resources/projects';
 import { relativeTime } from '@/utils/relativeTime';
 import { useCan } from '@/permissions/useCan';
+import { isFeatureDisabled } from '@/config/features';
 
 type ProjectCardProps = {
   project: Project;
@@ -76,7 +77,7 @@ const messages = defineMessages({
 /** Project card for the grid view, on Oxygen's `ListingCard`. */
 export function ProjectCard({ project, onOpen, onDelete }: ProjectCardProps) {
   const intl = useIntl();
-  const canDelete = useCan('DeleteProject');
+  const canDelete = useCan('DeleteProject') && !isFeatureDisabled('project-delete');
 
   return (
     <ListingCard

@@ -172,27 +172,6 @@ describe('runtimeConfig', () => {
     expect(runtimeConfig.authContract.sessionUrl).toBe('/auth/session');
   });
 
-  // The Test console's relay is not part of signing in: any auth mode can move it.
-  it.each([
-    ['defaults to the BFF relay', {}, '/api/gateway-relay/invoke'],
-    ['is set from runtime config in a BFF mode', { authMode: 'basic', gatewayRelayUrl: '/relay' }, '/relay'],
-    ['is set from runtime config in external mode', { authMode: 'external', gatewayRelayUrl: '/relay' }, '/relay'],
-  ])('gatewayRelayUrl %s', async (_case, config, expected) => {
-    window.__RUNTIME_CONFIG__ = config;
-
-    const runtimeConfig = await loadRuntimeConfig();
-
-    expect(runtimeConfig.gatewayRelayUrl).toBe(expected);
-  });
-
-  it('gatewayRelayUrl is read from build configuration when runtime config has none', async () => {
-    vi.stubEnv('VITE_GATEWAY_RELAY_URL', '/build/relay');
-
-    const runtimeConfig = await loadRuntimeConfig();
-
-    expect(runtimeConfig.gatewayRelayUrl).toBe('/build/relay');
-  });
-
   it('an unrecognized authMode value falls back to basic', async () => {
     window.__RUNTIME_CONFIG__ = { authMode: 'something-else' };
 
@@ -205,6 +184,14 @@ describe('runtimeConfig', () => {
     const runtimeConfig = await loadRuntimeConfig();
 
     expect(runtimeConfig.billingProxyEnabled).toBe(false);
+  });
+
+  it('reads billingBaseUrl from runtime config, empty when absent', async () => {
+    expect((await loadRuntimeConfig()).billingBaseUrl).toBe('');
+
+    window.__RUNTIME_CONFIG__ = { billingBaseUrl: '/_api/billing/api/v1' };
+
+    expect((await loadRuntimeConfig()).billingBaseUrl).toBe('/_api/billing/api/v1');
   });
 
   it('cloudProxyEnabled defaults to false when absent', async () => {

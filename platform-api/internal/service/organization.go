@@ -112,10 +112,14 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		name = handle // Default name to handle if not provided
 	}
 
-	// Generate default project ID upfront before persisting any data
-	projectID, err := utils.GenerateUUID()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate default project ID: %w", err)
+	// Generate the default project ID before persisting any data, so a failure leaves nothing behind.
+	createDefaultProject := createsDefaultProject(s.config)
+	var projectID string
+	if createDefaultProject {
+		projectID, err = utils.GenerateUUID()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate default project ID: %w", err)
+		}
 	}
 
 	// Create organization in platform-api database first
@@ -155,29 +159,39 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		}
 	}
 
-	// Create default project for the organization
-	defaultProject := &model.Project{
-		ID:             projectID,
-		Handle:         "default",
-		Name:           "default",
-		OrganizationID: id,
-		Description:    "Default project",
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+	// Create the default project before converting the response, so a failed conversion
+	// cannot leave the organization without it.
+	var projectErr error
+	if createDefaultProject {
+		defaultProject := &model.Project{
+			ID:             projectID,
+			Handle:         "default",
+			Name:           "default",
+			OrganizationID: id,
+			Description:    "Default project",
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+		projectErr = s.projectRepo.CreateProject(defaultProject)
 	}
 
-	err = s.projectRepo.CreateProject(defaultProject)
 	orgResponse, convErr := s.modelToAPI(orgModel)
 	if convErr != nil {
 		return nil, convErr
 	}
-	if err != nil {
+	if projectErr != nil {
 		// If project creation fails, return the organization anyway
 		// (we don't rollback organization creation)
-		return orgResponse, err
+		return orgResponse, projectErr
 	}
 
 	return orgResponse, nil
+}
+
+// createsDefaultProject reports whether new organizations get a default project, which they do
+// unless the configuration turns it off.
+func createsDefaultProject(cfg *config.Server) bool {
+	return cfg == nil || cfg.Organizations.CreateDefaultProject
 }
 
 func containsStr(slice []string, val string) bool {

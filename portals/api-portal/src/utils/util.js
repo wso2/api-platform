@@ -21,7 +21,7 @@ const fs = require('fs');
 const marked = require('marked');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
-const { CustomError, NotFoundError, ValidationError } = require('../utils/errors/customErrors');
+const { CustomError, NotFoundError, ValidationError, ConflictError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
@@ -507,12 +507,14 @@ function handleError(res, error) {
             message: 'Conflict',
             errors: [{ message: 'A record with these values already exists.' }],
         });
+    } else if (error instanceof ConflictError) {
+        return sendError(res, 409, 'Conflict', { code: 'CONFLICT', errors: error.errors });
     } else if (error instanceof ValidationError) {
         return res.status(400).json({
             status: 'error',
             code: 'COMMON_VALIDATION_ERROR',
             message: 'Bad Request',
-            errors: [{ message: error.message }],
+            errors: error.errors || [{ message: error.message }],
         });
     } else if (error instanceof NotFoundError) {
         return res.status(404).json({
@@ -701,10 +703,53 @@ function readDirTree(rootDir, baseDir = '') {
     return out;
 }
 
-const unzipDirectory = async (zipPath, extractPath) => {
+const ZIP_END_RECORD = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+const ZIP_END_RECORD_SIZE = 22;
+const ZIP_MAX_COMMENT_SIZE = 0xFFFF;
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50;
+const ZIP64_LOCATOR_SIZE = 20;
+const ZIP64_RECORD_SIGNATURE = 0x06064b50;
+const ZIP64_RECORD_SIZE = 56;
+
+/**
+ * The entry count an archive declares, or null if it has no valid end record. Only the end records
+ * are read, because the count is attacker-controlled: walking the central directory allocates per
+ * declared entry, which a few hundred bytes can make exhaust the heap.
+ */
+const readDeclaredEntryCount = async (zipPath) => {
+    const file = await fs.promises.open(zipPath);
+    try {
+        const { size } = await file.stat();
+        const tail = Buffer.alloc(Math.min(size, ZIP_END_RECORD_SIZE + ZIP_MAX_COMMENT_SIZE));
+        await file.read(tail, 0, tail.length, size - tail.length);
+        const end = tail.lastIndexOf(ZIP_END_RECORD);
+        if (end < 0 || end + ZIP_END_RECORD_SIZE > tail.length) {
+            return null;
+        }
+        const count = tail.readUInt16LE(end + 10);
+        if (count !== 0xFFFF) {
+            return count;
+        }
+        const locator = end - ZIP64_LOCATOR_SIZE;
+        if (locator < 0 || tail.readUInt32LE(locator) !== ZIP64_LOCATOR_SIGNATURE) {
+            return null;
+        }
+        const record = Buffer.alloc(ZIP64_RECORD_SIZE);
+        const { bytesRead } = await file.read(record, 0, record.length, tail.readBigUInt64LE(locator + 8));
+        if (bytesRead < record.length || record.readUInt32LE(0) !== ZIP64_RECORD_SIGNATURE) {
+            return null;
+        }
+        return Number(record.readBigUInt64LE(32));
+    } finally {
+        await file.close();
+    }
+};
+
+const unzipDirectory = async (zipPath, extractPath, { allowEmpty = false } = {}) => {
     if (typeof zipPath !== 'string' || typeof extractPath !== 'string' || !zipPath || !extractPath) {
         throw new CustomError(400, 'Error unzipping directory', 'Invalid zip path or extract path.');
     }
+    const listed = await readDeclaredEntryCount(zipPath).catch(() => null);
     const extractedFiles = [];
     // Archive-extraction limits (config-sourced, with safe defaults).
     const maxFileSize = config.uploads?.maxBytes || 10485760;      // per-entry byte ceiling
@@ -713,47 +758,76 @@ const unzipDirectory = async (zipPath, extractPath) => {
     const maxEntries = config.uploads?.maxZipEntries || 500;        // entry-count guard
     let totalExtractedSize = 0; // Total extracted data size (measured from bytes actually read)
     let entryCount = 0;
+    let entriesRead = 0;
+
+    const writers = new Map(); // open write stream -> the entry feeding it
+    const streams = [];
+    const source = fs.createReadStream(zipPath);
+    const parser = unzipper.Parse();
+    let failure = null;
+    let settleFailure;
+
+    // Stops on the first rejection and settles only once no write is open, because the caller
+    // removes the extraction folder as soon as this rejects.
+    const fail = (err) => {
+        if (failure) {
+            return;
+        }
+        failure = err;
+        source.unpipe(parser);
+        source.destroy();
+        parser.destroy();
+        for (const [out, entry] of writers) {
+            entry.unpipe(out);
+            entry.destroy();
+            out.destroy();
+        }
+        Promise.all(streams).then(() => settleFailure(err));
+    };
 
     // Streams each entry to disk, capping on bytes actually read rather than the
-    // declared header size. Rejects the outer promise on the first violation.
-    const writeEntryWithLimit = (entry, destPath, perEntryLimit, reject) => new Promise((resolveWrite, rejectWrite) => {
+    // declared header size. Fails the extraction on the first violation.
+    const writeEntryWithLimit = (entry, destPath, perEntryLimit) => new Promise((resolveWrite) => {
         let bytesWritten = 0;
         const out = fs.createWriteStream(destPath);
+        writers.set(out, entry);
         entry.on('data', chunk => {
             bytesWritten += chunk.length;
             if (bytesWritten > perEntryLimit || totalExtractedSize + bytesWritten > maxTotalSize) {
-                entry.unpipe(out);
-                out.destroy();
-                entry.destroy();
-                const limitErr = new CustomError(400, 'Error unzipping directory',
-                    'Archive entry exceeded the allowed size.');
-                rejectWrite(limitErr);
-                return reject(limitErr);
+                fail(new CustomError(400, 'Error unzipping directory', 'Archive entry exceeded the allowed size.'));
             }
         });
-        out.on('error', rejectWrite);
+        out.on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
         out.on('finish', () => {
             totalExtractedSize += bytesWritten;
+        });
+        out.on('close', () => {
+            writers.delete(out);
             resolveWrite();
         });
         entry.pipe(out);
     });
 
-    await new Promise((resolve, reject) => {
-        const streams = [];
-        fs.createReadStream(zipPath)
-            .pipe(unzipper.Parse())
+    return new Promise((resolve, reject) => {
+        settleFailure = reject;
+        source.on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
+        source.pipe(parser)
             .on('entry', entry => {
+                if (failure) {
+                    entry.autodrain();
+                    return;
+                }
+                entriesRead += 1;
                 try {
                     const entryPath = entry.path;
                     const entrySize = entry.size;
                     const entryDepth = entryPath.split(path.sep).length;
 
-                    if (!entryPath.includes('__MACOSX')) {
+                    if (!entryPath.split(/[\\/]/).includes('__MACOSX')) {
                         // Reject absolute paths, null bytes, and traversal sequences in entry names.
                         if (path.isAbsolute(entryPath) || entryPath.includes('..') || entryPath.includes('\0')) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'File access outside working directory detected.'));
                         }
 
@@ -765,7 +839,7 @@ const unzipDirectory = async (zipPath, extractPath) => {
                         if (normalizedFilePath !== path.resolve(extractPath)
                             && !normalizedFilePath.startsWith(rootWithSep)) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'File access outside working directory detected.'));
                         }
 
@@ -773,7 +847,7 @@ const unzipDirectory = async (zipPath, extractPath) => {
                         entryCount += 1;
                         if (entryCount > maxEntries) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'Archive exceeded the maximum entry count.'));
                         }
 
@@ -781,17 +855,17 @@ const unzipDirectory = async (zipPath, extractPath) => {
                         if ((entryDepth > maxDepth) || (entrySize > maxFileSize)
                             || (totalExtractedSize + entrySize > maxTotalSize)) {
                             entry.autodrain();
-                            return reject(new CustomError(400, 'Error unzipping directory'
+                            return fail(new CustomError(400, 'Error unzipping directory'
                                 , 'Archive entry exceeded the allowed size.'));
                         }
 
-                        const dirName = path.dirname(normalizedFilePath);
-                        fs.mkdirSync(dirName, { recursive: true });
                         if (entry.type === 'Directory') {
+                            fs.mkdirSync(normalizedFilePath, { recursive: true });
                             entry.autodrain();
                         } else {
+                            fs.mkdirSync(path.dirname(normalizedFilePath), { recursive: true });
                             extractedFiles.push(normalizedFilePath);
-                            streams.push(writeEntryWithLimit(entry, normalizedFilePath, maxFileSize, reject));
+                            streams.push(writeEntryWithLimit(entry, normalizedFilePath, maxFileSize));
                         }
                     } else {
                         entry.autodrain();
@@ -799,22 +873,21 @@ const unzipDirectory = async (zipPath, extractPath) => {
                 } catch (err) {
                     logger.error("Error processing entry", { error: err.message, stack: err.stack });
                     entry.autodrain();
-                    reject(new Error('Error processing entry.'));
+                    fail(new Error('Error processing entry.'));
                 }
             })
             .on('close', async () => {
-                try {
-                    await Promise.all(streams); // Wait for all files to finish writing
-                    extractedFiles.length > 0 ? resolve() : reject(new Error('No files were extracted'));
-                } catch (err) {
-                    reject(new Error(`Unzip failed: ${err.message}`));
+                await Promise.all(streams); // Wait for all files to finish writing
+                if (failure) {
+                    return;
                 }
+                // An archive whose central directory lists entries the stream never read is damaged, not empty.
+                if (listed !== entriesRead) {
+                    return reject(new CustomError(400, 'Error unzipping directory', 'The archive is damaged.'));
+                }
+                extractedFiles.length > 0 || allowEmpty ? resolve(extractedFiles) : reject(new Error('No files were extracted'));
             })
-            .on('error', err => {
-                reject(new Error(`Unzip failed: ${err.message}`));
-            });
-    }).catch((err) => {
-        throw err;
+            .on('error', err => fail(new Error(`Unzip failed: ${err.message}`)));
     });
 }
 
@@ -868,30 +941,6 @@ const retrieveContentType = (fileName, fileType) => {
     return constants.MIME_TYPES.TEXT;
 };
 
-const getAPIFileContent = (directory) => {
-    let files = [];
-    const filenames = fs.readdirSync(directory);
-    filenames.forEach((filename) => {
-        if (!(filename === '.DS_Store')) {
-            let fileContent = fs.readFileSync(path.join(directory, filename), 'utf8');
-            files.push({ fileName: filename, content: fileContent, type: constants.DOC_TYPES.API_LANDING });
-        }
-    });
-    return files;
-};
-
-const getAPIImages = async (directory) => {
-    let files = [];
-    const filenames = await fs.promises.readdir(directory, { withFileTypes: true });
-    for (const filename of filenames) {
-        if (!(filename === '.DS_Store')) {
-            let fileContent = await fs.promises.readFile(path.join(directory, filename.name));
-            files.push({ fileName: filename.name, content: fileContent, type: constants.DOC_TYPES.IMAGES });
-        }
-    }
-    return files;
-};
-
 const getAPIDocLinks = (documentMetadata) => {
 
     let files = [];
@@ -902,39 +951,6 @@ const getAPIDocLinks = (documentMetadata) => {
     });
     return files;
 };
-
-async function readDocFiles(directory, baseDir = '', topLevelOnly = false) {
-
-    const files = await fs.promises.readdir(directory, { withFileTypes: true });
-    let fileDetails = [];
-    for (const file of files) {
-        const filePath = path.join(directory, file.name);
-        const relativePath = path.join(baseDir, file.name);
-        if (file.isDirectory()) {
-            const subDirContents = await readDocFiles(filePath, relativePath, topLevelOnly);
-            fileDetails = fileDetails.concat(subDirContents);
-        } else {
-            if (!(file.name === '.DS_Store')) {
-                let content = await fs.promises.readFile(filePath);
-                let docType;
-                if (topLevelOnly) {
-                    docType = baseDir
-                        ? baseDir.split(path.sep)[0]
-                        : constants.DOC_TYPES.DOCS.OTHER;
-                } else {
-                    docType = baseDir;
-                }
-                fileDetails.push({
-                    type: constants.DOC_TYPES.DOC_ID + docType,
-                    fileName: file.name,
-                    content: content,
-                });
-            }
-        }
-    }
-    return fileDetails;
-}
-
 
 const validateIDP = () => {
 
@@ -1362,17 +1378,22 @@ function validateTemplateExpressions(strContent) {
     }
 }
 
+/**
+ * URL of an API's or MCP server's image. MCP servers are read from /mcp-servers, as /apis does
+ * not resolve them. orgId lets the (public) image read resolve the organisation for visitors
+ * with no session — mirrors getOrgAsset.
+ */
+function apiImageUrl(orgId, api, fileName) {
+    const base = api.type === constants.API_TYPE.MCP ? '/mcp-servers/' : constants.ROUTE.API_FILE_PATH;
+    return `${constants.API_PORTAL_API.orgPath(orgId)}${base}${encodeURIComponent(api.id)}${constants.API_TEMPLATE_FILE_NAME}${encodeURIComponent(fileName)}${constants.ORG_ID_PARAM}${orgId}`;
+}
+
 function appendAPIImageURL(subList, req, orgId) {
 
     subList.forEach(element => {
         const images = element.apiImageMetadata;
-        let apiImageUrl;
         for (const key in images) {
-            apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            // orgId is appended so the (public) image endpoint can resolve the view for
-            // anonymous visitors with no session — mirrors getOrgAsset.
-            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
-            element.apiImageMetadata[key] = modifiedApiImageURL;
+            element.apiImageMetadata[key] = apiImageUrl(orgId, element, images[key]);
         }
     });
 }
@@ -1438,30 +1459,6 @@ async function listFiles(path) {
         });
     });
     return files;
-}
-
-async function findFileByNameRecursive(rootPath, targetNames) {
-    const normalizedTargetNames = new Set(Array.from(targetNames).map(name => String(name).toLowerCase()));
-    const stack = [rootPath];
-
-    while (stack.length > 0) {
-        const currentPath = stack.pop();
-        const entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.name === '.DS_Store' || entry.name === '__MACOSX') {
-                continue;
-            }
-            const fullPath = path.join(currentPath, entry.name);
-            if (entry.isDirectory()) {
-                stack.push(fullPath);
-                continue;
-            }
-            if (normalizedTargetNames.has(entry.name.toLowerCase())) {
-                return fullPath;
-            }
-        }
-    }
-    return null;
 }
 
 function normalizeStringArray(value) {
@@ -1594,8 +1591,6 @@ module.exports = {
     resolveApiIdInView,
     sendError,
     retrieveContentType,
-    getAPIFileContent,
-    getAPIImages,
     getAPIDocLinks,
     isTextFile,
     validateIDP,
@@ -1606,10 +1601,9 @@ module.exports = {
     readFilesInDirectory,
     validateTemplateExpressions,
     appendAPIImageURL,
+    apiImageUrl,
     appendSubscriptionPlanDetails,
     listFiles,
-    readDocFiles,
-    findFileByNameRecursive,
     unzipDirectory,
     createZipBuffer,
     readDirTree,
@@ -1618,7 +1612,6 @@ module.exports = {
     requireArtifactTypeFromPath,
     isAiDisabledForPortal,
     resolveAiEnabled,
-    isImageFile,
     normalizeStringArray,
     resolveApiType,
     artifactPageSection,

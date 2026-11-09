@@ -32,7 +32,6 @@ const orgContext = require("../utils/orgContext");
 const logger = require("../config/logger");
 const path = require("path");
 const fs = require("fs").promises;
-const fsDir = require("fs");
 const yaml = require('../utils/yaml');
 const APIDTO = require("../dto/apiDto");
 const ViewDTO = require("../dto/viewsDto");
@@ -51,8 +50,31 @@ const billingConfigurationDao = require('../dao/billingConfigurationDao');
 const billingApiPlanDao = require('../dao/billingApiPlanDao');
 const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
 const { logUserAction } = require('../middlewares/auditLogger');
-const { CustomError, ValidationError, NotFoundError } = require("../utils/errors/customErrors");
+const { CustomError, ValidationError, NotFoundError, ConflictError } = require("../utils/errors/customErrors");
+const apiContentRules = require('../utils/apiContentRules');
 const LabelDTO = require("../dto/labelDto");
+
+// The thumbnail slot holds one image keyed 'api-icon'. A replace also frees its target name,
+// which an image from a content ZIP may already use.
+const applyThumbnailChange = async (change, apiId, orgId, userId, t) => {
+    if (change.action === 'none') return;
+    await apiFileDao.deleteByKey(constants.API_ICON, apiId, t);
+    if (change.action === 'replace') {
+        await apiFileDao.delete(change.fileName, constants.DOC_TYPES.IMAGES, orgId, apiId, t);
+        await apiFileDao.store(change.content, change.fileName, apiId, constants.DOC_TYPES.IMAGES, userId, t, constants.API_ICON);
+    }
+};
+
+// A docsToRemove entry: a file name removes it from every category, { fileName, type } from that one.
+const removeDoc = async (doc, orgId, apiId, t) => {
+    if (typeof doc === 'string') {
+        return apiFileDao.deleteByFileName(doc, orgId, apiId, t);
+    }
+    if (typeof doc?.fileName !== 'string' || typeof doc?.type !== 'string' || !constants.CONTENT_TYPES.DOC_PATTERN.test(doc.type)) {
+        throw new ValidationError('docsToRemove entries must be a file name or { fileName, type }');
+    }
+    return apiFileDao.delete(doc.fileName, doc.type, orgId, apiId, t);
+};
 
 const createAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
@@ -69,7 +91,6 @@ const createAPIMetadata = async (req, res) => {
 
     try {
         let artifactApiContent = [];
-        let resolvedImageMetadata = {};
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, 'new-api');
             apiMetadata = fullApiBundle.apiMetadata;
@@ -82,14 +103,8 @@ const createAPIMetadata = async (req, res) => {
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
-            artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, 'new-api', 'artifact');
-            resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
-            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-            artifactApiContent.forEach(file => {
-                if (file.type === constants.DOC_TYPES.IMAGES) {
-                    file.key = filenameToKey[file.fileName];
-                }
-            });
+            artifactApiContent = fullApiBundle.content;
+            assignSlotsAndRejectDuplicates(artifactApiContent, {});
         } else if (req.files?.metadata?.[0]) {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
@@ -131,6 +146,9 @@ const createAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
+        const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, true);
+        apiContentRules.assertMarkdownDocParts(req.files);
+        delete apiMetadata.removeThumbnail;
         const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
             throw new ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
@@ -259,6 +277,7 @@ const createAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.storeMany(artifactApiContent, apiId, userId, t);
             }
+            await applyThumbnailChange(thumbnailChange, apiId, orgId, userId, t);
             apiMetadata.id = apiMetadata.handle;
             delete apiMetadata.handle;
         }).catch(async (err) => {
@@ -494,7 +513,6 @@ const updateAPIMetadata = async (req, res) => {
             apiId
         });
         let artifactApiContent = [];
-        let resolvedImageMetadata = {};
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, apiId);
             apiMetadata = fullApiBundle.apiMetadata;
@@ -507,14 +525,8 @@ const updateAPIMetadata = async (req, res) => {
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
-            artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, apiId, 'artifact');
-            resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
-            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-            artifactApiContent.forEach(file => {
-                if (file.type === constants.DOC_TYPES.IMAGES) {
-                    file.key = filenameToKey[file.fileName];
-                }
-            });
+            artifactApiContent = fullApiBundle.content;
+            assignSlotsAndRejectDuplicates(artifactApiContent, {});
         } else if (req.files?.metadata?.[0]) {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
@@ -552,6 +564,9 @@ const updateAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
+        const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, false);
+        apiContentRules.assertMarkdownDocParts(req.files);
+        delete apiMetadata.removeThumbnail;
         const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
             throw new ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
@@ -698,8 +713,8 @@ const updateAPIMetadata = async (req, res) => {
             }
             // remove docs the user deleted in the wizard
             if (Array.isArray(apiMetadata.docsToRemove)) {
-                for (const fileName of apiMetadata.docsToRemove) {
-                    await apiFileDao.deleteByFileName(fileName, orgId, apiId, t);
+                for (const doc of apiMetadata.docsToRemove) {
+                    await removeDoc(doc, orgId, apiId, t);
                 }
             }
             // upsert newly uploaded documentation files — use update (upsert by file_name+type)
@@ -763,6 +778,7 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
+            await applyThumbnailChange(thumbnailChange, apiId, orgId, userId, t);
             const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0]);
             updated = new APIDTO(updatedAPI[0], audit);
         }).catch(async (err) => {
@@ -849,116 +865,21 @@ const deleteAPIMetadata = async (req, res) => {
     }
 };
 
-const createAPITemplate = async (req, res) => {
-    logger.info('Creating API template...', {
-        orgId: req.orgId,
-        apiId: req.params.apiId,
-        fileName: req.file?.originalname,
-    });
-    try {
-        const orgId = req.orgId;
-        const { apiId: apiHandle } = req.params;
-        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
-        if (!apiId) {
-            return util.sendError(res, 404, 'API not found');
-        }
-        const userId = util.resolveActor(req);
-        const zipFilePath = req.file.path;
-        const extractPath = path.join("/tmp", orgId + "/" + apiId);
-        await fs.mkdir(extractPath, { recursive: true });
-        await util.unzipDirectory(zipFilePath, extractPath);
-
-        const apiContentFileName = req.file.originalname.split(".zip")[0];
-
-        // Build complete paths
-        const contentPath = path.join(extractPath, apiContentFileName, "content");
-        const imagesPath = path.join(extractPath, apiContentFileName, "images");
-        const documentPath = path.join(extractPath, apiContentFileName, "documents");
-
-        // Verify directories exist
-        try {
-            if (fsDir.existsSync(contentPath)) {
-                await fs.access(contentPath);
-            }
-            if (fsDir.existsSync(imagesPath)) {
-                await fs.access(imagesPath);
-            }
-            if (fsDir.existsSync(documentPath)) {
-                await fs.access(documentPath);
-            }
-        } catch (err) {
-            logger.error('Error while trying to access directories', {
-                error: err.message,
-                contentPath,
-                imagesPath,
-                documentPath,
-                orgId,
-                apiId
-            });
-            throw new Error(
-                `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath}
-                , Documents path: ${documentPath}`,
-                { cause: err }
-            );
-        }
-        let apiContent = [];
-
-        //get api files
-        if (fsDir.existsSync(contentPath)) {
-            let apiLanding = await util.getAPIFileContent(contentPath);
-            apiContent.push(...apiLanding);
-        }
-        //get api images
-        if (fsDir.existsSync(imagesPath)) {
-            const apiImages = await util.getAPIImages(imagesPath);
-            apiContent.push(...apiImages);
-        }
-        //get api documents
-        if (fsDir.existsSync(documentPath)) {
-            const apiDocuments = await util.readDocFiles(documentPath);
-            apiContent.push(...apiDocuments);
-        }
-        let docMetadata = "";
-        if (req.body.docMetadata) {
-            docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
-        }
-        let imageMetadata = {};
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata);
-        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
-        await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
-            let apiMetadata = await apiDao.get(orgId, apiId, t);
-
-            if (apiMetadata) {
-                // Replace any previously stored images with this upload's set
-                await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
-                await apiFileDao.storeMany(apiContent, apiId, userId, t);
-            } else {
-                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
-            }
-        });
-        await fs.rm(extractPath, { recursive: true, force: true });
-        res.status(201).type("application/json").send({ message: "API Template updated successfully" });
-    } catch (error) {
-        logger.error('API content creation failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: req.orgId,
-            apiId: req.params.apiId,
-            fileName: req.file?.originalname,
-        });
-        util.handleError(res, error);
+const assignSlotsAndRejectDuplicates = (apiContent, imageMetadata) => {
+    apiContentRules.assignImageSlots(apiContent, imageMetadata);
+    const duplicates = apiContentRules.findDuplicateItems(apiContent);
+    if (duplicates.length) {
+        throw new ValidationError(`Duplicate content in upload: ${duplicates.map(apiContentRules.describeItem).join(', ')}`);
     }
+};
+
+const readContentUpload = async (req, uploadedFile, orgId, apiId) => {
+    const docMetadata = apiContentRules.parseDocMetadata(req.body.docMetadata);
+    const imageMetadata = apiContentRules.parseImageMetadata(req.body.imageMetadata);
+    const apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId);
+    apiContent.push(...util.getAPIDocLinks(docMetadata));
+    assignSlotsAndRejectDuplicates(apiContent, imageMetadata);
+    return apiContent;
 };
 
 const createAPIContent = async (req, res) => {
@@ -976,37 +897,22 @@ const createAPIContent = async (req, res) => {
             return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
-        let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
-        let docMetadata = "";
-        if (req.body.docMetadata) {
-            docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
+        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId);
+        if (apiContent.length === 0) {
+            throw new ValidationError('The upload has no content to add');
         }
-        let imageMetadata = {};
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata);
-        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
         await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
-            let apiMetadata = await apiDao.get(orgId, apiId, t);
-
-            if (apiMetadata) {
-                // Replace any previously stored images with this upload's set
-                await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
-                await apiFileDao.storeMany(apiContent, apiId, userId, t);
-            } else {
+            const apiMetadata = await apiDao.get(orgId, apiId, t);
+            if (!apiMetadata) {
                 throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
+            const existing = await apiFileDao.findExisting(apiContent, apiId, t);
+            if (existing.length) {
+                throw new ConflictError(existing.map(item => ({ message: `Content already exists: ${apiContentRules.describeItem(item)}` })));
+            }
+            await apiFileDao.storeMany(apiContent, apiId, userId, t);
         });
-        res.status(201).type("application/json").send({ message: "API content updated successfully" });
+        res.status(201).type("application/json").send({ message: "API content created successfully" });
         logUserAction('API_CONTENT_CREATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
     } catch (error) {
         logger.error('API content creation failed', {
@@ -1020,117 +926,9 @@ const createAPIContent = async (req, res) => {
     }
 };
 
-const updateAPITemplate = async (req, res) => {
-    logger.info('Updating API template...', {
-        orgId: req.orgId,
-        apiId: req.params.apiId,
-        fileName: req.file?.originalname
-    });
-    try {
-        const orgId = req.orgId;
-        const { apiId: apiHandle } = req.params;
-        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
-        if (!apiId) {
-            return util.sendError(res, 404, 'API not found');
-        }
-        const userId = util.resolveActor(req);
-        let imageMetadata;
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        const zipFilePath = req.file.path;
-        const extractPath = path.join("/tmp", orgId + "/" + apiId);
-        await fs.mkdir(extractPath, { recursive: true });
-        await util.unzipDirectory(zipFilePath, extractPath);
-        const apiContentFileName = req.file.originalname.split(".zip")[0];
-
-        // Build complete paths
-        const contentPath = path.join(extractPath, apiContentFileName, "content");
-        const imagesPath = path.join(extractPath, apiContentFileName, "images");
-        const documentPath = path.join(extractPath, apiContentFileName, "documents");
-
-        // Verify directories exist
-        try {
-            if (fsDir.existsSync(contentPath)) {
-                await fs.access(contentPath);
-            }
-            if (fsDir.existsSync(imagesPath)) {
-                await fs.access(imagesPath);
-            }
-            if (fsDir.existsSync(documentPath)) {
-                await fs.access(documentPath);
-            }
-        } catch (err) {
-            logger.error('Error accessing directories during API template update', {
-                error: err.message,
-                contentPath,
-                imagesPath,
-                documentPath,
-                orgId: req.orgId,
-                apiId: req.params.apiId
-            });
-            throw new Error(
-                `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath},
-                Documents path: ${documentPath}`,
-                { cause: err }
-            );
-        }
-        let apiContent = [];
-        //get api files
-        if (fsDir.existsSync(contentPath)) {
-            let apiLanding = await util.getAPIFileContent(contentPath);
-            apiContent.push(...apiLanding);
-        }
-        //get api images
-        if (fsDir.existsSync(imagesPath)) {
-            const apiImages = await util.getAPIImages(imagesPath);
-            apiContent.push(...apiImages);
-        }
-        //get api documents
-        if (fsDir.existsSync(documentPath)) {
-            const apiDocuments = await util.readDocFiles(documentPath);
-            apiContent.push(...apiDocuments);
-        }
-
-        if (req.body.docMetadata) {
-            const docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
-        }
-        const filenameToKey = Object.fromEntries(Object.entries(imageMetadata || {}).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
-        await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
-            const apiMetadata = await apiDao.get(orgId, apiId, t);
-            if (apiMetadata) {
-                // Update API files (including images, keyed by their named slot)
-                await apiFileDao.upsertMany(apiContent, apiId, orgId, userId, t);
-            } else {
-                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
-            }
-        });
-        await fs.rm(extractPath, { recursive: true, force: true });
-        res.status(201).send({ message: "API Files updated successfully" });
-        logUserAction('API_CONTENT_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
-    } catch (error) {
-        logger.error('API content update failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: req.orgId,
-            apiId: req.params.apiId,
-            fileName: req.file?.originalname
-        });
-        util.handleError(res, error);
-    }
-};
-
 const updateAPIContent = async (req, res) => {
     const uploadedFile = req.files?.content?.[0] ?? req.file;
-    logger.info('Updating API content...', {
+    logger.info('Replacing API content...', {
         orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: uploadedFile?.originalname
@@ -1143,38 +941,26 @@ const updateAPIContent = async (req, res) => {
             return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
-        let imageMetadata;
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
-
-        if (req.body.docMetadata) {
-            const docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
-        }
-        const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata || {});
-        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
+        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId);
+        let removed = 0;
         await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
             const apiMetadata = await apiDao.get(orgId, apiId, t);
-            if (apiMetadata) {
-                // Update API files (including images, keyed by their named slot)
-                await apiFileDao.upsertMany(apiContent, apiId, orgId, userId, t);
-            } else {
+            if (!apiMetadata) {
                 throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
+            removed = await apiFileDao.deleteAllContent(apiId, t);
+            if (apiContent.length) {
+                await apiFileDao.storeMany(apiContent, apiId, userId, t);
+            }
         });
-        res.status(201).send({ message: "API Files updated successfully" });
+        if (removed === 0 && apiContent.length) {
+            res.status(201).send({ message: "API content created successfully" });
+        } else {
+            res.status(200).send({ message: "API content replaced successfully" });
+        }
         logUserAction('API_CONTENT_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
     } catch (error) {
-        logger.error('API content update failed', {
+        logger.error('API content replace failed', {
             error: error.message,
             stack: error.stack,
             orgId: req.orgId,
@@ -1206,6 +992,7 @@ const getAPIFile = async (req, res) => {
     // visitors, so ?orgId does select the organization whose icons are read — any
     // organization under this portal_id (orgContext.resolvePublicContentOrg).
     const isImageType = type === constants.DOC_TYPES.IMAGES;
+    res.set('X-Content-Type-Options', 'nosniff');
     let apiFileResponse;
     let apiFile;
     let contentType;
@@ -1246,6 +1033,10 @@ const getAPIFile = async (req, res) => {
             contentType = util.retrieveContentType(apiFileName, constants.IMAGE);
         }
         res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
+        // An SVG can carry script: opened directly it is downloaded, while <img> tags still show it.
+        if (contentType === constants.MIME_TYPES.SVG) {
+            res.attachment(apiFileName);
+        }
         // Send file content as text
         return res.status(200).send(apiFile);
     } catch (error) {
@@ -1290,6 +1081,12 @@ const deleteAPIFile = async (req, res) => {
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
     try {
+        if (!fileType) {
+            throw new ValidationError('Missing required query parameter: type');
+        }
+        if (!apiContentRules.isContentType(fileType)) {
+            throw new ValidationError(`Invalid content type: ${fileType}`);
+        }
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return util.sendError(res, 404, 'API not found');
@@ -1997,116 +1794,74 @@ const getViewsFromDB = async (orgId) => {
     }
 }
 
-const collectWebContentFiles = async (webPath) => {
-    const files = await fs.readdir(webPath, { withFileTypes: true });
-    const contentFiles = [];
-    for (const file of files) {
-        if (!file.isFile() || file.name === '.DS_Store') {
-            continue;
-        }
-        const filePath = path.join(webPath, file.name);
-        const fileExtension = path.extname(file.name).toLowerCase();
-        if (util.isTextFile(fileExtension)) {
-            const content = await fs.readFile(filePath, constants.CHARSET_UTF8);
-            contentFiles.push({ fileName: file.name, content: content, type: constants.DOC_TYPES.API_LANDING });
-        } else if (util.isImageFile(fileExtension)) {
-            const content = await fs.readFile(filePath);
-            contentFiles.push({ fileName: file.name, content: content, type: constants.DOC_TYPES.IMAGES });
-        }
-    }
-    return contentFiles;
-};
-
-const buildImageMetadataFromContent = (contentFiles = [], providedImageMetadata = {}) => {
-    const resolvedImageMetadata = { ...(providedImageMetadata || {}) };
-
-    for (const file of contentFiles) {
-        if (file?.type !== constants.DOC_TYPES.IMAGES || !file.fileName) {
-            continue;
-        }
-        const imageTag = path.parse(file.fileName).name;
-        if (imageTag && !resolvedImageMetadata[imageTag]) {
-            resolvedImageMetadata[imageTag] = file.fileName;
-        }
-    }
-
-    return resolvedImageMetadata;
-};
-
-async function resolveZipRootPath(extractPath) {
-    const entries = await fs.readdir(extractPath, { withFileTypes: true });
-    const relevantEntries = entries.filter(entry => entry.name !== '.DS_Store' && entry.name !== '__MACOSX');
-    if (relevantEntries.length === 1 && relevantEntries[0].isDirectory()) {
-        return path.join(extractPath, relevantEntries[0].name);
-    }
-    return extractPath;
-}
-
-async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'classic') {
-    if (!zipFile) {
-        throw new ValidationError("Missing required zip file");
-    }
-
-    const zipFileName = path.basename(String(zipFile.originalname || ''));
-    if (!zipFileName?.toLowerCase().endsWith('.zip')) {
-        throw new ValidationError('Invalid zip file. Expected a .zip file');
-    }
-
+/**
+ * Reads a content ZIP (kind 'content') or a full API ZIP (kind 'artifact') by the content ZIP
+ * entry rules: extracts it once, rejects every entry the rules don't accept in one 400, and reads
+ * only the accepted files. Returns the content items and, for an artifact, its metadata file and
+ * definition as { fileName, buffer }.
+ */
+async function readContentZip(zipFile, orgId, apiId, kind) {
     const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const tempBasePath = path.join('/tmp', 'api-content-upload', extractionKey);
     const extractPath = path.join(tempBasePath, 'extracted');
     const tempZipPath = path.join(tempBasePath, `${extractionKey}.zip`);
-
     try {
         await fs.mkdir(extractPath, { recursive: true });
-
-        if (zipFile.path) {
-            await util.unzipDirectory(zipFile.path, extractPath);
-        } else if (zipFile.buffer) {
-            await fs.writeFile(tempZipPath, zipFile.buffer);
-            await util.unzipDirectory(tempZipPath, extractPath);
-        } else {
-            throw new ValidationError('Invalid zip input. Missing file path or buffer');
-        }
-
-        const rootPath = await resolveZipRootPath(extractPath);
-
-        const webPath = path.join(rootPath, constants.ARTIFACT_DIR.WEB);
-        const docsPath = path.join(rootPath, constants.ARTIFACT_DIR.DOCS);
-        const hasWebDir = fsDir.existsSync(webPath);
-        const hasDocsDir = fsDir.existsSync(docsPath);
-
-        if (!hasWebDir && !hasDocsDir) {
-            if (mode === 'artifact') {
-                return [];
+        let zipPath = zipFile.path;
+        if (!zipPath) {
+            if (!zipFile.buffer) {
+                throw new ValidationError('Invalid zip input. Missing file path or buffer');
             }
-            throw new ValidationError('Missing required directories in uploaded zip. At least one of web or docs is required at root level');
+            await fs.writeFile(tempZipPath, zipFile.buffer);
+            zipPath = tempZipPath;
         }
+        const extracted = await util.unzipDirectory(zipPath, extractPath, { allowEmpty: true });
+        const toZipPath = (file) => path.relative(extractPath, file).split(path.sep).join('/');
+        const folders = (await fs.readdir(extractPath, { recursive: true, withFileTypes: true }))
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => toZipPath(path.join(entry.parentPath, entry.name)));
+        const { items, metadataPath, definitionPath, rejected } =
+            apiContentRules.classifyContentZip(extracted.map(toZipPath), kind, folders);
+        if (rejected.length) {
+            throw new ValidationError('Content ZIP has entries the portal does not accept',
+                rejected.map((entry) => ({ message: `${entry.path}: ${entry.reason}` })));
+        }
+        const read = (zipEntryPath, encoding) => fs.readFile(path.join(extractPath, ...zipEntryPath.split('/')), encoding);
+        const readNamed = async (zipEntryPath) => zipEntryPath
+            ? { fileName: path.posix.basename(zipEntryPath), buffer: await read(zipEntryPath) }
+            : null;
+        const content = [];
+        for (const item of items) {
+            const encoding = item.type === constants.DOC_TYPES.API_LANDING ? constants.CHARSET_UTF8 : undefined;
+            content.push({ fileName: item.fileName, content: await read(item.path, encoding), type: item.type });
+        }
+        return { content, metadata: await readNamed(metadataPath), definition: await readNamed(definitionPath) };
+    } finally {
+        await fs.rm(tempBasePath, { recursive: true, force: true });
+        // Multer may have saved the upload to disk (zipFile.path).
+        if (zipFile.path) {
+            await fs.rm(zipFile.path, { force: true });
+        }
+    }
+}
 
-        const apiContent = [];
-        if (hasWebDir) {
-            await fs.access(webPath);
-            const apiWebFiles = await collectWebContentFiles(webPath);
-            apiContent.push(...apiWebFiles);
-        }
-        if (hasDocsDir) {
-            await fs.access(docsPath);
-            const apiDocuments = await util.readDocFiles(docsPath, '', true);
-            apiContent.push(...apiDocuments);
-        }
-
-        return apiContent;
+async function extractApiContentFromUploadedZip(zipFile, orgId, apiId) {
+    if (!zipFile) {
+        throw new ValidationError('Missing required file: content');
+    }
+    const zipFileName = path.basename(String(zipFile.originalname || ''));
+    if (!zipFileName.toLowerCase().endsWith('.zip')) {
+        throw new ValidationError('content must be a .zip file');
+    }
+    try {
+        const { content } = await readContentZip(zipFile, orgId, apiId, apiContentRules.ZIP_KIND.CONTENT);
+        return content;
     } catch (error) {
         if (error instanceof ValidationError) {
             throw error;
         }
-        throw new ValidationError(`Invalid zip file: ${error.message}`);
-    } finally {
-        await fs.rm(tempBasePath, { recursive: true, force: true });
-        // Clean up the original upload file when multer saved it to disk (zipFile.path)
-        if (zipFile.path) {
-            await fs.rm(zipFile.path, { force: true });
-        }
+        logger.warn('Content ZIP could not be read', { error: error.message, orgId, apiId });
+        throw new ValidationError('Invalid zip file');
     }
 }
 
@@ -2119,70 +1874,36 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         throw new ValidationError("Invalid artifact file. Expected a .zip file");
     }
 
-    const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const tempBasePath = path.join('/tmp', 'api-content-upload', extractionKey);
-    const tempZipPath = path.join(tempBasePath, 'apiContent.zip');
-    const extractPath = path.join(tempBasePath, 'extracted');
-
     try {
-        await fs.mkdir(extractPath, { recursive: true });
-        await fs.writeFile(tempZipPath, zipFile.buffer);
-        await util.unzipDirectory(tempZipPath, extractPath);
-
-        const rootPath = await resolveZipRootPath(extractPath);
-        const metadataFilePath = await util.findFileByNameRecursive(rootPath, ['metadata.yaml', 'metadata.yml', 'api.yaml', 'mcp.yaml']);
-        if (!metadataFilePath) {
+        const { content, metadata, definition } =
+            await readContentZip(zipFile, orgId, apiId, apiContentRules.ZIP_KIND.ARTIFACT);
+        if (!metadata) {
             throw new ValidationError("Invalid full API zip: missing metadata.yaml, metadata.yml, api.yaml or mcp.yaml");
         }
-
-        const apiMetadataBuffer = await fs.readFile(metadataFilePath);
-        const apiMetadata = parseApiMetadataFromYamlFile(path.basename(metadataFilePath), apiMetadataBuffer);
+        const apiMetadata = parseApiMetadataFromYamlFile(metadata.fileName, metadata.buffer);
         const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
-
-        // The contract lives in a `definition` file. An MCP server's contract IS its tools
-        // schema (returned as schemaDefinitionFile so the MCP branch stores it under
-        // SCHEMA_DEFINITION); every other type carries an OpenAPI/WSDL/SDL definition
-        // (returned as apiDefinitionFile). Both use the same file name — the resolved
-        // API type decides how it is interpreted.
-        const definitionCandidates = [
-            constants.FILE_NAME.API_DEFINITION_YAML_FILE_NAME,
-            'definition.yml',
-            constants.FILE_NAME.API_DEFINITION_FILE_NAME,
-        ];
-        let schemaDefinitionFile;
-        let schemaDefinitionFileName;
-        let apiDefinitionFile;
-        let apiDefinitionFileName;
-        if (isMcp) {
-            const schemaDefinitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
-            if (!schemaDefinitionFilePath) {
-                throw new ValidationError("Invalid MCP server zip: missing definition file (definition.yaml/yml/json)");
-            }
-            schemaDefinitionFile = await fs.readFile(schemaDefinitionFilePath);
-            schemaDefinitionFileName = path.basename(schemaDefinitionFilePath);
-        } else {
-            const definitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
-            if (!definitionFilePath) {
-                throw new ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
-            }
-            apiDefinitionFile = await fs.readFile(definitionFilePath);
-            apiDefinitionFileName = path.basename(definitionFilePath);
+        if (!definition) {
+            throw new ValidationError(isMcp
+                ? "Invalid MCP server zip: missing definition file (definition.yaml/yml/json)"
+                : "Invalid full API zip: missing definition file (definition.yaml/yml/json)");
         }
 
+        // An MCP server's contract IS its tools schema (returned as schemaDefinitionFile so the MCP
+        // branch stores it under SCHEMA_DEFINITION); every other type carries an OpenAPI/WSDL/SDL
+        // definition (returned as apiDefinitionFile). The resolved API type decides which.
         return {
             apiMetadata,
-            apiDefinitionFile,
-            apiDefinitionFileName,
-            schemaDefinitionFile,
-            schemaDefinitionFileName,
+            content,
+            ...(isMcp
+                ? { schemaDefinitionFile: definition.buffer, schemaDefinitionFileName: definition.fileName }
+                : { apiDefinitionFile: definition.buffer, apiDefinitionFileName: definition.fileName }),
         };
     } catch (error) {
         if (error instanceof ValidationError) {
             throw error;
         }
-        throw new ValidationError(`Invalid artifact zip file: ${error.message}`);
-    } finally {
-        await fs.rm(tempBasePath, { recursive: true, force: true });
+        logger.warn('Artifact ZIP could not be read', { error: error.message, orgId, apiId });
+        throw new ValidationError('Invalid artifact zip file');
     }
 }
 
@@ -2469,8 +2190,8 @@ function prepareApiDefinitionForStorage(fileName, fileBuffer) {
 function validateSchemaDefinitionFileName(fileName) {
     const sanitizedFileName = path.basename(String(fileName || ''));
     const extension = path.extname(sanitizedFileName).toLowerCase();
-    if (extension !== '.json' && extension !== '.yaml') {
-        throw new ValidationError("Invalid schema definition file type. Expected '.json' or '.yaml'");
+    if (extension !== '.json' && extension !== '.yaml' && extension !== '.yml') {
+        throw new ValidationError("Invalid schema definition file type. Expected '.json', '.yaml' or '.yml'");
     }
     return sanitizedFileName;
 }
@@ -2510,13 +2231,12 @@ module.exports = {
     getAllAPIMetadata,
     updateAPIMetadata,
     deleteAPIMetadata,
-    createAPITemplate,
-    updateAPITemplate,
     createAPIContent,
     updateAPIContent,
     getAPIFile,
     getAPIDocTypes,
     deleteAPIFile,
+    extractApiContentFromUploadedZip,
     getMetadataListFromDB,
     getMetadataFromDB,
     addSubscriptionPlans,

@@ -18,6 +18,8 @@
 'use strict';
 
 /*
+ * [api_portal.monetization] disabled: off by default, on from the file or from its environment
+ * variable, and the refusal to start with a value that is not true or false.
  * [api_portal.billing.stripe] webhook_signature_tolerance_sec and [api_portal.billing.moesif]
  * max_parallel_prices: their defaults, an override, and the refusal to start with a value that is not
  * a whole number of at least 1. [api_portal.billing.moesif] collector_application_id and
@@ -34,6 +36,7 @@ const { spawnSync } = require('node:child_process');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 
+// The role mapping is named by its absolute path: the child runs outside the project (see boot).
 const BASE_CONFIG = `
 [api_portal.security]
 encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -42,6 +45,9 @@ session_secret = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba98765432
 [api_portal.organization]
 handle = "default"
 portal_id = "test-portal"
+
+[api_portal.auth.authorization]
+role_to_scope_mapping = ${JSON.stringify(path.join(PROJECT_ROOT, 'resources', 'role-to-scope-mapping.yaml'))}
 `;
 
 let tmpDir;
@@ -55,23 +61,27 @@ function fixture(name, contents) {
 
 const SETTINGS = 'SETTINGS ';
 
-// overlay is TOML laid over the base config, or undefined for the defaults. Resolves to the loaded
-// billing settings, or the exit status and error output when the portal refuses to start.
-function boot(overlay) {
+// overlay is TOML laid over the base config, or undefined for the defaults; variables are added to the
+// child's environment. Resolves to the loaded billing settings, or the exit status and error output
+// when the portal refuses to start.
+function boot(overlay, variables = {}) {
     const args = ['--config', fixture('base.toml', BASE_CONFIG)];
     if (overlay !== undefined) args.push('--config', fixture('overlay.toml', overlay));
     const runner = fixture('runner.js', `
         const { config } = require(${JSON.stringify(path.join(__dirname, 'configLoader.js'))});
         process.stdout.write(${JSON.stringify(SETTINGS)} + JSON.stringify({
+            monetizationDisabled: config.monetization.disabled,
             tolerance: config.billing.stripe.webhookSignatureToleranceSec,
             parallelPrices: config.billing.moesif.maxParallelPrices,
             moesifKeys: [config.billing.moesif.collectorApplicationId, config.billing.moesif.managementKey],
         }) + '\\n');
     `);
-    const env = { PATH: process.env.PATH, HOME: process.env.HOME };
+    const env = { PATH: process.env.PATH, HOME: process.env.HOME, ...variables };
     // Keeps the child's coverage in the parent run's report.
     if (process.env.NODE_V8_COVERAGE) env.NODE_V8_COVERAGE = process.env.NODE_V8_COVERAGE;
-    const result = spawnSync(process.execPath, [runner, ...args], { cwd: PROJECT_ROOT, encoding: 'utf8', env });
+    // Runs in the fixtures directory: the loader reads api-platform.env from the working directory,
+    // and a developer's copy in the project could set the values these tests check.
+    const result = spawnSync(process.execPath, [runner, ...args], { cwd: tmpDir, encoding: 'utf8', env });
     const line = result.stdout.split('\n').find((l) => l.startsWith(SETTINGS));
     return {
         status: result.status,
@@ -84,10 +94,30 @@ test.after(() => {
     if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-test('the defaults are a 300 second signature tolerance and 4 prices at a time', () => {
+test('the defaults are monetization on, a 300 second signature tolerance and 4 prices at a time', () => {
     const { status, settings } = boot();
     assert.equal(status, 0);
-    assert.deepEqual(settings, { tolerance: 300, parallelPrices: 4, moesifKeys: ['', ''] });
+    assert.deepEqual(settings, { monetizationDisabled: false, tolerance: 300, parallelPrices: 4, moesifKeys: ['', ''] });
+});
+
+test('monetization can be disabled', () => {
+    const { status, settings } = boot('[api_portal.monetization]\ndisabled = true\n');
+    assert.equal(status, 0);
+    assert.equal(settings.monetizationDisabled, true);
+});
+
+test('monetization.disabled can come from its environment variable', () => {
+    const overlay = `[api_portal.monetization]\ndisabled = '{{ env "APIP_AP_MONETIZATION_DISABLED" "false" }}'\n`;
+    assert.equal(boot(overlay).settings.monetizationDisabled, false);
+    assert.equal(boot(overlay, { APIP_AP_MONETIZATION_DISABLED: 'true' }).settings.monetizationDisabled, true);
+});
+
+test('a monetization.disabled that is not true or false stops the portal from starting', () => {
+    for (const value of ['"true"', '1', `'{{ env "APIP_AP_MONETIZATION_DISABLED" "yes" }}'`]) {
+        const { status, stderr } = boot(`[api_portal.monetization]\ndisabled = ${value}\n`);
+        assert.equal(status, 1, value);
+        assert.match(stderr, /\[FATAL\] monetization\.disabled must be true or false/, value);
+    }
 });
 
 test('each setting can be changed', () => {
@@ -99,7 +129,7 @@ webhook_signature_tolerance_sec = 600
 max_parallel_prices = 1
 `);
     assert.equal(status, 0);
-    assert.deepEqual(settings, { tolerance: 600, parallelPrices: 1, moesifKeys: ['', ''] });
+    assert.deepEqual(settings, { monetizationDisabled: false, tolerance: 600, parallelPrices: 1, moesifKeys: ['', ''] });
 });
 
 test('a value that is not a whole number of at least 1 stops the portal from starting', () => {

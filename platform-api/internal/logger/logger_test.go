@@ -18,7 +18,15 @@
 
 package logger
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestShortenSource(t *testing.T) {
 	// shortenSource must derive the module-relative path from the tail after the
@@ -59,4 +67,84 @@ func TestShortenSource(t *testing.T) {
 			t.Errorf("shortenSource(%q) = %q, want %q (unchanged)", in, got, in)
 		}
 	})
+}
+
+// logToStdout returns what log writes through a logger built by NewLogger, which
+// writes to stdout.
+func logToStdout(t *testing.T, cfg Config, log func(l *slog.Logger)) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+	l := NewLogger(cfg)
+	os.Stdout = orig
+	log(l)
+	if err := w.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	return buf.String()
+}
+
+func TestNewLoggerDefaultsToJSON(t *testing.T) {
+	out := logToStdout(t, Config{Level: "info"}, func(l *slog.Logger) { l.Info("hello", "key", "value") })
+
+	var rec map[string]any
+	if err := json.Unmarshal([]byte(out), &rec); err != nil {
+		t.Fatalf("output is not JSON: %v (%q)", err, out)
+	}
+	if rec["msg"] != "hello" || rec["key"] != "value" {
+		t.Errorf("unexpected record: %v", rec)
+	}
+	src, _ := rec["source"].(string)
+	if !strings.HasPrefix(src, "logger/logger_test.go:") {
+		t.Errorf("source = %q, want the shortened module-relative path", src)
+	}
+}
+
+func TestNewLoggerTextFormat(t *testing.T) {
+	out := logToStdout(t, Config{Level: "info", Format: "TEXT"}, func(l *slog.Logger) { l.Info("hello") })
+
+	if !strings.Contains(out, "level=INFO") || !strings.Contains(out, "msg=hello") {
+		t.Errorf("expected text output, got %q", out)
+	}
+}
+
+func TestNewLoggerAppliesLevel(t *testing.T) {
+	out := logToStdout(t, Config{Level: "warn", Format: "text"}, func(l *slog.Logger) {
+		l.Info("dropped")
+		l.Warn("kept")
+	})
+
+	if strings.Contains(out, "dropped") || !strings.Contains(out, "kept") {
+		t.Errorf("level not applied: %q", out)
+	}
+}
+
+func TestParseLevel(t *testing.T) {
+	cases := map[string]slog.Level{
+		"debug":   slog.LevelDebug,
+		"INFO":    slog.LevelInfo,
+		"warn":    slog.LevelWarn,
+		"warning": slog.LevelWarn,
+		"error":   slog.LevelError,
+		"bogus":   slog.LevelInfo,
+	}
+	for in, want := range cases {
+		if got := ParseLevel(in); got != want {
+			t.Errorf("ParseLevel(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestNewLoggerReturnsUsableLogger(t *testing.T) {
+	if NewLogger(Config{Level: "error"}) == nil {
+		t.Fatal("NewLogger returned nil")
+	}
 }

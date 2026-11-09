@@ -9,7 +9,8 @@ portal's native extension contract.
 ## Layout
 
 - `src/hosts/api-control-plane.tsx` is the API Control Plane (console) registry.
-  It registers the trial-status header action and entitlements gate, the
+  It registers the trial-status header action, the settings header icon and
+  the entitlements gate, the
   Gateways page override (`page.gateways`), the API and GraphQL API Deploy page
   overrides, Observability (an organization-level Logs/Metrics disclosure, a
   project-level notice, and the per-API Logs page), Portals (managed API
@@ -23,9 +24,9 @@ portal's native extension contract.
 - The feature packages are siblings under `portals/cloud-plugins`, each a
   `file:` dependency of this package: `apip-cloud-ui-deploy`,
   `apip-cloud-ui-entitlements`, `apip-cloud-ui-environments-new`,
-  `apip-cloud-ui-gateways`, `apip-cloud-ui-insights`, `apip-cloud-ui-logs`,
-  `apip-cloud-ui-managed-portals`, `apip-cloud-ui-pipelines` and
-  `apip-cloud-ui-trial-status`.
+  `apip-cloud-ui-gateways`, `apip-cloud-ui-insights`,
+  `apip-cloud-ui-managed-portals`, `apip-cloud-ui-pipelines`,
+  `apip-cloud-ui-settings` and `apip-cloud-ui-trial-status`.
 
 Each portal has an injection seam at `src/cloud/index.ts` that exports an empty
 `cloudExtensions` and an undefined `cloudBrandLogo`; its `main.tsx` imports
@@ -82,7 +83,7 @@ with:
   `ScopeEnforcer` admits a call (one held scope matching one accepted entry), so
   no feature reasons about scope inheritance itself. The tables are
   `ENVIRONMENT_OPERATIONS`, `GATEWAY_OPERATIONS`, `PIPELINE_OPERATIONS`,
-  `LOG_OPERATIONS`, `PORTAL_OPERATIONS`, and in the deploy package
+  `PORTAL_OPERATIONS`, and in the deploy package
   `API_DEPLOYMENT_OPERATIONS`, `PROVIDER_DEPLOYMENT_OPERATIONS` and
   `PROVIDER_BUILD_OPERATIONS`. The deploy package also gates on two Platform API
   scopes from `platform-api/resources/openapi.yaml`: `ARTIFACT_READ_OPERATIONS`

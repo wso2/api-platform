@@ -38,7 +38,8 @@
   <div class="pln-cond-list" id="pln-cond-list"></div>
 </section>
 
-<section class="pln-card" aria-labelledby="pln-pricing-h">
+{{!-- Hidden, not left out, when Settings hides monetization: plan-editor.js binds to its fields at load. --}}
+<section class="pln-card" aria-labelledby="pln-pricing-h"{{#unless showMonetization}} hidden{{/unless}}>
   <div class="pln-card-head">
     <h2 class="pln-card-title" id="pln-pricing-h">Pricing</h2>
     <p class="pln-card-desc">Free, a flat rate, or priced by usage. Pricing can't be changed once the plan is created.</p>

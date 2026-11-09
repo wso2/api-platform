@@ -24,8 +24,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
+	"math"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +42,7 @@ import (
 
 	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/health"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -92,9 +96,75 @@ type Logging struct {
 	Format string `koanf:"format"`
 }
 
+// Health holds configuration for platform-api's own health evaluation.
+type Health struct {
+	// CacheTTL is how long an evaluated health result is reused before it is re-evaluated.
+	CacheTTL time.Duration `koanf:"cache_ttl"`
+	// AllowedClients lists the IP addresses and CIDR ranges allowed to call the health
+	// endpoints. Empty, or "*" as the only entry, allows every client.
+	AllowedClients ClientList `koanf:"allowed_clients"`
+	// Database configures the database check.
+	Database HealthDatabase `koanf:"database"`
+}
+
+// ClientList is a list of client addresses. In configuration it is a TOML array, or a
+// single comma-separated string so that one environment variable can set the whole list.
+type ClientList []string
+
+// clientListType is the reflected type of ClientList, used by the decode hook.
+var clientListType = reflect.TypeOf(ClientList(nil))
+
+// stringToClientListHook decodes a comma-separated string into a ClientList, trimming
+// each entry and dropping empty ones, so a trailing comma in the environment variable
+// is harmless and an empty string decodes to an empty list. It applies only when the
+// target is a ClientList; every other key decodes as before.
+func stringToClientListHook(from, to reflect.Type, data any) (any, error) {
+	if to != clientListType || from.Kind() != reflect.String {
+		return data, nil
+	}
+	list := ClientList{}
+	for _, entry := range strings.Split(reflect.ValueOf(data).String(), ",") {
+		if entry = strings.TrimSpace(entry); entry != "" {
+			list = append(list, entry)
+		}
+	}
+	return list, nil
+}
+
+// HealthDatabase configures the database health check. The check decides from the
+// outcomes of the platform's own database operations, and pings the database itself
+// only while those are idle.
+type HealthDatabase struct {
+	// CheckTimeout is the deadline for one run of the database check, and so for its
+	// own ping.
+	CheckTimeout time.Duration `koanf:"check_timeout"`
+	// StartupWait is how long startup waits for the database to become reachable
+	// before giving up and exiting. A failure retrying cannot fix, such as rejected
+	// credentials, ends startup at once.
+	StartupWait time.Duration `koanf:"startup_wait"`
+	// FailureWindow is how far back database operation outcomes are counted.
+	FailureWindow time.Duration `koanf:"failure_window"`
+	// FailureRatio is the share of failed operations in the window at or above which
+	// the database is reported down.
+	FailureRatio float64 `koanf:"failure_ratio"`
+	// MinAttempts is how many operations the window must hold before their failure
+	// ratio decides.
+	MinAttempts int `koanf:"min_attempts"`
+	// IdlePeriod is how long the platform may go without database operations before
+	// the check pings the database itself; it pings at most once per period.
+	IdlePeriod time.Duration `koanf:"idle_period"`
+	// PoolSaturation is the share of the connection pool that, once in use, counts as
+	// saturated.
+	PoolSaturation float64 `koanf:"pool_saturation"`
+	// PoolWaitLimit is how long the pool may stay saturated before the database is
+	// reported down.
+	PoolWaitLimit time.Duration `koanf:"pool_wait_limit"`
+}
+
 // Server holds the configuration parameters for the application.
 type Server struct {
 	Logging Logging `koanf:"logging"`
+	Health  Health  `koanf:"health"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
@@ -136,8 +206,10 @@ type Server struct {
 	HTTPClient           HTTPClientConfig     `koanf:"http_client"`
 	APIPortalPublication APIPortalPublication `koanf:"api_portal_publication"`
 	AgentCardCache       AgentCardCache       `koanf:"agent_card_cache"`
+	GatewayRelay         GatewayRelay         `koanf:"gateway_relay"`
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 	MCPServer            MCPServer            `koanf:"mcp_server"`
+	Organizations        Organizations        `koanf:"organizations"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -217,6 +289,36 @@ type AgentCardCache struct {
 	// exhaustion vector for an organization with many passthrough Agent proxies.
 	// Zero or less means the cache holds nothing.
 	MaxBytes int64 `koanf:"max_bytes"`
+}
+
+// GatewayRelay configures POST /gateway-relay/invoke.
+// Its client is not the shared one: it never follows redirects, and Egress
+// decides which gateway addresses it may dial.
+type GatewayRelay struct {
+	// RequestTimeout runs from a test request's arrival to the end of the gateway
+	// call, so reading the request and the target lookup take from it; it must stay
+	// below server.timeouts.write.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// MaxRequestBytes bounds the decoded request body.
+	MaxRequestBytes int64 `koanf:"max_request_bytes"`
+	// MaxResponseBytes bounds the response body; a longer one is truncated, not failed.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
+	// MaxConcurrent calls run at once per replica, MaxPending more may wait; the
+	// rest get 503.
+	MaxConcurrent int `koanf:"max_concurrent"`
+	MaxPending    int `koanf:"max_pending"`
+	// CAFile is a PEM bundle to trust for gateway certificates. TLSSkipVerify
+	// disables verification, for development only; the two are exclusive.
+	CAFile        string `koanf:"ca_file"`
+	TLSSkipVerify bool   `koanf:"tls_skip_verify"`
+	// Egress decides which gateway addresses the relay may dial.
+	Egress GatewayRelayEgress `koanf:"egress"`
+}
+
+// GatewayRelayEgress is [gateway_relay.egress]: nothing is reachable unless an
+// AllowHosts entry ("[scheme://]host[:port]", "*" allowed in host) matches.
+type GatewayRelayEgress struct {
+	AllowHosts []string `koanf:"allow_hosts"`
 }
 
 // HTTPClientConfig configures the single shared outbound *http.Client used by every
@@ -457,7 +559,7 @@ type ClaimMappings struct {
 	// DisplayName is the claim holding the user's human-readable name, returned
 	// as createdBy/updatedBy in responses. Read only; never required.
 	DisplayName string `koanf:"display_name"`
-	Roles        string `koanf:"roles"`
+	Roles       string `koanf:"roles"`
 }
 
 // IDP holds configuration for JWKS-based identity providers. Active when
@@ -492,6 +594,11 @@ type Webhook struct {
 	MaxBodySize int64 `koanf:"max_body_size"`
 	// SignatureHeader is the header carrying the "t=...,v1=..." signature.
 	SignatureHeader string `koanf:"signature_header"`
+	// LegacySharedSecret accepts a delivery that carries no secret_hash (a portal that
+	// predates it): it is verified against each retained portal secret of its organization,
+	// then the shared Secret. Off, such a delivery is rejected before any signature check.
+	// Default off; turn it on only while a portal that predates secret_hash is still in use.
+	LegacySharedSecret bool `koanf:"legacy_shared_secret"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -731,6 +838,12 @@ type Deployments struct {
 	TimeoutDuration int  `koanf:"timeout_duration"`
 }
 
+// Organizations configures how new organizations are set up.
+type Organizations struct {
+	// CreateDefaultProject creates a project named "default" with every new organization.
+	CreateDefaultProject bool `koanf:"create_default_project"`
+}
+
 // APIKey holds API key-specific configuration.
 type APIKey struct {
 	HashingAlgorithms []string `koanf:"hashing_algorithms"`
@@ -742,6 +855,9 @@ type Security struct {
 	// (secrets, subscription tokens, WebSub HMAC secrets).
 	EncryptionKey string `koanf:"encryption_key"`
 	APIKey        APIKey `koanf:"api_key"`
+	// WebhookSecretMaxVersions caps how many versions a webhook secret keeps
+	// during rotation. Values below 2 select the default (3).
+	WebhookSecretMaxVersions int `koanf:"webhook_secret_max_versions"`
 }
 
 // package-level singleton.
@@ -795,6 +911,15 @@ const platformAPIConfigKey = "platform_api"
 // recognized so a config file carrying it fails startup instead of being
 // silently ignored. Path is relative to the platform_api subtree.
 const removedAuthSkipPathsKey = "auth.skip_paths"
+
+// healthDatabaseKey is the health sub-table holding the database check's settings,
+// relative to the platform_api subtree.
+const healthDatabaseKey = "health.database"
+
+// movedHealthKeys are health settings that moved into the database sub-table. They are
+// still recognized so a config file carrying them at the old place fails startup
+// instead of being silently ignored.
+var movedHealthKeys = []string{"check_timeout", "startup_wait"}
 
 // LoadConfig loads configuration with priority: config files > defaults.
 //
@@ -866,6 +991,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 			"(use auth.authorization.enabled to control authorization enforcement)",
 			platformAPIConfigKey, removedAuthSkipPathsKey)
 	}
+	if err := checkHealthKeys(k); err != nil {
+		return nil, err
+	}
 
 	// Subtree is already promoted to the top level by Cut, so unmarshal from the
 	// root ("") rather than re-descending through platformAPIConfigKey.
@@ -875,6 +1003,7 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 			WeaklyTypedInput: true,
 			Result:           cfg,
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				stringToClientListHook,
 				mapstructure.StringToSliceHookFunc(","),
 				mapstructure.StringToTimeDurationHookFunc(),
 				fileBasedUsersDecodeHook(),
@@ -898,6 +1027,10 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
 		return nil, err
 	}
+	if err := validateHealthConfig(&cfg.Health); err != nil {
+		return nil, err
+	}
+	warnHealthConfig(&cfg.Health)
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
 	}
@@ -906,6 +1039,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		cfg.APIPortalPublication.ListingRequestTimeout = cfg.APIPortalPublication.RequestTimeout
 	}
 	if err := validateAPIPortalPublicationConfig(&cfg.APIPortalPublication, cfg.Listeners.Timeouts.Write); err != nil {
+		return nil, err
+	}
+	if err := validateGatewayRelayConfig(&cfg.GatewayRelay, cfg.Listeners.Timeouts.Write); err != nil {
 		return nil, err
 	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
@@ -1076,6 +1212,39 @@ func validateAPIPortalPublicationConfig(cfg *APIPortalPublication, writeTimeout 
 		return fmt.Errorf(
 			"api_portal_publication.overall_timeout (%s) must be shorter than server.timeouts.write (%s), or the response is cut off before the deadline can report a failure",
 			cfg.OverallTimeout, writeTimeout,
+		)
+	}
+	return nil
+}
+
+// validateGatewayRelayConfig rejects a relay without bounds, or one the server's
+// write timeout would cut off. allow_hosts is parsed when the relay is built.
+func validateGatewayRelayConfig(cfg *GatewayRelay, writeTimeout time.Duration) error {
+	if cfg.RequestTimeout <= 0 {
+		return fmt.Errorf("gateway_relay.request_timeout must be greater than zero (got %s)", cfg.RequestTimeout)
+	}
+	for _, f := range []struct {
+		name  string
+		value int64
+	}{
+		{"gateway_relay.max_request_bytes", cfg.MaxRequestBytes},
+		{"gateway_relay.max_response_bytes", cfg.MaxResponseBytes},
+		{"gateway_relay.max_concurrent", int64(cfg.MaxConcurrent)},
+	} {
+		if f.value <= 0 {
+			return fmt.Errorf("%s must be greater than zero (got %d)", f.name, f.value)
+		}
+	}
+	if cfg.MaxPending < 0 {
+		return fmt.Errorf("gateway_relay.max_pending must not be negative (got %d)", cfg.MaxPending)
+	}
+	if cfg.CAFile != "" && cfg.TLSSkipVerify {
+		return fmt.Errorf("gateway_relay.ca_file and gateway_relay.tls_skip_verify are mutually exclusive")
+	}
+	if writeTimeout > 0 && cfg.RequestTimeout >= writeTimeout {
+		return fmt.Errorf(
+			"gateway_relay.request_timeout (%s) must be shorter than server.timeouts.write (%s), or the response is cut off before the relay can report a failure",
+			cfg.RequestTimeout, writeTimeout,
 		)
 	}
 	return nil
@@ -1256,6 +1425,115 @@ func validateLoggingConfig(level, format string) error {
 	return nil
 }
 
+// healthProbeTimeout is the timeout of the Helm chart's readiness and startup probes;
+// a check timeout at or above it lets the probe give up before the check answers.
+const healthProbeTimeout = 3 * time.Second
+
+// maxFailureWindow bounds failure_window. The window keeps one bucket per second, so a
+// very long window would allocate a large amount of memory at startup.
+const maxFailureWindow = time.Hour
+
+// ApplyHealthDefaults fills every unset (zero) health setting with its default. The
+// config loader applies defaults on its own; this is for a config built in code, such as
+// one passed to the platform package's WithConfig, which may predate the health
+// settings. Zero is never a valid value for these settings, so no explicit choice is
+// overwritten.
+func ApplyHealthDefaults(cfg *Health) {
+	def := defaultConfig().Health
+	if cfg.CacheTTL == 0 {
+		cfg.CacheTTL = def.CacheTTL
+	}
+	db, defDB := &cfg.Database, def.Database
+	for _, f := range []struct{ value, def *time.Duration }{
+		{&db.CheckTimeout, &defDB.CheckTimeout},
+		{&db.StartupWait, &defDB.StartupWait},
+		{&db.FailureWindow, &defDB.FailureWindow},
+		{&db.IdlePeriod, &defDB.IdlePeriod},
+		{&db.PoolWaitLimit, &defDB.PoolWaitLimit},
+	} {
+		if *f.value == 0 {
+			*f.value = *f.def
+		}
+	}
+	if db.FailureRatio == 0 {
+		db.FailureRatio = defDB.FailureRatio
+	}
+	if db.PoolSaturation == 0 {
+		db.PoolSaturation = defDB.PoolSaturation
+	}
+	if db.MinAttempts == 0 {
+		db.MinAttempts = defDB.MinAttempts
+	}
+}
+
+// ValidateHealth rejects out-of-range health settings and an invalid allowed-clients
+// list, the same way the config loader does.
+func ValidateHealth(cfg *Health) error {
+	return validateHealthConfig(cfg)
+}
+
+// validateHealthConfig rejects out-of-range health settings and an invalid
+// allowed-clients list at startup. Every message names the full key.
+func validateHealthConfig(cfg *Health) error {
+	const prefix = "platform_api.health."
+	const dbPrefix = prefix + "database."
+	db := &cfg.Database
+	for _, f := range []struct {
+		key   string
+		value time.Duration
+	}{
+		{prefix + "cache_ttl", cfg.CacheTTL},
+		{dbPrefix + "check_timeout", db.CheckTimeout},
+		{dbPrefix + "startup_wait", db.StartupWait},
+		{dbPrefix + "failure_window", db.FailureWindow},
+		{dbPrefix + "idle_period", db.IdlePeriod},
+		{dbPrefix + "pool_wait_limit", db.PoolWaitLimit},
+	} {
+		if f.value <= 0 {
+			return fmt.Errorf("%s must be > 0 (got %s)", f.key, f.value)
+		}
+	}
+	for _, f := range []struct {
+		key   string
+		value float64
+	}{
+		{dbPrefix + "failure_ratio", db.FailureRatio},
+		{dbPrefix + "pool_saturation", db.PoolSaturation},
+	} {
+		if math.IsNaN(f.value) || f.value <= 0 || f.value > 1 {
+			return fmt.Errorf("%s must be > 0 and <= 1 (got %g)", f.key, f.value)
+		}
+	}
+	if db.MinAttempts < 1 {
+		return fmt.Errorf("%smin_attempts must be >= 1 (got %d)", dbPrefix, db.MinAttempts)
+	}
+	if db.FailureWindow > maxFailureWindow {
+		return fmt.Errorf("%sfailure_window must be <= %s (got %s)", dbPrefix, maxFailureWindow, db.FailureWindow)
+	}
+	if db.FailureWindow < cfg.CacheTTL {
+		return fmt.Errorf("%sfailure_window must be >= %scache_ttl (got %s < %s)",
+			dbPrefix, prefix, db.FailureWindow, cfg.CacheTTL)
+	}
+	if db.IdlePeriod > db.FailureWindow {
+		return fmt.Errorf("%sidle_period must be <= %sfailure_window (got %s > %s)",
+			dbPrefix, dbPrefix, db.IdlePeriod, db.FailureWindow)
+	}
+	if _, err := health.ParseAllowedClients("platform_api.health", cfg.AllowedClients); err != nil {
+		return err
+	}
+	return nil
+}
+
+// warnHealthConfig warns about health settings that are valid but likely to misbehave
+// with the shipped deployment defaults.
+func warnHealthConfig(cfg *Health) {
+	if cfg.Database.CheckTimeout >= healthProbeTimeout {
+		slog.Warn("database health check timeout is at or above the Helm chart's readiness and startup probe timeout, so those probes may give up before the check completes; raise the probes' timeoutSeconds above it",
+			slog.Duration("check_timeout", cfg.Database.CheckTimeout),
+			slog.Duration("probe_timeout", healthProbeTimeout))
+	}
+}
+
 // validateDatabaseConfig fails closed when the selected driver's required
 // connection fields are missing, rather than surfacing an opaque driver-level
 // connection error only once the server tries to open the database.
@@ -1419,6 +1697,52 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 
 // validateWebhookConfig validates and fills defaults for the webhook receiver config.
 // It is a no-op when the webhook is disabled.
+// checkHealthKeys fails on a health setting still at its old place and on any key in the
+// health table or its database sub-table that is not a known setting, so neither a stale
+// nor a misspelled setting is silently ignored; a misspelled allowed_clients would
+// otherwise leave the health endpoints open to every client. Removed health settings
+// stay accepted, with the warning warnRemovedConfigKeys gives. Other unknown keys keep
+// the loader's usual leniency.
+func checkHealthKeys(k *koanf.Koanf) error {
+	for _, key := range movedHealthKeys {
+		if k.Exists("health." + key) {
+			return fmt.Errorf("%s.health.%s has moved to %s.%s.%s",
+				platformAPIConfigKey, key, platformAPIConfigKey, healthDatabaseKey, key)
+		}
+	}
+	knownHealth := koanfKeys(reflect.TypeFor[Health]())
+	for removed := range removedConfigKeys {
+		if key, ok := strings.CutPrefix(removed, "health."); ok {
+			knownHealth[key] = true
+		}
+	}
+	for _, table := range []struct {
+		path  string
+		known map[string]bool
+	}{
+		{"health", knownHealth},
+		{healthDatabaseKey, koanfKeys(reflect.TypeFor[HealthDatabase]())},
+	} {
+		for _, key := range slices.Sorted(maps.Keys(k.Cut(table.path).Raw())) {
+			if !table.known[key] {
+				return fmt.Errorf("%s.%s: unknown key %q", platformAPIConfigKey, table.path, key)
+			}
+		}
+	}
+	return nil
+}
+
+// koanfKeys returns the koanf tag names of a struct type's fields.
+func koanfKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := range t.NumField() {
+		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
+			keys[tag] = true
+		}
+	}
+	return keys
+}
+
 // removedConfigKeys maps a config key that no longer exists to the guidance shown
 // when it is still present. Keys are relative to the platform_api subtree, matching
 // the koanf tree after Cut. Add an entry whenever a setting is dropped: the
@@ -1430,7 +1754,16 @@ var removedConfigKeys = map[string]string{
 	"deployments.transitional_status_enabled": "a deployment is now always treated as transitional until the gateway " +
 		"acknowledges it, so there is nothing left to toggle; this setting has no effect and can be deleted " +
 		"(deployments.timeout_duration bounds how long an unacknowledged deployment waits before being marked FAILED)",
+	"health.log_file":        removedHealthLogGuidance,
+	"health.log_max_size_mb": removedHealthLogGuidance,
+	"health.log_max_files":   removedHealthLogGuidance,
+	"health.backoff_initial": removedHealthLogGuidance,
+	"health.backoff_max":     removedHealthLogGuidance,
 }
+
+// removedHealthLogGuidance is shown for the health log settings, which no longer exist.
+const removedHealthLogGuidance = "health check failures and recoveries are now logged once per change of state to " +
+	"the main log on stdout, with no separate log file or repeated lines; this setting has no effect and can be deleted"
 
 // warnRemovedConfigKeys logs a warning for each removed key still present in the
 // loaded config. It deliberately warns rather than failing: the removed setting is

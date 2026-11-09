@@ -17,40 +17,307 @@
 package cloudconsole
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/cucumber/godog"
+
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 )
 
-const (
-	// maxGatewayHandleLength is the width of the platform's gateway handle column; a managed
-	// gateway is registered as "<environment>-<handle>", so the environment's name uses part of it.
-	maxGatewayHandleLength = 40
-)
+// gatewayStatuses are the statuses a managed gateway reports.
+var gatewayStatuses = map[string]bool{"PROVISIONING": true, "FAILED": true, "ACTIVE": true, "DISCONNECTED": true}
 
-// gatewayHandleBudget is how many characters a handle may use in an environment.
-func gatewayHandleBudget(environment string) int {
-	if budget := maxGatewayHandleLength - len(environment) - 1; budget > 1 {
-		return budget
-	}
-	return 1
+// gatewayKinds are the functionality types a managed gateway can have.
+var gatewayKinds = []string{regularGatewayKind, "ai", "event"}
+
+// managedGatewayRequestKeys lists the values a managed gateway request table may carry.
+var managedGatewayRequestKeys = map[string]bool{
+	"displayName": true, "environment": true, "handle": true, "version": true,
+	"functionalityType": true, "description": true, "isCritical": true, "properties": true, "isDefault": true,
 }
 
-// handleOfLength builds a handle of exactly the given length from a unique name: it keeps the
-// name's tail, which is what makes it unique, and pads short names with a letter.
-func handleOfLength(name string, length int) string {
-	if length < 1 {
-		return ""
+// validateGatewayListing checks the fields every listed managed gateway carries and that the
+// status agrees with the connection flag.
+func validateGatewayListing(items []map[string]any) error {
+	if len(items) == 0 {
+		return errors.New("the organisation lists no managed gateway")
 	}
-	if len(name) >= length {
-		name = name[len(name)-length:]
-	} else {
-		name += strings.Repeat("x", length-len(name))
+	for _, item := range items {
+		id, _ := item["id"].(string)
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("a listed managed gateway has no id: %v", item)
+		}
+		for _, field := range []string{"isActive", "isCritical", "isDefault"} {
+			if _, ok := item[field].(bool); !ok {
+				return fmt.Errorf("managed gateway %q: %s is missing or not a boolean", id, field)
+			}
+		}
+		if environment, _ := item["environment"].(string); strings.TrimSpace(environment) == "" {
+			return fmt.Errorf("managed gateway %q reports no environment", id)
+		}
+		status, _ := item["status"].(string)
+		if !gatewayStatuses[status] {
+			return fmt.Errorf("managed gateway %q reports status %q, want one of PROVISIONING, FAILED, ACTIVE, DISCONNECTED (the listing gives it as %v)", id, status, item)
+		}
+		reason, _ := item["statusReason"].(string)
+		if status == "FAILED" && reason == "" {
+			return fmt.Errorf("managed gateway %q is FAILED without a status reason", id)
+		}
+		if status != "FAILED" && reason != "" {
+			return fmt.Errorf("managed gateway %q reports status reason %q while %s", id, reason, status)
+		}
+		active, _ := item["isActive"].(bool)
+		if active && status != "ACTIVE" && status != "FAILED" {
+			return fmt.Errorf("managed gateway %q is connected but reports %s", id, status)
+		}
+		if status == "ACTIVE" && !active {
+			return fmt.Errorf("managed gateway %q reports ACTIVE but isActive is false", id)
+		}
+		if kind, _ := item["functionalityType"].(string); kind != "" && !slices.Contains(gatewayKinds, kind) {
+			return fmt.Errorf("managed gateway %q has unknown functionality type %q", id, kind)
+		}
+		if endpoints, present := item["endpoints"]; present {
+			list, ok := endpoints.([]any)
+			if !ok {
+				return fmt.Errorf("managed gateway %q: endpoints is not a list", id)
+			}
+			for _, endpoint := range list {
+				if text, ok := endpoint.(string); !ok || strings.TrimSpace(text) == "" {
+					return fmt.Errorf("managed gateway %q lists an endpoint that is not a string: %v", id, endpoint)
+				}
+			}
+		}
 	}
-	if name[0] == '-' {
-		name = "a" + name[1:]
+	return nil
+}
+
+// expectedGatewayID is the id the platform registers a gateway under: the environment and the
+// handle, which is the display name folded to lower case when none is given.
+func expectedGatewayID(environment, displayName, handle string) string {
+	if handle = strings.TrimSpace(handle); handle == "" {
+		handle = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(displayName), " ", "-"))
 	}
-	return name
+	return environment + "-" + handle
+}
+
+// buildManagedGatewayRequest turns a values table into the body of a managed gateway request.
+// The display name defaults to the scenario's chosen name; the environment is required.
+func buildManagedGatewayRequest(ctx context.Context, values map[string]string) (map[string]any, error) {
+	body := map[string]any{}
+	for key, raw := range values {
+		if !managedGatewayRequestKeys[key] {
+			return nil, fmt.Errorf("unsupported managed gateway value %q", key)
+		}
+		value, err := expandCloudValue(ctx, raw)
+		if err != nil {
+			return nil, fmt.Errorf("expanding %q: %w", key, err)
+		}
+		parsed, err := typedGatewayValue(key, value)
+		if err != nil {
+			return nil, err
+		}
+		body[key] = parsed
+	}
+	if _, present := body["displayName"]; !present {
+		name, err := requiredValue(ctx, keyManagedGatewayName)
+		if err != nil {
+			return nil, fmt.Errorf("no displayName given and no gateway name chosen: %w", err)
+		}
+		body["displayName"] = name
+	}
+	if environment, _ := body["environment"].(string); strings.TrimSpace(environment) == "" {
+		return nil, errors.New("a managed gateway request needs an environment")
+	}
+	return body, nil
+}
+
+// typedGatewayValue converts a table cell to the type its field has on the wire.
+func typedGatewayValue(key, value string) (any, error) {
+	switch key {
+	case "isCritical", "isDefault":
+		flag, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return nil, fmt.Errorf("%s must be true or false, got %q", key, value)
+		}
+		return flag, nil
+	case "properties":
+		var properties map[string]any
+		if err := json.Unmarshal([]byte(value), &properties); err != nil {
+			return nil, fmt.Errorf("properties must be a JSON object: %w", err)
+		}
+		return properties, nil
+	}
+	return value, nil
+}
+
+// chooseGatewayName picks the unique name a managed gateway request is made under.
+func (s *Steps) chooseGatewayName(ctx context.Context) error {
+	return generateResourceAndStore(ctx, "syn-gw", keyManagedGatewayName)
+}
+
+// requestManagedGateway sends a managed gateway request built from a table and publishes the
+// response without requiring success, so a scenario can assert a refusal as well as a creation.
+// The gateway is registered for cleanup before the request, under the id the platform will give
+// it, and the registration is dropped again when the platform refuses the request.
+func (s *Steps) requestManagedGateway(ctx context.Context, table *godog.Table) error {
+	values, err := tableValues(table)
+	if err != nil {
+		return err
+	}
+	return s.requestManagedGatewayWith(ctx, values)
+}
+
+// requestManagedGatewayWith is requestManagedGateway for values already read from a table.
+func (s *Steps) requestManagedGatewayWith(ctx context.Context, values map[string]string) error {
+	body, err := buildManagedGatewayRequest(ctx, values)
+	if err != nil {
+		return err
+	}
+	environment, _ := body["environment"].(string)
+	displayName, _ := body["displayName"].(string)
+	handle, _ := body["handle"].(string)
+	fallback := expectedGatewayID(environment, displayName, handle)
+	known := registeredForCleanup(ctx, fallback)
+	if !known {
+		if err := cleanup.Register(ctx, cleanup.Resource{
+			Kind: cleanup.KindGateway, ID: fallback, Actor: resourceActor, Description: "managed gateway " + fallback,
+		}); err != nil {
+			return fmt.Errorf("registering managed gateway %q for cleanup: %w", fallback, err)
+		}
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusCreated {
+		if !known && resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			deregister(ctx, cleanup.KindGateway, fallback)
+		}
+		return nil
+	}
+	id, err := stringField(resp, "id")
+	if err != nil {
+		return fmt.Errorf("creating APIP managed gateway: %w", err)
+	}
+	if id != fallback && !known {
+		deregister(ctx, cleanup.KindGateway, fallback)
+	}
+	// The platform may register the gateway under another id than the one expected, for example
+	// when the name is taken, so the id it answered with is the one that must be cleaned up.
+	if !registeredForCleanup(ctx, id) {
+		if err := cleanup.Register(ctx, cleanup.Resource{
+			Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
+		}); err != nil {
+			return fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// registeredForCleanup reports whether a gateway is waiting to be cleaned up.
+func registeredForCleanup(ctx context.Context, id string) bool {
+	registry, err := cleanup.Of(ctx)
+	if err != nil {
+		return false
+	}
+	for _, resource := range registry.Pending() {
+		if resource.Kind == cleanup.KindGateway && resource.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// listManagedGateways lists the managed gateways and publishes the response.
+func (s *Steps) listManagedGateways(ctx context.Context) error {
+	_, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways", nil)
+	return err
+}
+
+// publishedListing decodes the list the last response carried.
+func publishedListing(ctx context.Context) ([]map[string]any, error) {
+	response, err := httpx.Published(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, responseError(response)
+	}
+	items, err := listItems(response)
+	if err != nil {
+		return nil, fmt.Errorf("decoding managed gateways: %w (%s)", err, response.Describe())
+	}
+	return items, nil
+}
+
+func (s *Steps) assertListingIsValid(ctx context.Context) error {
+	items, err := publishedListing(ctx)
+	if err != nil {
+		return err
+	}
+	return validateGatewayListing(items)
+}
+
+func (s *Steps) assertListingIncludesActiveGateway(ctx context.Context) error {
+	items, err := publishedListing(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := requiredValue(ctx, keyGatewayID)
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if item["id"] == id {
+			if active, _ := item["isActive"].(bool); !active {
+				return fmt.Errorf("the listing shows the active gateway %q as not active", id)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("the listing of %d managed gateways does not include the active gateway %q", len(items), id)
+}
+
+// assertSelectedEnvironmentListed checks the environment chosen to host a gateway is one the
+// platform lists, named by its own id.
+func (s *Steps) assertSelectedEnvironmentListed(ctx context.Context) error {
+	name, err := requiredValue(ctx, keyEnvironmentName)
+	if err != nil {
+		return err
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return responseError(resp)
+	}
+	items, err := listItems(resp)
+	if err != nil {
+		return fmt.Errorf("decoding APIP environments: %w", err)
+	}
+	for _, item := range items {
+		if item["name"] != name {
+			continue
+		}
+		if item["id"] != name {
+			return fmt.Errorf("environment %q is listed with id %v, want its own name", name, item["id"])
+		}
+		if _, ok := item["isProduction"].(bool); !ok {
+			return fmt.Errorf("environment %q does not report isProduction", name)
+		}
+		return nil
+	}
+	return fmt.Errorf("the selected environment %q is not in the platform's list of %d environments", name, len(items))
 }
 
 // sameValue compares a value read from JSON with the value a table cell stands for.
